@@ -1,0 +1,14 @@
+# Jamais dans le contexte Docker — cause des builds de 1000+ secondes
+node_modules
+.next
+.git
+
+# Dossiers de dev locaux
+.env.local
+*.log
+public/renders
+public/uploads
+
+# OS
+.DS_Store
+Thumbs.db

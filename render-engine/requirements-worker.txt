@@ -1,0 +1,15 @@
+# Dépendances du worker RunPod uniquement — PAS de Gradio
+# Gradio (UI locale) n'a pas sa place dans l'image de production
+
+pydantic>=2.8.0
+fastapi>=0.115.0          # importé par api.py (_build_config)
+python-multipart>=0.0.9
+aiofiles>=24.1.0
+
+# Image processing
+Pillow>=10.0.0
+
+# Worker runtime
+runpod>=1.6.0
+boto3>=1.34.0
+httpx>=0.27.0

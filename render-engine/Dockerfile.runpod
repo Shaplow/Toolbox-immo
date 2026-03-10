@@ -1,0 +1,47 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Image de production RunPod — base CUDA pour NVENC (h264_nvenc)
+# NE PAS utiliser requirements.txt (contient Gradio ~2.5GB inutile en prod)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# CUDA 12.8 devel → dernière version toolkit disponible, compatible driver 520+ (RunPod driver 580 inclus)
+FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
+
+# Système : Python 3.11 + dépendances de base
+# FFmpeg sera installé via build statique BtbN (NVENC embarqué, pas de dépendance host)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 python3.11-dev python3-pip \
+    libass9 \
+    xz-utils wget \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python
+
+# FFmpeg statique avec NVENC + libx264 — build BtbN GPL (linux64, master-latest)
+# GPL inclut libx264 (fallback CPU si NVENC indisponible) + NVENC (GPU).
+RUN wget -q https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz \
+    && tar -xf ffmpeg-master-latest-linux64-gpl.tar.xz \
+    && mv ffmpeg-master-latest-linux64-gpl/bin/ffmpeg /usr/local/bin/ffmpeg \
+    && mv ffmpeg-master-latest-linux64-gpl/bin/ffprobe /usr/local/bin/ffprobe \
+    && rm -rf ffmpeg-master-latest-linux64-gpl* \
+    && ffmpeg -version
+
+WORKDIR /app
+
+# Dépendances Python minimales (sans Gradio)
+COPY requirements-worker.txt .
+RUN pip install --no-cache-dir -r requirements-worker.txt
+
+# Code source
+COPY . .
+
+# Dossier outputs temporaires
+RUN mkdir -p outputs/temp/api
+
+# Variables d'env
+ENV PYTHONUNBUFFERED=1
+# Expose les capacités GPU au container pour NVENC
+ENV NVIDIA_VISIBLE_DEVICES=all
+# "all" expose video+compute+utility+display+graphics → garantit l'accès NVENC sur tous les pods RunPod
+ENV NVIDIA_DRIVER_CAPABILITIES=all
+
+CMD ["python", "-u", "runpod_worker.py"]

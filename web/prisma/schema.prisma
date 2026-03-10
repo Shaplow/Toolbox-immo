@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id           String           @id @default(cuid())
+  username     String?          @unique
+  email        String?          @unique
+  passwordHash String
+  name         String
+  role         String           @default("USER")
+  /// JSON array of tool strings — ex: ["templates","captions"]
+  permissions  String           @default("[]")
+  createdAt    DateTime         @default(now())
+  templates    Template[]
+  listings     Listing[]
+  accesses     TemplateAccess[]
+  captionJobs    CaptionJob[]
+  captionPresets CaptionPreset[]
+  captionPresetAccesses CaptionPresetAccess[]
+}
+
+model CaptionJob {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status        String   @default("QUEUED") // QUEUED | PROCESSING | COMPLETED | FAILED
+  inputUrl      String?
+  outputUrl     String?
+  outputKey     String?  // clé R2 de l'output
+  runpodJobId   String?  // ID job RunPod pour polling
+  config        String   @default("{}") // JSON sérialisé
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+/// Preset de sous-titres sauvegardé (config complète + polices)
+model CaptionPreset {
+  id        String   @id @default(cuid())
+  name      String
+  /// null = preset global/builtin (visible par tous), sinon appartient à l'user
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isBuiltin Boolean  @default(false)
+  /// ConfigState JSON sérialisé (base, highlight, layout, effects, animation...)
+  config    String   @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  accesses  CaptionPresetAccess[]
+}
+
+model CaptionPresetAccess {
+  id        String        @id @default(cuid())
+  userId    String
+  presetId  String
+  createdAt DateTime      @default(now())
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preset    CaptionPreset @relation(fields: [presetId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, presetId])
+}
+
+model Template {
+  id        String           @id @default(cuid())
+  name      String
+  client    String           @default("")
+  formats   String           @default("[]") // JSON array ["A3_LANDSCAPE", "A4_PORTRAIT"]
+  jsonData  String           @default("{}") // TemplateJSON sérialisé
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  userId    String
+  user      User             @relation(fields: [userId], references: [id])
+  listings  Listing[]
+  renders   Render[]
+  accesses  TemplateAccess[]
+}
+
+model TemplateAccess {
+  id         String   @id @default(cuid())
+  userId     String
+  templateId String
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, templateId])
+}
+
+model Listing {
+  id         String    @id @default(cuid())
+  templateId String?
+  jsonData   String    @default("{}") // ListingData sérialisé
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  template   Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  renders    Render[]
+}
+
+model Render {
+  id           String       @id @default(cuid())
+  listingId    String
+  templateId   String?
+  status       RenderStatus @default(PENDING)
+  pngUrl       String?
+  pdfUrl       String?
+  /// URL vidéo finale (renders avec un VideoBlock — pipeline RunPod)
+  videoUrl     String?
+  /// ID du job RunPod (pour polling — null si pipeline Node.js)
+  runpodJobId  String?
+  errorMsg     String?
+  createdAt    DateTime     @default(now())
+  listing      Listing      @relation(fields: [listingId], references: [id])
+  template     Template?    @relation(fields: [templateId], references: [id], onDelete: SetNull)
+}
+
+enum RenderStatus {
+  PENDING
+  PROCESSING
+  DONE
+  ERROR
+}

@@ -1,0 +1,12 @@
+# Exclure les outputs locaux et caches
+outputs/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.git
+*.log
+
+# L'environnement virtuel local s'il existe
+venv/
+.venv/

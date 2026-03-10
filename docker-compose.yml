@@ -1,0 +1,72 @@
+# Toolbox Immo — docker-compose (développement local)
+# Lance les 3 services : Next.js web, Python render-engine, PostgreSQL
+#
+# Usage :
+#   docker compose up             → démarre tout
+#   docker compose up web         → Next.js seulement
+#   docker compose up render-engine → Python seulement
+#   docker compose logs -f         → logs en temps réel
+
+services:
+
+  # ─── PostgreSQL ────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: toolbox-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: toolbox
+      POSTGRES_PASSWORD: toolbox
+      POSTGRES_DB: toolbox
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U toolbox"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── Next.js (web shell + TemplateGen) ──────────────────────────────────────
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.dev
+    container_name: toolbox-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env                          # .env racine — source unique
+    environment:
+      DATABASE_URL: postgresql://toolbox:toolbox@postgres:5432/toolbox
+      CAPTIONS_API_URL: http://render-engine:8000
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Pour dev sans Docker  →  cd web && npm run dev
+
+  # ─── Python FastAPI (Render Engine — Captions + FFmpeg composite) ──────────
+  render-engine:
+    build:
+      context: ./render-engine
+      dockerfile: Dockerfile
+    container_name: toolbox-render
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env                          # .env racine — même fichier
+    volumes:
+      - ./render-engine:/app
+      - render-outputs:/app/outputs
+    # Pour dev sans Docker → cd render-engine && uvicorn api:app --reload
+
+volumes:
+  pgdata:
+  render-outputs:

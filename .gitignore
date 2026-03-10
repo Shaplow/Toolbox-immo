@@ -1,0 +1,34 @@
+# ─── Node ───────────────────────────────────────────────
+node_modules/
+.next/
+dist/
+build/
+
+# ─── Python ─────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# ─── Env files (ne jamais commit) ───────────────────────
+.env
+.env.*
+.env.local
+.env.production
+.env.prod
+captions-api/.env
+
+# ─── Outputs / uploads (fichiers générés) ───────────────
+web/public/uploads/
+web/public/renders/
+captions-api/outputs/
+
+# ─── OS ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── IDE ────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
