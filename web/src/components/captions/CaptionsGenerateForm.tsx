@@ -9,7 +9,7 @@ import Link from "next/link";
 import { Caption, parseSRT, parseHighlightedSRT, serializeSRT } from "@/lib/srt";
 import CaptionEditor from "@/components/captions/CaptionEditor";
 import { SegmentTrimEditor } from "@/components/captions/SegmentTrimEditor";
-import type { Segment } from "@/lib/transcriptionProcess";
+import { buildSubtitlesFromWords, type Segment } from "@/lib/transcriptionProcess";
 
 type TextTransform = "none" | "upper" | "lower" | "title";
 type ExportProfile = "draft" | "balanced" | "final";
@@ -78,7 +78,9 @@ export default function CaptionsGenerateForm({
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [subsFile, setSubsFile] = useState<File | null>(null);
   const [pendingSegments, setPendingSegments] = useState<Segment[] | null>(
-    initialSegments ?? null
+    initialSegments && initialSegments.length > 0
+      ? buildSubtitlesFromWords(initialSegments)
+      : null
   );
   const [showTrimEditor, setShowTrimEditor] = useState<boolean>(
     !!(initialSegments && initialSegments.length > 0)

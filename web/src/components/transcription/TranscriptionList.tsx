@@ -57,7 +57,7 @@ export function TranscriptionList({
   const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [model, setModel] = useState("large-v3-turbo");
+  const [model, setModel] = useState("turbo");
   const [language, setLanguage] = useState("fr");
   const [enableDiarization, setEnableDiarization] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -208,10 +208,35 @@ export function TranscriptionList({
       <div className="bg-gray-50 rounded-xl p-4 space-y-4">
         <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Options</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">Modèle</label>
-            <div className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
-              Large-v3-turbo
+          <div className="space-y-1 sm:col-span-2">
+            <label className="text-sm font-medium text-gray-700">Modèle de transcription</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setModel("turbo")}
+                className={`rounded-xl border p-3 text-left transition-colors ${
+                  model === "turbo"
+                    ? "border-indigo-500 bg-indigo-50"
+                    : "border-gray-200 bg-white hover:border-gray-300"
+                }`}
+              >
+                <div className="text-sm font-medium text-gray-800">Rapide</div>
+                <div className="text-xs text-gray-500 mt-0.5">Résultat en ~1 min</div>
+                <div className="text-xs text-gray-400 mt-1">Idéal pour audio studio</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setModel("large-v3")}
+                className={`rounded-xl border p-3 text-left transition-colors ${
+                  model === "large-v3"
+                    ? "border-indigo-500 bg-indigo-50"
+                    : "border-gray-200 bg-white hover:border-gray-300"
+                }`}
+              >
+                <div className="text-sm font-medium text-gray-800">Haute précision</div>
+                <div className="text-xs text-gray-500 mt-0.5">Résultat en 2–4 min</div>
+                <div className="text-xs text-gray-400 mt-1">Accents, réunions, jargon</div>
+              </button>
             </div>
           </div>
           <div className="space-y-1">

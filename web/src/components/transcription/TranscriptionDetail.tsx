@@ -36,7 +36,10 @@ const LANG_LABELS: Record<string, string> = {
 };
 
 const MODEL_LABELS: Record<string, string> = {
-  turbo: "Turbo", "large-v3": "Large-v3", "large-v3-turbo": "Turbo", medium: "Medium",
+  turbo: "Rapide",
+  "large-v3-turbo": "Rapide",
+  "large-v3": "Haute précision",
+  medium: "Medium",
 };
 
 export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
@@ -44,6 +47,8 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
   const [job, setJob] = useState(initialJob);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [qualityScore, setQualityScore] = useState<number | null>(null);
+  const [qualityWarningCount, setQualityWarningCount] = useState(0);
 
   const poll = useCallback(async () => {
     try {
@@ -60,6 +65,20 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
     const interval = setInterval(() => void poll(), 5000);
     return () => clearInterval(interval);
   }, [job.status, poll]);
+
+  // Fetch QA audit once job is completed
+  useEffect(() => {
+    if (job.status !== "COMPLETED" || !job.hasOutput) return;
+    fetch(`/api/transcription/${job.id}/audit`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { score: number; warnings: { severity: string }[] } | null) => {
+        if (data) {
+          setQualityScore(data.score);
+          setQualityWarningCount(data.warnings.length);
+        }
+      })
+      .catch(() => {});
+  }, [job.status, job.hasOutput, job.id]);
 
   const download = useCallback(async (format: "srt" | "json" | "chunks") => {
     setDownloading(format);
@@ -163,8 +182,16 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
             <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 text-xs">
               Diarisé
             </span>
-          )}
-        </div>
+          )}          {qualityScore !== null && (
+            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+              qualityScore >= 80 ? "bg-green-50 text-green-700" :
+              qualityScore >= 60 ? "bg-yellow-50 text-yellow-700" :
+              "bg-red-50 text-red-700"
+            }`}>
+              SRT {qualityScore}/100
+              {qualityWarningCount > 0 && <span className="opacity-70"> · {qualityWarningCount} points</span>}
+            </span>
+          )}        </div>
       </div>
 
       {/* Processing state */}
