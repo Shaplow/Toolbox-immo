@@ -33,16 +33,8 @@ function resolveAnimationPreset(configData: Record<string, unknown>): string {
   return "reveal";
 }
 
-export function inferCaptionsEngine(configData: Record<string, unknown>): CaptionsEngine {
-  const explicitEngine = typeof configData.engine === "string" ? configData.engine.trim().toLowerCase() : "";
-  if (explicitEngine === "ass" || explicitEngine === "cairo") {
-    return explicitEngine;
-  }
-
-  const animationEnabled = toBool(configData.animation_enabled, true);
-  const preset = animationEnabled ? resolveAnimationPreset(configData) : "none";
-
-  return CAIRO_COMPATIBLE_PRESETS.has(preset) ? "cairo" : "ass";
+export function inferCaptionsEngine(_configData: Record<string, unknown>): CaptionsEngine {
+  return "ass";
 }
 
 function normalizeLineHeightMode(layout: Record<string, unknown> | null, engine: CaptionsEngine): Record<string, unknown> | null {

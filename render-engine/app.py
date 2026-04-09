@@ -35,11 +35,7 @@ logger = logging.getLogger("subtitle_app")
 
 
 def _resolve_captions_engine(engine: str | None = None) -> str:
-    requested = str(engine or os.environ.get("CAPTIONS_ENGINE", "ass") or "ass").strip().lower()
-    if requested not in {"ass", "cairo"}:
-        logger.warning("Unknown captions engine '%s', falling back to ass", requested)
-        return "ass"
-    return requested
+    return "ass"
 
 
 def _list_font_choices() -> list[str]:
