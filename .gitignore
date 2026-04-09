@@ -24,6 +24,7 @@ captions-api/.env
 web/public/uploads/
 web/public/renders/
 captions-api/outputs/
+render-engine/outputs/
 
 # ─── OS ─────────────────────────────────────────────────
 .DS_Store
