@@ -1,12 +1,12 @@
-﻿import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+﻿import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { ListingsClient, type ListingRow, type CaptionJobRow } from "@/components/listings/ListingsClient";
+import { ListingsClient, type ListingRow, type CaptionJobRow, type TranscriptionJobRow, type DescriptionJobRow } from "@/components/listings/ListingsClient";
+import { getUserContext } from "@/lib/userContext";
 
 export default async function ListingsPage() {
-  const session = await auth();
-  const userId = session!.user!.id!;
-  const isAdmin = (session!.user as { role?: string }).role === "ADMIN";
+  const userContext = await getUserContext();
+  const userId = userContext!.effectiveUser.id;
+  const isAdmin = userContext!.canAdminBypass;
 
   const listings = await prisma.listing.findMany({
     where: isAdmin ? {} : { userId },
@@ -34,6 +34,25 @@ export default async function ListingsPage() {
     orderBy: { createdAt: "desc" },
     take: 50,
     include: {
+      user: { select: { name: true, email: true } },
+    },
+  });
+
+  const transcriptionJobs = await prisma.transcriptionJob.findMany({
+    where: isAdmin ? {} : { userId },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: {
+      user: { select: { name: true, email: true } },
+    },
+  });
+
+  const descriptionJobs = await prisma.descriptionJob.findMany({
+    where: isAdmin ? {} : { userId },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: {
+      prompt: { select: { name: true } },
       user: { select: { name: true, email: true } },
     },
   });
@@ -73,23 +92,56 @@ export default async function ListingsPage() {
       inputName,
       createdAt: j.createdAt.toISOString(),
       ownerName: isAdmin ? (j.user.name ?? j.user.email ?? "?") : null,
+      presetId: j.presetId ?? null,
     };
   });
 
+  const transcriptionRows: TranscriptionJobRow[] = transcriptionJobs.map((j) => ({
+    id: j.id,
+    status: j.status,
+    inputFilename: j.inputFilename ?? null,
+    model: j.model,
+    language: j.language ?? null,
+    enableDiarization: j.enableDiarization,
+    hasDiarization: j.hasDiarization,
+    segmentCount: j.segmentCount ?? null,
+    duration: j.duration ?? null,
+    errorMsg: j.errorMsg ?? null,
+    createdAt: j.createdAt.toISOString(),
+    ownerName: isAdmin ? (j.user.name ?? j.user.email ?? "?") : null,
+  }));
+
+  const descriptionRows: DescriptionJobRow[] = descriptionJobs.map((j) => ({
+    id: j.id,
+    status: j.status,
+    inputFilename: j.inputFilename ?? null,
+    inputType: j.inputType,
+    promptId: j.promptId ?? null,
+    model: j.model,
+    result: j.result ?? null,
+    errorMsg: j.errorMsg ?? null,
+    createdAt: j.createdAt.toISOString(),
+    ownerName: isAdmin ? (j.user.name ?? j.user.email ?? "?") : null,
+    prompt: j.prompt ?? null,
+  }));
+
   const inProgressCount =
     rows.reduce((n, l) => n + l.renders.filter((r) => r.status === "PROCESSING" || r.status === "PENDING").length, 0) +
-    captionRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length;
+    captionRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length +
+    transcriptionRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length;
 
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">
-            {isAdmin ? "Productions" : "Mes listings"}
+            {isAdmin ? "Générations" : "Mes générations"}
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            {rows.length} listing{rows.length !== 1 ? "s" : ""}
-            {captionRows.length > 0 && ` · ${captionRows.length} caption${captionRows.length !== 1 ? "s" : ""}`}
+            {rows.length} génération{rows.length !== 1 ? "s" : ""} de template
+            {captionRows.length > 0 && ` · ${captionRows.length} export${captionRows.length !== 1 ? "s" : ""} de sous-titres`}
+            {transcriptionRows.length > 0 && ` · ${transcriptionRows.length} transcription${transcriptionRows.length !== 1 ? "s" : ""}`}
+            {descriptionRows.length > 0 && ` · ${descriptionRows.length} description${descriptionRows.length !== 1 ? "s" : ""}`}
             {inProgressCount > 0 && (
               <span className="ml-2 inline-flex items-center gap-1 text-indigo-700">
                 <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-pulse inline-block" />
@@ -100,7 +152,7 @@ export default async function ListingsPage() {
         </div>
       </div>
 
-      <ListingsClient initialListings={rows} initialCaptionJobs={captionRows} isAdmin={isAdmin} />
+      <ListingsClient initialListings={rows} initialCaptionJobs={captionRows} initialTranscriptionJobs={transcriptionRows} initialDescriptionJobs={descriptionRows} isAdmin={isAdmin} />
     </div>
   );
 }

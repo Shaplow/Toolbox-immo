@@ -66,3 +66,40 @@ export function captionsToFile(
 export function normalizeWord(w: string): string {
   return w.toLowerCase().replace(/[^a-z0-9àâäéèêëîïôùûüç'-]/gi, '').trim()
 }
+
+/**
+ * Parse an SRT that may contain {HL:N}word{/HL:N} markers.
+ * Returns clean captions (markers stripped) + the reconstructed highlighted map
+ * so the CaptionEditor can display the words as already-highlighted without
+ * showing raw marker text.
+ */
+export function parseHighlightedSRT(raw: string): { captions: Caption[], highlighted: Map<string, number> } {
+  const parsed = parseSRT(raw)
+  const highlighted = new Map<string, number>()
+  const HL_RE = /^\{HL:(\d+)\}([\s\S]*?)\{\/HL:\d+\}$/
+
+  const captions = parsed.map(c => {
+    const tokens = c.text.split(/(\s+)/)
+    let wordIdx = 0
+    const cleanTokens: string[] = []
+
+    for (const token of tokens) {
+      if (token === '' || /^\s+$/.test(token)) {
+        cleanTokens.push(token)
+      } else {
+        const m = HL_RE.exec(token)
+        if (m) {
+          highlighted.set(`${c.index}-${wordIdx}`, parseInt(m[1], 10))
+          cleanTokens.push(m[2])
+        } else {
+          cleanTokens.push(token)
+        }
+        wordIdx++
+      }
+    }
+
+    return { ...c, text: cleanTokens.join('') }
+  })
+
+  return { captions, highlighted }
+}

@@ -1,6 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { generateRender } from "@/lib/renderer/generateRender";
+import { startRenderGeneration } from "@/lib/renderer/generateRender";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -8,33 +8,14 @@ type Params = { params: Promise<{ id: string }> };
 export async function POST(_req: NextRequest, { params }: Params) {
   const { id } = await params;
 
-  const render = await prisma.render.findUnique({ where: { id } });
-  if (!render) {
+  const kickoff = await startRenderGeneration(id);
+  if (kickoff === "missing") {
     return NextResponse.json({ error: "Render introuvable" }, { status: 404 });
   }
-  if (render.status !== "PENDING") {
-    return NextResponse.json({ message: "Déjà traité" });
+  if (kickoff === "already-processed") {
+    const render = await prisma.render.findUnique({ where: { id } });
+    return NextResponse.json({ message: "Déjà traité", status: render?.status ?? null });
   }
 
-  // Marquer comme PROCESSING
-  await prisma.render.update({
-    where: { id },
-    data: { status: "PROCESSING" },
-  });
-
-  try {
-    await generateRender(id);
-    return NextResponse.json({ success: true });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[generate] Render ${id} FAILED:`, err);
-    await prisma.render.update({
-      where: { id },
-      data: {
-        status: "ERROR",
-        errorMsg: msg,
-      },
-    });
-    return NextResponse.json({ error: "Échec de la génération" }, { status: 500 });
-  }
+  return NextResponse.json({ accepted: true }, { status: 202 });
 }

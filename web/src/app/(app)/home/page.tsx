@@ -1,10 +1,10 @@
-﻿import { auth } from "@/lib/auth";
-import Link from "next/link";
+﻿import Link from "next/link";
+import { getUserContext, parsePermissions } from "@/lib/userContext";
 
 const tools = [
   {
-    href: "/templates",
-    label: "Template Generator",
+    href: "/tools/templates",
+    label: "Générateur de templates",
     description: "Créez et gérez des templates visuels pour vos annonces immobilières. Générez des visuels personnalisés en quelques clics.",
     icon: "▦",
     color: "indigo",
@@ -12,41 +12,59 @@ const tools = [
   },
   {
     href: "/tools/captions",
-    label: "Captions",
-    description: "Brûlez des sous-titres stylisés et animés dans vos vidéos de présentation. Animations mot par mot, highlights, polices personnalisées.",
+    label: "Sous-titres",
+    description: "Incrustez des sous-titres stylisés et animés dans vos vidéos de présentation. Animations mot à mot, mise en avant, polices personnalisées.",
     icon: "CC",
     color: "violet",
-    badge: "Beta",
+    badge: "Bêta",
+  },
+  {
+    href: "/tools/cover",
+    label: "Covers vidéo",
+    description: "Extrayez les meilleures frames de votre vidéo pour choisir la cover idéale. Tirages successifs, sélection multiple et téléchargement direct.",
+    icon: "⊡",
+    color: "emerald",
+    badge: null,
   },
 ];
 
 const colorMap: Record<string, string> = {
   indigo: "bg-indigo-50 border-indigo-100 hover:border-indigo-300 group-hover:text-indigo-700",
   violet: "bg-violet-50 border-violet-100 hover:border-violet-300 group-hover:text-violet-600",
+  emerald: "bg-emerald-50 border-emerald-100 hover:border-emerald-300 group-hover:text-emerald-700",
 };
 
 const iconColorMap: Record<string, string> = {
   indigo: "bg-indigo-100 text-indigo-700",
   violet: "bg-violet-100 text-violet-600",
+  emerald: "bg-emerald-100 text-emerald-700",
 };
 
 const badgeColorMap: Record<string, string> = {
   indigo: "bg-indigo-100 text-indigo-700",
   violet: "bg-violet-100 text-violet-700",
+  emerald: "bg-emerald-100 text-emerald-700",
 };
 
 export default async function HomePage() {
-  const session = await auth();
-  const user = session?.user as { name?: string; email?: string; role?: string; permissions?: string } | undefined;
+  const userContext = await getUserContext();
+  const user = userContext?.effectiveUser;
 
-  const isAdmin = user?.role === "ADMIN";
-  let userPerms: string[] = [];
-  try { userPerms = JSON.parse(user?.permissions ?? "[]") as string[]; } catch { userPerms = []; }
+  const isAdmin = userContext?.canAdminBypass ?? false;
+  const userPerms = parsePermissions(user?.permissions);
+  const hasTemplates =
+    userPerms.includes("templates") ||
+    userPerms.includes("templates:view") ||
+    userPerms.includes("templates:generate") ||
+    userPerms.includes("templates:edit") ||
+    userPerms.includes("templates:manage");
 
   const visibleTools = tools.filter(({ href }) => {
     if (isAdmin) return true;
+    if (userContext?.isImpersonating && href === "/tools/captions") return false;
     if (href === "/tools/captions") return userPerms.includes("captions");
-    if (href === "/templates") return userPerms.includes("templates");
+    if (href === "/tools/templates") return hasTemplates;
+    if (href === "/tools/cover") return userPerms.includes("covers");
     return true;
   });
 
@@ -96,7 +114,7 @@ export default async function HomePage() {
           href="/listings"
           className="inline-flex items-center gap-2 px-4 py-2 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg hover:border-gray-300 hover:bg-gray-50 transition-all"
         >
-          <span>☰</span> Mes listings &amp; visuels générés
+          <span>☰</span> Mes générations
         </Link>
       </div>
     </div>

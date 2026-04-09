@@ -1,9 +1,13 @@
-﻿// ─── Canvas ────────────────────────────────────────────────────────────────────
+﻿import type { TextTemplateSegment } from "@/lib/textTemplate";
+import type { DecimalSeparator } from "@/lib/numberFormatting";
+
+// ─── Canvas ────────────────────────────────────────────────────────────────────
 export type CanvasFormat =
   | "A3_LANDSCAPE"
   | "A4_PORTRAIT"
   | "IG_1080x1350"
-  | "IG_1080x1920";
+  | "IG_1080x1920"
+  | "CUSTOM";
 
 export const CANVAS_FORMATS: Record<
   CanvasFormat,
@@ -13,6 +17,7 @@ export const CANVAS_FORMATS: Record<
   A4_PORTRAIT:   { label: "A4 Portrait",       width: 794,  height: 1123 },
   IG_1080x1350:  { label: "Instagram 4:5",     width: 1080, height: 1350 },
   IG_1080x1920:  { label: "Instagram Stories", width: 1080, height: 1920 },
+  CUSTOM:        { label: "Personnalise",      width: 1920, height: 1080 },
 };
 
 export interface TemplateCanvas {
@@ -78,7 +83,10 @@ export type BlockType =
 
 export interface BaseBlock {
   id: string;
+  name?: string;
   type: BlockType;
+  groupId?: string;
+  hidden?: boolean;
   x: number;
   y: number;
   w: number;
@@ -88,8 +96,60 @@ export interface BaseBlock {
   locked?: boolean;  // si true : pas de drag/resize accidentel
   binding?: string; // variable name from schema
   animations: AnimationDef[]; // V2 — kept empty in V1
-  /** Visibilité conditionnelle : le bloc ne s'affiche que si listing[field] === equals */
-  showIf?: { field: string; equals: string };
+  /** Règles conditionnelles du bloc (modèle actuel). */
+  conditionalRules?: BlockConditionalRule[];
+  /** @deprecated Compat legacy lu puis normalisé côté application. */
+  showIf?: ConditionMatch;
+  /** @deprecated Compat legacy lu puis normalisé côté application. */
+  conditionalOverrides?: ConditionalBlockOverride[];
+}
+
+export interface ConditionMatch {
+  field: string;
+  equals: string;
+}
+
+export interface BlockConditionalEffects {
+  visible?: boolean;
+  offsetX?: number;
+  offsetY?: number;
+  rotation?: number;
+  opacity?: number;
+  backgroundColor?: string;
+  textColor?: string;
+}
+
+export interface BlockConditionalRule {
+  when: ConditionMatch;
+  effects: BlockConditionalEffects;
+}
+
+export interface ConditionalBlockOverride {
+  when: ConditionMatch;
+  color?: string;
+  offsetX?: number;
+  offsetY?: number;
+}
+
+export interface LayerGroup {
+  id: string;
+  name: string;
+  hidden?: boolean;
+  locked?: boolean;
+  collapsed?: boolean;
+  layout?: GroupLayoutConfig;
+  conditionalRules?: BlockConditionalRule[];
+}
+
+export interface GroupLayoutConfig {
+  mode?: "free" | "row" | "column";
+  width?: number;
+  height?: number;
+  gap?: number;
+  justify?: "start" | "center" | "end";
+  align?: "top" | "middle" | "bottom";
+  order?: string[];
+  anchorBlockId?: string;
 }
 
 export interface BlockStyle {
@@ -97,6 +157,23 @@ export interface BlockStyle {
   fontSize?: number;
   fontWeight?: number;
   color?: string;
+  letterSpacing?: number;
+  textShadowEnabled?: boolean;
+  textShadowColor?: string;
+  textShadowOpacity?: number;
+  textShadowBlur?: number;
+  textShadowDistance?: number;
+  textShadowAngle?: number;
+  textBackgroundEnabled?: boolean;
+  textBackgroundMode?: "fit" | "fixed";
+  textBackgroundWidth?: number;
+  textBackgroundHeight?: number;
+  textBackgroundPadding?: number;
+  textBackgroundPaddingTop?: number;
+  textBackgroundPaddingRight?: number;
+  textBackgroundPaddingBottom?: number;
+  textBackgroundPaddingLeft?: number;
+  textBackgroundBorderRadius?: number;
   backgroundColor?: string;
   padding?: number;
   paddingTop?: number;
@@ -121,6 +198,8 @@ export interface TextBlock extends BaseBlock {
   type: "text";
   style: BlockStyle;
   rules: TextRules;
+  /** Structured segments used by the builder as source of truth. */
+  contentSegments?: TextTemplateSegment[];
   /** Template string with interpolation: "{{prix}} €", "Surface : {{surface}} m²", texte libre.
    *  Supports any mix of static text and {{variable}} tokens. */
   content?: string;
@@ -165,6 +244,10 @@ export interface DPEBlock extends BaseBlock {
   type: "dpe";
   variant: DPEVariant;
   style: BlockStyle;
+  showFrame?: boolean;
+  frameColor?: string;
+  showBackground?: boolean;
+  backgroundColor?: string;
 }
 
 // ─── Shape ────────────────────────────────────────────────────────────────────
@@ -200,13 +283,17 @@ export type SchemaFieldType =
 export interface SchemaField {
   key: string; // ex: "price_eur"
   label: string; // ex: "Prix (€)"
+  sectionId?: string;
+  sectionLayout?: SchemaFieldSectionLayout;
   type: SchemaFieldType;
   required: boolean;
   description?: string; // hint affiché sous le champ dans le formulaire
   options?: string[]; // pour type "select"
   default?: unknown;
   placeholder?: string;
-  showIf?: { field: string; equals: string }; // n'affiche ce champ que si un autre champ vaut une certaine valeur
+  formatThousands?: boolean;
+  decimalSeparator?: DecimalSeparator;
+  showIf?: ConditionMatch; // n'affiche ce champ que si un autre champ vaut une certaine valeur
   validation?: {
     min?: number;
     max?: number;
@@ -214,11 +301,38 @@ export interface SchemaField {
   };
 }
 
+export type TemplateSectionColumnCount = 1 | 2 | 3 | 4 | 5;
+
+export interface SchemaFieldSectionLayout {
+  column?: TemplateSectionColumnCount;
+  row?: number;
+}
+
+export interface TemplateFormSectionLayout {
+  desktopSpan?: "full" | "half";
+  fieldColumns?: TemplateSectionColumnCount;
+  rowCount?: number;
+}
+
+export interface TemplateFormSection {
+  id: string;
+  title: string;
+  description?: string;
+  conditions?: ConditionMatch[];
+  revealWhenPreviousComplete?: boolean;
+  revealCompletionMode?: "all" | "required";
+  /** @deprecated Compat single condition legacy. */
+  showIf?: ConditionMatch;
+  layout?: TemplateFormSectionLayout;
+}
+
 // ─── Template JSON (structure complète) ────────────────────────────────────────
 export interface TemplateJSON {
   canvas: TemplateCanvas;
   theme: TemplateTheme;
   blocks: AnyBlock[];
+  groups: LayerGroup[];
+  formSections: TemplateFormSection[];
   schema: SchemaField[];
   timeline?: undefined; // V2 placeholder
 }
@@ -306,6 +420,8 @@ export function emptyTemplate(): TemplateJSON {
     canvas: defaultCanvas("A3_LANDSCAPE"),
     theme: defaultTheme(),
     blocks: [],
+    groups: [],
+    formSections: [],
     schema: [],
   };
 }

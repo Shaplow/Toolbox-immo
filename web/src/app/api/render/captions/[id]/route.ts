@@ -79,6 +79,8 @@ export async function GET(
     return NextResponse.json({
       status: "COMPLETED",
       videoUrl: job.outputUrl,
+      srtContent: job.srtContent ?? null,
+      presetId: job.presetId ?? null,
     });
   }
   if (job.status === "FAILED") {
@@ -87,7 +89,12 @@ export async function GET(
 
   // ─── Mode local : DONE (équivalent COMPLETED) ─────────────────────────────
   if (job.status === "DONE") {
-    return NextResponse.json({ status: "DONE", videoUrl: job.outputUrl });
+    return NextResponse.json({
+      status: "DONE",
+      videoUrl: job.outputUrl,
+      srtContent: job.srtContent ?? null,
+      presetId: job.presetId ?? null,
+    });
   }
 
   // ─── Si PROCESSING, interroger RunPod ────────────────────────────────────

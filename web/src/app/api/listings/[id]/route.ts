@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { IMPERSONATION_COOKIE_NAME, resolveUserContext } from "@/lib/userContext";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -9,10 +10,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
+  const userContext = await resolveUserContext(session, _req.cookies.get(IMPERSONATION_COOKIE_NAME)?.value ?? null);
   const { id } = await params;
 
   const listing = await prisma.listing.findFirst({
-    where: { id, userId: session.user.id },
+    where: userContext.canAdminBypass ? { id } : { id, userId: userContext.effectiveUser.id },
     include: { template: true },
   });
   if (!listing) {
@@ -53,10 +55,11 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
+  const userContext = await resolveUserContext(session, req.cookies.get(IMPERSONATION_COOKIE_NAME)?.value ?? null);
   const { id } = await params;
 
   const listing = await prisma.listing.findFirst({
-    where: { id, userId: session.user.id },
+    where: userContext.canAdminBypass ? { id } : { id, userId: userContext.effectiveUser.id },
   });
   if (!listing) {
     return NextResponse.json({ error: "Listing introuvable" }, { status: 404 });

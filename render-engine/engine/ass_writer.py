@@ -152,17 +152,22 @@ def _base_words_text(words, config: RenderConfig, layer: int | None = None) -> s
     return " ".join(parts)
 
 
-def _base_words_text_appear(words, visible_up_to: int, config: RenderConfig) -> str:
+def _base_words_text_appear(words, visible_up_to: int, config: RenderConfig, fade_in: bool = False) -> str:
     """Like _base_words_text but future words are fully transparent.
     Invisible words keep their real style so the line-box height is stable on
     every frame — otherwise a highlight word (different font size) would make
     the line jump when it first becomes visible.
+    When fade_in=True the word at position visible_up_to fades its fill+outline
+    over 60 ms relative to t=0 of the Dialogue event (which starts at word.start).
+    Shadow (\\4a) is NOT masked so it appears immediately, avoiding the
+    unreliable \\t(\\4a) animation in libass.
     No \\an inside \\r resets — see _base_words_text."""
     base_effects = _style_effect_tags(config.base_style)
     parts = []
     for i, w in enumerate(words):
         hl_group = _should_highlight(w, config)
         if i > visible_up_to:
+            # ── Future word — fully invisible, static (no \t() needed) ──────
             if hl_group is not None:
                 style_name, hl_style = _hl_style_for_group(hl_group, config)
                 hl_style = _hl_style_with_shadow(hl_style, config.base_style)
@@ -178,7 +183,28 @@ def _base_words_text_appear(words, visible_up_to: int, config: RenderConfig) -> 
                     r"{\1a&HFF&\3a&HFF&\4a&HFF&}" + _escape_ass_text(text)
                     + rf"{{\r{base_effects}}}"
                 )
+        elif fade_in and i == visible_up_to:
+            # ── Currently appearing word — 60 ms fade on fill+outline only ──
+            # The Dialogue event starts at word.start so \t(0,60,...) aligns
+            # exactly. \4a is NOT masked: shadow appears immediately.
+            if hl_group is not None:
+                style_name, hl_style = _hl_style_for_group(hl_group, config)
+                hl_style = _hl_style_with_shadow(hl_style, config.base_style)
+                hl_effects = _style_effect_tags(hl_style)
+                a3 = _style_3a(hl_style)
+                fade_tag = rf"\1a&HFF&\3a&HFF&\t(0,60,\1a&H00&\3a{a3})"
+                text = _apply_transform(w.word, hl_style.text_transform)
+                parts.append(
+                    rf"{{\r{style_name}{hl_effects}{fade_tag}}}" + _escape_ass_text(text)
+                    + rf"{{\r{base_effects}}}"
+                )
+            else:
+                a3 = _style_3a(config.base_style)
+                fade_tag = rf"\1a&HFF&\3a&HFF&\t(0,60,\1a&H00&\3a{a3})"
+                text = _apply_transform(w.word, config.base_style.text_transform)
+                parts.append(rf"{{{base_effects}{fade_tag}}}" + _escape_ass_text(text))
         else:
+            # ── Past word — fully visible ────────────────────────────────────
             if hl_group is not None:
                 style_name, hl_style = _hl_style_for_group(hl_group, config)
                 hl_style = _hl_style_with_shadow(hl_style, config.base_style)
@@ -302,14 +328,12 @@ def _animated_line_text(
     preset: str,
     layer: int | None = None,
 ) -> str:
-    """Build inline ASS text for one line in animated (appear / reveal) mode.
+    """Build inline ASS text for one line in 'reveal' (letter-by-letter) mode.
 
-    appear   — word-by-word with 60 ms fade-in
-    reveal   — letter-by-letter instant typewriter
-
-    Every hidden element starts with \\1a&HFF&\\3a&HFF&\\4a&HFF& so fill,
-    outline AND shadow are all invisible before their scheduled time.
-    \\t() transitions restore each channel independently."""
+    Each letter starts fully hidden and pops in at its scheduled timestamp
+    via \\t() with a 1 ms window.  The 'appear' preset is handled separately
+    by _write_appear_base_events (per-step Dialogue events) so that \\4a is
+    never animated through \\t(), sidestepping the libass reliability issue."""
 
     letter_by_letter = (preset == "reveal")
     fade_dur_ms = 60 if preset == "appear" else 1
@@ -323,8 +347,8 @@ def _animated_line_text(
 
     def _alpha_tag(delay_ms: int, eff_s, fade: int) -> str:
         """Return the hide-then-reveal alpha tags for a future element.
-        Hides fill (\\1a), outline (\\3a) and shadow (\\4a) to prevent
-        any border/glow artefact from appearing before the word is due."""
+        Hides fill (\\1a), outline (\\3a) and shadow (\\4a) before the letter
+        is due.  With a 1 ms reveal window the shadow artefact is imperceptible."""
         if delay_ms <= 0:
             return ""
         a3 = _style_3a(eff_s)
@@ -414,7 +438,7 @@ def _write_word_pop_events(
     for step, (li, word) in enumerate(all_words):
         start_cs = _to_cs_floor(word.start)
         if step + 1 < len(all_words):
-            end_cs = _to_cs_floor(all_words[step + 1][1].start) - 1
+            end_cs = _to_cs_floor(all_words[step + 1][1].start)
         else:
             end_cs = _to_cs_ceil(block.end)
         end_cs = max(start_cs, end_cs)
@@ -457,7 +481,7 @@ def _write_reveal_base_events(content: list[str], block: SubtitleBlock, config: 
     for step, (cur_li, cur_wi, _cur_word) in enumerate(all_words):
         start_cs = _to_cs_floor(all_words[step][2].start)
         if step + 1 < len(all_words):
-            end_cs = _to_cs_floor(all_words[step + 1][2].start) - 1
+            end_cs = _to_cs_floor(all_words[step + 1][2].start)
         else:
             end_cs = _to_cs_ceil(block.end)
         end_cs = max(start_cs, end_cs)
@@ -488,7 +512,7 @@ def _write_appear_base_events(content: list[str], block: SubtitleBlock, config: 
     for step, (cur_li, cur_wi, _cur_word) in enumerate(all_words):
         start_cs = _to_cs_floor(all_words[step][2].start)
         if step + 1 < len(all_words):
-            end_cs = _to_cs_floor(all_words[step + 1][2].start) - 1
+            end_cs = _to_cs_floor(all_words[step + 1][2].start)
         else:
             end_cs = _to_cs_ceil(block.end)
         end_cs = max(start_cs, end_cs)
@@ -500,7 +524,7 @@ def _write_appear_base_events(content: list[str], block: SubtitleBlock, config: 
             if li < cur_li:
                 text = _base_words_text(line.words, config)
             elif li == cur_li:
-                text = _base_words_text_appear(line.words, cur_wi, config)
+                text = _base_words_text_appear(line.words, cur_wi, config, fade_in=True)
             else:
                 text = _base_words_text_appear(line.words, -1, config)
             tag = _animation_tag("appear", line.center_x, line.y, config.base_style, align=8)
@@ -636,23 +660,24 @@ def write_ass_file(
             # ── Word-pop: one word visible at a time, instant switch ──────────
             _write_word_pop_events(content, effective_block, config, use_two_layers, layers_to_emit)
         elif animated:
-            # ── One Dialogue event per LINE, words animate in via \t() alpha ──
-            # \an8\pos(center_x, line_y) lets libass center the line and align
-            # baselines internally — no per-word x measurement required.
-            # Each word starts invisible (\alpha&HFF&) and fades/pops in at its
-            # own timestamp via \t().  Because the event itself never ends early,
-            # there is zero flicker.
-            center_x = video_info.width // 2
-            for lyr in layers_to_emit:
-                lyr_key = lyr if use_two_layers else None
-                eff_base = _style_for_layer(config.base_style, lyr) if use_two_layers else config.base_style
-                for line in effective_block.lines:
-                    if not line.words:
-                        continue
-                    effect_tags = _style_effect_tags(eff_base)
-                    tag = rf"\an8\pos({center_x},{line.y}){effect_tags}"
-                    text = _animated_line_text(line.words, block.start, config, preset, layer=lyr_key)
-                    content.append(f"Dialogue: {lyr},{block_start},{block_end},Base,,0,0,0,,{{{tag}}}{text}")
+            if preset == "appear":
+                # ── Appear: one Dialogue per line per word-step ───────────────
+                # Per-step events allow static \4a masking for future words so
+                # libass \t(\4a) issues are bypassed entirely.
+                _write_appear_base_events(content, effective_block, config, block_end)
+            else:
+                # ── Reveal: letter-by-letter via \t() in one Dialogue per line ─
+                center_x = video_info.width // 2
+                for lyr in layers_to_emit:
+                    lyr_key = lyr if use_two_layers else None
+                    eff_base = _style_for_layer(config.base_style, lyr) if use_two_layers else config.base_style
+                    for line in effective_block.lines:
+                        if not line.words:
+                            continue
+                        effect_tags = _style_effect_tags(eff_base)
+                        tag = rf"\an8\pos({center_x},{line.y}){effect_tags}"
+                        text = _animated_line_text(line.words, block.start, config, preset, layer=lyr_key)
+                        content.append(f"Dialogue: {lyr},{block_start},{block_end},Base,,0,0,0,,{{{tag}}}{text}")
         else:
             # ── Static (none) — one event per line ───────────────────────────
             for lyr in layers_to_emit:

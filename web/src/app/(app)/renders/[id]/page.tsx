@@ -1,13 +1,14 @@
-﻿import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+﻿import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { RenderResult } from "@/components/renders/RenderResult";
+import { getUserContext } from "@/lib/userContext";
 
 type Props = { params: Promise<{ id: string }> };
 
 export default async function RenderPage({ params }: Props) {
   const { id } = await params;
-  const session = await auth();
+  const userContext = await getUserContext();
+  if (!userContext) notFound();
 
   const render = await prisma.render.findUnique({
     where: { id },
@@ -20,10 +21,10 @@ export default async function RenderPage({ params }: Props) {
   if (!render) notFound();
 
   // Security: ensure render belongs to the user (admin can access any render)
-  const isAdmin = (session!.user as { role?: string }).role === "ADMIN";
+  const isAdmin = userContext.canAdminBypass;
   if (!isAdmin) {
     const listing = await prisma.listing.findFirst({
-      where: { id: render.listingId, userId: session!.user!.id! },
+      where: { id: render.listingId, userId: userContext.effectiveUser.id },
     });
     if (!listing) notFound();
   }
@@ -47,6 +48,9 @@ export default async function RenderPage({ params }: Props) {
         errorMsg={render.errorMsg}
         templateId={render.template?.id ?? ""}
         listingId={render.listingId}
+        stage={render.stage}
+        statusDetail={render.statusDetail}
+        progress={render.progress}
       />
     </div>
   );

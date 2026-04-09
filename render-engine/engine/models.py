@@ -31,11 +31,15 @@ class SafeArea(BaseModel):
     bottom: float = Field(default=0.12, ge=0.0, le=0.5)
 
 
+LineHeightMode = Literal["fixed_box", "painted_gap"]
+
+
 class LayoutConfig(BaseModel):
     anchor: Literal["bottom", "center", "top"] = "bottom"
     max_lines: int = Field(default=2, ge=1, le=5)
     safe_area: SafeArea = Field(default_factory=SafeArea)
     line_gap_ratio: float = Field(default=0.22, ge=-1.0, le=2.0)
+    line_height_mode: LineHeightMode = "fixed_box"
     max_width_ratio: float = Field(default=1.0, ge=0.1, le=1.0)
     # Fractional offset applied AFTER anchor positioning (positive = down, negative = up).
     # Range [-0.5, 0.5] relative to video height.
@@ -76,6 +80,9 @@ class BlockRules(BaseModel):
     max_duration: float = Field(default=4.5, ge=1.0, le=10.0)
 
 
+CaptionEngine = Literal["ass", "cairo"]
+
+
 class RenderConfig(BaseModel):
     layout: LayoutConfig
     base_style: StyleConfig
@@ -84,6 +91,7 @@ class RenderConfig(BaseModel):
     highlight: HighlightConfig
     animation: AnimationConfig
     block_rules: BlockRules = Field(default_factory=BlockRules)
+    engine: CaptionEngine = "ass"
 
 
 def default_premium_config() -> RenderConfig:

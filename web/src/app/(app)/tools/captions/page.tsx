@@ -1,14 +1,15 @@
-﻿import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
+﻿import { redirect } from "next/navigation";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { CaptionsGallery } from "@/components/captions/CaptionsGallery";
+import { getUserContext } from "@/lib/userContext";
 
 export default async function CaptionsPage() {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) redirect("/login");
+  if (userContext.isImpersonating) redirect("/home");
 
-  const isAdmin = session.user.role === "ADMIN";
-  if (!isAdmin && !(await hasTool(session.user.id, TOOLS.CAPTIONS))) {
+  const isAdmin = userContext.canAdminBypass;
+  if (!isAdmin && !(await hasTool(userContext.effectiveUser.id, TOOLS.CAPTIONS))) {
     redirect("/home");
   }
 

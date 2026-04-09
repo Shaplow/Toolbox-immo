@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { TOOLS, TOOL_LABELS, TOOL_DESCRIPTIONS, type Tool } from "@/lib/permissions";
 
 type TemplateStub = { id: string; name: string; client: string };
@@ -21,11 +22,14 @@ type User = {
 interface Props {
   templates: TemplateStub[];
   presets: PresetStub[];
+  currentUserId: string;
+  impersonatedUserId: string | null;
 }
 
 const ALL_TOOLS = Object.values(TOOLS) as Tool[];
 
-export function UsersPanel({ templates, presets }: Props) {
+export function UsersPanel({ templates, presets, currentUserId, impersonatedUserId }: Props) {
+  const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -36,6 +40,7 @@ export function UsersPanel({ templates, presets }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", username: "", email: "", password: "" });
   const [editError, setEditError] = useState("");
+  const [activeImpersonationId, setActiveImpersonationId] = useState<string | null>(impersonatedUserId);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -159,6 +164,26 @@ export function UsersPanel({ templates, presets }: Props) {
     await fetchUsers();
   }
 
+  async function handleImpersonation(user: User) {
+    if (activeImpersonationId === user.id) {
+      await fetch("/api/admin/impersonation", { method: "DELETE" });
+      setActiveImpersonationId(null);
+      router.push("/admin/users");
+      router.refresh();
+      return;
+    }
+
+    const res = await fetch("/api/admin/impersonation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: user.id }),
+    });
+    if (!res.ok) return;
+    setActiveImpersonationId(user.id);
+    router.push("/home");
+    router.refresh();
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-48 text-gray-400">
@@ -266,6 +291,18 @@ export function UsersPanel({ templates, presets }: Props) {
                       {user.email}
                     </p>
                   </div>
+                  {!isAdmin && user.id !== currentUserId && (
+                    <button
+                      onClick={() => void handleImpersonation(user)}
+                      className={`shrink-0 text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${
+                        activeImpersonationId === user.id
+                          ? "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100"
+                          : "bg-white border-gray-200 text-gray-600 hover:border-amber-300 hover:text-amber-800"
+                      }`}
+                    >
+                      {activeImpersonationId === user.id ? "Arrêter" : "Impersonate"}
+                    </button>
+                  )}
                   {/* Role badge */}
                   <button
                     onClick={() => handleRoleToggle(user)}
@@ -287,6 +324,7 @@ export function UsersPanel({ templates, presets }: Props) {
                   <button
                     onClick={() => handleDelete(user.id)}
                     title="Supprimer l'utilisateur"
+                    disabled={user.id === currentUserId}
                     className="shrink-0 text-gray-300 hover:text-red-400 transition-colors text-sm"
                   >
                     x
@@ -418,9 +456,9 @@ export function UsersPanel({ templates, presets }: Props) {
 
                         {/* Caption presets section */}
                         <div className="px-5 py-4 space-y-3">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Presets captions assignes</p>
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Presets de sous-titres assignés</p>
                           {user.captionPresetAccesses.length === 0 ? (
-                            <p className="text-xs text-gray-400">Aucun preset assigne.</p>
+                            <p className="text-xs text-gray-400">Aucun preset assigné.</p>
                           ) : (
                             <div className="flex flex-wrap gap-2">
                               {user.captionPresetAccesses.map((presetId) => {
@@ -429,7 +467,7 @@ export function UsersPanel({ templates, presets }: Props) {
                                 return (
                                   <div key={presetId} className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
                                     <span className="text-xs text-gray-700 font-medium">{preset.name}</span>
-                                    {preset.isBuiltin && <span className="text-[10px] text-violet-500">builtin</span>}
+                                    {preset.isBuiltin && <span className="text-[10px] text-violet-500">intégré</span>}
                                     <button onClick={() => handleRevokePreset(user.id, presetId)}
                                       className="text-gray-300 hover:text-red-400 transition-colors ml-1 text-xs">x</button>
                                   </div>
@@ -442,7 +480,7 @@ export function UsersPanel({ templates, presets }: Props) {
                               {unassignedPresets.map((p) => (
                                 <button key={p.id} onClick={() => handleGrantPreset(user.id, p.id)}
                                   className="text-xs px-3 py-1.5 border border-dashed border-violet-300 text-violet-600 rounded-lg hover:bg-violet-50 transition-colors">
-                                  + {p.name}{p.isBuiltin ? " (builtin)" : ""}
+                                  + {p.name}{p.isBuiltin ? " (intégré)" : ""}
                                 </button>
                               ))}
                             </div>

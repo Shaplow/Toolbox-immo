@@ -1,5 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { isCaptionCompatibleFontAsset, listFontAssetsByFamilies } from "@/lib/fontAssets";
+import { normalizeCaptionConfig } from "@/lib/captionsEngine";
 
 const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
 
@@ -37,14 +39,54 @@ async function proxyRequest(req: NextRequest, path: string[]): Promise<NextRespo
   headers.set("x-user-id", session.user.id);
 
   try {
-    const body = req.method !== "GET" && req.method !== "HEAD"
-      ? await req.arrayBuffer()
-      : undefined;
+    let body: ArrayBuffer | undefined;
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      const shouldAugmentConfig = req.method === "POST" && (targetPath === "/api/preview" || targetPath === "/api/render");
+
+      if (shouldAugmentConfig) {
+        const formData = await req.formData();
+        const configRaw = formData.get("config");
+
+        if (typeof configRaw === "string") {
+          try {
+            const configData = JSON.parse(configRaw) as Record<string, unknown>;
+            const baseFont = (configData.base as { font?: string } | undefined)?.font;
+            const highlightFont = (configData.highlight as { font?: string } | undefined)?.font;
+            const highlight2 = configData.highlight2 as { enabled?: boolean; font?: string } | undefined;
+            const fontFamilies = [baseFont, highlightFont, highlight2?.enabled ? highlight2.font : undefined]
+              .map((font) => font?.trim())
+              .filter(Boolean) as string[];
+
+            if (fontFamilies.length > 0) {
+              const fontAssets = (await listFontAssetsByFamilies([...new Set(fontFamilies)]))
+                .filter(isCaptionCompatibleFontAsset)
+                .map((asset) => ({ family: asset.family, url: asset.url, originalName: asset.originalName }));
+              if (fontAssets.length > 0) {
+                formData.set("config", JSON.stringify(normalizeCaptionConfig({ ...configData, font_assets: fontAssets })));
+              } else {
+                formData.set("config", JSON.stringify(normalizeCaptionConfig(configData)));
+              }
+            } else {
+              formData.set("config", JSON.stringify(normalizeCaptionConfig(configData)));
+            }
+          } catch {
+            // no-op, laisse le backend retourner l'erreur si besoin
+          }
+        }
+
+        const rebuilt = new Response(formData);
+        const contentType = rebuilt.headers.get("content-type");
+        if (contentType) headers.set("content-type", contentType);
+        body = await rebuilt.arrayBuffer();
+      } else {
+        body = await req.arrayBuffer();
+      }
+    }
 
     const upstream = await fetch(targetUrl, {
       method: req.method,
       headers,
-      body: body ? Buffer.from(body) : undefined,
+      body,
       // Don't let Next.js cache static assets from the render engine
       cache: "no-store",
     });

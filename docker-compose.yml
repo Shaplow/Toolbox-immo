@@ -38,10 +38,12 @@ services:
     ports:
       - "3000:3000"
     env_file:
-      - .env                          # .env racine — source unique
+      - ${COMPOSE_ENV_FILE:-.env}     # override : COMPOSE_ENV_FILE=.env.prod docker compose up
     environment:
       DATABASE_URL: postgresql://toolbox:toolbox@postgres:5432/toolbox
       CAPTIONS_API_URL: http://render-engine:8000
+      # URL interne utilisée par le render-engine pour télécharger les polices
+      FONT_BASE_URL: http://web:3000
     volumes:
       - ./web:/app
       - /app/node_modules

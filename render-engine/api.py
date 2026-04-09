@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
+import os
 import re
 import time
 import traceback
@@ -15,11 +17,14 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
-from app import FONTS_DIR, OUTPUTS_DIR, _parse_srt_content, _render_ass
-from engine.fonts import list_font_names
+from app import FONTS_DIR, OUTPUTS_DIR, _parse_srt_content, _render_captions_preview, _render_captions_video, _resolve_captions_engine
+from engine.cairo_renderer import CairoRendererNotReadyError
+from engine.fonts import list_font_names, scan_fonts
+from engine.template_composite import build_template_ffmpeg_cmd, normalize_video_block
+from engine.encoding_profiles import build_caption_encoding_settings
 from engine.models import RenderConfig, WordTimestamp, default_premium_config
 from engine.probe import probe_video
-from engine.render import burn_subtitles, render_preview_frame
+from engine.runtime_fonts import prepare_runtime_fonts
 
 logger = logging.getLogger("render-engine")
 
@@ -49,6 +54,7 @@ app.add_middleware(
 
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
+app.mount("/fonts", StaticFiles(directory=str(FONTS_DIR)), name="fonts")
 
 
 def _parse_subtitles(upload: UploadFile, text: str) -> list[WordTimestamp]:
@@ -164,6 +170,7 @@ def _build_config(cfg: dict[str, Any]) -> RenderConfig:
             "anchor": layout.get("anchor", "center"),
             "max_lines": int(layout.get("max_lines", 2)),
             "line_gap_ratio": float(layout.get("line_gap", 0.22)),
+            "line_height_mode": layout.get("line_height_mode", "fixed_box"),
             "max_width_ratio": float(layout.get("max_width_ratio", 1.0)),
             "vertical_offset": float(layout.get("vertical_offset", 0.0)),
             "safe_area": {
@@ -215,6 +222,7 @@ def _build_config(cfg: dict[str, Any]) -> RenderConfig:
         highlight={"mode": "keywords", "keywords": keywords},
         animation={"preset": animation_preset},
         block_rules={"pause_threshold": 0.5, "max_duration": 4.5},
+        engine=_resolve_captions_engine(cfg.get("engine")),
     )
 
 
@@ -296,74 +304,109 @@ async def render_template_local(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="video_block JSON invalide")
 
-    x = int(block["x"])
-    y = int(block["y"])
-    w = int(block["w"])
-    h = int(block["h"])
-
-    # Forcer dimensions paires (requis par libx264/h264_nvenc)
-    canvas_w = canvas_w if canvas_w % 2 == 0 else canvas_w + 1
-    canvas_h = canvas_h if canvas_h % 2 == 0 else canvas_h + 1
-
-    # Clamp le bloc vidéo au canvas (évite overflow du pad)
-    x = max(0, x)
-    y = max(0, y)
-    w = max(2, min(w if w % 2 == 0 else w + 1, canvas_w - x))
-    h = max(2, min(h if h % 2 == 0 else h + 1, canvas_h - y))
-
-    fit = block.get("fit", "cover")
-
-    # Scale + crop selon focal point pour remplir le bloc (cover), puis composite sur canvas noir + overlay
-    if fit == "contain":
-        scale_crop = f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black"
-    else:  # cover — crop décalé selon le point focal
-        crop_x = float(block.get("crop_x", 0.5))
-        crop_y = float(block.get("crop_y", 0.5))
-        scale_crop = (
-            f"scale={w}:{h}:force_original_aspect_ratio=increase,"
-            f"crop={w}:{h}:(iw-{w})*{crop_x}:(ih-{h})*{crop_y}"
-        )
-
-    filter_complex = (
-        f"color=c=black:s={canvas_w}x{canvas_h}:r=30[bg];"
-        f"[0:v]{scale_crop},format=yuv420p[vid];"
-        f"[bg][vid]overlay=x={x}:y={y}[base];"
-        f"[base][1:v]overlay=0:0,format=yuv420p,scale=trunc(iw/2)*2:trunc(ih/2)*2[out]"
+    normalized_block = normalize_video_block(block, canvas_w, canvas_h)
+    logger.info(
+        "[render_template] Start composite stamp=%s canvas=%sx%s block=%sx%s@(%s,%s) fit=%s",
+        stamp,
+        normalized_block["canvas_w"],
+        normalized_block["canvas_h"],
+        normalized_block["w"],
+        normalized_block["h"],
+        normalized_block["x"],
+        normalized_block["y"],
+        normalized_block["fit"],
     )
 
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", str(video_path),
-        "-i", str(overlay_path),
-        "-filter_complex", filter_complex,
-        "-map", "[out]",
-        "-map", "0:a?",
-        "-shortest",  # s'arrête quand le flux le plus court (la vidéo) se termine
-        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-        "-movflags", "+faststart",
-        "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "256k",
-        str(out_path),
-    ]
-    proc = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True)
+    video_info = probe_video(video_path)
+    _codec, _codec_args, _audio_codec, _audio_args, _ = build_caption_encoding_settings(
+        "template",
+        video_info,
+        use_nvenc=False,
+        preview=False,
+        for_composite=True,
+    )
+    cmd = build_template_ffmpeg_cmd(
+        video_path=video_path,
+        overlay_path=overlay_path,
+        out_path=out_path,
+        block=normalized_block,
+        video_codec=_codec,
+        video_codec_args=_codec_args,
+        audio_codec=_audio_codec,
+        audio_codec_args=_audio_args,
+    )
+    try:
+        proc = await asyncio.to_thread(
+            subprocess.run,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=10 * 60,
+        )
+    except subprocess.TimeoutExpired:
+        logger.error("[render_template] FFmpeg timeout stamp=%s", stamp)
+        raise HTTPException(status_code=504, detail="FFmpeg timeout pendant le composite vidéo")
+
     if proc.returncode != 0:
+        logger.error("[render_template] FFmpeg failed stamp=%s: %s", stamp, proc.stderr[-1200:])
         raise HTTPException(status_code=500, detail=f"FFmpeg error: {proc.stderr[-800:]}")
 
-    # Retourner les bytes directement — évite les URL inter-containers inaccessibles depuis le browser
-    video_bytes = out_path.read_bytes()
+    logger.info("[render_template] FFmpeg done stamp=%s output=%s size=%s", stamp, out_path.name, out_path.stat().st_size)
 
-    # Nettoyage des fichiers temporaires
-    for tmp in (overlay_path, video_path, out_path):
+    # Nettoyage des inputs temporaires ; on garde l'output pour le servir via /outputs
+    for tmp in (overlay_path, video_path):
         try:
             tmp.unlink(missing_ok=True)
         except Exception:
             pass
 
-    return StreamingResponse(
-        iter([video_bytes]),
-        media_type="video/mp4",
-        headers={"Content-Length": str(len(video_bytes))},
-    )
+    return {"videoUrl": f"/outputs/temp/api/{out_path.name}"}
+
+
+@app.post("/api/transcribe")
+async def transcribe_local(
+    audio: UploadFile = File(...),
+    model_size: str = Form("turbo"),
+    language: str = Form("fr"),
+    enable_diarization: str = Form("false"),
+    hf_token: Optional[str] = Form(None),
+):
+    """
+    Mode local (USE_RUNPOD=false) : transcription directe sans RunPod.
+    Retourne le JSON des segments directement dans la réponse.
+    """
+    import json as _json
+    from engine.transcribe import transcribe_with_word_timestamps
+
+    work_dir = OUTPUTS_DIR / "temp" / "api"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    stamp = int(time.time() * 1000)
+    suffix = Path(audio.filename or "audio.mp3").suffix.lower() or ".mp3"
+    audio_path = work_dir / f"audio_{stamp}{suffix}"
+    audio_path.write_bytes(await audio.read())
+
+    try:
+        segments = transcribe_with_word_timestamps(
+            audio_path=audio_path,
+            model_size=str(model_size or "turbo"),
+            language=str(language or "fr"),
+            enable_diarization=_to_bool(enable_diarization, False),
+            hf_token=hf_token or os.environ.get("HF_TOKEN") or None,
+        )
+    finally:
+        audio_path.unlink(missing_ok=True)
+
+    duration = segments[-1]["end"] if segments else 0.0
+    has_diarization = any("speaker" in s for s in segments)
+
+    return {
+        "segments": segments,
+        "segment_count": len(segments),
+        "duration": duration,
+        "language": language,
+        "has_diarization": has_diarization,
+    }
 
 
 @app.get("/api/health")
@@ -371,9 +414,132 @@ def health():
     return {"ok": True}
 
 
+# ─── Cover frame extraction ───────────────────────────────────────────────────
+
+# Simple disk cache: video_url hash → local path
+_cover_video_cache: dict[str, Path] = {}
+
+
+@app.post("/api/extract-covers")
+async def extract_covers(
+    timestamps_json: str = Form(...),
+    video_url: Optional[str] = Form(None),
+    video: Optional[UploadFile] = File(None),
+):
+    """
+    Extrait des frames JPEG à des timestamps précis depuis une vidéo.
+    La vidéo peut être fournie soit comme URL (video_url=) soit comme fichier uploadé (video=).
+    Les vidéos distantes sont mises en cache localement par hash de l'URL.
+    Retourne : [{timestamp: float, url: str}, ...]
+    """
+    import httpx
+
+    if not video_url and not video:
+        raise HTTPException(status_code=400, detail="Fournir 'video_url' ou 'video' (fichier)")
+
+    try:
+        raw = json.loads(timestamps_json)
+        if not isinstance(raw, list):
+            raise ValueError("timestamps must be a list")
+        timestamps: list[float] = [float(t) for t in raw]
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"timestamps invalides : {exc}") from exc
+
+    if not timestamps:
+        raise HTTPException(status_code=400, detail="Au moins un timestamp est requis")
+
+    # ── Locate the source video ────────────────────────────────────────────
+    cache_dir = OUTPUTS_DIR / "temp" / "cover_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    if video is not None:
+        # Fichier uploadé directement (dev local sans réseau cross-container)
+        video_bytes = await video.read()
+        if len(video_bytes) == 0:
+            raise HTTPException(status_code=400, detail="Fichier vidéo reçu vide (0 octets)")
+        url_hash = hashlib.sha256(video_bytes[:4096]).hexdigest()[:16]
+        video_path = cache_dir / f"video_{url_hash}.mp4"
+        if url_hash not in _cover_video_cache or not video_path.exists():
+            video_path.write_bytes(video_bytes)
+            _cover_video_cache[url_hash] = video_path
+            logger.info("[covers] Received uploaded video → %s", video_path.name)
+        else:
+            logger.info("[covers] Using cached uploaded video %s", video_path.name)
+    else:
+        # URL distante — mise en cache par hash de l'URL
+        url_hash = hashlib.sha256(video_url.encode()).hexdigest()[:16]
+        video_path = cache_dir / f"video_{url_hash}.mp4"
+        if url_hash not in _cover_video_cache or not video_path.exists():
+            logger.info("[covers] Downloading video %s → %s", video_url, video_path.name)
+            try:
+                async with httpx.AsyncClient(timeout=180, follow_redirects=True) as client:
+                    resp = await client.get(video_url)
+                    resp.raise_for_status()
+                    video_path.write_bytes(resp.content)
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=f"Impossible de télécharger la vidéo : {exc}") from exc
+            _cover_video_cache[url_hash] = video_path
+        else:
+            logger.info("[covers] Using cached video %s", video_path.name)
+
+    # ── Extract frames with FFmpeg ─────────────────────────────────────────
+    covers_dir = OUTPUTS_DIR / "covers"
+    covers_dir.mkdir(parents=True, exist_ok=True)
+
+    stamp = int(time.time() * 1000)
+    results: list[dict] = []
+
+    for ts in timestamps:
+        safe_ts = max(0.0, ts)
+        frame_name = f"cover_{stamp}_{safe_ts:.3f}.jpg"
+        frame_path = covers_dir / frame_name
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-ss", str(safe_ts),
+            "-i", str(video_path),
+            "-vframes", "1",
+            "-q:v", "2",
+            str(frame_path),
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+
+        if proc.returncode != 0 or not frame_path.exists():
+            logger.warning(
+                "[covers] FFmpeg failed at ts=%.3f — %s",
+                safe_ts,
+                stderr.decode(errors="replace")[-300:],
+            )
+            continue
+
+        results.append({"timestamp": safe_ts, "url": f"/outputs/covers/{frame_name}"})
+
+    return results
+
+
 @app.get("/api/fonts")
 def fonts():
     return {"fonts": list_font_names(FONTS_DIR)}
+
+
+@app.get("/api/font-files")
+def font_files():
+    entries = scan_fonts(FONTS_DIR)
+    return {
+        "fonts": [
+            {
+                "family": entry.name,
+                "filename": entry.path.name,
+                "url": f"/fonts/{entry.path.name}",
+            }
+            for entry in entries
+        ]
+    }
 
 
 @app.get("/api/default-config")
@@ -415,6 +581,7 @@ def default_config():
             "anchor": cfg.layout.anchor,
             "max_lines": cfg.layout.max_lines,
             "line_gap": cfg.layout.line_gap_ratio,
+            "line_height_mode": cfg.layout.line_height_mode,
             "max_width_ratio": 1.0,
             "vertical_offset": 0.0,
             "safe_left": cfg.layout.safe_area.left,
@@ -473,16 +640,39 @@ async def preview(
         raise HTTPException(status_code=400, detail="No subtitle words parsed")
 
     cfg = _build_config(cfg_dict)
-    ass_path = _render_ass(words, video_path, cfg, auto_safe_area=_to_bool(cfg_dict.get("layout", {}).get("auto_safe_area"), True))
+    runtime_fonts_dir = prepare_runtime_fonts(FONTS_DIR, work_dir, cfg_dict.get("font_assets"))
+    auto_safe = _to_bool(cfg_dict.get("layout", {}).get("auto_safe_area"), True)
+
+    logger.info(
+        "Preview request: engine=%s preset=%s words=%d auto_safe=%s",
+        cfg.engine,
+        cfg.animation.preset,
+        len(words),
+        auto_safe,
+    )
 
     preview_time = float(cfg_dict.get("preview_time", 0.0) or 0.0)
     if preview_time <= 0:
         preview_time = max(0.0, words[0].start + 0.05)
 
     out_image = work_dir / f"preview_{stamp}.png"
-    render_preview_frame(video_path, ass_path, out_image, FONTS_DIR, preview_time)
+    try:
+        ass_path = _render_captions_preview(
+            words,
+            video_path,
+            cfg,
+            output_image=out_image,
+            at_seconds=preview_time,
+            auto_safe_area=auto_safe,
+            fonts_dir=runtime_fonts_dir,
+        )
+    except CairoRendererNotReadyError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
 
-    return {"imageUrl": f"/outputs/temp/api/{out_image.name}", "assPath": str(ass_path)}
+    response = {"imageUrl": f"/outputs/temp/api/{out_image.name}", "engine": cfg.engine}
+    if ass_path is not None:
+        response["assPath"] = str(ass_path)
+    return response
 
 
 @app.post("/api/render")
@@ -514,11 +704,22 @@ async def render(
         raise HTTPException(status_code=400, detail="No subtitle words parsed")
 
     cfg = _build_config(cfg_dict)
-    ass_path = _render_ass(words, video_path, cfg, auto_safe_area=_to_bool(cfg_dict.get("layout", {}).get("auto_safe_area"), True))
+    runtime_fonts_dir = prepare_runtime_fonts(FONTS_DIR, work_dir, cfg_dict.get("font_assets"))
+    auto_safe = _to_bool(cfg_dict.get("layout", {}).get("auto_safe_area"), True)
 
     is_preview = _to_bool(preview_mode, True)
     export_profile = str(cfg_dict.get("export_profile", "balanced") or "balanced")
     out_video = work_dir / (f"render_{stamp}_preview.mp4" if is_preview else f"render_{stamp}_full.mp4")
+
+    logger.info(
+        "Render request: engine=%s preset=%s words=%d preview=%s profile=%s auto_safe=%s",
+        cfg.engine,
+        cfg.animation.preset,
+        len(words),
+        is_preview,
+        export_profile,
+        auto_safe,
+    )
 
     # Set up progress tracking if a job_id was provided
     progress_path = None
@@ -532,12 +733,21 @@ async def render(
         progress_path = work_dir / f"progress_{job_id}.txt"
 
     try:
-        await asyncio.to_thread(
-            burn_subtitles, video_path, ass_path, out_video, FONTS_DIR,
-            preview=is_preview, preview_seconds=6,
-            quality_profile=export_profile,
-            progress_path=progress_path,
+        ass_path = await asyncio.to_thread(
+            _render_captions_video,
+            words,
+            video_path,
+            cfg,
+            out_video,
+            auto_safe,
+            runtime_fonts_dir,
+            is_preview,
+            6,
+            export_profile,
+            progress_path,
         )
+    except CairoRendererNotReadyError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     finally:
         if job_id and job_id in _job_durations:
             del _job_durations[job_id]
@@ -547,4 +757,7 @@ async def render(
             except Exception:
                 pass
 
-    return {"videoUrl": f"/outputs/temp/api/{out_video.name}", "assPath": str(ass_path)}
+    response = {"videoUrl": f"/outputs/temp/api/{out_video.name}", "engine": cfg.engine}
+    if ass_path is not None:
+        response["assPath"] = str(ass_path)
+    return response

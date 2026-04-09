@@ -699,9 +699,9 @@ export default function CaptionsApp({
               </div>
               <F label="Profil d&apos;export">
                 <select value={config.export_profile} onChange={e => setConfig(c => ({ ...c, export_profile: e.target.value as ConfigState['export_profile'] }))}>
-                  <option value="draft">Test rapide (qualité basse)</option>
-                  <option value="balanced">Équilibré</option>
-                  <option value="final">Qualité max (plus lent)</option>
+                  <option value="draft">Rapide (8 Mb/s)</option>
+                  <option value="balanced">Équilibré (12 Mb/s)</option>
+                  <option value="final">Max (16 Mb/s)</option>
                 </select>
               </F>
               <div className="cx-status-line">
@@ -887,9 +887,9 @@ function UserCaptionsMode({
             onChange={e => onExportProfileChange(e.target.value as ConfigState['export_profile'])}
             className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
           >
-            <option value="draft">Test rapide (qualité basse)</option>
-            <option value="balanced">Équilibré (recommandé)</option>
-            <option value="final">Qualité max (plus lent)</option>
+            <option value="draft">Rapide (8 Mb/s)</option>
+            <option value="balanced">Équilibré (12 Mb/s, recommandé)</option>
+            <option value="final">Max (16 Mb/s)</option>
           </select>
         </StepCard>
 

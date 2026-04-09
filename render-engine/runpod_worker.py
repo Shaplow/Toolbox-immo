@@ -31,10 +31,12 @@ import boto3
 import httpx
 import runpod
 
-from app import _parse_srt_content, _render_ass
+from app import _parse_srt_content, _render_captions_video
+from engine.encoding_profiles import build_caption_encoding_settings
 from engine.models import RenderConfig, WordTimestamp
 from engine.probe import probe_video
-from engine.render import burn_subtitles, render_preview_frame
+from engine.runtime_fonts import prepare_runtime_fonts
+from engine.template_composite import build_template_ffmpeg_cmd, normalize_video_block
 from api import _build_config, _to_bool
 
 BASE_DIR = Path(__file__).parent
@@ -103,6 +105,8 @@ def handler(job: dict) -> dict[str, Any]:
 
     if job_type == "render_template":
         return _handle_render_template(inp)
+    if job_type == "transcribe":
+        return _handle_transcribe(inp)
     return _handle_captions(inp)
 
 
@@ -142,20 +146,15 @@ def _nvenc_available() -> bool:
 _NVENC: bool | None = None  # lazy cache
 
 
-def _video_encoder() -> tuple[str, list[str]]:
+def _nvenc_enabled() -> bool:
     """
-    Retourne (codec, extra_args) :
-      - h264_nvenc (GPU)  si NVENC dispo  → x10-20 plus rapide pour l'encoding
-      - libx264   (CPU)  sinon (local/fallback)
+    Indique si NVENC est réellement disponible.
     """
     global _NVENC
     if _NVENC is None:
         _NVENC = _nvenc_available()
         print(f"[worker] NVENC disponible : {_NVENC}")
-    if _NVENC:
-        # p4 = preset équilibré qualité/vitesse sur NVENC
-        return "h264_nvenc", ["-preset", "p4", "-rc", "vbr", "-cq", "22", "-b:v", "0"]
-    return "libx264", ["-preset", "fast", "-crf", "22"]
+    return _NVENC
 
 
 def _handle_captions(inp: dict) -> dict[str, Any]:
@@ -169,12 +168,14 @@ def _handle_captions(inp: dict) -> dict[str, Any]:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         stamp = int(time.time() * 1000)
+        runtime_fonts_dir = prepare_runtime_fonts(FONTS_DIR, tmp_path, config_dict.get("font_assets"))
 
         # 1. Télécharger la vidéo source
         video_ext = Path(video_url.split("?")[0]).suffix or ".mp4"
         video_path = tmp_path / f"video_{stamp}{video_ext}"
         print(f"[worker] Download video: {video_url}")
         _download_file(video_url, video_path)
+        video_info = probe_video(video_path)
 
         # 2. Parser les sous-titres
         words: list[WordTimestamp] = _parse_srt_content(srt_content)
@@ -184,32 +185,48 @@ def _handle_captions(inp: dict) -> dict[str, Any]:
         # 3. Builder la config de rendu
         cfg: RenderConfig = _build_config(config_dict)
 
-        # 4. Générer le fichier ASS
+        # 4. Rendu captions via le moteur actif
         auto_safe = _to_bool(
             config_dict.get("layout", {}).get("auto_safe_area"), True
         )
-        ass_path = _render_ass(words, video_path, cfg, auto_safe_area=auto_safe)
 
-        # 5. Rendu vidéo
         out_suffix = "_preview.mp4" if preview_mode else "_full.mp4"
         out_video = tmp_path / f"render_{stamp}{out_suffix}"
         export_profile = str(config_dict.get("export_profile", "balanced") or "balanced")
 
-        codec, codec_args = _video_encoder()
-        print(f"[worker] Rendering (preview={preview_mode}, profile={export_profile}, codec={codec})")
-        burn_subtitles(
-            video_path,
-            ass_path,
-            out_video,
-            FONTS_DIR,
+        use_nvenc = _nvenc_enabled()
+        codec, codec_args, audio_codec, audio_args, encoding_debug = build_caption_encoding_settings(
+            export_profile,
+            video_info,
+            use_nvenc=use_nvenc,
             preview=preview_mode,
-            preview_seconds=6,
-            quality_profile=export_profile,
-            video_codec=codec,
-            video_codec_args=codec_args,
+        )
+        print(
+            "[worker] Rendering "
+            f"(engine={cfg.engine}, preview={preview_mode}, profile={export_profile}, codec={codec}, "
+            f"source_bitrate={encoding_debug['source_video_bitrate']}, "
+            f"target_bitrate={encoding_debug['effective_video_bitrate']}, "
+            f"maxrate={encoding_debug['maxrate']}, bufsize={encoding_debug['bufsize']}, "
+            f"audio_bitrate={encoding_debug['audio_bitrate']})"
+        )
+        _render_captions_video(
+            words,
+            video_path,
+            cfg,
+            out_video,
+            auto_safe,
+            runtime_fonts_dir,
+            preview_mode,
+            6,
+            export_profile,
+            None,
+            codec,
+            codec_args,
+            audio_codec,
+            audio_args,
         )
 
-        # 6. Upload vers R2
+        # 5. Upload vers R2
         print(f"[worker] Uploading output to R2: {output_key}")
         public_url = _upload_to_r2(output_key, out_video, "video/mp4")
 
@@ -232,16 +249,9 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
     block: dict = inp["video_block"]  # {x, y, w, h, fit}
     canvas: dict = inp["canvas"]      # {width, height}
     output_key: str = inp["output_key"]
+    export_profile = str(inp.get("export_profile", "balanced") or "balanced")
 
-    bx, by, bw, bh = int(block["x"]), int(block["y"]), int(block["w"]), int(block["h"])
-    cw, ch = int(canvas["width"]), int(canvas["height"])
-    fit = block.get("fit", "cover")
-
-    # Clamp video block to canvas bounds (prevents "Padded dimensions cannot be smaller" error)
-    bx = max(0, bx)
-    by = max(0, by)
-    bw = max(2, min(bw, cw - bx))
-    bh = max(2, min(bh, ch - by))
+    normalized_block = normalize_video_block(block, int(canvas["width"]), int(canvas["height"]))
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -252,52 +262,72 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
         video_path = tmp_path / f"video_{stamp}{video_ext}"
         print(f"[worker/render_template] Download video: {video_url}")
         _download_file(video_url, video_path)
+        video_info = probe_video(video_path)
 
         # 2. Télécharger le PNG overlay
         overlay_path = tmp_path / f"overlay_{stamp}.png"
         print(f"[worker/render_template] Download overlay: {overlay_url}")
         _download_file(overlay_url, overlay_path)
 
-        # 3. Construire le filtre FFmpeg
-        if fit == "contain":
-            scale_filter = f"scale={bw}:{bh}:force_original_aspect_ratio=decrease,pad={bw}:{bh}:(ow-iw)/2:(oh-ih)/2:black"
-        else:  # cover — crop décalé selon le focal point
-            crop_x = float(block.get("crop_x", 0.5))
-            crop_y = float(block.get("crop_y", 0.5))
-            scale_filter = (
-                f"scale={bw}:{bh}:force_original_aspect_ratio=increase,"
-                f"crop={bw}:{bh}:(iw-{bw})*{crop_x}:(ih-{bh})*{crop_y}"
-            )
-
-        pad_filter = f"pad={cw}:{ch}:{bx}:{by}:black@0"
-        filter_complex = (
-            f"[0:v]{scale_filter},{pad_filter}[placed];"
-            f"[placed][1:v]overlay=0:0:format=auto,scale=trunc(iw/2)*2:trunc(ih/2)*2[out]"
+        out_video = tmp_path / f"result_{stamp}.mp4"
+        codec, codec_args, audio_codec, audio_args, encoding_debug = build_caption_encoding_settings(
+            export_profile,
+            video_info,
+            use_nvenc=_nvenc_enabled(),
+            preview=False,
+            for_composite=True,
         )
 
-        out_video = tmp_path / f"result_{stamp}.mp4"
-        codec, codec_args = _video_encoder()
+        def _run_ffmpeg(c: str, c_args: list[str], a_codec: str, a_args: list[str]) -> subprocess.CompletedProcess:
+            cmd = build_template_ffmpeg_cmd(
+                video_path=video_path,
+                overlay_path=overlay_path,
+                out_path=out_video,
+                block=normalized_block,
+                video_codec=c,
+                video_codec_args=c_args,
+                audio_codec=a_codec,
+                audio_codec_args=a_args,
+            )
+            print(
+                "[worker/render_template] FFmpeg "
+                f"{c} {normalized_block['w']}x{normalized_block['h']} "
+                f"@ ({normalized_block['x']},{normalized_block['y']}) on "
+                f"{normalized_block['canvas_w']}x{normalized_block['canvas_h']} "
+                f"profile={export_profile} target_bitrate={encoding_debug['effective_video_bitrate']}"
+            )
+            return subprocess.run(cmd, capture_output=True, text=True, timeout=10 * 60)
 
-        def _run_ffmpeg(c: str, c_args: list) -> subprocess.CompletedProcess:
-            cmd = [
-                "ffmpeg", "-y",
-                "-i", str(video_path),
-                "-i", str(overlay_path),
-                "-filter_complex", filter_complex,
-                "-map", "[out]",
-                "-map", "0:a?",
-                "-c:v", c, *c_args,
-                "-c:a", "copy",
-                "-movflags", "+faststart",
-                str(out_video),
-            ]
-            print(f"[worker/render_template] FFmpeg {c} {bw}x{bh} @ ({bx},{by}) on {cw}x{ch}")
-            return subprocess.run(cmd, capture_output=True, text=True)
-
-        result = _run_ffmpeg(codec, codec_args)
+        try:
+            result = _run_ffmpeg(codec, codec_args, audio_codec, audio_args)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("FFmpeg timeout pendant le composite vidéo") from exc
 
         if result.returncode != 0:
-            raise RuntimeError(f"FFmpeg error ({codec}):\n{result.stderr[-2000:]}")
+            if codec == "h264_nvenc":
+                print("[worker/render_template] NVENC failed, retry with libx264")
+                fallback_codec, fallback_args, fallback_audio_codec, fallback_audio_args, _ = build_caption_encoding_settings(
+                    export_profile,
+                    video_info,
+                    use_nvenc=False,
+                    preview=False,
+                    for_composite=True,
+                )
+                try:
+                    fallback = _run_ffmpeg(fallback_codec, fallback_args, fallback_audio_codec, fallback_audio_args)
+                except subprocess.TimeoutExpired as exc:
+                    raise RuntimeError("FFmpeg timeout pendant le composite vidéo (fallback libx264)") from exc
+                if fallback.returncode == 0:
+                    result = fallback
+                    codec = fallback_codec
+                else:
+                    raise RuntimeError(
+                        f"FFmpeg error ({codec} puis {fallback_codec}):\n"
+                        f"NVENC:\n{result.stderr[-1200:]}\n\n"
+                        f"Fallback:\n{fallback.stderr[-1200:]}"
+                    )
+            else:
+                raise RuntimeError(f"FFmpeg error ({codec}):\n{result.stderr[-2000:]}")
 
         # 4. Upload vers R2
         print(f"[worker/render_template] Uploading result to R2: {output_key}")
@@ -307,6 +337,74 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
     return {
         "video_url": public_url,
         "output_key": output_key,
+    }
+
+
+def _handle_transcribe(inp: dict) -> dict[str, Any]:
+    """
+    Transcription audio/vidéo avec WhisperX.
+
+    Input:
+      audio_url          : URL publique ou pré-signée du fichier audio/vidéo (depuis R2)
+      output_key         : clé R2 de destination pour le JSON segments (persistant)
+      job_id             : ID du TranscriptionJob en DB (pour logs)
+      model_size         : "turbo" (défaut) | "large-v3" | "medium" | ...
+      language           : "fr" (défaut) | "en" | ...
+      enable_diarization : bool (défaut False)
+      hf_token           : token HuggingFace pour pyannote (opt)
+    """
+    import json as _json
+
+    from engine.transcribe import transcribe_with_word_timestamps
+
+    audio_url: str = inp["audio_url"]
+    output_key: str = inp["output_key"]
+    job_id: str = inp.get("job_id", "unknown")
+    model_size: str = str(inp.get("model_size", "turbo") or "turbo")
+    language: str = str(inp.get("language", "fr") or "fr")
+    enable_diarization: bool = _to_bool(inp.get("enable_diarization", False), False)
+    hf_token: str | None = inp.get("hf_token") or os.environ.get("HF_TOKEN") or None
+
+    print(f"[worker/transcribe] job={job_id} model={model_size} lang={language} diarize={enable_diarization}")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        stamp = int(time.time() * 1000)
+
+        # 1. Télécharger le fichier audio/vidéo
+        audio_ext = Path(audio_url.split("?")[0]).suffix or ".mp4"
+        audio_path = tmp_path / f"audio_{stamp}{audio_ext}"
+        print(f"[worker/transcribe] Download audio: {audio_url}")
+        _download_file(audio_url, audio_path)
+
+        # 2. Transcrire
+        segments = transcribe_with_word_timestamps(
+            audio_path=audio_path,
+            model_size=model_size,
+            language=language,
+            enable_diarization=enable_diarization,
+            hf_token=hf_token,
+        )
+
+        # 3. Sérialiser en JSON et uploader vers R2 (stockage persistant)
+        json_path = tmp_path / f"segments_{stamp}.json"
+        json_path.write_text(_json.dumps(segments, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"[worker/transcribe] Uploading JSON to R2: {output_key}")
+        _upload_to_r2(output_key, json_path, "application/json")
+
+    duration = segments[-1]["end"] if segments else 0.0
+    has_diarization = any("speaker" in s for s in segments)
+
+    print(
+        f"[worker/transcribe] Done — {len(segments)} segments, "
+        f"duration={duration:.1f}s, diarization={has_diarization}"
+    )
+    return {
+        "output_key": output_key,
+        "segment_count": len(segments),
+        "duration": duration,
+        "language": language,
+        "has_diarization": has_diarization,
     }
 
 

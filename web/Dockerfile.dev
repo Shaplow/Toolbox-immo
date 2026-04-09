@@ -1,11 +1,13 @@
 FROM node:20-slim
 
-# Dépendances système pour Puppeteer (Chromium bundled — nécessite glibc, pas musl)
+# Dépendances système pour Puppeteer + Chromium
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
     libgbm1 libasound2 libpango-1.0-0 libcairo2 curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s /usr/bin/chromium /usr/lib/chromium/chromium 2>/dev/null || true
 
 WORKDIR /app
 

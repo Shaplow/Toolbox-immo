@@ -1,8 +1,9 @@
 ﻿"use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Film, Pencil, Trash2, Plus } from "lucide-react";
+import { Film, Pencil, Trash2, Plus, Scissors, X } from "lucide-react";
 
 type Preset = {
   id: string;
@@ -11,11 +12,33 @@ type Preset = {
 };
 
 export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
+  const router = useRouter();
   const [presets, setPresets] = useState<Preset[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [transcriptionPendingId, setTranscriptionPendingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = sessionStorage.getItem("transcription_pending_id");
+    if (id) setTranscriptionPendingId(id);
+  }, []);
+
+  const dismissTranscription = useCallback(() => {
+    sessionStorage.removeItem("transcription_pending_id");
+    setTranscriptionPendingId(null);
+  }, []);
+
+  const handleGenerateClick = useCallback((presetId: string) => {
+    if (transcriptionPendingId) {
+      sessionStorage.removeItem("transcription_pending_id");
+      setTranscriptionPendingId(null);
+      router.push(`/tools/captions/${presetId}/generate?transcriptionId=${transcriptionPendingId}`);
+    } else {
+      router.push(`/tools/captions/${presetId}/generate`);
+    }
+  }, [transcriptionPendingId, router]);
 
   const fetchPresets = useCallback(async () => {
     setLoading(true);
@@ -88,6 +111,25 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
           </Link>
         )}
       </div>
+
+      {/* Transcription pending banner */}
+      {transcriptionPendingId && (
+        <div className="mb-6 flex items-center gap-3 bg-teal-50 border border-teal-200 rounded-xl px-5 py-4">
+          <Scissors size={18} className="text-teal-600 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-teal-800">Transcription prête</p>
+            <p className="text-xs text-teal-600 mt-0.5">Choisissez un preset ci-dessous pour découper et générer vos captions</p>
+          </div>
+          <button
+            type="button"
+            onClick={dismissTranscription}
+            className="shrink-0 text-teal-400 hover:text-teal-600 transition-colors"
+            title="Ignorer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {presets.length === 0 ? (
         <div className="text-center py-24 text-gray-400">
@@ -162,12 +204,16 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                       Éditer
                     </Link>
                   )}
-                  <Link
-                    href={`/tools/captions/${preset.id}/generate`}
-                    className="flex-1 text-center text-xs bg-violet-600 text-white py-1.5 rounded-lg hover:bg-violet-700 transition-colors"
+                  <button
+                    onClick={() => handleGenerateClick(preset.id)}
+                    className={`flex-1 text-center text-xs py-1.5 rounded-lg transition-colors ${
+                      transcriptionPendingId
+                        ? "bg-teal-600 hover:bg-teal-700 text-white"
+                        : "bg-violet-600 hover:bg-violet-700 text-white"
+                    }`}
                   >
-                    Générer
-                  </Link>
+                    {transcriptionPendingId ? "Utiliser" : "Générer"}
+                  </button>
                 </div>
                 {isAdmin && (
                   <button

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 import re
 from typing import Any
@@ -17,10 +18,11 @@ except ImportError:  # pragma: no cover
 from pydantic import ValidationError
 
 from engine.ass_writer import write_ass_file
+from engine.cairo_renderer import CairoRendererNotReadyError, burn_subtitles_cairo, render_preview_frame_cairo
 from engine.fonts import list_font_names
 from engine.layout import build_layout
 from engine.models import RenderConfig, WordTimestamp, default_premium_config
-from engine.probe import probe_video
+from engine.probe import VideoInfo, probe_video
 from engine.render import burn_subtitles, render_preview_frame
 
 BASE_DIR = Path(__file__).parent
@@ -30,6 +32,14 @@ PRESETS_PATH = BASE_DIR / "projects" / "presets.json"
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 logger = logging.getLogger("subtitle_app")
+
+
+def _resolve_captions_engine(engine: str | None = None) -> str:
+    requested = str(engine or os.environ.get("CAPTIONS_ENGINE", "ass") or "ass").strip().lower()
+    if requested not in {"ass", "cairo"}:
+        logger.warning("Unknown captions engine '%s', falling back to ass", requested)
+        return "ass"
+    return requested
 
 
 def _list_font_choices() -> list[str]:
@@ -284,6 +294,7 @@ def _build_config_from_values(
             "pause_threshold": float(pause_th),
             "max_duration": float(max_dur),
         },
+        "engine": _resolve_captions_engine(),
     }
     return RenderConfig(**cfg_dict)
 
@@ -299,13 +310,141 @@ def _auto_safe_area(cfg: RenderConfig, video_info) -> RenderConfig:
     return cfg.model_copy(update={"layout": layout})
 
 
-def _render_ass(words: list[WordTimestamp], video_path: str | Path, cfg: RenderConfig, auto_safe_area: bool) -> Path:
+def _prepare_captions_context(
+    video_path: str | Path,
+    cfg: RenderConfig,
+    auto_safe_area: bool,
+    fonts_dir: str | Path | None = None,
+) -> tuple[VideoInfo, RenderConfig, Path]:
     video_info = probe_video(video_path)
-    if auto_safe_area:
-        cfg = _auto_safe_area(cfg, video_info)
-    blocks = build_layout(words, video_info=video_info, config=cfg, fonts_dir=FONTS_DIR)
+    effective_cfg = _auto_safe_area(cfg, video_info) if auto_safe_area else cfg
+    effective_cfg = effective_cfg.model_copy(update={"engine": _resolve_captions_engine(effective_cfg.engine)})
+    effective_fonts_dir = Path(fonts_dir) if fonts_dir is not None else FONTS_DIR
+    return video_info, effective_cfg, effective_fonts_dir
+
+
+def _render_ass_from_context(
+    words: list[WordTimestamp],
+    cfg: RenderConfig,
+    video_info: VideoInfo,
+    fonts_dir: Path,
+) -> Path:
+    blocks = build_layout(words, video_info=video_info, config=cfg, fonts_dir=fonts_dir)
     ass_path = OUTPUTS_DIR / "temp" / "captions.ass"
     write_ass_file(output_path=ass_path, blocks=blocks, config=cfg, video_info=video_info)
+    return ass_path
+
+
+def _render_ass(
+    words: list[WordTimestamp],
+    video_path: str | Path,
+    cfg: RenderConfig,
+    auto_safe_area: bool,
+    fonts_dir: str | Path | None = None,
+) -> Path:
+    video_info, effective_cfg, effective_fonts_dir = _prepare_captions_context(
+        video_path,
+        cfg,
+        auto_safe_area=auto_safe_area,
+        fonts_dir=fonts_dir,
+    )
+    return _render_ass_from_context(words, effective_cfg, video_info, effective_fonts_dir)
+
+
+def _render_captions_preview(
+    words: list[WordTimestamp],
+    video_path: str | Path,
+    cfg: RenderConfig,
+    output_image: str | Path,
+    at_seconds: float,
+    auto_safe_area: bool,
+    fonts_dir: str | Path | None = None,
+) -> Path | None:
+    video_info, effective_cfg, effective_fonts_dir = _prepare_captions_context(
+        video_path,
+        cfg,
+        auto_safe_area=auto_safe_area,
+        fonts_dir=fonts_dir,
+    )
+    if effective_cfg.engine == "cairo":
+        render_preview_frame_cairo(
+            input_video=video_path,
+            output_image=output_image,
+            words=words,
+            config=effective_cfg,
+            video_info=video_info,
+            fonts_dir=effective_fonts_dir,
+            at_seconds=at_seconds,
+        )
+        return None
+
+    ass_path = _render_ass_from_context(words, effective_cfg, video_info, effective_fonts_dir)
+    render_preview_frame(
+        input_video=video_path,
+        ass_file=ass_path,
+        output_image=output_image,
+        fonts_dir=effective_fonts_dir,
+        at_seconds=at_seconds,
+    )
+    return ass_path
+
+
+def _render_captions_video(
+    words: list[WordTimestamp],
+    video_path: str | Path,
+    cfg: RenderConfig,
+    output_video: str | Path,
+    auto_safe_area: bool,
+    fonts_dir: str | Path | None = None,
+    preview: bool = False,
+    preview_seconds: int = 10,
+    quality_profile: str = "balanced",
+    progress_path: str | Path | None = None,
+    video_codec: str | None = None,
+    video_codec_args: list[str] | None = None,
+    audio_codec: str | None = None,
+    audio_codec_args: list[str] | None = None,
+) -> Path | None:
+    video_info, effective_cfg, effective_fonts_dir = _prepare_captions_context(
+        video_path,
+        cfg,
+        auto_safe_area=auto_safe_area,
+        fonts_dir=fonts_dir,
+    )
+    if effective_cfg.engine == "cairo":
+        burn_subtitles_cairo(
+            input_video=video_path,
+            output_video=output_video,
+            words=words,
+            config=effective_cfg,
+            video_info=video_info,
+            fonts_dir=effective_fonts_dir,
+            preview=preview,
+            preview_seconds=preview_seconds,
+            quality_profile=quality_profile,
+            progress_path=progress_path,
+            video_codec=video_codec,
+            video_codec_args=video_codec_args,
+            audio_codec=audio_codec,
+            audio_codec_args=audio_codec_args,
+        )
+        return None
+
+    ass_path = _render_ass_from_context(words, effective_cfg, video_info, effective_fonts_dir)
+    burn_subtitles(
+        input_video=video_path,
+        ass_file=ass_path,
+        output_video=output_video,
+        fonts_dir=effective_fonts_dir,
+        preview=preview,
+        preview_seconds=preview_seconds,
+        quality_profile=quality_profile,
+        progress_path=progress_path,
+        video_codec=video_codec,
+        video_codec_args=video_codec_args,
+        audio_codec=audio_codec,
+        audio_codec_args=audio_codec_args,
+    )
     return ass_path
 
 
@@ -373,18 +512,28 @@ def action_preview_frame(video_file, df_rows, time_seconds, auto_safe_area, *cfg
     if (preview_time is None or float(preview_time) <= 0.0) and words:
         preview_time = max(0.0, words[0].start + 0.05)
     cfg = _build_config_from_values(*style_vals, highlight_enabled, animation_enabled, shadow_enabled, glow_enabled)
-    ass_path = _render_ass(words, video_file, cfg, auto_safe_area=bool(auto_safe_area))
     frame_path = OUTPUTS_DIR / "temp" / "preview.png"
     logger.info(
-        "Preview frame: words=%d highlight=%s anim=%s t=%.2f", len(words), highlight_enabled, cfg.animation.preset, float(preview_time or 0.0)
+        "Preview frame: words=%d engine=%s highlight=%s anim=%s t=%.2f",
+        len(words),
+        cfg.engine,
+        highlight_enabled,
+        cfg.animation.preset,
+        float(preview_time or 0.0),
     )
-    render_preview_frame(
-        input_video=video_file,
-        ass_file=ass_path,
-        output_image=frame_path,
-        fonts_dir=FONTS_DIR,
-        at_seconds=max(0.0, float(preview_time or 0.0)),
-    )
+    try:
+        _render_captions_preview(
+            words,
+            video_file,
+            cfg,
+            output_image=frame_path,
+            at_seconds=max(0.0, float(preview_time or 0.0)),
+            auto_safe_area=bool(auto_safe_area),
+            fonts_dir=FONTS_DIR,
+        )
+    except CairoRendererNotReadyError as exc:
+        logger.error("Preview engine unavailable: %s", exc)
+        return None, str(exc)
     if not frame_path.exists():
         logger.error("Preview frame missing at %s", frame_path)
         return None, "Preview manquante"
@@ -402,17 +551,22 @@ def action_render_video(video_file, df_rows, preview_mode, auto_safe_area, *cfg_
     if not words:
         return None, "Sous-titres vides"
     cfg = _build_config_from_values(*style_vals, highlight_enabled, animation_enabled, shadow_enabled, glow_enabled)
-    ass_path = _render_ass(words, video_file, cfg, auto_safe_area=bool(auto_safe_area))
     out_dir = OUTPUTS_DIR / ("preview" if preview_mode else "full")
     out_path = out_dir / (Path(video_file).stem + ("_preview.mp4" if preview_mode else "_styled.mp4"))
-    burn_subtitles(
-        input_video=video_file,
-        ass_file=ass_path,
-        output_video=out_path,
-        fonts_dir=FONTS_DIR,
-        preview=bool(preview_mode),
-        preview_seconds=6,
-    )
+    try:
+        _render_captions_video(
+            words,
+            video_file,
+            cfg,
+            output_video=out_path,
+            auto_safe_area=bool(auto_safe_area),
+            fonts_dir=FONTS_DIR,
+            preview=bool(preview_mode),
+            preview_seconds=6,
+        )
+    except CairoRendererNotReadyError as exc:
+        logger.error("Render engine unavailable: %s", exc)
+        return None, str(exc)
     return str(out_path), "Render termine"
 
 

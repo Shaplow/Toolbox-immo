@@ -1,12 +1,14 @@
 ﻿import { create } from "zustand";
-import type { TemplateJSON, AnyBlock, CanvasFormat, SchemaField } from "@/types/template";
+import type { TemplateJSON, AnyBlock, CanvasFormat, LayerGroup, SchemaField, TemplateFormSection } from "@/types/template";
 import { emptyTemplate, defaultCanvas } from "@/types/template";
+import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 
 const HISTORY_LIMIT = 50;
 
 interface BuilderState {
   template: TemplateJSON;
   selectedBlockId: string | null;
+  selectedGroupId: string | null;
   isSaving: boolean;
   // Undo/redo history
   past: TemplateJSON[];
@@ -15,17 +17,25 @@ interface BuilderState {
   // Actions
   setTemplate: (t: TemplateJSON) => void;
   selectBlock: (id: string | null) => void;
+  selectGroup: (id: string | null) => void;
   addBlock: (block: AnyBlock) => void;
-  updateBlock: (id: string, changes: Partial<AnyBlock>) => void;
-  updateBlocks: (updates: { id: string; changes: Partial<AnyBlock> }[]) => void;
+  addGroup: (group: LayerGroup) => void;
+  updateBlock: (id: string, changes: Partial<AnyBlock>, options?: { history?: boolean }) => void;
+  updateBlocks: (updates: { id: string; changes: Partial<AnyBlock> }[], options?: { history?: boolean }) => void;
+  updateGroup: (id: string, changes: Partial<LayerGroup>, options?: { history?: boolean }) => void;
+  assignBlocksToGroup: (blockIds: string[], groupId?: string, options?: { history?: boolean }) => void;
+  moveGroupBlocks: (groupId: string, deltaX: number, deltaY: number, options?: { history?: boolean }) => void;
   removeBlock: (id: string) => void;
+  removeGroup: (id: string) => void;
   duplicateBlock: (id: string) => void;
   moveBlockZ: (id: string, direction: "up" | "down") => void;
   updateCanvas: (changes: Partial<TemplateJSON["canvas"]>) => void;
   updateTheme: (changes: Partial<TemplateJSON["theme"]>) => void;
   setFormat: (format: CanvasFormat) => void;
   setSchema: (schema: SchemaField[]) => void;
+  setFormSections: (formSections: TemplateFormSection[]) => void;
   setSaving: (v: boolean) => void;
+  recordHistory: (snapshot: TemplateJSON) => void;
   undo: () => void;
   redo: () => void;
 }
@@ -41,36 +51,92 @@ function withHistory(
   set({ template: nextTemplate, past, future: [] });
 }
 
+function withoutHistory(
+  set: (partial: Partial<BuilderState>) => void,
+  nextTemplate: TemplateJSON
+) {
+  set({ template: nextTemplate });
+}
+
+function syncAutoLayoutGroups(template: TemplateJSON): TemplateJSON {
+  const blocksByGroup = new Map<string, string[]>();
+
+  for (const block of template.blocks) {
+    if (!block.groupId) continue;
+    if (!blocksByGroup.has(block.groupId)) blocksByGroup.set(block.groupId, []);
+    blocksByGroup.get(block.groupId)?.push(block.id);
+  }
+
+  return {
+    ...template,
+    groups: template.groups.map((group) => {
+      if (!group.layout) return group;
+      const memberIds = blocksByGroup.get(group.id) ?? [];
+      const memberSet = new Set(memberIds);
+      const existingOrder = (group.layout.order ?? []).filter((id) => memberSet.has(id));
+      const missingIds = memberIds.filter((id) => !existingOrder.includes(id));
+      const order = [...existingOrder, ...missingIds];
+      const anchorBlockId = group.layout.anchorBlockId && memberSet.has(group.layout.anchorBlockId)
+        ? group.layout.anchorBlockId
+        : undefined;
+      return {
+        ...group,
+        layout: {
+          ...group.layout,
+          order: order.length > 0 ? order : undefined,
+          anchorBlockId,
+        },
+      };
+    }),
+  };
+}
+
 export const useBuilderStore = create<BuilderState>()((set, get) => ({
   template: emptyTemplate(),
   selectedBlockId: null,
+  selectedGroupId: null,
   isSaving: false,
   past: [],
   future: [],
 
-  setTemplate: (t) => set({ template: t, past: [], future: [] }),
+  setTemplate: (t) => set({ template: normalizeTemplateJSON(t), past: [], future: [], selectedBlockId: null, selectedGroupId: null }),
 
-  selectBlock: (id) => set({ selectedBlockId: id }),
+  selectBlock: (id) => set({ selectedBlockId: id, selectedGroupId: id ? null : get().selectedGroupId }),
+
+  selectGroup: (id) => set({ selectedGroupId: id, selectedBlockId: id ? null : get().selectedBlockId }),
 
   addBlock: (block) => {
-    const next = {
+    const next = syncAutoLayoutGroups({
       ...get().template,
       blocks: [...get().template.blocks, block],
-    };
+    });
     withHistory(get, set, next);
   },
 
-  updateBlock: (id, changes) => {
+  addGroup: (group) => {
+    const next = syncAutoLayoutGroups({
+      ...get().template,
+      groups: [...get().template.groups, group],
+    });
+    withHistory(get, set, next);
+    set({ selectedGroupId: group.id, selectedBlockId: null });
+  },
+
+  updateBlock: (id, changes, options) => {
     const next = {
       ...get().template,
       blocks: get().template.blocks.map((b) =>
         b.id === id ? ({ ...b, ...changes } as AnyBlock) : b
       ),
     };
+    if (options?.history === false) {
+      withoutHistory(set, next);
+      return;
+    }
     withHistory(get, set, next);
   },
 
-  updateBlocks: (updates) => {
+  updateBlocks: (updates, options) => {
     const map = new Map(updates.map((u) => [u.id, u.changes]));
     const next = {
       ...get().template,
@@ -79,16 +145,77 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
         return ch ? ({ ...b, ...ch } as AnyBlock) : b;
       }),
     };
+    if (options?.history === false) {
+      withoutHistory(set, next);
+      return;
+    }
+    withHistory(get, set, next);
+  },
+
+  updateGroup: (id, changes, options) => {
+    const next = syncAutoLayoutGroups({
+      ...get().template,
+      groups: get().template.groups.map((group) => (
+        group.id === id ? { ...group, ...changes } : group
+      )),
+    });
+    if (options?.history === false) {
+      withoutHistory(set, next);
+      return;
+    }
+    withHistory(get, set, next);
+  },
+
+  assignBlocksToGroup: (blockIds, groupId, options) => {
+    const ids = new Set(blockIds);
+    const next = syncAutoLayoutGroups({
+      ...get().template,
+      blocks: get().template.blocks.map((block) => (
+        ids.has(block.id) ? { ...block, groupId } : block
+      )),
+    });
+    if (options?.history === false) {
+      withoutHistory(set, next);
+      return;
+    }
+    withHistory(get, set, next);
+  },
+
+  moveGroupBlocks: (groupId, deltaX, deltaY, options) => {
+    const next = {
+      ...get().template,
+      blocks: get().template.blocks.map((block) => (
+        block.groupId === groupId
+          ? { ...block, x: Math.round(block.x + deltaX), y: Math.round(block.y + deltaY) }
+          : block
+      )),
+    };
+    if (options?.history === false) {
+      withoutHistory(set, next);
+      return;
+    }
     withHistory(get, set, next);
   },
 
   removeBlock: (id) => {
-    const next = {
+    const next = syncAutoLayoutGroups({
       ...get().template,
       blocks: get().template.blocks.filter((b) => b.id !== id),
-    };
+    });
     withHistory(get, set, next);
     if (get().selectedBlockId === id) set({ selectedBlockId: null });
+  },
+
+  removeGroup: (id) => {
+    const next = syncAutoLayoutGroups({
+      ...get().template,
+      groups: get().template.groups.filter((group) => group.id !== id),
+      blocks: get().template.blocks.map((block) => (
+        block.groupId === id ? { ...block, groupId: undefined } : block
+      )),
+    });
+    withHistory(get, set, next);
+    if (get().selectedGroupId === id) set({ selectedGroupId: null });
   },
 
   duplicateBlock: (id) => {
@@ -101,10 +228,10 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
       y: block.y + 20,
       z: block.z + 1,
     } as AnyBlock;
-    const next = {
+    const next = syncAutoLayoutGroups({
       ...get().template,
       blocks: [...get().template.blocks, newBlock],
-    };
+    });
     withHistory(get, set, next);
     set({ selectedBlockId: newBlock.id });
   },
@@ -137,7 +264,10 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
   },
 
   setFormat: (format) => {
-    const canvas = defaultCanvas(format);
+    const currentCanvas = get().template.canvas;
+    const canvas = format === "CUSTOM"
+      ? { ...currentCanvas, format: "CUSTOM" as const }
+      : defaultCanvas(format);
     const next = { ...get().template, canvas };
     withHistory(get, set, next);
   },
@@ -147,7 +277,27 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
     withHistory(get, set, next);
   },
 
+  setFormSections: (formSections) => {
+    const validIds = new Set(formSections.map((section) => section.id));
+    const next = {
+      ...get().template,
+      formSections,
+      schema: get().template.schema.map((field) => (
+        field.sectionId && !validIds.has(field.sectionId)
+          ? { ...field, sectionId: undefined }
+          : field
+      )),
+    };
+    withHistory(get, set, next);
+  },
+
   setSaving: (v) => set({ isSaving: v }),
+
+  recordHistory: (snapshot) => {
+    if (snapshot === get().template) return;
+    const past = [...get().past, snapshot].slice(-HISTORY_LIMIT);
+    set({ past, future: [] });
+  },
 
   undo: () => {
     const { past, template, future } = get();

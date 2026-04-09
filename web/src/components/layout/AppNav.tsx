@@ -1,80 +1,214 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
-import type { User } from "next-auth";
+import { useState } from "react";
+import type { AppUserIdentity } from "@/lib/userContext";
 
-export function AppNav({ user }: { user: User | undefined }) {
+type NavItem = {
+  href: string;
+  label: string;
+  icon: string;
+};
+
+type NavSection = {
+  title?: string;
+  items: NavItem[];
+};
+
+export function AppNav({
+  actualUser,
+  effectiveUser,
+  isImpersonating,
+}: {
+  actualUser: AppUserIdentity;
+  effectiveUser: AppUserIdentity;
+  isImpersonating: boolean;
+}) {
   const pathname = usePathname();
-  const isAdmin = (user as { role?: string })?.role === "ADMIN";
+  const router = useRouter();
+  const [collapsed, setCollapsed] = useState(false);
+  const canSeeAdmin = actualUser.role === "ADMIN";
+  const navUser = isImpersonating ? effectiveUser : actualUser;
+  const isAdminView = canSeeAdmin && !isImpersonating;
 
   // Parse user permissions (JSON string array on the user object)
-  const rawPerms = (user as { permissions?: string })?.permissions ?? "[]";
+  const rawPerms = navUser.permissions ?? "[]";
   let userPerms: string[] = [];
   try { userPerms = JSON.parse(rawPerms) as string[]; } catch { userPerms = []; }
-  const hasCaptions = userPerms.includes("captions");
+  const hasCaptions = !isImpersonating && userPerms.includes("captions");
+  const hasCovers = userPerms.includes("covers");
+  const hasTranscription = userPerms.includes("transcription");
+  const hasDescription = userPerms.includes("description");
   const hasTemplates =
+    userPerms.includes("templates") ||
     userPerms.includes("templates:view") ||
     userPerms.includes("templates:generate") ||
     userPerms.includes("templates:edit") ||
     userPerms.includes("templates:manage");
 
-  const navItems = isAdmin
+  async function stopImpersonation() {
+    await fetch("/api/admin/impersonation", { method: "DELETE" });
+    router.push("/admin/users");
+    router.refresh();
+  }
+
+  const navSections: NavSection[] = isAdminView
     ? [
-        { href: "/home",           label: "Accueil",      icon: "⌂" },
-        { href: "/listings",       label: "Listings",     icon: "☰" },
-        { href: "/templates",      label: "Templates",    icon: "▦" },
-        { href: "/tools/captions", label: "Captions",     icon: "CC" },
-        { href: "/admin/users",    label: "Utilisateurs", icon: "⚙" },
+        {
+          items: [{ href: "/home", label: "Accueil", icon: "⌂" }],
+        },
+        {
+          items: [
+            { href: "/tools/templates", label: "Templates", icon: "▦" },
+            { href: "/tools/captions", label: "Sous-titres", icon: "CC" },
+            { href: "/tools/cover", label: "Covers", icon: "⊞" },
+            { href: "/tools/transcription", label: "Transcription", icon: "♪" },
+            { href: "/tools/description", label: "Descriptions", icon: "≡" },
+          ],
+        },
+        {
+          title: "Suivi",
+          items: [{ href: "/listings", label: "Mes générations", icon: "☰" }],
+        },
+        {
+          title: "Admin",
+          items: [
+            { href: "/admin/users", label: "Utilisateurs", icon: "⚙" },
+            { href: "/admin/fonts", label: "Typographies", icon: "Aa" },
+          ],
+        },
       ]
     : [
-        { href: "/home",           label: "Accueil",    icon: "⌂" },
-        { href: "/listings",       label: "Listings",   icon: "☰" },
-        ...(hasTemplates ? [{ href: "/templates", label: "Templates", icon: "▦" }] : []),
-        ...(hasCaptions  ? [{ href: "/tools/captions", label: "Captions", icon: "CC" }] : []),
+        {
+          items: [{ href: "/home", label: "Accueil", icon: "⌂" }],
+        },
+        {
+          items: [
+            ...(hasTemplates ? [{ href: "/tools/templates", label: "Templates", icon: "▦" }] : []),
+            ...(hasCaptions ? [{ href: "/tools/captions", label: "Sous-titres", icon: "CC" }] : []),
+            ...(hasCovers ? [{ href: "/tools/cover", label: "Covers", icon: "⊞" }] : []),
+            ...(hasTranscription ? [{ href: "/tools/transcription", label: "Transcription", icon: "♪" }] : []),
+            ...(hasDescription ? [{ href: "/tools/description", label: "Descriptions", icon: "≡" }] : []),
+          ],
+        },
+        {
+          title: "Suivi",
+          items: [{ href: "/listings", label: "Mes générations", icon: "☰" }],
+        },
+        ...(canSeeAdmin
+          ? [
+              {
+                title: "Admin",
+                items: [
+                  { href: "/admin/users", label: "Utilisateurs", icon: "⚙" },
+                  { href: "/admin/fonts", label: "Typographies", icon: "Aa" },
+                ],
+              },
+            ]
+          : []),
       ];
 
   return (
-    <aside className="w-56 bg-white border-r border-gray-100 flex flex-col h-full shrink-0">
+    <aside className={`bg-white border-r border-gray-100 flex flex-col h-full shrink-0 transition-[width] duration-200 ${collapsed ? "w-16" : "w-56"}`}>
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-gray-100">
-        <div className="flex items-center gap-2">
-          <span className="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">T</span>
-          <span className="font-semibold text-gray-900 text-sm">Toolbox Immo</span>
+      <div className={`border-b border-gray-100 ${collapsed ? "px-3 py-4" : "px-5 py-5"}`}>
+        <div className={`flex ${collapsed ? "flex-col items-center gap-2" : "items-center justify-between gap-2"}`}>
+          <div className={`flex items-center ${collapsed ? "justify-center" : "gap-2"}`}>
+            <span className="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">T</span>
+            {!collapsed ? <span className="font-semibold text-gray-900 text-sm">Toolbox Immo</span> : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => setCollapsed((current) => !current)}
+            title={collapsed ? "Ouvrir la navigation" : "Réduire la navigation"}
+            className="shrink-0 h-8 w-8 rounded-lg border border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-700"
+          >
+            {collapsed ? "›" : "‹"}
+          </button>
         </div>
       </div>
 
+      {isImpersonating && (
+        <div className={collapsed ? "px-2 py-2 border-b border-gray-100" : "px-3 py-3 border-b border-gray-100"}>
+          <div className={`rounded-xl border border-amber-200 bg-amber-50 ${collapsed ? "p-2" : "p-3"}`}>
+            {!collapsed ? (
+              <>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-700">Impersonation</p>
+                <p className="mt-1 text-xs font-medium text-amber-900 truncate">{effectiveUser.name ?? effectiveUser.email ?? effectiveUser.id}</p>
+                <button
+                  type="button"
+                  onClick={() => void stopImpersonation()}
+                  className="mt-2 text-xs text-amber-800 hover:text-amber-950 font-medium"
+                >
+                  Quitter
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void stopImpersonation()}
+                title="Quitter l'impersonation"
+                className="w-full text-xs text-amber-800 hover:text-amber-950"
+              >
+                ↩
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        {navItems.map(({ href, label, icon }) => {
-          const active = pathname.startsWith(href);
+      <nav className={`flex-1 ${collapsed ? "px-2 py-3" : "px-3 py-4"}`}>
+        {navSections.map(({ title, items }, index) => {
+          if (items.length === 0) return null;
+
           return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
-                active
-                  ? "bg-indigo-50 text-indigo-700 font-medium"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-              }`}
-            >
-              <span className="text-base">{icon}</span>
-              {label}
-            </Link>
+            <div key={title ?? `section-${index}`} className={index === 0 ? "" : collapsed ? "mt-3 pt-3 border-t border-gray-100" : "mt-5 pt-4 border-t border-gray-100"}>
+              {title && !collapsed && (
+                <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">
+                  {title}
+                </p>
+              )}
+              <div className="space-y-1">
+                {items.map(({ href, label, icon }) => {
+                  const currentPath = pathname ?? "";
+                  const active = currentPath === href || currentPath.startsWith(`${href}/`);
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      title={label}
+                      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                        active
+                          ? "bg-indigo-50 text-indigo-700 font-medium"
+                          : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                      } ${collapsed ? "justify-center px-0" : ""}`}
+                    >
+                      <span className="text-base">{icon}</span>
+                      {!collapsed ? label : null}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </nav>
 
       {/* User footer */}
-      <div className="px-4 py-4 border-t border-gray-100">
-        <p className="text-xs text-gray-500 truncate mb-0.5">{user?.name ?? user?.email}</p>
-        {isAdmin && <p className="text-[10px] text-indigo-700 mb-2">Administrateur</p>}
+      <div className={`border-t border-gray-100 ${collapsed ? "px-2 py-3" : "px-4 py-4"}`}>
+        {!collapsed ? <p className="text-xs text-gray-500 truncate mb-0.5">{navUser.name ?? navUser.email}</p> : null}
+        {!collapsed && canSeeAdmin ? (
+          <p className="text-[10px] text-indigo-700 mb-2">{isImpersonating ? "Admin en mode utilisateur" : "Administrateur"}</p>
+        ) : null}
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
-          className="w-full text-left text-xs text-gray-400 hover:text-red-500 transition-colors"
+          title="Se déconnecter"
+          className={`text-xs text-gray-400 hover:text-red-500 transition-colors ${collapsed ? "w-full rounded-lg border border-gray-200 py-2 text-center" : "w-full text-left"}`}
         >
-          Se déconnecter
+          {collapsed ? "⏻" : "Se déconnecter"}
         </button>
       </div>
     </aside>

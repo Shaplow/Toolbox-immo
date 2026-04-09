@@ -1,4 +1,5 @@
 ﻿import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { buildHTML } from "./buildHTML";
 import { renderPNG } from "./renderPNG";
 import { renderPDF } from "./renderPDF";
@@ -8,8 +9,15 @@ import type { ListingData } from "@/types/listing";
 import { writeFile, mkdir, stat, readFile } from "fs/promises";
 import path from "path";
 import { uploadToR2, r2Configured } from "@/lib/r2";
+import { submitRunpodJob } from "@/lib/runpod";
+import { normalizeTemplateJSON } from "@/lib/templateNormalization";
+import { isBlockVisibleForListing, resolveBlockForListing } from "@/lib/templateConditions";
+import { getVisibleFieldKeys } from "@/lib/formSections";
+import { RENDER_PIPELINE, RENDER_STAGE } from "./renderWorkflow";
 
 const OUTPUT_DIR = path.join(process.cwd(), "public", "renders");
+const LOCAL_VIDEO_RENDER_TIMEOUT_MS = 10 * 60 * 1000;
+const RUNPOD_SUBMIT_TIMEOUT_MS = 30 * 1000;
 
 /** Minimum file size in bytes to be considered adequate resolution (~100KB for photos) */
 const MIN_IMAGE_BYTES = 100_000;
@@ -57,27 +65,142 @@ async function collectImageWarnings(
   return warnings;
 }
 
+type RenderTrackingUpdate = {
+  status?: "PENDING" | "PROCESSING" | "DONE" | "ERROR";
+  pipeline?: string;
+  stage?: string;
+  statusDetail?: string | null;
+  progress?: number;
+  errorMsg?: string | null;
+  runpodJobId?: string | null;
+  pngUrl?: string | null;
+  pdfUrl?: string | null;
+  videoUrl?: string | null;
+  startedAt?: Date;
+  finishedAt?: Date | null;
+  heartbeat?: boolean;
+};
+
+async function updateRenderTracking(renderId: string, update: RenderTrackingUpdate): Promise<void> {
+  const data: Record<string, unknown> = {
+    status: update.status,
+    pipeline: update.pipeline,
+    stage: update.stage,
+    statusDetail: update.statusDetail,
+    progress: update.progress,
+    errorMsg: update.errorMsg,
+    runpodJobId: update.runpodJobId,
+    pngUrl: update.pngUrl,
+    pdfUrl: update.pdfUrl,
+    videoUrl: update.videoUrl,
+    startedAt: update.startedAt,
+    finishedAt: update.finishedAt,
+  };
+
+  if (update.heartbeat !== false) {
+    data.lastHeartbeatAt = new Date();
+  }
+
+  await prisma.render.update({ where: { id: renderId }, data: data as Prisma.RenderUpdateInput });
+}
+
+async function failRender(renderId: string, message: string, pipeline?: string, stage = RENDER_STAGE.ERROR): Promise<void> {
+  await updateRenderTracking(renderId, {
+    status: "ERROR",
+    pipeline,
+    stage,
+    statusDetail: message,
+    errorMsg: message,
+    progress: 1,
+    finishedAt: new Date(),
+  });
+}
+
+function getActiveVideoBlocks(
+  templateJson: TemplateJSON,
+  listingData: ListingData
+): VideoBlock[] {
+  const groupMap = new Map((templateJson.groups ?? []).map((group) => [group.id, group]));
+  const declaredFieldKeys = new Set((templateJson.schema ?? []).map((field) => field.key));
+  const visibleFieldKeys = getVisibleFieldKeys(templateJson.schema ?? [], templateJson.formSections ?? [], listingData);
+
+  return templateJson.blocks
+    .filter((block): block is VideoBlock => block.type === "video")
+    .filter((block) => {
+      if (block.binding && declaredFieldKeys.has(block.binding) && !visibleFieldKeys.has(block.binding)) {
+        return false;
+      }
+      const group = block.groupId ? groupMap.get(block.groupId) : undefined;
+      return isBlockVisibleForListing(block, listingData, group);
+    })
+    .map((block) => {
+      const group = block.groupId ? groupMap.get(block.groupId) : undefined;
+      return resolveBlockForListing(block, listingData, group);
+    });
+}
+
+export async function startRenderGeneration(renderId: string): Promise<"accepted" | "already-processed" | "missing"> {
+  const now = new Date();
+  const startData: Prisma.RenderUpdateManyMutationInput = {
+    status: "PROCESSING",
+    stage: RENDER_STAGE.QUEUED,
+    statusDetail: "Job accepté",
+    progress: 0.02,
+    startedAt: now,
+    lastHeartbeatAt: now,
+    finishedAt: null,
+    errorMsg: null,
+  };
+  const started = await prisma.render.updateMany({
+    where: { id: renderId, status: "PENDING" },
+    data: startData,
+  });
+
+  if (started.count === 0) {
+    const existing = await prisma.render.findUnique({ where: { id: renderId } });
+    return existing ? "already-processed" : "missing";
+  }
+
+  generateRender(renderId).catch(async (err) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[generate] Render ${renderId} FAILED:`, err);
+    await failRender(renderId, msg);
+  });
+
+  return "accepted";
+}
+
 export async function generateRender(renderId: string): Promise<void> {
+  await updateRenderTracking(renderId, {
+    stage: RENDER_STAGE.LOAD_RENDER,
+    statusDetail: "Chargement du render",
+    progress: 0.04,
+  });
+
   // 1. Charger render + listing + template
   const render = await prisma.render.findUniqueOrThrow({ where: { id: renderId } });
   const listing = await prisma.listing.findUniqueOrThrow({ where: { id: render.listingId } });
   if (!render.templateId) {
-    await prisma.render.update({
-      where: { id: renderId },
-      data: { status: "ERROR", errorMsg: "Template supprimé" },
-    });
+    await failRender(renderId, "Template supprimé");
     return;
   }
   const template = await prisma.template.findUniqueOrThrow({ where: { id: render.templateId } });
 
-  const templateJson = JSON.parse(template.jsonData) as TemplateJSON;
+  const templateJson = normalizeTemplateJSON(JSON.parse(template.jsonData) as TemplateJSON);
   const listingData = JSON.parse(listing.jsonData) as ListingData;
-
   // 2. Validation conformité (enrichissement auto)
+  await updateRenderTracking(renderId, {
+    stage: RENDER_STAGE.VALIDATE_LISTING,
+    statusDetail: "Validation et enrichissement des données",
+    progress: 0.08,
+  });
   const { enrichedListing } = validateConformite(listingData);
 
   // ─── Branchement : vidéo (RunPod) vs image (Node.js) ─────────────────────
-  const videoBlocks = templateJson.blocks.filter((b) => b.type === "video") as VideoBlock[];
+  const videoBlocks = getActiveVideoBlocks(templateJson, enrichedListing);
+  console.log(
+    `[generateRender] ${renderId} — activeVideoBlocks: ${videoBlocks.length}, USE_RUNPOD=${process.env.USE_RUNPOD}`
+  );
   if (videoBlocks.length > 0) {
     await generateVideoRender(renderId, templateJson, enrichedListing, videoBlocks);
     return;
@@ -90,36 +213,60 @@ export async function generateRender(renderId: string): Promise<void> {
   }
 
   // 4. Build HTML (avec résolution des polices locales pour Puppeteer)
+  await updateRenderTracking(renderId, {
+    pipeline: RENDER_PIPELINE.IMAGE,
+    stage: RENDER_STAGE.IMAGE_BUILD_HTML,
+    statusDetail: "Construction du visuel HTML",
+    progress: 0.2,
+  });
   const publicBase = "file://" + path.join(process.cwd(), "public").replace(/\\/g, "/");
   const html = await buildHTML(templateJson, enrichedListing, { publicBase });
 
   const { canvas } = templateJson;
   const { width, height } = canvas;
 
+  // Formats print → 3x (qualité ~300 DPI). Formats digitaux/vidéo → 1x (pixel-perfect).
+  const PRINT_FORMATS: string[] = ["A4_PORTRAIT", "A3_LANDSCAPE"];
+  const pngScaleFactor = PRINT_FORMATS.includes(canvas.format) ? 3 : 1;
+
   // 5. Créer dossier de sortie
   await mkdir(OUTPUT_DIR, { recursive: true });
 
   // 6. Générer PNG
-  const pngBuffer = await renderPNG(html, width, height);
+  await updateRenderTracking(renderId, {
+    pipeline: RENDER_PIPELINE.IMAGE,
+    stage: RENDER_STAGE.IMAGE_RENDER_PNG,
+    statusDetail: "Export PNG en cours",
+    progress: 0.55,
+  });
+  const pngBuffer = await renderPNG(html, width, height, pngScaleFactor);
   const pngFilename = `${renderId}.png`;
   await writeFile(path.join(OUTPUT_DIR, pngFilename), pngBuffer);
 
   // 7. Générer PDF
+  await updateRenderTracking(renderId, {
+    pipeline: RENDER_PIPELINE.IMAGE,
+    stage: RENDER_STAGE.IMAGE_RENDER_PDF,
+    statusDetail: "Export PDF en cours",
+    progress: 0.8,
+  });
   const pdfBuffer = await renderPDF(html, canvas.format as CanvasFormat, width, height);
   const pdfFilename = `${renderId}.pdf`;
   await writeFile(path.join(OUTPUT_DIR, pdfFilename), pdfBuffer);
 
   // 8. Mettre à jour le render en DB (avec avertissements éventuels)
-  await prisma.render.update({
-    where: { id: renderId },
-    data: {
-      status: "DONE",
-      pngUrl: `/renders/${pngFilename}`,
-      pdfUrl: `/renders/${pdfFilename}`,
-      errorMsg: warnings.length > 0
-        ? `WARNINGS:${JSON.stringify(warnings)}`
-        : null,
-    },
+  await updateRenderTracking(renderId, {
+    status: "DONE",
+    pipeline: RENDER_PIPELINE.IMAGE,
+    stage: RENDER_STAGE.DONE,
+    statusDetail: "Visuel généré",
+    progress: 1,
+    pngUrl: `/renders/${pngFilename}`,
+    pdfUrl: `/renders/${pdfFilename}`,
+    errorMsg: warnings.length > 0
+      ? `WARNINGS:${JSON.stringify(warnings)}`
+      : null,
+    finishedAt: new Date(),
   });
 }
 
@@ -140,30 +287,38 @@ async function generateVideoRender(
   const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
 
   if (!RUNPOD_API_KEY || !RUNPOD_ENDPOINT_ID) {
-    await prisma.render.update({
-      where: { id: renderId },
-      data: { status: "ERROR", errorMsg: "RunPod non configuré (RUNPOD_API_KEY / RUNPOD_ENDPOINT_ID manquants)" },
-    });
+    await failRender(
+      renderId,
+      "RunPod non configuré (RUNPOD_API_KEY / RUNPOD_ENDPOINT_ID manquants)",
+      RENDER_PIPELINE.VIDEO_RUNPOD
+    );
     return;
   }
   if (!r2Configured()) {
-    await prisma.render.update({
-      where: { id: renderId },
-      data: { status: "ERROR", errorMsg: "R2 non configuré — requis pour les renders vidéo" },
-    });
+    await failRender(renderId, "R2 non configuré — requis pour les renders vidéo", RENDER_PIPELINE.VIDEO_RUNPOD);
     return;
   }
-
-  await prisma.render.update({ where: { id: renderId }, data: { status: "PROCESSING" } });
 
   try {
     const { width, height } = templateJson.canvas;
 
     // 1. Rendre le template en PNG avec fond transparent + blocs vidéo transparents (overlay)
+    await updateRenderTracking(renderId, {
+      pipeline: RENDER_PIPELINE.VIDEO_RUNPOD,
+      stage: RENDER_STAGE.VIDEO_RENDER_OVERLAY,
+      statusDetail: "Rendu de l'overlay vidéo",
+      progress: 0.12,
+    });
     const overlayHtml = await buildHTML(templateJson, listingData, { overlayMode: true });
     const overlayBuffer = await renderPNG(overlayHtml, width, height, 1, true);
 
     // 2. Uploader l'overlay vers R2
+    await updateRenderTracking(renderId, {
+      pipeline: RENDER_PIPELINE.VIDEO_RUNPOD,
+      stage: RENDER_STAGE.VIDEO_UPLOAD_OVERLAY,
+      statusDetail: "Upload de l'overlay vers R2",
+      progress: 0.28,
+    });
     const { url: overlayUrl } = await uploadToR2(
       `overlays/${renderId}.png`,
       overlayBuffer,
@@ -171,6 +326,12 @@ async function generateVideoRender(
     );
 
     // 3. Récupérer l'URL vidéo depuis le listing (premier bloc vidéo avec binding)
+    await updateRenderTracking(renderId, {
+      pipeline: RENDER_PIPELINE.VIDEO_RUNPOD,
+      stage: RENDER_STAGE.VIDEO_RESOLVE_SOURCE,
+      statusDetail: "Préparation de la vidéo source",
+      progress: 0.38,
+    });
     const videoBlock = videoBlocks[0];
     const videoUrl = videoBlock.binding
       ? (listingData as Record<string, unknown>)[videoBlock.binding] as string | undefined
@@ -190,56 +351,54 @@ async function generateVideoRender(
     const crop_y = focalPoint?.y ?? 0.5;
 
     // 4. Soumettre le job RunPod
+    await updateRenderTracking(renderId, {
+      pipeline: RENDER_PIPELINE.VIDEO_RUNPOD,
+      stage: RENDER_STAGE.VIDEO_SUBMIT_RUNPOD,
+      statusDetail: "Soumission du job",
+      progress: 0.5,
+    });
     const outputKey = `renders/${renderId}.mp4`;
-    const runpodRes = await fetch(
-      `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/run`,
+    const runpodData = await submitRunpodJob<{ id: string }>(
+      RUNPOD_ENDPOINT_ID,
+      RUNPOD_API_KEY,
       {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${RUNPOD_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          input: {
-            job_type: "render_template",
-            overlay_url: overlayUrl,
-            video_url: videoUrl,
-            video_block: {
-              x: videoBlock.x,
-              y: videoBlock.y,
-              w: videoBlock.w,
-              h: videoBlock.h,
-              fit: videoBlock.fit ?? "cover",
-              crop_x,
-              crop_y,
-            },
-            canvas: { width, height },
-            output_key: outputKey,
-            render_id: renderId,
+        input: {
+          job_type: "render_template",
+          export_profile: "template",
+          overlay_url: overlayUrl,
+          video_url: videoUrl,
+          video_block: {
+            x: videoBlock.x,
+            y: videoBlock.y,
+            w: videoBlock.w,
+            h: videoBlock.h,
+            fit: videoBlock.fit ?? "cover",
+            crop_x,
+            crop_y,
           },
-        }),
-      }
+          canvas: { width, height },
+          output_key: outputKey,
+          render_id: renderId,
+        },
+      },
+      { timeoutMs: RUNPOD_SUBMIT_TIMEOUT_MS }
     );
 
-    if (!runpodRes.ok) {
-      throw new Error(`RunPod submit ${runpodRes.status}: ${await runpodRes.text()}`);
-    }
-
-    const runpodData = (await runpodRes.json()) as { id: string };
-
     // 5. Stocker le runpodJobId — le polling dans GET /api/renders/:id terminera le job
-    await prisma.render.update({
-      where: { id: renderId },
-      data: { runpodJobId: runpodData.id },
+    await updateRenderTracking(renderId, {
+      status: "PROCESSING",
+      pipeline: RENDER_PIPELINE.VIDEO_RUNPOD,
+      stage: RENDER_STAGE.VIDEO_RUNPOD_QUEUED,
+      statusDetail: `Job RunPod soumis (${runpodData.id})`,
+      progress: 0.6,
+      runpodJobId: runpodData.id,
     });
   } catch (err) {
-    await prisma.render.update({
-      where: { id: renderId },
-      data: {
-        status: "ERROR",
-        errorMsg: err instanceof Error ? err.message : "Erreur génération vidéo",
-      },
-    });
+    await failRender(
+      renderId,
+      err instanceof Error ? err.message : "Erreur génération vidéo",
+      RENDER_PIPELINE.VIDEO_RUNPOD
+    );
   }
 }
 // ─── Pipeline vidéo LOCAL (sans RunPod) ──────────────────────────────────────
@@ -250,18 +409,31 @@ async function generateVideoRenderLocal(
   listingData: ListingData,
   videoBlocks: VideoBlock[],
 ): Promise<void> {
-  await prisma.render.update({ where: { id: renderId }, data: { status: "PROCESSING" } });
-
   try {
     const { width, height } = templateJson.canvas;
     const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
-    const baseUrl = (process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
+    console.log(`[videoLocal] ${renderId} — START canvas=${width}x${height} CAPTIONS_API=${CAPTIONS_API}`);
 
     // 1. Overlay PNG transparent (canvas + textes, pas de fond vidéo)
+    await updateRenderTracking(renderId, {
+      pipeline: RENDER_PIPELINE.VIDEO_LOCAL,
+      stage: RENDER_STAGE.VIDEO_RENDER_OVERLAY,
+      statusDetail: "Rendu de l'overlay vidéo",
+      progress: 0.12,
+    });
+    console.log(`[videoLocal] ${renderId} — step 1: buildHTML overlayMode`);
     const overlayHtml = await buildHTML(templateJson, listingData, { overlayMode: true });
+    console.log(`[videoLocal] ${renderId} — step 2: renderPNG overlay`);
     const overlayBuffer = await renderPNG(overlayHtml, width, height, 1, true);
+    console.log(`[videoLocal] ${renderId} — overlay PNG ready: ${overlayBuffer.length} bytes`);
 
     // 2. Résoudre l'URL de la vidéo source
+    await updateRenderTracking(renderId, {
+      pipeline: RENDER_PIPELINE.VIDEO_LOCAL,
+      stage: RENDER_STAGE.VIDEO_RESOLVE_SOURCE,
+      statusDetail: "Préparation de la vidéo source",
+      progress: 0.28,
+    });
     const videoBlock = videoBlocks[0];
     const rawVideoUrl = videoBlock.binding
       ? (listingData as Record<string, unknown>)[videoBlock.binding] as string | undefined
@@ -273,7 +445,6 @@ async function generateVideoRenderLocal(
       );
     }
     console.log(`[generateRender] rawVideoUrl = "${rawVideoUrl}"`);
-    const absoluteVideoUrl = rawVideoUrl.startsWith("http") ? rawVideoUrl : `${baseUrl}${rawVideoUrl}`;
 
     // Cadrage personnalisé (focal point défini par l'user dans le formulaire)
     const focalPoint = videoBlock.binding
@@ -299,38 +470,64 @@ async function generateVideoRenderLocal(
     if (rawVideoUrl.startsWith("/")) {
       const videoFilePath = path.join(process.cwd(), "public", rawVideoUrl);
       const videoBytes = await readFile(videoFilePath);
-      console.log(`[generateRender] Video local file: ${videoFilePath} — ${videoBytes.length} bytes`);
+      console.log(`[videoLocal] ${renderId} — video local file: ${videoFilePath} — ${videoBytes.length} bytes`);
       if (videoBytes.length === 0) {
         throw new Error(`Fichier vidéo vide : ${videoFilePath}`);
       }
       form.append("video", new Blob([videoBytes], { type: "video/mp4" }), "video.mp4");
     } else {
-      form.append("video_url", absoluteVideoUrl);
+      console.log(`[videoLocal] ${renderId} — video URL: ${rawVideoUrl}`);
+      form.append("video_url", rawVideoUrl);
     }
 
-    const res = await fetch(`${CAPTIONS_API}/api/render_template`, { method: "POST", body: form });
+    await updateRenderTracking(renderId, {
+      pipeline: RENDER_PIPELINE.VIDEO_LOCAL,
+      stage: RENDER_STAGE.VIDEO_LOCAL_SEND,
+      statusDetail: "Envoi au render-engine",
+      progress: 0.42,
+    });
+    console.log(`[videoLocal] ${renderId} — step 3: POST ${CAPTIONS_API}/api/render_template`);
+    const res = await fetch(`${CAPTIONS_API}/api/render_template`, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(LOCAL_VIDEO_RENDER_TIMEOUT_MS),
+    });
+    console.log(`[videoLocal] ${renderId} — render-engine responded: ${res.status}`);
     if (!res.ok) {
       throw new Error(`render-engine ${res.status}: ${await res.text()}`);
     }
 
-    // Le render-engine retourne les bytes directement (StreamingResponse)
-    const videoBuffer = Buffer.from(await res.arrayBuffer());
-    const videoFilename = `${renderId}.mp4`;
-    await mkdir(OUTPUT_DIR, { recursive: true });
-    await writeFile(path.join(OUTPUT_DIR, videoFilename), videoBuffer);
-    const finalUrl = `/renders/${videoFilename}`;
+    await updateRenderTracking(renderId, {
+      pipeline: RENDER_PIPELINE.VIDEO_LOCAL,
+      stage: RENDER_STAGE.VIDEO_LOCAL_COMPOSITING,
+      statusDetail: "Composite vidéo local en cours",
+      progress: 0.78,
+    });
+    console.log(`[videoLocal] ${renderId} — step 4: reading JSON response`);
+    const data = await res.json() as { videoUrl?: string };
+    if (!data.videoUrl) {
+      throw new Error("render-engine n'a pas renvoyé d'URL vidéo")
+    }
+    const finalUrl = data.videoUrl.startsWith("http")
+      ? data.videoUrl
+      : `/api/captions${data.videoUrl.startsWith("/") ? data.videoUrl : `/${data.videoUrl}`}`;
 
-    await prisma.render.update({
-      where: { id: renderId },
-      data: { status: "DONE", videoUrl: finalUrl },
+    console.log(`[videoLocal] ${renderId} — DONE: ${finalUrl}`);
+    await updateRenderTracking(renderId, {
+      status: "DONE",
+      pipeline: RENDER_PIPELINE.VIDEO_LOCAL,
+      stage: RENDER_STAGE.DONE,
+      statusDetail: "Vidéo générée localement",
+      progress: 1,
+      videoUrl: finalUrl,
+      finishedAt: new Date(),
     });
   } catch (err) {
-    await prisma.render.update({
-      where: { id: renderId },
-      data: {
-        status: "ERROR",
-        errorMsg: err instanceof Error ? err.message : "Erreur génération vidéo locale",
-      },
-    });
+    console.error(`[videoLocal] ${renderId} — ERROR:`, err);
+    await failRender(
+      renderId,
+      err instanceof Error ? err.message : "Erreur génération vidéo locale",
+      RENDER_PIPELINE.VIDEO_LOCAL
+    );
   }
 }

@@ -56,9 +56,9 @@ else
   echo "$PIP_HASH_CURRENT" > "$PIP_HASH_FILE"
 fi
 
-# ── 3. Prisma ───────────────────────────────────────────────────────────────
+# ── 3. Prisma (sans seed auto) ─────────────────────────────────────────────
 echo ""
-echo "▶ 3/6  Prisma — migrations PostgreSQL..."
+echo "▶ 3/6  Prisma — migrations PostgreSQL (sans seed)..."
 ./node_modules/.bin/prisma migrate deploy
 ./node_modules/.bin/prisma generate
 

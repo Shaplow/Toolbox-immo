@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import React, { useState } from 'react'
-import { Tag, Check, Pencil, X } from 'lucide-react'
+import { Tag, Check, Pencil, X, Clock } from 'lucide-react'
 import { Caption } from '@/lib/srt'
 
 type Props = {
@@ -35,6 +35,15 @@ export default function CaptionEditor({
 }: Props) {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
+  const [editingTcId, setEditingTcId] = useState<number | null>(null)
+  const [tcStart, setTcStart] = useState('')
+  const [tcEnd, setTcEnd] = useState('')
+
+  const TC_RE = /^\d{2}:\d{2}:\d{2}[,\.]\d{3}$/
+
+  function normalizeTc(v: string) {
+    return v.replace('.', ',')
+  }
 
   if (captions.length === 0) {
     return (
@@ -75,9 +84,80 @@ export default function CaptionEditor({
               <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', fontVariantNumeric: 'tabular-nums', minWidth: 24 }}>
                 #{c.index}
               </span>
-              <span style={{ flex: 1, fontSize: 11, color: '#6b7280', fontFamily: 'monospace' }}>
-                {c.start.replace(',', '.')} → {c.end.replace(',', '.')}
-              </span>
+              {editingTcId === c.index ? (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <input
+                    value={tcStart}
+                    onChange={e => setTcStart(e.target.value)}
+                    placeholder="00:00:00,000"
+                    style={{
+                      width: 106, fontSize: 11, fontFamily: 'monospace',
+                      border: `1px solid ${TC_RE.test(tcStart) ? '#5b6bff' : '#fca5a5'}`,
+                      borderRadius: 4, padding: '1px 5px', background: '#fff', outline: 'none',
+                    }}
+                  />
+                  <span style={{ fontSize: 11, color: '#6b7280' }}>→</span>
+                  <input
+                    value={tcEnd}
+                    onChange={e => setTcEnd(e.target.value)}
+                    placeholder="00:00:00,000"
+                    style={{
+                      width: 106, fontSize: 11, fontFamily: 'monospace',
+                      border: `1px solid ${TC_RE.test(tcEnd) ? '#5b6bff' : '#fca5a5'}`,
+                      borderRadius: 4, padding: '1px 5px', background: '#fff', outline: 'none',
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      if (TC_RE.test(tcStart) && TC_RE.test(tcEnd)) {
+                        onChange(captions.map(cp =>
+                          cp.index === c.index ? { ...cp, start: normalizeTc(tcStart), end: normalizeTc(tcEnd) } : cp
+                        ))
+                        setEditingTcId(null)
+                      }
+                    }}
+                    disabled={!TC_RE.test(tcStart) || !TC_RE.test(tcEnd)}
+                    style={{
+                      all: 'unset', cursor: 'pointer', display: 'inline-flex',
+                      alignItems: 'center', padding: '1px 6px',
+                      background: '#5b6bff', color: '#fff', borderRadius: 4,
+                      fontSize: 11, fontWeight: 600, opacity: (TC_RE.test(tcStart) && TC_RE.test(tcEnd)) ? 1 : 0.4,
+                    }}
+                  >
+                    <Check size={11} />
+                  </button>
+                  <button
+                    onClick={() => setEditingTcId(null)}
+                    style={{
+                      all: 'unset', cursor: 'pointer', display: 'inline-flex', alignItems: 'center',
+                      color: '#9ca3af', padding: '1px 4px',
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ) : (
+                <span
+                  style={{ flex: 1, fontSize: 11, color: '#6b7280', fontFamily: 'monospace', cursor: 'default' }}
+                >
+                  {c.start.replace(',', '.')} → {c.end.replace(',', '.')}
+                </span>
+              )}
+              <button
+                onClick={() => {
+                  if (editingTcId === c.index) { setEditingTcId(null) }
+                  else { setEditingTcId(c.index); setTcStart(c.start); setTcEnd(c.end) }
+                }}
+                style={{
+                  all: 'unset', cursor: 'pointer',
+                  color: editingTcId === c.index ? '#5b6bff' : '#9ca3af',
+                  display: 'flex', alignItems: 'center',
+                  padding: '2px 4px', borderRadius: 4,
+                }}
+                title={editingTcId === c.index ? 'Annuler édition timecode' : 'Éditer timecodes'}
+              >
+                {editingTcId === c.index ? <X size={13} /> : <Clock size={12} />}
+              </button>
               <button
                 onClick={() => {
                   if (isEditing) { setEditingId(null) }

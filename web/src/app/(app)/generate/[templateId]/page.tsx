@@ -1,36 +1,49 @@
-﻿import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+﻿import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { ListingForm } from "@/components/form/ListingForm";
-import type { TemplateJSON, SchemaField, TextBlock } from "@/types/template";
-import { DPE_FIXED_KEYS } from "@/lib/renderer/blocks/renderDPEBlock";
+import { collectTemplateConditionValues, normalizeTemplateJSON } from "@/lib/templateNormalization";
+import type { TemplateJSON, SchemaField } from "@/types/template";
+import { DPE_AUTO_FIELDS } from "@/lib/renderer/blocks/renderDPEBlock";
+import { getUserContext } from "@/lib/userContext";
+
+function buildMediaFieldAspectRatios(json: TemplateJSON): Record<string, number> {
+  const ratios = new Map<string, { ratio: number; area: number }>();
+
+  for (const block of json.blocks) {
+    if ((block.type !== "image" && block.type !== "video") || !block.binding || block.w <= 0 || block.h <= 0) {
+      continue;
+    }
+
+    const area = block.w * block.h;
+    const current = ratios.get(block.binding);
+    if (!current || area > current.area) {
+      ratios.set(block.binding, {
+        ratio: block.w / block.h,
+        area,
+      });
+    }
+  }
+
+  return Object.fromEntries(Array.from(ratios.entries()).map(([key, value]) => [key, value.ratio]));
+}
 
 type Props = {
   params: Promise<{ templateId: string }>;
   searchParams: Promise<{ listingId?: string }>;
 };
 
-const DPE_LETTERS = ["A", "B", "C", "D", "E", "F", "G"];
-
-/** Champs DPE fixes injectés automatiquement si un bloc DPE est présent */
-const DPE_AUTO_FIELDS: SchemaField[] = [
-  { key: DPE_FIXED_KEYS.energyNote,   label: "Classe énergie (DPE)",         type: "select", required: true,  options: DPE_LETTERS, description: "Note de performance énergétique" },
-  { key: DPE_FIXED_KEYS.energyValue,  label: "Consommation (kWh/m²/an)",      type: "number", required: true,  placeholder: "180",   description: "Consommation d'énergie primaire" },
-  { key: DPE_FIXED_KEYS.climateNote,  label: "Classe GES (émissions CO₂)",    type: "select", required: true,  options: DPE_LETTERS, description: "Note d'émissions de gaz à effet de serre" },
-  { key: DPE_FIXED_KEYS.climateValue, label: "Émissions CO₂ (kg CO₂/m²/an)", type: "number", required: false, placeholder: "12",    description: "Émissions de CO₂ du logement" },
-];
-
 export default async function GeneratePage({ params, searchParams }: Props) {
   const { templateId } = await params;
   const { listingId } = await searchParams;
-  const session = await auth();
-  const userId = session!.user!.id!;
+  const userContext = await getUserContext();
+  if (!userContext) notFound();
+  const userId = userContext.effectiveUser.id;
 
   // If listingId provided, pre-fill form with its data
   let initialValues: Record<string, unknown> | undefined;
   if (listingId) {
     const existingListing = await prisma.listing.findFirst({
-      where: { id: listingId, userId },
+      where: userContext.canAdminBypass ? { id: listingId } : { id: listingId, userId },
     });
     if (existingListing) {
       initialValues = JSON.parse(existingListing.jsonData) as Record<string, unknown>;
@@ -38,13 +51,15 @@ export default async function GeneratePage({ params, searchParams }: Props) {
   }
 
   const { canAccessTemplate } = await import("@/lib/permissions");
-  const ok = await canAccessTemplate(userId, templateId, session!.user!.role ?? undefined);
+  const ok = userContext.canAdminBypass
+    ? true
+    : await canAccessTemplate(userId, templateId, userContext.effectiveUser.role);
   if (!ok) notFound();
 
   const template = await prisma.template.findUnique({ where: { id: templateId } });
   if (!template) notFound();
 
-  const json = JSON.parse(template.jsonData) as TemplateJSON;
+  const json = normalizeTemplateJSON(JSON.parse(template.jsonData) as TemplateJSON);
 
   // Start from the user-defined schema (source of truth for manual variables)
   const schemaMap = new Map(json.schema.map((f) => [f.key, f]));
@@ -71,24 +86,8 @@ export default async function GeneratePage({ params, searchParams }: Props) {
     }
   }
 
-  // Auto-inject select fields for showIf conditions (block-level) and {{#if}} in text content
-  const showIfMap = new Map<string, Set<string>>();
-  for (const block of json.blocks) {
-    if (block.showIf) {
-      const { field, equals } = block.showIf;
-      if (!showIfMap.has(field)) showIfMap.set(field, new Set());
-      showIfMap.get(field)!.add(equals);
-    }
-    if (block.type === "text") {
-      const content = (block as TextBlock).content ?? "";
-      const matches = [...content.matchAll(/\{\{#if\s+(\w+)\s*==\s*"?([^"\}\s]+)"?\s*\}\}/g)];
-      for (const [, field, value] of matches) {
-        if (!showIfMap.has(field)) showIfMap.set(field, new Set());
-        showIfMap.get(field)!.add(value);
-      }
-    }
-  }
-  for (const [field, values] of showIfMap) {
+  const conditionValues = collectTemplateConditionValues(json);
+  for (const [field, values] of conditionValues) {
     if (!schemaMap.has(field)) {
       schemaMap.set(field, {
         key: field,
@@ -102,9 +101,10 @@ export default async function GeneratePage({ params, searchParams }: Props) {
   }
 
   const mergedSchema = [...schemaMap.values()];
+  const mediaFieldAspectRatios = buildMediaFieldAspectRatios(json);
 
   return (
-    <div className="p-8 max-w-3xl mx-auto">
+    <div className="px-4 py-8 xl:px-8 max-w-[1680px] mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-gray-900">
           {initialValues ? "Nouvelle variante" : "Générer un visuel"}
@@ -115,7 +115,13 @@ export default async function GeneratePage({ params, searchParams }: Props) {
           {initialValues && " · formulaire pré-rempli"}
         </p>
       </div>
-      <ListingForm templateId={templateId} schema={mergedSchema} initialValues={initialValues} />
+      <ListingForm
+        templateId={templateId}
+        schema={mergedSchema}
+        formSections={json.formSections ?? []}
+        mediaFieldAspectRatios={mediaFieldAspectRatios}
+        initialValues={initialValues}
+      />
     </div>
   );
 }

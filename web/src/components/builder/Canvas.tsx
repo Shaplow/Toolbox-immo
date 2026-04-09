@@ -1,21 +1,60 @@
 ﻿"use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
+import { buildDpeSvg } from "@/lib/dpeSvg";
+import { computeAutoLayoutPositions, getAutoLayoutMode, getBlockAnchorOffset, isAutoLayoutGroup, type BlockLayoutSize } from "@/lib/groupLayout";
+import { buildTextShadowValue } from "@/lib/renderer/styleUtils";
+import { buildSchemaPreviewData } from "@/lib/schemaFields";
+import { compileTextTemplate, resolveTextTemplate } from "@/lib/textTemplate";
+import { roundLayoutDebugValue, type LayoutDebugSnapshot } from "@/lib/layoutDebug";
 import { useBuilderStore } from "@/lib/store/builderStore";
+import { getHorizontalAlignment, getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled } from "@/lib/textBackground";
+import { resolveBlockForListing, resolveBlockState } from "@/lib/templateConditions";
 import type { AnyBlock } from "@/types/template";
 import { Resizable } from "re-resizable";
 
 const GRID_SIZE = 10; // canvas units
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 4;
+const ZOOM_STEP = 0.1;
+const KEYBOARD_SCROLL_STEP = 120;
 
-export function Canvas() {
-  const { template, selectedBlockId, selectBlock, updateBlock, updateBlocks } = useBuilderStore();
+export function Canvas({
+  onLayoutDebugSnapshotChange,
+  showResolvedTextPreview,
+}: {
+  onLayoutDebugSnapshotChange?: (snapshot: LayoutDebugSnapshot | null) => void;
+  showResolvedTextPreview: boolean;
+}) {
+  const {
+    template,
+    selectedBlockId,
+    selectedGroupId,
+    selectBlock,
+    selectGroup,
+    updateBlock,
+    updateBlocks,
+    undo,
+    redo,
+    recordHistory,
+  } = useBuilderStore();
   const { canvas, blocks } = template;
   const [zoom, setZoom] = useState(0.5);
   const [showGrid, setShowGrid] = useState(false);
   const [snapToGrid, setSnapToGrid] = useState(false);
   // Multi-select: set of block ids (Ctrl+click to toggle)
   const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
+  const [isPanningView, setIsPanningView] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const measurementLayerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const spacePressedRef = useRef(false);
+  const suppressNextClickRef = useRef(false);
+  const panViewRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number } | null>(null);
+  const previewListing = useMemo(() => buildSchemaPreviewData(template.schema), [template.schema]);
+  const groupMap = useMemo(() => new Map((template.groups ?? []).map((group) => [group.id, group])), [template.groups]);
+  const [measuredAutoLayoutSizes, setMeasuredAutoLayoutSizes] = useState<Record<string, BlockLayoutSize>>({});
+  const [fontMetricsVersion, setFontMetricsVersion] = useState(0);
 
   /** Snap a value to the nearest GRID_SIZE increment if snap is on */
   const snap = useCallback((v: number) =>
@@ -23,21 +62,292 @@ export function Canvas() {
     [snapToGrid]
   );
 
+  const clampZoom = useCallback((value: number) => {
+    if (!Number.isFinite(value)) return 1;
+    return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+  }, []);
+
+  const applyZoom = useCallback((nextZoom: number, anchor?: { clientX: number; clientY: number }) => {
+    const container = scrollContainerRef.current;
+    const clampedZoom = clampZoom(nextZoom);
+
+    if (!container) {
+      setZoom(clampedZoom);
+      return;
+    }
+
+    const previousZoom = zoom;
+    if (Math.abs(clampedZoom - previousZoom) < 0.0001) return;
+
+    const rect = container.getBoundingClientRect();
+    const offsetLeft = anchor ? anchor.clientX - rect.left : container.clientWidth / 2;
+    const offsetTop = anchor ? anchor.clientY - rect.top : container.clientHeight / 2;
+    const sourceX = (container.scrollLeft + offsetLeft) / previousZoom;
+    const sourceY = (container.scrollTop + offsetTop) / previousZoom;
+
+    setZoom(clampedZoom);
+
+    requestAnimationFrame(() => {
+      container.scrollLeft = sourceX * clampedZoom - offsetLeft;
+      container.scrollTop = sourceY * clampedZoom - offsetTop;
+    });
+  }, [clampZoom, zoom]);
+
+  const fitToScreen = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      setZoom(0.5);
+      return;
+    }
+
+    const horizontalPadding = 80;
+    const verticalPadding = 80;
+    const availableWidth = Math.max(0, container.clientWidth - horizontalPadding);
+    const availableHeight = Math.max(0, container.clientHeight - verticalPadding);
+    const nextZoom = Math.min(availableWidth / canvas.width, availableHeight / canvas.height, 1);
+    applyZoom(nextZoom);
+  }, [applyZoom, canvas.height, canvas.width]);
+
+  const fitToScreenRef = useRef(fitToScreen);
+  useEffect(() => {
+    fitToScreenRef.current = fitToScreen;
+  }, [fitToScreen]);
+
   // Dragging state — also stores original positions of all multi-selected blocks
   const dragging = useRef<{
     id: string;
     startX: number;
     startY: number;
     origPositions: Record<string, { x: number; y: number }>;
+    historyTemplate: typeof template;
   } | null>(null);
+
+  const resizing = useRef<{
+    id: string;
+    origin: { x: number; y: number; w: number; h: number };
+    historyTemplate: typeof template;
+  } | null>(null);
+
+  const applyResize = useCallback((
+    block: AnyBlock,
+    direction: string,
+    deltaWidth: number,
+    deltaHeight: number
+  ) => {
+    const normalizedDirection = direction.toLowerCase();
+    const widthDelta = deltaWidth / zoom;
+    const heightDelta = deltaHeight / zoom;
+    const nextWidth = Math.max(0, snap(block.w + widthDelta));
+    const nextHeight = Math.max(0, snap(block.h + heightDelta));
+    let nextX = block.x;
+    let nextY = block.y;
+
+    if (normalizedDirection.includes("left")) {
+      nextX = snap(block.x + (block.w - nextWidth));
+    }
+    if (normalizedDirection.includes("top")) {
+      nextY = snap(block.y + (block.h - nextHeight));
+    }
+
+    return {
+      x: nextX,
+      y: nextY,
+      w: nextWidth,
+      h: nextHeight,
+    } as Partial<AnyBlock>;
+  }, [snap, zoom]);
+
+  useEffect(() => {
+    function isEditableTarget(target: EventTarget | null) {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      const editable = isEditableTarget(event.target);
+
+      if (event.code === "Space" && !editable) {
+        spacePressedRef.current = true;
+      }
+
+      if (editable) return;
+
+      const key = event.key.toLowerCase();
+      const container = scrollContainerRef.current;
+      const metaZoom = event.metaKey || event.ctrlKey;
+      const isUndo = metaZoom && key === "z";
+      if (isUndo) {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+        return;
+      }
+
+      if (key === "+" || key === "=") {
+        event.preventDefault();
+        applyZoom(zoom + ZOOM_STEP);
+        return;
+      }
+
+      if (key === "-") {
+        event.preventDefault();
+        applyZoom(zoom - ZOOM_STEP);
+        return;
+      }
+
+      if (key === "0" || key === "f") {
+        event.preventDefault();
+        fitToScreen();
+        return;
+      }
+
+      if (!container) return;
+
+      if (key === "arrowup") {
+        event.preventDefault();
+        container.scrollBy({ top: -KEYBOARD_SCROLL_STEP, behavior: "auto" });
+        return;
+      }
+
+      if (key === "arrowdown") {
+        event.preventDefault();
+        container.scrollBy({ top: KEYBOARD_SCROLL_STEP, behavior: "auto" });
+        return;
+      }
+
+      if (key === "arrowleft") {
+        event.preventDefault();
+        container.scrollBy({ left: -KEYBOARD_SCROLL_STEP, behavior: "auto" });
+        return;
+      }
+
+      if (key === "arrowright") {
+        event.preventDefault();
+        container.scrollBy({ left: KEYBOARD_SCROLL_STEP, behavior: "auto" });
+      }
+    }
+
+    function onKeyUp(event: KeyboardEvent) {
+      if (event.code === "Space") {
+        spacePressedRef.current = false;
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [applyZoom, fitToScreen, redo, undo, zoom]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      fitToScreenRef.current();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [canvas.width, canvas.height]);
+
+  useEffect(() => {
+    if (typeof document === "undefined" || !("fonts" in document)) return;
+
+    let cancelled = false;
+    const fontSet = document.fonts;
+    const bump = () => {
+      if (cancelled) return;
+      setFontMetricsVersion((current) => current + 1);
+    };
+
+    void fontSet.ready.then(() => {
+      bump();
+    });
+
+    fontSet.addEventListener("loadingdone", bump);
+    fontSet.addEventListener("loadingerror", bump);
+
+    return () => {
+      cancelled = true;
+      fontSet.removeEventListener("loadingdone", bump);
+      fontSet.removeEventListener("loadingerror", bump);
+    };
+  }, [template.blocks, template.theme.customFonts, template.theme.fonts.body, template.theme.fonts.heading]);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, block: AnyBlock) => {
       e.stopPropagation();
 
+      const group = block.groupId ? groupMap.get(block.groupId) : undefined;
+      const isGroupSelection = Boolean(selectedGroupId && block.groupId === selectedGroupId);
+      const isAutoLayoutMember = isAutoLayoutGroup(group);
+      const isLocked = Boolean(block.locked || group?.locked);
+
       // Locked blocks: allow selection but no drag
-      if (block.locked) {
+      if (isLocked) {
+        if (isGroupSelection && block.groupId) {
+          selectGroup(block.groupId);
+        } else {
+          selectBlock(block.id);
+        }
+        return;
+      }
+
+      if (isAutoLayoutMember && !isGroupSelection) {
         selectBlock(block.id);
+        return;
+      }
+
+      if (isGroupSelection && block.groupId) {
+        const ids = blocks.filter((candidate) => candidate.groupId === block.groupId).map((candidate) => candidate.id);
+        const origPositions: Record<string, { x: number; y: number }> = {};
+        for (const id of ids) {
+          const candidate = blocks.find((current) => current.id === id);
+          if (candidate) origPositions[id] = { x: candidate.x, y: candidate.y };
+        }
+
+        setMultiSelected(new Set(ids));
+        selectGroup(block.groupId);
+
+        dragging.current = {
+          id: block.id,
+          startX: e.clientX,
+          startY: e.clientY,
+          origPositions,
+          historyTemplate: useBuilderStore.getState().template,
+        };
+
+        function onMove(ev: MouseEvent) {
+          if (!dragging.current) return;
+          const rawDx = (ev.clientX - dragging.current.startX) / zoom;
+          const rawDy = (ev.clientY - dragging.current.startY) / zoom;
+
+          updateBlocks(
+            Object.entries(dragging.current.origPositions).map(([id, orig]) => ({
+              id,
+              changes: {
+                x: snap(orig.x + rawDx),
+                y: snap(orig.y + rawDy),
+              } as Partial<AnyBlock>,
+            })),
+            { history: false }
+          );
+        }
+
+        function onUp() {
+          const current = dragging.current;
+          dragging.current = null;
+          if (current) {
+            recordHistory(current.historyTemplate);
+          }
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+        }
+
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
         return;
       }
 
@@ -79,6 +389,7 @@ export function Canvas() {
         startX: e.clientX,
         startY: e.clientY,
         origPositions,
+        historyTemplate: useBuilderStore.getState().template,
       };
 
       function onMove(ev: MouseEvent) {
@@ -95,14 +406,18 @@ export function Canvas() {
         }));
 
         if (updates.length === 1) {
-          updateBlock(updates[0].id, updates[0].changes);
+          updateBlock(updates[0].id, updates[0].changes, { history: false });
         } else {
-          updateBlocks(updates);
+          updateBlocks(updates, { history: false });
         }
       }
 
       function onUp() {
+        const current = dragging.current;
         dragging.current = null;
+        if (current) {
+          recordHistory(current.historyTemplate);
+        }
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       }
@@ -110,15 +425,183 @@ export function Canvas() {
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [zoom, snap, blocks, multiSelected, selectBlock, updateBlock, updateBlocks]
+    [zoom, snap, blocks, groupMap, multiSelected, recordHistory, selectBlock, selectGroup, selectedGroupId, updateBlock, updateBlocks]
   );
 
-  const zoomIn  = () => setZoom((z) => Math.min(1, z + 0.1));
-  const zoomOut = () => setZoom((z) => Math.max(0.15, z - 0.1));
-  const fitToScreen = () => setZoom(0.5);
+  const zoomIn = () => applyZoom(zoom + ZOOM_STEP);
+  const zoomOut = () => applyZoom(zoom - ZOOM_STEP);
 
-  // Sort blocks by z
   const sorted = [...blocks].sort((a, b) => a.z - b.z);
+  const visibleResolvedBlocks = useMemo(() => {
+    return sorted
+      .filter((block) => resolveBlockState(block, previewListing, block.groupId ? groupMap.get(block.groupId) : undefined).visible)
+      .map((block) => {
+        const group = block.groupId ? groupMap.get(block.groupId) : undefined;
+        return {
+          block,
+          group,
+          displayBlock: resolveBlockForListing(block, previewListing, group),
+        };
+      });
+  }, [groupMap, previewListing, sorted]);
+
+  const activeAnchorGroup = useMemo(() => {
+    if (selectedGroupId) {
+      const group = groupMap.get(selectedGroupId);
+      if (group && isAutoLayoutGroup(group) && group.layout?.anchorBlockId && group.layout.justify === "center") {
+        return group;
+      }
+    }
+
+    if (selectedBlockId) {
+      const selectedBlock = blocks.find((item) => item.id === selectedBlockId);
+      const group = selectedBlock?.groupId ? groupMap.get(selectedBlock.groupId) : undefined;
+      if (group && isAutoLayoutGroup(group) && group.layout?.anchorBlockId && group.layout.justify === "center") {
+        return group;
+      }
+    }
+
+    return null;
+  }, [blocks, groupMap, selectedBlockId, selectedGroupId]);
+
+  const displayedPositionMap = useMemo(() => {
+    const positions = new Map<string, { x: number; y: number }>();
+    const sizeMap = new Map<string, BlockLayoutSize>(Object.entries(measuredAutoLayoutSizes));
+
+    for (const group of template.groups) {
+      if (!isAutoLayoutGroup(group)) continue;
+      const members = visibleResolvedBlocks
+        .filter((item) => item.displayBlock.groupId === group.id)
+        .map((item) => item.displayBlock);
+
+      const layoutPositions = computeAutoLayoutPositions(group, members, sizeMap);
+      layoutPositions.forEach((position, blockId) => positions.set(blockId, position));
+    }
+
+    return positions;
+  }, [measuredAutoLayoutSizes, template.groups, visibleResolvedBlocks]);
+
+  const autoLayoutMeasurementBlocks = useMemo(() => {
+    return visibleResolvedBlocks.filter(({ group }) => isAutoLayoutGroup(group));
+  }, [visibleResolvedBlocks]);
+
+  useLayoutEffect(() => {
+    const nextEntries: Array<[string, BlockLayoutSize]> = [];
+
+    for (const { block } of autoLayoutMeasurementBlocks) {
+      const element = measurementLayerRef.current?.querySelector<HTMLElement>(`[data-builder-measure-block-id="${block.id}"]`);
+      if (!element) continue;
+
+      const measured = element.querySelector<HTMLElement>(".block-text-background") ?? element;
+      const measuredRect = measured.getBoundingClientRect();
+      const fallbackRect = element.getBoundingClientRect();
+      const width = measuredRect.width || fallbackRect.width || 0;
+      const height = measuredRect.height || fallbackRect.height || 0;
+      if (width <= 0 || height <= 0) continue;
+      nextEntries.push([block.id, { width, height }]);
+    }
+
+    if (nextEntries.length === 0) return;
+
+    setMeasuredAutoLayoutSizes((current) => {
+      const next = { ...current };
+      let changed = false;
+
+      for (const [blockId, size] of nextEntries) {
+        const prev = current[blockId];
+        if (!prev || prev.width !== size.width || prev.height !== size.height) {
+          next[blockId] = size;
+          changed = true;
+        }
+      }
+
+      return changed ? next : current;
+    });
+  }, [autoLayoutMeasurementBlocks, fontMetricsVersion]);
+
+  useLayoutEffect(() => {
+    if (!onLayoutDebugSnapshotChange) return;
+
+    const blockSnapshots = autoLayoutMeasurementBlocks
+      .map(({ block, group, displayBlock }) => {
+        const element = measurementLayerRef.current?.querySelector<HTMLElement>(`[data-builder-measure-block-id="${block.id}"]`);
+        if (!element || !group) return null;
+
+        const measured = element.querySelector<HTMLElement>(".block-text-background") ?? element;
+        const measuredRect = measured.getBoundingClientRect();
+        const frameRect = element.getBoundingClientRect();
+        const visibleWidth = measuredRect.width || frameRect.width || 0;
+        const visibleHeight = measuredRect.height || frameRect.height || 0;
+        const frameWidth = frameRect.width || 0;
+        const frameHeight = frameRect.height || 0;
+        const layoutPosition = displayedPositionMap.get(block.id);
+        const finalLeft = layoutPosition?.x ?? displayBlock.x;
+        const finalTop = layoutPosition?.y ?? displayBlock.y;
+        const boxOffsetX = measuredRect.left - frameRect.left;
+        const boxOffsetY = measuredRect.top - frameRect.top;
+        const anchorOffset = getBlockAnchorOffset(displayBlock, {
+          width: visibleWidth || displayBlock.w,
+          height: visibleHeight || displayBlock.h,
+        });
+
+        return {
+          blockId: block.id,
+          groupId: group.id,
+          sourceX: roundLayoutDebugValue(displayBlock.x),
+          sourceY: roundLayoutDebugValue(displayBlock.y),
+          sourceZ: roundLayoutDebugValue(displayBlock.z),
+          finalLeft: roundLayoutDebugValue(finalLeft),
+          finalTop: roundLayoutDebugValue(finalTop),
+          frameWidth: roundLayoutDebugValue(frameWidth || displayBlock.w),
+          frameHeight: roundLayoutDebugValue(frameHeight || displayBlock.h),
+          visibleWidth: roundLayoutDebugValue(visibleWidth || displayBlock.w),
+          visibleHeight: roundLayoutDebugValue(visibleHeight || displayBlock.h),
+          boxOffsetX: roundLayoutDebugValue(boxOffsetX),
+          boxOffsetY: roundLayoutDebugValue(boxOffsetY),
+          anchorOffsetX: roundLayoutDebugValue(anchorOffset.x),
+          anchorOffsetY: roundLayoutDebugValue(anchorOffset.y),
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    const groupSnapshots = template.groups
+      .filter((group) => isAutoLayoutGroup(group))
+      .map((group) => {
+        const members = blockSnapshots.filter((block) => block.groupId === group.id);
+        if (members.length === 0) return null;
+
+        const minX = Math.min(...members.map((item) => item.finalLeft));
+        const minY = Math.min(...members.map((item) => item.finalTop));
+        const maxX = Math.max(...members.map((item) => item.finalLeft + item.frameWidth));
+        const maxY = Math.max(...members.map((item) => item.finalTop + item.frameHeight));
+        const mode: "row" | "column" = getAutoLayoutMode(group) === "column" ? "column" : "row";
+
+        return {
+          groupId: group.id,
+          mode,
+          justify: group.layout?.justify ?? "center",
+          align: group.layout?.align ?? "top",
+          gap: roundLayoutDebugValue(group.layout?.gap ?? 16),
+          width: roundLayoutDebugValue(group.layout?.width ?? Math.max(1, maxX - minX)),
+          height: roundLayoutDebugValue(group.layout?.height ?? Math.max(1, maxY - minY)),
+          minX: roundLayoutDebugValue(minX),
+          minY: roundLayoutDebugValue(minY),
+          maxX: roundLayoutDebugValue(maxX),
+          maxY: roundLayoutDebugValue(maxY),
+          anchorBlockId: group.layout?.anchorBlockId,
+          order: [...(group.layout?.order ?? [])],
+          memberIds: members.map((member) => member.blockId),
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    onLayoutDebugSnapshotChange({
+      source: "builder",
+      capturedAt: new Date().toISOString(),
+      blocks: blockSnapshots,
+      groups: groupSnapshots,
+    });
+  }, [autoLayoutMeasurementBlocks, displayedPositionMap, fontMetricsVersion, onLayoutDebugSnapshotChange, template.groups]);
 
   // Grid CSS background (scales with zoom)
   const gridStyle: React.CSSProperties = showGrid ? {
@@ -136,6 +619,8 @@ export function Canvas() {
         <span className="text-xs text-gray-600 w-12 text-center">{Math.round(zoom * 100)}%</span>
         <button onClick={zoomIn}  className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">+</button>
         <button onClick={fitToScreen} className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">Fit</button>
+        <button onClick={undo} className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">Undo</button>
+        <button onClick={redo} className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">Redo</button>
 
         <span className="text-gray-300 mx-1">|</span>
 
@@ -169,8 +654,69 @@ export function Canvas() {
 
       {/* Scrollable canvas area — outer handles scroll, inner handles centering */}
       <div
+        ref={scrollContainerRef}
         className="flex-1 overflow-auto"
-        onClick={() => { selectBlock(null); setMultiSelected(new Set()); }}
+        onWheel={(event) => {
+          const container = scrollContainerRef.current;
+          if (!container) return;
+
+          if (event.metaKey || event.ctrlKey) {
+            event.preventDefault();
+            applyZoom(zoom + (event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP), {
+              clientX: event.clientX,
+              clientY: event.clientY,
+            });
+            return;
+          }
+
+          if (event.shiftKey) {
+            event.preventDefault();
+            container.scrollLeft += event.deltaY !== 0 ? event.deltaY : event.deltaX;
+          }
+        }}
+        onMouseDown={(event) => {
+          if (!spacePressedRef.current) return;
+          const container = scrollContainerRef.current;
+          if (!container) return;
+
+          suppressNextClickRef.current = true;
+          panViewRef.current = {
+            startX: event.clientX,
+            startY: event.clientY,
+            scrollLeft: container.scrollLeft,
+            scrollTop: container.scrollTop,
+          };
+          setIsPanningView(true);
+
+          function onMove(moveEvent: MouseEvent) {
+            const current = panViewRef.current;
+            const activeContainer = scrollContainerRef.current;
+            if (!current || !activeContainer) return;
+
+            activeContainer.scrollLeft = current.scrollLeft - (moveEvent.clientX - current.startX);
+            activeContainer.scrollTop = current.scrollTop - (moveEvent.clientY - current.startY);
+          }
+
+          function onUp() {
+            panViewRef.current = null;
+            setIsPanningView(false);
+            window.removeEventListener("mousemove", onMove);
+            window.removeEventListener("mouseup", onUp);
+          }
+
+          window.addEventListener("mousemove", onMove);
+          window.addEventListener("mouseup", onUp);
+        }}
+        onClick={() => {
+          if (suppressNextClickRef.current) {
+            suppressNextClickRef.current = false;
+            return;
+          }
+          selectBlock(null);
+          selectGroup(null);
+          setMultiSelected(new Set());
+        }}
+        style={{ cursor: isPanningView ? "grabbing" : spacePressedRef.current ? "grab" : "default" }}
       >
         <div className="flex items-start justify-center p-8 min-w-fit min-h-full">
         <div
@@ -186,46 +732,162 @@ export function Canvas() {
             ...gridStyle,
           }}
         >
-          {sorted.map((block) => {
+          {activeAnchorGroup ? (
+            <div
+              style={getAutoLayoutMode(activeAnchorGroup) === "column"
+                ? {
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    top: Math.round((canvas.height * zoom) / 2),
+                    borderTop: "1px dashed rgba(14,165,233,0.7)",
+                    pointerEvents: "none",
+                    zIndex: 999,
+                  }
+                : {
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    left: Math.round((canvas.width * zoom) / 2),
+                    borderLeft: "1px dashed rgba(14,165,233,0.7)",
+                    pointerEvents: "none",
+                    zIndex: 999,
+                  }}
+            />
+          ) : null}
+          {visibleResolvedBlocks.map(({ block, group, displayBlock }) => {
             const isPrimary = selectedBlockId === block.id;
             const isMulti = multiSelected.has(block.id);
-            const outlineColor = isPrimary ? "#F59E0B" : isMulti ? "#818CF8" : "transparent";
+            const isGroupSelected = Boolean(selectedGroupId && block.groupId === selectedGroupId);
+            const isAutoLayoutMember = isAutoLayoutGroup(group);
+            const outlineColor = isPrimary ? "#F59E0B" : isGroupSelected ? "#2563EB" : isMulti ? "#818CF8" : "transparent";
+            const pointerEvents = selectedBlockId && !isPrimary ? "none" : "auto";
+            const isLocked = Boolean(block.locked || group?.locked);
+            const layoutPosition = displayedPositionMap.get(block.id);
+            const effectiveSize = measuredAutoLayoutSizes[block.id] ?? { width: displayBlock.w, height: displayBlock.h };
+            const isAnchorBlock = Boolean(
+              group &&
+              isAutoLayoutGroup(group) &&
+              group.layout?.justify === "center" &&
+              group.layout?.anchorBlockId === block.id
+            );
+            const showAnchorIndicator = Boolean(
+              isAnchorBlock &&
+              activeAnchorGroup &&
+              group?.id === activeAnchorGroup.id
+            );
+            const anchorOffset = showAnchorIndicator
+              ? getBlockAnchorOffset(displayBlock, effectiveSize)
+              : null;
+            const wrapperStyle: React.CSSProperties = {
+              position: "absolute",
+              left: (layoutPosition?.x ?? displayBlock.x) * zoom,
+              top: (layoutPosition?.y ?? displayBlock.y) * zoom,
+              zIndex: displayBlock.z,
+              cursor: isLocked || isAutoLayoutMember ? "default" : "move",
+              outline: `2px solid ${outlineColor}`,
+              outlineOffset: "1px",
+              pointerEvents,
+              transform: displayBlock.rotation ? `rotate(${displayBlock.rotation}deg)` : undefined,
+              transformOrigin: "center center",
+            };
+
+            if (isAutoLayoutMember) {
+              return (
+                <div
+                  key={block.id}
+                  data-builder-block-id={block.id}
+                  style={{
+                    ...wrapperStyle,
+                    width: displayBlock.w * zoom,
+                    height: displayBlock.h * zoom,
+                  }}
+                >
+                  <BlockPreview
+                    block={displayBlock}
+                    autoLayout={true}
+                    fontMetricsVersion={fontMetricsVersion}
+                    preferPrintUnits={false}
+                    previewListing={previewListing}
+                    schema={template.schema}
+                    showResolvedTextPreview={showResolvedTextPreview}
+                    zoom={zoom}
+                    defaultFontFamily={template.theme.fonts.body.family}
+                    defaultTextColor={template.theme.palette.text}
+                    onMouseDown={(e) => handleMouseDown(e, block)}
+                  />
+                  {isLocked && (
+                    <div style={{
+                      position: "absolute", top: 2, right: 2,
+                      background: "rgba(0,0,0,0.45)", borderRadius: 3,
+                      padding: "1px 3px", fontSize: 9, color: "#fff",
+                      pointerEvents: "none", lineHeight: 1.2,
+                    }}>🔒</div>
+                  )}
+                  {showAnchorIndicator && anchorOffset && (
+                    <div style={{
+                      position: "absolute",
+                      left: anchorOffset.x * zoom,
+                      top: anchorOffset.y * zoom,
+                      transform: "translate(-50%, -50%)",
+                      fontSize: Math.max(12, zoom * 16),
+                      pointerEvents: "none",
+                      lineHeight: 1.1,
+                      filter: "drop-shadow(0 1px 2px rgba(255,255,255,0.95)) drop-shadow(0 1px 6px rgba(14,165,233,0.35))",
+                    }}>⚓</div>
+                  )}
+                </div>
+              );
+            }
+
             return (
               <Resizable
                 key={block.id}
-                size={{ width: block.w * zoom, height: block.h * zoom }}
-                minWidth={20 * zoom}
-                minHeight={20 * zoom}
-                onResizeStop={(_e, _dir, _ref, d) => {
-                  updateBlock(block.id, {
-                    w: snap(block.w + d.width / zoom),
-                    h: snap(block.h + d.height / zoom),
-                  });
+                data-builder-block-id={block.id}
+                size={{ width: displayBlock.w * zoom, height: displayBlock.h * zoom }}
+                minWidth={0}
+                minHeight={0}
+                onResizeStart={() => {
+                  resizing.current = {
+                    id: block.id,
+                    origin: { x: block.x, y: block.y, w: block.w, h: block.h },
+                    historyTemplate: useBuilderStore.getState().template,
+                  };
+                }}
+                onResize={(_e, dir, _ref, d) => {
+                  const current = resizing.current;
+                  if (!current) return;
+                  updateBlock(block.id, applyResize(current.origin as AnyBlock, dir, d.width, d.height), { history: false });
+                }}
+                onResizeStop={(_e, dir, _ref, d) => {
+                  const current = resizing.current;
+                  if (!current) return;
+                  updateBlock(block.id, applyResize(current.origin as AnyBlock, dir, d.width, d.height), { history: false });
+                  recordHistory(current.historyTemplate);
+                  resizing.current = null;
                 }}
                 enable={{
-                  top: isPrimary && !block.locked, right: isPrimary && !block.locked,
-                  bottom: isPrimary && !block.locked, left: isPrimary && !block.locked,
-                  topRight: isPrimary && !block.locked, bottomRight: isPrimary && !block.locked,
-                  bottomLeft: isPrimary && !block.locked, topLeft: isPrimary && !block.locked,
+                  top: isPrimary && !isLocked, right: isPrimary && !isLocked,
+                  bottom: isPrimary && !isLocked, left: isPrimary && !isLocked,
+                  topRight: isPrimary && !isLocked, bottomRight: isPrimary && !isLocked,
+                  bottomLeft: isPrimary && !isLocked, topLeft: isPrimary && !isLocked,
                 }}
-                style={{
-                  position: "absolute",
-                  left: block.x * zoom,
-                  top: block.y * zoom,
-                  zIndex: block.z,
-                  cursor: block.locked ? "default" : "move",
-                  outline: `2px solid ${outlineColor}`,
-                  outlineOffset: "1px",
-                  transform: block.rotation ? `rotate(${block.rotation}deg)` : undefined,
-                  transformOrigin: "center center",
-                }}
+                style={wrapperStyle}
               >
                 <BlockPreview
-                  block={block}
+                  block={displayBlock}
+                  autoLayout={false}
+                  fontMetricsVersion={fontMetricsVersion}
+                  preferPrintUnits={false}
+                  previewListing={previewListing}
+                  schema={template.schema}
+                  showResolvedTextPreview={showResolvedTextPreview}
                   zoom={zoom}
+                  defaultFontFamily={template.theme.fonts.body.family}
+                  defaultTextColor={template.theme.palette.text}
                   onMouseDown={(e) => handleMouseDown(e, block)}
                 />
-                {block.locked && (
+                {isLocked && (
                   <div style={{
                     position: "absolute", top: 2, right: 2,
                     background: "rgba(0,0,0,0.45)", borderRadius: 3,
@@ -233,60 +895,104 @@ export function Canvas() {
                     pointerEvents: "none", lineHeight: 1.2,
                   }}>🔒</div>
                 )}
+                {showAnchorIndicator && anchorOffset && (
+                  <div style={{
+                    position: "absolute",
+                    left: anchorOffset.x * zoom,
+                    top: anchorOffset.y * zoom,
+                    transform: "translate(-50%, -50%)",
+                    fontSize: Math.max(12, zoom * 16),
+                    pointerEvents: "none",
+                    lineHeight: 1.1,
+                    filter: "drop-shadow(0 1px 2px rgba(255,255,255,0.95)) drop-shadow(0 1px 6px rgba(14,165,233,0.35))",
+                  }}>⚓</div>
+                )}
               </Resizable>
             );
           })}
         </div>
         </div>
       </div>
+
+      <div
+        ref={measurementLayerRef}
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          left: -100000,
+          top: 0,
+          width: canvas.width,
+          height: canvas.height,
+          overflow: "hidden",
+          pointerEvents: "none",
+          visibility: "hidden",
+        }}
+      >
+        {autoLayoutMeasurementBlocks.map(({ block, group, displayBlock }) => (
+          <div
+            key={`measure-${block.id}`}
+            data-builder-measure-block-id={block.id}
+            style={{
+              position: "absolute",
+              left: displayBlock.x,
+              top: displayBlock.y,
+              width: displayBlock.w,
+              height: displayBlock.h,
+              transform: displayBlock.rotation ? `rotate(${displayBlock.rotation}deg)` : undefined,
+              transformOrigin: "center center",
+            }}
+          >
+            <BlockPreview
+              block={displayBlock}
+              autoLayout={isAutoLayoutGroup(group)}
+              fontMetricsVersion={fontMetricsVersion}
+              preferPrintUnits={true}
+              previewListing={previewListing}
+              schema={template.schema}
+              showResolvedTextPreview={showResolvedTextPreview}
+              zoom={1}
+              defaultFontFamily={template.theme.fonts.body.family}
+              defaultTextColor={template.theme.palette.text}
+              onMouseDown={() => undefined}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-// ─── DPE preview SVG helpers (client-side, no Node.js deps) ─────────────────
-const DPE_LETTERS = ["A","B","C","D","E","F","G"] as const;
-const DPE_E_FILL  = ["#009944","#52B848","#AEC931","#FFF200","#F7A800","#E2521C","#CC1719"];
-const DPE_E_TEXT  = ["#fff","#fff","#1A1A1A","#1A1A1A","#1A1A1A","#fff","#fff"];
-const DPE_C_FILL  = ["#C8E0F0","#87BEDF","#6898C0","#4F7898","#3D5D7C","#2B4360","#1B2C3C"];
-const DPE_C_TEXT  = ["#1A1A1A","#1A1A1A","#fff","#fff","#fff","#fff","#fff"];
-
-function buildDpePreviewSvg(variant: string): string {
-  // ── Climat (aperçu B actif, viewBox 540×360 = même ratio que énergie) ──────────
-  if (variant === "climate") {
-    const ai=1, sX=4, bW=[93,125,157,186,217,248,277], sH=43, nH=31, aH=43, armX=280;
-    let bars="";
-    for(let i=0;i<7;i++){
-      const act=i===ai,sY=24+i*sH,h=act?aH:nH,yT=sY+(sH-h)/2,yM=yT+h/2,yB=yT+h;
-      const eX=sX+bW[i],r=h/2;
-      bars+=`<path d="M ${sX},${yT} L ${eX},${yT} A ${r},${r},0,0,1,${eX},${yB} L ${sX},${yB} Z" fill="${DPE_C_FILL[i]}"${act?` stroke="black" stroke-width="3"`:""}/>`;
-      bars+=`<text x="${sX+12}" y="${yM}" font-family="Arial" font-size="${act?26:11}" font-weight="${act?700:600}" fill="${DPE_C_TEXT[i]}" dominant-baseline="central">${DPE_LETTERS[i]}</text>`;
-      if(act) bars+=`<line x1="${eX+r}" y1="${yM}" x2="${armX}" y2="${yM}" stroke="${DPE_C_FILL[i]}" stroke-width="1.5"/>`;
-    }
-    const armY=24+ai*sH+sH/2;
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 365 360" style="width:100%;height:100%;display:block;"><text x="4" y="16" font-family="Arial" font-size="11" font-weight="600" fill="#6AADCE">Peu d'\u00e9missions de CO&#x2082;</text>${bars}<text x="${armX+5}" y="${armY-5}" font-family="Arial" font-size="9" font-weight="600" fill="#1A1A1A">12 kg CO&#x2082;</text><text x="${armX+5}" y="${armY+7}" font-family="Arial" font-size="8" fill="#555">m&#xB2;/an</text><text x="4" y="354" font-family="Arial" font-size="10.5" font-weight="700" fill="#1A1A1A">\u00c9missions de CO&#x2082; tr\u00e8s importantes</text></svg>`;
-  }
-  // ── Énergie (aperçu C actif, viewBox 540×360) ─────────────────────────────
-  const ai=2, bsX=140, bW=[112,146,180,214,248,282,316], sH=42, nH=32, aH=42, aN=18, aA=30;
-  const boxH=56, rawCY=24+ai*sH+sH/2, bTop=Math.min(Math.max(Math.round(rawCY-boxH/2),17),360-34-boxH);
-  const fT=24+5*sH, gB=24+7*sH, pMid=Math.round((fT+gB)/2), brkX=490;
-  let bars="";
-  for(let i=0;i<7;i++){
-    const act=i===ai,sY=24+i*sH,h=act?aH:nH,yB=sY+(sH-h)/2,eX=bsX+bW[i],tX=eX+(act?aA:aN),yM=yB+h/2;
-    bars+=`<polygon points="${bsX},${yB} ${eX},${yB} ${tX},${yM} ${eX},${yB+h} ${bsX},${yB+h}" fill="${DPE_E_FILL[i]}"${act?` stroke="black" stroke-width="3" stroke-linejoin="round"`:""}/>`;
-    bars+=`<text x="${bsX+14}" y="${yM}" font-family="Arial" font-size="${act?26:11}" font-weight="${act?700:600}" fill="${DPE_E_TEXT[i]}" dominant-baseline="central">${DPE_LETTERS[i]}</text>`;
-  }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 360" style="width:100%;height:100%;display:block;"><text x="${bsX}" y="16" text-anchor="start" font-family="Arial" font-size="12" font-weight="700" fill="#009944">Logement très performant</text><rect x="2" y="${bTop}" width="66" height="${boxH}" fill="white" stroke="#bbb" stroke-width="0.8"/><text x="35" y="${bTop+10}" text-anchor="middle" font-family="Arial" font-size="5.5" fill="#444">consommation</text><text x="35" y="${bTop+39}" text-anchor="middle" font-family="Arial" font-size="16" font-weight="700" fill="#1A1A1A">180</text><text x="35" y="${bTop+52}" text-anchor="middle" font-family="Arial" font-size="6" fill="#555">kWh/m²/an</text><rect x="72" y="${bTop}" width="62" height="${boxH}" fill="white" stroke="#bbb" stroke-width="0.8"/><text x="103" y="${bTop+10}" text-anchor="middle" font-family="Arial" font-size="5.5" fill="#444">émissions</text><text x="103" y="${bTop+35}" text-anchor="middle" font-family="Arial" font-size="16" font-weight="700" fill="#1A1A1A">12</text><text x="103" y="${bTop+48}" text-anchor="middle" font-family="Arial" font-size="6" fill="#555">kg CO₂/m²/an</text><line x1="${brkX}" y1="${fT+2}" x2="${brkX}" y2="${gB-2}" stroke="#aaa" stroke-width="0.8"/><line x1="${brkX-6}" y1="${fT+2}" x2="${brkX}" y2="${fT+2}" stroke="#aaa" stroke-width="0.8"/><line x1="${brkX-6}" y1="${gB-2}" x2="${brkX}" y2="${gB-2}" stroke="#aaa" stroke-width="0.8"/><text x="${brkX+4}" y="${pMid-5}" font-family="Arial" font-size="5.5" fill="#888" font-style="italic">passoire</text><text x="${brkX+4}" y="${pMid+6}" font-family="Arial" font-size="5.5" fill="#888" font-style="italic">énergétique</text>${bars}<text x="${bsX}" y="352" text-anchor="start" font-family="Arial" font-size="12" font-weight="700" fill="#CC1719">Logement extrêmement peu performant</text></svg>`;
-}
-
 function BlockPreview({
   block,
+  autoLayout,
+  fontMetricsVersion,
+  preferPrintUnits,
+  previewListing,
+  schema,
+  showResolvedTextPreview,
   zoom,
+  defaultFontFamily,
+  defaultTextColor,
   onMouseDown,
 }: {
   block: AnyBlock;
+  autoLayout?: boolean;
+  fontMetricsVersion?: number;
+  preferPrintUnits?: boolean;
+  previewListing: ReturnType<typeof buildSchemaPreviewData>;
+  schema: typeof useBuilderStore.getState extends () => infer T
+    ? T extends { template: { schema: infer S } }
+      ? S
+      : never
+    : never;
+  showResolvedTextPreview: boolean;
   zoom: number;
+  defaultFontFamily: string;
+  defaultTextColor: string;
   onMouseDown: (e: React.MouseEvent) => void;
 }) {
+  const textContentRef = useRef<HTMLDivElement>(null);
+  const [fittedFontSizePx, setFittedFontSizePx] = useState<number | null>(null);
   const style: React.CSSProperties = {
     width: "100%",
     height: "100%",
@@ -295,13 +1001,117 @@ function BlockPreview({
     fontSize: zoom * 12,
   };
 
+  const baseTextFontSizePx = block.type === "text"
+    ? (block.style.fontSize ?? 14) * (4 / 3) * zoom
+    : null;
+
+  useLayoutEffect(() => {
+    if (block.type !== "text") return;
+
+    const contentNode = textContentRef.current;
+    const baseFontSize = baseTextFontSizePx;
+    if (!contentNode || !baseFontSize) return;
+
+    if (!block.rules.shrinkToFit || !block.rules.minFontSize) {
+      setFittedFontSizePx(baseFontSize);
+      return;
+    }
+
+    const backgroundEnabled = isTextBackgroundEnabled(block.style);
+    const backgroundMode = getTextBackgroundMode(block.style);
+    const backgroundSize = getTextBackgroundSize(block.style, block.w, block.h);
+      const backgroundPadding = getTextBackgroundPadding(block.style);
+      const fitWidth = backgroundEnabled && backgroundMode === "fixed"
+        ? backgroundSize.width - backgroundPadding.left - backgroundPadding.right
+        : block.w - (backgroundEnabled ? backgroundPadding.left + backgroundPadding.right : 0);
+      const fitHeight = backgroundEnabled && backgroundMode === "fixed"
+        ? backgroundSize.height - backgroundPadding.top - backgroundPadding.bottom
+        : block.h - (backgroundEnabled ? backgroundPadding.top + backgroundPadding.bottom : 0);
+      const availableWidth = Math.max(0, fitWidth) * zoom;
+      const availableHeight = Math.max(0, fitHeight) * zoom;
+    const minFontSizePx = block.rules.minFontSize * (4 / 3) * zoom;
+    const step = Math.max(0.5, zoom * 0.5);
+    let nextFontSize = baseFontSize;
+
+    contentNode.style.fontSize = `${baseFontSize}px`;
+    while (nextFontSize > minFontSizePx) {
+      const overflowsHeight = contentNode.scrollHeight - 0.5 > availableHeight;
+      const overflowsWidth = contentNode.scrollWidth - 0.5 > availableWidth;
+      if (!overflowsHeight && !overflowsWidth) break;
+
+      nextFontSize = Math.max(minFontSizePx, nextFontSize - step);
+      contentNode.style.fontSize = `${nextFontSize}px`;
+    }
+
+    setFittedFontSizePx(nextFontSize);
+  }, [baseTextFontSizePx, block, fontMetricsVersion, zoom]);
+
   let content: React.ReactNode;
 
   switch (block.type) {
     case "text": {
+      const formulaContent = block.content
+        ?? (block.contentSegments ? compileTextTemplate(block.contentSegments) : undefined)
+        ?? (block.binding ? `{{${block.binding}}}` : block.staticText ?? "");
+      const displayContent = showResolvedTextPreview
+        ? resolveTextTemplate(formulaContent, previewListing, schema)
+        : (block.content ?? (block.contentSegments ? compileTextTemplate(block.contentSegments) : undefined));
       const vAlign = block.style.verticalAlign ?? "top";
       const justifyContent =
         vAlign === "middle" ? "center" : vAlign === "bottom" ? "flex-end" : "flex-start";
+      const backgroundEnabled = isTextBackgroundEnabled(block.style);
+      const backgroundMode = getTextBackgroundMode(block.style);
+      const backgroundSize = getTextBackgroundSize(block.style, block.w, block.h);
+      const contentPadding = getTextContentPadding(block.style);
+      const backgroundPadding = getTextBackgroundPadding(block.style);
+      const backgroundRadius = getTextBackgroundBorderRadius(block.style);
+      const horizontalAlignment = getHorizontalAlignment(block.style.textAlign);
+      const textFontSize = block.style.fontSize ?? 14;
+      const resolvedFontSize = fittedFontSizePx ?? (preferPrintUnits ? `${textFontSize * zoom}pt` : baseTextFontSizePx ?? undefined);
+      const innerTextStyle: React.CSSProperties = {
+        fontFamily: block.style.fontFamily ?? defaultFontFamily,
+        fontSize: resolvedFontSize,
+        fontWeight: block.style.fontWeight,
+        color: block.style.color ?? defaultTextColor,
+        letterSpacing: block.style.letterSpacing !== undefined ? `${block.style.letterSpacing * zoom}px` : undefined,
+        textShadow: buildTextShadowValue(block.style, zoom),
+        textAlign: block.style.textAlign,
+        textTransform: block.rules.uppercase ? "uppercase" : undefined,
+        lineHeight: "normal",
+        whiteSpace: "pre-wrap",
+        boxSizing: "border-box",
+      };
+
+      if (contentPadding.top === contentPadding.right && contentPadding.top === contentPadding.bottom && contentPadding.top === contentPadding.left) {
+        if (contentPadding.top > 0) innerTextStyle.padding = contentPadding.top * zoom;
+      } else {
+        innerTextStyle.paddingTop = contentPadding.top * zoom;
+        innerTextStyle.paddingRight = contentPadding.right * zoom;
+        innerTextStyle.paddingBottom = contentPadding.bottom * zoom;
+        innerTextStyle.paddingLeft = contentPadding.left * zoom;
+      }
+
+      if (block.rules.maxLines) {
+        innerTextStyle.display = "-webkit-box";
+        innerTextStyle.WebkitLineClamp = block.rules.maxLines;
+        innerTextStyle.WebkitBoxOrient = "vertical";
+        innerTextStyle.overflow = "hidden";
+      }
+
+      if (backgroundEnabled && backgroundMode === "fixed") {
+        innerTextStyle.width = "100%";
+      }
+
+      const textNode = (
+        <div ref={textContentRef} className="block-text-content" style={innerTextStyle}>
+          {displayContent !== undefined
+            ? displayContent || <span style={{ opacity: 0.35 }}>Texte…</span>
+            : block.binding
+              ? `{{${block.binding}}}`
+              : block.staticText || <span style={{ opacity: 0.35 }}>Texte…</span>}
+        </div>
+      );
+
       content = (
         <div
           style={{
@@ -309,29 +1119,48 @@ function BlockPreview({
             display: "flex",
             flexDirection: "column",
             justifyContent,
-            backgroundColor: block.style.backgroundColor,
           }}
         >
-          <div
-            style={{
-              fontFamily: block.style.fontFamily,
-              fontSize: (block.style.fontSize ?? 14) * (4 / 3) * zoom,
-              fontWeight: block.style.fontWeight,
-              color: block.style.color,
-              padding: (block.style.padding ?? 0) * zoom,
-              textAlign: block.style.textAlign,
-              display: "-webkit-box",
-              WebkitLineClamp: block.rules.maxLines ?? undefined,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-            }}
-          >
-            {block.content !== undefined
-              ? block.content || <span style={{ opacity: 0.35 }}>Texte…</span>
-              : block.binding
-                ? `{{${block.binding}}}`
-                : block.staticText || <span style={{ opacity: 0.35 }}>Texte…</span>}
-          </div>
+          {backgroundEnabled ? (
+            <div className="block-text-align" style={{ width: "100%", display: "flex", justifyContent: horizontalAlignment }}>
+              <div
+                className="block-text-background"
+                style={{
+                  backgroundColor: block.style.backgroundColor ?? "#FFFFFF",
+                  borderRadius: backgroundRadius > 0 ? backgroundRadius * zoom : undefined,
+                  opacity: block.style.opacity,
+                  display: backgroundMode === "fixed" ? "flex" : "inline-flex",
+                  flexDirection: "column",
+                  justifyContent: backgroundMode === "fixed" ? justifyContent : undefined,
+                  width: backgroundMode === "fixed" ? backgroundSize.width * zoom : "fit-content",
+                  height: backgroundMode === "fixed" ? backgroundSize.height * zoom : undefined,
+                  padding: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
+                    ? backgroundPadding.top * zoom
+                    : undefined,
+                  paddingTop: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
+                    ? undefined
+                    : backgroundPadding.top * zoom,
+                  paddingRight: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
+                    ? undefined
+                    : backgroundPadding.right * zoom,
+                  paddingBottom: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
+                    ? undefined
+                    : backgroundPadding.bottom * zoom,
+                  paddingLeft: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
+                    ? undefined
+                    : backgroundPadding.left * zoom,
+                  boxSizing: "border-box",
+                  maxWidth: "100%",
+                  maxHeight: "100%",
+                  overflow: "hidden",
+                }}
+              >
+                {textNode}
+              </div>
+            </div>
+          ) : (
+            <div style={{ opacity: block.style.opacity }}>{textNode}</div>
+          )}
         </div>
       );
       break;
@@ -392,9 +1221,21 @@ function BlockPreview({
     case "dpe":
       content = (
         <div
-          style={{ ...style, overflow: "hidden" }}
+          style={{ ...style, overflow: "hidden", opacity: block.style.opacity }}
           // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: buildDpePreviewSvg(block.variant) }}
+          dangerouslySetInnerHTML={{
+            __html: buildDpeSvg({
+              variant: block.variant ?? "energy",
+              energyLetter: "C",
+              energyValue: "180",
+              climateLetter: "B",
+              climateValue: "12",
+              showFrame: block.showFrame,
+              frameColor: block.frameColor,
+              showBackground: block.showBackground,
+              backgroundColor: block.backgroundColor,
+            }),
+          }}
         />
       );
       break;

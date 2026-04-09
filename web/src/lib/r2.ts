@@ -12,7 +12,10 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { Readable } from "stream";
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -55,6 +58,30 @@ function createClient(): S3Client {
   });
 }
 
+// ─── Presigned Upload URL ─────────────────────────────────────────────────────
+
+/**
+ * Génère une URL PUT pré-signée permettant au browser d'uploader directement vers R2.
+ * @param key         Chemin dans le bucket, ex: "uploads/image.jpg"
+ * @param contentType MIME type, ex: "image/jpeg"
+ * @param expiresIn   Durée de validité en secondes (défaut: 1 heure)
+ */
+export async function createPresignedUploadUrl(
+  key: string,
+  contentType: string,
+  expiresIn = 3600
+): Promise<string> {
+  requireR2();
+  const { bucket } = getR2Config();
+  const client = createClient();
+  const command = new PutObjectCommand({
+    Bucket: bucket!,
+    Key: key,
+    ContentType: contentType,
+  });
+  return getSignedUrl(client, command, { expiresIn });
+}
+
 // ─── Upload ───────────────────────────────────────────────────────────────────
 
 export interface UploadResult {
@@ -70,8 +97,9 @@ export interface UploadResult {
  */
 export async function uploadToR2(
   key: string,
-  body: Buffer | Uint8Array | ReadableStream | string,
-  contentType: string
+  body: Buffer | Uint8Array | Readable | string,
+  contentType: string,
+  contentLength?: number
 ): Promise<UploadResult> {
   requireR2();
   const { bucket, publicUrl } = getR2Config();
@@ -82,6 +110,7 @@ export async function uploadToR2(
     Key: key,
     Body: body,
     ContentType: contentType,
+    ...(contentLength ? { ContentLength: contentLength } : {}),
   });
 
   await client.send(command);
@@ -108,4 +137,25 @@ export function getR2PublicUrl(key: string): string {
   const { publicUrl } = getR2Config();
   if (!publicUrl) throw new Error("R2_PUBLIC_URL non défini");
   return `${publicUrl.replace(/\/$/, "")}/${key}`;
+}
+
+// ─── Read ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Télécharge un objet R2 côté serveur et retourne son contenu sous forme de Buffer.
+ */
+export async function getFromR2(key: string): Promise<Buffer> {
+  requireR2();
+  const { bucket } = getR2Config();
+  const client = createClient();
+  const response = await client.send(
+    new GetObjectCommand({ Bucket: bucket!, Key: key })
+  );
+  if (!response.Body) throw new Error(`R2 object empty: ${key}`);
+  // Response.Body is a ReadableStream (Web Streams API) in Node 18+
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
 }

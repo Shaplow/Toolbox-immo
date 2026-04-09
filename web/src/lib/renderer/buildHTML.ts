@@ -1,5 +1,10 @@
 ﻿import type { TemplateJSON } from "@/types/template";
 import type { ListingData } from "@/types/listing";
+import { listFontAssetsByFamilies } from "@/lib/fontAssets";
+import { isAutoLayoutGroup, normalizeGroupLayout } from "@/lib/groupLayout";
+import { getEffectiveTextAnchorPadding } from "@/lib/textBackground";
+import { isBlockVisibleForListing, resolveBlockForListing } from "@/lib/templateConditions";
+import { getVisibleFieldKeys } from "@/lib/formSections";
 import { renderTextBlock } from "./blocks/renderTextBlock";
 import { renderImageBlock } from "./blocks/renderImageBlock";
 import { renderDPEBlock } from "./blocks/renderDPEBlock";
@@ -16,6 +21,7 @@ export interface BuildHTMLOptions {
    * - Blocs "video" = div transparent (trou dans l'overlay)
    */
   overlayMode?: boolean;
+  layoutDebug?: boolean;
 }
 
 export async function buildHTML(
@@ -25,6 +31,12 @@ export async function buildHTML(
 ): Promise<string> {
   const { canvas, theme, blocks } = template;
   const overlayMode = opts?.overlayMode ?? false;
+  const groupMap = new Map((template.groups ?? []).map((group) => [group.id, group]));
+  const declaredFieldKeys = new Set((template.schema ?? []).map((field) => field.key));
+  const visibleFieldKeys = getVisibleFieldKeys(template.schema ?? [], template.formSections ?? [], listing);
+  const autoLayoutGroups = (template.groups ?? [])
+    .filter((group) => isAutoLayoutGroup(group))
+    .map((group) => ({ id: group.id, ...normalizeGroupLayout(group.layout) }));
 
   // Sort blocks by z-index
   const sorted = [...blocks].sort((a, b) => a.z - b.z);
@@ -32,18 +44,44 @@ export async function buildHTML(
   // Render each block to HTML
   const blockHtmlParts: string[] = await Promise.all(
     sorted.map(async (block) => {
-      // Visibilité conditionnelle : masquer si la condition n'est pas remplie
-      if (block.showIf) {
-        const { field, equals } = block.showIf;
-        const actual = String((listing as Record<string, unknown>)[field] ?? "");
-        if (actual !== equals) return "";
+      if (
+        (block.type === "image" || block.type === "video") &&
+        block.binding &&
+        declaredFieldKeys.has(block.binding) &&
+        !visibleFieldKeys.has(block.binding)
+      ) {
+        return "";
       }
-      switch (block.type) {
-        case "text":    return renderTextBlock(block as TextBlock, listing);
-        case "image":   return await renderImageBlock(block as ImageBlock, listing);
-        case "shape":   return renderShapeBlock(block as ShapeBlock);
-        case "dpe":     return await renderDPEBlock(block as DPEBlock, listing);
-        case "video":   return renderVideoBlockPlaceholder(block, overlayMode);
+
+      const group = block.groupId ? groupMap.get(block.groupId) : undefined;
+      if (!isBlockVisibleForListing(block, listing, group)) return "";
+
+      const resolvedBlock = resolveBlockForListing(block, listing, group);
+      const isAutoLayout = isAutoLayoutGroup(group);
+      const withLayoutMetadata = (html: string) => {
+        if (!isAutoLayout) return html;
+        const anchorPadding = resolvedBlock.type === "text"
+          ? getEffectiveTextAnchorPadding(resolvedBlock.style)
+          : null;
+        const blockTypeAttr = `data-layout-block-type="${resolvedBlock.type}"`;
+          const textAlignAttr = resolvedBlock.type === "text" ? ` data-layout-text-align="${resolvedBlock.style.textAlign ?? "left"}"` : "";
+          const verticalAlignAttr = resolvedBlock.type === "text" ? ` data-layout-vertical-align="${resolvedBlock.style.verticalAlign ?? "top"}"` : "";
+        const paddingTopAttr = anchorPadding ? ` data-layout-padding-top="${anchorPadding.top}"` : "";
+        const paddingRightAttr = anchorPadding ? ` data-layout-padding-right="${anchorPadding.right}"` : "";
+        const paddingBottomAttr = anchorPadding ? ` data-layout-padding-bottom="${anchorPadding.bottom}"` : "";
+        const paddingLeftAttr = anchorPadding ? ` data-layout-padding-left="${anchorPadding.left}"` : "";
+        return html.replace(
+          /^<div\b/,
+          `<div data-layout-group-id="${group?.id}" data-layout-block-id="${resolvedBlock.id}" data-layout-source-x="${resolvedBlock.x}" data-layout-source-y="${resolvedBlock.y}" data-layout-source-z="${resolvedBlock.z}" ${blockTypeAttr}${textAlignAttr}${verticalAlignAttr}${paddingTopAttr}${paddingRightAttr}${paddingBottomAttr}${paddingLeftAttr}`
+        );
+      };
+
+      switch (resolvedBlock.type) {
+        case "text":    return withLayoutMetadata(renderTextBlock(resolvedBlock as TextBlock, listing, template.schema, { autoLayout: isAutoLayout }));
+        case "image":   return withLayoutMetadata(await renderImageBlock(resolvedBlock as ImageBlock, listing));
+        case "shape":   return withLayoutMetadata(renderShapeBlock(resolvedBlock as ShapeBlock));
+        case "dpe":     return withLayoutMetadata(await renderDPEBlock(resolvedBlock as DPEBlock, listing));
+        case "video":   return withLayoutMetadata(renderVideoBlockPlaceholder(resolvedBlock, overlayMode));
         default:        return "";
       }
     })
@@ -51,6 +89,7 @@ export async function buildHTML(
 
   const css = buildCSS(template, overlayMode);
   const fontHtml = await buildFontHtml(template, opts?.publicBase);
+  const behaviorScript = buildBehaviorScript(autoLayoutGroups, opts?.layoutDebug ?? false);
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -65,8 +104,413 @@ export async function buildHTML(
   <div id="canvas" style="width:${canvas.width}px;height:${canvas.height}px;background:${overlayMode ? "transparent" : canvas.backgroundColor};position:relative;overflow:hidden;">
     ${blockHtmlParts.join("\n")}
   </div>
+  ${behaviorScript}
 </body>
 </html>`;
+}
+
+function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; mode?: "free" | "row" | "column"; width?: number; height?: number; gap?: number; justify?: "start" | "center" | "end"; align?: "top" | "middle" | "bottom"; order?: string[]; anchorBlockId?: string }>, layoutDebug = false): string {
+  return `<script>
+    window.__templateReady = false;
+    window.__layoutDebugSnapshot = null;
+    (function () {
+      const autoLayoutGroups = ${JSON.stringify(autoLayoutGroups)};
+      const layoutDebug = ${layoutDebug ? "true" : "false"};
+
+      function roundDebugValue(value) {
+        const numeric = Number(value || 0);
+        if (!Number.isFinite(numeric)) return 0;
+        return Math.round(numeric * 100) / 100;
+      }
+
+      function fitTextBlock(block) {
+        if (!(block instanceof HTMLElement)) return;
+        if (block.dataset.shrinkToFit !== 'true') return;
+
+        const content = block.querySelector('.block-text-content');
+        if (!(content instanceof HTMLElement)) return;
+
+          const measured = block.querySelector('.block-text-background');
+          const fitContainer = measured instanceof HTMLElement ? measured : block;
+          const fitStyle = window.getComputedStyle(fitContainer);
+          const availableWidth = Math.max(
+            0,
+            fitContainer.clientWidth
+              - Number.parseFloat(fitStyle.paddingLeft || '0')
+              - Number.parseFloat(fitStyle.paddingRight || '0')
+          );
+          const availableHeight = Math.max(
+            0,
+            fitContainer.clientHeight
+              - Number.parseFloat(fitStyle.paddingTop || '0')
+              - Number.parseFloat(fitStyle.paddingBottom || '0')
+          );
+
+        const minFontSizePt = Number(block.dataset.minFontSize || '0');
+        if (!Number.isFinite(minFontSizePt) || minFontSizePt <= 0) return;
+
+        const initialFontSizePx = Number.parseFloat(window.getComputedStyle(content).fontSize);
+        if (!Number.isFinite(initialFontSizePx) || initialFontSizePx <= 0) return;
+
+        const minFontSizePx = minFontSizePt * (4 / 3);
+        const step = 0.5;
+        let nextFontSize = initialFontSizePx;
+
+        content.style.fontSize = initialFontSizePx + 'px';
+        while (nextFontSize > minFontSizePx) {
+          const overflowsHeight = content.scrollHeight - 0.5 > availableHeight;
+          const overflowsWidth = content.scrollWidth - 0.5 > availableWidth;
+          if (!overflowsHeight && !overflowsWidth) break;
+
+          nextFontSize = Math.max(minFontSizePx, nextFontSize - step);
+          content.style.fontSize = nextFontSize + 'px';
+        }
+      }
+
+      function getEffectiveSize(block) {
+        if (!(block instanceof HTMLElement)) return { width: block.offsetWidth, height: block.offsetHeight };
+        const measured = block.querySelector('.block-text-background') || block;
+        const rect = measured instanceof HTMLElement ? measured.getBoundingClientRect() : null;
+        const fallbackRect = block.getBoundingClientRect();
+        return {
+          width: rect?.width || fallbackRect.width || block.offsetWidth,
+          height: rect?.height || fallbackRect.height || block.offsetHeight,
+        };
+      }
+
+      function getAnchorOffset(block) {
+        const size = getEffectiveSize(block);
+        const frameWidth = block.offsetWidth;
+        const frameHeight = block.offsetHeight;
+        const hasBackground = Boolean(block.querySelector('.block-text-background'));
+        let boxOffsetX = 0;
+        let boxOffsetY = 0;
+        if (hasBackground) {
+          const textAlign = block.dataset.layoutTextAlign || 'left';
+          const verticalAlign = block.dataset.layoutVerticalAlign || 'top';
+          if (textAlign === 'center') boxOffsetX = Math.round((frameWidth - size.width) / 2);
+          else if (textAlign === 'right') boxOffsetX = Math.round(frameWidth - size.width);
+          if (verticalAlign === 'middle') boxOffsetY = Math.round((frameHeight - size.height) / 2);
+          else if (verticalAlign === 'bottom') boxOffsetY = Math.round(frameHeight - size.height);
+        }
+        if (block.dataset.layoutBlockType !== 'text') {
+          return {
+            x: boxOffsetX + Math.round(size.width / 2),
+            y: boxOffsetY + Math.round(size.height / 2),
+          };
+        }
+
+        const paddingTop = Number(block.dataset.layoutPaddingTop || '0');
+        const paddingRight = Number(block.dataset.layoutPaddingRight || '0');
+        const paddingBottom = Number(block.dataset.layoutPaddingBottom || '0');
+        const paddingLeft = Number(block.dataset.layoutPaddingLeft || '0');
+        const textAlign = block.dataset.layoutTextAlign || 'left';
+        const verticalAlign = block.dataset.layoutVerticalAlign || 'top';
+
+        let x = size.width / 2;
+        if (textAlign === 'left') x = paddingLeft;
+        else if (textAlign === 'right') x = size.width - paddingRight;
+
+        let y = size.height / 2;
+        if (verticalAlign === 'top') y = paddingTop;
+        else if (verticalAlign === 'bottom') y = size.height - paddingBottom;
+
+        return {
+          x: boxOffsetX + Math.max(0, Math.min(Math.round(x), Math.round(size.width))),
+          y: boxOffsetY + Math.max(0, Math.min(Math.round(y), Math.round(size.height))),
+        };
+      }
+
+      function getEffectiveBoxOffset(block) {
+        const size = getEffectiveSize(block);
+        const frameWidth = block.offsetWidth;
+        const frameHeight = block.offsetHeight;
+        const hasBackground = Boolean(block.querySelector('.block-text-background'));
+        if (!hasBackground || block.dataset.layoutBlockType !== 'text') {
+          return { x: 0, y: 0, size };
+        }
+
+        const textAlign = block.dataset.layoutTextAlign || 'left';
+        const verticalAlign = block.dataset.layoutVerticalAlign || 'top';
+        let x = 0;
+        let y = 0;
+        if (textAlign === 'center') x = Math.round((frameWidth - size.width) / 2);
+        else if (textAlign === 'right') x = Math.round(frameWidth - size.width);
+        if (verticalAlign === 'middle') y = Math.round((frameHeight - size.height) / 2);
+        else if (verticalAlign === 'bottom') y = Math.round(frameHeight - size.height);
+        return { x: Math.max(0, x), y: Math.max(0, y), size };
+      }
+
+      function layoutAutoGroups() {
+        for (const groupLayout of autoLayoutGroups) {
+          const nodes = [...document.querySelectorAll('[data-layout-group-id="' + groupLayout.id + '"]')].filter((node) => node instanceof HTMLElement);
+          if (nodes.length === 0) continue;
+          const mode = groupLayout.mode === 'column' ? 'column' : 'row';
+
+          const blocks = nodes
+            .map((node) => ({
+              node,
+              blockId: String(node.dataset.layoutBlockId || ''),
+              sourceX: Number(node.dataset.layoutSourceX || '0'),
+              sourceY: Number(node.dataset.layoutSourceY || '0'),
+              sourceZ: Number(node.dataset.layoutSourceZ || '0'),
+              left: Number.parseFloat(node.style.left || '0'),
+              top: Number.parseFloat(node.style.top || '0'),
+              frameWidth: node.getBoundingClientRect().width || node.offsetWidth,
+              frameHeight: node.getBoundingClientRect().height || node.offsetHeight,
+              size: getEffectiveSize(node),
+            }))
+            .sort((left, right) => {
+              const order = Array.isArray(groupLayout.order) ? groupLayout.order : [];
+              const leftIndex = order.indexOf(left.blockId);
+              const rightIndex = order.indexOf(right.blockId);
+              if (leftIndex !== -1 || rightIndex !== -1) {
+                if (leftIndex === -1) return 1;
+                if (rightIndex === -1) return -1;
+                if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+              }
+              if (mode === 'column') {
+                return left.sourceY - right.sourceY || left.sourceX - right.sourceX || left.sourceZ - right.sourceZ;
+              }
+              return left.sourceX - right.sourceX || left.sourceY - right.sourceY || left.sourceZ - right.sourceZ;
+            });
+
+          const minX = Math.min(...blocks.map((item) => item.left));
+          const minY = Math.min(...blocks.map((item) => item.top));
+          const maxX = Math.max(...blocks.map((item) => item.left + item.frameWidth));
+          const maxY = Math.max(...blocks.map((item) => item.top + item.frameHeight));
+          const frameWidth = Math.max(1, Number(groupLayout.width || Math.round(maxX - minX)));
+          const frameHeight = Math.max(1, Number(groupLayout.height || Math.round(maxY - minY)));
+          const gap = Math.max(0, Number(groupLayout.gap || 16));
+          if (mode === 'column') {
+            const anchorIndex = groupLayout.justify === 'center' && groupLayout.anchorBlockId
+              ? blocks.findIndex((item) => item.blockId === groupLayout.anchorBlockId)
+              : -1;
+            if (anchorIndex >= 0) {
+              const anchorOffset = getAnchorOffset(blocks[anchorIndex].node);
+              const anchorStartY = minY + Math.round(frameHeight / 2 - anchorOffset.y);
+              let topCursor = anchorStartY - gap;
+              let bottomCursor = anchorStartY + blocks[anchorIndex].size.height + gap;
+
+              for (let index = 0; index < blocks.length; index += 1) {
+                const item = blocks[index];
+                const boxOffset = getEffectiveBoxOffset(item.node);
+                let nextX = minX;
+                if (groupLayout.align === 'middle') {
+                  nextX += Math.round((frameWidth - item.size.width) / 2);
+                } else if (groupLayout.align === 'bottom') {
+                  nextX += Math.round(frameWidth - item.size.width);
+                }
+
+                if (index === anchorIndex) {
+                  item.node.style.left = Math.round(nextX - boxOffset.x) + 'px';
+                  item.node.style.top = Math.round(anchorStartY - boxOffset.y) + 'px';
+                  continue;
+                }
+
+                if (index < anchorIndex) {
+                  const nextY = topCursor - item.size.height;
+                  item.node.style.left = Math.round(nextX - boxOffset.x) + 'px';
+                  item.node.style.top = Math.round(nextY - boxOffset.y) + 'px';
+                  topCursor = nextY - gap;
+                  continue;
+                }
+
+                item.node.style.left = Math.round(nextX - boxOffset.x) + 'px';
+                item.node.style.top = Math.round(bottomCursor - boxOffset.y) + 'px';
+                bottomCursor += item.size.height + gap;
+              }
+
+              continue;
+            }
+
+            const totalHeight = blocks.reduce((sum, item) => sum + item.size.height, 0) + Math.max(0, blocks.length - 1) * gap;
+            let cursorY = minY;
+            if (groupLayout.justify === 'center') {
+              cursorY += Math.round((frameHeight - totalHeight) / 2);
+            } else if (groupLayout.justify === 'end') {
+              cursorY += Math.round(frameHeight - totalHeight);
+            }
+
+            for (const item of blocks) {
+              const boxOffset = getEffectiveBoxOffset(item.node);
+              let nextX = minX;
+              if (groupLayout.align === 'middle') {
+                nextX += Math.round((frameWidth - item.size.width) / 2);
+              } else if (groupLayout.align === 'bottom') {
+                nextX += Math.round(frameWidth - item.size.width);
+              }
+
+              item.node.style.left = Math.round(nextX - boxOffset.x) + 'px';
+              item.node.style.top = Math.round(cursorY - boxOffset.y) + 'px';
+              cursorY += item.size.height + gap;
+            }
+
+            continue;
+          }
+
+          const anchorIndex = groupLayout.justify === 'center' && groupLayout.anchorBlockId
+            ? blocks.findIndex((item) => item.blockId === groupLayout.anchorBlockId)
+            : -1;
+          if (anchorIndex >= 0) {
+            const anchorOffset = getAnchorOffset(blocks[anchorIndex].node);
+            const anchorStartX = minX + Math.round(frameWidth / 2 - anchorOffset.x);
+            let leftCursor = anchorStartX - gap;
+            let rightCursor = anchorStartX + blocks[anchorIndex].size.width + gap;
+
+            for (let index = 0; index < blocks.length; index += 1) {
+              const item = blocks[index];
+              const boxOffset = getEffectiveBoxOffset(item.node);
+              let nextY = minY;
+              if (groupLayout.align === 'middle') {
+                nextY += Math.round((frameHeight - item.size.height) / 2);
+              } else if (groupLayout.align === 'bottom') {
+                nextY += Math.round(frameHeight - item.size.height);
+              }
+
+              if (index === anchorIndex) {
+                item.node.style.left = Math.round(anchorStartX - boxOffset.x) + 'px';
+                item.node.style.top = Math.round(nextY - boxOffset.y) + 'px';
+                continue;
+              }
+
+              if (index < anchorIndex) {
+                const nextX = leftCursor - item.size.width;
+                item.node.style.left = Math.round(nextX - boxOffset.x) + 'px';
+                item.node.style.top = Math.round(nextY - boxOffset.y) + 'px';
+                leftCursor = nextX - gap;
+                continue;
+              }
+
+              item.node.style.left = Math.round(rightCursor - boxOffset.x) + 'px';
+              item.node.style.top = Math.round(nextY - boxOffset.y) + 'px';
+              rightCursor += item.size.width + gap;
+            }
+
+            continue;
+          }
+
+          const totalWidth = blocks.reduce((sum, item) => sum + item.size.width, 0) + Math.max(0, blocks.length - 1) * gap;
+
+          let cursorX = minX;
+          if (groupLayout.justify === 'center') {
+            cursorX += Math.round((frameWidth - totalWidth) / 2);
+          } else if (groupLayout.justify === 'end') {
+            cursorX += Math.round(frameWidth - totalWidth);
+          }
+
+          for (const item of blocks) {
+            const boxOffset = getEffectiveBoxOffset(item.node);
+            let nextY = minY;
+            if (groupLayout.align === 'middle') {
+              nextY += Math.round((frameHeight - item.size.height) / 2);
+            } else if (groupLayout.align === 'bottom') {
+              nextY += Math.round(frameHeight - item.size.height);
+            }
+
+            item.node.style.left = Math.round(cursorX - boxOffset.x) + 'px';
+            item.node.style.top = Math.round(nextY - boxOffset.y) + 'px';
+            cursorX += item.size.width + gap;
+          }
+        }
+      }
+
+      function buildDebugSnapshot() {
+        const nodes = [...document.querySelectorAll('[data-layout-group-id]')].filter((node) => node instanceof HTMLElement);
+        const blocks = nodes.map((node) => {
+          const size = getEffectiveSize(node);
+          const boxOffset = getEffectiveBoxOffset(node);
+          const anchorOffset = getAnchorOffset(node);
+          const rect = node.getBoundingClientRect();
+
+          return {
+            blockId: String(node.dataset.layoutBlockId || ''),
+            groupId: String(node.dataset.layoutGroupId || ''),
+            sourceX: roundDebugValue(node.dataset.layoutSourceX || 0),
+            sourceY: roundDebugValue(node.dataset.layoutSourceY || 0),
+            sourceZ: roundDebugValue(node.dataset.layoutSourceZ || 0),
+            finalLeft: roundDebugValue(Number.parseFloat(node.style.left || '0')),
+            finalTop: roundDebugValue(Number.parseFloat(node.style.top || '0')),
+            frameWidth: roundDebugValue(rect.width || node.offsetWidth),
+            frameHeight: roundDebugValue(rect.height || node.offsetHeight),
+            visibleWidth: roundDebugValue(size.width),
+            visibleHeight: roundDebugValue(size.height),
+            boxOffsetX: roundDebugValue(boxOffset.x),
+            boxOffsetY: roundDebugValue(boxOffset.y),
+            anchorOffsetX: roundDebugValue(anchorOffset.x),
+            anchorOffsetY: roundDebugValue(anchorOffset.y),
+          };
+        });
+
+        const groups = autoLayoutGroups
+          .map((groupLayout) => {
+            const members = blocks.filter((block) => block.groupId === groupLayout.id);
+            if (members.length === 0) return null;
+
+            const minX = Math.min(...members.map((item) => item.finalLeft));
+            const minY = Math.min(...members.map((item) => item.finalTop));
+            const maxX = Math.max(...members.map((item) => item.finalLeft + item.frameWidth));
+            const maxY = Math.max(...members.map((item) => item.finalTop + item.frameHeight));
+
+            return {
+              groupId: groupLayout.id,
+              mode: groupLayout.mode === 'column' ? 'column' : 'row',
+              justify: groupLayout.justify || 'center',
+              align: groupLayout.align || 'top',
+              gap: roundDebugValue(groupLayout.gap || 16),
+              width: roundDebugValue(Number(groupLayout.width || Math.max(1, maxX - minX))),
+              height: roundDebugValue(Number(groupLayout.height || Math.max(1, maxY - minY))),
+              minX: roundDebugValue(minX),
+              minY: roundDebugValue(minY),
+              maxX: roundDebugValue(maxX),
+              maxY: roundDebugValue(maxY),
+              anchorBlockId: groupLayout.anchorBlockId || undefined,
+              order: Array.isArray(groupLayout.order) ? groupLayout.order : [],
+              memberIds: members.map((member) => member.blockId),
+            };
+          })
+          .filter(Boolean);
+
+        return {
+          source: 'preview',
+          capturedAt: new Date().toISOString(),
+          blocks,
+          groups,
+        };
+      }
+
+      function publishDebugSnapshot(snapshot) {
+        if (!layoutDebug) return;
+        window.__layoutDebugSnapshot = snapshot;
+        try {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: 'template-layout-debug', snapshot }, '*');
+          }
+        } catch {}
+      }
+
+      async function run() {
+        try {
+          if (document.fonts && document.fonts.ready) {
+            await document.fonts.ready;
+          }
+          document.querySelectorAll('.block-text').forEach(fitTextBlock);
+          layoutAutoGroups();
+          if (layoutDebug) {
+            publishDebugSnapshot(buildDebugSnapshot());
+          }
+        } finally {
+          window.__templateReady = true;
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => { void run(); }, { once: true });
+      } else {
+        void run();
+      }
+    })();
+  </script>`;
 }
 
 /**
@@ -74,40 +518,53 @@ export async function buildHTML(
  * This makes the HTML self-contained so Puppeteer needs zero external network requests
  * for fonts (avoids race conditions with Google Fonts CDN).
  *
- * - Local fonts (url in customFonts): read from disk via publicBase or direct path
+ * - Local/global fonts: read from disk or fetch remote URL
  * - Google Fonts (no url): fetch CSS from Google APIs, then fetch each .woff2 file
  */
 async function buildFontHtml(template: TemplateJSON, publicBase?: string): Promise<string> {
-  const collected = new Map<string, string | undefined>(); // family → url | undefined
+  const requestedFamilies = new Set<string>();
 
-  // 1. All user-defined fonts
   for (const cf of template.theme.customFonts ?? []) {
-    if (!collected.has(cf.family)) collected.set(cf.family, cf.url);
+    requestedFamilies.add(cf.family);
   }
-  // 2. Any fontFamily used on blocks not already listed
   for (const block of template.blocks) {
     const fam = (block as { style?: { fontFamily?: string } }).style?.fontFamily;
-    if (fam && !collected.has(fam)) collected.set(fam, undefined);
+    if (fam) requestedFamilies.add(fam);
   }
-  // 3. Fallback: heading + body
   const hf = template.theme.fonts.heading;
   const bf = template.theme.fonts.body;
+  requestedFamilies.add(hf.family);
+  requestedFamilies.add(bf.family);
+
+  const requestedFamilyMap = new Map(
+    [...requestedFamilies].map((family) => [family.trim().toLowerCase(), family])
+  );
+
+  const globalFonts = await listFontAssetsByFamilies([...requestedFamilies]);
+  const collected = new Map<string, string | undefined>();
+
+  for (const font of globalFonts) {
+    const requestedFamily = requestedFamilyMap.get(font.family.trim().toLowerCase()) ?? font.family;
+    collected.set(requestedFamily, font.url);
+  }
+  for (const cf of template.theme.customFonts ?? []) {
+    if (!collected.has(cf.family) || !collected.get(cf.family)) {
+      collected.set(cf.family, cf.url);
+    }
+  }
   if (!collected.has(hf.family)) collected.set(hf.family, hf.url);
   if (!collected.has(bf.family)) collected.set(bf.family, bf.url);
+  for (const family of requestedFamilies) {
+    if (!collected.has(family)) collected.set(family, undefined);
+  }
 
   const styleParts: string[] = [];
   console.log(`[buildFontHtml] Collected fonts:`, [...collected.entries()].map(([f, u]) => `${f} → ${u ?? "(google)"}`));
 
   for (const [family, url] of collected) {
     if (url) {
-      // Local font — read directly from disk (Node.js context, no need for publicBase)
       try {
-        const { readFile } = await import("fs/promises");
-        const { join } = await import("path");
-        // url is like "/fonts/MyFont.ttf" — always resolve from public/
-        const relative = url.startsWith("/") ? url.slice(1) : url;
-        const filePath = join(process.cwd(), "public", relative);
-        const buf = await readFile(filePath);
+        const buf = await loadFontBuffer(url, publicBase);
         const b64 = buf.toString("base64");
         const ext = url.split(".").pop()?.toLowerCase() ?? "woff2";
         const mimeMap: Record<string, string> = {
@@ -123,9 +580,9 @@ async function buildFontHtml(template: TemplateJSON, publicBase?: string): Promi
         styleParts.push(
           `@font-face{font-family:'${family}';src:url('data:${mime};base64,${b64}') format('${fmt}');font-weight:100 900;font-style:normal;}`
         );
-        console.log(`[buildFontHtml] Embedded local font "${family}" from ${filePath} (${Math.round(buf.length / 1024)} KB)`);
+        console.log(`[buildFontHtml] Embedded font "${family}" from ${url} (${Math.round(buf.length / 1024)} KB)`);
       } catch (e) {
-        console.warn(`[buildFontHtml] Could not embed local font "${family}" (${url}):`, e);
+        console.warn(`[buildFontHtml] Could not embed font "${family}" (${url}):`, e);
       }
     } else {
       // Google Font — fetch CSS then embed each woff2 as base64
@@ -166,6 +623,28 @@ async function buildFontHtml(template: TemplateJSON, publicBase?: string): Promi
   return `<style>\n${styleParts.join("\n")}\n</style>`;
 }
 
+async function loadFontBuffer(url: string, publicBase?: string): Promise<Buffer> {
+  if (/^https?:\/\//i.test(url)) {
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  const { readFile } = await import("fs/promises");
+  const { join } = await import("path");
+
+  if (url.startsWith("file://")) {
+    return readFile(url.replace("file://", ""));
+  }
+
+  if (publicBase?.startsWith("file://") && !url.startsWith("/")) {
+    return readFile(url);
+  }
+
+  const relative = url.startsWith("/") ? url.slice(1) : url;
+  return readFile(join(process.cwd(), "public", relative));
+}
+
 /** Bloc vidéo : en mode normal = fond sombre, en overlayMode = transparent (trou pour FFmpeg). */
 function renderVideoBlockPlaceholder(block: AnyBlock, overlayMode: boolean): string {
   const bg = overlayMode ? "transparent" : "#111827";
@@ -200,6 +679,7 @@ function buildCSS(template: TemplateJSON, overlayMode = false): string {
       width: 100%;
       height: 100%;
       display: block;
+      image-rendering: high-quality;
     }
     .block-image-cover img  { object-fit: cover; }
     .block-image-contain img { object-fit: contain; }

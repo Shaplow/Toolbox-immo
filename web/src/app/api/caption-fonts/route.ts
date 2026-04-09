@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { isCaptionCompatibleFontAsset, listFontAssets } from "@/lib/fontAssets";
 
 /**
  * Fallback statique — noms exacts comme retournés par /api/fonts de la Python API.
@@ -45,6 +46,16 @@ export async function GET() {
   }
 
   const captionsApiUrl = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
+  const compatibleGlobalFonts = (await listFontAssets())
+    .filter(isCaptionCompatibleFontAsset)
+    .map((font) => font.family);
+
+  function buildResponse(fonts: string[], source: "api" | "fallback" | "merged") {
+    const merged = [...new Set([...fonts, ...compatibleGlobalFonts])].sort((a, b) =>
+      a.localeCompare(b, "fr", { sensitivity: "base" })
+    );
+    return NextResponse.json({ fonts: merged, source });
+  }
 
   try {
     const res = await fetch(`${captionsApiUrl}/api/fonts`, {
@@ -54,12 +65,12 @@ export async function GET() {
     if (res.ok) {
       const data = await res.json() as { fonts: string[] };
       if (Array.isArray(data.fonts) && data.fonts.length > 0) {
-        return NextResponse.json({ fonts: data.fonts, source: "api" });
+        return buildResponse(data.fonts, "merged");
       }
     }
   } catch {
     // Python API indisponible → fallback ci-dessous
   }
 
-  return NextResponse.json({ fonts: STATIC_FONTS, source: "fallback" });
+  return buildResponse(STATIC_FONTS, "fallback");
 }

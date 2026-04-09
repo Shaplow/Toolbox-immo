@@ -12,6 +12,9 @@
 # =============================================================================
 set -e
 
+# Empêche tar sur macOS d'inclure les fichiers AppleDouble (._*) et métadonnées Finder.
+export COPYFILE_DISABLE=1
+
 SERVER_IP="${1}"
 SSH_USER="${2:-root}"
 SSH_KEY="${3:-}"
@@ -46,6 +49,10 @@ cd "${PROJECT_ROOT}"
 tar czf "${TMP_ARCHIVE}" \
   --exclude='./web/node_modules' \
   --exclude='./web/.next' \
+  --exclude='._*' \
+  --exclude='./**/._*' \
+  --exclude='.DS_Store' \
+  --exclude='./**/.DS_Store' \
   --exclude='./**/__pycache__' \
   --exclude='./**/*.pyc' \
   --exclude='./.env' \

@@ -17,8 +17,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { isCaptionCompatibleFontAsset, listFontAssetsByFamilies } from "@/lib/fontAssets";
+import { normalizeCaptionConfig } from "@/lib/captionsEngine";
 import { prisma } from "@/lib/prisma";
 import { uploadToR2, r2Configured } from "@/lib/r2";
+import { submitRunpodJob } from "@/lib/runpod";
 
 const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -26,6 +29,62 @@ const USE_RUNPOD = process.env.USE_RUNPOD !== "false";
 
 function runpodConfigured(): boolean {
   return !!(RUNPOD_API_KEY && RUNPOD_ENDPOINT_ID);
+}
+
+type RunpodSubmitResponse = { id: string };
+
+function extractCaptionFontFamilies(configData: Record<string, unknown>): string[] {
+  const baseFont = (configData.base as { font?: string } | undefined)?.font;
+  const highlightFont = (configData.highlight as { font?: string } | undefined)?.font;
+  const highlight2 = configData.highlight2 as { enabled?: boolean; font?: string } | undefined;
+  const highlight2Font = highlight2?.enabled ? highlight2.font : undefined;
+
+  return [...new Set([baseFont, highlightFont, highlight2Font].map((font) => font?.trim()).filter(Boolean) as string[])];
+}
+
+function getRequestOrigin(req: NextRequest): string {
+  // En Docker, le render-engine ne peut pas atteindre localhost:3000.
+  // FONT_BASE_URL permet de forcer l'origine (ex: http://web:3000).
+  if (process.env.FONT_BASE_URL) return process.env.FONT_BASE_URL;
+
+  const forwardedProto = req.headers.get("x-forwarded-proto");
+  const forwardedHost = req.headers.get("x-forwarded-host");
+  const host = req.headers.get("host");
+
+  if (forwardedHost || host) {
+    return `${forwardedProto ?? req.nextUrl.protocol.replace(":", "") ?? "https"}://${forwardedHost ?? host}`;
+  }
+
+  return req.nextUrl.origin;
+}
+
+function resolveFontAssetUrl(url: string, origin: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith("//")) return `https:${url}`;
+  return `${origin}${url.startsWith("/") ? url : `/${url}`}`;
+}
+
+async function attachCaptionFontAssets(req: NextRequest, configData: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const families = extractCaptionFontFamilies(configData);
+  if (families.length === 0) return configData;
+  const origin = getRequestOrigin(req);
+  const requestedFamilyMap = new Map(
+    families.map((family) => [family.trim().toLowerCase(), family])
+  );
+
+  const assets = (await listFontAssetsByFamilies(families))
+    .filter(isCaptionCompatibleFontAsset)
+    .map((asset) => ({
+      family: requestedFamilyMap.get(asset.family.trim().toLowerCase()) ?? asset.family,
+      url: resolveFontAssetUrl(asset.url, origin),
+      originalName: asset.originalName,
+    }));
+
+  if (assets.length === 0) return configData;
+  return {
+    ...configData,
+    font_assets: assets,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -54,6 +113,7 @@ export async function POST(req: NextRequest) {
   const subtitlesFile = formData.get("subtitles") as File | null;
   const configStr = formData.get("config") as string | null;
   const previewModeStr = (formData.get("preview_mode") as string | null) ?? "true";
+  const presetId = (formData.get("preset_id") as string | null) ?? undefined;
 
   if (!videoFile || !subtitlesFile || !configStr) {
     return NextResponse.json(
@@ -69,26 +129,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "config JSON invalide" }, { status: 400 });
   }
 
+  configData = await attachCaptionFontAssets(req, configData);
+  configData = normalizeCaptionConfig(configData);
+  const configPayload = JSON.stringify(configData);
+
   const previewMode = previewModeStr !== "false";
 
   // ─── Mode local (USE_RUNPOD=false) : forward vers render-engine ───────────
   if (!USE_RUNPOD) {
     const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
+    const srtContentLocal = await subtitlesFile.text();
 
     const captionJob = await prisma.captionJob.create({
       data: {
         userId: session.user.id,
         status: "PROCESSING",
-        inputUrl: "local",
-        config: configStr,
+        inputUrl: videoFile.name,
+        config: configPayload,
+        srtContent: srtContentLocal,
+        presetId: presetId ?? null,
       },
     });
 
     try {
       const localForm = new FormData();
       localForm.append("video", videoFile, videoFile.name);
-      localForm.append("subtitles", subtitlesFile, subtitlesFile.name);
-      localForm.append("config", configStr);
+      localForm.append("subtitles", new Blob([srtContentLocal], { type: "text/plain" }), subtitlesFile.name);
+      localForm.append("config", configPayload);
       localForm.append("preview_mode", String(previewMode));
 
       const localRes = await fetch(`${CAPTIONS_API}/api/render`, {
@@ -102,7 +169,7 @@ export async function POST(req: NextRequest) {
         throw new Error(`render-engine ${localRes.status}: ${errText}`);
       }
 
-      const data = await localRes.json() as { videoUrl: string };
+      const data = await localRes.json() as { videoUrl: string; engine?: string };
       // Build a proxied URL accessible from the browser.
       // The render-engine returns a path like /outputs/temp/file.mp4.
       // We expose it via /api/captions/... which the Next.js proxy forwards
@@ -120,6 +187,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         captionJobId: captionJob.id,
         videoUrl: absoluteUrl,
+        engine: data.engine,
         message: "Rendu local terminé",
       });
     } catch (err) {
@@ -181,8 +249,10 @@ export async function POST(req: NextRequest) {
     data: {
       userId: session.user.id,
       status: "QUEUED",
-      inputUrl: inputVideoUrl,
-      config: configStr,
+      inputUrl: videoFile.name,
+      config: configPayload,
+      srtContent,
+      presetId: presetId ?? null,
     },
   });
 
@@ -200,24 +270,11 @@ export async function POST(req: NextRequest) {
 
   let runpodJobId: string;
   try {
-    const runpodRes = await fetch(
-      `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/run`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${RUNPOD_API_KEY}`,
-        },
-        body: JSON.stringify(runpodPayload),
-      }
+    const runpodData = await submitRunpodJob<RunpodSubmitResponse>(
+      RUNPOD_ENDPOINT_ID!,
+      RUNPOD_API_KEY!,
+      runpodPayload
     );
-
-    if (!runpodRes.ok) {
-      const errText = await runpodRes.text();
-      throw new Error(`RunPod API ${runpodRes.status}: ${errText}`);
-    }
-
-    const runpodData = await runpodRes.json();
     runpodJobId = runpodData.id;
   } catch (err) {
     // Annuler le job en DB

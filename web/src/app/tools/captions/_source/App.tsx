@@ -540,9 +540,9 @@ export default function App() {
             </div>
             <Field label="Profil d'export">
               <select value={config.export_profile} onChange={e => setConfig(c => ({ ...c, export_profile: e.target.value as ConfigState['export_profile'] }))}>
-                <option value="draft">Test rapide (qualité basse)</option>
-                <option value="balanced">Équilibré</option>
-                <option value="final">Qualité max (plus lent)</option>
+                <option value="draft">Rapide (8 Mb/s)</option>
+                <option value="balanced">Équilibré (12 Mb/s)</option>
+                <option value="final">Max (16 Mb/s)</option>
               </select>
             </Field>
             <div className="status-line">

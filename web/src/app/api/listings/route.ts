@@ -1,7 +1,10 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { normalizeTemplateJSON } from "@/lib/templateNormalization";
+import { isSchemaFieldVisible } from "@/lib/templateConditions";
 import type { TemplateJSON, SchemaField } from "@/types/template";
+import { IMPERSONATION_COOKIE_NAME, resolveUserContext } from "@/lib/userContext";
 
 // POST /api/listings
 export async function POST(req: NextRequest) {
@@ -9,6 +12,7 @@ export async function POST(req: NextRequest) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
+  const userContext = await resolveUserContext(session, req.cookies.get(IMPERSONATION_COOKIE_NAME)?.value ?? null);
 
   try {
     const body = await req.json();
@@ -28,18 +32,25 @@ export async function POST(req: NextRequest) {
 
     // Check access: owner, granted, or admin
     const { canAccessTemplate } = await import("@/lib/permissions");
-    const ok = await canAccessTemplate(session.user.id, templateId as string, session.user.role ?? undefined);
+    const ok = userContext.canAdminBypass
+      ? true
+      : await canAccessTemplate(
+          userContext.effectiveUser.id,
+          templateId as string,
+          userContext.effectiveUser.role
+        );
     if (!ok) {
       return NextResponse.json({ error: "Accès refusé à ce template" }, { status: 403 });
     }
 
-    const json = JSON.parse(template.jsonData) as TemplateJSON;
+    const json = normalizeTemplateJSON(JSON.parse(template.jsonData) as TemplateJSON);
     const schema: SchemaField[] = json.schema ?? [];
 
     // Validate required fields as defined in the template schema
     const missing: string[] = [];
     for (const field of schema) {
       if (!field.required) continue;
+      if (!isSchemaFieldVisible(field, (data as Record<string, unknown>) ?? {})) continue;
       const val = (data as Record<string, unknown>)?.[field.key];
       if (val === undefined || val === null || val === "") {
         missing.push(field.label || field.key);
@@ -56,7 +67,7 @@ export async function POST(req: NextRequest) {
       data: {
         templateId,
         jsonData: JSON.stringify(data),
-        userId: session.user.id,
+        userId: userContext.effectiveUser.id,
       },
     });
 
@@ -76,9 +87,10 @@ export async function GET() {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
+  const userContext = await resolveUserContext(session, null);
 
   const listings = await prisma.listing.findMany({
-    where: { userId: session.user.id },
+    where: { userId: userContext.effectiveUser.id },
     orderBy: { createdAt: "desc" },
     include: { template: { select: { name: true, client: true } } },
   });

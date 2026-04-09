@@ -73,7 +73,7 @@ export function PresetsPanel() {
           Configurez un style dans l&apos;outil{" "}
           <a href="/tools/captions" className="underline font-medium hover:text-violet-800">Captions</a>,
           puis utilisez le panneau <strong>Presets</strong> (en haut à droite) pour le sauvegarder.
-          Cochez &quot;Builtin&quot; en dessous pour le rendre visible à tous les utilisateurs assignés.
+          Cochez &quot;Intégré&quot; en dessous pour le rendre visible à tous les utilisateurs assignés.
         </p>
       </div>
 
@@ -147,15 +147,15 @@ function PresetList({
     <div className="divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
       {presets.map((preset) => (
         <div key={preset.id} className="bg-white px-5 py-3 flex items-center gap-3">
-          {/* Builtin toggle */}
-          <label className="flex items-center gap-1.5 shrink-0 cursor-pointer" title="Visible par tous (builtin)">
+          {/* Integrated toggle */}
+          <label className="flex items-center gap-1.5 shrink-0 cursor-pointer" title="Visible par tous (intégré)">
             <input
               type="checkbox"
               checked={preset.isBuiltin}
               onChange={() => onToggleBuiltin(preset.id, preset.isBuiltin)}
               className="accent-violet-600"
             />
-            <span className="text-[10px] text-gray-400">builtin</span>
+            <span className="text-[10px] text-gray-400">intégré</span>
           </label>
 
           {/* Name / edit */}

@@ -2,6 +2,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canAccessTemplate } from "@/lib/permissions";
+import { normalizeTemplateJSON, serializeTemplateJSON } from "@/lib/templateNormalization";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -22,7 +23,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return NextResponse.json({
     ...template,
     formats: JSON.parse(template.formats) as string[],
-    jsonData: JSON.parse(template.jsonData),
+    jsonData: normalizeTemplateJSON(JSON.parse(template.jsonData)),
   });
 }
 
@@ -52,7 +53,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
       ...(client !== undefined && { client }),
       ...(formats !== undefined && { formats: JSON.stringify(formats) }),
       ...(jsonData !== undefined && {
-        jsonData: typeof jsonData === "string" ? jsonData : JSON.stringify(jsonData),
+        jsonData: typeof jsonData === "string"
+          ? JSON.stringify(serializeTemplateJSON(JSON.parse(jsonData)))
+          : JSON.stringify(serializeTemplateJSON(jsonData)),
       }),
     },
   });
@@ -60,7 +63,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
   return NextResponse.json({
     ...updated,
     formats: JSON.parse(updated.formats) as string[],
-    jsonData: JSON.parse(updated.jsonData),
+    jsonData: normalizeTemplateJSON(JSON.parse(updated.jsonData)),
   });
 }
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { getRenderStageLabel } from "@/lib/renderer/renderWorkflow";
 
 type RenderStatus = "PENDING" | "PROCESSING" | "DONE" | "ERROR";
 
@@ -14,14 +15,20 @@ interface Props {
   errorMsg: string | null;
   templateId: string;
   listingId: string;
+  stage?: string | null;
+  statusDetail?: string | null;
+  progress?: number | null;
 }
 
-export function RenderResult({ renderId, initialStatus, pngUrl: initPng, pdfUrl: initPdf, videoUrl: initVideo, errorMsg: initErr, templateId }: Props) {
+export function RenderResult({ renderId, initialStatus, pngUrl: initPng, pdfUrl: initPdf, videoUrl: initVideo, errorMsg: initErr, templateId, stage: initStage, statusDetail: initDetail, progress: initProgress }: Props) {
   const [status, setStatus] = useState<RenderStatus>(initialStatus as RenderStatus);
   const [pngUrl, setPngUrl] = useState(initPng);
   const [pdfUrl, setPdfUrl] = useState(initPdf);
   const [videoUrl, setVideoUrl] = useState(initVideo ?? null);
   const [errorMsg, setErrorMsg] = useState(initErr);
+  const [stage, setStage] = useState(initStage ?? null);
+  const [statusDetail, setStatusDetail] = useState(initDetail ?? null);
+  const [progress, setProgress] = useState<number | null>(initProgress ?? null);
 
   const poll = useCallback(async () => {
     const res = await fetch(`/api/renders/${renderId}`);
@@ -31,6 +38,9 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, pdfUrl:
     if (data.pdfUrl) setPdfUrl(data.pdfUrl);
     if (data.videoUrl) setVideoUrl(data.videoUrl);
     if (data.errorMsg) setErrorMsg(data.errorMsg);
+    setStage(data.stage ?? null);
+    setStatusDetail(data.statusDetail ?? null);
+    setProgress(typeof data.progress === "number" ? data.progress : null);
   }, [renderId]);
 
   useEffect(() => {
@@ -57,6 +67,21 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, pdfUrl:
       {/* Error message */}
       {status === "ERROR" && errorMsg && (
         <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl p-4">{errorMsg}</p>
+      )}
+
+      {(stage || statusDetail || typeof progress === "number") && (
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
+          {stage && <p className="text-sm font-medium text-gray-800">Étape: {getRenderStageLabel(stage)}</p>}
+          {statusDetail && <p className="text-sm text-gray-600">{statusDetail}</p>}
+          {typeof progress === "number" && status !== "DONE" && (
+            <div className="space-y-1">
+              <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                <div className="bg-indigo-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${Math.max(3, Math.round(progress * 100))}%` }} />
+              </div>
+              <p className="text-xs text-gray-500">{Math.round(progress * 100)}%</p>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Resolution warnings */}
@@ -92,15 +117,6 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, pdfUrl:
             >
               ↓ Télécharger PNG
             </a>
-            {pdfUrl && (
-              <a
-                href={pdfUrl}
-                download
-                className="flex-1 text-center py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-              >
-                ↓ Télécharger PDF
-              </a>
-            )}
           </div>
         </div>
       )}
@@ -127,7 +143,7 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, pdfUrl:
           href="/listings"
           className="text-sm text-gray-600 hover:text-gray-900 transition-colors font-medium"
         >
-          ← Mes listings
+          ← Mes générations
         </Link>
         {templateId && (
           <Link

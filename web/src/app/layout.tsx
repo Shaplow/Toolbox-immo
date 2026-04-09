@@ -21,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fr">
-      <body className={`${geistSans.variable} antialiased bg-gray-50 text-gray-900 min-h-screen`}>
+      <body suppressHydrationWarning className={`${geistSans.variable} antialiased bg-gray-50 text-gray-900 min-h-screen`}>
         <SessionProvider>
           {children}
           <ToastContainer />

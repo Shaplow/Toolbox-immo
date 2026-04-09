@@ -88,6 +88,8 @@ Ce script :
 - Lance `deploy-app.sh` sur le serveur (npm ci si besoin, migrations Prisma, build Next.js, restart PM2)
 
 > **Note :** `npm ci` et `pip install` sont skippés automatiquement si `package.json` / `requirements.txt` n'ont pas changé depuis le dernier déploiement.
+>
+> **Note infra :** si une mise à jour touche `scripts/setup-nginx.sh`, il faut aussi relancer ce script sur le serveur pour recharger la config Nginx.
 
 ---
 

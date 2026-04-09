@@ -232,11 +232,15 @@ def build_layout(
     hl_y_offset  = base_ascent - hl_ascent
     hl2_y_offset = base_ascent - hl2_ascent
 
-    # Pitch = distance from one line's top to the next line's top.
-    # Based exclusively on the BASE font — highlight fonts are rendered inline
-    # by libass (\rHighlight) and do not affect our grid. The user controls
-    # inter-line spacing via line_gap_ratio; if a large highlight font visually
-    # overflows the slot they can increase that ratio themselves.
+    # Ink descent below the shared baseline (baseline = line_y + base_ascent).
+    # ink_descent = getbbox("Hg")[3] − ascent  (tight, no internal leading).
+    # Using design-space `getmetrics()` descent would bake in font internal leading
+    # as a fixed invisible floor, making line_gap_ratio have no visual effect at 0.
+    base_ink_descent = base_font.getbbox("Hg")[3] - base_ascent
+    hl_ink_descent   = hl_font.getbbox("Hg")[3] - hl_ascent
+    hl2_ink_descent  = (hl2_font.getbbox("Hg")[3] - hl2_ascent) if hl2_font is not None else base_ink_descent
+
+    # (kept for reference — no longer used for per-line spacing)
     max_bottom = base_ascent + base_descent
     pitch = max_bottom + line_gap
 
@@ -299,57 +303,50 @@ def build_layout(
             line_texts = [" ".join(_word_render_info(item)[1](item.word) for item in line_words) for line_words in line_word_groups]
             n = len(line_word_groups)
 
-            # ── Anchor-aware start_y ────────────────────────────────────────
-            # start_y = design-space top of the first line (= line_y for line 0).
-            # All positions are in ink-pixel space:
-            #   ink top  of line i = start_y + i*pitch + bbox_top
-            #   ink bottom of line i = start_y + i*pitch + bbox_bottom
-            # last ink bottom = start_y + (n-1)*pitch + bbox_bottom
-            # first ink top   = start_y + bbox_top
+            # Per-line max ink descent below the shared baseline.
+            # All fonts align to baseline = line_y + base_ascent (via _word_y_offset).
+            # Visual bottom of a line = line_y + base_ascent + max_ink_desc.
+            # y_cursor += base_ascent + max_ink_desc + line_gap
+            # → visual gap (ink bottom ↔ next ink top) = line_gap exactly, always.
+            line_max_ink_desc: list[int] = []
+            for _lw in line_word_groups:
+                mid = base_ink_descent
+                for _w in _lw:
+                    _g = _highlight_group(_w)
+                    if _g is not None:
+                        if _g >= 1 and hl2_font is not None:
+                            mid = max(mid, hl2_ink_descent)
+                        else:
+                            mid = max(mid, hl_ink_descent)
+                line_max_ink_desc.append(mid)
+
+            total_h = n * base_ascent + sum(line_max_ink_desc) + max(0, n - 1) * line_gap
             vertical_shift = int(video_info.height * config.layout.vertical_offset)
 
             if config.layout.anchor == "top":
-                start_y = max(0, safe_top - bbox_top)
+                start_y = safe_top
             elif config.layout.anchor == "center":
-                max_n = config.layout.max_lines
-                full_h = (max_n - 1) * pitch + max_bottom
-                base_start = int((video_info.height - full_h) / 2) - bbox_top
-                base_start = max(base_start, safe_top - bbox_top)
-                base_start = min(base_start,
-                                 video_info.height - safe_bottom
-                                 - (n - 1) * pitch - max_bottom)
-                start_y = base_start
+                start_y = int((video_info.height - total_h) / 2)
+                start_y = max(start_y, safe_top)
+                start_y = min(start_y, video_info.height - safe_bottom - total_h)
             else:  # bottom
-                start_y = video_info.height - safe_bottom - (n - 1) * pitch - max_bottom
-
+                start_y = video_info.height - safe_bottom - total_h
             start_y += vertical_shift
 
             line_objects: list[PositionedLine] = []
+            y_cursor = start_y
 
-            for line_index, line_words in enumerate(line_word_groups):
+            for line_index, (line_words, max_ink_desc) in enumerate(zip(line_word_groups, line_max_ink_desc)):
                 line_text = line_texts[line_index]
+                line_y = y_cursor
+                y_cursor += base_ascent + max_ink_desc + line_gap
+
                 # Line width uses actual per-word advance widths (same as libass).
                 actual_line_width = (
                     sum(_text_advance(_word_render_info(w)[0], _word_render_info(w)[1](w.word)) for w in line_words)
                     + space_w * max(0, len(line_words) - 1)
                 )
                 line_x = safe_left + int((usable_width - actual_line_width) / 2)
-
-                # \an8 anchors the TOP of the tallest glyph at line_y.
-                # When a highlight word (larger font, larger ascent) is on this
-                # line, libass uses hl_ascent as the bounding-box top, pushing
-                # the baseline down by (hl_ascent - base_ascent) compared to
-                # what the Python layout assumed.  Compensate by shifting line_y
-                # upward by the same amount so the rendered baseline lands where
-                # the grid expects it.
-                line_hl_y_adj = 0
-                for _w in line_words:
-                    _g = _highlight_group(_w)
-                    if _g is not None:
-                        _offset = hl2_y_offset if (_g >= 1 and hl2_font is not None) else hl_y_offset
-                        line_hl_y_adj = min(line_hl_y_adj, _offset)  # most negative = tallest font
-
-                line_y = start_y + line_index * pitch + line_hl_y_adj
 
                 cursor_x = line_x
                 word_positions: list[PositionedWord] = []

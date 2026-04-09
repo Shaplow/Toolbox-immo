@@ -33,9 +33,12 @@ export async function renderPDF(
     await page.setContent(html, { waitUntil: "networkidle0" });
     // Wait for all fonts (@font-face + Google Fonts) to be fully loaded and applied
     await page.evaluate(() => document.fonts.ready);
+    await page.waitForFunction(() => (window as Window & { __templateReady?: boolean }).__templateReady === true, { timeout: 5000 }).catch(() => undefined);
 
-    const isLandscape = LANDSCAPE_FORMATS.includes(canvasFormat);
-    const pdfFormat = PDF_FORMATS[canvasFormat] ?? "A4";
+    const isLandscape = canvasFormat === "CUSTOM"
+      ? width >= height
+      : LANDSCAPE_FORMATS.includes(canvasFormat);
+    const pdfFormat = PDF_FORMATS[canvasFormat] ?? { width: `${width}px`, height: `${height}px` };
 
     const buffer = await page.pdf({
       ...(typeof pdfFormat === "string"

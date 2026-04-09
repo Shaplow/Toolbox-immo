@@ -6,6 +6,8 @@ Deux modes :
 - **Local** — tourne via `docker compose` ou directement avec uvicorn, utilisé quand `USE_RUNPOD=false`
 - **RunPod** — image CUDA déployée en serverless, utilisé quand `USE_RUNPOD=true`
 
+Le composite `template video` passe par un builder FFmpeg partagé entre les deux modes. Le cadrage du bloc vidéo, le comportement `cover/contain`, le mapping audio et l'arrêt en fin de source restent ainsi alignés entre local et RunPod.
+
 ---
 
 ## Fichiers clés
@@ -15,6 +17,7 @@ Deux modes :
 | `api.py` | FastAPI — endpoints locaux (`/api/render`, `/api/preview`, etc.) |
 | `app.py` | Moteur de rendu + UI Gradio (dev) |
 | `runpod_worker.py` | Worker RunPod serverless (jobs `captions` + `render_template`) |
+| `engine/template_composite.py` | Builder FFmpeg partagé pour le composite template vidéo |
 | `Dockerfile` | Image dev/local — utilisée par `docker compose` |
 | `Dockerfile.runpod` | Image prod RunPod — base CUDA, sans Gradio |
 | `requirements.txt` | Dépendances locales (inclut Gradio) |
@@ -43,9 +46,11 @@ uvicorn api:app --reload --port 8000
 ```bash
 cd render-engine
 
-docker build -f Dockerfile.runpod -t kodexfr/toolbox-render:latest .
+docker buildx build --platform linux/amd64 -f Dockerfile.runpod -t kodexfr/toolbox-render:latest --load .
 docker push kodexfr/toolbox-render:latest
 ```
+
+Sur Mac Apple Silicon, il faut builder l'image RunPod en `linux/amd64` via la commande `docker buildx build --platform linux/amd64 ...`. On ne fige pas la plateforme dans le `Dockerfile`, pour éviter les warnings de lint du type `FromPlatformFlagConstDisallowed`.
 
 > Les polices du dossier `fonts/` sont copiées dans l'image. Vérifier qu'elles sont bien présentes avant de builder.
 

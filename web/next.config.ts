@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   reactCompiler: true,
   experimental: {
     // Augmente le plafond de body pour les uploads vidéo via /api/upload
-    proxyClientMaxBodySize: 500 * 1024 * 1024, // 500 MB
+    proxyClientMaxBodySize: 2 * 1024 * 1024 * 1024, // 2 GB
   },
   // Proxy direct pour les fichiers statiques du render-engine (images, vidéos).
   // Bypass le route handler JS (qui ne peut pas streamer efficacement les binaires).

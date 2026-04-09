@@ -14,8 +14,8 @@ server {
     listen 80;
     server_name ${SERVER_NAME};
 
-    # Upload max size (vidéos jusqu'à 500 MB)
-    client_max_body_size 500M;
+    # Upload max size (vidéos jusqu'à 2 GB)
+    client_max_body_size 2G;
 
     # Fichiers statiques Next.js
     location /_next/static/ {
@@ -30,14 +30,41 @@ server {
         expires 7d;
     }
 
-    # Renders (vidéos générées)
+    # Renders statiques (PNG / PDF / MP4 générés).
+    # Si le fichier n'existe pas, on laisse la route Next.js /renders/:id répondre.
     location /renders/ {
-        alias ${WEB_DIR}/public/renders/;
+        root ${WEB_DIR}/public;
+        try_files \$uri @nextjs;
         expires 7d;
     }
 
-    # Tout le reste → Next.js
-    location / {
+    # Route upload : pas de buffering (2 GB stream direct vers Next.js)
+    location /api/upload {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_request_buffering off;
+        proxy_read_timeout 1800s;
+        proxy_send_timeout 1800s;
+    }
+
+    # Route transcription : réponse JSON légère (le fichier va directement vers R2)
+    location /api/transcription {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_request_buffering off;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+    }
+
+    location @nextjs {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
@@ -47,7 +74,13 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
-        proxy_read_timeout 300s;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+    }
+
+    # Tout le reste → Next.js
+    location / {
+        try_files \$uri @nextjs;
     }
 }
 EOF

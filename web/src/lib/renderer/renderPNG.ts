@@ -59,6 +59,7 @@ export async function renderPNG(
     await page.setContent(html, { waitUntil: "domcontentloaded" });
     // Wait for all fonts to be applied (ils sont en base64 donc instantané)
     await page.evaluate(() => document.fonts.ready);
+    await page.waitForFunction(() => (window as Window & { __templateReady?: boolean }).__templateReady === true, { timeout: 5000 }).catch(() => undefined);
 
     const buffer = await page.screenshot({
       type: "png",

@@ -4,13 +4,21 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # CUDA 12.8 devel → dernière version toolkit disponible, compatible driver 520+ (RunPod driver 580 inclus)
+# RunPod GPU attend une image linux/amd64.
+# La sélection de plateforme se fait au moment du build via docker buildx --platform linux/amd64.
 FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
 
 # Système : Python 3.11 + dépendances de base
 # FFmpeg sera installé via build statique BtbN (NVENC embarqué, pas de dépendance host)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.11 python3.11-dev python3-pip \
+    fontconfig \
     libass9 \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libsndfile1 \
+    libgomp1 \
     xz-utils wget \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
@@ -31,7 +39,20 @@ WORKDIR /app
 COPY requirements-worker.txt .
 RUN pip install --no-cache-dir -r requirements-worker.txt
 
-# Code source
+# ⚠️ Pre-bake des modèles AVANT COPY . . — ordre critique pour le cache Docker.
+# Cette couche n'est rejouée que si requirements-worker.txt change.
+# Changer le code Python (.py) ne relance PAS ce téléchargement.
+# RunPod pull l'image une fois par machine (GRATUIT, hors billing GPU).
+ENV HF_HOME=/app/hf_cache
+RUN python -c "\
+import whisperx; \
+print('[build] downloading large-v3-turbo...', flush=True); \
+whisperx.load_model('large-v3-turbo', 'cpu', compute_type='int8'); \
+print('[build] downloading alignment model (fr)...', flush=True); \
+whisperx.load_align_model(language_code='fr', device='cpu'); \
+print('[build] models cached.', flush=True)"
+
+# Code source — après les modèles pour ne pas invalider leur couche cache
 COPY . .
 
 # Dossier outputs temporaires
@@ -39,6 +60,8 @@ RUN mkdir -p outputs/temp/api
 
 # Variables d'env
 ENV PYTHONUNBUFFERED=1
+ENV CAPTIONS_ENGINE=ass
+ENV PANGOCAIRO_BACKEND=fc
 # Expose les capacités GPU au container pour NVENC
 ENV NVIDIA_VISIBLE_DEVICES=all
 # "all" expose video+compute+utility+display+graphics → garantit l'accès NVENC sur tous les pods RunPod

@@ -9,20 +9,29 @@
  * Stocke dans User.permissions (JSON array), ex: ["templates","captions"]
  */
 export const TOOLS = {
-  TEMPLATES: "templates",
-  CAPTIONS:  "captions",
+  TEMPLATES:     "templates",
+  CAPTIONS:      "captions",
+  COVERS:        "covers",
+  TRANSCRIPTION: "transcription",
+  DESCRIPTION:   "description",
 } as const;
 
 export type Tool = (typeof TOOLS)[keyof typeof TOOLS];
 
 export const TOOL_LABELS: Record<Tool, string> = {
-  templates: "Templates & generation",
-  captions:  "Outil Captions (videos)",
+  templates:     "Templates et générations",
+  captions:      "Sous-titres vidéo",
+  covers:        "Générateur de covers",
+  transcription: "Transcription audio/vidéo",
+  description:   "Générateur de descriptions",
 };
 
 export const TOOL_DESCRIPTIONS: Record<Tool, string> = {
-  templates: "Acces a la page Templates, generation d'images / PDF / videos",
-  captions:  "Acces a /tools/captions - upload video + burn sous-titres",
+  templates:     "Accès à la page Templates et génération d'images, PDF et vidéos",
+  captions:      "Accès à l'outil de sous-titres vidéo avec import et incrustation",
+  covers:        "Extraction de frames depuis une vidéo pour choisir une cover idéale",
+  transcription: "Transcription automatique de fichiers audio/vidéo avec identification des intervenants",
+  description:   "Génération de descriptions texte à partir d'un fichier SRT ou d'une transcription",
 };
 
 // -- Helpers -------------------------------------------------------------------

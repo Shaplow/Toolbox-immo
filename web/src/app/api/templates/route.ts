@@ -2,6 +2,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { emptyTemplate } from "@/types/template";
+import { serializeTemplateJSON } from "@/lib/templateNormalization";
 
 // GET /api/templates
 export async function GET() {
@@ -49,12 +50,20 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const { name = "Nouveau template", client = "", format = "A3_LANDSCAPE" } = body;
+  const { name = "Nouveau template", client = "", format = "A3_LANDSCAPE", width, height } = body;
 
   const json = emptyTemplate();
   const { CANVAS_FORMATS, defaultCanvas } = await import("@/types/template");
   if (format in CANVAS_FORMATS) {
     json.canvas = defaultCanvas(format);
+  }
+  if (format === "CUSTOM") {
+    json.canvas = {
+      ...json.canvas,
+      format: "CUSTOM",
+      width: Math.max(1, Number(width) || 1920),
+      height: Math.max(1, Number(height) || 1080),
+    };
   }
 
   const template = await prisma.template.create({
@@ -62,7 +71,7 @@ export async function POST(req: NextRequest) {
       name,
       client,
       formats: JSON.stringify([format]),
-      jsonData: JSON.stringify(json),
+      jsonData: JSON.stringify(serializeTemplateJSON(json)),
       userId: session.user.id,
     },
   });

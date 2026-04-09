@@ -1,14 +1,20 @@
 ﻿"use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import type { SchemaField } from "@/types/template";
+import { UNSECTIONED_FORM_SECTION_ID, getFieldPlacementClass, getFieldSpanClass, getFieldStaticPlacementStyle, getFormSectionGridClass, getFormSectionSpanClass, getSectionFieldsInVisualOrder, buildVisibleFormSections } from "@/lib/formSections";
+import type { SchemaField, TemplateFormSection } from "@/types/template";
 
 interface Props {
   templateId: string;
   schema: SchemaField[];
+  formSections: TemplateFormSection[];
+  mediaFieldAspectRatios?: Record<string, number>;
   initialValues?: Record<string, unknown>;
 }
+
+const DEFAULT_MEDIA_PREVIEW_ASPECT_RATIO = 16 / 9;
+const MAX_MEDIA_PREVIEW_HEIGHT = 420;
 
 type Variant = {
   id: string;
@@ -18,12 +24,25 @@ type Variant = {
   pdfUrl?: string;
   videoUrl?: string; // render vidéo (pipeline RunPod)
   errorMsg?: string;
+  stage?: string;
+  statusDetail?: string;
+  progress?: number | null;
 };
 
-export function ListingForm({ templateId, schema, initialValues }: Props) {
+function isFilledValue(value: unknown): boolean {
+  return !(value === undefined || value === null || value === "");
+}
+
+function resolveInitialFieldValue(field: SchemaField, initialValue: unknown): unknown {
+  if (initialValue !== undefined && initialValue !== null) return initialValue;
+  if (field.default !== undefined && field.default !== null) return field.default;
+  return "";
+}
+
+export function ListingForm({ templateId, schema, formSections, mediaFieldAspectRatios = {}, initialValues }: Props) {
   const router = useRouter();
   const [values, setValues] = useState<Record<string, unknown>>(() =>
-    Object.fromEntries(schema.map((f) => [f.key, initialValues?.[f.key] ?? f.default ?? ""]))
+    Object.fromEntries(schema.map((field) => [field.key, resolveInitialFieldValue(field, initialValues?.[field.key])]))
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitErrors, setSubmitErrors] = useState<string[]>([]);
@@ -41,11 +60,34 @@ export function ListingForm({ templateId, schema, initialValues }: Props) {
   }
 
   async function handleUpload(key: string, file: File) {
+    setUploadProgress((p) => ({ ...p, [key]: 0 }));
+
+    // Étape 1 : obtenir l'URL pré-signée R2
+    let uploadUrl: string;
+    let publicUrl: string;
+    try {
+      const res = await fetch("/api/upload-presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size }),
+      });
+      const data = await res.json() as { uploadUrl?: string; publicUrl?: string; error?: string };
+      if (!res.ok || !data.uploadUrl || !data.publicUrl) {
+        setSubmitErrors([data.error ?? "Erreur préparation upload"]);
+        setUploadProgress((p) => ({ ...p, [key]: null }));
+        return;
+      }
+      uploadUrl = data.uploadUrl;
+      publicUrl = data.publicUrl;
+    } catch {
+      setSubmitErrors(["Erreur réseau (presign)"]);
+      setUploadProgress((p) => ({ ...p, [key]: null }));
+      return;
+    }
+
+    // Étape 2 : PUT directement vers R2 avec suivi de progression
     await new Promise<void>((resolve) => {
-      const fd = new FormData();
-      fd.append("file", file);
       const xhr = new XMLHttpRequest();
-      setUploadProgress((p) => ({ ...p, [key]: 0 }));
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
           setUploadProgress((p) => ({ ...p, [key]: Math.round((e.loaded / e.total) * 100) }));
@@ -53,12 +95,10 @@ export function ListingForm({ templateId, schema, initialValues }: Props) {
       };
       xhr.onload = () => {
         setUploadProgress((p) => ({ ...p, [key]: null }));
-        try {
-          const data = JSON.parse(xhr.responseText) as { url?: string; error?: string };
-          if (data.url) handleChange(key, data.url);
-          else setSubmitErrors([data.error ?? "Erreur upload"]);
-        } catch {
-          setSubmitErrors(["Erreur upload : réponse invalide"]);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          handleChange(key, publicUrl);
+        } else {
+          setSubmitErrors([`Erreur upload R2 (${xhr.status})`]);
         }
         resolve();
       };
@@ -67,8 +107,9 @@ export function ListingForm({ templateId, schema, initialValues }: Props) {
         setSubmitErrors(["Erreur upload réseau"]);
         resolve();
       };
-      xhr.open("POST", "/api/upload");
-      xhr.send(fd);
+      xhr.open("PUT", uploadUrl);
+      xhr.setRequestHeader("Content-Type", file.type);
+      xhr.send(file);
     });
   }
 
@@ -76,13 +117,42 @@ export function ListingForm({ templateId, schema, initialValues }: Props) {
     const timer = setInterval(async () => {
       try {
         const res = await fetch(`/api/renders/${renderId}`);
-        const data = await res.json() as { status: string; pngUrl?: string; pdfUrl?: string; videoUrl?: string; errorMsg?: string };
+        const data = await res.json() as {
+          status: string;
+          pngUrl?: string;
+          pdfUrl?: string;
+          videoUrl?: string;
+          errorMsg?: string;
+          stage?: string;
+          statusDetail?: string;
+          progress?: number | null;
+        };
+        setVariants((prev) => prev.map((v) =>
+          v.id === renderId
+            ? {
+                ...v,
+                stage: data.stage,
+                statusDetail: data.statusDetail,
+                progress: data.progress ?? null,
+              }
+            : v
+        ));
         if (data.status === "DONE" || data.status === "ERROR") {
           clearInterval(timer);
           pollTimers.current.delete(renderId);
           setVariants((prev) => prev.map((v) =>
             v.id === renderId
-              ? { ...v, status: data.status === "DONE" ? "done" : "error", imageUrl: data.pngUrl, pdfUrl: data.pdfUrl, videoUrl: data.videoUrl, errorMsg: data.errorMsg ?? undefined }
+              ? {
+                  ...v,
+                  status: data.status === "DONE" ? "done" : "error",
+                  imageUrl: data.pngUrl,
+                  pdfUrl: data.pdfUrl,
+                  videoUrl: data.videoUrl,
+                  errorMsg: data.errorMsg ?? undefined,
+                  stage: data.stage,
+                  statusDetail: data.statusDetail,
+                  progress: data.progress ?? null,
+                }
               : v
           ));
         }
@@ -95,22 +165,40 @@ export function ListingForm({ templateId, schema, initialValues }: Props) {
     pollTimers.current.set(renderId, timer);
   }, []);
 
-  /** Returns true if a field's showIf condition is satisfied (or absent) */
-  function isFieldVisible(field: SchemaField): boolean {
-    if (!field.showIf) return true;
-    const actual = String(values[field.showIf.field] ?? "");
-    return actual === field.showIf.equals;
+  const sections = useMemo(() => buildVisibleFormSections(schema, formSections, values), [formSections, schema, values]);
+  const hasOnlyUnsectionedSection = sections.length === 1 && sections[0]?.id === UNSECTIONED_FORM_SECTION_ID;
+  const visibleFields = useMemo(() => sections.flatMap((section) => section.fields), [sections]);
+  const visibleFieldKeys = useMemo(() => new Set(visibleFields.map((field) => field.key)), [visibleFields]);
+  const visibleRequiredFields = useMemo(
+    () => visibleFields.filter((field) => field.required),
+    [visibleFields]
+  );
+  const remainingRequiredFields = useMemo(
+    () => visibleRequiredFields.filter((field) => !isFilledValue(values[field.key])),
+    [values, visibleRequiredFields]
+  );
+
+  useEffect(() => {
+    setErrors((current) => {
+      const nextEntries = Object.entries(current).filter(([key]) => visibleFieldKeys.has(key));
+      if (nextEntries.length === Object.keys(current).length) return current;
+      return Object.fromEntries(nextEntries);
+    });
+  }, [visibleFieldKeys]);
+
+  function scrollToSection(sectionId: string) {
+    const node = document.getElementById(`form-section-${sectionId}`);
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
     setSubmitErrors([]);
 
-    // Validation — skip hidden fields
+    // Validation — only require fields that are actually rendered now
     const newErrors: Record<string, string> = {};
-    for (const field of schema) {
-      if (!field.required) continue;
-      if (!isFieldVisible(field)) continue; // hidden = not required
+    for (const field of visibleRequiredFields) {
       const val = values[field.key];
       if (val === undefined || val === null || val === "") {
         newErrors[field.key] = `${field.label || field.key} est obligatoire`;
@@ -161,11 +249,28 @@ export function ListingForm({ templateId, schema, initialValues }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ templateId, listingId }),
       });
-      const render = await renderRes.json() as { id?: string };
-      if (!render.id) { setSubmitErrors(["Erreur lors du lancement de la génération."]); return; }
+      const renderContentType = renderRes.headers.get("content-type") ?? "";
+      let render: { id?: string; error?: string } = {};
+      if (renderContentType.includes("application/json")) {
+        render = await renderRes.json() as { id?: string; error?: string };
+      } else {
+        const raw = await renderRes.text();
+        render = raw ? { error: raw.slice(0, 300) } : { error: "Réponse vide du serveur" };
+      }
+      if (!renderRes.ok || !render.id) {
+        setSubmitErrors([render.error ?? "Erreur lors du lancement de la génération."]);
+        return;
+      }
 
       variantCountRef.current += 1;
-      const newVariant: Variant = { id: render.id, num: variantCountRef.current, status: "polling" };
+      const newVariant: Variant = {
+        id: render.id,
+        num: variantCountRef.current,
+        status: "polling",
+        stage: "QUEUED",
+        statusDetail: "Job accepté",
+        progress: 0.02,
+      };
       setVariants((prev) => [newVariant, ...prev]);
       startPolling(render.id);
     } finally {
@@ -176,11 +281,11 @@ export function ListingForm({ templateId, schema, initialValues }: Props) {
   const doneVariants = variants.filter((v) => v.status === "done");
 
   return (
-    <div className="flex gap-6 items-start">
+    <div className="grid gap-6 md:grid-cols-4 items-start">
       {/* ── Form ─────────────────────────────────────────────────────────── */}
-      <form onSubmit={handleGenerate} className="flex-1 space-y-6 min-w-0">
+      <form onSubmit={handleGenerate} className="min-w-0 space-y-6 order-2 md:order-none md:col-span-3">
         {submitErrors.length > 0 && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
             <p className="text-sm font-medium text-red-700 mb-2">Champs obligatoires manquants :</p>
             <ul className="list-disc list-inside space-y-1">
               {submitErrors.map((e) => (
@@ -190,26 +295,78 @@ export function ListingForm({ templateId, schema, initialValues }: Props) {
           </div>
         )}
 
-        <div className="bg-white rounded-xl border border-gray-100 p-6 space-y-4">
-          {schema.map((field) => {
-            if (!isFieldVisible(field)) return null;
-            return (
-              <FieldInput
-                key={field.key}
-                field={field}
-                value={values[field.key]}
-                focalPoint={(field.type === "image" || field.type === "video") ? (values[field.key + "_focalpoint"] as { x: number; y: number } | null) ?? null : null}
-                error={errors[field.key]}
-                uploadProgress={uploadProgress[field.key] ?? null}
-                onChange={(v) => handleChange(field.key, v)}
-                onUpload={(f) => handleUpload(field.key, f)}
-                onFocalChange={(fp) => handleChange(field.key + "_focalpoint", fp)}
-              />
-            );
-          })}
+        {!hasOnlyUnsectionedSection ? <div className="xl:hidden -mx-1 overflow-x-auto pb-1">
+          <div className="flex gap-2 px-1 min-w-max">
+            {sections.map((section) => (
+              <button
+                key={section.id}
+                type="button"
+                onClick={() => scrollToSection(section.id)}
+                className="px-3 py-1.5 rounded-full border border-gray-200 bg-white text-xs text-gray-600 hover:border-indigo-300 hover:text-indigo-700"
+              >
+                {section.title}
+              </button>
+            ))}
+          </div>
+        </div> : null}
+
+        <div className="grid grid-cols-1 2xl:grid-cols-2 gap-5">
+          {sections.map((section) => (
+            <section
+              key={section.id}
+              id={`form-section-${section.id}`}
+              className={`bg-white rounded-2xl border border-gray-100 p-5 md:p-6 shadow-sm scroll-mt-6 ${getFormSectionSpanClass(section)}`}
+            >
+            {!(hasOnlyUnsectionedSection && section.id === UNSECTIONED_FORM_SECTION_ID) ? (
+              <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between mb-5">
+                <div>
+                  <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-400">Section</p>
+                  <h2 className="text-xl font-semibold text-gray-900 mt-1">{section.title}</h2>
+                  {section.description ? <p className="text-sm text-gray-500 mt-2 max-w-2xl">{section.description}</p> : null}
+                </div>
+                <div className="text-xs text-gray-400">
+                  {section.fields.filter((field) => field.required).length} requis · {section.fields.length} champs
+                </div>
+              </div>
+            ) : null}
+
+            <div className={getFormSectionGridClass(section)}>
+              {getSectionFieldsInVisualOrder(section.fields, section.fieldColumns).map((field) => (
+                <div
+                  key={field.key}
+                  className={`${getFieldSpanClass(field, section.fieldColumns)} ${getFieldPlacementClass(field, section.fieldColumns)}`.trim()}
+                  style={getFieldStaticPlacementStyle(field, section.fieldColumns, true)}
+                >
+                  <FieldInput
+                    field={field}
+                    value={values[field.key]}
+                    previewAspectRatio={mediaFieldAspectRatios[field.key]}
+                    focalPoint={(field.type === "image" || field.type === "video") ? (values[field.key + "_focalpoint"] as { x: number; y: number } | null) ?? null : null}
+                    error={errors[field.key]}
+                    uploadProgress={uploadProgress[field.key] ?? null}
+                    onChange={(v) => handleChange(field.key, v)}
+                    onUpload={(f) => handleUpload(field.key, f)}
+                    onFocalChange={(fp) => handleChange(field.key + "_focalpoint", fp)}
+                  />
+                </div>
+              ))}
+            </div>
+            </section>
+          ))}
         </div>
 
-        <div className="flex justify-end gap-3">
+        <div className="sticky bottom-4 z-10">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white/90 backdrop-blur rounded-2xl border border-gray-200 shadow-lg px-4 py-3">
+          <div className="text-sm">
+            {remainingRequiredFields.length > 0 ? (
+              <p className="font-medium text-amber-700">
+                {remainingRequiredFields.length} champ{remainingRequiredFields.length > 1 ? "s" : ""} obligatoire{remainingRequiredFields.length > 1 ? "s" : ""} restant{remainingRequiredFields.length > 1 ? "s" : ""}
+              </p>
+            ) : (
+              <p className="font-medium text-emerald-700">Tous les champs obligatoires visibles sont remplis</p>
+            )}
+          </div>
+          <div className="flex justify-end gap-3">
           <button
             type="button"
             onClick={() => router.back()}
@@ -224,12 +381,42 @@ export function ListingForm({ templateId, schema, initialValues }: Props) {
           >
             {generating ? "Génération…" : variants.length === 0 ? "Générer" : "Générer une variante"}
           </button>
+          </div>
+          </div>
         </div>
       </form>
 
       {/* ── Variants panel ───────────────────────────────────────────────── */}
-      <div className="w-80 shrink-0 sticky top-6 space-y-3">
-        {/* Header with link to listings */}
+      <div className="w-full shrink-0 md:sticky md:top-6 space-y-3 order-1 md:order-none md:col-span-1">
+        {!hasOnlyUnsectionedSection ? <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+          <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-400 mb-3">Navigation</p>
+          <div className="space-y-2">
+            {sections.map((section) => {
+              const requiredCount = section.fields.filter((field) => field.required).length;
+              const filledCount = section.fields.filter((field) => !field.required || isFilledValue(values[field.key])).length;
+              const sectionErrorCount = section.fields.filter((field) => errors[field.key]).length;
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => scrollToSection(section.id)}
+                  className="w-full text-left px-3 py-2 rounded-xl border border-gray-100 hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-gray-700">{section.title}</span>
+                    {sectionErrorCount > 0 ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-500">{sectionErrorCount} err.</span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{filledCount}/{section.fields.length}</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-1">{requiredCount > 0 ? `${requiredCount} champ${requiredCount > 1 ? "s" : ""} requis` : `${section.fields.length} champ${section.fields.length > 1 ? "s" : ""}`}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div> : null}
+
         {doneVariants.length > 0 && (
           <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2.5 flex items-center justify-between">
             <p className="text-xs font-medium text-indigo-800">{doneVariants.length} variante{doneVariants.length > 1 ? "s" : ""} générée{doneVariants.length > 1 ? "s" : ""}</p>
@@ -237,7 +424,7 @@ export function ListingForm({ templateId, schema, initialValues }: Props) {
               href="/listings"
               className="text-xs text-indigo-700 hover:underline font-medium"
             >
-              Mes listings →
+              Mes générations →
             </a>
           </div>
         )}
@@ -263,7 +450,13 @@ export function ListingForm({ templateId, schema, initialValues }: Props) {
             {v.status === "polling" && (
               <div className="h-36 flex flex-col items-center justify-center gap-3 text-gray-400">
                 <div className="w-7 h-7 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                <p className="text-xs">Génération en cours…</p>
+                <div className="space-y-1 text-center px-4">
+                  <p className="text-xs">Génération en cours…</p>
+                  {v.statusDetail && <p className="text-[10px] text-gray-500">{v.statusDetail}</p>}
+                  {typeof v.progress === "number" && (
+                    <p className="text-[10px] text-gray-400">{Math.round(v.progress * 100)}%</p>
+                  )}
+                </div>
               </div>
             )}
 
@@ -316,15 +509,7 @@ export function ListingForm({ templateId, schema, initialValues }: Props) {
                       ↓ PNG
                     </a>
                   )}
-                  {v.pdfUrl && (
-                    <a
-                      href={v.pdfUrl}
-                      download
-                      className="flex-1 text-center text-xs py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg"
-                    >
-                      ↓ PDF
-                    </a>
-                  )}
+
                 </div>
               </div>
             )}
@@ -338,6 +523,7 @@ export function ListingForm({ templateId, schema, initialValues }: Props) {
 function FieldInput({
   field,
   value,
+  previewAspectRatio,
   focalPoint,
   error,
   uploadProgress,
@@ -347,6 +533,7 @@ function FieldInput({
 }: {
   field: SchemaField;
   value: unknown;
+  previewAspectRatio?: number;
   focalPoint?: { x: number; y: number } | null;
   error?: string;
   uploadProgress?: number | null;
@@ -354,19 +541,31 @@ function FieldInput({
   onUpload: (f: File) => void;
   onFocalChange?: (fp: { x: number; y: number }) => void;
 }) {
+  const isConditional = Boolean(field.showIf);
+  const helperText = field.description || (isConditional
+    ? `Affiché après le choix ${field.showIf?.field} = ${field.showIf?.equals}`
+    : "");
+  const controlClassName = "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400";
+
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        {field.label || field.key}
-        {field.required && <span className="text-red-500 ml-1">*</span>}
-      </label>
-      {field.description && (
-        <p className="text-xs text-gray-400 mb-1.5">{field.description}</p>
-      )}
+      <div className="min-h-[28px] mb-1.5 flex items-center gap-2 flex-wrap">
+        <label className="block text-sm font-medium text-gray-700">
+          {field.label || field.key}
+          {field.required && <span className="text-red-500 ml-1">*</span>}
+        </label>
+        {isConditional && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+            conditionnel
+          </span>
+        )}
+      </div>
 
       {field.type === "image" ? (
         <ImageFieldInput
           value={value}
+          previewAspectRatio={previewAspectRatio}
           focalPoint={focalPoint ?? null}
           onUpload={onUpload}
           onFocalChange={onFocalChange ?? (() => {})}
@@ -375,6 +574,7 @@ function FieldInput({
       ) : field.type === "video" ? (
         <VideoFieldInput
           value={value}
+          previewAspectRatio={previewAspectRatio}
           focalPoint={focalPoint ?? null}
           onUpload={onUpload}
           onFocalChange={onFocalChange ?? (() => {})}
@@ -384,7 +584,7 @@ function FieldInput({
         <select
           value={String(value ?? "")}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className={controlClassName}
         >
           <option value="">—</option>
           {field.options?.map((opt) => (
@@ -403,11 +603,12 @@ function FieldInput({
         </label>
       ) : field.type === "number" ? (
         <input
-          type="number"
+          type="text"
+          inputMode="decimal"
           value={String(value ?? "")}
-          onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))}
+          onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className={controlClassName}
         />
       ) : field.type === "url" ? (
         <input
@@ -415,7 +616,7 @@ function FieldInput({
           value={String(value ?? "")}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder ?? "https://…"}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className={controlClassName}
         />
       ) : (
         <input
@@ -423,9 +624,15 @@ function FieldInput({
           value={String(value ?? "")}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className={controlClassName}
         />
       )}
+
+      <div className="mt-1.5 min-h-[16px]">
+        {helperText ? (
+          <p className="text-xs text-gray-400">{helperText}</p>
+        ) : null}
+      </div>
 
       {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
     </div>
@@ -434,12 +641,14 @@ function FieldInput({
 
 function ImageFieldInput({
   value,
+  previewAspectRatio,
   focalPoint,
   onUpload,
   onFocalChange,
   uploadProgress,
 }: {
   value: unknown;
+  previewAspectRatio?: number;
   focalPoint: { x: number; y: number } | null;
   onUpload: (f: File) => void;
   onFocalChange: (fp: { x: number; y: number }) => void;
@@ -449,6 +658,10 @@ function ImageFieldInput({
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
   const fp = focalPoint ?? { x: 0.5, y: 0.5 };
+  const aspectRatio = previewAspectRatio && Number.isFinite(previewAspectRatio) && previewAspectRatio > 0
+    ? previewAspectRatio
+    : DEFAULT_MEDIA_PREVIEW_ASPECT_RATIO;
+  const previewMaxWidth = MAX_MEDIA_PREVIEW_HEIGHT * aspectRatio;
 
   // Upload en cours
   if (uploadProgress !== null && uploadProgress !== undefined) {
@@ -494,8 +707,12 @@ function ImageFieldInput({
       {/* Image preview with focal point picker */}
       <div
         ref={containerRef}
-        className="relative w-full rounded-xl overflow-hidden cursor-crosshair border border-gray-200 select-none"
-        style={{ paddingBottom: "56.25%" }}
+        className="relative w-full rounded-xl overflow-hidden cursor-crosshair border border-gray-200 select-none mx-auto"
+        style={{
+          aspectRatio: String(aspectRatio),
+          maxWidth: `${previewMaxWidth}px`,
+          maxHeight: `${MAX_MEDIA_PREVIEW_HEIGHT}px`,
+        }}
         onMouseDown={(e) => { dragging.current = true; getFocalFromEvent(e); }}
         onMouseMove={(e) => { if (dragging.current) getFocalFromEvent(e); }}
         onMouseUp={() => { dragging.current = false; }}
@@ -552,12 +769,14 @@ function ImageFieldInput({
 
 function VideoFieldInput({
   value,
+  previewAspectRatio,
   focalPoint,
   onUpload,
   onFocalChange,
   uploadProgress,
 }: {
   value: unknown;
+  previewAspectRatio?: number;
   focalPoint: { x: number; y: number } | null;
   onUpload: (f: File) => void;
   onFocalChange: (fp: { x: number; y: number }) => void;
@@ -567,6 +786,10 @@ function VideoFieldInput({
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
   const fp = focalPoint ?? { x: 0.5, y: 0.5 };
+  const aspectRatio = previewAspectRatio && Number.isFinite(previewAspectRatio) && previewAspectRatio > 0
+    ? previewAspectRatio
+    : DEFAULT_MEDIA_PREVIEW_ASPECT_RATIO;
+  const previewMaxWidth = MAX_MEDIA_PREVIEW_HEIGHT * aspectRatio;
 
   function getFocalFromEvent(e: React.MouseEvent | MouseEvent) {
     if (!containerRef.current) return;
@@ -596,7 +819,7 @@ function VideoFieldInput({
       <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors group">
         <span className="text-2xl text-gray-300 group-hover:text-indigo-400 transition-colors">🎬</span>
         <span className="text-sm font-medium text-gray-400 group-hover:text-indigo-700 mt-1">Cliquer pour choisir une vidéo</span>
-        <span className="text-xs text-gray-300 mt-0.5">MP4 · MOV · WEBM — max 500 MB</span>
+        <span className="text-xs text-gray-300 mt-0.5">MP4 · MOV · WEBM — max 2 Go</span>
         <input
           type="file"
           accept="video/mp4,video/quicktime,video/x-m4v,video/webm"
@@ -612,8 +835,12 @@ function VideoFieldInput({
       {/* Preview vidéo avec overlay cadrage — muted/loop, pas de controls pour le drag */}
       <div
         ref={containerRef}
-        className="relative w-full rounded-xl overflow-hidden cursor-crosshair border border-gray-200 select-none"
-        style={{ paddingBottom: "56.25%" }}
+        className="relative w-full rounded-xl overflow-hidden cursor-crosshair border border-gray-200 select-none mx-auto"
+        style={{
+          aspectRatio: String(aspectRatio),
+          maxWidth: `${previewMaxWidth}px`,
+          maxHeight: `${MAX_MEDIA_PREVIEW_HEIGHT}px`,
+        }}
         onMouseDown={(e) => { dragging.current = true; getFocalFromEvent(e); }}
         onMouseMove={(e) => { if (dragging.current) getFocalFromEvent(e); }}
         onMouseUp={() => { dragging.current = false; }}

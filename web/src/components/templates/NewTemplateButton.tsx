@@ -12,6 +12,8 @@ export function NewTemplateButton() {
   const [name, setName] = useState("Nouveau template");
   const [client, setClient] = useState("");
   const [format, setFormat] = useState<CanvasFormat>("A3_LANDSCAPE");
+  const [customWidth, setCustomWidth] = useState(1920);
+  const [customHeight, setCustomHeight] = useState(1080);
   const [loading, setLoading] = useState(false);
 
   async function handleCreate() {
@@ -19,13 +21,19 @@ export function NewTemplateButton() {
     const res = await fetch("/api/templates", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, client, format }),
+      body: JSON.stringify({
+        name,
+        client,
+        format,
+        width: format === "CUSTOM" ? customWidth : undefined,
+        height: format === "CUSTOM" ? customHeight : undefined,
+      }),
     });
     const data = await res.json();
     setLoading(false);
     setOpen(false);
     if (data.id) {
-      router.push(`/templates/${data.id}/edit`);
+      router.push(`/tools/templates/${data.id}/edit`);
     }
   }
 
@@ -78,6 +86,31 @@ export function NewTemplateButton() {
                   ))}
                 </select>
               </div>
+
+              {format === "CUSTOM" ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Largeur</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={customWidth}
+                      onChange={(e) => setCustomWidth(Math.max(1, Number(e.target.value) || 1))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Hauteur</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={customHeight}
+                      onChange={(e) => setCustomHeight(Math.max(1, Number(e.target.value) || 1))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="flex gap-2 mt-5">

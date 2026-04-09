@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
-import { Film, RefreshCw, Download, LayoutTemplate } from "lucide-react";
+import { Film, RefreshCw, Download, LayoutTemplate, Mic, AlignLeft, Copy, Check } from "lucide-react";
 import { DeleteListingButton } from "./DeleteListingButton";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -34,12 +34,47 @@ export type CaptionJobRow = {
   inputName: string | null;
   createdAt: string;
   ownerName: string | null;
+  presetId: string | null;
+};
+
+export type TranscriptionJobRow = {
+  id: string;
+  status: string;
+  inputFilename: string | null;
+  model: string;
+  language: string | null;
+  enableDiarization: boolean;
+  hasDiarization: boolean;
+  segmentCount: number | null;
+  duration: number | null;
+  errorMsg: string | null;
+  createdAt: string;
+  ownerName: string | null;
+};
+
+export type DescriptionJobRow = {
+  id: string;
+  status: string;
+  inputFilename: string | null;
+  inputType: string;
+  promptId: string | null;
+  model: string;
+  result: string | null;
+  errorMsg: string | null;
+  createdAt: string;
+  ownerName: string | null;
+  prompt: { name: string } | null;
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+  return new Date(iso).toLocaleString("fr-FR", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function getDateGroup(iso: string): string {
@@ -71,13 +106,17 @@ const MAX_VISIBLE = 4;
 export function ListingsClient({
   initialListings,
   initialCaptionJobs,
+  initialTranscriptionJobs,
+  initialDescriptionJobs,
   isAdmin,
 }: {
   initialListings: ListingRow[];
   initialCaptionJobs: CaptionJobRow[];
+  initialTranscriptionJobs: TranscriptionJobRow[];
+  initialDescriptionJobs: DescriptionJobRow[];
   isAdmin: boolean;
 }) {
-  const [tab, setTab] = useState<"visuels" | "captions">("visuels");
+  const [tab, setTab] = useState<"visuels" | "captions" | "transcription" | "description">("visuels");
   const [userFilter, setUserFilter] = useState<string | null>(null);
   // Flat map of render states keyed by renderId
   const [renderStates, setRenderStates] = useState<Record<string, RenderRow>>(() => {
@@ -90,6 +129,8 @@ export function ListingsClient({
 
   const [deletedRenderIds, setDeletedRenderIds] = useState<Set<string>>(new Set());
   const [deletedCaptionJobIds, setDeletedCaptionJobIds] = useState<Set<string>>(new Set());
+  const [deletedTranscriptionJobIds, setDeletedTranscriptionJobIds] = useState<Set<string>>(new Set());
+  const [deletedDescriptionJobIds, setDeletedDescriptionJobIds] = useState<Set<string>>(new Set());
 
   const handleDeleteRender = async (renderId: string) => {
     await fetch(`/api/renders/${renderId}`, { method: "DELETE" });
@@ -101,6 +142,15 @@ export function ListingsClient({
     setDeletedCaptionJobIds((prev) => new Set([...prev, jobId]));
   };
 
+  const handleDeleteTranscriptionJob = async (jobId: string) => {
+    await fetch(`/api/transcription/${jobId}`, { method: "DELETE" });
+    setDeletedTranscriptionJobIds((prev) => new Set([...prev, jobId]));
+  };
+
+  const handleDeleteDescriptionJob = async (jobId: string) => {
+    setDeletedDescriptionJobIds((prev) => new Set([...prev, jobId]));
+  };
+
   const [captionStates, setCaptionStates] = useState<Record<string, CaptionJobRow>>(() => {
     const m: Record<string, CaptionJobRow> = {};
     for (const j of initialCaptionJobs) m[j.id] = j;
@@ -108,6 +158,14 @@ export function ListingsClient({
   });
   const captionStatesRef = useRef(captionStates);
   captionStatesRef.current = captionStates;
+
+  const [transcriptionStates, setTranscriptionStates] = useState<Record<string, TranscriptionJobRow>>(() => {
+    const m: Record<string, TranscriptionJobRow> = {};
+    for (const j of initialTranscriptionJobs) m[j.id] = j;
+    return m;
+  });
+  const transcriptionStatesRef = useRef(transcriptionStates);
+  transcriptionStatesRef.current = transcriptionStates;
 
   useEffect(() => {
     const timer = setInterval(async () => {
@@ -142,6 +200,18 @@ export function ListingsClient({
             }
           } catch { /* ignore */ }
         }),
+        ...Object.values(transcriptionStatesRef.current)
+          .filter((j) => j.status === "PROCESSING" || j.status === "QUEUED")
+          .map(async (j) => {
+            try {
+              const res = await fetch(`/api/transcription/${j.id}`);
+              if (!res.ok) return;
+              const data = await res.json() as Partial<TranscriptionJobRow> & { status: string };
+              if (data.status !== transcriptionStatesRef.current[j.id]?.status) {
+                setTranscriptionStates((prev) => ({ ...prev, [j.id]: { ...prev[j.id], ...data } }));
+              }
+            } catch { /* ignore */ }
+          }),
       ]);
     }, 2500);
     return () => clearInterval(timer);
@@ -152,8 +222,10 @@ export function ListingsClient({
     const names = new Set<string>();
     for (const l of initialListings) if (l.ownerName) names.add(l.ownerName);
     for (const j of initialCaptionJobs) if (j.ownerName) names.add(j.ownerName);
+    for (const j of initialTranscriptionJobs) if (j.ownerName) names.add(j.ownerName);
+    for (const j of initialDescriptionJobs) if (j.ownerName) names.add(j.ownerName);
     return Array.from(names).sort();
-  }, [initialListings, initialCaptionJobs]);
+  }, [initialListings, initialCaptionJobs, initialTranscriptionJobs, initialDescriptionJobs]);
 
   const filteredListings = useMemo(
     () => (userFilter ? initialListings.filter((l) => l.ownerName === userFilter) : initialListings),
@@ -168,10 +240,32 @@ export function ListingsClient({
     [initialCaptionJobs, userFilter, deletedCaptionJobIds]
   );
 
+  const filteredTranscriptions = useMemo(
+    () =>
+      (userFilter ? initialTranscriptionJobs.filter((j) => j.ownerName === userFilter) : initialTranscriptionJobs).filter(
+        (j) => !deletedTranscriptionJobIds.has(j.id)
+      ),
+    [initialTranscriptionJobs, userFilter, deletedTranscriptionJobIds]
+  );
+
+  const filteredDescriptions = useMemo(
+    () =>
+      (userFilter ? initialDescriptionJobs.filter((j) => j.ownerName === userFilter) : initialDescriptionJobs).filter(
+        (j) => !deletedDescriptionJobIds.has(j.id)
+      ),
+    [initialDescriptionJobs, userFilter, deletedDescriptionJobIds]
+  );
+
   const listingGroups = useMemo(() => groupByDate(filteredListings), [filteredListings]);
   const captionGroups = useMemo(() => groupByDate(filteredCaptions), [filteredCaptions]);
+  const transcriptionGroups = useMemo(() => groupByDate(filteredTranscriptions), [filteredTranscriptions]);
+  const descriptionGroups = useMemo(() => groupByDate(filteredDescriptions), [filteredDescriptions]);
 
-  const activeGroups = tab === "visuels" ? listingGroups : captionGroups;
+  const activeGroups =
+    tab === "visuels" ? listingGroups :
+    tab === "captions" ? captionGroups :
+    tab === "transcription" ? transcriptionGroups :
+    descriptionGroups;
   const isEmpty = GROUP_ORDER.every((g) => !activeGroups[g]?.length);
 
   return (
@@ -204,6 +298,36 @@ export function ListingsClient({
             {filteredCaptions.length}
           </span>
         </button>
+        {initialTranscriptionJobs.length > 0 && (
+          <button
+            onClick={() => setTab("transcription")}
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              tab === "transcription" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Transcription
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+              tab === "transcription" ? "bg-teal-100 text-teal-600" : "bg-gray-200 text-gray-500"
+            }`}>
+              {filteredTranscriptions.length}
+            </span>
+          </button>
+        )}
+        {initialDescriptionJobs.length > 0 && (
+          <button
+            onClick={() => setTab("description")}
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              tab === "description" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Descriptions
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+              tab === "description" ? "bg-sky-100 text-sky-600" : "bg-gray-200 text-gray-500"
+            }`}>
+              {filteredDescriptions.length}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Admin user filter pills */}
@@ -244,16 +368,34 @@ export function ListingsClient({
               <p className="font-medium">Aucun template pour l&apos;instant</p>
               <p className="text-sm mt-1">
                 Choisissez un template depuis la page{" "}
-                <Link href="/templates" className="text-indigo-600 hover:underline">Templates</Link>
+                <Link href="/tools/templates" className="text-indigo-600 hover:underline">Templates</Link>
               </p>
             </>
-          ) : (
+          ) : tab === "captions" ? (
             <>
               <Film size={40} className="mx-auto mb-4 opacity-30" />
               <p className="font-medium">Aucune vidéo caption</p>
               <p className="text-sm mt-1">
                 Rendez-vous dans{" "}
                 <Link href="/tools/captions" className="text-violet-600 hover:underline">Captions</Link>
+              </p>
+            </>
+          ) : tab === "transcription" ? (
+            <>
+              <Mic size={40} className="mx-auto mb-4 opacity-30" />
+              <p className="font-medium">Aucune transcription</p>
+              <p className="text-sm mt-1">
+                Rendez-vous dans{" "}
+                <Link href="/tools/transcription" className="text-teal-600 hover:underline">Transcription</Link>
+              </p>
+            </>
+          ) : (
+            <>
+              <AlignLeft size={40} className="mx-auto mb-4 opacity-30" />
+              <p className="font-medium">Aucune description générée</p>
+              <p className="text-sm mt-1">
+                Rendez-vous dans{" "}
+                <Link href="/tools/description" className="text-sky-600 hover:underline">Descriptions</Link>
               </p>
             </>
           )}
@@ -286,12 +428,30 @@ export function ListingsClient({
                       />
                     );
                   })
-                : (activeGroups[group] as CaptionJobRow[]).map((job) => (
+                : tab === "captions"
+                ? (activeGroups[group] as CaptionJobRow[]).map((job) => (
                     <CaptionCard
                       key={job.id}
                       job={captionStates[job.id] ?? job}
                       isAdmin={isAdmin}
                       onDelete={() => handleDeleteCaptionJob(job.id)}
+                    />
+                  ))
+                : tab === "transcription"
+                ? (activeGroups[group] as TranscriptionJobRow[]).map((job) => (
+                    <TranscriptionCard
+                      key={job.id}
+                      job={transcriptionStates[job.id] ?? job}
+                      isAdmin={isAdmin}
+                      onDelete={() => handleDeleteTranscriptionJob(job.id)}
+                    />
+                  ))
+                : (activeGroups[group] as DescriptionJobRow[]).map((job) => (
+                    <DescriptionCard
+                      key={job.id}
+                      job={job}
+                      isAdmin={isAdmin}
+                      onDelete={() => handleDeleteDescriptionJob(job.id)}
                     />
                   ))}
             </div>
@@ -457,12 +617,7 @@ function RenderThumb({
               PNG
             </a>
           )}
-          {render.pdfUrl && (
-            <a href={render.pdfUrl} download title="PDF" onClick={(e) => e.stopPropagation()}
-              className="text-[8px] px-1.5 py-0.5 bg-gray-700/80 text-white rounded font-medium">
-              PDF
-            </a>
-          )}
+
         </div>
       )}
 
@@ -553,6 +708,14 @@ function CaptionCard({
                 <Download size={10} /> MP4
               </a>
             )}
+            {job.presetId && (
+              <Link
+                href={`/tools/captions/${job.presetId}/generate?captionJobId=${job.id}`}
+                className="inline-flex items-center gap-1 text-[11px] text-violet-500 hover:text-violet-700 font-medium transition-colors"
+              >
+                <RefreshCw size={10} /> Régénérer
+              </Link>
+            )}
             <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
             {isAdmin && <DeleteCaptionJobButton jobId={job.id} onDelete={onDelete} />}
           </div>
@@ -561,9 +724,7 @@ function CaptionCard({
         {/* Row 2: video thumb or status */}
         {isDone && job.outputUrl ? (
           <div className="max-w-[200px]">
-            <div className="relative aspect-video rounded-lg overflow-hidden bg-gray-100">
-              <video src={job.outputUrl} className="absolute inset-0 w-full h-full object-cover" muted playsInline />
-            </div>
+            <video src={job.outputUrl} className="w-full h-auto rounded-lg" muted playsInline />
           </div>
         ) : isInProgress ? (
           <div className="flex items-center gap-1.5 text-xs text-violet-500">
@@ -607,5 +768,233 @@ function DeleteCaptionJobButton({ jobId, onDelete }: { jobId: string; onDelete: 
   );
 }
 
+// ── TranscriptionCard ─────────────────────────────────────────────────────────
 
+function TranscriptionCard({
+  job,
+  isAdmin,
+  onDelete,
+}: {
+  job: TranscriptionJobRow;
+  isAdmin: boolean;
+  onDelete: () => Promise<void>;
+}) {
+  const isInProgress = job.status === "PROCESSING" || job.status === "QUEUED";
+  const isDone       = job.status === "COMPLETED";
+  const isFailed     = job.status === "FAILED";
+  const name = job.inputFilename ?? "Fichier audio";
 
+  const durationLabel = job.duration
+    ? job.duration >= 60
+      ? `${Math.floor(job.duration / 60)}min${Math.round(job.duration % 60)}s`
+      : `${Math.round(job.duration)}s`
+    : null;
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl flex overflow-hidden">
+      {/* Left accent */}
+      <div className="w-0.5 bg-teal-400 shrink-0" />
+
+      <div className="flex-1 min-w-0 px-4 py-3">
+        {/* Row 1: meta + actions */}
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+            <h3 className="text-sm font-medium text-gray-900 truncate">{name}</h3>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
+              isDone       ? "bg-green-50 text-green-600"  :
+              isFailed     ? "bg-red-50 text-red-500"      :
+              isInProgress ? "bg-teal-50 text-teal-600"    :
+                             "bg-gray-100 text-gray-500"
+            }`}>
+              {isDone ? "Terminé" : isFailed ? "Erreur" : isInProgress ? "En cours…" : job.status}
+            </span>
+            {isDone && job.segmentCount != null && (
+              <span className="text-[10px] text-gray-400 shrink-0">{job.segmentCount} segments</span>
+            )}
+            {isDone && durationLabel && (
+              <span className="text-[10px] text-gray-400 shrink-0">{durationLabel}</span>
+            )}
+            {isDone && job.hasDiarization && (
+              <span className="text-[10px] bg-teal-50 text-teal-600 px-1.5 py-0.5 rounded-full font-medium shrink-0">
+                Diarisation
+              </span>
+            )}
+            {isAdmin && job.ownerName && (
+              <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium shrink-0">
+                {job.ownerName}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {isDone && (
+              <a
+                href={`/api/transcription/${job.id}/download?format=srt`}
+                download
+                className="inline-flex items-center gap-1 text-[11px] text-teal-500 hover:text-teal-700 font-medium transition-colors"
+              >
+                <Download size={10} /> SRT
+              </a>
+            )}
+            <Link
+              href={`/tools/transcription/${job.id}`}
+              className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 font-medium transition-colors"
+            >
+              Détails →
+            </Link>
+            <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
+            {isAdmin && <DeleteTranscriptionJobButton jobId={job.id} onDelete={onDelete} />}
+          </div>
+        </div>
+
+        {/* Row 2: status details */}
+        {isInProgress ? (
+          <div className="flex items-center gap-1.5 text-xs text-teal-500">
+            <div className="w-3 h-3 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
+            Transcription en cours…
+          </div>
+        ) : isFailed ? (
+          <p className="text-xs text-red-400">La transcription a échoué.</p>
+        ) : isDone ? (
+          <div className="flex items-center gap-3 text-xs text-gray-400">
+            <span>Modèle : {job.model}</span>
+            {job.language && <span>Langue : {job.language}</span>}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// ── DeleteTranscriptionJobButton ──────────────────────────────────────────────
+
+function DeleteTranscriptionJobButton({ jobId, onDelete }: { jobId: string; onDelete: () => Promise<void> }) {
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  if (confirming) {
+    return (
+      <div className="flex items-center gap-1 shrink-0">
+        <button onClick={async () => { setDeleting(true); await onDelete(); }} disabled={deleting}
+          className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 transition-colors">
+          {deleting ? "…" : "Confirmer"}
+        </button>
+        <button onClick={() => setConfirming(false)}
+          className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors">
+          Annuler
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button onClick={() => setConfirming(true)} title={`Supprimer la transcription ${jobId}`}
+      className="shrink-0 text-gray-300 hover:text-red-400 transition-colors text-sm">
+      ×
+    </button>
+  );
+}
+
+// ── DescriptionCard ───────────────────────────────────────────────────────────
+
+function DescriptionCard({
+  job,
+  isAdmin,
+  onDelete,
+}: {
+  job: DescriptionJobRow;
+  isAdmin: boolean;
+  onDelete: () => Promise<void>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const isDone = job.status === "COMPLETED";
+  const isFailed = job.status === "FAILED";
+  const name = job.inputFilename ?? (job.inputType === "transcription" ? "Transcription" : "Sans nom");
+
+  const handleCopy = () => {
+    if (!job.result) return;
+    void navigator.clipboard.writeText(job.result);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl flex overflow-hidden">
+      {/* Left accent */}
+      <div className="w-0.5 bg-sky-400 shrink-0" />
+
+      <div className="flex-1 min-w-0 px-4 py-3">
+        {/* Row 1: meta + actions */}
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+            <h3 className="text-sm font-medium text-gray-900 truncate">{name}</h3>
+            {job.prompt && (
+              <span className="text-[10px] text-gray-400 shrink-0">— {job.prompt.name}</span>
+            )}
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
+              isDone   ? "bg-green-50 text-green-600" :
+              isFailed ? "bg-red-50 text-red-500"    :
+                         "bg-gray-100 text-gray-500"
+            }`}>
+              {isDone ? "Terminé" : isFailed ? "Erreur" : job.status}
+            </span>
+            {isAdmin && job.ownerName && (
+              <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium shrink-0">
+                {job.ownerName}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {isDone && job.result && (
+              <button
+                onClick={handleCopy}
+                className="inline-flex items-center gap-1 text-[11px] text-sky-500 hover:text-sky-700 font-medium transition-colors"
+                title="Copier la description"
+              >
+                {copied ? <Check size={10} /> : <Copy size={10} />}
+                {copied ? "Copié" : "Copier"}
+              </button>
+            )}
+            <Link
+              href="/tools/description"
+              className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 font-medium transition-colors"
+            >
+              Nouveau →
+            </Link>
+            <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
+            {isAdmin && (
+              <button
+                onClick={() => void onDelete()}
+                className="shrink-0 text-gray-300 hover:text-red-400 transition-colors text-sm"
+                title="Supprimer"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Row 2: result preview */}
+        {isDone && job.result ? (
+          <div>
+            <p
+              className={`text-xs text-gray-600 leading-relaxed whitespace-pre-wrap ${expanded ? "" : "line-clamp-2"}`}
+            >
+              {job.result}
+            </p>
+            {job.result.length > 120 && (
+              <button
+                onClick={() => setExpanded((v) => !v)}
+                className="text-[11px] text-sky-500 hover:text-sky-700 mt-1"
+              >
+                {expanded ? "Réduire ↑" : "Voir tout ↓"}
+              </button>
+            )}
+          </div>
+        ) : isFailed ? (
+          <p className="text-xs text-red-400">La génération a échoué.</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
