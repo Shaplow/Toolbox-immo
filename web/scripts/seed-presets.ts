@@ -65,41 +65,279 @@ const PRESETS = [
   },
 ];
 
-async function main() {
-  console.log("🌱 Seed presets captions builtin...\n");
+// async function main() {
+//   console.log("🌱 Seed presets captions builtin...\n");
+//
+//   for (const { name, config } of PRESETS) {
+//     await prisma.captionPreset.deleteMany({ where: { name, isBuiltin: true, userId: null } });
+//     await prisma.captionPreset.create({
+//       data: { name, userId: null, isBuiltin: true, config: JSON.stringify(config) },
+//     });
+//     console.log(`✅ Preset "${name}" créé`);
+//   }
+//
+//   // ── Template Vitrine Bonjour Oscar ──────────────────────────────────────────
+//   const admin = await prisma.user.findFirst({ where: { username: "Mathis" } });
+//   if (!admin) {
+//     console.warn("\n⚠️  Utilisateur 'Mathis' introuvable — template Vitrine non importé.");
+//     console.warn("   Crée d'abord le compte admin puis relance ce script.");
+//   } else {
+//     await prisma.templateAccess.deleteMany({ where: { templateId: VITRINE_TEMPLATE.id } });
+//     await prisma.template.deleteMany({ where: { id: VITRINE_TEMPLATE.id } });
+//
+//     const template = await prisma.template.create({
+//       data: { ...VITRINE_TEMPLATE, userId: admin.id },
+//     });
+//     console.log(`\n✅ Template importé : "${template.name}" — ${template.client}`);
+//
+//     await prisma.templateAccess.create({
+//       data: { userId: admin.id, templateId: template.id },
+//     });
+//     console.log(`✅ Accès template assigné à ${admin.name ?? admin.email}`);
+//   }
+//
+//   console.log("\n🎉 Done !");
+//
+//   await seedDerushPresets(prisma);
+// }
+//
+// main()
+//   .catch((e) => { console.error("❌", e); process.exit(1); })
+//   .finally(() => prisma.$disconnect());
 
-  for (const { name, config } of PRESETS) {
-    await prisma.captionPreset.deleteMany({ where: { name, isBuiltin: true, userId: null } });
-    await prisma.captionPreset.create({
-      data: { name, userId: null, isBuiltin: true, config: JSON.stringify(config) },
+// ─── Derush builtin presets ───────────────────────────────────────────────────
+
+const DERUSH_PRESETS: { name: string; analysisMode: string; config: object }[] = [
+  {
+    name: "beauty",
+    analysisMode: "vision",
+    config: {
+      scoring_weights: {
+        sharpness: 0.35,
+        stability: 0.25,
+        exposure: 0.20,
+        composition: 0.15,
+        duration_score: 0.02,
+        visual_interest: 0.02,
+        diversity: 0.01,
+      },
+      reject_thresholds: {
+        min_duration: 0.5,
+        min_sharpness: 20,
+        max_shake: 8,
+      },
+      export_defaults: {
+        format: "clips_trimmed",
+        workflow: "capcut",
+        accurate_trim: false,
+      },
+      description:
+        "Sélection orientée qualité visuelle (beauté immobilière) : netteté, stabilité et exposition priorisées. Idéal pour les biens haut de gamme.",
+    },
+  },
+  {
+    name: "content_relevance",
+    analysisMode: "transcription",
+    config: {
+      scoring_weights: {
+        sharpness: 0.05,
+        stability: 0.05,
+        exposure: 0.05,
+        composition: 0.05,
+        duration_score: 0.20,
+        visual_interest: 0.10,
+        diversity: 0.50,
+      },
+      reject_thresholds: {
+        min_duration: 1.0,
+        min_sharpness: 5,
+        max_shake: 25,
+      },
+      export_defaults: {
+        format: "xml_timeline",
+        workflow: "premiere",
+        accurate_trim: false,
+      },
+      description:
+        "Sélection orientée contenu éditorial (podcast, interview) : favorise les segments CONTENT avec un scoring basé sur la diversité et la durée.",
+    },
+  },
+  {
+    name: "action",
+    analysisMode: "vision",
+    config: {
+      scoring_weights: {
+        sharpness: 0.20,
+        stability: 0.05,
+        exposure: 0.10,
+        composition: 0.10,
+        duration_score: 0.30,
+        visual_interest: 0.20,
+        diversity: 0.05,
+      },
+      reject_thresholds: {
+        min_duration: 0.3,
+        min_sharpness: 8,
+        max_shake: 40,
+      },
+      export_defaults: {
+        format: "clips_trimmed",
+        workflow: "capcut",
+        accurate_trim: true,
+      },
+      description:
+        "Sélection pour contenus dynamiques (visite rapide, reportage) : tolérance au mouvement élevée, favorise les plans longs et visuellement intéressants.",
+    },
+  },
+  {
+    name: "balanced",
+    analysisMode: "vision",
+    config: {
+      scoring_weights: {
+        sharpness: 0.25,
+        stability: 0.20,
+        exposure: 0.15,
+        composition: 0.15,
+        duration_score: 0.10,
+        visual_interest: 0.10,
+        diversity: 0.05,
+      },
+      reject_thresholds: {
+        min_duration: 0.8,
+        min_sharpness: 15,
+        max_shake: 10,
+      },
+      export_defaults: {
+        format: "clips_trimmed",
+        workflow: "capcut",
+        accurate_trim: false,
+      },
+      description:
+        "Sélection équilibrée — paramètres par défaut. Convient à la plupart des tournages immobiliers.",
+    },
+  },
+];
+
+async function seedDerushPresets(prismaClient: PrismaClient) {
+  console.log("\n🌱 Seed presets derush builtin...\n");
+  for (const { name, analysisMode, config } of DERUSH_PRESETS) {
+    await prismaClient.derushPreset.upsert({
+      where: {
+        // We'll use a composite-like check (name + isBuiltin) — no unique on name,
+        // so we deleteMany first then create instead, same as caption presets above.
+        id: `builtin-derush-${name}`,
+      },
+      create: {
+        id: `builtin-derush-${name}`,
+        name,
+        userId: null,
+        isBuiltin: true,
+        analysisMode,
+        config: JSON.stringify(config),
+      },
+      update: {
+        config: JSON.stringify(config),
+        analysisMode,
+      },
     });
-    console.log(`✅ Preset "${name}" créé`);
+    console.log(`✅ Derush preset "${name}" (${analysisMode}) upsert`);
   }
-
-  // ── Template Vitrine Bonjour Oscar ──────────────────────────────────────────
-  const admin = await prisma.user.findFirst({ where: { username: "Mathis" } });
-  if (!admin) {
-    console.warn("\n⚠️  Utilisateur 'Mathis' introuvable — template Vitrine non importé.");
-    console.warn("   Crée d'abord le compte admin puis relance ce script.");
-  } else {
-    // Upsert manuel pour conserver l'id original
-    await prisma.templateAccess.deleteMany({ where: { templateId: VITRINE_TEMPLATE.id } });
-    await prisma.template.deleteMany({ where: { id: VITRINE_TEMPLATE.id } });
-
-    const template = await prisma.template.create({
-      data: { ...VITRINE_TEMPLATE, userId: admin.id },
-    });
-    console.log(`\n✅ Template importé : "${template.name}" — ${template.client}`);
-
-    await prisma.templateAccess.create({
-      data: { userId: admin.id, templateId: template.id },
-    });
-    console.log(`✅ Accès template assigné à ${admin.name ?? admin.email}`);
-  }
-
-  console.log("\n🎉 Done !");
 }
 
-main()
-  .catch((e) => { console.error("❌", e); process.exit(1); })
-  .finally(() => prisma.$disconnect());
+// ─── Derush Formats ──────────────────────────────────────────────────────────
+
+const DERUSH_FORMATS = [
+  {
+    id: "builtin-format-rqr",
+    slug: "rqr",
+    name: "RQR (Réponses aux Questions Rapides)",
+    description: "Format immobilier avec questions et réponses courtes. Regroupe chaque Q+R en un seul clip.",
+    contextPrompt:
+      "Ce contenu est une vidéo immobilière au format RQR (Réponses aux Questions Rapides). " +
+      "Chaque séquence utile est une question posée par le vendeur suivie d'une réponse directe. " +
+      "La qualité immobilière des termes est primordiale : corrige les noms de quartiers, arrondissements, " +
+      "adresses, et termes techniques (DPE, PTZ, loi Carrez…). " +
+      "Preserve le phrasé naturel et les formulations courtes typiques de ce format.",
+    silenceThreshold: 3.0,
+    exportMode: "qa_pair",
+  },
+  {
+    id: "builtin-format-talking-head",
+    slug: "talking_head",
+    name: "Talking Head",
+    description: "Interview ou monologue face caméra. Découpe sur les pauses naturelles.",
+    contextPrompt:
+      "Ce contenu est une vidéo immobilière de type talking head (face caméra). " +
+      "Le locuteur parle directement à la caméra. Corrige les termes techniques immobiliers " +
+      "(noms de villes, quartiers, DPE, surface loi Carrez, charges de copropriété…) " +
+      "tout en préservant le style oral naturel. Ne reformule pas les phrases.",
+    silenceThreshold: 0,
+    exportMode: "individual",
+  },
+  {
+    id: "builtin-format-podcast",
+    slug: "podcast",
+    name: "Podcast / Interview",
+    description: "Deux interlocuteurs ou plus. Silences plus longs acceptés entre les répliques.",
+    contextPrompt:
+      "Ce contenu est un podcast ou une interview immobilière avec plusieurs interlocuteurs. " +
+      "Les échanges peuvent être longs. Corrige les noms propres (agences, villes, quartiers), " +
+      "les chiffres importants (prix, surface, taux) et les sigles immobiliers (DPE, BBC, VEFA…). " +
+      "Ne reformule pas ; corrige uniquement les erreurs de transcription manifestes.",
+    silenceThreshold: 0,
+    exportMode: "individual",
+  },
+  {
+    id: "builtin-format-vrai-faux",
+    slug: "vrai_faux",
+    name: "Vrai ou Faux",
+    description: "Affirmations courtes évaluées par un expert. Découpe serrée sur chaque assertion.",
+    contextPrompt:
+      "Ce contenu est une vidéo immobilière au format Vrai ou Faux. " +
+      "Chaque séquence est une affirmation suivie d'une validation ou correction par un expert. " +
+      "Les segments doivent être courts et précis. Corrige les termes techniques immobiliers " +
+      "et les chiffres réglementaires (délais légaux, plafonds PTZ, seuils DPE…).",
+    silenceThreshold: 0,
+    exportMode: "individual",
+  },
+];
+
+async function seedDerushFormats(prismaClient: PrismaClient) {
+  console.log("\n🌱 Seed formats derush builtin...\n");
+  for (const { id, slug, name, description, contextPrompt, silenceThreshold, exportMode } of DERUSH_FORMATS) {
+    await prismaClient.derushFormat.upsert({
+      where: { slug },
+      create: {
+        id,
+        slug,
+        name,
+        description,
+        contextPrompt,
+        silenceThreshold,
+        exportMode,
+        isBuiltin: true,
+        userId: null,
+      },
+      update: {
+        name,
+        description,
+        contextPrompt,
+        silenceThreshold,
+        exportMode,
+      },
+    });
+    console.log(`✅ Derush format "${name}" (${slug}) upsert`);
+  }
+}
+
+// Auto-run if called directly (not via main seed.ts import)
+if (require.main === module) {
+  Promise.resolve()
+    // .then(() => seedDerushPresets(prisma))
+    .then(() => seedDerushFormats(prisma))
+    .then(() => console.log("\n✅ Derush formats seeded!"))
+    .catch((e) => { console.error("❌", e); process.exit(1); })
+    .finally(() => prisma.$disconnect());
+}
+
+export { seedDerushPresets, seedDerushFormats };

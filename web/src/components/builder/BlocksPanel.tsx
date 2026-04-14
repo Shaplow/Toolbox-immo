@@ -12,6 +12,7 @@ const BLOCK_TYPES: { type: BlockType; label: string; icon: string }[] = [
   { type: "video",  label: "Vidéo",      icon: "🎥" },
   { type: "shape",  label: "Forme",      icon: "■" },
   { type: "dpe",    label: "DPE",        icon: "⚡" },
+  { type: "music",  label: "Musique",    icon: "🎵" },
 ];
 
 function createDefaultBlock(type: BlockType): AnyBlock {
@@ -42,6 +43,19 @@ function createDefaultBlock(type: BlockType): AnyBlock {
       showBackground: true,
       backgroundColor: "#ffffff",
     };
+    case "music": return {
+      ...base,
+      type: "music",
+      volume: 0.3,
+      sourceVolume: 1.0,
+      muteSource: false,
+      loop: true,
+      fadeIn: 0,
+      fadeOut: 0,
+      w: 0,
+      h: 0,
+    };
+    default: return { ...base, type: "text", style: { fontSize: 16, color: "#1A1A1A" }, rules: {} };
   }
 }
 

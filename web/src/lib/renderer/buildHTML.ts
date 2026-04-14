@@ -2,6 +2,12 @@
 import type { ListingData } from "@/types/listing";
 import { listFontAssetsByFamilies } from "@/lib/fontAssets";
 import { isAutoLayoutGroup, normalizeGroupLayout } from "@/lib/groupLayout";
+import {
+  PER_LINE_TEXT_GOO_COLOR_MATRIX,
+  PER_LINE_TEXT_GOO_FILTER_ID,
+  PER_LINE_TEXT_GOO_FILTER_REGION,
+  PER_LINE_TEXT_GOO_STD_DEVIATION,
+} from "@/lib/perLineTextBackground";
 import { getEffectiveTextAnchorPadding } from "@/lib/textBackground";
 import { isBlockVisibleForListing, resolveBlockForListing } from "@/lib/templateConditions";
 import { getVisibleFieldKeys } from "@/lib/formSections";
@@ -22,6 +28,12 @@ export interface BuildHTMLOptions {
    */
   overlayMode?: boolean;
   layoutDebug?: boolean;
+  /**
+   * IDs des blocs à masquer dans cet overlay (pour le rendu d'un segment temporel).
+   * Utilisé en mode multi-overlay pour n'afficher que les blocs actifs à un instant donné.
+   * Absent = tous les blocs sont rendus (comportement par défaut).
+   */
+  hiddenBlockIds?: string[];
 }
 
 export async function buildHTML(
@@ -29,8 +41,9 @@ export async function buildHTML(
   listing: ListingData,
   opts?: BuildHTMLOptions
 ): Promise<string> {
-  const { canvas, theme, blocks } = template;
+  const { canvas, blocks } = template;
   const overlayMode = opts?.overlayMode ?? false;
+  const hiddenBlockIdSet = new Set(opts?.hiddenBlockIds ?? []);
   const groupMap = new Map((template.groups ?? []).map((group) => [group.id, group]));
   const declaredFieldKeys = new Set((template.schema ?? []).map((field) => field.key));
   const visibleFieldKeys = getVisibleFieldKeys(template.schema ?? [], template.formSections ?? [], listing);
@@ -44,6 +57,9 @@ export async function buildHTML(
   // Render each block to HTML
   const blockHtmlParts: string[] = await Promise.all(
     sorted.map(async (block) => {
+      // Skip blocks hidden for this timing segment
+      if (hiddenBlockIdSet.has(block.id)) return "";
+
       if (
         (block.type === "image" || block.type === "video") &&
         block.binding &&
@@ -90,6 +106,7 @@ export async function buildHTML(
   const css = buildCSS(template, overlayMode);
   const fontHtml = await buildFontHtml(template, opts?.publicBase);
   const behaviorScript = buildBehaviorScript(autoLayoutGroups, opts?.layoutDebug ?? false);
+  const perLineTextFilter = buildPerLineTextGooFilterMarkup();
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -101,6 +118,7 @@ export async function buildHTML(
   <style>${css}</style>
 </head>
 <body>
+  ${perLineTextFilter}
   <div id="canvas" style="width:${canvas.width}px;height:${canvas.height}px;background:${overlayMode ? "transparent" : canvas.backgroundColor};position:relative;overflow:hidden;">
     ${blockHtmlParts.join("\n")}
   </div>
@@ -130,21 +148,32 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; mode?: "free"
         const content = block.querySelector('.block-text-content');
         if (!(content instanceof HTMLElement)) return;
 
-          const measured = block.querySelector('.block-text-background');
-          const fitContainer = measured instanceof HTMLElement ? measured : block;
-          const fitStyle = window.getComputedStyle(fitContainer);
-          const availableWidth = Math.max(
-            0,
-            fitContainer.clientWidth
-              - Number.parseFloat(fitStyle.paddingLeft || '0')
-              - Number.parseFloat(fitStyle.paddingRight || '0')
-          );
-          const availableHeight = Math.max(
-            0,
-            fitContainer.clientHeight
-              - Number.parseFloat(fitStyle.paddingTop || '0')
-              - Number.parseFloat(fitStyle.paddingBottom || '0')
-          );
+        const backgroundMode = block.dataset.textBackgroundMode || 'none';
+        const measured = block.querySelector('.block-text-background');
+        const fitContainer = backgroundMode === 'fixed' && measured instanceof HTMLElement ? measured : block;
+        const fitStyle = window.getComputedStyle(fitContainer);
+        let availableWidth = Math.max(
+          0,
+          fitContainer.clientWidth
+            - Number.parseFloat(fitStyle.paddingLeft || '0')
+            - Number.parseFloat(fitStyle.paddingRight || '0')
+        );
+        let availableHeight = Math.max(
+          0,
+          fitContainer.clientHeight
+            - Number.parseFloat(fitStyle.paddingTop || '0')
+            - Number.parseFloat(fitStyle.paddingBottom || '0')
+        );
+
+        if (backgroundMode !== 'fixed' && measured instanceof HTMLElement) {
+          const measuredStyle = window.getComputedStyle(measured);
+          const paddingLeft = Number.parseFloat(measuredStyle.paddingLeft || '0');
+          const paddingRight = Number.parseFloat(measuredStyle.paddingRight || '0');
+          const paddingTop = Number.parseFloat(measuredStyle.paddingTop || '0');
+          const paddingBottom = Number.parseFloat(measuredStyle.paddingBottom || '0');
+          availableWidth = Math.max(0, availableWidth - paddingLeft - paddingRight);
+          availableHeight = Math.max(0, availableHeight - paddingTop - paddingBottom);
+        }
 
         const minFontSizePt = Number(block.dataset.minFontSize || '0');
         if (!Number.isFinite(minFontSizePt) || minFontSizePt <= 0) return;
@@ -675,6 +704,10 @@ function buildCSS(template: TemplateJSON, overlayMode = false): string {
       overflow: hidden;
       word-break: break-word;
     }
+    /* Per-line background mode: allow blur to expand beyond block bounds */
+    .block-text-per-line {
+      overflow: visible;
+    }
     .block-image img {
       width: 100%;
       height: 100%;
@@ -706,4 +739,8 @@ function buildCSS(template: TemplateJSON, overlayMode = false): string {
       color: #9B9B9B;
     }
   `;
+}
+
+function buildPerLineTextGooFilterMarkup(): string {
+  return `<svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true"><defs><filter id="${PER_LINE_TEXT_GOO_FILTER_ID}" x="${PER_LINE_TEXT_GOO_FILTER_REGION.x}" y="${PER_LINE_TEXT_GOO_FILTER_REGION.y}" width="${PER_LINE_TEXT_GOO_FILTER_REGION.width}" height="${PER_LINE_TEXT_GOO_FILTER_REGION.height}"><feGaussianBlur in="SourceGraphic" stdDeviation="${PER_LINE_TEXT_GOO_STD_DEVIATION}" result="blur"/><feColorMatrix in="blur" type="matrix" values="${PER_LINE_TEXT_GOO_COLOR_MATRIX}" result="goo"/><feComposite in="SourceGraphic" in2="goo" operator="atop"/></filter></defs></svg>`;
 }

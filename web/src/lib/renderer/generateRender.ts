@@ -4,7 +4,7 @@ import { buildHTML } from "./buildHTML";
 import { renderPNG } from "./renderPNG";
 import { renderPDF } from "./renderPDF";
 import { validateConformite } from "@/lib/validation/conformite";
-import type { TemplateJSON, CanvasFormat, ImageBlock, VideoBlock } from "@/types/template";
+import type { TemplateJSON, CanvasFormat, ImageBlock, VideoBlock, MusicBlock, AnyBlock } from "@/types/template";
 import type { ListingData } from "@/types/listing";
 import { writeFile, mkdir, stat, readFile } from "fs/promises";
 import path from "path";
@@ -272,6 +272,105 @@ export async function generateRender(renderId: string): Promise<void> {
 
 // ─── Pipeline vidéo (RunPod ou local) ────────────────────────────────────────
 
+// ── Timed overlay helpers ──────────────────────────────────────────────────────
+
+interface SegmentMeta {
+  /** Index into the unique overlay states array (= position in overlay_paths list). */
+  index: number;
+  start: number;
+  end: number | null;
+}
+
+interface OverlayPlan {
+  /** Unique overlay states: each entry lists the block IDs to hide when rendering that PNG. */
+  states: { hiddenBlockIds: string[] }[];
+  segments: SegmentMeta[];
+}
+
+/**
+ * Computes a timed overlay plan from template blocks.
+ *
+ * Returns `null` when no block has timing fields → single-overlay fast path,
+ * 100% backward compatible with existing behaviour.
+ */
+function computeOverlayPlan(blocks: AnyBlock[]): OverlayPlan | null {
+  const hasAnyTiming = blocks.some(
+    (b) => (b.appearAt !== undefined && b.appearAt > 0) || b.hideAt !== undefined
+  );
+  if (!hasAnyTiming) return null;
+
+  // Collect all time breakpoints
+  const bpSet = new Set<number>([0]);
+  for (const b of blocks) {
+    if (b.appearAt !== undefined && b.appearAt > 0) bpSet.add(b.appearAt);
+    if (b.hideAt !== undefined) bpSet.add(b.hideAt);
+  }
+  const breakpoints = Array.from(bpSet).sort((a, b) => a - b);
+
+  // For each interval, determine which blocks are hidden
+  const intervals: { start: number; end: number | null; hiddenBlockIds: string[] }[] = [];
+  for (let i = 0; i < breakpoints.length; i++) {
+    const intervalStart = breakpoints[i];
+    const intervalEnd = i + 1 < breakpoints.length ? breakpoints[i + 1] : null;
+    const hidden = blocks
+      .filter((b) => {
+        const ap = b.appearAt ?? 0;
+        const hp = b.hideAt;
+        return !(intervalStart >= ap && (hp === undefined || intervalStart < hp));
+      })
+      .map((b) => b.id);
+    intervals.push({ start: intervalStart, end: intervalEnd, hiddenBlockIds: hidden });
+  }
+
+  // Deduplicate identical visibility states
+  const stateKey = (ids: string[]) => JSON.stringify([...ids].sort());
+  const stateMap = new Map<string, number>();
+  const states: { hiddenBlockIds: string[] }[] = [];
+  const rawSegments: SegmentMeta[] = [];
+
+  for (const interval of intervals) {
+    const key = stateKey(interval.hiddenBlockIds);
+    let idx = stateMap.get(key);
+    if (idx === undefined) {
+      idx = states.length;
+      states.push({ hiddenBlockIds: interval.hiddenBlockIds });
+      stateMap.set(key, idx);
+    }
+    rawSegments.push({ index: idx, start: interval.start, end: interval.end });
+  }
+
+  // Merge consecutive segments that share the same overlay index
+  const segments: SegmentMeta[] = [];
+  for (const seg of rawSegments) {
+    const last = segments[segments.length - 1];
+    if (last && last.index === seg.index && last.end === seg.start) {
+      segments[segments.length - 1] = { ...last, end: seg.end };
+    } else {
+      segments.push(seg);
+    }
+  }
+
+  return { states, segments };
+}
+
+/** Resolves the first music block and its audio URL from the listing data. */
+function resolveMusicConfig(
+  templateJson: TemplateJSON,
+  listingData: ListingData,
+): { musicUrl: string; block: MusicBlock } | null {
+  const musicBlock = templateJson.blocks.find(
+    (b): b is MusicBlock => b.type === "music"
+  );
+  if (!musicBlock) return null;
+
+  const musicUrl = musicBlock.binding
+    ? (listingData as Record<string, unknown>)[musicBlock.binding] as string | undefined
+    : undefined;
+  if (!musicUrl) return null;
+
+  return { musicUrl, block: musicBlock };
+}
+
 async function generateVideoRender(
   renderId: string,
   templateJson: TemplateJSON,
@@ -302,27 +401,45 @@ async function generateVideoRender(
   try {
     const { width, height } = templateJson.canvas;
 
-    // 1. Rendre le template en PNG avec fond transparent + blocs vidéo transparents (overlay)
+    // 1. Rendre les overlay PNG(s)
     await updateRenderTracking(renderId, {
       pipeline: RENDER_PIPELINE.VIDEO_RUNPOD,
       stage: RENDER_STAGE.VIDEO_RENDER_OVERLAY,
       statusDetail: "Rendu de l'overlay vidéo",
       progress: 0.12,
     });
-    const overlayHtml = await buildHTML(templateJson, listingData, { overlayMode: true });
-    const overlayBuffer = await renderPNG(overlayHtml, width, height, 1, true);
 
-    // 2. Uploader l'overlay vers R2
+    const overlayPlan = computeOverlayPlan(templateJson.canvas.maxDuration !== undefined
+      ? templateJson.blocks  // also consider maxDuration present
+      : templateJson.blocks);
+
+    let overlayBuffers: Buffer[];
+    if (overlayPlan === null) {
+      const html = await buildHTML(templateJson, listingData, { overlayMode: true });
+      overlayBuffers = [await renderPNG(html, width, height, 1, true)];
+    } else {
+      overlayBuffers = await Promise.all(
+        overlayPlan.states.map(async (state) => {
+          const html = await buildHTML(templateJson, listingData, {
+            overlayMode: true,
+            hiddenBlockIds: state.hiddenBlockIds,
+          });
+          return renderPNG(html, width, height, 1, true);
+        })
+      );
+    }
+
+    // 2. Uploader les overlays vers R2
     await updateRenderTracking(renderId, {
       pipeline: RENDER_PIPELINE.VIDEO_RUNPOD,
       stage: RENDER_STAGE.VIDEO_UPLOAD_OVERLAY,
       statusDetail: "Upload de l'overlay vers R2",
       progress: 0.28,
     });
-    const { url: overlayUrl } = await uploadToR2(
-      `overlays/${renderId}.png`,
-      overlayBuffer,
-      "image/png"
+    const overlayUrls = await Promise.all(
+      overlayBuffers.map((buf, i) =>
+        uploadToR2(`overlays/${renderId}_${i}.png`, buf, "image/png").then((r) => r.url)
+      )
     );
 
     // 3. Récupérer l'URL vidéo depuis le listing (premier bloc vidéo avec binding)
@@ -350,6 +467,9 @@ async function generateVideoRender(
     const crop_x = focalPoint?.x ?? 0.5;
     const crop_y = focalPoint?.y ?? 0.5;
 
+    // Resolve optional music block
+    const music = resolveMusicConfig(templateJson, listingData);
+
     // 4. Soumettre le job RunPod
     await updateRenderTracking(renderId, {
       pipeline: RENDER_PIPELINE.VIDEO_RUNPOD,
@@ -365,7 +485,13 @@ async function generateVideoRender(
         input: {
           job_type: "render_template",
           export_profile: "template",
-          overlay_url: overlayUrl,
+          // Single overlay (legacy) → overlay_url; timed → overlay_urls + overlay_segments
+          ...(overlayPlan === null
+            ? { overlay_url: overlayUrls[0] }
+            : {
+                overlay_urls: overlayUrls,
+                overlay_segments: overlayPlan.segments,
+              }),
           video_url: videoUrl,
           video_block: {
             x: videoBlock.x,
@@ -377,6 +503,18 @@ async function generateVideoRender(
             crop_y,
           },
           canvas: { width, height },
+          ...(templateJson.canvas.maxDuration !== undefined && templateJson.canvas.maxDuration > 0
+            ? { max_duration: templateJson.canvas.maxDuration }
+            : {}),
+          ...(music ? {
+            music_url: music.musicUrl,
+            music_volume: music.block.volume ?? 0.3,
+            music_source_volume: music.block.sourceVolume ?? 1.0,
+            music_mute_source: music.block.muteSource ?? false,
+            music_loop: music.block.loop ?? false,
+            music_fade_in: music.block.fadeIn ?? 0,
+            music_fade_out: music.block.fadeOut ?? 0,
+          } : {}),
           output_key: outputKey,
           render_id: renderId,
         },
@@ -414,7 +552,7 @@ async function generateVideoRenderLocal(
     const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
     console.log(`[videoLocal] ${renderId} — START canvas=${width}x${height} CAPTIONS_API=${CAPTIONS_API}`);
 
-    // 1. Overlay PNG transparent (canvas + textes, pas de fond vidéo)
+    // 1. Overlay PNG(s) transparent(s) — single ou multi selon les timings des blocs
     await updateRenderTracking(renderId, {
       pipeline: RENDER_PIPELINE.VIDEO_LOCAL,
       stage: RENDER_STAGE.VIDEO_RENDER_OVERLAY,
@@ -422,10 +560,30 @@ async function generateVideoRenderLocal(
       progress: 0.12,
     });
     console.log(`[videoLocal] ${renderId} — step 1: buildHTML overlayMode`);
-    const overlayHtml = await buildHTML(templateJson, listingData, { overlayMode: true });
-    console.log(`[videoLocal] ${renderId} — step 2: renderPNG overlay`);
-    const overlayBuffer = await renderPNG(overlayHtml, width, height, 1, true);
-    console.log(`[videoLocal] ${renderId} — overlay PNG ready: ${overlayBuffer.length} bytes`);
+
+    const overlayPlan = computeOverlayPlan(templateJson.blocks);
+
+    let overlayBuffers: Buffer[];
+    if (overlayPlan === null) {
+      // Fast path: single overlay (all blocks visible, identical to pre-timing behaviour)
+      const html = await buildHTML(templateJson, listingData, { overlayMode: true });
+      overlayBuffers = [await renderPNG(html, width, height, 1, true)];
+      console.log(`[videoLocal] ${renderId} — single overlay PNG ready: ${overlayBuffers[0].length} bytes`);
+    } else {
+      // Timed path: one PNG per unique visibility state
+      console.log(`[videoLocal] ${renderId} — timed overlay plan: ${overlayPlan.states.length} states, ${overlayPlan.segments.length} segments`);
+      overlayBuffers = await Promise.all(
+        overlayPlan.states.map(async (state, i) => {
+          const html = await buildHTML(templateJson, listingData, {
+            overlayMode: true,
+            hiddenBlockIds: state.hiddenBlockIds,
+          });
+          const buf = await renderPNG(html, width, height, 1, true);
+          console.log(`[videoLocal] ${renderId} — overlay state ${i} ready: ${buf.length} bytes (${state.hiddenBlockIds.length} hidden blocks)`);
+          return buf;
+        })
+      );
+    }
 
     // 2. Résoudre l'URL de la vidéo source
     await updateRenderTracking(renderId, {
@@ -453,9 +611,11 @@ async function generateVideoRenderLocal(
     const crop_x = focalPoint?.x ?? 0.5;
     const crop_y = focalPoint?.y ?? 0.5;
 
-    // 3. Envoyer overlay + vidéo à render-engine pour composite FFmpeg
+    // Resolve optional music block
+    const music = resolveMusicConfig(templateJson, listingData);
+
+    // 3. Envoyer overlay(s) + vidéo à render-engine pour composite FFmpeg
     const form = new FormData();
-    form.append("overlay", new Blob([new Uint8Array(overlayBuffer)], { type: "image/png" }), "overlay.png");
     form.append("video_block", JSON.stringify({
       x: videoBlock.x, y: videoBlock.y, w: videoBlock.w, h: videoBlock.h,
       fit: videoBlock.fit ?? "cover",
@@ -464,6 +624,39 @@ async function generateVideoRenderLocal(
     }));
     form.append("canvas_w", String(width));
     form.append("canvas_h", String(height));
+
+    // Max duration (optional field from canvas config)
+    if (templateJson.canvas.maxDuration !== undefined && templateJson.canvas.maxDuration > 0) {
+      form.append("max_duration", String(templateJson.canvas.maxDuration));
+    }
+
+    // Music params (optional — from music block)
+    if (music) {
+      form.append("music_url", music.musicUrl);
+      form.append("music_volume", String(music.block.volume ?? 0.3));
+      form.append("music_source_volume", String(music.block.sourceVolume ?? 1.0));
+      form.append("music_mute_source", String(music.block.muteSource ?? false));
+      form.append("music_loop", String(music.block.loop ?? false));
+      form.append("music_fade_in", String(music.block.fadeIn ?? 0));
+      form.append("music_fade_out", String(music.block.fadeOut ?? 0));
+    }
+
+    if (overlayPlan === null) {
+      // Legacy single-overlay path
+      form.append("overlay", new Blob([new Uint8Array(overlayBuffers[0])], { type: "image/png" }), "overlay.png");
+    } else {
+      // Timed multi-overlay path
+      for (let i = 0; i < overlayBuffers.length; i++) {
+        form.append(`overlay_${i}`, new Blob([new Uint8Array(overlayBuffers[i])], { type: "image/png" }), `overlay_${i}.png`);
+      }
+      form.append("overlays_metadata", JSON.stringify(
+        overlayPlan.segments.map((seg) => ({
+          index: seg.index,
+          start: seg.start,
+          end: seg.end,
+        }))
+      ));
+    }
 
     // Vidéo locale → envoyer en binaire (évite les problèmes DNS inter-containers Docker)
     // Vidéo distante (http/https) → envoyer l'URL

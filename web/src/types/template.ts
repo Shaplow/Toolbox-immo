@@ -31,6 +31,8 @@ export interface TemplateCanvas {
   marginLeft: number;
   bleed: number; // fond perdu en px
   backgroundColor: string;
+  /** Durée max de la vidéo de sortie en secondes. undefined = durée de la vidéo source. */
+  maxDuration?: number;
 }
 
 // ─── Theme ─────────────────────────────────────────────────────────────────────
@@ -79,7 +81,8 @@ export type BlockType =
   | "image"
   | "video"
   | "shape"
-  | "dpe";
+  | "dpe"
+  | "music";
 
 export interface BaseBlock {
   id: string;
@@ -96,6 +99,10 @@ export interface BaseBlock {
   locked?: boolean;  // si true : pas de drag/resize accidentel
   binding?: string; // variable name from schema
   animations: AnimationDef[]; // V2 — kept empty in V1
+  /** Seconde d'apparition dans la vidéo. undefined ou 0 = dès le début. Ne s'applique que pour les templates vidéo. */
+  appearAt?: number;
+  /** Seconde de disparition dans la vidéo. undefined = visible jusqu'à la fin. Ne s'applique que pour les templates vidéo. */
+  hideAt?: number;
   /** Règles conditionnelles du bloc (modèle actuel). */
   conditionalRules?: BlockConditionalRule[];
   /** @deprecated Compat legacy lu puis normalisé côté application. */
@@ -165,7 +172,8 @@ export interface BlockStyle {
   textShadowDistance?: number;
   textShadowAngle?: number;
   textBackgroundEnabled?: boolean;
-  textBackgroundMode?: "fit" | "fixed";
+  /** "fit": single box hugging all text; "fixed": explicit w/h; "per-line": each line gets its own box */
+  textBackgroundMode?: "fit" | "fixed" | "per-line";
   textBackgroundWidth?: number;
   textBackgroundHeight?: number;
   textBackgroundPadding?: number;
@@ -263,12 +271,34 @@ export interface ShapeBlock extends BaseBlock {
   opacity?: number;
 }
 
+/**
+ * Bloc musique : non-visuel, définit une piste audio de fond à mixer
+ * avec l'audio de la vidéo source lors du rendu FFmpeg.
+ * N'est jamais affiché sur le canvas — x/y/w/h sont ignorés.
+ */
+export interface MusicBlock extends BaseBlock {
+  type: "music";
+  /** Volume de la piste musique (0–1, défaut 0.3). */
+  volume?: number;
+  /** Volume de l'audio de la vidéo source (0–1, défaut 1.0). */
+  sourceVolume?: number;
+  /** Couper entièrement l'audio source (défaut false). */
+  muteSource?: boolean;
+  /** Boucler la musique si plus courte que la vidéo (défaut false). */
+  loop?: boolean;
+  /** Fondu d'entrée en secondes (défaut 0). */
+  fadeIn?: number;
+  /** Fondu de sortie en secondes (défaut 0). */
+  fadeOut?: number;
+}
+
 export type AnyBlock =
   | TextBlock
   | ImageBlock
   | VideoBlock
   | ShapeBlock
-  | DPEBlock;
+  | DPEBlock
+  | MusicBlock;
 
 // ─── Schema (variables attendues par le template) ──────────────────────────────
 export type SchemaFieldType =
@@ -276,6 +306,7 @@ export type SchemaFieldType =
   | "number"
   | "image"
   | "video"
+  | "audio"
   | "select"
   | "boolean"
   | "url";

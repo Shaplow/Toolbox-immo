@@ -5,10 +5,17 @@ import { buildDpeSvg } from "@/lib/dpeSvg";
 import { computeAutoLayoutPositions, getAutoLayoutMode, getBlockAnchorOffset, isAutoLayoutGroup, type BlockLayoutSize } from "@/lib/groupLayout";
 import { buildTextShadowValue } from "@/lib/renderer/styleUtils";
 import { buildSchemaPreviewData } from "@/lib/schemaFields";
+import {
+  PER_LINE_TEXT_GOO_COLOR_MATRIX,
+  PER_LINE_TEXT_GOO_FILTER_ID,
+  PER_LINE_TEXT_GOO_FILTER_REGION,
+  getPerLineTextGooBlur,
+  getPerLineTextSideBridgeMetrics,
+} from "@/lib/perLineTextBackground";
 import { compileTextTemplate, resolveTextTemplate } from "@/lib/textTemplate";
 import { roundLayoutDebugValue, type LayoutDebugSnapshot } from "@/lib/layoutDebug";
 import { useBuilderStore } from "@/lib/store/builderStore";
-import { getHorizontalAlignment, getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled } from "@/lib/textBackground";
+import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled } from "@/lib/textBackground";
 import { resolveBlockForListing, resolveBlockState } from "@/lib/templateConditions";
 import type { AnyBlock } from "@/types/template";
 import { Resizable } from "re-resizable";
@@ -45,6 +52,7 @@ export function Canvas({
   // Multi-select: set of block ids (Ctrl+click to toggle)
   const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
   const [isPanningView, setIsPanningView] = useState(false);
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const measurementLayerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -55,6 +63,7 @@ export function Canvas({
   const groupMap = useMemo(() => new Map((template.groups ?? []).map((group) => [group.id, group])), [template.groups]);
   const [measuredAutoLayoutSizes, setMeasuredAutoLayoutSizes] = useState<Record<string, BlockLayoutSize>>({});
   const [fontMetricsVersion, setFontMetricsVersion] = useState(0);
+  const previewPerLineGooBlur = getPerLineTextGooBlur(zoom);
 
   /** Snap a value to the nearest GRID_SIZE increment if snap is on */
   const snap = useCallback((v: number) =>
@@ -168,6 +177,7 @@ export function Canvas({
       const editable = isEditableTarget(event.target);
 
       if (event.code === "Space" && !editable) {
+        if (!spacePressedRef.current) setIsSpacePressed(true);
         spacePressedRef.current = true;
       }
 
@@ -234,6 +244,7 @@ export function Canvas({
     function onKeyUp(event: KeyboardEvent) {
       if (event.code === "Space") {
         spacePressedRef.current = false;
+        setIsSpacePressed(false);
       }
     }
 
@@ -434,6 +445,7 @@ export function Canvas({
   const sorted = [...blocks].sort((a, b) => a.z - b.z);
   const visibleResolvedBlocks = useMemo(() => {
     return sorted
+      .filter((block) => block.type !== "music")
       .filter((block) => resolveBlockState(block, previewListing, block.groupId ? groupMap.get(block.groupId) : undefined).visible)
       .map((block) => {
         const group = block.groupId ? groupMap.get(block.groupId) : undefined;
@@ -503,20 +515,26 @@ export function Canvas({
 
     if (nextEntries.length === 0) return;
 
-    setMeasuredAutoLayoutSizes((current) => {
-      const next = { ...current };
-      let changed = false;
+    const frameId = window.requestAnimationFrame(() => {
+      setMeasuredAutoLayoutSizes((current) => {
+        const next = { ...current };
+        let changed = false;
 
-      for (const [blockId, size] of nextEntries) {
-        const prev = current[blockId];
-        if (!prev || prev.width !== size.width || prev.height !== size.height) {
-          next[blockId] = size;
-          changed = true;
+        for (const [blockId, size] of nextEntries) {
+          const prev = current[blockId];
+          if (!prev || prev.width !== size.width || prev.height !== size.height) {
+            next[blockId] = size;
+            changed = true;
+          }
         }
-      }
 
-      return changed ? next : current;
+        return changed ? next : current;
+      });
     });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
   }, [autoLayoutMeasurementBlocks, fontMetricsVersion]);
 
   useLayoutEffect(() => {
@@ -716,7 +734,7 @@ export function Canvas({
           selectGroup(null);
           setMultiSelected(new Set());
         }}
-        style={{ cursor: isPanningView ? "grabbing" : spacePressedRef.current ? "grab" : "default" }}
+        style={{ cursor: isPanningView ? "grabbing" : isSpacePressed ? "grab" : "default" }}
       >
         <div className="flex items-start justify-center p-8 min-w-fit min-h-full">
         <div
@@ -732,6 +750,22 @@ export function Canvas({
             ...gridStyle,
           }}
         >
+          {/* Hidden SVG filter definitions — used by per-line text background gooey effect */}
+          <svg width="0" height="0" style={{ position: "absolute", overflow: "hidden" }} aria-hidden="true">
+            <defs>
+              <filter
+                id={PER_LINE_TEXT_GOO_FILTER_ID}
+                x={PER_LINE_TEXT_GOO_FILTER_REGION.x}
+                y={PER_LINE_TEXT_GOO_FILTER_REGION.y}
+                width={PER_LINE_TEXT_GOO_FILTER_REGION.width}
+                height={PER_LINE_TEXT_GOO_FILTER_REGION.height}
+              >
+                <feGaussianBlur in="SourceGraphic" stdDeviation={previewPerLineGooBlur} result="blur" />
+                <feColorMatrix in="blur" type="matrix" values={PER_LINE_TEXT_GOO_COLOR_MATRIX} result="goo" />
+                <feComposite in="SourceGraphic" in2="goo" operator="atop" />
+              </filter>
+            </defs>
+          </svg>
           {activeAnchorGroup ? (
             <div
               style={getAutoLayoutMode(activeAnchorGroup) === "column"
@@ -964,7 +998,7 @@ export function Canvas({
 
 function BlockPreview({
   block,
-  autoLayout,
+  autoLayout: _autoLayout,
   fontMetricsVersion,
   preferPrintUnits,
   previewListing,
@@ -991,6 +1025,7 @@ function BlockPreview({
   defaultTextColor: string;
   onMouseDown: (e: React.MouseEvent) => void;
 }) {
+  void _autoLayout;
   const textContentRef = useRef<HTMLDivElement>(null);
   const [fittedFontSizePx, setFittedFontSizePx] = useState<number | null>(null);
   const style: React.CSSProperties = {
@@ -1012,10 +1047,7 @@ function BlockPreview({
     const baseFontSize = baseTextFontSizePx;
     if (!contentNode || !baseFontSize) return;
 
-    if (!block.rules.shrinkToFit || !block.rules.minFontSize) {
-      setFittedFontSizePx(baseFontSize);
-      return;
-    }
+    if (!block.rules.shrinkToFit || !block.rules.minFontSize) return;
 
     const backgroundEnabled = isTextBackgroundEnabled(block.style);
     const backgroundMode = getTextBackgroundMode(block.style);
@@ -1043,7 +1075,13 @@ function BlockPreview({
       contentNode.style.fontSize = `${nextFontSize}px`;
     }
 
-    setFittedFontSizePx(nextFontSize);
+    const frameId = window.requestAnimationFrame(() => {
+      setFittedFontSizePx(nextFontSize);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
   }, [baseTextFontSizePx, block, fontMetricsVersion, zoom]);
 
   let content: React.ReactNode;
@@ -1065,7 +1103,6 @@ function BlockPreview({
       const contentPadding = getTextContentPadding(block.style);
       const backgroundPadding = getTextBackgroundPadding(block.style);
       const backgroundRadius = getTextBackgroundBorderRadius(block.style);
-      const horizontalAlignment = getHorizontalAlignment(block.style.textAlign);
       const textFontSize = block.style.fontSize ?? 14;
       const resolvedFontSize = fittedFontSizePx ?? (preferPrintUnits ? `${textFontSize * zoom}pt` : baseTextFontSizePx ?? undefined);
       const innerTextStyle: React.CSSProperties = {
@@ -1112,57 +1149,136 @@ function BlockPreview({
         </div>
       );
 
-      content = (
-        <div
-          style={{
-            ...style,
-            display: "flex",
-            flexDirection: "column",
-            justifyContent,
-          }}
-        >
-          {backgroundEnabled ? (
-            <div className="block-text-align" style={{ width: "100%", display: "flex", justifyContent: horizontalAlignment }}>
-              <div
-                className="block-text-background"
-                style={{
-                  backgroundColor: block.style.backgroundColor ?? "#FFFFFF",
-                  borderRadius: backgroundRadius > 0 ? backgroundRadius * zoom : undefined,
-                  opacity: block.style.opacity,
-                  display: backgroundMode === "fixed" ? "flex" : "inline-flex",
-                  flexDirection: "column",
-                  justifyContent: backgroundMode === "fixed" ? justifyContent : undefined,
-                  width: backgroundMode === "fixed" ? backgroundSize.width * zoom : "fit-content",
-                  height: backgroundMode === "fixed" ? backgroundSize.height * zoom : undefined,
-                  padding: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
-                    ? backgroundPadding.top * zoom
-                    : undefined,
-                  paddingTop: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
-                    ? undefined
-                    : backgroundPadding.top * zoom,
-                  paddingRight: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
-                    ? undefined
-                    : backgroundPadding.right * zoom,
-                  paddingBottom: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
-                    ? undefined
-                    : backgroundPadding.bottom * zoom,
-                  paddingLeft: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
-                    ? undefined
-                    : backgroundPadding.left * zoom,
-                  boxSizing: "border-box",
-                  maxWidth: "100%",
-                  maxHeight: "100%",
-                  overflow: "hidden",
-                }}
-              >
-                {textNode}
-              </div>
+      if (backgroundEnabled && backgroundMode === "per-line") {
+        const vPadPx = (backgroundPadding.top + backgroundPadding.bottom) * zoom;
+        const uniformPad = backgroundPadding.top === backgroundPadding.right
+          && backgroundPadding.top === backgroundPadding.bottom
+          && backgroundPadding.top === backgroundPadding.left;
+        const textAlign = block.style.textAlign ?? "left";
+        const backgroundColor = block.style.backgroundColor ?? "#FFFFFF";
+        const bridgeMetrics = textAlign === "left"
+          ? getPerLineTextSideBridgeMetrics(backgroundRadius * zoom, backgroundPadding.left * zoom)
+          : textAlign === "right"
+            ? getPerLineTextSideBridgeMetrics(backgroundRadius * zoom, backgroundPadding.right * zoom)
+            : { inset: 0, width: 0 };
+        const backgroundSpanStyle: React.CSSProperties = {
+          fontFamily: block.style.fontFamily ?? defaultFontFamily,
+          fontSize: resolvedFontSize,
+          fontWeight: block.style.fontWeight,
+          color: block.style.color ?? defaultTextColor,
+          letterSpacing: block.style.letterSpacing !== undefined ? `${block.style.letterSpacing * zoom}px` : undefined,
+          textShadow: buildTextShadowValue(block.style, zoom),
+          textTransform: block.rules.uppercase ? "uppercase" : undefined,
+          textAlign: block.style.textAlign,
+          lineHeight: vPadPx > 0 ? `calc(1em + ${vPadPx}px)` : "normal",
+          whiteSpace: "pre-wrap",
+          boxSizing: "border-box",
+          backgroundColor,
+          display: "inline",
+          WebkitBoxDecorationBreak: "clone",
+          boxDecorationBreak: "clone",
+          borderRadius: backgroundRadius > 0 ? backgroundRadius * zoom : undefined,
+          opacity: block.style.opacity,
+          ...(uniformPad
+            ? { padding: backgroundPadding.top > 0 ? backgroundPadding.top * zoom : undefined }
+            : {
+                paddingTop: backgroundPadding.top > 0 ? backgroundPadding.top * zoom : undefined,
+                paddingRight: backgroundPadding.right > 0 ? backgroundPadding.right * zoom : undefined,
+                paddingBottom: backgroundPadding.bottom > 0 ? backgroundPadding.bottom * zoom : undefined,
+                paddingLeft: backgroundPadding.left > 0 ? backgroundPadding.left * zoom : undefined,
+              }),
+        };
+        const textForegroundStyle: React.CSSProperties = {
+          position: "relative",
+        };
+        const bridgeStyle: React.CSSProperties | null = bridgeMetrics.width > 0
+          ? {
+              position: "absolute",
+              top: bridgeMetrics.inset,
+              bottom: bridgeMetrics.inset,
+              width: bridgeMetrics.width,
+              backgroundColor,
+              pointerEvents: "none",
+              left: textAlign === "left" ? 0 : undefined,
+              right: textAlign === "right" ? 0 : undefined,
+            }
+          : null;
+        const textContent = displayContent !== undefined
+          ? (displayContent || <span style={{ opacity: 0.35 }}>Texte…</span>)
+          : (block.binding ? `{{${block.binding}}}` : (block.staticText || <span style={{ opacity: 0.35 }}>Texte…</span>));
+        content = (
+          <div style={{ ...style, display: "flex", flexDirection: "column", justifyContent, overflow: "visible" }}>
+            <div
+              className="block-text-align"
+              style={{
+                width: "100%",
+                position: "relative",
+                textAlign,
+                filter: `url(#${PER_LINE_TEXT_GOO_FILTER_ID})`,
+                overflow: "visible",
+              }}
+            >
+              {bridgeStyle ? <span aria-hidden="true" style={bridgeStyle} /> : null}
+              <span ref={textContentRef} className="block-text-background block-text-content text-bg-per-line" style={backgroundSpanStyle}>
+                <span style={textForegroundStyle}>{textContent}</span>
+              </span>
             </div>
-          ) : (
-            <div style={{ opacity: block.style.opacity }}>{textNode}</div>
-          )}
-        </div>
-      );
+          </div>
+        );
+      } else {
+        content = (
+          <div
+            style={{
+              ...style,
+              display: "flex",
+              flexDirection: "column",
+              justifyContent,
+            }}
+          >
+            {backgroundEnabled ? (
+              // Background box is always centered horizontally; text-align controls content inside.
+              <div className="block-text-align" style={{ width: "100%", display: "flex", justifyContent: "center" }}>
+                <div
+                  className="block-text-background"
+                  style={{
+                    backgroundColor: block.style.backgroundColor ?? "#FFFFFF",
+                    borderRadius: backgroundRadius > 0 ? backgroundRadius * zoom : undefined,
+                    opacity: block.style.opacity,
+                    display: backgroundMode === "fixed" ? "flex" : "inline-flex",
+                    flexDirection: "column",
+                    justifyContent: backgroundMode === "fixed" ? justifyContent : undefined,
+                    width: backgroundMode === "fixed" ? backgroundSize.width * zoom : "fit-content",
+                    height: backgroundMode === "fixed" ? backgroundSize.height * zoom : undefined,
+                    padding: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
+                      ? backgroundPadding.top * zoom
+                      : undefined,
+                    paddingTop: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
+                      ? undefined
+                      : backgroundPadding.top * zoom,
+                    paddingRight: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
+                      ? undefined
+                      : backgroundPadding.right * zoom,
+                    paddingBottom: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
+                      ? undefined
+                      : backgroundPadding.bottom * zoom,
+                    paddingLeft: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
+                      ? undefined
+                      : backgroundPadding.left * zoom,
+                    boxSizing: "border-box",
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                    overflow: "hidden",
+                  }}
+                >
+                  {textNode}
+                </div>
+              </div>
+            ) : (
+              <div style={{ opacity: block.style.opacity }}>{textNode}</div>
+            )}
+          </div>
+        );
+      }
       break;
     }
 
@@ -1222,7 +1338,6 @@ function BlockPreview({
       content = (
         <div
           style={{ ...style, overflow: "hidden", opacity: block.style.opacity }}
-          // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{
             __html: buildDpeSvg({
               variant: block.variant ?? "energy",

@@ -80,7 +80,7 @@ export function isTextBackgroundEnabled(style: BlockStyle): boolean {
   return style.textBackgroundEnabled ?? Boolean(style.backgroundColor);
 }
 
-export function getTextBackgroundMode(style: BlockStyle): "fit" | "fixed" {
+export function getTextBackgroundMode(style: BlockStyle): "fit" | "fixed" | "per-line" {
   return style.textBackgroundMode ?? "fit";
 }
 

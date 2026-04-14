@@ -86,6 +86,19 @@ export default async function GeneratePage({ params, searchParams }: Props) {
     }
   }
 
+  // Auto-inject audio fields for music blocks with a binding not already in schema
+  for (const block of json.blocks) {
+    if (block.type === "music" && block.binding && !schemaMap.has(block.binding)) {
+      schemaMap.set(block.binding, {
+        key: block.binding,
+        label: block.binding.charAt(0).toUpperCase() + block.binding.slice(1).replace(/_/g, " "),
+        type: "audio",
+        required: false,
+        description: "Musique de fond (MP3 · WAV · AAC · M4A · OGG)",
+      });
+    }
+  }
+
   const conditionValues = collectTemplateConditionValues(json);
   for (const [field, values] of conditionValues) {
     if (!schemaMap.has(field)) {

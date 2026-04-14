@@ -41,6 +41,7 @@ export function AppNav({
   const hasCovers = userPerms.includes("covers");
   const hasTranscription = userPerms.includes("transcription");
   const hasDescription = userPerms.includes("description");
+  const hasDerush = userPerms.includes("derush");
   const hasTemplates =
     userPerms.includes("templates") ||
     userPerms.includes("templates:view") ||
@@ -66,6 +67,7 @@ export function AppNav({
             { href: "/tools/cover", label: "Covers", icon: "⊞" },
             { href: "/tools/transcription", label: "Transcription", icon: "♪" },
             { href: "/tools/description", label: "Descriptions", icon: "≡" },
+            { href: "/tools/derush", label: "Dérush", icon: "✂" },
           ],
         },
         {
@@ -91,6 +93,7 @@ export function AppNav({
             ...(hasCovers ? [{ href: "/tools/cover", label: "Covers", icon: "⊞" }] : []),
             ...(hasTranscription ? [{ href: "/tools/transcription", label: "Transcription", icon: "♪" }] : []),
             ...(hasDescription ? [{ href: "/tools/description", label: "Descriptions", icon: "≡" }] : []),
+            ...(hasDerush ? [{ href: "/tools/derush", label: "Dérush", icon: "✂" }] : []),
           ],
         },
         {

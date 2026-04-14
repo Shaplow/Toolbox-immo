@@ -58,8 +58,14 @@ function normalizeBlockRules(block: AnyBlock): BlockConditionalRule[] | undefine
 }
 
 function normalizeBlock<T extends AnyBlock>(block: T): T {
+  // Sanitize timing fields: keep only valid positive numbers
+  const appearAt = typeof block.appearAt === "number" && block.appearAt > 0 ? block.appearAt : undefined;
+  const hideAt = typeof block.hideAt === "number" && block.hideAt > 0 ? block.hideAt : undefined;
+
   return {
     ...block,
+    appearAt,
+    hideAt,
     conditionalRules: normalizeBlockRules(block),
     showIf: undefined,
     conditionalOverrides: undefined,
@@ -141,6 +147,13 @@ export function normalizeTemplateJSON(template: TemplateJSON): TemplateJSON {
 
   return {
     ...template,
+    canvas: {
+      ...template.canvas,
+      // Sanitize maxDuration: keep only valid positive numbers
+      maxDuration: typeof template.canvas?.maxDuration === "number" && template.canvas.maxDuration > 0
+        ? template.canvas.maxDuration
+        : undefined,
+    },
     blocks: normalizedBlocks,
     groups: sanitizedGroups,
     formSections,

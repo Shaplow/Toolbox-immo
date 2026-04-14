@@ -5,6 +5,78 @@ from dataclasses import dataclass
 from engine.probe import VideoInfo
 
 
+# ─── Derush trim profile ──────────────────────────────────────────────────────
+
+#: Max re-encode bitrate for derush accurate trim — 20 Mb/s cap for IG/social
+DERUSH_MAX_BITRATE = 20_000_000
+
+
+@dataclass(slots=True)
+class DerushEncodingProfile:
+    """Profile used when accurate_trim=True in TrimmedClipExporter."""
+    video_bitrate: int = DERUSH_MAX_BITRATE
+    maxrate: int = 22_000_000
+    bufsize: int = 40_000_000
+    audio_bitrate: int = 192_000
+    cpu_preset: str = "slow"
+    nvenc_preset: str = "p5"
+
+
+def build_derush_encoding_settings(
+    source_bitrate: int | None,
+    source_fps: float,
+    source_width: int,
+    source_height: int,
+    *,
+    use_nvenc: bool,
+) -> tuple[str, list[str], str, list[str]]:
+    """
+    Build FFmpeg codec args for re-encode trim (accurate_trim=True).
+    - Resolution and fps are always preserved from source.
+    - Bitrate is CAPPED at 20 Mb/s max. If source is below that, use source.
+    """
+    # Cap at 20 Mb/s — never exceed it even if source is higher
+    if source_bitrate and 0 < source_bitrate < DERUSH_MAX_BITRATE:
+        effective_bitrate = source_bitrate
+    else:
+        effective_bitrate = DERUSH_MAX_BITRATE
+
+    profile = DerushEncodingProfile(video_bitrate=effective_bitrate)
+    # maxrate / bufsize scale with effective bitrate
+    maxrate = min(profile.maxrate, int(effective_bitrate * 1.1))
+    bufsize = maxrate * 2
+
+    if use_nvenc:
+        video_codec = "hevc_nvenc"
+        video_args = [
+            "-preset", profile.nvenc_preset,
+            "-rc", "vbr",
+            "-b:v", str(effective_bitrate),
+            "-maxrate", str(maxrate),
+            "-bufsize", str(bufsize),
+            "-vf", f"scale={source_width}:{source_height}",
+            "-r", str(source_fps),
+            "-movflags", "+faststart",
+        ]
+    else:
+        video_codec = "libx265"
+        video_args = [
+            "-preset", profile.cpu_preset,
+            "-b:v", str(effective_bitrate),
+            "-maxrate", str(maxrate),
+            "-bufsize", str(bufsize),
+            "-vf", f"scale={source_width}:{source_height}",
+            "-r", str(source_fps),
+            "-movflags", "+faststart",
+        ]
+
+    audio_codec = "aac"
+    audio_args = ["-b:a", str(profile.audio_bitrate)]
+    return video_codec, video_args, audio_codec, audio_args
+
+
+# ─── Caption profile ──────────────────────────────────────────────────────────
+
 @dataclass(slots=True)
 class CaptionEncodingProfile:
     video_bitrate: int

@@ -36,7 +36,12 @@ from engine.encoding_profiles import build_caption_encoding_settings
 from engine.models import RenderConfig, WordTimestamp
 from engine.probe import probe_video
 from engine.runtime_fonts import prepare_runtime_fonts
-from engine.template_composite import build_template_ffmpeg_cmd, normalize_video_block
+from engine.template_composite import (
+    OverlaySegment,
+    build_template_ffmpeg_cmd,
+    build_template_ffmpeg_cmd_timed,
+    normalize_video_block,
+)
 from api import _build_config, _to_bool
 
 BASE_DIR = Path(__file__).parent
@@ -107,6 +112,10 @@ def handler(job: dict) -> dict[str, Any]:
         return _handle_render_template(inp)
     if job_type == "transcribe":
         return _handle_transcribe(inp)
+    if job_type == "derush_vision":
+        return _handle_derush_vision(inp)
+    if job_type == "derush_export":
+        return _handle_derush_export(inp)
     return _handle_captions(inp)
 
 
@@ -241,15 +250,48 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
     """
     Composite un template PNG transparent sur une vidéo via FFmpeg.
     Si h264_nvenc échoue au runtime, retry automatiquement avec libx264.
+
+    Two overlay modes:
+    - Legacy single overlay: ``overlay_url`` (str)
+    - Timed multi-overlay: ``overlay_urls`` (list[str]) + ``overlay_segments`` (list[{index,start,end}])
+
+    Optional: ``max_duration`` (float) truncates the output video.
     """
     import subprocess
 
-    overlay_url: str = inp["overlay_url"]
     video_url: str = inp["video_url"]
     block: dict = inp["video_block"]  # {x, y, w, h, fit}
     canvas: dict = inp["canvas"]      # {width, height}
     output_key: str = inp["output_key"]
     export_profile = str(inp.get("export_profile", "balanced") or "balanced")
+    max_duration: float | None = inp.get("max_duration")
+    if max_duration is not None:
+        max_duration = float(max_duration)
+
+    # Music options (all optional)
+    music_url: str | None = inp.get("music_url")
+    _music_volume = float(inp.get("music_volume", 0.3))
+    _music_source_volume = float(inp.get("music_source_volume", 1.0))
+    _music_mute_source = _to_bool(inp.get("music_mute_source", False), False)
+    _music_loop = _to_bool(inp.get("music_loop", False), False)
+    _music_fade_in = float(inp.get("music_fade_in", 0))
+    _music_fade_out = float(inp.get("music_fade_out", 0))
+
+    # Determine overlay mode
+    timed_mode = "overlay_urls" in inp
+    if timed_mode:
+        overlay_urls: list[str] = inp["overlay_urls"]
+        raw_segments = inp["overlay_segments"]
+        segments: list[OverlaySegment] = [
+            OverlaySegment(
+                index=int(s["index"]),
+                start=float(s["start"]),
+                end=float(s["end"]) if s.get("end") is not None else None,
+            )
+            for s in raw_segments
+        ]
+    else:
+        overlay_url: str = inp["overlay_url"]
 
     normalized_block = normalize_video_block(block, int(canvas["width"]), int(canvas["height"]))
 
@@ -264,10 +306,40 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
         _download_file(video_url, video_path)
         video_info = probe_video(video_path)
 
-        # 2. Télécharger le PNG overlay
-        overlay_path = tmp_path / f"overlay_{stamp}.png"
-        print(f"[worker/render_template] Download overlay: {overlay_url}")
-        _download_file(overlay_url, overlay_path)
+        # 2. Télécharger le(s) PNG overlay(s)
+        if timed_mode:
+            overlay_paths: list[Path] = []
+            for i, url in enumerate(overlay_urls):  # type: ignore[possibly-undefined]
+                p = tmp_path / f"overlay_{stamp}_{i}.png"
+                print(f"[worker/render_template] Download overlay {i}: {url}")
+                _download_file(url, p)
+                overlay_paths.append(p)
+        else:
+            single_overlay_path = tmp_path / f"overlay_{stamp}.png"
+            print(f"[worker/render_template] Download overlay: {overlay_url}")  # type: ignore[possibly-undefined]
+            _download_file(overlay_url, single_overlay_path)  # type: ignore[possibly-undefined]
+            overlay_paths = [single_overlay_path]
+
+        # 3. Télécharger la musique (optionnel)
+        _music_path: Path | None = None
+        if music_url:
+            _music_path = tmp_path / f"music_{stamp}.mp3"
+            print(f"[worker/render_template] Download music: {music_url}")
+            try:
+                _download_file(music_url, _music_path)
+            except Exception as exc:
+                print(f"[worker/render_template] Failed to download music: {exc}")
+                _music_path = None
+
+        music_opts = dict(
+            music_path=str(_music_path) if _music_path else None,
+            music_volume=_music_volume,
+            source_volume=_music_source_volume,
+            mute_source=_music_mute_source,
+            music_loop=_music_loop,
+            music_fade_in=_music_fade_in,
+            music_fade_out=_music_fade_out,
+        )
 
         out_video = tmp_path / f"result_{stamp}.mp4"
         codec, codec_args, audio_codec, audio_args, encoding_debug = build_caption_encoding_settings(
@@ -279,16 +351,33 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
         )
 
         def _run_ffmpeg(c: str, c_args: list[str], a_codec: str, a_args: list[str]) -> subprocess.CompletedProcess:
-            cmd = build_template_ffmpeg_cmd(
-                video_path=video_path,
-                overlay_path=overlay_path,
-                out_path=out_video,
-                block=normalized_block,
-                video_codec=c,
-                video_codec_args=c_args,
-                audio_codec=a_codec,
-                audio_codec_args=a_args,
-            )
+            if timed_mode:
+                cmd = build_template_ffmpeg_cmd_timed(
+                    video_path=video_path,
+                    overlay_paths=overlay_paths,
+                    out_path=out_video,
+                    block=normalized_block,
+                    segments=segments,  # type: ignore[possibly-undefined]
+                    video_codec=c,
+                    video_codec_args=c_args,
+                    audio_codec=a_codec,
+                    audio_codec_args=a_args,
+                    max_duration=max_duration,
+                    **music_opts,
+                )
+            else:
+                cmd = build_template_ffmpeg_cmd(
+                    video_path=video_path,
+                    overlay_path=overlay_paths[0],
+                    out_path=out_video,
+                    block=normalized_block,
+                    video_codec=c,
+                    video_codec_args=c_args,
+                    audio_codec=a_codec,
+                    audio_codec_args=a_args,
+                    max_duration=max_duration,
+                    **music_opts,
+                )
             print(
                 "[worker/render_template] FFmpeg "
                 f"{c} {normalized_block['w']}x{normalized_block['h']} "
@@ -408,5 +497,292 @@ def _handle_transcribe(inp: dict) -> dict[str, Any]:
     }
 
 
+# ─── Derush vision handler ────────────────────────────────────────────────────
+
+def _handle_derush_vision(inp: dict) -> dict[str, Any]:
+    """
+    Analyse video(s) and returns DerushSegment JSON uploaded to R2.
+
+    Input:
+      job_id                   : DerushJob.id
+      analysis_mode            : "vision" | "transcription"
+      video_urls               : list[str]  — presigned or public R2 URLs
+      video_r2_keys            : list[str]  — R2 keys (for source_file meta)
+      video_filenames          : list[str]  — original filenames
+      output_prefix            : R2 prefix for outputs
+      vision_provider          : "heuristic" (default) | "gemini" | "openai" | "claude"
+      vision_provider_config   : dict  — provider-specific options
+      preset_config            : dict  — DerushPresetConfig (optional)
+      transcription_output_url : str   — existing segments.json URL (transcription mode)
+      transcription_language   : str   — default "fr"
+      transcription_model      : str   — default "turbo"
+    """
+    import json as _json
+    from engine.derush.models import DerushJobInput
+    from engine.derush.orchestrator import DerushOrchestrator
+
+    job_id: str = inp["job_id"]
+    output_prefix: str = inp.get("output_prefix", f"derush/{job_id}")
+    print(f"[worker/derush_vision] job={job_id} mode={inp.get('analysis_mode', 'vision')}")
+
+    job_input = DerushJobInput.from_dict(inp)
+    orchestrator = DerushOrchestrator()
+    result = orchestrator.run(job_input)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        output_key = f"{output_prefix}/segments.json"
+        json_path = tmp_path / "segments.json"
+        json_path.write_text(_json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"[worker/derush_vision] Uploading segments to R2: {output_key}")
+        _upload_to_r2(output_key, json_path, "application/json")
+
+    print(
+        f"[worker/derush_vision] Done — {result['segment_count']} segments "
+        f"({result['selected_count']} selected), "
+        f"duration={result['total_duration']:.1f}s"
+    )
+    return {
+        "output_key": output_key,
+        "segment_count": result["segment_count"],
+        "selected_count": result["selected_count"],
+        "total_duration": result["total_duration"],
+        "analysis_mode": result["analysis_mode"],
+    }
+
+
+# ─── Derush export handler ────────────────────────────────────────────────────
+
+def _handle_derush_export(inp: dict) -> dict[str, Any]:
+    """
+    Export selected segments in the requested format.
+
+    Input:
+      job_id           : DerushJob.id
+      export_id        : DerushExport.id
+      video_urls       : list[str]   — source video URLs (same order as source_files_meta)
+      segments_url     : str         — URL to segments.json from derush_vision
+      source_files_meta: list[dict]  — [{id, filename, r2_key, r2_public_url, ...}]
+      export_format    : str         — "clips_trimmed" | "xml_timeline" | ...
+      output_prefix    : str
+      workflow         : str         — "capcut" | "premiere" | "resolve" | "generic"
+      accurate_trim    : bool
+      combo_formats    : list[str]
+      xml_format       : str         — "fcpxml" | "premiere_xml"
+      segment_ids      : list[str] | null
+    """
+    import json as _json
+    from engine.derush.models import DerushExportInput, SourceFileInfo
+    from engine.derush.export import get_exporter
+    from engine.probe import probe_video
+
+    job_id: str = inp["job_id"]
+    export_id: str = inp["export_id"]
+    export_format: str = inp["export_format"]
+    output_prefix: str = inp.get("output_prefix", f"derush/{job_id}/export/{export_id}")
+    print(f"[worker/derush_export] job={job_id} export={export_id} format={export_format}")
+
+    export_input = DerushExportInput.from_dict(inp)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+
+        # 1. Download segments.json first (lightweight) — bail early before fetching source videos
+        print(f"[worker/derush_export] Download segments: {export_input.segments_url}")
+        resp = httpx.get(export_input.segments_url, timeout=30)
+        resp.raise_for_status()
+        segments_data: dict = resp.json()
+        from engine.derush.models import DerushSegment, ScoreBreakdown
+        segments = _deserialize_segments(segments_data.get("segments", segments_data))
+
+        selected = [s for s in segments if not s.is_rejected]
+        if export_input.segment_ids:
+            _id_set = set(export_input.segment_ids)
+            selected = [s for s in selected if s.id in _id_set]
+        if not selected:
+            return {
+                "error": "no_segments_selected",
+                "message": (
+                    "Vision analysis rejected all segments — no footage to export. "
+                    "Try re-running the analysis or adjusting the rejection thresholds."
+                ),
+            }
+
+        # 2. Prepare source files.
+        #    We always download source files to /tmp, even for stream-copy mode.
+        #    Passing a remote CDN URL directly to FFmpeg causes it to stall: most
+        #    recordings are uploaded without -movflags faststart, so the moov atom
+        #    sits at the end of the file — FFmpeg must fetch the full file over HTTP
+        #    before it can parse timestamps, reliably hitting the 300 s timeout.
+        #    A single sequential download to /tmp is faster and fully reliable.
+        from concurrent.futures import ThreadPoolExecutor as _TPE, as_completed as _ac
+
+        def _dl_source(idx: int, url: str, meta: dict) -> SourceFileInfo:
+            ext = Path(meta["filename"]).suffix or ".mp4"
+            local_path = str(tmp_path / f"src_{idx:02d}{ext}")
+            print(f"[worker/derush_export] Download {meta['filename']} → {local_path}")
+            _download_file(url, Path(local_path))
+            info = probe_video(local_path)
+            return SourceFileInfo(
+                id=meta["id"],
+                filename=meta["filename"],
+                local_path=local_path,
+                r2_key=meta["r2_key"],
+                r2_public_url=meta.get("r2_public_url", url),
+                duration=info.duration,
+                width=info.width,
+                height=info.height,
+                fps=info.fps or 25.0,
+                video_bitrate=info.video_bitrate,
+            )
+
+        pairs = list(enumerate(zip(export_input.video_urls, export_input.source_files_meta)))
+        n_src = len(pairs)
+        src_results: dict[int, SourceFileInfo] = {}
+        if n_src == 1:
+            i, (url, meta) = pairs[0]
+            src_results[i] = _dl_source(i, url, meta)
+        else:
+            with _TPE(max_workers=n_src) as _ex:
+                _futs = {_ex.submit(_dl_source, i, url, meta): i for i, (url, meta) in pairs}
+                for _fut in _ac(_futs):
+                    src_results[_futs[_fut]] = _fut.result()
+        source_files: list[SourceFileInfo] = [src_results[i] for i in range(n_src)]
+
+        # 3. Run exporter
+        output_dir = str(tmp_path / "output")
+        os.makedirs(output_dir, exist_ok=True)
+        exporter = get_exporter(export_format)
+        result = exporter.export(export_input, segments, source_files, output_dir)
+
+        # 4. Upload output to R2
+        output_file = _find_output_file(output_dir, export_format, export_id)
+        if output_file:
+            content_type = _content_type_for_format(export_format)
+            print(f"[worker/derush_export] Uploading to R2: {result.output_key}")
+            _upload_to_r2(result.output_key, Path(output_file), content_type)
+
+    print(f"[worker/derush_export] Done — {result.to_dict()}")
+    return result.to_dict()
+
+
+def _deserialize_segments(data: list[dict]) -> list:
+    """Reconstruct DerushSegment list from JSON."""
+    from engine.derush.models import DerushSegment, ScoreBreakdown
+    segments = []
+    for d in data:
+        seg = DerushSegment(
+            id=d["id"],
+            source_file_id=d["source_file_id"],
+            source_in=d["source_in"],
+            source_out=d["source_out"],
+            duration=d["duration"],
+            analysis_mode=d["analysis_mode"],
+            order=d.get("order", 0),
+            score=d.get("score", 0.0),
+            shot_type=d.get("shot_type", "unknown"),
+            text=d.get("text"),
+            speaker=d.get("speaker"),
+            speech_tag=d.get("speech_tag"),
+            keyframe_r2_keys=d.get("keyframe_r2_keys", []),
+            keyframe_urls=d.get("keyframe_urls", []),
+            tags=d.get("tags", []),
+            is_rejected=d.get("is_rejected", False),
+            reject_reason=d.get("reject_reason"),
+            exported_filename=d.get("exported_filename"),
+            parent_id=d.get("parent_id"),
+            is_sub_segment=d.get("is_sub_segment", False),
+        )
+        bd = d.get("score_breakdown")
+        if bd:
+            seg.score_breakdown = ScoreBreakdown(**{
+                k: bd.get(k, 0.0) for k in [
+                    "sharpness", "stability", "exposure", "composition",
+                    "duration_score", "visual_interest", "diversity", "speech_relevance"
+                ]
+            })
+        segments.append(seg)
+    return segments
+
+
+def _find_output_file(output_dir: str, export_format: str, export_id: str) -> str | None:
+    """Find the primary output file for upload."""
+    ext_map = {
+        "clips_trimmed": f"clips_{export_id}.zip",
+        "xml_timeline": None,  # multiple possible ext
+        "stringout_video": f"stringout_{export_id}.mp4",
+        "structured_folder": f"derush_{export_id}.zip",
+        "manifest_only": f"manifest_{export_id}.json",
+        "combo_export": f"combo_{export_id}.zip",
+    }
+    filename = ext_map.get(export_format)
+    if filename:
+        full = os.path.join(output_dir, filename)
+        return full if os.path.exists(full) else None
+    # xml_timeline: find .fcpxml or .xml
+    for ext in (".fcpxml", ".xml"):
+        candidate = os.path.join(output_dir, f"timeline_{export_id}{ext}")
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def _content_type_for_format(export_format: str) -> str:
+    return {
+        "clips_trimmed": "application/zip",
+        "xml_timeline": "application/xml",
+        "stringout_video": "video/mp4",
+        "structured_folder": "application/zip",
+        "manifest_only": "application/json",
+        "combo_export": "application/zip",
+    }.get(export_format, "application/octet-stream")
+
+
 if __name__ == "__main__":
+    # ── Démarrage du worker : log GPU, check NVENC, warmup modèles ───────────
+    # Tout ce qui est fait ici tourne AVANT runpod.serverless.start(), donc hors billing job.
+    # Les workers RunPod restent vivants entre les jobs (idle timeout) — les caches
+    # module-level garantissent que modèles et check NVENC ne sont chargés qu'une fois.
+
+    # 1. Log GPU hardware
+    try:
+        import torch
+        if torch.cuda.is_available():
+            _props = torch.cuda.get_device_properties(0)
+            _vram_gb = _props.total_memory / 1024 ** 3
+            print(
+                f"[worker] GPU: {_props.name} "
+                f"| VRAM: {_vram_gb:.1f} GB "
+                f"| CUDA: {torch.version.cuda} "
+                f"| devices: {torch.cuda.device_count()}",
+                flush=True,
+            )
+        else:
+            print("[worker] GPU: CUDA non disponible (CPU only)", flush=True)
+    except Exception as _e:
+        print(f"[worker] GPU log: ignoré ({_e})", flush=True)
+
+    # 2. Check NVENC en avance (résultat mis en cache dans _NVENC)
+    #    Évite que le premier job captions/render_template subisse le délai du test d'encodage.
+    try:
+        _nvenc_ok = _nvenc_enabled()
+        print(f"[worker] NVENC: {'disponible ✓' if _nvenc_ok else 'indisponible → fallback libx264'}", flush=True)
+    except Exception as _e:
+        print(f"[worker] NVENC check: ignoré ({_e})", flush=True)
+
+    # 3. Warmup Whisper : charger les modèles en VRAM pour éliminer le cold start du 1er job
+    try:
+        from engine.transcribe import _get_whisper_model, _get_align_model, _resolve_device
+        _device, _compute_type = _resolve_device()
+        if _device == "cuda":
+            print("[worker] Warmup: chargement des modèles whisper en VRAM...", flush=True)
+            _get_whisper_model("large-v3-turbo", _device, _compute_type)
+            _get_whisper_model("large-v3", _device, _compute_type)
+            _get_align_model("fr", _device)
+            print("[worker] Warmup: modèles prêts — worker opérationnel.", flush=True)
+        else:
+            print("[worker] Warmup: pas de CUDA, skip chargement modèles.", flush=True)
+    except Exception as _e:
+        print(f"[worker] Warmup modèles: ignoré ({_e})", flush=True)
+
     runpod.serverless.start({"handler": handler})

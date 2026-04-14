@@ -5,7 +5,9 @@ import { auth } from "@/lib/auth";
 
 const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
 const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/x-m4v", "video/webm"];
+const ALLOWED_AUDIO_TYPES = ["audio/mpeg", "audio/wav", "audio/aac", "audio/mp4", "audio/ogg", "audio/x-m4a", "audio/flac"];
 const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024;
+const MAX_AUDIO_SIZE = 200 * 1024 * 1024;
 const SAFE_KEY = /^[\w\-.]+$/; // alphanumeric, dash, dot, underscore only
 
 /**
@@ -28,18 +30,20 @@ export async function PUT(req: NextRequest) {
 
   const contentType = req.headers.get("content-type") ?? "";
   const baseType = contentType.split(";")[0].trim();
-  if (!ALLOWED_VIDEO_TYPES.includes(baseType)) {
+  const isAudio = ALLOWED_AUDIO_TYPES.includes(baseType);
+  if (!ALLOWED_VIDEO_TYPES.includes(baseType) && !isAudio) {
     return new NextResponse("Type non supporté", { status: 400 });
   }
 
+  const maxSize = isAudio ? MAX_AUDIO_SIZE : MAX_VIDEO_SIZE;
   const contentLength = Number(req.headers.get("content-length") ?? 0);
-  if (contentLength > MAX_VIDEO_SIZE) {
-    return new NextResponse("Fichier trop volumineux (max 2 Go)", { status: 413 });
+  if (contentLength > maxSize) {
+    return new NextResponse(`Fichier trop volumineux (max ${isAudio ? "200" : "2000"} Mo)`, { status: 413 });
   }
 
   const buf = Buffer.from(await req.arrayBuffer());
-  if (buf.byteLength > MAX_VIDEO_SIZE) {
-    return new NextResponse("Fichier trop volumineux (max 2 Go)", { status: 413 });
+  if (buf.byteLength > maxSize) {
+    return new NextResponse(`Fichier trop volumineux (max ${isAudio ? "200" : "2000"} Mo)`, { status: 413 });
   }
 
   await mkdir(UPLOAD_DIR, { recursive: true });

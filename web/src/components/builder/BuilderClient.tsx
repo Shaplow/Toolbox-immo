@@ -159,6 +159,8 @@ export function BuilderClient({
     }
   }, [layoutDebugSnapshot, templateId]);
 
+  const hasVideoBlock = template.blocks.some((b) => b.type === "video");
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-100">
       {/* ── Header toolbar ──────────────────────────────────────────────── */}
@@ -196,6 +198,28 @@ export function BuilderClient({
               className="w-20 text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none"
               aria-label="Hauteur personnalisee"
             />
+          </div>
+        ) : null}
+
+        {/* Max video duration — visible only when template has a VideoBlock */}
+        {hasVideoBlock ? (
+          <div className="flex items-center gap-1.5 ml-2">
+            <span className="text-xs text-gray-500">Durée max</span>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              placeholder="auto"
+              value={template.canvas.maxDuration ?? ""}
+              onChange={(e) => {
+                const raw = e.target.value;
+                updateCanvas({ maxDuration: raw === "" ? undefined : Math.max(1, Number(raw) || 1) });
+              }}
+              className="w-20 text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none"
+              aria-label="Durée maximale de la vidéo (secondes)"
+              title="Durée maximale de la vidéo de sortie en secondes. Vide = durée de la vidéo source."
+            />
+            <span className="text-xs text-gray-400">s</span>
           </div>
         ) : null}
 

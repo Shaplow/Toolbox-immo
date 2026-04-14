@@ -1,8 +1,9 @@
 ﻿"use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Film, RefreshCw, Download, LayoutTemplate, Mic, AlignLeft, Copy, Check } from "lucide-react";
+import { Film, RefreshCw, Download, LayoutTemplate, Mic, AlignLeft, Copy, Check, Scissors } from "lucide-react";
 import { DeleteListingButton } from "./DeleteListingButton";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -66,6 +67,21 @@ export type DescriptionJobRow = {
   prompt: { name: string } | null;
 };
 
+export type DerushJobRow = {
+  id: string;
+  status: string;
+  analysisMode: string;
+  visionProvider: string;
+  presetName: string | null;
+  fileCount: number;
+  segmentCount: number | null;
+  totalDuration: number | null;
+  exportCount: number;
+  errorMsg: string | null;
+  createdAt: string;
+  ownerName: string | null;
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string) {
@@ -101,6 +117,19 @@ function groupByDate<T extends { createdAt: string }>(items: T[]): Record<string
 const GROUP_ORDER = ["Aujourd'hui", "Cette semaine", "Plus tôt"];
 const MAX_VISIBLE = 4;
 
+function isStale(createdAt: string, thresholdMs = 60 * 60 * 1000): boolean {
+  return Date.now() - new Date(createdAt).getTime() > thresholdMs;
+}
+
+function staleDuration(createdAt: string): string {
+  const ms = Date.now() - new Date(createdAt).getTime();
+  const h = Math.floor(ms / 3_600_000);
+  const d = Math.floor(h / 24);
+  if (d >= 1) return `${d}j`;
+  if (h >= 1) return `${h}h`;
+  return "<1h";
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ListingsClient({
@@ -108,16 +137,19 @@ export function ListingsClient({
   initialCaptionJobs,
   initialTranscriptionJobs,
   initialDescriptionJobs,
+  initialDerushJobs,
   isAdmin,
 }: {
   initialListings: ListingRow[];
   initialCaptionJobs: CaptionJobRow[];
   initialTranscriptionJobs: TranscriptionJobRow[];
   initialDescriptionJobs: DescriptionJobRow[];
+  initialDerushJobs: DerushJobRow[];
   isAdmin: boolean;
 }) {
-  const [tab, setTab] = useState<"visuels" | "captions" | "transcription" | "description">("visuels");
+  const [tab, setTab] = useState<"visuels" | "captions" | "transcription" | "description" | "derush">("visuels");
   const [userFilter, setUserFilter] = useState<string | null>(null);
+  const router = useRouter();
   // Flat map of render states keyed by renderId
   const [renderStates, setRenderStates] = useState<Record<string, RenderRow>>(() => {
     const m: Record<string, RenderRow> = {};
@@ -131,24 +163,35 @@ export function ListingsClient({
   const [deletedCaptionJobIds, setDeletedCaptionJobIds] = useState<Set<string>>(new Set());
   const [deletedTranscriptionJobIds, setDeletedTranscriptionJobIds] = useState<Set<string>>(new Set());
   const [deletedDescriptionJobIds, setDeletedDescriptionJobIds] = useState<Set<string>>(new Set());
+  const [deletedDerushJobIds, setDeletedDerushJobIds] = useState<Set<string>>(new Set());
 
   const handleDeleteRender = async (renderId: string) => {
     await fetch(`/api/renders/${renderId}`, { method: "DELETE" });
     setDeletedRenderIds((prev) => new Set([...prev, renderId]));
+    router.refresh();
   };
 
   const handleDeleteCaptionJob = async (jobId: string) => {
     await fetch(`/api/render/captions/${jobId}`, { method: "DELETE" });
     setDeletedCaptionJobIds((prev) => new Set([...prev, jobId]));
+    router.refresh();
   };
 
   const handleDeleteTranscriptionJob = async (jobId: string) => {
     await fetch(`/api/transcription/${jobId}`, { method: "DELETE" });
     setDeletedTranscriptionJobIds((prev) => new Set([...prev, jobId]));
+    router.refresh();
   };
 
   const handleDeleteDescriptionJob = async (jobId: string) => {
     setDeletedDescriptionJobIds((prev) => new Set([...prev, jobId]));
+    router.refresh();
+  };
+
+  const handleDeleteDerushJob = async (jobId: string) => {
+    await fetch(`/api/derush/${jobId}`, { method: "DELETE" });
+    setDeletedDerushJobIds((prev) => new Set([...prev, jobId]));
+    router.refresh();
   };
 
   const [captionStates, setCaptionStates] = useState<Record<string, CaptionJobRow>>(() => {
@@ -224,8 +267,9 @@ export function ListingsClient({
     for (const j of initialCaptionJobs) if (j.ownerName) names.add(j.ownerName);
     for (const j of initialTranscriptionJobs) if (j.ownerName) names.add(j.ownerName);
     for (const j of initialDescriptionJobs) if (j.ownerName) names.add(j.ownerName);
+    for (const j of initialDerushJobs) if (j.ownerName) names.add(j.ownerName);
     return Array.from(names).sort();
-  }, [initialListings, initialCaptionJobs, initialTranscriptionJobs, initialDescriptionJobs]);
+  }, [initialListings, initialCaptionJobs, initialTranscriptionJobs, initialDescriptionJobs, initialDerushJobs]);
 
   const filteredListings = useMemo(
     () => (userFilter ? initialListings.filter((l) => l.ownerName === userFilter) : initialListings),
@@ -256,15 +300,25 @@ export function ListingsClient({
     [initialDescriptionJobs, userFilter, deletedDescriptionJobIds]
   );
 
+  const filteredDerush = useMemo(
+    () =>
+      (userFilter ? initialDerushJobs.filter((j) => j.ownerName === userFilter) : initialDerushJobs).filter(
+        (j) => !deletedDerushJobIds.has(j.id)
+      ),
+    [initialDerushJobs, userFilter, deletedDerushJobIds]
+  );
+
   const listingGroups = useMemo(() => groupByDate(filteredListings), [filteredListings]);
   const captionGroups = useMemo(() => groupByDate(filteredCaptions), [filteredCaptions]);
   const transcriptionGroups = useMemo(() => groupByDate(filteredTranscriptions), [filteredTranscriptions]);
   const descriptionGroups = useMemo(() => groupByDate(filteredDescriptions), [filteredDescriptions]);
+  const derushGroups = useMemo(() => groupByDate(filteredDerush), [filteredDerush]);
 
   const activeGroups =
     tab === "visuels" ? listingGroups :
     tab === "captions" ? captionGroups :
     tab === "transcription" ? transcriptionGroups :
+    tab === "derush" ? derushGroups :
     descriptionGroups;
   const isEmpty = GROUP_ORDER.every((g) => !activeGroups[g]?.length);
 
@@ -328,6 +382,21 @@ export function ListingsClient({
             </span>
           </button>
         )}
+        {initialDerushJobs.length > 0 && (
+          <button
+            onClick={() => setTab("derush")}
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              tab === "derush" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            Dérush
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+              tab === "derush" ? "bg-orange-100 text-orange-600" : "bg-gray-200 text-gray-500"
+            }`}>
+              {filteredDerush.length}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Admin user filter pills */}
@@ -360,7 +429,7 @@ export function ListingsClient({
       )}
 
       {/* Empty state */}
-      {isEmpty && (
+      {isEmpty && tab !== "derush" && (
         <div className="text-center py-24 text-gray-400">
           {tab === "visuels" ? (
             <>
@@ -399,6 +468,17 @@ export function ListingsClient({
               </p>
             </>
           )}
+        </div>
+      )}
+
+      {isEmpty && tab === "derush" && (
+        <div className="text-center py-24 text-gray-400">
+          <Scissors size={40} className="mx-auto mb-4 opacity-30" />
+          <p className="font-medium">Aucun dérush pour l&apos;instant</p>
+          <p className="text-sm mt-1">
+            Rendez-vous dans{" "}
+            <Link href="/tools/derush" className="text-orange-600 hover:underline">Dérush</Link>
+          </p>
         </div>
       )}
 
@@ -454,6 +534,15 @@ export function ListingsClient({
                       onDelete={() => handleDeleteDescriptionJob(job.id)}
                     />
                   ))}
+              {tab === "derush" &&
+                (activeGroups[group] as DerushJobRow[]).map((job) => (
+                  <DerushCard
+                    key={job.id}
+                    job={job}
+                    isAdmin={isAdmin}
+                    onDelete={() => handleDeleteDerushJob(job.id)}
+                  />
+                ))}
             </div>
           </section>
         ))}
@@ -672,12 +761,13 @@ function CaptionCard({
   const isInProgress = job.status === "PROCESSING" || job.status === "QUEUED";
   const isDone       = job.status === "DONE" || job.status === "COMPLETED";
   const isFailed     = job.status === "FAILED";
+  const stale        = isInProgress && isStale(job.createdAt);
   const name = job.inputName ?? "Vidéo";
 
   return (
-    <div className="bg-white border border-gray-100 rounded-xl flex overflow-hidden">
+    <div className={`bg-white border rounded-xl flex overflow-hidden ${stale ? "border-amber-200" : "border-gray-100"}`}>
       {/* Left accent */}
-      <div className="w-0.5 bg-violet-400 shrink-0" />
+      <div className={`w-0.5 shrink-0 ${stale ? "bg-amber-400" : "bg-violet-400"}`} />
 
       <div className="flex-1 min-w-0 px-4 py-3">
         {/* Row 1: meta + actions */}
@@ -685,12 +775,13 @@ function CaptionCard({
           <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
             <h3 className="text-sm font-medium text-gray-900 truncate">{name}</h3>
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
-              isDone       ? "bg-green-50 text-green-600"   :
-              isFailed     ? "bg-red-50 text-red-500"       :
+              isDone  ? "bg-green-50 text-green-600"   :
+              isFailed? "bg-red-50 text-red-500"        :
+              stale   ? "bg-amber-50 text-amber-600"   :
               isInProgress ? "bg-violet-50 text-violet-600" :
                              "bg-gray-100 text-gray-500"
             }`}>
-              {isDone ? "Terminé" : isFailed ? "Erreur" : isInProgress ? "En cours…" : job.status}
+              {isDone ? "Terminé" : isFailed ? "Erreur" : stale ? `Bloqué · ${staleDuration(job.createdAt)}` : "En cours…"}
             </span>
             {isAdmin && job.ownerName && (
               <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium shrink-0">
@@ -717,7 +808,7 @@ function CaptionCard({
               </Link>
             )}
             <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
-            {isAdmin && <DeleteCaptionJobButton jobId={job.id} onDelete={onDelete} />}
+            <DeleteCaptionJobButton jobId={job.id} onDelete={onDelete} />
           </div>
         </div>
 
@@ -782,6 +873,7 @@ function TranscriptionCard({
   const isInProgress = job.status === "PROCESSING" || job.status === "QUEUED";
   const isDone       = job.status === "COMPLETED";
   const isFailed     = job.status === "FAILED";
+  const stale        = isInProgress && isStale(job.createdAt);
   const name = job.inputFilename ?? "Fichier audio";
 
   const durationLabel = job.duration
@@ -791,9 +883,9 @@ function TranscriptionCard({
     : null;
 
   return (
-    <div className="bg-white border border-gray-100 rounded-xl flex overflow-hidden">
+    <div className={`bg-white border rounded-xl flex overflow-hidden ${stale ? "border-amber-200" : "border-gray-100"}`}>
       {/* Left accent */}
-      <div className="w-0.5 bg-teal-400 shrink-0" />
+      <div className={`w-0.5 shrink-0 ${stale ? "bg-amber-400" : "bg-teal-400"}`} />
 
       <div className="flex-1 min-w-0 px-4 py-3">
         {/* Row 1: meta + actions */}
@@ -801,12 +893,13 @@ function TranscriptionCard({
           <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
             <h3 className="text-sm font-medium text-gray-900 truncate">{name}</h3>
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
-              isDone       ? "bg-green-50 text-green-600"  :
-              isFailed     ? "bg-red-50 text-red-500"      :
-              isInProgress ? "bg-teal-50 text-teal-600"    :
+              isDone  ? "bg-green-50 text-green-600"  :
+              isFailed? "bg-red-50 text-red-500"       :
+              stale   ? "bg-amber-50 text-amber-600"  :
+              isInProgress ? "bg-teal-50 text-teal-600" :
                              "bg-gray-100 text-gray-500"
             }`}>
-              {isDone ? "Terminé" : isFailed ? "Erreur" : isInProgress ? "En cours…" : job.status}
+              {isDone ? "Terminé" : isFailed ? "Erreur" : stale ? `Bloqué · ${staleDuration(job.createdAt)}` : "En cours…"}
             </span>
             {isDone && job.segmentCount != null && (
               <span className="text-[10px] text-gray-400 shrink-0">{job.segmentCount} segments</span>
@@ -842,12 +935,14 @@ function TranscriptionCard({
               Détails →
             </Link>
             <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
-            {isAdmin && <DeleteTranscriptionJobButton jobId={job.id} onDelete={onDelete} />}
+            <DeleteTranscriptionJobButton jobId={job.id} onDelete={onDelete} />
           </div>
         </div>
 
         {/* Row 2: status details */}
-        {isInProgress ? (
+        {stale ? (
+          <p className="text-xs text-amber-600">Job bloqué depuis {staleDuration(job.createdAt)} — supprimer pour relancer.</p>
+        ) : isInProgress ? (
           <div className="flex items-center gap-1.5 text-xs text-teal-500">
             <div className="w-3 h-3 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
             Transcription en cours…
@@ -993,6 +1088,111 @@ function DescriptionCard({
           </div>
         ) : isFailed ? (
           <p className="text-xs text-red-400">La génération a échoué.</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// ── DerushCard ────────────────────────────────────────────────────────────────
+
+function DerushCard({
+  job,
+  isAdmin,
+  onDelete,
+}: {
+  job: DerushJobRow;
+  isAdmin: boolean;
+  onDelete: () => Promise<void>;
+}) {
+  const isInProgress = job.status === "PROCESSING" || job.status === "QUEUED";
+  const isDone       = job.status === "COMPLETED";
+  const isFailed     = job.status === "FAILED";
+  const stale        = isInProgress && isStale(job.createdAt);
+
+  const durationLabel = job.totalDuration
+    ? job.totalDuration >= 60
+      ? `${Math.floor(job.totalDuration / 60)}min${Math.round(job.totalDuration % 60)}s`
+      : `${Math.round(job.totalDuration)}s`
+    : null;
+
+  const modeLabel = job.analysisMode === "transcription" ? "Transcription" : "Vision";
+  const modeColor = job.analysisMode === "transcription" ? "text-teal-600 bg-teal-50" : "text-orange-600 bg-orange-50";
+
+  return (
+    <div className={`bg-white border rounded-xl flex overflow-hidden ${stale ? "border-amber-200" : "border-gray-100"}`}>
+      {/* Left accent */}
+      <div className={`w-0.5 shrink-0 ${stale ? "bg-amber-400" : "bg-orange-400"}`} />
+
+      <div className="flex-1 min-w-0 px-4 py-3">
+        {/* Row 1: meta + actions */}
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold shrink-0 ${modeColor}`}>
+              {modeLabel}
+            </span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
+              isDone  ? "bg-green-50 text-green-600"   :
+              isFailed? "bg-red-50 text-red-500"       :
+              stale   ? "bg-amber-50 text-amber-600"   :
+              isInProgress ? "bg-orange-50 text-orange-600" :
+                             "bg-gray-100 text-gray-500"
+            }`}>
+              {isDone ? "Terminé" : isFailed ? "Erreur" : stale ? `Bloqué · ${staleDuration(job.createdAt)}` : "En cours…"}
+            </span>
+            {job.fileCount > 0 && (
+              <span className="text-[10px] text-gray-400 shrink-0">
+                {job.fileCount} fichier{job.fileCount !== 1 ? "s" : ""}
+              </span>
+            )}
+            {isDone && job.segmentCount != null && (
+              <span className="text-[10px] text-gray-400 shrink-0">{job.segmentCount} segments</span>
+            )}
+            {isDone && durationLabel && (
+              <span className="text-[10px] text-gray-400 shrink-0">{durationLabel}</span>
+            )}
+            {isDone && job.exportCount > 0 && (
+              <span className="text-[10px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded-full font-medium shrink-0">
+                {job.exportCount} export{job.exportCount !== 1 ? "s" : ""}
+              </span>
+            )}
+            {job.presetName && (
+              <span className="text-[10px] text-gray-400 shrink-0">— {job.presetName}</span>
+            )}
+            {isAdmin && job.ownerName && (
+              <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium shrink-0">
+                {job.ownerName}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              href={`/tools/derush/${job.id}`}
+              className="inline-flex items-center gap-1 text-[11px] text-orange-500 hover:text-orange-700 font-medium transition-colors"
+            >
+              Détails →
+            </Link>
+            <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
+            <button
+              onClick={() => void onDelete()}
+              className="shrink-0 text-gray-300 hover:text-red-400 transition-colors text-sm"
+              title="Supprimer"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        {/* Row 2: status hint */}
+        {stale ? (
+          <p className="text-xs text-amber-600">Job bloqué depuis {staleDuration(job.createdAt)} — supprimer pour relancer.</p>
+        ) : isInProgress ? (
+          <div className="flex items-center gap-1.5 text-xs text-orange-500">
+            <div className="w-3 h-3 border-2 border-orange-400 border-t-transparent rounded-full animate-spin" />
+            Analyse en cours…
+          </div>
+        ) : isFailed ? (
+          <p className="text-xs text-red-400 truncate">{job.errorMsg ?? "L'analyse a échoué."}</p>
         ) : null}
       </div>
     </div>

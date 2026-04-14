@@ -35,3 +35,9 @@ textarea::placeholder {
   color: #9ca3af;
   opacity: 1;
 }
+
+/* Per-line text background mode: each line fragment gets its own background box */
+.text-bg-per-line {
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}

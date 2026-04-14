@@ -14,3 +14,9 @@ pangocairocffi>=0.7.0
 # Transcription (WhisperX + faster-whisper)
 whisperx>=3.1.0
 faster-whisper>=1.0.0
+
+# Derush vision pipeline
+scenedetect[opencv-headless]>=0.6.4
+opencv-python-headless>=4.10.0
+numpy>=1.26.0
+imagehash>=4.3.1

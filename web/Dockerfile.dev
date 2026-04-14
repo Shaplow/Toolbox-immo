@@ -22,5 +22,6 @@ COPY . .
 
 EXPOSE 3000
 
-# Dev server avec hot-reload
-CMD ["npm", "run", "dev"]
+# Régénère le client Prisma (le schéma peut avoir évolué via le volume monté)
+# puis lance le dev server avec hot-reload
+CMD ["sh", "-c", "npx prisma generate && npm run dev"]

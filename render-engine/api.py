@@ -20,7 +20,12 @@ from pydantic import ValidationError
 from app import FONTS_DIR, OUTPUTS_DIR, _parse_srt_content, _render_captions_preview, _render_captions_video, _resolve_captions_engine
 from engine.cairo_renderer import CairoRendererNotReadyError
 from engine.fonts import list_font_names, scan_fonts
-from engine.template_composite import build_template_ffmpeg_cmd, normalize_video_block
+from engine.template_composite import (
+    OverlaySegment,
+    build_template_ffmpeg_cmd,
+    build_template_ffmpeg_cmd_timed,
+    normalize_video_block,
+)
 from engine.encoding_profiles import build_caption_encoding_settings
 from engine.models import RenderConfig, WordTimestamp, default_premium_config
 from engine.probe import probe_video
@@ -255,16 +260,45 @@ def render_progress(job_id: str):
 
 @app.post("/api/render_template")
 async def render_template_local(
-    overlay: UploadFile = File(...),
+    overlay: Optional[UploadFile] = File(None),
     video_block: str = Form(...),
     canvas_w: int = Form(1080),
     canvas_h: int = Form(1920),
     video_url: Optional[str] = Form(None),
     video: Optional[UploadFile] = File(None),
+    # Optional timed overlays ─────────────────────────────────────────────────
+    # When provided, `overlay` is ignored and multi-overlay mode is activated.
+    # overlays_metadata: JSON array of {index, start, end} where end=null means
+    # "until end of video".  overlay_0, overlay_1, ... are the corresponding PNGs.
+    overlays_metadata: Optional[str] = Form(None),
+    overlay_0: Optional[UploadFile] = File(None),
+    overlay_1: Optional[UploadFile] = File(None),
+    overlay_2: Optional[UploadFile] = File(None),
+    overlay_3: Optional[UploadFile] = File(None),
+    overlay_4: Optional[UploadFile] = File(None),
+    overlay_5: Optional[UploadFile] = File(None),
+    overlay_6: Optional[UploadFile] = File(None),
+    overlay_7: Optional[UploadFile] = File(None),
+    # Max output duration in seconds (optional, undefined = full source duration)
+    max_duration: Optional[float] = Form(None),
+    # Optional music/audio overlay ────────────────────────────────────────────
+    music_url: Optional[str] = Form(None),
+    music: Optional[UploadFile] = File(None),
+    music_volume: Optional[float] = Form(None),
+    music_source_volume: Optional[float] = Form(None),
+    music_mute_source: Optional[str] = Form(None),
+    music_loop: Optional[str] = Form(None),
+    music_fade_in: Optional[float] = Form(None),
+    music_fade_out: Optional[float] = Form(None),
 ):
     """
     Mode local (USE_RUNPOD=false) : composite overlay PNG sur la vidéo source via FFmpeg.
     La vidéo peut être fournie soit comme fichier upload (video=), soit comme URL distante (video_url=).
+
+    Two overlay modes are supported:
+    - Legacy (single overlay): pass `overlay` file.  max_duration is still honoured.
+    - Timed (multi-overlay): pass `overlays_metadata` (JSON array) + overlay_0..N files.
+      Each overlay PNG is applied only during its declared time window.
     """
     import subprocess
     import httpx
@@ -272,16 +306,44 @@ async def render_template_local(
     if not video and not video_url:
         raise HTTPException(status_code=400, detail="Fournir 'video' (fichier) ou 'video_url'")
 
+    # Determine overlay mode ────────────────────────────────────────────────────
+    timed_mode = overlays_metadata is not None
+    if not timed_mode and overlay is None:
+        raise HTTPException(status_code=400, detail="Fournir 'overlay' ou 'overlays_metadata' + overlay_N")
+
     work_dir = OUTPUTS_DIR / "temp" / "api"
     work_dir.mkdir(parents=True, exist_ok=True)
 
     stamp = int(time.time() * 1000)
-    overlay_path = work_dir / f"overlay_{stamp}.png"
     video_path = work_dir / f"video_src_{stamp}.mp4"
     out_path = work_dir / f"composite_{stamp}.mp4"
 
-    # Écrire l'overlay PNG
-    overlay_path.write_bytes(await overlay.read())
+    # Collect overlay files ────────────────────────────────────────────────────
+    overlay_file_inputs = [overlay_0, overlay_1, overlay_2, overlay_3, overlay_4, overlay_5, overlay_6, overlay_7]
+    tmp_overlay_paths: list[Path] = []
+
+    if timed_mode:
+        try:
+            raw_segments = json.loads(overlays_metadata)  # type: ignore[arg-type]
+            segments: list[OverlaySegment] = [
+                OverlaySegment(index=int(s["index"]), start=float(s["start"]), end=float(s["end"]) if s.get("end") is not None else None)
+                for s in raw_segments
+            ]
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=f"overlays_metadata JSON invalide : {exc}")
+
+        for i, seg in enumerate(segments):
+            upload = overlay_file_inputs[seg["index"]]
+            if upload is None:
+                raise HTTPException(status_code=400, detail=f"overlay_{seg['index']} manquant pour le segment {i}")
+            p = work_dir / f"overlay_{stamp}_{seg['index']}.png"
+            p.write_bytes(await upload.read())
+            tmp_overlay_paths.append(p)
+    else:
+        # Legacy single-overlay
+        overlay_path = work_dir / f"overlay_{stamp}.png"
+        overlay_path.write_bytes(await overlay.read())  # type: ignore[union-attr]
+        tmp_overlay_paths.append(overlay_path)
 
     # Vidéo source : fichier uploadé ou téléchargement URL
     if video is not None:
@@ -325,16 +387,67 @@ async def render_template_local(
         preview=False,
         for_composite=True,
     )
-    cmd = build_template_ffmpeg_cmd(
-        video_path=video_path,
-        overlay_path=overlay_path,
-        out_path=out_path,
-        block=normalized_block,
-        video_codec=_codec,
-        video_codec_args=_codec_args,
-        audio_codec=_audio_codec,
-        audio_codec_args=_audio_args,
+
+    # ── Music audio overlay (optional) ────────────────────────────────────────
+    music_path: Path | None = None
+    _music_volume = music_volume if music_volume is not None else 0.3
+    _music_source_volume = music_source_volume if music_source_volume is not None else 1.0
+    _music_mute_source = _to_bool(music_mute_source, False)
+    _music_loop = _to_bool(music_loop, False)
+    _music_fade_in = music_fade_in if music_fade_in is not None else 0.0
+    _music_fade_out = music_fade_out if music_fade_out is not None else 0.0
+
+    if music is not None:
+        music_path = work_dir / f"music_{stamp}.mp3"
+        music_path.write_bytes(await music.read())
+    elif music_url:
+        music_path = work_dir / f"music_{stamp}.mp3"
+        try:
+            async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+                resp = await client.get(music_url)
+                resp.raise_for_status()
+                music_path.write_bytes(resp.content)
+        except Exception as exc:
+            logger.warning("[render_template] Failed to download music: %s", exc)
+            music_path = None
+
+    music_opts = dict(
+        music_path=str(music_path) if music_path else None,
+        music_volume=_music_volume,
+        source_volume=_music_source_volume,
+        mute_source=_music_mute_source,
+        music_loop=_music_loop,
+        music_fade_in=_music_fade_in,
+        music_fade_out=_music_fade_out,
     )
+
+    if timed_mode:
+        cmd = build_template_ffmpeg_cmd_timed(
+            video_path=video_path,
+            overlay_paths=tmp_overlay_paths,
+            out_path=out_path,
+            block=normalized_block,
+            segments=segments,  # type: ignore[possibly-undefined]
+            video_codec=_codec,
+            video_codec_args=_codec_args,
+            audio_codec=_audio_codec,
+            audio_codec_args=_audio_args,
+            max_duration=max_duration,
+            **music_opts,
+        )
+    else:
+        cmd = build_template_ffmpeg_cmd(
+            video_path=video_path,
+            overlay_path=tmp_overlay_paths[0],
+            out_path=out_path,
+            block=normalized_block,
+            video_codec=_codec,
+            video_codec_args=_codec_args,
+            audio_codec=_audio_codec,
+            audio_codec_args=_audio_args,
+            max_duration=max_duration,
+            **music_opts,
+        )
     try:
         proc = await asyncio.to_thread(
             subprocess.run,
@@ -354,7 +467,10 @@ async def render_template_local(
     logger.info("[render_template] FFmpeg done stamp=%s output=%s size=%s", stamp, out_path.name, out_path.stat().st_size)
 
     # Nettoyage des inputs temporaires ; on garde l'output pour le servir via /outputs
-    for tmp in (overlay_path, video_path):
+    cleanup_files = [*tmp_overlay_paths, video_path]
+    if music_path:
+        cleanup_files.append(music_path)
+    for tmp in cleanup_files:
         try:
             tmp.unlink(missing_ok=True)
         except Exception:

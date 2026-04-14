@@ -3,10 +3,12 @@
 # NE PAS utiliser requirements.txt (contient Gradio ~2.5GB inutile en prod)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# CUDA 12.8 devel → dernière version toolkit disponible, compatible driver 520+ (RunPod driver 580 inclus)
+# CUDA 12.8 cudnn-runtime : runtime + cuDNN, sans headers/nvcc de compilation (~2.7 GB vs ~6.5 GB devel).
+# cudnn-runtime requis (pas runtime seul) : ctranslate2/faster-whisper nécessite libcudnn.so
+# pour l'inférence GPU sur modèles Whisper (couches convolutionnelles).
 # RunPod GPU attend une image linux/amd64.
 # La sélection de plateforme se fait au moment du build via docker buildx --platform linux/amd64.
-FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu22.04
 
 # Système : Python 3.11 + dépendances de base
 # FFmpeg sera installé via build statique BtbN (NVENC embarqué, pas de dépendance host)
@@ -19,21 +21,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpangocairo-1.0-0 \
     libsndfile1 \
     libgomp1 \
+    libgl1-mesa-glx \
     xz-utils wget \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
     && ln -sf /usr/bin/python3.11 /usr/bin/python
 
-# FFmpeg statique avec NVENC + libx264 — build BtbN GPL (linux64, master-latest)
+# FFmpeg statique avec NVENC + libx264 — build BtbN GPL (linux64)
 # GPL inclut libx264 (fallback CPU si NVENC indisponible) + NVENC (GPU).
-RUN wget -q https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz \
-    && tar -xf ffmpeg-master-latest-linux64-gpl.tar.xz \
-    && mv ffmpeg-master-latest-linux64-gpl/bin/ffmpeg /usr/local/bin/ffmpeg \
-    && mv ffmpeg-master-latest-linux64-gpl/bin/ffprobe /usr/local/bin/ffprobe \
-    && rm -rf ffmpeg-master-latest-linux64-gpl* \
+# Fetch dynamique du dernier autobuild — évite les URLs pinées périmées.
+# Le nom d'asset BtbN a changé (ffmpeg-master-latest-* → ffmpeg-N-HASH-*)
+# donc on interroge l'API GitHub pour trouver l'asset correct.
+RUN FFMPEG_URL=$(python3 -c "import urllib.request,json; d=json.loads(urllib.request.urlopen('https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest',timeout=30).read()); print(next(a['browser_download_url'] for a in d['assets'] if a['name'].endswith('linux64-gpl.tar.xz') and 'shared' not in a['name'] and '-n7' not in a['name'].lower() and '-n8' not in a['name'].lower()))") \
+    && FFMPEG_DIR=$(basename "$FFMPEG_URL" .tar.xz) \
+    && wget -q "$FFMPEG_URL" \
+    && tar -xf "${FFMPEG_DIR}.tar.xz" \
+    && mv "${FFMPEG_DIR}/bin/ffmpeg" /usr/local/bin/ffmpeg \
+    && mv "${FFMPEG_DIR}/bin/ffprobe" /usr/local/bin/ffprobe \
+    && rm -rf "${FFMPEG_DIR}"* \
     && ffmpeg -version
 
 WORKDIR /app
+
+# Torch CUDA — layer séparée, rejouée uniquement si cette ligne change (pas si requirements-worker.txt change).
+# cu128 = build PyTorch natif CUDA 12.8 (correspond à la base image).
+# Installé AVANT whisperx pour imposer la variante CUDA correcte (whisperx tire torch en dep transitive).
+RUN pip install --no-cache-dir \
+    torch torchaudio \
+    --index-url https://download.pytorch.org/whl/cu128
 
 # Dépendances Python minimales (sans Gradio)
 COPY requirements-worker.txt .
@@ -48,6 +63,8 @@ RUN python -c "\
 import whisperx; \
 print('[build] downloading large-v3-turbo...', flush=True); \
 whisperx.load_model('large-v3-turbo', 'cpu', compute_type='int8'); \
+print('[build] downloading large-v3...', flush=True); \
+whisperx.load_model('large-v3', 'cpu', compute_type='int8'); \
 print('[build] downloading alignment model (fr)...', flush=True); \
 whisperx.load_align_model(language_code='fr', device='cpu'); \
 print('[build] models cached.', flush=True)"
@@ -66,5 +83,6 @@ ENV PANGOCAIRO_BACKEND=fc
 ENV NVIDIA_VISIBLE_DEVICES=all
 # "all" expose video+compute+utility+display+graphics → garantit l'accès NVENC sur tous les pods RunPod
 ENV NVIDIA_DRIVER_CAPABILITIES=all
+ENV PYTHONWARNINGS="ignore::UserWarning:pyannote"
 
 CMD ["python", "-u", "runpod_worker.py"]

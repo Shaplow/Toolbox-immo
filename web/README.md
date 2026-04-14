@@ -43,7 +43,7 @@ App disponible sur [http://localhost:3000](http://localhost:3000).
 Depuis la racine du projet, en **Git Bash** :
 
 ```bash
-bash web/scripts/bootstrap-server.sh 37.27.246.85 root ~/.ssh/toolbox-immo.key
+bash web/scripts/bootstrap-server.sh 37.27.246.85 root
 ```
 
 Ce script :
@@ -79,7 +79,7 @@ npx tsx scripts/seed-presets.ts
 Depuis la racine du projet, en **Git Bash** :
 
 ```bash
-bash web/scripts/deploy-remote.sh 37.27.246.85 root ~/.ssh/toolbox-immo.key
+bash web/scripts/deploy-remote.sh 37.27.246.85 root
 ```
 
 Ce script :

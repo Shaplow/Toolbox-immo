@@ -3,15 +3,17 @@ import type { ListingData } from "@/types/listing";
 import { formatPrice } from "@/types/listing";
 import { compileTextTemplate, resolveTextTemplate } from "@/lib/textTemplate";
 import { formatConfiguredNumber, toFlexibleNumber } from "@/lib/numberFormatting";
-import { getHorizontalAlignment, getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled } from "@/lib/textBackground";
+import { getPerLineTextSideBridgeMetrics, PER_LINE_TEXT_GOO_FILTER_ID } from "@/lib/perLineTextBackground";
+import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled } from "@/lib/textBackground";
 import { blockBaseStyle, buildTextShadowValue } from "../styleUtils";
 
 export function renderTextBlock(
   block: TextBlock,
   listing: ListingData,
   schema?: SchemaField[],
-  options?: { autoLayout?: boolean }
+  _options?: { autoLayout?: boolean }
 ): string {
+  void _options;
   let text = "";
   const resolvedContent = block.content ?? (block.contentSegments ? compileTextTemplate(block.contentSegments) : undefined);
 
@@ -48,8 +50,6 @@ export function renderTextBlock(
   const contentPadding = getTextContentPadding(style);
   const backgroundPadding = getTextBackgroundPadding(style);
   const backgroundRadius = getTextBackgroundBorderRadius(style);
-  const horizontalAlignment = getHorizontalAlignment(style.textAlign);
-  const autoLayout = options?.autoLayout ?? false;
 
   // Outer div: handles position and vertical placement inside the text block.
   const outerParts: string[] = [
@@ -95,11 +95,73 @@ export function renderTextBlock(
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
+  // ── No background ──────────────────────────────────────────────────────────
   if (!backgroundEnabled) {
     const plainStyle = style.opacity !== undefined ? `opacity:${style.opacity}` : "";
-    return `<div class="block block-text" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" style="${outerStyle}"><div style="${plainStyle}"><div class="block-text-content" style="${innerStyle}">${escaped}</div></div></div>`;
+    return `<div class="block block-text" data-text-background-mode="none" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" style="${outerStyle}"><div style="${plainStyle}"><div class="block-text-content" style="${innerStyle}">${escaped}</div></div></div>`;
   }
 
+  // Background box is always horizontally centered in the block frame.
+  // Text alignment within the box is controlled separately via innerStyle (text-align).
+  const alignStyle = `width:100%;display:flex;justify-content:center`;
+
+  // ── Per-line mode ──────────────────────────────────────────────────────────
+  if (backgroundMode === "per-line") {
+    const spanParts: string[] = [];
+    const textAlign = style.textAlign ?? "left";
+    const backgroundColor = style.backgroundColor ?? "#FFFFFF";
+    const bridgeMetrics = textAlign === "left"
+      ? getPerLineTextSideBridgeMetrics(backgroundRadius, backgroundPadding.left)
+      : textAlign === "right"
+        ? getPerLineTextSideBridgeMetrics(backgroundRadius, backgroundPadding.right)
+        : { inset: 0, width: 0 };
+    if (style.fontFamily) spanParts.push(`font-family:'${style.fontFamily}',sans-serif`);
+    if (style.fontSize) spanParts.push(`font-size:${style.fontSize}pt`);
+    if (style.fontWeight) spanParts.push(`font-weight:${style.fontWeight}`);
+    if (style.color) spanParts.push(`color:${style.color}`);
+    if (style.letterSpacing !== undefined) spanParts.push(`letter-spacing:${style.letterSpacing}px`);
+    const textShadowPL = buildTextShadowValue(style);
+    if (textShadowPL) spanParts.push(`text-shadow:${textShadowPL}`);
+    if (style.textAlign) spanParts.push(`text-align:${style.textAlign}`);
+    if (rules.uppercase) spanParts.push("text-transform:uppercase");
+    spanParts.push(`background-color:${backgroundColor}`);
+    spanParts.push("display:inline");
+    spanParts.push("box-decoration-break:clone");
+    spanParts.push("-webkit-box-decoration-break:clone");
+    spanParts.push("white-space:pre-wrap");
+    spanParts.push("box-sizing:border-box");
+    if (backgroundRadius > 0) spanParts.push(`border-radius:${backgroundRadius}px`);
+    if (style.opacity !== undefined) spanParts.push(`opacity:${style.opacity}`);
+
+    const vPad = backgroundPadding.top + backgroundPadding.bottom;
+    if (vPad > 0) spanParts.push(`line-height:calc(1em + ${vPad}px)`);
+    if (backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left) {
+      if (backgroundPadding.top > 0) spanParts.push(`padding:${backgroundPadding.top}px`);
+    } else {
+      if (backgroundPadding.top > 0) spanParts.push(`padding-top:${backgroundPadding.top}px`);
+      if (backgroundPadding.right > 0) spanParts.push(`padding-right:${backgroundPadding.right}px`);
+      if (backgroundPadding.bottom > 0) spanParts.push(`padding-bottom:${backgroundPadding.bottom}px`);
+      if (backgroundPadding.left > 0) spanParts.push(`padding-left:${backgroundPadding.left}px`);
+    }
+
+    const spanStyle = spanParts.join(";");
+    const textStyle = "position:relative";
+    const wrapperStyle = `width:100%;position:relative;text-align:${textAlign};filter:url(#${PER_LINE_TEXT_GOO_FILTER_ID});overflow:visible`;
+    const bridgeStyle = bridgeMetrics.width > 0
+      ? [
+          "position:absolute",
+          `top:${bridgeMetrics.inset}px`,
+          `bottom:${bridgeMetrics.inset}px`,
+          `width:${bridgeMetrics.width}px`,
+          `background-color:${backgroundColor}`,
+          textAlign === "left" ? "left:0" : "right:0",
+        ].join(";")
+      : "";
+
+    return `<div class="block block-text block-text-per-line" data-text-background-mode="per-line" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" style="${outerStyle}"><div class="block-text-align" style="${wrapperStyle}">${bridgeStyle ? `<span aria-hidden="true" style="${bridgeStyle}"></span>` : ""}<span class="block-text-background block-text-content text-bg-per-line" style="${spanStyle}"><span style="${textStyle}">${escaped}</span></span></div></div>`;
+  }
+
+  // ── Fit / Fixed modes ──────────────────────────────────────────────────────
   const backgroundParts: string[] = [
     `background-color:${style.backgroundColor ?? "#FFFFFF"}`,
     `display:${backgroundMode === "fixed" ? "flex" : "inline-flex"}`,
@@ -129,7 +191,6 @@ export function renderTextBlock(
   }
 
   const backgroundStyle = backgroundParts.join(";");
-  const alignStyle = `width:100%;display:flex;justify-content:${horizontalAlignment}`;
 
-  return `<div class="block block-text" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" style="${outerStyle}"><div class="block-text-align" style="${alignStyle}"><div class="block-text-background" style="${backgroundStyle}"><div class="block-text-content" style="${innerStyle}">${escaped}</div></div></div></div>`;
+  return `<div class="block block-text" data-text-background-mode="${backgroundMode}" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" style="${outerStyle}"><div class="block-text-align" style="${alignStyle}"><div class="block-text-background" style="${backgroundStyle}"><div class="block-text-content" style="${innerStyle}">${escaped}</div></div></div></div>`;
 }

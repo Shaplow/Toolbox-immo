@@ -8,6 +8,7 @@ export const SCHEMA_FIELD_TYPES: { value: SchemaFieldType; label: string }[] = [
   { value: "url", label: "URL" },
   { value: "image", label: "Image" },
   { value: "video", label: "Vidéo" },
+  { value: "audio", label: "Audio" },
   { value: "select", label: "Liste (select)" },
   { value: "boolean", label: "Oui / Non" },
 ];

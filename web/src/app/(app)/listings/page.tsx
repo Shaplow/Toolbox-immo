@@ -1,6 +1,6 @@
 ﻿import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { ListingsClient, type ListingRow, type CaptionJobRow, type TranscriptionJobRow, type DescriptionJobRow } from "@/components/listings/ListingsClient";
+import { ListingsClient, type ListingRow, type CaptionJobRow, type TranscriptionJobRow, type DescriptionJobRow, type DerushJobRow } from "@/components/listings/ListingsClient";
 import { getUserContext } from "@/lib/userContext";
 
 export default async function ListingsPage() {
@@ -54,6 +54,17 @@ export default async function ListingsPage() {
     include: {
       prompt: { select: { name: true } },
       user: { select: { name: true, email: true } },
+    },
+  });
+
+  const derushJobs = await prisma.derushJob.findMany({
+    where: isAdmin ? {} : { userId },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: {
+      user: { select: { name: true, email: true } },
+      preset: { select: { name: true } },
+      derushExports: { select: { id: true } },
     },
   });
 
@@ -125,10 +136,30 @@ export default async function ListingsPage() {
     prompt: j.prompt ?? null,
   }));
 
+  const derushRows: DerushJobRow[] = derushJobs.map((j) => {
+    let fileCount = 0;
+    try { fileCount = (JSON.parse(j.inputFiles) as unknown[]).length; } catch { /* ignore */ }
+    return {
+      id: j.id,
+      status: j.status,
+      analysisMode: j.analysisMode,
+      visionProvider: j.visionProvider,
+      presetName: j.preset?.name ?? null,
+      fileCount,
+      segmentCount: j.segmentCount ?? null,
+      totalDuration: j.totalDuration ?? null,
+      exportCount: j.derushExports.length,
+      errorMsg: j.errorMsg ?? null,
+      createdAt: j.createdAt.toISOString(),
+      ownerName: isAdmin ? (j.user.name ?? j.user.email ?? "?") : null,
+    };
+  });
+
   const inProgressCount =
     rows.reduce((n, l) => n + l.renders.filter((r) => r.status === "PROCESSING" || r.status === "PENDING").length, 0) +
     captionRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length +
-    transcriptionRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length;
+    transcriptionRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length +
+    derushRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length;
 
   return (
     <div className="p-8">
@@ -142,6 +173,7 @@ export default async function ListingsPage() {
             {captionRows.length > 0 && ` · ${captionRows.length} export${captionRows.length !== 1 ? "s" : ""} de sous-titres`}
             {transcriptionRows.length > 0 && ` · ${transcriptionRows.length} transcription${transcriptionRows.length !== 1 ? "s" : ""}`}
             {descriptionRows.length > 0 && ` · ${descriptionRows.length} description${descriptionRows.length !== 1 ? "s" : ""}`}
+            {derushRows.length > 0 && ` · ${derushRows.length} dérush${derushRows.length !== 1 ? "s" : ""}`}
             {inProgressCount > 0 && (
               <span className="ml-2 inline-flex items-center gap-1 text-indigo-700">
                 <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-pulse inline-block" />
@@ -152,7 +184,7 @@ export default async function ListingsPage() {
         </div>
       </div>
 
-      <ListingsClient initialListings={rows} initialCaptionJobs={captionRows} initialTranscriptionJobs={transcriptionRows} initialDescriptionJobs={descriptionRows} isAdmin={isAdmin} />
+      <ListingsClient initialListings={rows} initialCaptionJobs={captionRows} initialTranscriptionJobs={transcriptionRows} initialDescriptionJobs={descriptionRows} initialDerushJobs={derushRows} isAdmin={isAdmin} />
     </div>
   );
 }

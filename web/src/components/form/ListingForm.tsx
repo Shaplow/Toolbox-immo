@@ -580,6 +580,12 @@ function FieldInput({
           onFocalChange={onFocalChange ?? (() => {})}
           uploadProgress={uploadProgress}
         />
+      ) : field.type === "audio" ? (
+        <AudioFieldInput
+          value={value}
+          onUpload={onUpload}
+          uploadProgress={uploadProgress}
+        />
       ) : field.type === "select" ? (
         <select
           value={String(value ?? "")}
@@ -883,6 +889,66 @@ function VideoFieldInput({
           <input
             type="file"
             accept="video/mp4,video/quicktime,video/x-m4v,video/webm"
+            className="hidden"
+            onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function AudioFieldInput({
+  value,
+  onUpload,
+  uploadProgress,
+}: {
+  value: unknown;
+  onUpload: (f: File) => void;
+  uploadProgress?: number | null;
+}) {
+  const audioUrl = typeof value === "string" && value ? value : null;
+
+  if (uploadProgress !== null && uploadProgress !== undefined) {
+    return (
+      <div className="w-full h-24 border-2 border-dashed border-indigo-300 rounded-xl flex flex-col items-center justify-center gap-3 bg-indigo-50 px-6">
+        <div className="w-full bg-gray-200 rounded-full h-2">
+          <div
+            className="bg-indigo-400 h-2 rounded-full transition-all duration-300"
+            style={{ width: `${uploadProgress}%` }}
+          />
+        </div>
+        <p className="text-xs text-indigo-700 font-medium">Upload en cours… {uploadProgress}%</p>
+      </div>
+    );
+  }
+
+  if (!audioUrl) {
+    return (
+      <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors group">
+        <span className="text-2xl text-gray-300 group-hover:text-indigo-400 transition-colors">♪</span>
+        <span className="text-sm font-medium text-gray-400 group-hover:text-indigo-700 mt-1">Cliquer pour choisir un fichier audio</span>
+        <span className="text-xs text-gray-300 mt-0.5">MP3 · WAV · AAC · M4A · OGG</span>
+        <input
+          type="file"
+          accept="audio/mpeg,audio/wav,audio/aac,audio/mp4,audio/ogg,audio/x-m4a,.mp3,.wav,.aac,.m4a,.ogg"
+          className="hidden"
+          onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
+        />
+      </label>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <audio src={audioUrl} controls className="w-full" />
+      <div className="flex items-center justify-end">
+        <label className="text-xs text-indigo-700 hover:text-indigo-700 cursor-pointer hover:underline">
+          Changer le fichier audio
+          <input
+            type="file"
+            accept="audio/mpeg,audio/wav,audio/aac,audio/mp4,audio/ogg,audio/x-m4a,.mp3,.wav,.aac,.m4a,.ogg"
             className="hidden"
             onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
           />

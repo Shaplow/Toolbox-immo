@@ -19,7 +19,7 @@ import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackground
 import { useBuilderStore } from "@/lib/store/builderStore";
 import type {
   AnyBlock, TextBlock, ImageBlock, VideoBlock, DPEBlock,
-  ShapeBlock, ShapeKind, BlockStyle, TextRules, SchemaField, BlockConditionalRule, LayerGroup,
+  ShapeBlock, ShapeKind, BlockStyle, TextRules, SchemaField, BlockConditionalRule, LayerGroup, MusicBlock,
 } from "@/types/template";
 import type { ListingData } from "@/types/listing";
 
@@ -499,6 +499,145 @@ export function PropertiesPanel({
     );
   }
 
+  if (block.type === "music") {
+    const mb = block as MusicBlock;
+    return (
+      <aside className="w-64 bg-white border-l border-gray-200 flex flex-col shrink-0 overflow-y-auto">
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            🎵 musique <span className="text-gray-300 font-normal">#{block.id.slice(-4)}</span>
+          </p>
+        </div>
+        <div className="p-4 space-y-5 text-xs">
+          <Section label="Calque">
+            <label className="flex flex-col gap-0.5">
+              <span className="text-gray-400 uppercase">Nom</span>
+              <input
+                type="text"
+                value={mb.name ?? ""}
+                onChange={(e) => updateBlock(mb.id, { name: e.target.value } as Partial<AnyBlock>)}
+                placeholder={`musique-${mb.id.slice(-4)}`}
+                className="border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              />
+            </label>
+          </Section>
+
+          <Section label="Musique">
+            {/* Volume musique */}
+            <label className="flex flex-col gap-1">
+              <div className="flex justify-between">
+                <span className="text-gray-400 uppercase">Volume musique</span>
+                <span className="text-gray-600">{Math.round((mb.volume ?? 0.3) * 100)}%</span>
+              </div>
+              <input
+                type="range" min={0} max={1} step={0.05}
+                value={mb.volume ?? 0.3}
+                onChange={(e) => updateBlock(mb.id, { volume: Number(e.target.value) } as Partial<AnyBlock>)}
+                className="w-full"
+              />
+            </label>
+
+            {/* Volume source */}
+            <label className="flex flex-col gap-1 mt-3">
+              <div className="flex justify-between">
+                <span className="text-gray-400 uppercase">Volume source</span>
+                <span className="text-gray-600">{Math.round((mb.sourceVolume ?? 1) * 100)}%</span>
+              </div>
+              <input
+                type="range" min={0} max={1} step={0.05}
+                value={mb.sourceVolume ?? 1}
+                disabled={mb.muteSource}
+                onChange={(e) => updateBlock(mb.id, { sourceVolume: Number(e.target.value) } as Partial<AnyBlock>)}
+                className="w-full disabled:opacity-40"
+              />
+            </label>
+
+            {/* Couper source */}
+            <label className="flex items-center gap-2 mt-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={mb.muteSource ?? false}
+                onChange={(e) => updateBlock(mb.id, { muteSource: e.target.checked } as Partial<AnyBlock>)}
+                className="rounded"
+              />
+              <span className="text-gray-600">Couper l&apos;audio source</span>
+            </label>
+
+            {/* Boucler */}
+            <label className="flex items-center gap-2 mt-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={mb.loop ?? false}
+                onChange={(e) => updateBlock(mb.id, { loop: e.target.checked } as Partial<AnyBlock>)}
+                className="rounded"
+              />
+              <span className="text-gray-600">Boucler la musique</span>
+            </label>
+
+            {/* Fade in / out */}
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <label className="flex flex-col gap-0.5">
+                <span className="text-gray-400 uppercase">Fade in (s)</span>
+                <input
+                  type="number" min={0} step={0.5}
+                  value={mb.fadeIn ?? 0}
+                  onChange={(e) => updateBlock(mb.id, { fadeIn: Number(e.target.value) } as Partial<AnyBlock>)}
+                  className="border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-gray-400 uppercase">Fade out (s)</span>
+                <input
+                  type="number" min={0} step={0.5}
+                  value={mb.fadeOut ?? 0}
+                  onChange={(e) => updateBlock(mb.id, { fadeOut: Number(e.target.value) } as Partial<AnyBlock>)}
+                  className="border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                />
+              </label>
+            </div>
+          </Section>
+
+          <Section label="Variable">
+            <label className="flex flex-col gap-0.5">
+              <span className="text-gray-400 uppercase">Binding</span>
+              <input
+                type="text"
+                value={mb.binding ?? ""}
+                placeholder="ex: music"
+                onChange={(e) => updateBlock(mb.id, { binding: e.target.value || undefined } as Partial<AnyBlock>)}
+                onFocus={() => { prevBindingRef.current = mb.binding ?? ""; }}
+                onBlur={(e) => {
+                  const newKey = e.target.value.trim();
+                  const oldKey = prevBindingRef.current.trim();
+                  if (newKey === oldKey) return;
+                  let nextSchema = [...template.schema];
+                  if (oldKey) {
+                    const stillUsed = template.blocks.some(
+                      (b) => b.id !== mb.id && b.binding === oldKey
+                    );
+                    if (!stillUsed) nextSchema = nextSchema.filter((f) => f.key !== oldKey);
+                  }
+                  if (newKey && !nextSchema.some((f) => f.key === newKey)) {
+                    nextSchema.push({
+                      key: newKey,
+                      label: newKey.replace(/_/g, " "),
+                      type: "audio",
+                      required: false,
+                      description: "Musique de fond (MP3 · WAV · AAC · M4A · OGG)",
+                    });
+                  }
+                  setSchema(nextSchema);
+                }}
+                className="border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 font-mono"
+              />
+            </label>
+            <p className="text-[10px] text-gray-400 mt-1">Nom de la variable qui contiendra le fichier audio.</p>
+          </Section>
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="w-64 bg-white border-l border-gray-200 flex flex-col shrink-0 overflow-y-auto">
       <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-2">
@@ -606,7 +745,51 @@ export function PropertiesPanel({
           </div>
         </Section>
 
-        {/* Alignment to canvas */}
+        {/* Timing vidéo — visible uniquement si le template a un bloc vidéo */}
+        {template.blocks.some((b) => b.type === "video") && block.type !== "video" ? (
+          <Section label="Timing vidéo">
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex flex-col gap-0.5">
+                <span className="text-gray-400 uppercase text-[10px]">Apparaît à (s)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  placeholder="0"
+                  value={block.appearAt ?? ""}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    updateBlock(block.id, {
+                      appearAt: raw === "" ? undefined : Math.max(0, Number(raw)),
+                    } as Partial<AnyBlock>);
+                  }}
+                  className="border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 text-sm"
+                />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-gray-400 uppercase text-[10px]">Disparaît à (s)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  placeholder="fin"
+                  value={block.hideAt ?? ""}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    updateBlock(block.id, {
+                      hideAt: raw === "" ? undefined : Math.max(0, Number(raw)),
+                    } as Partial<AnyBlock>);
+                  }}
+                  className="border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 text-sm"
+                />
+              </label>
+            </div>
+            <p className="text-[10px] text-gray-400 mt-1">
+              Vide = valeur par défaut (0 s / fin de vidéo). Pas d&apos;effet sur les renders image.
+            </p>
+          </Section>
+        ) : null}
+
         <Section label="Aligner sur le canvas">
           <div className="flex flex-col gap-1.5">
             {/* Horizontal */}
@@ -1572,7 +1755,9 @@ function StyleEditor({
               <p className="text-[10px] text-gray-400">
                 {backgroundMode === "fit"
                   ? "Le cartouche suit le texte et respecte son alignement."
-                  : "Le cartouche conserve une largeur et une hauteur fixes."}
+                  : backgroundMode === "per-line"
+                    ? "Chaque ligne a son propre cartouche ajusté à sa largeur."
+                    : "Le cartouche conserve une largeur et une hauteur fixes."}
               </p>
             </div>
             <input type="color" value={style.backgroundColor ?? "#FFFFFF"}
@@ -1580,7 +1765,7 @@ function StyleEditor({
               className="h-8 w-10 shrink-0 cursor-pointer rounded border border-gray-200 bg-white"
             />
           </div>
-          <div className="grid grid-cols-2 gap-1 rounded-lg border border-gray-200 bg-white p-1">
+          <div className="grid grid-cols-3 gap-1 rounded-lg border border-gray-200 bg-white p-1">
             <button
               type="button"
               onClick={() => onChange({ textBackgroundMode: "fit" })}
@@ -1591,6 +1776,17 @@ function StyleEditor({
               }`}
             >
               Adaptatif
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange({ textBackgroundMode: "per-line" })}
+              className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${
+                backgroundMode === "per-line"
+                  ? "bg-indigo-600 text-white"
+                  : "text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              Par ligne
             </button>
             <button
               type="button"
@@ -1633,7 +1829,9 @@ function StyleEditor({
             </div>
           ) : (
             <p className="rounded-lg border border-dashed border-gray-200 bg-white px-2 py-1.5 text-[10px] text-gray-400 leading-4">
-              Le fond suit automatiquement la largeur du texte et s'ancre selon l'alignement horizontal du bloc.
+              {backgroundMode === "per-line"
+                ? "Chaque ligne obtient son propre fond ajusté. Le padding vertical agit comme espacement entre les lignes."
+                : "Le fond suit automatiquement la largeur du texte et s'ancre selon l'alignement horizontal du bloc."}
             </p>
           )}
 

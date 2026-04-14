@@ -27,6 +27,29 @@ _WHISPER_CACHE: dict[str, Any] = {}
 _ALIGN_CACHE: dict[str, tuple[Any, Any]] = {}
 
 
+def _optimal_batch_size(device: str) -> int:
+    """
+    Retourne un batch_size adapté à la VRAM disponible.
+    large-v3-turbo occupe ~3-4 GB VRAM — le reste peut servir au batch.
+    Valeurs conservatrices : on garde de la marge pour le décodage audio.
+    CPU : int8 peu demand, batch=8 suffit.
+    """
+    if device != "cuda":
+        return 8
+    try:
+        import torch
+        vram_gb = torch.cuda.get_device_properties(0).total_memory / 1024 ** 3
+        if vram_gb >= 24:
+            return 32
+        if vram_gb >= 16:
+            return 24
+        if vram_gb >= 10:
+            return 16
+        return 8
+    except Exception:
+        return 16
+
+
 def _get_whisper_model(model_size: str, device: str, compute_type: str) -> Any:
     import whisperx
     key = f"{model_size}|{device}|{compute_type}"
@@ -89,7 +112,9 @@ def transcribe_with_word_timestamps(
     # 2. Transcription Whisper (modèle mis en cache entre les jobs)
     print(f"[transcribe] transcription...", flush=True)
     model = _get_whisper_model(model_size, whisper_device, compute_type)
-    result = model.transcribe(audio, batch_size=16, language=language)
+    batch_size = _optimal_batch_size(whisper_device)
+    print(f"[transcribe] batch_size={batch_size}", flush=True)
+    result = model.transcribe(audio, batch_size=batch_size, language=language)
     print(f"[transcribe] {len(result['segments'])} segments bruts — {time.time()-t0:.0f}s", flush=True)
 
     # 3. Alignement timestamps mot par mot (modèle mis en cache entre les jobs)
@@ -121,15 +146,25 @@ def transcribe_with_word_timestamps(
     segments: list[dict[str, Any]] = []
     for seg in result.get("segments", []):
         words = [
-            {"word": str(w["word"]).strip(), "start": float(w["start"]), "end": float(w["end"])}
+            {
+                "word": str(w["word"]).strip(),
+                "start": float(w["start"]),
+                "end": float(w["end"]),
+                "score": float(w.get("score", 1.0)),  # WhisperX per-word confidence
+            }
             for w in seg.get("words", [])
             if "word" in w and "start" in w and "end" in w
         ]
+        avg_confidence = (
+            sum(ww["score"] for ww in words) / len(words)
+            if words else 1.0
+        )
         entry: dict[str, Any] = {
             "start": float(seg.get("start", 0)),
             "end": float(seg.get("end", 0)),
             "text": seg.get("text", "").strip(),
             "words": words,
+            "avg_confidence": round(avg_confidence, 3),
         }
         speaker = seg.get("speaker")
         if speaker:

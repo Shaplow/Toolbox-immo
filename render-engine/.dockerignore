@@ -10,3 +10,14 @@ __pycache__/
 # L'environnement virtuel local s'il existe
 venv/
 .venv/
+
+# Cache modèles HuggingFace local — NE PAS copier dans l'image (doublon avec pre-bake)
+hf_cache/
+
+# Artefacts Python
+**/__pycache__/
+*.egg-info/
+.pytest_cache/
+
+# Cache fontconfig local
+.fontconfig-cache*/

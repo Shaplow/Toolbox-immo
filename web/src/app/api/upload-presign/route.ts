@@ -5,9 +5,11 @@ import { createPresignedUploadUrl, getR2PublicUrl, r2Configured } from "@/lib/r2
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/x-m4v", "video/webm"];
-const ALLOWED_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES];
+const ALLOWED_AUDIO_TYPES = ["audio/mpeg", "audio/wav", "audio/aac", "audio/mp4", "audio/ogg", "audio/x-m4a", "audio/flac"];
+const ALLOWED_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES, ...ALLOWED_AUDIO_TYPES];
 const MAX_IMAGE_SIZE = 50 * 1024 * 1024;
 const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024;
+const MAX_AUDIO_SIZE = 200 * 1024 * 1024;
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -23,11 +25,12 @@ export async function POST(req: NextRequest) {
   }
 
   const isVideo = ALLOWED_VIDEO_TYPES.includes(contentType);
-  const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
+  const isAudio = ALLOWED_AUDIO_TYPES.includes(contentType);
+  const maxSize = isVideo ? MAX_VIDEO_SIZE : isAudio ? MAX_AUDIO_SIZE : MAX_IMAGE_SIZE;
 
   if (typeof size === "number" && size > maxSize) {
     return NextResponse.json(
-      { error: `Fichier trop volumineux (max ${isVideo ? "2000" : "50"} MB)` },
+      { error: `Fichier trop volumineux (max ${isVideo ? "2000" : isAudio ? "200" : "50"} MB)` },
       { status: 400 }
     );
   }
