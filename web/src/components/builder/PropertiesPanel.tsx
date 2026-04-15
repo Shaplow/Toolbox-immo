@@ -537,32 +537,6 @@ export function PropertiesPanel({
               />
             </label>
 
-            {/* Volume source */}
-            <label className="flex flex-col gap-1 mt-3">
-              <div className="flex justify-between">
-                <span className="text-gray-400 uppercase">Volume source</span>
-                <span className="text-gray-600">{Math.round((mb.sourceVolume ?? 1) * 100)}%</span>
-              </div>
-              <input
-                type="range" min={0} max={1} step={0.05}
-                value={mb.sourceVolume ?? 1}
-                disabled={mb.muteSource}
-                onChange={(e) => updateBlock(mb.id, { sourceVolume: Number(e.target.value) } as Partial<AnyBlock>)}
-                className="w-full disabled:opacity-40"
-              />
-            </label>
-
-            {/* Couper source */}
-            <label className="flex items-center gap-2 mt-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={mb.muteSource ?? false}
-                onChange={(e) => updateBlock(mb.id, { muteSource: e.target.checked } as Partial<AnyBlock>)}
-                className="rounded"
-              />
-              <span className="text-gray-600">Couper l&apos;audio source</span>
-            </label>
-
             {/* Boucler */}
             <label className="flex items-center gap-2 mt-2 cursor-pointer">
               <input
@@ -2182,6 +2156,29 @@ function VideoProps({ block, onChange }: { block: VideoBlock; onChange: (c: Part
           className="h-8 w-full border border-gray-200 rounded"
         />
       </label>
+      <label className="flex items-center gap-2 mt-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={block.mute ?? false}
+          onChange={(e) => onChange({ mute: e.target.checked })}
+          className="rounded"
+        />
+        <span className="text-gray-600 text-[11px]">Couper l&apos;audio de cette vidéo</span>
+      </label>
+      {!block.mute && (
+        <label className="flex flex-col gap-1 mt-3">
+          <div className="flex justify-between text-[11px]">
+            <span className="text-gray-400">Volume audio</span>
+            <span className="text-gray-600">{Math.round((block.audioVolume ?? 1) * 100)}%</span>
+          </div>
+          <input
+            type="range" min={0} max={1} step={0.05}
+            value={block.audioVolume ?? 1}
+            onChange={(e) => onChange({ audioVolume: Number(e.target.value) })}
+            className="w-full"
+          />
+        </label>
+      )}
       <p className="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
         🎬 Ce bloc déclenche le pipeline RunPod.<br />
         La vidéo sera composite via FFmpeg avec le template en overlay PNG.

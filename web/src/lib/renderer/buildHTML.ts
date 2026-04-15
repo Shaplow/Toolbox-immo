@@ -3,12 +3,16 @@ import type { ListingData } from "@/types/listing";
 import { listFontAssetsByFamilies } from "@/lib/fontAssets";
 import { isAutoLayoutGroup, normalizeGroupLayout } from "@/lib/groupLayout";
 import {
+  PER_LINE_TEXT_GOO_ALPHA_INTERCEPT,
+  PER_LINE_TEXT_GOO_ALPHA_SLOPE,
+  PER_LINE_TEXT_GOO_COLOR_INTERPOLATION,
   PER_LINE_TEXT_GOO_COLOR_MATRIX,
-  PER_LINE_TEXT_GOO_FILTER_ID,
   PER_LINE_TEXT_GOO_FILTER_REGION,
-  PER_LINE_TEXT_GOO_STD_DEVIATION,
+  getPerLineTextGooFilterBlur,
+  getPerLineTextGooFilterId,
+  shouldApplyPerLineTextGoo,
 } from "@/lib/perLineTextBackground";
-import { getEffectiveTextAnchorPadding } from "@/lib/textBackground";
+import { getEffectiveTextAnchorPadding, getTextBackgroundBorderRadius, getTextBackgroundMode, isTextBackgroundEnabled } from "@/lib/textBackground";
 import { isBlockVisibleForListing, resolveBlockForListing } from "@/lib/templateConditions";
 import { getVisibleFieldKeys } from "@/lib/formSections";
 import { renderTextBlock } from "./blocks/renderTextBlock";
@@ -106,7 +110,7 @@ export async function buildHTML(
   const css = buildCSS(template, overlayMode);
   const fontHtml = await buildFontHtml(template, opts?.publicBase);
   const behaviorScript = buildBehaviorScript(autoLayoutGroups, opts?.layoutDebug ?? false);
-  const perLineTextFilter = buildPerLineTextGooFilterMarkup();
+  const perLineTextFilter = buildPerLineTextGooFilterMarkup(template);
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -741,6 +745,26 @@ function buildCSS(template: TemplateJSON, overlayMode = false): string {
   `;
 }
 
-function buildPerLineTextGooFilterMarkup(): string {
-  return `<svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true"><defs><filter id="${PER_LINE_TEXT_GOO_FILTER_ID}" x="${PER_LINE_TEXT_GOO_FILTER_REGION.x}" y="${PER_LINE_TEXT_GOO_FILTER_REGION.y}" width="${PER_LINE_TEXT_GOO_FILTER_REGION.width}" height="${PER_LINE_TEXT_GOO_FILTER_REGION.height}"><feGaussianBlur in="SourceGraphic" stdDeviation="${PER_LINE_TEXT_GOO_STD_DEVIATION}" result="blur"/><feColorMatrix in="blur" type="matrix" values="${PER_LINE_TEXT_GOO_COLOR_MATRIX}" result="goo"/><feComposite in="SourceGraphic" in2="goo" operator="atop"/></filter></defs></svg>`;
+function buildPerLineTextGooFilterMarkup(template: TemplateJSON): string {
+  const radiiByFilterId = new Map<string, number>();
+
+  for (const block of template.blocks) {
+    if (block.type !== "text") continue;
+    if (!isTextBackgroundEnabled(block.style)) continue;
+    if (getTextBackgroundMode(block.style) !== "per-line") continue;
+
+    const backgroundRadius = getTextBackgroundBorderRadius(block.style);
+    if (!shouldApplyPerLineTextGoo(backgroundRadius)) continue;
+
+    const filterId = getPerLineTextGooFilterId(backgroundRadius);
+    if (!radiiByFilterId.has(filterId)) {
+      radiiByFilterId.set(filterId, backgroundRadius);
+    }
+  }
+
+  const filters = [...radiiByFilterId.entries()]
+    .map(([filterId, backgroundRadius]) => `<filter id="${filterId}" color-interpolation-filters="${PER_LINE_TEXT_GOO_COLOR_INTERPOLATION}" x="${PER_LINE_TEXT_GOO_FILTER_REGION.x}" y="${PER_LINE_TEXT_GOO_FILTER_REGION.y}" width="${PER_LINE_TEXT_GOO_FILTER_REGION.width}" height="${PER_LINE_TEXT_GOO_FILTER_REGION.height}"><feGaussianBlur in="SourceGraphic" stdDeviation="${getPerLineTextGooFilterBlur(backgroundRadius)}" result="blur"/><feColorMatrix in="blur" type="matrix" values="${PER_LINE_TEXT_GOO_COLOR_MATRIX}" result="goo"/><feComponentTransfer in="goo" result="gooSolid"><feFuncA type="linear" slope="${PER_LINE_TEXT_GOO_ALPHA_SLOPE}" intercept="${PER_LINE_TEXT_GOO_ALPHA_INTERCEPT}"/></feComponentTransfer><feComposite in="SourceGraphic" in2="gooSolid" operator="atop"/></filter>`)
+    .join("");
+
+  return `<svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true"><defs>${filters}</defs></svg>`;
 }

@@ -506,11 +506,12 @@ async function generateVideoRender(
           ...(templateJson.canvas.maxDuration !== undefined && templateJson.canvas.maxDuration > 0
             ? { max_duration: templateJson.canvas.maxDuration }
             : {}),
+          ...(videoBlock.mute ? { music_mute_source: true } : {}),
           ...(music ? {
             music_url: music.musicUrl,
             music_volume: music.block.volume ?? 0.3,
-            music_source_volume: music.block.sourceVolume ?? 1.0,
-            music_mute_source: music.block.muteSource ?? false,
+            music_source_volume: videoBlock.audioVolume ?? 1.0,
+            music_mute_source: videoBlock.mute ?? false,
             music_loop: music.block.loop ?? false,
             music_fade_in: music.block.fadeIn ?? 0,
             music_fade_out: music.block.fadeOut ?? 0,
@@ -630,12 +631,20 @@ async function generateVideoRenderLocal(
       form.append("max_duration", String(templateJson.canvas.maxDuration));
     }
 
+    // Video audio controls (always sent when non-default)
+    if (videoBlock.mute) {
+      form.append("music_mute_source", "true");
+    }
+    if ((videoBlock.audioVolume ?? 1) !== 1) {
+      form.append("music_source_volume", String(videoBlock.audioVolume));
+    }
+
     // Music params (optional — from music block)
     if (music) {
       form.append("music_url", music.musicUrl);
       form.append("music_volume", String(music.block.volume ?? 0.3));
-      form.append("music_source_volume", String(music.block.sourceVolume ?? 1.0));
-      form.append("music_mute_source", String(music.block.muteSource ?? false));
+      form.append("music_source_volume", String(videoBlock.audioVolume ?? 1.0));
+      form.append("music_mute_source", String(videoBlock.mute ?? false));
       form.append("music_loop", String(music.block.loop ?? false));
       form.append("music_fade_in", String(music.block.fadeIn ?? 0));
       form.append("music_fade_out", String(music.block.fadeOut ?? 0));

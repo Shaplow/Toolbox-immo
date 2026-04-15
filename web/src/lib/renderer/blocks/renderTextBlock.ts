@@ -3,7 +3,7 @@ import type { ListingData } from "@/types/listing";
 import { formatPrice } from "@/types/listing";
 import { compileTextTemplate, resolveTextTemplate } from "@/lib/textTemplate";
 import { formatConfiguredNumber, toFlexibleNumber } from "@/lib/numberFormatting";
-import { getPerLineTextSideBridgeMetrics, PER_LINE_TEXT_GOO_FILTER_ID } from "@/lib/perLineTextBackground";
+import { getPerLineTextEffectiveRadius, getPerLineTextGooFilterId, getPerLineTextSideBridgeMetrics, shouldApplyPerLineTextGoo } from "@/lib/perLineTextBackground";
 import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled } from "@/lib/textBackground";
 import { blockBaseStyle, buildTextShadowValue } from "../styleUtils";
 
@@ -110,10 +110,13 @@ export function renderTextBlock(
     const spanParts: string[] = [];
     const textAlign = style.textAlign ?? "left";
     const backgroundColor = style.backgroundColor ?? "#FFFFFF";
+    const effectiveBackgroundRadius = getPerLineTextEffectiveRadius(backgroundRadius);
+    const shouldApplyPerLineGoo = shouldApplyPerLineTextGoo(backgroundRadius);
+    const perLineGooFilterId = shouldApplyPerLineGoo ? getPerLineTextGooFilterId(backgroundRadius) : null;
     const bridgeMetrics = textAlign === "left"
-      ? getPerLineTextSideBridgeMetrics(backgroundRadius, backgroundPadding.left)
+      ? getPerLineTextSideBridgeMetrics(effectiveBackgroundRadius, backgroundPadding.left)
       : textAlign === "right"
-        ? getPerLineTextSideBridgeMetrics(backgroundRadius, backgroundPadding.right)
+        ? getPerLineTextSideBridgeMetrics(effectiveBackgroundRadius, backgroundPadding.right)
         : { inset: 0, width: 0 };
     if (style.fontFamily) spanParts.push(`font-family:'${style.fontFamily}',sans-serif`);
     if (style.fontSize) spanParts.push(`font-size:${style.fontSize}pt`);
@@ -130,7 +133,7 @@ export function renderTextBlock(
     spanParts.push("-webkit-box-decoration-break:clone");
     spanParts.push("white-space:pre-wrap");
     spanParts.push("box-sizing:border-box");
-    if (backgroundRadius > 0) spanParts.push(`border-radius:${backgroundRadius}px`);
+    if (effectiveBackgroundRadius > 0) spanParts.push(`border-radius:${effectiveBackgroundRadius}px`);
     if (style.opacity !== undefined) spanParts.push(`opacity:${style.opacity}`);
 
     const vPad = backgroundPadding.top + backgroundPadding.bottom;
@@ -146,7 +149,7 @@ export function renderTextBlock(
 
     const spanStyle = spanParts.join(";");
     const textStyle = "position:relative";
-    const wrapperStyle = `width:100%;position:relative;text-align:${textAlign};filter:url(#${PER_LINE_TEXT_GOO_FILTER_ID});overflow:visible`;
+    const wrapperStyle = `width:100%;position:relative;text-align:${textAlign};${shouldApplyPerLineGoo && perLineGooFilterId ? `filter:url(#${perLineGooFilterId});` : ""}overflow:visible`;
     const bridgeStyle = bridgeMetrics.width > 0
       ? [
           "position:absolute",
@@ -154,6 +157,7 @@ export function renderTextBlock(
           `bottom:${bridgeMetrics.inset}px`,
           `width:${bridgeMetrics.width}px`,
           `background-color:${backgroundColor}`,
+          style.opacity !== undefined ? `opacity:${style.opacity}` : "",
           textAlign === "left" ? "left:0" : "right:0",
         ].join(";")
       : "";

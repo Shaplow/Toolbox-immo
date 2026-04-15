@@ -47,8 +47,6 @@ function createDefaultBlock(type: BlockType): AnyBlock {
       ...base,
       type: "music",
       volume: 0.3,
-      sourceVolume: 1.0,
-      muteSource: false,
       loop: true,
       fadeIn: 0,
       fadeOut: 0,

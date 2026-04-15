@@ -6,11 +6,16 @@ import { computeAutoLayoutPositions, getAutoLayoutMode, getBlockAnchorOffset, is
 import { buildTextShadowValue } from "@/lib/renderer/styleUtils";
 import { buildSchemaPreviewData } from "@/lib/schemaFields";
 import {
+  PER_LINE_TEXT_GOO_ALPHA_INTERCEPT,
+  PER_LINE_TEXT_GOO_ALPHA_SLOPE,
+  PER_LINE_TEXT_GOO_COLOR_INTERPOLATION,
   PER_LINE_TEXT_GOO_COLOR_MATRIX,
-  PER_LINE_TEXT_GOO_FILTER_ID,
   PER_LINE_TEXT_GOO_FILTER_REGION,
-  getPerLineTextGooBlur,
+  getPerLineTextEffectiveRadius,
+  getPerLineTextGooFilterBlur,
+  getPerLineTextGooFilterId,
   getPerLineTextSideBridgeMetrics,
+  shouldApplyPerLineTextGoo,
 } from "@/lib/perLineTextBackground";
 import { compileTextTemplate, resolveTextTemplate } from "@/lib/textTemplate";
 import { roundLayoutDebugValue, type LayoutDebugSnapshot } from "@/lib/layoutDebug";
@@ -63,7 +68,28 @@ export function Canvas({
   const groupMap = useMemo(() => new Map((template.groups ?? []).map((group) => [group.id, group])), [template.groups]);
   const [measuredAutoLayoutSizes, setMeasuredAutoLayoutSizes] = useState<Record<string, BlockLayoutSize>>({});
   const [fontMetricsVersion, setFontMetricsVersion] = useState(0);
-  const previewPerLineGooBlur = getPerLineTextGooBlur(zoom);
+  const previewPerLineGooFilters = useMemo(() => {
+    const filters = new Map<string, { id: string; blur: number }>();
+
+    for (const block of blocks) {
+      if (block.type !== "text") continue;
+      if (!isTextBackgroundEnabled(block.style)) continue;
+      if (getTextBackgroundMode(block.style) !== "per-line") continue;
+
+      const backgroundRadius = getTextBackgroundBorderRadius(block.style);
+      if (!shouldApplyPerLineTextGoo(backgroundRadius)) continue;
+
+      const id = getPerLineTextGooFilterId(backgroundRadius);
+      if (filters.has(id)) continue;
+
+      filters.set(id, {
+        id,
+        blur: getPerLineTextGooFilterBlur(backgroundRadius, zoom),
+      });
+    }
+
+    return [...filters.values()];
+  }, [blocks, zoom]);
 
   /** Snap a value to the nearest GRID_SIZE increment if snap is on */
   const snap = useCallback((v: number) =>
@@ -753,17 +779,24 @@ export function Canvas({
           {/* Hidden SVG filter definitions — used by per-line text background gooey effect */}
           <svg width="0" height="0" style={{ position: "absolute", overflow: "hidden" }} aria-hidden="true">
             <defs>
-              <filter
-                id={PER_LINE_TEXT_GOO_FILTER_ID}
-                x={PER_LINE_TEXT_GOO_FILTER_REGION.x}
-                y={PER_LINE_TEXT_GOO_FILTER_REGION.y}
-                width={PER_LINE_TEXT_GOO_FILTER_REGION.width}
-                height={PER_LINE_TEXT_GOO_FILTER_REGION.height}
-              >
-                <feGaussianBlur in="SourceGraphic" stdDeviation={previewPerLineGooBlur} result="blur" />
-                <feColorMatrix in="blur" type="matrix" values={PER_LINE_TEXT_GOO_COLOR_MATRIX} result="goo" />
-                <feComposite in="SourceGraphic" in2="goo" operator="atop" />
-              </filter>
+              {previewPerLineGooFilters.map(({ id, blur }) => (
+                <filter
+                  key={id}
+                  id={id}
+                  colorInterpolationFilters={PER_LINE_TEXT_GOO_COLOR_INTERPOLATION}
+                  x={PER_LINE_TEXT_GOO_FILTER_REGION.x}
+                  y={PER_LINE_TEXT_GOO_FILTER_REGION.y}
+                  width={PER_LINE_TEXT_GOO_FILTER_REGION.width}
+                  height={PER_LINE_TEXT_GOO_FILTER_REGION.height}
+                >
+                  <feGaussianBlur in="SourceGraphic" stdDeviation={blur} result="blur" />
+                  <feColorMatrix in="blur" type="matrix" values={PER_LINE_TEXT_GOO_COLOR_MATRIX} result="goo" />
+                  <feComponentTransfer in="goo" result="gooSolid">
+                    <feFuncA type="linear" slope={PER_LINE_TEXT_GOO_ALPHA_SLOPE} intercept={PER_LINE_TEXT_GOO_ALPHA_INTERCEPT} />
+                  </feComponentTransfer>
+                  <feComposite in="SourceGraphic" in2="gooSolid" operator="atop" />
+                </filter>
+              ))}
             </defs>
           </svg>
           {activeAnchorGroup ? (
@@ -1156,10 +1189,13 @@ function BlockPreview({
           && backgroundPadding.top === backgroundPadding.left;
         const textAlign = block.style.textAlign ?? "left";
         const backgroundColor = block.style.backgroundColor ?? "#FFFFFF";
+        const shouldApplyPerLineGoo = shouldApplyPerLineTextGoo(backgroundRadius);
+        const perLineGooFilterId = shouldApplyPerLineGoo ? getPerLineTextGooFilterId(backgroundRadius) : null;
+        const effectiveBackgroundRadius = getPerLineTextEffectiveRadius(backgroundRadius) * zoom;
         const bridgeMetrics = textAlign === "left"
-          ? getPerLineTextSideBridgeMetrics(backgroundRadius * zoom, backgroundPadding.left * zoom)
+          ? getPerLineTextSideBridgeMetrics(effectiveBackgroundRadius, backgroundPadding.left * zoom)
           : textAlign === "right"
-            ? getPerLineTextSideBridgeMetrics(backgroundRadius * zoom, backgroundPadding.right * zoom)
+            ? getPerLineTextSideBridgeMetrics(effectiveBackgroundRadius, backgroundPadding.right * zoom)
             : { inset: 0, width: 0 };
         const backgroundSpanStyle: React.CSSProperties = {
           fontFamily: block.style.fontFamily ?? defaultFontFamily,
@@ -1177,7 +1213,7 @@ function BlockPreview({
           display: "inline",
           WebkitBoxDecorationBreak: "clone",
           boxDecorationBreak: "clone",
-          borderRadius: backgroundRadius > 0 ? backgroundRadius * zoom : undefined,
+          borderRadius: effectiveBackgroundRadius > 0 ? effectiveBackgroundRadius : undefined,
           opacity: block.style.opacity,
           ...(uniformPad
             ? { padding: backgroundPadding.top > 0 ? backgroundPadding.top * zoom : undefined }
@@ -1198,6 +1234,7 @@ function BlockPreview({
               bottom: bridgeMetrics.inset,
               width: bridgeMetrics.width,
               backgroundColor,
+              opacity: block.style.opacity,
               pointerEvents: "none",
               left: textAlign === "left" ? 0 : undefined,
               right: textAlign === "right" ? 0 : undefined,
@@ -1214,7 +1251,7 @@ function BlockPreview({
                 width: "100%",
                 position: "relative",
                 textAlign,
-                filter: `url(#${PER_LINE_TEXT_GOO_FILTER_ID})`,
+                filter: shouldApplyPerLineGoo && perLineGooFilterId ? `url(#${perLineGooFilterId})` : undefined,
                 overflow: "visible",
               }}
             >

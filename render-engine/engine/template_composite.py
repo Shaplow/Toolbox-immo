@@ -137,7 +137,15 @@ def _build_audio_args(
     backward-compatible flags: ``-map 0:a?`` + ``-c:a aac``.
     """
     if not music_path:
-        # No music — just source audio (optionally attenuated)
+        # No music — just source audio (optionally attenuated or muted)
+        if mute_source:
+            # Produce silent audio track
+            return (
+                [],
+                "[0:a]volume=0[aout]",
+                ["-map", "[aout]"],
+                ["-c:a", audio_codec, *audio_codec_args],
+            )
         if source_volume < 1.0:
             af = f"[0:a]volume={source_volume}[aout]"
             return (

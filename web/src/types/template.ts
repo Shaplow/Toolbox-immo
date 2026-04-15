@@ -234,6 +234,10 @@ export interface VideoBlock extends BaseBlock {
   borderRadius?: number;
   /** Couleur de fond affichée dans le builder (placeholder) */
   placeholderColor?: string;
+  /** Couper l'audio de cette vidéo au rendu (défaut false). */
+  mute?: boolean;
+  /** Volume de l'audio de cette vidéo (0–1, défaut 1.0). */
+  audioVolume?: number;
 }
 
 /**
@@ -280,10 +284,6 @@ export interface MusicBlock extends BaseBlock {
   type: "music";
   /** Volume de la piste musique (0–1, défaut 0.3). */
   volume?: number;
-  /** Volume de l'audio de la vidéo source (0–1, défaut 1.0). */
-  sourceVolume?: number;
-  /** Couper entièrement l'audio source (défaut false). */
-  muteSource?: boolean;
   /** Boucler la musique si plus courte que la vidéo (défaut false). */
   loop?: boolean;
   /** Fondu d'entrée en secondes (défaut 0). */
