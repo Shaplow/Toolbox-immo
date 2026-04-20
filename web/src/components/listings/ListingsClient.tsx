@@ -139,6 +139,10 @@ export function ListingsClient({
   initialDescriptionJobs,
   initialDerushJobs,
   isAdmin,
+  hasCaptions = false,
+  hasTranscription = false,
+  hasDescription = false,
+  hasDerush = false,
 }: {
   initialListings: ListingRow[];
   initialCaptionJobs: CaptionJobRow[];
@@ -146,6 +150,10 @@ export function ListingsClient({
   initialDescriptionJobs: DescriptionJobRow[];
   initialDerushJobs: DerushJobRow[];
   isAdmin: boolean;
+  hasCaptions?: boolean;
+  hasTranscription?: boolean;
+  hasDescription?: boolean;
+  hasDerush?: boolean;
 }) {
   const [tab, setTab] = useState<"visuels" | "captions" | "transcription" | "description" | "derush">("visuels");
   const [userFilter, setUserFilter] = useState<string | null>(null);
@@ -157,7 +165,9 @@ export function ListingsClient({
     return m;
   });
   const renderStatesRef = useRef(renderStates);
-  renderStatesRef.current = renderStates;
+  useEffect(() => {
+    renderStatesRef.current = renderStates;
+  }, [renderStates]);
 
   const [deletedRenderIds, setDeletedRenderIds] = useState<Set<string>>(new Set());
   const [deletedCaptionJobIds, setDeletedCaptionJobIds] = useState<Set<string>>(new Set());
@@ -200,7 +210,9 @@ export function ListingsClient({
     return m;
   });
   const captionStatesRef = useRef(captionStates);
-  captionStatesRef.current = captionStates;
+  useEffect(() => {
+    captionStatesRef.current = captionStates;
+  }, [captionStates]);
 
   const [transcriptionStates, setTranscriptionStates] = useState<Record<string, TranscriptionJobRow>>(() => {
     const m: Record<string, TranscriptionJobRow> = {};
@@ -208,7 +220,9 @@ export function ListingsClient({
     return m;
   });
   const transcriptionStatesRef = useRef(transcriptionStates);
-  transcriptionStatesRef.current = transcriptionStates;
+  useEffect(() => {
+    transcriptionStatesRef.current = transcriptionStates;
+  }, [transcriptionStates]);
 
   useEffect(() => {
     const timer = setInterval(async () => {
@@ -339,6 +353,7 @@ export function ListingsClient({
             {filteredListings.length}
           </span>
         </button>
+        {hasCaptions && (
         <button
           onClick={() => setTab("captions")}
           className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -352,7 +367,8 @@ export function ListingsClient({
             {filteredCaptions.length}
           </span>
         </button>
-        {initialTranscriptionJobs.length > 0 && (
+        )}
+        {hasTranscription && (
           <button
             onClick={() => setTab("transcription")}
             className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -367,7 +383,7 @@ export function ListingsClient({
             </span>
           </button>
         )}
-        {initialDescriptionJobs.length > 0 && (
+        {hasDescription && (
           <button
             onClick={() => setTab("description")}
             className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -382,7 +398,7 @@ export function ListingsClient({
             </span>
           </button>
         )}
-        {initialDerushJobs.length > 0 && (
+        {hasDerush && (
           <button
             onClick={() => setTab("derush")}
             className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${

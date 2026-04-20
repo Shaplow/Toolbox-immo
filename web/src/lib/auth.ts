@@ -50,7 +50,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: string }).role ?? "USER";
-        token.permissions = (user as { permissions?: string }).permissions ?? "[]";
+        // Parse, validate and re-serialize permissions so the JWT always
+        // carries a well-formed JSON array string, never a corrupt value.
+        const rawPermissions = (user as { permissions?: string }).permissions ?? "[]";
+        let parsedPermissions: string[] = [];
+        try {
+          const parsed = JSON.parse(rawPermissions);
+          if (Array.isArray(parsed) && parsed.every((p) => typeof p === "string")) {
+            parsedPermissions = parsed;
+          } else {
+            console.warn(`[auth] Invalid permissions format for user ${user.id} — defaulting to []`);
+          }
+        } catch {
+          console.warn(`[auth] Failed to parse permissions for user ${user.id} — defaulting to []`);
+        }
+        token.permissions = JSON.stringify(parsedPermissions);
       }
       return token;
     },

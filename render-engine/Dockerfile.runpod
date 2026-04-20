@@ -46,9 +46,13 @@ WORKDIR /app
 # Torch CUDA — layer séparée, rejouée uniquement si cette ligne change (pas si requirements-worker.txt change).
 # cu128 = build PyTorch natif CUDA 12.8 (correspond à la base image).
 # Installé AVANT whisperx pour imposer la variante CUDA correcte (whisperx tire torch en dep transitive).
-RUN pip install --no-cache-dir \
-    torch torchaudio \
-    --index-url https://download.pytorch.org/whl/cu128
+#
+# torchaudio : installé depuis le wheel CPU (download.pytorch.org/whl/cpu).
+# torchaudio est utilisé par whisperx pour le resampling audio uniquement — pas d'inférence GPU.
+# Le wheel CPU (~100 MB) remplace le wheel CUDA (~500 MB) sans perte fonctionnelle.
+# IMPORTANT : la version torchaudio doit matcher torch. Si torch change de version, vérifier la cohérence.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu128 \
+    && pip install --no-cache-dir torchaudio --index-url https://download.pytorch.org/whl/cpu
 
 # Dépendances Python minimales (sans Gradio)
 COPY requirements-worker.txt .
@@ -58,13 +62,16 @@ RUN pip install --no-cache-dir -r requirements-worker.txt
 # Cette couche n'est rejouée que si requirements-worker.txt change.
 # Changer le code Python (.py) ne relance PAS ce téléchargement.
 # RunPod pull l'image une fois par machine (GRATUIT, hors billing GPU).
+#
+# large-v3 (~1.5 GB) N'est PAS baked ici : il est rarement sélectionné
+# (option "Haute précision" manuelle). Le worker le télécharge au premier
+# job qui le demande et le cache dans HF_HOME pour les jobs suivants sur
+# la même instance. Si tu veux le pré-baker, ré-ajoute la ligne ci-dessous.
 ENV HF_HOME=/app/hf_cache
 RUN python -c "\
 import whisperx; \
 print('[build] downloading large-v3-turbo...', flush=True); \
 whisperx.load_model('large-v3-turbo', 'cpu', compute_type='int8'); \
-print('[build] downloading large-v3...', flush=True); \
-whisperx.load_model('large-v3', 'cpu', compute_type='int8'); \
 print('[build] downloading alignment model (fr)...', flush=True); \
 whisperx.load_align_model(language_code='fr', device='cpu'); \
 print('[build] models cached.', flush=True)"

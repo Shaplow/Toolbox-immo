@@ -8,7 +8,7 @@ import type { TemplateJSON, CanvasFormat, ImageBlock, VideoBlock, MusicBlock, An
 import type { ListingData } from "@/types/listing";
 import { writeFile, mkdir, stat, readFile } from "fs/promises";
 import path from "path";
-import { uploadToR2, r2Configured } from "@/lib/r2";
+import { uploadToR2, r2Configured, deleteFromR2 } from "@/lib/r2";
 import { submitRunpodJob } from "@/lib/runpod";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import { isBlockVisibleForListing, resolveBlockForListing } from "@/lib/templateConditions";
@@ -101,7 +101,13 @@ async function updateRenderTracking(renderId: string, update: RenderTrackingUpda
     data.lastHeartbeatAt = new Date();
   }
 
-  await prisma.render.update({ where: { id: renderId }, data: data as Prisma.RenderUpdateInput });
+  try {
+    await prisma.render.update({ where: { id: renderId }, data: data as Prisma.RenderUpdateInput });
+  } catch (err) {
+    // DB write failures are logged but must not swallow the pipeline error.
+    // The caller's own error handling (failRender / catch block) takes precedence.
+    console.error(`[updateRenderTracking] DB write failed for render=${renderId} stage=${update.stage}:`, err);
+  }
 }
 
 async function failRender(renderId: string, message: string, pipeline?: string, stage = RENDER_STAGE.ERROR): Promise<void> {
@@ -363,12 +369,26 @@ function resolveMusicConfig(
   );
   if (!musicBlock) return null;
 
-  const musicUrl = musicBlock.binding
+  const rawMusicUrl = musicBlock.binding
     ? (listingData as Record<string, unknown>)[musicBlock.binding] as string | undefined
     : undefined;
-  if (!musicUrl) return null;
+  if (!rawMusicUrl) return null;
 
-  return { musicUrl, block: musicBlock };
+  // Validate that the URL is a reachable https/http URL before including it in
+  // the RunPod payload. An unvalidated arbitrary string from listing data would
+  // produce a cryptic FFmpeg download failure deep inside the worker.
+  try {
+    const parsed = new URL(rawMusicUrl);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      console.warn(`[resolveMusicConfig] musicUrl has unsupported protocol "${parsed.protocol}" — skipping`);
+      return null;
+    }
+  } catch {
+    console.warn(`[resolveMusicConfig] musicUrl is not a valid URL: "${rawMusicUrl}" — skipping`);
+    return null;
+  }
+
+  return { musicUrl: rawMusicUrl, block: musicBlock };
 }
 
 async function generateVideoRender(
@@ -397,6 +417,9 @@ async function generateVideoRender(
     await failRender(renderId, "R2 non configuré — requis pour les renders vidéo", RENDER_PIPELINE.VIDEO_RUNPOD);
     return;
   }
+
+  // Track uploaded overlay keys so we can clean them up if RunPod submit fails.
+  let overlayKeys: string[] = [];
 
   try {
     const { width, height } = templateJson.canvas;
@@ -436,9 +459,11 @@ async function generateVideoRender(
       statusDetail: "Upload de l'overlay vers R2",
       progress: 0.28,
     });
+    // Track keys for cleanup — assigned to the outer-scope let so the catch block can access them.
+    overlayKeys = overlayBuffers.map((_, i) => `overlays/${renderId}_${i}.png`);
     const overlayUrls = await Promise.all(
       overlayBuffers.map((buf, i) =>
-        uploadToR2(`overlays/${renderId}_${i}.png`, buf, "image/png").then((r) => r.url)
+        uploadToR2(overlayKeys[i], buf, "image/png").then((r) => r.url)
       )
     );
 
@@ -533,6 +558,12 @@ async function generateVideoRender(
       runpodJobId: runpodData.id,
     });
   } catch (err) {
+    // Clean up any overlay files that were uploaded to R2 before the failure.
+    if (overlayKeys.length > 0) {
+      await Promise.allSettled(overlayKeys.map((k) => deleteFromR2(k).catch((e) => {
+        console.warn(`[generateVideoRender] R2 cleanup failed for key=${k}:`, e);
+      })));
+    }
     await failRender(
       renderId,
       err instanceof Error ? err.message : "Erreur génération vidéo",

@@ -5,6 +5,17 @@ from pathlib import Path
 from typing import Sequence
 
 
+def _run_ffmpeg(command: list[str]) -> None:
+    subprocess.run(
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+
 def _escape_filter_path(path: str | Path) -> str:
     normalized = str(Path(path).resolve()).replace("\\", "/")
     normalized = normalized.replace(":", r"\:")
@@ -120,7 +131,7 @@ def burn_subtitles(
         command.extend(["-progress", str(progress_path), "-nostats"])
 
     command.append(str(output_video))
-    subprocess.run(command, check=True)
+    _run_ffmpeg(command)
     return output_video
 
 
@@ -177,7 +188,7 @@ def burn_png_overlays(
         command.extend(["-progress", str(progress_path), "-nostats"])
 
     command.append(str(output_video))
-    subprocess.run(command, check=True)
+    _run_ffmpeg(command)
     return output_video
 
 
@@ -216,7 +227,7 @@ def encode_concat_overlay_video(
         "argb",
         str(output_video),
     ]
-    subprocess.run(command, check=True)
+    _run_ffmpeg(command)
     return output_video
 
 
@@ -265,7 +276,7 @@ def burn_overlay_video(
         command.extend(["-progress", str(progress_path), "-nostats"])
 
     command.append(str(output_video))
-    subprocess.run(command, check=True)
+    _run_ffmpeg(command)
     return output_video
 
 
@@ -301,7 +312,7 @@ def render_preview_frame(
         "1",
         str(output_image),
     ]
-    subprocess.run(command, check=True)
+    _run_ffmpeg(command)
     return output_image
 
 
@@ -343,5 +354,5 @@ def render_overlay_preview_frame(
         "1",
         str(output_image),
     ])
-    subprocess.run(command, check=True)
+    _run_ffmpeg(command)
     return output_image

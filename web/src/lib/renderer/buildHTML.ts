@@ -34,10 +34,16 @@ export interface BuildHTMLOptions {
   layoutDebug?: boolean;
   /**
    * IDs des blocs à masquer dans cet overlay (pour le rendu d'un segment temporel).
-   * Utilisé en mode multi-overlay pour n'afficher que les blocs actifs à un instant donné.
+   * Utilisé en mode multi-overlay pour masquer visuellement les blocs inactifs à un instant donné,
+   * tout en les gardant mesurables dans le DOM afin de préserver l'auto-layout des groupes.
    * Absent = tous les blocs sont rendus (comportement par défaut).
    */
   hiddenBlockIds?: string[];
+}
+
+function addRootAttributes(html: string, attributes: string[]): string {
+  if (attributes.length === 0) return html;
+  return html.replace(/^<div\b/, `<div ${attributes.join(" ")}`);
 }
 
 export async function buildHTML(
@@ -61,8 +67,7 @@ export async function buildHTML(
   // Render each block to HTML
   const blockHtmlParts: string[] = await Promise.all(
     sorted.map(async (block) => {
-      // Skip blocks hidden for this timing segment
-      if (hiddenBlockIdSet.has(block.id)) return "";
+      const isTimingHidden = hiddenBlockIdSet.has(block.id);
 
       if (
         (block.type === "image" || block.type === "video") &&
@@ -78,30 +83,48 @@ export async function buildHTML(
 
       const resolvedBlock = resolveBlockForListing(block, listing, group);
       const isAutoLayout = isAutoLayoutGroup(group);
-      const withLayoutMetadata = (html: string) => {
-        if (!isAutoLayout) return html;
+      const withRenderMetadata = (html: string) => {
+        const rootAttributes: string[] = [];
+        if (isTimingHidden) {
+          rootAttributes.push('data-timing-hidden="true"');
+          rootAttributes.push('aria-hidden="true"');
+        }
+        if (!isAutoLayout) return addRootAttributes(html, rootAttributes);
+
         const anchorPadding = resolvedBlock.type === "text"
           ? getEffectiveTextAnchorPadding(resolvedBlock.style)
           : null;
-        const blockTypeAttr = `data-layout-block-type="${resolvedBlock.type}"`;
-          const textAlignAttr = resolvedBlock.type === "text" ? ` data-layout-text-align="${resolvedBlock.style.textAlign ?? "left"}"` : "";
-          const verticalAlignAttr = resolvedBlock.type === "text" ? ` data-layout-vertical-align="${resolvedBlock.style.verticalAlign ?? "top"}"` : "";
-        const paddingTopAttr = anchorPadding ? ` data-layout-padding-top="${anchorPadding.top}"` : "";
-        const paddingRightAttr = anchorPadding ? ` data-layout-padding-right="${anchorPadding.right}"` : "";
-        const paddingBottomAttr = anchorPadding ? ` data-layout-padding-bottom="${anchorPadding.bottom}"` : "";
-        const paddingLeftAttr = anchorPadding ? ` data-layout-padding-left="${anchorPadding.left}"` : "";
-        return html.replace(
-          /^<div\b/,
-          `<div data-layout-group-id="${group?.id}" data-layout-block-id="${resolvedBlock.id}" data-layout-source-x="${resolvedBlock.x}" data-layout-source-y="${resolvedBlock.y}" data-layout-source-z="${resolvedBlock.z}" ${blockTypeAttr}${textAlignAttr}${verticalAlignAttr}${paddingTopAttr}${paddingRightAttr}${paddingBottomAttr}${paddingLeftAttr}`
+        rootAttributes.push(
+          `data-layout-group-id="${group?.id}"`,
+          `data-layout-block-id="${resolvedBlock.id}"`,
+          `data-layout-source-x="${resolvedBlock.x}"`,
+          `data-layout-source-y="${resolvedBlock.y}"`,
+          `data-layout-source-z="${resolvedBlock.z}"`,
+          `data-layout-block-type="${resolvedBlock.type}"`
         );
+        if (resolvedBlock.type === "text") {
+          rootAttributes.push(
+            `data-layout-text-align="${resolvedBlock.style.textAlign ?? "left"}"`,
+            `data-layout-vertical-align="${resolvedBlock.style.verticalAlign ?? "top"}"`
+          );
+        }
+        if (anchorPadding) {
+          rootAttributes.push(
+            `data-layout-padding-top="${anchorPadding.top}"`,
+            `data-layout-padding-right="${anchorPadding.right}"`,
+            `data-layout-padding-bottom="${anchorPadding.bottom}"`,
+            `data-layout-padding-left="${anchorPadding.left}"`
+          );
+        }
+        return addRootAttributes(html, rootAttributes);
       };
 
       switch (resolvedBlock.type) {
-        case "text":    return withLayoutMetadata(renderTextBlock(resolvedBlock as TextBlock, listing, template.schema, { autoLayout: isAutoLayout }));
-        case "image":   return withLayoutMetadata(await renderImageBlock(resolvedBlock as ImageBlock, listing));
-        case "shape":   return withLayoutMetadata(renderShapeBlock(resolvedBlock as ShapeBlock));
-        case "dpe":     return withLayoutMetadata(await renderDPEBlock(resolvedBlock as DPEBlock, listing));
-        case "video":   return withLayoutMetadata(renderVideoBlockPlaceholder(resolvedBlock, overlayMode));
+        case "text":    return withRenderMetadata(renderTextBlock(resolvedBlock as TextBlock, listing, template.schema, { autoLayout: isAutoLayout }));
+        case "image":   return withRenderMetadata(await renderImageBlock(resolvedBlock as ImageBlock, listing));
+        case "shape":   return withRenderMetadata(renderShapeBlock(resolvedBlock as ShapeBlock));
+        case "dpe":     return withRenderMetadata(await renderDPEBlock(resolvedBlock as DPEBlock, listing));
+        case "video":   return withRenderMetadata(renderVideoBlockPlaceholder(resolvedBlock, overlayMode));
         default:        return "";
       }
     })
@@ -703,6 +726,10 @@ function buildCSS(template: TemplateJSON, overlayMode = false): string {
     }
     .block {
       position: absolute;
+    }
+    [data-timing-hidden="true"] {
+      visibility: hidden !important;
+      pointer-events: none !important;
     }
     .block-text {
       overflow: hidden;

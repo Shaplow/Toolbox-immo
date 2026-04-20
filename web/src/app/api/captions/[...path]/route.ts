@@ -5,6 +5,23 @@ import { normalizeCaptionConfig } from "@/lib/captionsEngine";
 
 const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
 
+// Paths on the render-engine that authenticated users may proxy to.
+// Anything not in this set returns 404 instead of leaking internal endpoints.
+const ALLOWED_PATHS = new Set([
+  "/api/preview",
+  "/api/render",
+  "/api/status",
+  "/api/font-files",
+  "/health",
+]);
+
+function isAllowedPath(targetPath: string): boolean {
+  // Exact match or allow /api/status/<id> sub-paths
+  if (ALLOWED_PATHS.has(targetPath)) return true;
+  if (targetPath.startsWith("/api/status/")) return true;
+  return false;
+}
+
 /**
  * Proxy transparent vers le microservice Python render-engine.
  * Toutes les requêtes vers /api/captions/[...path] sont forwardées
@@ -12,6 +29,7 @@ const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
  *
  * Sécurité :
  * - L'utilisateur doit être authentifié (session valide)
+ * - Seuls les chemins de l'allowlist ALLOWED_PATHS sont acceptés
  * - Le microservice Python vérifiera X-Internal-Key (Étape 3)
  */
 
@@ -22,6 +40,11 @@ async function proxyRequest(req: NextRequest, path: string[]): Promise<NextRespo
   }
 
   const targetPath = "/" + path.join("/");
+
+  if (!isAllowedPath(targetPath)) {
+    return NextResponse.json({ error: "Chemin non autorisé" }, { status: 404 });
+  }
+
   const targetUrl = `${CAPTIONS_API}${targetPath}${req.nextUrl.search}`;
 
   const headers = new Headers();

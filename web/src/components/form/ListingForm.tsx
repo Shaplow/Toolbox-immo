@@ -206,7 +206,6 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
     }
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
-      setSubmitErrors(Object.values(newErrors));
       return;
     }
 
@@ -286,12 +285,9 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
       <form onSubmit={handleGenerate} className="min-w-0 space-y-6 order-2 md:order-none md:col-span-3">
         {submitErrors.length > 0 && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
-            <p className="text-sm font-medium text-red-700 mb-2">Champs obligatoires manquants :</p>
-            <ul className="list-disc list-inside space-y-1">
-              {submitErrors.map((e) => (
-                <li key={e} className="text-sm text-red-600">{e}</li>
-              ))}
-            </ul>
+            {submitErrors.map((e) => (
+              <p key={e} className="text-sm text-red-700">{e}</p>
+            ))}
           </div>
         )}
 
@@ -852,7 +848,6 @@ function VideoFieldInput({
         onMouseUp={() => { dragging.current = false; }}
         onMouseLeave={() => { dragging.current = false; }}
       >
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <video
           src={videoUrl}
           muted
@@ -941,7 +936,6 @@ function AudioFieldInput({
 
   return (
     <div className="space-y-2">
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <audio src={audioUrl} controls className="w-full" />
       <div className="flex items-center justify-end">
         <label className="text-xs text-indigo-700 hover:text-indigo-700 cursor-pointer hover:underline">

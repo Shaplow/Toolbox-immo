@@ -1,11 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
+import { LayoutTemplate } from "lucide-react";
 import { NewTemplateButton } from "@/components/templates/NewTemplateButton";
-import { DeleteTemplateButton } from "@/components/templates/DeleteTemplateButton";
-import { DuplicateTemplateButton } from "@/components/templates/DuplicateTemplateButton";
 import { EditTemplateInfoButton } from "@/components/templates/EditTemplateInfoButton";
-import { ExportTemplateButton } from "@/components/templates/ExportTemplateButton";
 import { ImportTemplateButton } from "@/components/templates/ImportTemplateButton";
+import { TemplateAdminActions } from "@/components/templates/TemplateAdminActions";
 import { getUserContext } from "@/lib/userContext";
 
 export default async function TemplatesPage() {
@@ -43,14 +42,19 @@ export default async function TemplatesPage() {
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Templates</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {templates.length} template{templates.length !== 1 ? "s" : ""}
-            {clientKeys.filter((key) => key !== "__none__").length > 0 && (
-              <> · {clientKeys.filter((key) => key !== "__none__").length} client{clientKeys.filter((key) => key !== "__none__").length !== 1 ? "s" : ""}</>
-            )}
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shrink-0">
+            <LayoutTemplate size={20} />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Templates</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {templates.length} template{templates.length !== 1 ? "s" : ""}
+              {clientKeys.filter((key) => key !== "__none__").length > 0 && (
+                <> &middot; {clientKeys.filter((key) => key !== "__none__").length} client{clientKeys.filter((key) => key !== "__none__").length !== 1 ? "s" : ""}</>
+              )}
+            </p>
+          </div>
         </div>
         {isAdmin ? (
           <div className="flex items-center gap-2">
@@ -62,7 +66,7 @@ export default async function TemplatesPage() {
 
       {templates.length === 0 ? (
         <div className="text-center py-24 text-gray-400">
-          <p className="text-4xl mb-4">▦</p>
+          <LayoutTemplate size={40} className="mx-auto mb-4 opacity-30" />
           <p className="font-medium">Aucun template pour l&apos;instant</p>
           <p className="text-sm mt-1">Créez votre premier template pour commencer</p>
         </div>
@@ -88,7 +92,7 @@ export default async function TemplatesPage() {
                   return (
                     <div
                       key={template.id}
-                      className="bg-white border border-gray-100 rounded-xl transition-colors hover:border-gray-200 overflow-hidden group"
+                      className="bg-white border border-gray-100 rounded-xl transition-colors hover:border-gray-200 group"
                     >
                       <div className="p-4">
                         <div className="flex items-center gap-1.5">
@@ -119,7 +123,7 @@ export default async function TemplatesPage() {
                         </p>
                       </div>
 
-                      <div className="px-4 pb-4 flex gap-2 flex-col">
+                      <div className="px-4 pb-4">
                         <div className="flex gap-2">
                           {isAdmin && (
                             <Link
@@ -135,10 +139,8 @@ export default async function TemplatesPage() {
                           >
                             Générer
                           </Link>
+                          {isAdmin && <TemplateAdminActions id={template.id} />}
                         </div>
-                        {isAdmin && <ExportTemplateButton id={template.id} />}
-                        {isAdmin && <DeleteTemplateButton id={template.id} />}
-                        {isAdmin && <DuplicateTemplateButton id={template.id} />}
                       </div>
                     </div>
                   );

@@ -3,9 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -38,11 +37,15 @@ model CaptionJob {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   status        String   @default("QUEUED") // QUEUED | PROCESSING | COMPLETED | FAILED
   inputUrl      String?
+  inputKey      String?  // clé R2 de la vidéo source (supprimée après complétion)
   outputUrl     String?
   outputKey     String?  // clé R2 de l'output
-  runpodJobId   String?  // ID job RunPod pour polling
+  runpodJobId   String?  @unique // ID job RunPod pour polling
+  errorMsg      String?  // message d'erreur lisible
   config        String   @default("{}") // JSON sérialisé
   srtContent    String?  // Contenu SRT utilisé pour la génération (pour regénérer)
+  srtFilename   String?  // Nom du fichier SRT/JSON d'origine (pour détecter format)
+  previewMode   Boolean  @default(false) // true = preview 6s, false = rendu complet
   presetId      String?  // ID du preset utilisé
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -72,6 +75,18 @@ model CaptionPresetAccess {
   preset    CaptionPreset @relation(fields: [presetId], references: [id], onDelete: Cascade)
 
   @@unique([userId, presetId])
+}
+
+model CaptionPrompt {
+  id                     String   @id @default(cuid())
+  name                   String
+  prompt                 String
+  autoHighlightEnabled   Boolean  @default(false)
+  autoHighlightMode      String   @default("highlight1")
+  autoHighlightPlacement String   @default("after")
+  autoHighlightPrompt    String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }
 
 model Template {
@@ -140,7 +155,7 @@ model Render {
   /// URL vidéo finale (renders avec un VideoBlock — pipeline RunPod)
   videoUrl     String?
   /// ID du job RunPod (pour polling — null si pipeline Node.js)
-  runpodJobId  String?
+  runpodJobId  String?  @unique
   errorMsg     String?
   createdAt    DateTime     @default(now())
   startedAt    DateTime?
@@ -168,7 +183,7 @@ model TranscriptionJob {
   language        String   @default("fr")
   enableDiarization Boolean @default(false)  // demande de segmentation par speaker
   hasDiarization  Boolean  @default(false)   // résultat effectif (false si pas de HF_TOKEN)
-  runpodJobId     String?  // ID job RunPod pour polling
+  runpodJobId     String?  @unique // ID job RunPod pour polling
   outputJsonKey   String?  // clé R2 du JSON segments brut (persistant)
   segmentCount    Int?
   duration        Float?   // durée audio en secondes

@@ -99,7 +99,13 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
   past: [],
   future: [],
 
-  setTemplate: (t) => set({ template: normalizeTemplateJSON(t), past: [], future: [], selectedBlockId: null, selectedGroupId: null }),
+  setTemplate: (t) => set({
+    template: syncAutoLayoutGroups(normalizeTemplateJSON(t)),
+    past: [],
+    future: [],
+    selectedBlockId: null,
+    selectedGroupId: null,
+  }),
 
   selectBlock: (id) => set({ selectedBlockId: id, selectedGroupId: id ? null : get().selectedGroupId }),
 

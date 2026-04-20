@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Upload,
   FileText,
+  Image as ImageIcon,
   Mic,
   Check,
   Copy,
@@ -53,6 +54,16 @@ type TranscriptionItem = {
   status: string;
 };
 
+type ReferenceImage = {
+  dataUrl: string;
+  filename: string;
+  sizeBytes: number;
+};
+
+const MAX_REFERENCE_IMAGE_BYTES = 4 * 1024 * 1024;
+const REFERENCE_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const REFERENCE_IMAGE_ACCEPT = Array.from(REFERENCE_IMAGE_MIME_TYPES).join(",");
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string) {
@@ -81,6 +92,13 @@ function extractTextFromJSON(raw: string): string {
   return "";
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+  }
+  return `${Math.max(1, Math.round(bytes / 1024))} Ko`;
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function DescriptionTool({
@@ -101,6 +119,10 @@ export function DescriptionTool({
   const [isDragging, setIsDragging] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [referenceImage, setReferenceImage] = useState<ReferenceImage | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
 
   // Transcription source
   const [transcriptions, setTranscriptions] = useState<TranscriptionItem[]>([]);
@@ -138,11 +160,10 @@ export function DescriptionTool({
       fetch("/api/transcription")
         .then((r) => r.json())
         .then((data: unknown) => {
-          if (Array.isArray(data)) {
-            setTranscriptions(
-              (data as TranscriptionItem[]).filter((j) => j.status === "COMPLETED")
-            );
-          }
+          const list: TranscriptionItem[] = Array.isArray(data)
+            ? (data as TranscriptionItem[])
+            : ((data as { jobs?: TranscriptionItem[] }).jobs ?? []);
+          setTranscriptions(list.filter((j) => j.status === "COMPLETED"));
         })
         .catch(() => {/* ignore */})
         .finally(() => setLoadingTranscriptions(false));
@@ -204,8 +225,52 @@ export function DescriptionTool({
     [processFile]
   );
 
+  const processReferenceImage = useCallback((file: File) => {
+    setImageError(null);
+
+    if (!REFERENCE_IMAGE_MIME_TYPES.has(file.type)) {
+      setImageError("Formats acceptés : PNG, JPG ou WEBP");
+      return;
+    }
+
+    if (file.size > MAX_REFERENCE_IMAGE_BYTES) {
+      setImageError("Image trop volumineuse (4 Mo max)");
+      return;
+    }
+
+    setImageLoading(true);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result;
+      if (typeof dataUrl !== "string" || !dataUrl.startsWith(`data:${file.type};base64,`)) {
+        setImageError("Impossible de charger l'image");
+        setImageLoading(false);
+        return;
+      }
+
+      setReferenceImage({
+        dataUrl,
+        filename: file.name,
+        sizeBytes: file.size,
+      });
+      setImageLoading(false);
+    };
+    reader.onerror = () => {
+      setImageError("Impossible de charger l'image");
+      setImageLoading(false);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const hasTranscript = transcriptText.trim().length > 0;
+  const hasSourceInput = hasTranscript || !!referenceImage;
+
   const handleGenerate = async () => {
-    if (!transcriptText.trim() || !selectedPromptId || !model) return;
+    if (!hasSourceInput || !selectedPromptId || !model) {
+      setGenError("Ajoutez une transcription ou une image de référence");
+      return;
+    }
     setGenerating(true);
     setGenError(null);
     setResult(null);
@@ -215,12 +280,18 @@ export function DescriptionTool({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          transcriptText,
+          transcriptText: hasTranscript ? transcriptText : undefined,
           promptId: selectedPromptId,
           personalization: personalization || undefined,
           model,
           inputFilename: inputFilename ?? undefined,
           transcriptionId: inputTab === "transcription" ? transcriptionId ?? undefined : undefined,
+          referenceImage: referenceImage
+            ? {
+                dataUrl: referenceImage.dataUrl,
+                filename: referenceImage.filename,
+              }
+            : undefined,
         }),
       });
 
@@ -253,7 +324,8 @@ export function DescriptionTool({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const canGenerate = !!transcriptText && !!selectedPromptId && !!model && !generating;
+  const canGenerate =
+    hasSourceInput && !!selectedPromptId && !!model && !generating && !imageLoading;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -382,6 +454,100 @@ export function DescriptionTool({
               )}
             </>
           )}
+
+          <div className="mt-4 border-t border-gray-100 pt-4">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-medium text-gray-700">
+                  Image de référence{" "}
+                  <span className="text-xs font-normal text-gray-400">(optionnel)</span>
+                </h3>
+                <p className="mt-1 text-xs text-gray-400">
+                  Ajoutez une capture d&apos;écran ou une photo contenant des infos à intégrer. Cette image peut aussi servir de seule source si vous n&apos;avez pas de SRT ou de transcription.
+                </p>
+              </div>
+              {referenceImage && !imageLoading && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReferenceImage(null);
+                    setImageError(null);
+                    if (imageInputRef.current) imageInputRef.current.value = "";
+                  }}
+                  className="shrink-0 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700"
+                >
+                  Retirer
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (imageInputRef.current) imageInputRef.current.value = "";
+                imageInputRef.current?.click();
+              }}
+              className={`w-full rounded-xl border border-dashed px-4 py-4 text-left transition-colors ${
+                referenceImage
+                  ? "border-amber-200 bg-amber-50/70 hover:border-amber-300"
+                  : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+              }`}
+            >
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept={REFERENCE_IMAGE_ACCEPT}
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) processReferenceImage(file);
+                }}
+              />
+
+              {imageLoading ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <Loader2 size={14} className="animate-spin" /> Chargement de l&apos;image…
+                </div>
+              ) : referenceImage ? (
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                    <Check size={16} className="text-amber-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-gray-800">
+                      {referenceImage.filename}
+                    </p>
+                    <p className="mt-0.5 text-xs text-gray-400">
+                      {formatFileSize(referenceImage.sizeBytes)} • Cliquer pour remplacer
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100">
+                    <ImageIcon size={16} className="text-gray-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">
+                      Ajouter une image pour enrichir l&apos;analyse
+                    </p>
+                    <p className="mt-0.5 text-xs text-gray-400">
+                      PNG, JPG ou WEBP. Utile pour une capture d&apos;écran avec données ou visuels.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </button>
+
+            {imageError && (
+              <p className="mt-2 flex items-center gap-1 text-xs text-red-500">
+                <AlertCircle size={12} /> {imageError}
+              </p>
+            )}
+            <p className="mt-2 text-xs text-gray-400">
+              L&apos;image n&apos;est envoyée qu&apos;avec cette génération et n&apos;est pas stockée dans l&apos;historique.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -452,7 +618,7 @@ export function DescriptionTool({
             className="w-full text-sm text-gray-800 placeholder-gray-300 border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
           />
           <p className="text-xs text-gray-400 mt-1">
-            Ces informations seront injectées dans le prompt avant la transcription.
+            Ces informations seront injectées dans le prompt avant l&apos;analyse de la source.
           </p>
         </div>
       </div>

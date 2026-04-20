@@ -23,7 +23,7 @@ export default async function ToolsPage() {
     redirect("/tools/templates");
   }
 
-  if (!userContext.isImpersonating && await hasTool(userContext.effectiveUser.id, TOOLS.CAPTIONS)) {
+  if (await hasTool(userContext.effectiveUser.id, TOOLS.CAPTIONS)) {
     redirect("/tools/captions");
   }
 

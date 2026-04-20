@@ -13,6 +13,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VERSION_FILE="${SCRIPT_DIR}/render-engine/VERSION"
 DOCKER_IMAGE="kodexfr/toolbox-render"
+DOCKER_CACHE_IMAGE="${DOCKER_IMAGE}:buildcache"
 SERVER_IP="37.27.246.85"
 SERVER_USER="root"
 
@@ -78,18 +79,19 @@ deploy_docker() {
   echo -e "   Version actuelle : ${YELLOW}v${CURRENT_VERSION}${RESET}"
   echo -e "   Nouveau tag      : ${BOLD}${NEW_TAG}${RESET}"
 
-  # Build
-  header "Build linux/amd64"
+  # Build + push direct via Buildx
+  # --push évite le gros export local (--load) puis un second upload via docker push.
+  # Le cache registry réduit fortement les rebuilds quand seules quelques couches changent.
+  header "Build + Push linux/amd64"
   run "docker buildx build \
     --platform linux/amd64 \
     -f \"${SCRIPT_DIR}/render-engine/Dockerfile.runpod\" \
     -t \"${NEW_TAG}\" \
-    --load \
+    --cache-from type=registry,ref=\"${DOCKER_CACHE_IMAGE}\" \
+    --cache-to type=registry,ref=\"${DOCKER_CACHE_IMAGE}\",mode=max \
+    --provenance=false \
+    --push \
     \"${SCRIPT_DIR}/render-engine\""
-
-  # Push
-  header "Push → Docker Hub"
-  run "docker push \"${NEW_TAG}\""
 
   # Écriture de la version (seulement si tout a réussi)
   if ! $DRY_RUN; then

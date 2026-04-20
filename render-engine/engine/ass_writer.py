@@ -645,12 +645,29 @@ def write_ass_file(
     use_two_layers = any(_needs_two_layers(s) for s in _styles_in_use)
     layers_to_emit = [0, 1] if use_two_layers else [0]
 
+    # Queue de lecture : durée supplémentaire après le dernier mot pour laisser
+    # le temps de lire le caption. Clamped au gap disponible avant le bloc suivant.
+    READING_QUEUE_CS = 80   # 0.8 s de queue de lecture maximum
+    MIN_BLOCK_DUR_CS = 80   # durée minimale d'affichage d'un bloc (0.8 s)
+    INTER_BLOCK_GAP_CS = 5  # gap minimal à laisser entre deux blocs (50 ms)
+
     for index, block in enumerate(blocks):
         block_start_cs = _to_cs_floor(block.start)
-        block_end_cs = _to_cs_ceil(block.end)
+        natural_end_cs = _to_cs_ceil(block.end)
+
+        # Étendre la fin : max(fin naturelle + queue, durée minimale)
+        target_end_cs = max(
+            natural_end_cs + READING_QUEUE_CS,
+            block_start_cs + MIN_BLOCK_DUR_CS,
+        )
+
+        # Limiter pour ne pas empiéter sur le bloc suivant
         if index + 1 < len(blocks):
-            block_end_cs = min(block_end_cs, _to_cs_floor(blocks[index + 1].start) - 1)
-        block_end_cs = max(block_start_cs, block_end_cs)
+            next_start_cs = _to_cs_floor(blocks[index + 1].start)
+            cap_cs = max(block_start_cs, next_start_cs - INTER_BLOCK_GAP_CS)
+            target_end_cs = min(target_end_cs, cap_cs)
+
+        block_end_cs = max(block_start_cs, target_end_cs)
         block_start = _ass_time_cs(block_start_cs)
         block_end = _ass_time_cs(block_end_cs)
         effective_end = block_end_cs / 100.0

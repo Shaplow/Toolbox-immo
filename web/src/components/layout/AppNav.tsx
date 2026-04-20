@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Home, LayoutTemplate, Film, Image as ImageIcon, Mic, AlignLeft, Scissors, List, Users, Type, MessageSquare, LogOut } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
 
 type NavItem = {
   href: string;
   label: string;
-  icon: string;
+  icon: ReactNode;
 };
 
 type NavSection = {
@@ -37,7 +38,7 @@ export function AppNav({
   const rawPerms = navUser.permissions ?? "[]";
   let userPerms: string[] = [];
   try { userPerms = JSON.parse(rawPerms) as string[]; } catch { userPerms = []; }
-  const hasCaptions = !isImpersonating && userPerms.includes("captions");
+  const hasCaptions = userPerms.includes("captions");
   const hasCovers = userPerms.includes("covers");
   const hasTranscription = userPerms.includes("transcription");
   const hasDescription = userPerms.includes("description");
@@ -58,55 +59,56 @@ export function AppNav({
   const navSections: NavSection[] = isAdminView
     ? [
         {
-          items: [{ href: "/home", label: "Accueil", icon: "⌂" }],
+          items: [{ href: "/home", label: "Accueil", icon: <Home size={16} /> }],
         },
         {
           items: [
-            { href: "/tools/templates", label: "Templates", icon: "▦" },
-            { href: "/tools/captions", label: "Sous-titres", icon: "CC" },
-            { href: "/tools/cover", label: "Covers", icon: "⊞" },
-            { href: "/tools/transcription", label: "Transcription", icon: "♪" },
-            { href: "/tools/description", label: "Descriptions", icon: "≡" },
-            { href: "/tools/derush", label: "Dérush", icon: "✂" },
+            { href: "/tools/templates", label: "Templates", icon: <LayoutTemplate size={16} /> },
+            { href: "/tools/captions", label: "Sous-titres", icon: <Film size={16} /> },
+            { href: "/tools/cover", label: "Covers", icon: <ImageIcon size={16} /> },
+            { href: "/tools/transcription", label: "Transcription", icon: <Mic size={16} /> },
+            { href: "/tools/description", label: "Descriptions", icon: <AlignLeft size={16} /> },
+            { href: "/tools/derush", label: "Dérush", icon: <Scissors size={16} /> },
           ],
         },
         {
           title: "Suivi",
-          items: [{ href: "/listings", label: "Mes générations", icon: "☰" }],
+          items: [{ href: "/listings", label: "Mes générations", icon: <List size={16} /> }],
         },
         {
           title: "Admin",
           items: [
-            { href: "/admin/users", label: "Utilisateurs", icon: "⚙" },
-            { href: "/admin/fonts", label: "Typographies", icon: "Aa" },
+            { href: "/admin/users", label: "Utilisateurs", icon: <Users size={16} /> },
+            { href: "/admin/fonts", label: "Typographies", icon: <Type size={16} /> },
+            { href: "/admin/prompts", label: "Prompts", icon: <MessageSquare size={16} /> },
           ],
         },
       ]
     : [
         {
-          items: [{ href: "/home", label: "Accueil", icon: "⌂" }],
+          items: [{ href: "/home", label: "Accueil", icon: <Home size={16} /> }],
         },
         {
           items: [
-            ...(hasTemplates ? [{ href: "/tools/templates", label: "Templates", icon: "▦" }] : []),
-            ...(hasCaptions ? [{ href: "/tools/captions", label: "Sous-titres", icon: "CC" }] : []),
-            ...(hasCovers ? [{ href: "/tools/cover", label: "Covers", icon: "⊞" }] : []),
-            ...(hasTranscription ? [{ href: "/tools/transcription", label: "Transcription", icon: "♪" }] : []),
-            ...(hasDescription ? [{ href: "/tools/description", label: "Descriptions", icon: "≡" }] : []),
-            ...(hasDerush ? [{ href: "/tools/derush", label: "Dérush", icon: "✂" }] : []),
+            ...(hasTemplates ? [{ href: "/tools/templates", label: "Templates", icon: <LayoutTemplate size={16} /> as ReactNode }] : []),
+            ...(hasCaptions ? [{ href: "/tools/captions", label: "Sous-titres", icon: <Film size={16} /> as ReactNode }] : []),
+            ...(hasCovers ? [{ href: "/tools/cover", label: "Covers", icon: <ImageIcon size={16} /> as ReactNode }] : []),
+            ...(hasTranscription ? [{ href: "/tools/transcription", label: "Transcription", icon: <Mic size={16} /> as ReactNode }] : []),
+            ...(hasDescription ? [{ href: "/tools/description", label: "Descriptions", icon: <AlignLeft size={16} /> as ReactNode }] : []),
+            ...(hasDerush ? [{ href: "/tools/derush", label: "Dérush", icon: <Scissors size={16} /> as ReactNode }] : []),
           ],
         },
         {
           title: "Suivi",
-          items: [{ href: "/listings", label: "Mes générations", icon: "☰" }],
+          items: [{ href: "/listings", label: "Mes générations", icon: <List size={16} /> }],
         },
-        ...(canSeeAdmin
+        ...(isAdminView
           ? [
               {
                 title: "Admin",
                 items: [
-                  { href: "/admin/users", label: "Utilisateurs", icon: "⚙" },
-                  { href: "/admin/fonts", label: "Typographies", icon: "Aa" },
+                  { href: "/admin/users", label: "Utilisateurs", icon: <Users size={16} /> as ReactNode },
+                  { href: "/admin/fonts", label: "Typographies", icon: <Type size={16} /> as ReactNode },
                 ],
               },
             ]
@@ -189,7 +191,7 @@ export function AppNav({
                           : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                       } ${collapsed ? "justify-center px-0" : ""}`}
                     >
-                      <span className="text-base">{icon}</span>
+                      <span className="shrink-0 flex items-center">{icon}</span>
                       {!collapsed ? label : null}
                     </Link>
                   );
@@ -209,9 +211,9 @@ export function AppNav({
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
           title="Se déconnecter"
-          className={`text-xs text-gray-400 hover:text-red-500 transition-colors ${collapsed ? "w-full rounded-lg border border-gray-200 py-2 text-center" : "w-full text-left"}`}
+          className={`text-xs text-gray-400 hover:text-red-500 transition-colors ${collapsed ? "w-full rounded-lg border border-gray-200 py-2 flex items-center justify-center" : "w-full text-left"}`}
         >
-          {collapsed ? "⏻" : "Se déconnecter"}
+          {collapsed ? <LogOut size={14} /> : "Se déconnecter"}
         </button>
       </div>
     </aside>

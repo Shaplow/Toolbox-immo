@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useCallback, useMemo } from "react";
-import { Film, Upload, Download, RefreshCw, Check, X } from "lucide-react";
+import { Film, Upload, Download, RefreshCw, Check, X, Image as ImageIcon } from "lucide-react";
+import { toast } from "@/components/ui/Toast";
 
 // Espace minimum entre deux timestamps distincts.
 // 1/30s couvre la plupart des vidéos (30fps). Si la vidéo est en 60fps
@@ -119,7 +120,7 @@ export function CoverGenerator() {
       setSelected(new Set());
       setHasExtracted(false);
     } catch (err) {
-      alert(`Erreur d'upload : ${String(err)}`);
+      toast.error(`Erreur d'upload : ${String(err)}`);
     } finally {
       setUploading(false);
     }
@@ -147,7 +148,7 @@ export function CoverGenerator() {
         setSelected(new Set());
         setHasExtracted(true);
       } catch (err) {
-        alert(`Erreur extraction : ${String(err)}`);
+        toast.error(`Erreur extraction : ${String(err)}`);
       } finally {
         setLoading(false);
       }
@@ -166,10 +167,10 @@ export function CoverGenerator() {
     void extractFrames(seenTimestamps);
   };
 
-  const toggleSelect = (i: number) =>
+    const toggleSelect = (i: number) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      next.has(i) ? next.delete(i) : next.add(i);
+      if (next.has(i)) { next.delete(i); } else { next.add(i); }
       return next;
     });
 
@@ -203,11 +204,16 @@ export function CoverGenerator() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Générateur de covers</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Extrayez des frames depuis une vidéo pour choisir votre cover idéale.
-        </p>
+      <div className="flex items-center gap-3 mb-8">
+        <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white shrink-0">
+          <ImageIcon size={20} />
+        </div>
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Générateur de covers</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Extrayez des frames depuis une vidéo pour choisir votre cover idéale.
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 items-start">

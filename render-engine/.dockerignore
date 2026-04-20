@@ -19,5 +19,6 @@ hf_cache/
 *.egg-info/
 .pytest_cache/
 
-# Cache fontconfig local
+# Cache fontconfig local (racine et sous-dossiers)
 .fontconfig-cache*/
+fonts/.fontconfig-cache*/

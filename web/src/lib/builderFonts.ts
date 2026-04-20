@@ -6,6 +6,13 @@ export type BuilderFontEntry = {
   source: "global" | "template" | "derived";
 };
 
+export type BuilderFontSources = {
+  customFonts?: TemplateJSON["theme"]["customFonts"];
+  headingFont: TemplateJSON["theme"]["fonts"]["heading"];
+  bodyFont: TemplateJSON["theme"]["fonts"]["body"];
+  blockFontFamilies: Array<string | undefined>;
+};
+
 function mergeFontEntry(collected: Map<string, BuilderFontEntry>, next: BuilderFontEntry) {
   const existing = collected.get(next.family);
   if (!existing) {
@@ -25,27 +32,41 @@ function mergeFontEntry(collected: Map<string, BuilderFontEntry>, next: BuilderF
   });
 }
 
-export function collectBuilderFonts(template: TemplateJSON, globalFonts: BuilderFontEntry[] = []): BuilderFontEntry[] {
+export function collectBuilderFontsFromSources(
+  sources: BuilderFontSources,
+  globalFonts: BuilderFontEntry[] = []
+): BuilderFontEntry[] {
   const collected = new Map<string, BuilderFontEntry>();
 
   for (const font of globalFonts) {
     mergeFontEntry(collected, { ...font, source: "global" });
   }
 
-  for (const font of template.theme.customFonts ?? []) {
+  for (const font of sources.customFonts ?? []) {
     mergeFontEntry(collected, { family: font.family, url: font.url, source: "template" });
   }
 
-  for (const font of [template.theme.fonts.heading, template.theme.fonts.body]) {
+  for (const font of [sources.headingFont, sources.bodyFont]) {
     mergeFontEntry(collected, { family: font.family, url: font.url, source: "derived" });
   }
 
-  for (const block of template.blocks) {
-    const family = (block as { style?: { fontFamily?: string } }).style?.fontFamily;
+  for (const family of sources.blockFontFamilies) {
     if (family) {
       mergeFontEntry(collected, { family, source: "derived" });
     }
   }
 
   return [...collected.values()].sort((a, b) => a.family.localeCompare(b.family, "fr", { sensitivity: "base" }));
+}
+
+export function collectBuilderFonts(template: TemplateJSON, globalFonts: BuilderFontEntry[] = []): BuilderFontEntry[] {
+  return collectBuilderFontsFromSources(
+    {
+      customFonts: template.theme.customFonts,
+      headingFont: template.theme.fonts.heading,
+      bodyFont: template.theme.fonts.body,
+      blockFontFamilies: template.blocks.map((block) => (block as { style?: { fontFamily?: string } }).style?.fontFamily),
+    },
+    globalFonts
+  );
 }

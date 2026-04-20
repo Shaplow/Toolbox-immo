@@ -1,4 +1,5 @@
 ﻿import Link from "next/link";
+import { LayoutTemplate, AlignLeft, Image as ImageIcon, Mic, FileText, Scissors, List } from "lucide-react";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
 
 const tools = [
@@ -6,7 +7,7 @@ const tools = [
     href: "/tools/templates",
     label: "Générateur de templates",
     description: "Créez et gérez des templates visuels pour vos annonces immobilières. Générez des visuels personnalisés en quelques clics.",
-    icon: "▦",
+    icon: <LayoutTemplate size={20} />,
     color: "indigo",
     badge: null,
   },
@@ -14,36 +15,69 @@ const tools = [
     href: "/tools/captions",
     label: "Sous-titres",
     description: "Incrustez des sous-titres stylisés et animés dans vos vidéos de présentation. Animations mot à mot, mise en avant, polices personnalisées.",
-    icon: "CC",
+    icon: <AlignLeft size={20} />,
     color: "violet",
     badge: "Bêta",
+  },
+  {
+    href: "/tools/transcription",
+    label: "Transcription",
+    description: "Convertissez audio et vidéo en texte, SRT ou chunks pour l'IA. Identification des intervenants incluse.",
+    icon: <Mic size={20} />,
+    color: "teal",
+    badge: null,
+  },
+  {
+    href: "/tools/description",
+    label: "Descriptions IA",
+    description: "Générez des descriptions de biens immobiliers à partir d'une transcription ou d'un fichier SRT.",
+    icon: <FileText size={20} />,
+    color: "amber",
+    badge: null,
+  },
+  {
+    href: "/tools/derush",
+    label: "Dérush",
+    description: "Sélection automatique des meilleurs plans par vision IA ou transcription. Export XML pour la post-production.",
+    icon: <Scissors size={20} />,
+    color: "rose",
+    badge: null,
   },
   {
     href: "/tools/cover",
     label: "Covers vidéo",
     description: "Extrayez les meilleures frames de votre vidéo pour choisir la cover idéale. Tirages successifs, sélection multiple et téléchargement direct.",
-    icon: "⊡",
+    icon: <ImageIcon size={20} />,
     color: "emerald",
     badge: null,
   },
 ];
 
 const colorMap: Record<string, string> = {
-  indigo: "bg-indigo-50 border-indigo-100 hover:border-indigo-300 group-hover:text-indigo-700",
-  violet: "bg-violet-50 border-violet-100 hover:border-violet-300 group-hover:text-violet-600",
+  indigo:  "bg-indigo-50 border-indigo-100 hover:border-indigo-300 group-hover:text-indigo-700",
+  violet:  "bg-violet-50 border-violet-100 hover:border-violet-300 group-hover:text-violet-600",
   emerald: "bg-emerald-50 border-emerald-100 hover:border-emerald-300 group-hover:text-emerald-700",
+  teal:    "bg-teal-50 border-teal-100 hover:border-teal-300 group-hover:text-teal-700",
+  amber:   "bg-amber-50 border-amber-100 hover:border-amber-300 group-hover:text-amber-700",
+  rose:    "bg-rose-50 border-rose-100 hover:border-rose-300 group-hover:text-rose-700",
 };
 
 const iconColorMap: Record<string, string> = {
-  indigo: "bg-indigo-100 text-indigo-700",
-  violet: "bg-violet-100 text-violet-600",
+  indigo:  "bg-indigo-100 text-indigo-700",
+  violet:  "bg-violet-100 text-violet-600",
   emerald: "bg-emerald-100 text-emerald-700",
+  teal:    "bg-teal-100 text-teal-700",
+  amber:   "bg-amber-100 text-amber-700",
+  rose:    "bg-rose-100 text-rose-700",
 };
 
 const badgeColorMap: Record<string, string> = {
-  indigo: "bg-indigo-100 text-indigo-700",
-  violet: "bg-violet-100 text-violet-700",
+  indigo:  "bg-indigo-100 text-indigo-700",
+  violet:  "bg-violet-100 text-violet-700",
   emerald: "bg-emerald-100 text-emerald-700",
+  teal:    "bg-teal-100 text-teal-700",
+  amber:   "bg-amber-100 text-amber-700",
+  rose:    "bg-rose-100 text-rose-700",
 };
 
 export default async function HomePage() {
@@ -61,10 +95,12 @@ export default async function HomePage() {
 
   const visibleTools = tools.filter(({ href }) => {
     if (isAdmin) return true;
-    if (userContext?.isImpersonating && href === "/tools/captions") return false;
     if (href === "/tools/captions") return userPerms.includes("captions");
     if (href === "/tools/templates") return hasTemplates;
     if (href === "/tools/cover") return userPerms.includes("covers");
+    if (href === "/tools/transcription") return userPerms.includes("transcription");
+    if (href === "/tools/description") return userPerms.includes("description");
+    if (href === "/tools/derush") return userPerms.includes("derush");
     return true;
   });
 
@@ -94,7 +130,7 @@ export default async function HomePage() {
                 {tool.badge}
               </span>
             )}
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold mb-4 ${iconColorMap[tool.color]}`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 ${iconColorMap[tool.color]}`}>
               {tool.icon}
             </div>
             <h2 className={`text-base font-semibold text-gray-900 mb-1.5 transition-colors ${colorMap[tool.color].split(" ").at(-1)}`}>
@@ -114,7 +150,7 @@ export default async function HomePage() {
           href="/listings"
           className="inline-flex items-center gap-2 px-4 py-2 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg hover:border-gray-300 hover:bg-gray-50 transition-all"
         >
-          <span>☰</span> Mes générations
+          <List size={14} /> Mes générations
         </Link>
       </div>
     </div>

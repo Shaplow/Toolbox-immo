@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { Trash2, ChevronDown, ChevronUp, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { TOOLS, TOOL_LABELS, TOOL_DESCRIPTIONS, type Tool } from "@/lib/permissions";
 
@@ -41,9 +42,9 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
   const [editForm, setEditForm] = useState({ name: "", username: "", email: "", password: "" });
   const [editError, setEditError] = useState("");
   const [activeImpersonationId, setActiveImpersonationId] = useState<string | null>(impersonatedUserId);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
-    setLoading(true);
     const res = await fetch("/api/admin/users");
     const data = await res.json() as Omit<User, "captionPresetAccesses">[];
     // Fetch caption preset accesses for each user
@@ -58,7 +59,8 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { void fetchUsers(); }, [fetchUsers]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -78,8 +80,8 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
   }
 
   async function handleDelete(userId: string) {
-    if (!confirm("Supprimer cet utilisateur ?")) return;
     await fetch(`/api/admin/users/${userId}`, { method: "DELETE" });
+    setConfirmDeleteId(null);
     await fetchUsers();
   }
 
@@ -201,7 +203,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
           onClick={() => { setCreating(true); setCreateError(""); }}
           className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
         >
-          + Creer un utilisateur
+          + Créer un utilisateur
         </button>
       </div>
 
@@ -239,7 +241,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-gray-500">Role</span>
+              <span className="text-xs text-gray-500">Rôle</span>
               <select value={newUser.role}
                 onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
@@ -256,7 +258,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
             </button>
             <button type="submit" disabled={saving}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium disabled:opacity-60">
-              {saving ? "Creation..." : "Creer"}
+              {saving ? "Création…" : "Créer"}
             </button>
           </div>
         </form>
@@ -306,7 +308,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                   {/* Role badge */}
                   <button
                     onClick={() => handleRoleToggle(user)}
-                    title="Cliquer pour changer le role"
+                    title="Cliquer pour changer le rôle"
                     className={`shrink-0 text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${
                       isAdmin
                         ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
@@ -317,18 +319,40 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                   </button>
                   <button
                     onClick={() => { setExpandedId(isExpanded ? null : user.id); setEditingId(null); }}
-                    className="shrink-0 text-xs text-gray-400 hover:text-indigo-700 transition-colors px-2"
+                    className="shrink-0 flex items-center gap-1 text-xs text-gray-400 hover:text-indigo-700 transition-colors px-2"
                   >
-                    {isExpanded ? "Fermer ▲" : "Configurer ▼"}
+                    {isExpanded ? (
+                      <><ChevronUp size={14} />Fermer</>
+                    ) : (
+                      <><ChevronDown size={14} />Configurer</>
+                    )}
                   </button>
-                  <button
-                    onClick={() => handleDelete(user.id)}
-                    title="Supprimer l'utilisateur"
-                    disabled={user.id === currentUserId}
-                    className="shrink-0 text-gray-300 hover:text-red-400 transition-colors text-sm"
-                  >
-                    x
-                  </button>
+                  {user.id !== currentUserId && (
+                    confirmDeleteId === user.id ? (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => void handleDelete(user.id)}
+                          className="text-xs px-2 py-1 bg-red-500 text-white rounded-md hover:bg-red-600"
+                        >
+                          Supprimer
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="text-xs px-2 py-1 border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50"
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeleteId(user.id)}
+                        title="Supprimer l'utilisateur"
+                        className="shrink-0 text-gray-300 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )
+                  )}
                 </div>
 
                 {/* Expanded panel */}
@@ -427,7 +451,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
 
                         {/* Templates section */}
                         <div className="px-5 py-4 space-y-3">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Templates assignes</p>
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Templates assignés</p>
                           {user.accesses.length === 0 ? (
                             <p className="text-xs text-gray-400">Aucun template assigne.</p>
                           ) : (
@@ -437,7 +461,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                                   <span className="text-xs text-gray-700 font-medium">{a.template.name}</span>
                                   {a.template.client && <span className="text-xs text-indigo-700">· {a.template.client}</span>}
                                   <button onClick={() => handleRevokeTemplate(user.id, a.templateId)}
-                                    className="text-gray-300 hover:text-red-400 transition-colors ml-1 text-xs">x</button>
+                                    className="text-gray-300 hover:text-red-400 transition-colors ml-1"><X size={10} /></button>
                                 </div>
                               ))}
                             </div>
@@ -454,11 +478,14 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                           )}
                         </div>
 
-                        {/* Caption presets section */}
+                        {/* Caption presets section — only relevant when captions tool is enabled */}
+                        {userTools.includes(TOOLS.CAPTIONS) && (
                         <div className="px-5 py-4 space-y-3">
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Presets de sous-titres assignés</p>
                           {user.captionPresetAccesses.length === 0 ? (
-                            <p className="text-xs text-gray-400">Aucun preset assigné.</p>
+                            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                              Aucun preset assigné — l&apos;utilisateur verra une galerie vide. Assignez au moins un preset ci-dessous.
+                            </p>
                           ) : (
                             <div className="flex flex-wrap gap-2">
                               {user.captionPresetAccesses.map((presetId) => {
@@ -469,7 +496,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                                     <span className="text-xs text-gray-700 font-medium">{preset.name}</span>
                                     {preset.isBuiltin && <span className="text-[10px] text-violet-500">intégré</span>}
                                     <button onClick={() => handleRevokePreset(user.id, presetId)}
-                                      className="text-gray-300 hover:text-red-400 transition-colors ml-1 text-xs">x</button>
+                                      className="text-gray-300 hover:text-red-400 transition-colors ml-1"><X size={10} /></button>
                                   </div>
                                 );
                               })}
@@ -486,6 +513,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                             </div>
                           )}
                         </div>
+                        )}
                       </>
                     )}
                   </div>

@@ -1,30 +1,32 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getUserContext } from "@/lib/userContext";
 
 /**
  * GET /api/caption-presets
- * Admin: all builtin presets.
- * User: only presets explicitly assigned via CaptionPresetAccess.
+ * Admin (not impersonating): all presets.
+ * User or impersonating admin: only presets explicitly assigned via CaptionPresetAccess.
  */
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
-  const isAdmin = session.user.role === "ADMIN";
+  const isAdmin = userContext.canAdminBypass;
+  const effectiveUserId = userContext.effectiveUser.id;
 
   let presets;
   if (isAdmin) {
-    // Admin sees all presets
+    // Real admin view — sees all presets
     presets = await prisma.captionPreset.findMany({
       orderBy: [{ isBuiltin: "desc" }, { createdAt: "asc" }],
     });
   } else {
-    // User sees only assigned presets
+    // Regular user or impersonating admin — only assigned presets
     const accesses = await prisma.captionPresetAccess.findMany({
-      where: { userId: session.user.id },
+      where: { userId: effectiveUserId },
       include: { preset: true },
     });
     presets = accesses.map((a) => a.preset);

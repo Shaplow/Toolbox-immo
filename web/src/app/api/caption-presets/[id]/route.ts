@@ -19,7 +19,7 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const body = await req.json() as { name?: string; isBuiltin?: boolean };
+  const body = await req.json() as { name?: string; isBuiltin?: boolean; config?: unknown };
 
   const preset = await prisma.captionPreset.findUnique({ where: { id } });
   if (!preset) {
@@ -31,6 +31,9 @@ export async function PATCH(
     data: {
       ...(body.name !== undefined ? { name: body.name.trim() } : {}),
       ...(body.isBuiltin !== undefined ? { isBuiltin: body.isBuiltin } : {}),
+      ...(body.config !== undefined && body.config !== null && typeof body.config === "object"
+        ? { config: JSON.stringify(body.config) }
+        : {}),
     },
   });
 

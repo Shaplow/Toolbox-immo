@@ -1,18 +1,20 @@
 ﻿"use client";
 
 import { useMemo, useState } from "react";
+import { Type, Image as ImageIcon, Video, Square, Zap, Music } from "lucide-react";
+import type { ReactNode } from "react";
 import { getAutoLayoutOrderedBlocks, isAutoLayoutGroup } from "@/lib/groupLayout";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import { nanoid } from "@/lib/utils";
 import type { AnyBlock, BlockType, LayerGroup } from "@/types/template";
 
-const BLOCK_TYPES: { type: BlockType; label: string; icon: string }[] = [
-  { type: "text",   label: "Texte",      icon: "T" },
-  { type: "image",  label: "Image",      icon: "🖼" },
-  { type: "video",  label: "Vidéo",      icon: "🎥" },
-  { type: "shape",  label: "Forme",      icon: "■" },
-  { type: "dpe",    label: "DPE",        icon: "⚡" },
-  { type: "music",  label: "Musique",    icon: "🎵" },
+const BLOCK_TYPES: { type: BlockType; label: string; icon: ReactNode }[] = [
+  { type: "text",   label: "Texte",      icon: <Type size={16} /> },
+  { type: "image",  label: "Image",      icon: <ImageIcon size={16} /> },
+  { type: "video",  label: "Vidéo",      icon: <Video size={16} /> },
+  { type: "shape",  label: "Forme",      icon: <Square size={16} /> },
+  { type: "dpe",    label: "DPE",        icon: <Zap size={16} /> },
+  { type: "music",  label: "Musique",    icon: <Music size={16} /> },
 ];
 
 function createDefaultBlock(type: BlockType): AnyBlock {
@@ -238,7 +240,7 @@ export function BlocksPanel() {
                 }}
                 className="flex flex-col items-center justify-center p-2 rounded-lg border border-gray-100 hover:border-indigo-300 hover:bg-indigo-50 transition-colors text-xs gap-1"
               >
-                <span className="text-lg">{icon}</span>
+                <span className="flex items-center justify-center text-gray-400">{icon}</span>
                 <span className="text-gray-600">{label}</span>
               </button>
             ))}

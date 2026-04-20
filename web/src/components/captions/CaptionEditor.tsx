@@ -1,15 +1,20 @@
 ﻿"use client"
 
-import React, { useState } from 'react'
-import { Tag, Check, Pencil, X, Clock } from 'lucide-react'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import { Tag, Check, Pencil, X, Clock, Plus } from 'lucide-react'
 import { Caption } from '@/lib/srt'
+import { getHighlightStateName, getNextHighlightGroup } from '@/lib/captionHighlightCycle'
+import { type CaptionTimingStatus } from '@/lib/captionWordTiming'
 
 type Props = {
   captions: Caption[]
   onChange: (captions: Caption[]) => void
   highlighted: Map<string, number>
   onToggleWord: (key: string) => void
+  timingStatuses?: CaptionTimingStatus[]
   baseTransform: 'none' | 'upper' | 'lower' | 'title'
+  highlightTransform?: 'none' | 'upper' | 'lower' | 'title'
+  highlight2Transform?: 'none' | 'upper' | 'lower' | 'title'
   highlight2Enabled?: boolean
 }
 
@@ -20,24 +25,66 @@ function applyTransform(word: string, transform: string): string {
   return word
 }
 
-const HL_STYLES = [
-  { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' },
-  { bg: '#ccfbf1', border: '#2dd4bf', text: '#115e59' },
-] as const
+function getWordTransform(
+  highlightGroup: number | undefined,
+  baseTransform: Props['baseTransform'],
+  highlightTransform: Props['highlightTransform'],
+  highlight2Transform: Props['highlight2Transform'],
+) {
+  if (highlightGroup === 0) return highlightTransform ?? baseTransform
+  if (highlightGroup === 1) return highlight2Transform ?? highlightTransform ?? baseTransform
+  return baseTransform
+}
+
+function handleWordKeyDown(event: React.KeyboardEvent<HTMLSpanElement>, onActivate: () => void) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    onActivate()
+  }
+}
+
+function splitWords(text: string): string[] {
+  return text.split(/\s+/).filter(Boolean)
+}
+
+function normalizeEditedWords(words: string[]): string[] {
+  return words.flatMap(word => splitWords(word))
+}
+
+function getTimingStatusLabel(status: CaptionTimingStatus | undefined): string | null {
+  if (status === 'realigned') return 'Recalé'
+  if (status === 'estimated') return 'Estimé'
+  return null
+}
+
+function getTimingStatusTitle(status: CaptionTimingStatus | undefined): string | undefined {
+  if (status === 'realigned') {
+    return 'Timing recalculé à partir des mots restants'
+  }
+  if (status === 'estimated') {
+    return 'Timing estimé depuis la plage de la caption'
+  }
+  return undefined
+}
 
 export default function CaptionEditor({
   captions,
   onChange,
   highlighted,
   onToggleWord,
+  timingStatuses,
   baseTransform,
+  highlightTransform,
+  highlight2Transform,
   highlight2Enabled = false,
 }: Props) {
   const [editingId, setEditingId] = useState<number | null>(null)
-  const [editText, setEditText] = useState('')
+  const [editWords, setEditWords] = useState<string[]>([])
   const [editingTcId, setEditingTcId] = useState<number | null>(null)
   const [tcStart, setTcStart] = useState('')
   const [tcEnd, setTcEnd] = useState('')
+  const editWordRefs = useRef<Array<HTMLInputElement | null>>([])
+  const pendingFocusWordIndexRef = useRef<number | null>(null)
 
   const TC_RE = /^\d{2}:\d{2}:\d{2}[,\.]\d{3}$/
 
@@ -45,69 +92,157 @@ export default function CaptionEditor({
     return v.replace('.', ',')
   }
 
+  useEffect(() => {
+    if (editingId === null) {
+      editWordRefs.current = []
+      pendingFocusWordIndexRef.current = null
+      return
+    }
+
+    const targetIndex = pendingFocusWordIndexRef.current ?? 0
+    const node = editWordRefs.current[targetIndex]
+    if (!node) return
+
+    try {
+      node.focus({ preventScroll: true })
+    } catch {
+      node.focus()
+    }
+
+    node.select()
+    pendingFocusWordIndexRef.current = null
+  }, [editingId, editWords.length])
+
+  function beginEditing(caption: Caption) {
+    const words = splitWords(caption.text)
+    setEditingId(caption.index)
+    setEditWords(words.length > 0 ? words : [''])
+    pendingFocusWordIndexRef.current = 0
+  }
+
+  function stopEditing() {
+    setEditingId(null)
+    setEditWords([])
+    pendingFocusWordIndexRef.current = null
+    editWordRefs.current = []
+  }
+
+  function replaceWord(index: number, value: string) {
+    const tokens = splitWords(value)
+    if (tokens.length > 1) {
+      setEditWords(prev => [
+        ...prev.slice(0, index),
+        ...tokens,
+        ...prev.slice(index + 1),
+      ])
+      pendingFocusWordIndexRef.current = index + tokens.length - 1
+      return
+    }
+
+    setEditWords(prev => prev.map((word, wordIndex) => (wordIndex === index ? value : word)))
+  }
+
+  function insertWordAt(index: number) {
+    setEditWords(prev => [
+      ...prev.slice(0, index),
+      '',
+      ...prev.slice(index),
+    ])
+    pendingFocusWordIndexRef.current = index
+  }
+
+  function removeWord(index: number) {
+    setEditWords(prev => {
+      if (prev.length <= 1) return ['']
+      return prev.filter((_word, wordIndex) => wordIndex !== index)
+    })
+    pendingFocusWordIndexRef.current = Math.max(0, index - 1)
+  }
+
+  function saveEditedCaption(captionIndex: number) {
+    const words = normalizeEditedWords(editWords)
+    if (words.length === 0) return
+
+    onChange(captions.map(cp =>
+      cp.index === captionIndex ? { ...cp, text: words.join(' ') } : cp))
+    stopEditing()
+  }
+
+  function handleEditWordKeyDown(event: React.KeyboardEvent<HTMLInputElement>, index: number) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      insertWordAt(index + 1)
+      return
+    }
+
+    if ((event.key === 'Backspace' || event.key === 'Delete') && editWords[index] === '') {
+      event.preventDefault()
+      removeWord(index)
+    }
+  }
+
   if (captions.length === 0) {
     return (
-      <div style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center',
-        gap: 10, padding: '36px 20px', color: '#9ca3af', textAlign: 'center',
-      }}>
+      <div className="cx-editor-empty">
         <Tag size={28} strokeWidth={1.5} />
-        <p style={{ margin: 0, fontSize: 13 }}>
-          Importe un fichier <b>.srt</b> pour éditer les captions
+        <p>
+          Importez un fichier <b>.srt</b> pour commencer l&apos;édition des captions
         </p>
       </div>
     )
   }
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 6,
-      maxHeight: '64vh', overflowY: 'auto', paddingRight: 4,
-    }}>
+    <div className="cx-editor-list">
       {captions.map(c => {
         const isEditing = editingId === c.index
-        const words = c.text.trim().split(/\s+/).filter(Boolean)
+        const words = splitWords(c.text)
+        const canSaveEdit = normalizeEditedWords(editWords).length > 0
+        const timingStatus = timingStatuses?.[c.index - 1]
+        const timingStatusLabel = getTimingStatusLabel(timingStatus)
+        const highlightedCount = words.reduce((count, _word, i) => {
+          return count + (highlighted.has(`${c.index}-${i}`) ? 1 : 0)
+        }, 0)
+        const metaLabel = isEditing
+          ? 'Edition'
+          : highlightedCount > 0
+          ? `${highlightedCount} surligne${highlightedCount > 1 ? 's' : ''}`
+          : null
 
         return (
-          <div key={c.index} style={{
-            border: '1px solid #e1e5f0',
-            borderRadius: 8,
-            background: '#fff',
-          }}>
-            {/* meta row */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '5px 10px', background: '#f7f8fc',
-              borderBottom: '1px solid #e1e5f0',
-              borderRadius: '8px 8px 0 0',
-            }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', fontVariantNumeric: 'tabular-nums', minWidth: 24 }}>
+          <article key={c.index} className={`cx-editor-item${isEditing ? ' is-editing' : ''}`}>
+            <div className="cx-editor-meta">
+              <span className="cx-editor-index">
                 #{c.index}
               </span>
+              {timingStatusLabel && (
+                <span
+                  className={`cx-editor-badge cx-editor-badge-${timingStatus}`}
+                  title={getTimingStatusTitle(timingStatus)}
+                >
+                  {timingStatusLabel}
+                </span>
+              )}
+              {metaLabel && (
+                <span className="cx-editor-badge">{metaLabel}</span>
+              )}
               {editingTcId === c.index ? (
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div className="cx-editor-timecode-edit">
                   <input
                     value={tcStart}
                     onChange={e => setTcStart(e.target.value)}
                     placeholder="00:00:00,000"
-                    style={{
-                      width: 106, fontSize: 11, fontFamily: 'monospace',
-                      border: `1px solid ${TC_RE.test(tcStart) ? '#5b6bff' : '#fca5a5'}`,
-                      borderRadius: 4, padding: '1px 5px', background: '#fff', outline: 'none',
-                    }}
+                    className={`cx-editor-timecode-input${TC_RE.test(tcStart) ? '' : ' is-invalid'}`}
                   />
-                  <span style={{ fontSize: 11, color: '#6b7280' }}>→</span>
+                  <span className="cx-editor-timecode-sep">→</span>
                   <input
                     value={tcEnd}
                     onChange={e => setTcEnd(e.target.value)}
                     placeholder="00:00:00,000"
-                    style={{
-                      width: 106, fontSize: 11, fontFamily: 'monospace',
-                      border: `1px solid ${TC_RE.test(tcEnd) ? '#5b6bff' : '#fca5a5'}`,
-                      borderRadius: 4, padding: '1px 5px', background: '#fff', outline: 'none',
-                    }}
+                    className={`cx-editor-timecode-input${TC_RE.test(tcEnd) ? '' : ' is-invalid'}`}
                   />
                   <button
+                    type="button"
                     onClick={() => {
                       if (TC_RE.test(tcStart) && TC_RE.test(tcEnd)) {
                         onChange(captions.map(cp =>
@@ -117,155 +252,160 @@ export default function CaptionEditor({
                       }
                     }}
                     disabled={!TC_RE.test(tcStart) || !TC_RE.test(tcEnd)}
-                    style={{
-                      all: 'unset', cursor: 'pointer', display: 'inline-flex',
-                      alignItems: 'center', padding: '1px 6px',
-                      background: '#5b6bff', color: '#fff', borderRadius: 4,
-                      fontSize: 11, fontWeight: 600, opacity: (TC_RE.test(tcStart) && TC_RE.test(tcEnd)) ? 1 : 0.4,
-                    }}
+                    className="cx-editor-mini-btn cx-editor-mini-btn-primary"
                   >
                     <Check size={11} />
                   </button>
                   <button
+                    type="button"
                     onClick={() => setEditingTcId(null)}
-                    style={{
-                      all: 'unset', cursor: 'pointer', display: 'inline-flex', alignItems: 'center',
-                      color: '#9ca3af', padding: '1px 4px',
-                    }}
+                    className="cx-editor-icon-btn"
                   >
                     <X size={12} />
                   </button>
                 </div>
               ) : (
-                <span
-                  style={{ flex: 1, fontSize: 11, color: '#6b7280', fontFamily: 'monospace', cursor: 'default' }}
-                >
+                <span className="cx-editor-timecode">
                   {c.start.replace(',', '.')} → {c.end.replace(',', '.')}
                 </span>
               )}
-              <button
-                onClick={() => {
-                  if (editingTcId === c.index) { setEditingTcId(null) }
-                  else { setEditingTcId(c.index); setTcStart(c.start); setTcEnd(c.end) }
-                }}
-                style={{
-                  all: 'unset', cursor: 'pointer',
-                  color: editingTcId === c.index ? '#5b6bff' : '#9ca3af',
-                  display: 'flex', alignItems: 'center',
-                  padding: '2px 4px', borderRadius: 4,
-                }}
-                title={editingTcId === c.index ? 'Annuler édition timecode' : 'Éditer timecodes'}
-              >
-                {editingTcId === c.index ? <X size={13} /> : <Clock size={12} />}
-              </button>
-              <button
-                onClick={() => {
-                  if (isEditing) { setEditingId(null) }
-                  else { setEditingId(c.index); setEditText(c.text) }
-                }}
-                style={{
-                  all: 'unset', cursor: 'pointer',
-                  color: isEditing ? '#5b6bff' : '#9ca3af',
-                  display: 'flex', alignItems: 'center',
-                  padding: '2px 4px', borderRadius: 4,
-                }}
-                title={isEditing ? 'Annuler édition' : 'Éditer texte'}
-              >
-                {isEditing ? <X size={13} /> : <Pencil size={12} />}
-              </button>
+              <div className="cx-editor-toolbar">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (editingTcId === c.index) { setEditingTcId(null) }
+                    else { setEditingTcId(c.index); setTcStart(c.start); setTcEnd(c.end) }
+                  }}
+                  className={`cx-editor-icon-btn${editingTcId === c.index ? ' is-active' : ''}`}
+                  title={editingTcId === c.index ? 'Annuler édition timecode' : 'Éditer timecodes'}
+                >
+                  {editingTcId === c.index ? <X size={13} /> : <Clock size={12} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isEditing) { stopEditing() }
+                    else { beginEditing(c) }
+                  }}
+                  className={`cx-editor-icon-btn${isEditing ? ' is-active' : ''}`}
+                  title={isEditing ? 'Annuler édition' : 'Éditer texte'}
+                >
+                  {isEditing ? <X size={13} /> : <Pencil size={12} />}
+                </button>
+              </div>
             </div>
 
-            {/* words */}
-            <p style={{
-              margin: 0, padding: '8px 10px', lineHeight: 1.9,
-              fontSize: 13, color: '#1f2937', minHeight: 36, wordBreak: 'break-word',
-            }}>
-              {words.map((word, i) => {
-                const key = `${c.index}-${i}`
-                const hlGroup = highlighted.get(key)
-                const hs = hlGroup !== undefined ? HL_STYLES[Math.min(hlGroup, HL_STYLES.length - 1)] : null
-                const clickTitle = hlGroup !== undefined
-                  ? (hlGroup === 0 && highlight2Enabled ? 'Cliquer pour HL 2 → encore pour retirer' : 'Retirer ce mot du highlight')
-                  : (highlight2Enabled ? 'Ajouter au highlight 1' : 'Ajouter au highlight')
-                return (
-                  <React.Fragment key={i}>
-                    {i > 0 && ' '}
-                    <span
-                      onClick={() => onToggleWord(key)}
-                      title={clickTitle}
-                      style={{
-                        display: 'inline',
-                        padding: '2px 6px',
-                        borderRadius: 4,
-                        fontWeight: hs ? 700 : 400,
-                        color:      hs ? hs.text : '#374151',
-                        background: hs ? hs.bg   : '#f3f4f6',
-                        border:     `1px solid ${hs ? hs.border : '#e5e7eb'}`,
-                        cursor: 'pointer',
-                        userSelect: 'none',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {applyTransform(word, baseTransform)}
-                    </span>
-                  </React.Fragment>
-                )
-              })}
-            </p>
-
-            {/* edit textarea */}
-            {isEditing && (
-              <div style={{
-                padding: '0 10px 10px',
-                borderTop: '1px solid #e1e5f0',
-                display: 'flex', flexDirection: 'column', gap: 6,
-              }}>
-                <textarea
-                  value={editText}
-                  onChange={e => setEditText(e.target.value)}
-                  rows={Math.max(2, editText.split('\n').length + 1)}
-                  autoFocus
-                  style={{
-                    marginTop: 8, width: '100%', resize: 'vertical',
-                    fontFamily: 'inherit', fontSize: 13,
-                    background: '#fff', border: '1px solid #5b6bff',
-                    borderRadius: 6, padding: '6px 8px', color: '#111827',
-                    outline: 'none', boxShadow: '0 0 0 3px rgba(91,107,255,.12)',
-                    boxSizing: 'border-box',
-                  }}
-                />
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button
-                    onClick={() => {
-                      onChange(captions.map(cp =>
-                        cp.index === c.index ? { ...cp, text: editText } : cp))
-                      setEditingId(null)
-                    }}
-                    style={{
-                      all: 'unset', cursor: 'pointer', display: 'inline-flex',
-                      alignItems: 'center', gap: 4, padding: '4px 12px',
-                      background: '#5b6bff', color: '#fff', borderRadius: 6,
-                      fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
-                    }}
-                  >
-                    <Check size={12} /> OK
-                  </button>
-                  <button
-                    onClick={() => setEditingId(null)}
-                    style={{
-                      all: 'unset', cursor: 'pointer', display: 'inline-flex',
-                      alignItems: 'center', gap: 4, padding: '4px 10px',
-                      background: '#f3f4f6', color: '#6b7280',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: 6, fontSize: 12, fontFamily: 'inherit',
-                    }}
-                  >
-                    Annuler
-                  </button>
-                </div>
+            <div className={`cx-editor-body${isEditing ? ' is-editing' : ''}`}>
+              <div className="cx-editor-edit-panel">
+                {isEditing ? (
+                  <>
+                    <div className="cx-editor-word-edit-list">
+                      {editWords.map((word, wordIndex) => (
+                        <Fragment key={`${c.index}-${wordIndex}`}>
+                          <button
+                            type="button"
+                            onClick={() => insertWordAt(wordIndex)}
+                            className="cx-editor-word-insert"
+                            title={wordIndex === 0 ? 'Insérer un mot au début' : `Insérer un mot avant le mot ${wordIndex + 1}`}
+                            aria-label={wordIndex === 0 ? 'Insérer un mot au début' : `Insérer un mot avant le mot ${wordIndex + 1}`}
+                          >
+                            <Plus size={10} />
+                          </button>
+                          <div className="cx-editor-word-field">
+                            <input
+                              ref={node => {
+                                editWordRefs.current[wordIndex] = node
+                              }}
+                              type="text"
+                              value={word}
+                              onChange={event => replaceWord(wordIndex, event.target.value)}
+                              onKeyDown={event => handleEditWordKeyDown(event, wordIndex)}
+                              className="cx-editor-word-field-input"
+                              style={{ width: `${Math.max(4, word.length + 2)}ch` }}
+                              aria-label={`Mot ${wordIndex + 1}`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeWord(wordIndex)}
+                              className="cx-editor-word-field-remove"
+                              title="Supprimer ce mot"
+                              aria-label={`Supprimer le mot ${wordIndex + 1}`}
+                            >
+                              <X size={11} />
+                            </button>
+                          </div>
+                        </Fragment>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => insertWordAt(editWords.length)}
+                        className="cx-editor-word-insert cx-editor-word-insert-end"
+                        title="Insérer un mot à la fin"
+                        aria-label="Insérer un mot à la fin"
+                      >
+                        <Plus size={11} />
+                      </button>
+                    </div>
+                    <p className="cx-editor-edit-hint">
+                      Le bouton + insère un mot à l&apos;endroit voulu. Espace ou Entrée ajoute aussi un mot après le champ actif.
+                    </p>
+                    <div className="cx-editor-edit-actions">
+                      <button
+                        type="button"
+                        onClick={() => saveEditedCaption(c.index)}
+                        disabled={!canSaveEdit}
+                        className="cx-editor-action-btn cx-editor-action-btn-primary"
+                      >
+                        <Check size={12} /> OK
+                      </button>
+                      <button
+                        type="button"
+                        onClick={stopEditing}
+                        className="cx-editor-action-btn"
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="cx-editor-words-text">
+                    {words.map((word, i) => {
+                      const key = `${c.index}-${i}`
+                      const hlGroup = highlighted.get(key)
+                      const nextGroup = getNextHighlightGroup(hlGroup, highlight2Enabled)
+                      const nextStateName = getHighlightStateName(nextGroup)
+                      const clickTitle = hlGroup === undefined
+                        ? 'Passer en HL1'
+                        : hlGroup === 0 && highlight2Enabled
+                        ? 'Passer en HL2'
+                        : 'Revenir au style de base'
+                      return (
+                        <span key={i}>
+                          {i > 0 && ' '}
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={event => handleWordKeyDown(event, () => onToggleWord(key))}
+                            onClick={() => onToggleWord(key)}
+                            title={clickTitle}
+                            aria-pressed={hlGroup !== undefined}
+                            data-highlight-state={getHighlightStateName(hlGroup)}
+                            data-next-highlight-state={nextStateName}
+                            className={`cx-editor-word${hlGroup !== undefined ? ' is-highlighted' : ''}${hlGroup === 1 ? ' is-highlighted-2' : ''}`}
+                          >
+                            {applyTransform(
+                              word,
+                              getWordTransform(hlGroup, baseTransform, highlightTransform, highlight2Transform),
+                            )}
+                          </span>
+                        </span>
+                      )
+                    })}
+                  </p>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          </article>
         )
       })}
     </div>

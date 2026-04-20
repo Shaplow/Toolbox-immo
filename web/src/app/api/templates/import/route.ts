@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
         client: parsed.client,
         formats: JSON.stringify(parsed.formats),
         jsonData: JSON.stringify(serializeTemplateJSON(parsed.jsonData)),
-        userId: userContext.actualUser.id,
+        userId: userContext.effectiveUser.id,
       },
     });
 

@@ -20,10 +20,15 @@ Démarrage : CMD ["python", "-u", "runpod_worker.py"]
 
 from __future__ import annotations
 
+import ctypes
 import json
 import os
+import shlex
+import shutil
+import subprocess
 import tempfile
 import time
+from ctypes.util import find_library
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +36,7 @@ import boto3
 import httpx
 import runpod
 
-from app import _parse_srt_content, _render_captions_video
+from app import _parse_srt_content, _parse_text_auto, _render_captions_video
 from engine.encoding_profiles import build_caption_encoding_settings
 from engine.models import RenderConfig, WordTimestamp
 from engine.probe import probe_video
@@ -46,6 +51,19 @@ from api import _build_config, _to_bool
 
 BASE_DIR = Path(__file__).parent
 FONTS_DIR = BASE_DIR / "fonts"
+NVENC_RETRY_INTERVAL_SECONDS = int(os.environ.get("NVENC_RETRY_INTERVAL_SECONDS", "120"))
+WORKER_LOG_SNIPPET_LIMIT = int(os.environ.get("WORKER_LOG_SNIPPET_LIMIT", "6000"))
+
+_NVENC_STATE: dict[str, Any] = {
+    "available": None,
+    "checked_at": 0.0,
+    "source": "never",
+    "reason": "not checked yet",
+    "returncode": None,
+    "command": "",
+    "stdout": "",
+    "stderr": "",
+}
 
 # ─── R2 client ────────────────────────────────────────────────────────────────
 
@@ -88,6 +106,319 @@ def _download_file(url: str, dest: Path) -> None:
                 f.write(chunk)
 
 
+def _command_parts(command: Any) -> list[str]:
+    if not command:
+        return []
+    if isinstance(command, (list, tuple)):
+        return [str(part) for part in command]
+    return [str(command)]
+
+
+def _format_command(command: Any) -> str:
+    parts = _command_parts(command)
+    return " ".join(shlex.quote(part) for part in parts)
+
+
+def _trim_output(text: str, limit: int = WORKER_LOG_SNIPPET_LIMIT) -> str:
+    content = (text or "").strip()
+    if not content:
+        return ""
+    if len(content) <= limit:
+        return content
+    omitted = len(content) - limit
+    return f"[... truncated {omitted} chars ...]\n{content[-limit:]}"
+
+
+def _run_command(command: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+    )
+
+
+def _log_command_failure(
+    prefix: str,
+    *,
+    command: Any,
+    returncode: int | None,
+    stdout: str = "",
+    stderr: str = "",
+) -> None:
+    formatted = _format_command(command)
+    if formatted:
+        print(f"{prefix} command: {formatted}", flush=True)
+    if returncode is not None:
+        print(f"{prefix} rc={returncode}", flush=True)
+    trimmed_stdout = _trim_output(stdout)
+    if trimmed_stdout:
+        print(f"{prefix} stdout:\n{trimmed_stdout}", flush=True)
+    trimmed_stderr = _trim_output(stderr)
+    if trimmed_stderr:
+        print(f"{prefix} stderr:\n{trimmed_stderr}", flush=True)
+
+
+def _trim_env_value(value: str, limit: int = 240) -> str:
+    content = value.strip()
+    if len(content) <= limit:
+        return content
+    return f"{content[:limit]}..."
+
+
+def _log_runtime_env_info() -> None:
+    for name in (
+        "NVIDIA_VISIBLE_DEVICES",
+        "NVIDIA_DRIVER_CAPABILITIES",
+        "CUDA_VISIBLE_DEVICES",
+        "LD_LIBRARY_PATH",
+    ):
+        value = os.environ.get(name)
+        if value is None:
+            print(f"[worker] env {name}: <absent>", flush=True)
+        else:
+            print(f"[worker] env {name}: {_trim_env_value(value)}", flush=True)
+
+    raw_caps = os.environ.get("NVIDIA_DRIVER_CAPABILITIES", "")
+    caps = {item.strip().lower() for item in raw_caps.split(",") if item.strip()}
+    if caps and "all" not in caps and "video" not in caps:
+        print(
+            "[worker] env NVIDIA_DRIVER_CAPABILITIES: warning — la capacité 'video' est absente",
+            flush=True,
+        )
+
+
+def _log_nvidia_device_nodes() -> None:
+    nodes = sorted(str(path) for path in Path("/dev").glob("nvidia*"))
+    print(
+        f"[worker] /dev nvidia nodes: {', '.join(nodes) if nodes else 'aucun'}",
+        flush=True,
+    )
+
+
+def _log_dynamic_loader_matches() -> None:
+    ldconfig_path = shutil.which("ldconfig")
+    print(f"[worker] ldconfig path: {ldconfig_path or 'introuvable'}", flush=True)
+    if not ldconfig_path:
+        return
+
+    result = _run_command([ldconfig_path, "-p"], timeout=10)
+    if result.returncode != 0:
+        _log_command_failure(
+            "[worker] ldconfig probe",
+            command=result.args,
+            returncode=result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )
+        return
+
+    for token in ("libnvidia-encode", "libcuda", "libnvcuvid"):
+        matches = [line.strip() for line in result.stdout.splitlines() if token in line]
+        if matches:
+            for line in matches[:8]:
+                print(f"[worker] ldconfig {token}: {line}", flush=True)
+        else:
+            print(f"[worker] ldconfig {token}: aucun match", flush=True)
+
+
+def _probe_shared_library(label: str, lookup_name: str, fallback_soname: str) -> None:
+    resolved = find_library(lookup_name)
+    print(
+        f"[worker] find_library({lookup_name}): {resolved or 'introuvable'}",
+        flush=True,
+    )
+
+    candidates: list[str] = []
+    if resolved:
+        candidates.append(resolved)
+    if fallback_soname not in candidates:
+        candidates.append(fallback_soname)
+
+    last_error: str | None = None
+    for candidate in candidates:
+        try:
+            ctypes.CDLL(candidate)
+            print(f"[worker] dlopen {label}: OK via {candidate}", flush=True)
+            return
+        except OSError as exc:
+            last_error = str(exc)
+            print(f"[worker] dlopen {label}: échec via {candidate}: {exc}", flush=True)
+
+    print(
+        f"[worker] dlopen {label}: indisponible ({last_error or 'aucun candidat chargeable'})",
+        flush=True,
+    )
+
+
+def _log_ffmpeg_encoder_details(encoder_name: str) -> None:
+    result = _run_command(["ffmpeg", "-hide_banner", "-h", f"encoder={encoder_name}"], timeout=10)
+    if result.returncode != 0:
+        _log_command_failure(
+            f"[worker] ffmpeg encoder {encoder_name}",
+            command=result.args,
+            returncode=result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )
+        return
+
+    interesting_prefixes = (
+        "Encoder ",
+        "General capabilities:",
+        "Threading capabilities:",
+        "Supported hardware devices:",
+        "Supported pixel formats:",
+    )
+    selected = [
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.strip().startswith(interesting_prefixes)
+    ]
+    if selected:
+        for line in selected:
+            print(f"[worker] ffmpeg {encoder_name}: {line}", flush=True)
+        return
+
+    print(f"[worker] ffmpeg {encoder_name}:\n{_trim_output(result.stdout)}", flush=True)
+
+
+def _record_nvenc_state(
+    *,
+    available: bool,
+    source: str,
+    reason: str,
+    command: Any = None,
+    returncode: int | None = None,
+    stdout: str = "",
+    stderr: str = "",
+) -> bool:
+    global _NVENC_STATE
+    _NVENC_STATE = {
+        "available": available,
+        "checked_at": time.time(),
+        "source": source,
+        "reason": reason,
+        "returncode": returncode,
+        "command": _format_command(command),
+        "stdout": _trim_output(stdout),
+        "stderr": _trim_output(stderr),
+    }
+    status = "disponible" if available else "indisponible"
+    print(f"[worker] NVENC state ({source}): {status} — {reason}", flush=True)
+    _log_command_failure(
+        f"[worker] NVENC state ({source})",
+        command=command,
+        returncode=returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
+    return available
+
+
+def _mark_nvenc_runtime_failure(
+    source: str,
+    *,
+    command: Any,
+    returncode: int | None,
+    stdout: str = "",
+    stderr: str = "",
+) -> None:
+    _record_nvenc_state(
+        available=False,
+        source=source,
+        reason=f"échec runtime; nouveau probe autorisé après {NVENC_RETRY_INTERVAL_SECONDS}s",
+        command=command,
+        returncode=returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+
+def _log_worker_runtime_info() -> None:
+    _log_runtime_env_info()
+    _log_nvidia_device_nodes()
+    _log_dynamic_loader_matches()
+    _probe_shared_library("libcuda", "cuda", "libcuda.so.1")
+    _probe_shared_library("libnvidia-encode", "nvidia-encode", "libnvidia-encode.so.1")
+    _probe_shared_library("libnvcuvid", "nvcuvid", "libnvcuvid.so.1")
+
+    ffmpeg_path = shutil.which("ffmpeg")
+    print(f"[worker] ffmpeg path: {ffmpeg_path or 'introuvable'}", flush=True)
+
+    if ffmpeg_path:
+        version = _run_command(["ffmpeg", "-version"], timeout=10)
+        version_line = next((line for line in version.stdout.splitlines() if line.strip()), "")
+        if version_line:
+            print(f"[worker] ffmpeg version: {version_line}", flush=True)
+        elif version.stderr.strip():
+            print(f"[worker] ffmpeg version stderr:\n{_trim_output(version.stderr)}", flush=True)
+
+        encoders = _run_command(["ffmpeg", "-hide_banner", "-encoders"], timeout=10)
+        if encoders.returncode == 0:
+            encoder_names: list[str] = []
+            for line in encoders.stdout.splitlines():
+                if "nvenc" not in line:
+                    continue
+                parts = line.split()
+                if len(parts) >= 2:
+                    encoder_names.append(parts[1])
+            print(
+                f"[worker] ffmpeg NVENC encoders: {', '.join(encoder_names) if encoder_names else 'aucun'}",
+                flush=True,
+            )
+        else:
+            _log_command_failure(
+                "[worker] ffmpeg encoders probe",
+                command=encoders.args,
+                returncode=encoders.returncode,
+                stdout=encoders.stdout,
+                stderr=encoders.stderr,
+            )
+
+        hwaccels = _run_command(["ffmpeg", "-hide_banner", "-hwaccels"], timeout=10)
+        if hwaccels.returncode == 0:
+            accel_names = [
+                line.strip()
+                for line in hwaccels.stdout.splitlines()
+                if line.strip() and not line.lower().startswith("hardware acceleration")
+            ]
+            print(
+                f"[worker] ffmpeg hwaccels: {', '.join(accel_names) if accel_names else 'aucun'}",
+                flush=True,
+            )
+        else:
+            _log_command_failure(
+                "[worker] ffmpeg hwaccels probe",
+                command=hwaccels.args,
+                returncode=hwaccels.returncode,
+                stdout=hwaccels.stdout,
+                stderr=hwaccels.stderr,
+            )
+
+        _log_ffmpeg_encoder_details("h264_nvenc")
+        _log_ffmpeg_encoder_details("hevc_nvenc")
+
+    gpu_info = _run_command(
+        ["nvidia-smi", "--query-gpu=driver_version,name,uuid", "--format=csv,noheader"],
+        timeout=10,
+    )
+    if gpu_info.returncode == 0:
+        for line in gpu_info.stdout.splitlines():
+            if line.strip():
+                print(f"[worker] nvidia-smi: {line.strip()}", flush=True)
+    else:
+        _log_command_failure(
+            "[worker] nvidia-smi probe",
+            command=gpu_info.args,
+            returncode=gpu_info.returncode,
+            stdout=gpu_info.stdout,
+            stderr=gpu_info.stderr,
+        )
+
+
 # ─── Handler principal ────────────────────────────────────────────────────────
 
 def handler(job: dict) -> dict[str, Any]:
@@ -125,49 +456,94 @@ def _nvenc_available() -> bool:
     Un simple check nvidia-smi ne suffit pas : le GPU peut être présent mais
     NVENC inaccessible (limite 3 sessions consumer, driver RunPod, etc.).
     """
-    import subprocess
+    return _probe_nvenc("runtime")
+
+
+def _probe_nvenc(source: str) -> bool:
     # 1. GPU présent ?
-    result = subprocess.run(
-        ["nvidia-smi", "-L"],
-        capture_output=True, timeout=10,
-    )
+    result = _run_command(["nvidia-smi", "-L"], timeout=10)
     if result.returncode != 0:
-        print(f"[worker] nvidia-smi échoué (rc={result.returncode}): {result.stderr.decode(errors='replace')[:200]}")
-        return False
-    gpus = result.stdout.decode(errors="replace").strip()
-    print(f"[worker] GPU détectés : {gpus}")
+        return _record_nvenc_state(
+            available=False,
+            source=source,
+            reason="nvidia-smi -L a échoué",
+            command=result.args,
+            returncode=result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )
+    gpus = result.stdout.strip()
+    print(f"[worker] GPU détectés ({source}) : {gpus}", flush=True)
 
     # 2. Tester si h264_nvenc peut réellement ouvrir une session d'encodage.
     #    Évite "OpenEncodeSessionEx failed: unsupported device" en production.
     #    NB: h264_nvenc exige une résolution minimale ~145x49 — on utilise 256x256.
-    test = subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=256x256:d=0.1",
-         "-frames:v", "1", "-c:v", "h264_nvenc", "-f", "null", "-"],
-        capture_output=True, timeout=30,
-    )
+    test_command = [
+        "ffmpeg", "-hide_banner", "-y",
+        "-f", "lavfi", "-i", "color=c=black:s=256x256:d=0.1",
+        "-frames:v", "1",
+        "-c:v", "h264_nvenc",
+        "-f", "null", "-",
+    ]
+    print(f"[worker] NVENC probe ({source}) command: {_format_command(test_command)}", flush=True)
+    test = _run_command(test_command, timeout=30)
     if test.returncode != 0:
-        print(f"[worker] h264_nvenc non fonctionnel (rc={test.returncode}), fallback libx264")
-        print(f"[worker] stderr: {test.stderr.decode(errors='replace')[-500:]}")
-        return False
-    return True
+        return _record_nvenc_state(
+            available=False,
+            source=source,
+            reason="probe FFmpeg h264_nvenc en échec",
+            command=test.args,
+            returncode=test.returncode,
+            stdout=test.stdout,
+            stderr=test.stderr,
+        )
+    return _record_nvenc_state(
+        available=True,
+        source=source,
+        reason="probe FFmpeg h264_nvenc réussi",
+        command=test.args,
+        returncode=test.returncode,
+        stdout=test.stdout,
+        stderr=test.stderr,
+    )
 
 
-_NVENC: bool | None = None  # lazy cache
-
-
-def _nvenc_enabled() -> bool:
+def _nvenc_enabled(*, source: str, force_refresh: bool = False) -> bool:
     """
     Indique si NVENC est réellement disponible.
     """
-    global _NVENC
-    if _NVENC is None:
-        _NVENC = _nvenc_available()
-        print(f"[worker] NVENC disponible : {_NVENC}")
-    return _NVENC
+    available = _NVENC_STATE["available"]
+    checked_at = float(_NVENC_STATE["checked_at"])
+    age_seconds = time.time() - checked_at if checked_at > 0 else None
+    last_source = str(_NVENC_STATE["source"])
+
+    should_refresh = (
+        force_refresh
+        or available is None
+        or (available is False and last_source == "startup" and source != "startup")
+        or (available is False and (age_seconds is None or age_seconds >= NVENC_RETRY_INTERVAL_SECONDS))
+    )
+    if should_refresh:
+        return _probe_nvenc(source)
+
+    age_label = f"{age_seconds:.0f}s" if age_seconds is not None else "n/a"
+    print(
+        f"[worker] NVENC cache ({source}): {available} age={age_label} reason={_NVENC_STATE['reason']}",
+        flush=True,
+    )
+    return bool(available)
+
+
+def _require_fields(inp: dict, fields: tuple[str, ...], handler: str) -> None:
+    """Raise ValueError with a clear message if any required field is missing from the job input."""
+    missing = [f for f in fields if f not in inp]
+    if missing:
+        raise ValueError(f"{handler}: champs requis manquants dans l'input: {missing}")
 
 
 def _handle_captions(inp: dict) -> dict[str, Any]:
     """Génération de sous-titres brûlés dans la vidéo."""
+    _require_fields(inp, ("video_url", "srt_content", "config", "output_key"), "captions")
     video_url: str = inp["video_url"]
     srt_content: str = inp["srt_content"]
     config_dict: dict = inp["config"]
@@ -186,8 +562,8 @@ def _handle_captions(inp: dict) -> dict[str, Any]:
         _download_file(video_url, video_path)
         video_info = probe_video(video_path)
 
-        # 2. Parser les sous-titres
-        words: list[WordTimestamp] = _parse_srt_content(srt_content)
+        # 2. Parser les sous-titres (SRT ou JSON avec vrais timestamps mot par mot)
+        words: list[WordTimestamp] = _parse_text_auto(srt_content)
         if not words:
             raise ValueError("Aucun sous-titre parsé depuis srt_content")
 
@@ -203,7 +579,7 @@ def _handle_captions(inp: dict) -> dict[str, Any]:
         out_video = tmp_path / f"render_{stamp}{out_suffix}"
         export_profile = str(config_dict.get("export_profile", "balanced") or "balanced")
 
-        use_nvenc = _nvenc_enabled()
+        use_nvenc = _nvenc_enabled(source="captions")
         codec, codec_args, audio_codec, audio_args, encoding_debug = build_caption_encoding_settings(
             export_profile,
             video_info,
@@ -218,22 +594,89 @@ def _handle_captions(inp: dict) -> dict[str, Any]:
             f"maxrate={encoding_debug['maxrate']}, bufsize={encoding_debug['bufsize']}, "
             f"audio_bitrate={encoding_debug['audio_bitrate']})"
         )
-        _render_captions_video(
-            words,
-            video_path,
-            cfg,
-            out_video,
-            auto_safe,
-            runtime_fonts_dir,
-            preview_mode,
-            6,
-            export_profile,
-            None,
-            codec,
-            codec_args,
-            audio_codec,
-            audio_args,
-        )
+        try:
+            _render_captions_video(
+                words,
+                video_path,
+                cfg,
+                out_video,
+                auto_safe,
+                runtime_fonts_dir,
+                preview_mode,
+                6,
+                export_profile,
+                None,
+                codec,
+                codec_args,
+                audio_codec,
+                audio_args,
+            )
+        except subprocess.CalledProcessError as exc:
+            _log_command_failure(
+                "[worker/captions] FFmpeg failure",
+                command=exc.cmd,
+                returncode=exc.returncode,
+                stdout=exc.stdout or "",
+                stderr=exc.stderr or "",
+            )
+            if codec != "h264_nvenc":
+                raise RuntimeError(
+                    f"FFmpeg error ({codec}):\n{_trim_output(exc.stderr or str(exc))}"
+                ) from exc
+
+            _mark_nvenc_runtime_failure(
+                "captions/runtime",
+                command=exc.cmd,
+                returncode=exc.returncode,
+                stdout=exc.stdout or "",
+                stderr=exc.stderr or "",
+            )
+            print("[worker/captions] NVENC failed, retry with libx264", flush=True)
+            fallback_codec, fallback_args, fallback_audio_codec, fallback_audio_args, fallback_debug = build_caption_encoding_settings(
+                export_profile,
+                video_info,
+                use_nvenc=False,
+                preview=preview_mode,
+            )
+            print(
+                "[worker] Rendering fallback "
+                f"(engine={cfg.engine}, preview={preview_mode}, profile={export_profile}, codec={fallback_codec}, "
+                f"source_bitrate={fallback_debug['source_video_bitrate']}, "
+                f"target_bitrate={fallback_debug['effective_video_bitrate']}, "
+                f"maxrate={fallback_debug['maxrate']}, bufsize={fallback_debug['bufsize']}, "
+                f"audio_bitrate={fallback_debug['audio_bitrate']})",
+                flush=True,
+            )
+            try:
+                _render_captions_video(
+                    words,
+                    video_path,
+                    cfg,
+                    out_video,
+                    auto_safe,
+                    runtime_fonts_dir,
+                    preview_mode,
+                    6,
+                    export_profile,
+                    None,
+                    fallback_codec,
+                    fallback_args,
+                    fallback_audio_codec,
+                    fallback_audio_args,
+                )
+            except subprocess.CalledProcessError as fallback_exc:
+                _log_command_failure(
+                    "[worker/captions] FFmpeg fallback failure",
+                    command=fallback_exc.cmd,
+                    returncode=fallback_exc.returncode,
+                    stdout=fallback_exc.stdout or "",
+                    stderr=fallback_exc.stderr or "",
+                )
+                raise RuntimeError(
+                    f"FFmpeg error ({codec} puis {fallback_codec}):\n"
+                    f"NVENC:\n{_trim_output(exc.stderr or str(exc))}\n\n"
+                    f"Fallback:\n{_trim_output(fallback_exc.stderr or str(fallback_exc))}"
+                ) from fallback_exc
 
         # 5. Upload vers R2
         print(f"[worker] Uploading output to R2: {output_key}")
@@ -257,8 +700,9 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
 
     Optional: ``max_duration`` (float) truncates the output video.
     """
-    import subprocess
-
+    _require_fields(inp, ("video_url", "video_block", "canvas", "output_key"), "render_template")
+    if "overlay_url" not in inp and "overlay_urls" not in inp:
+        raise ValueError("render_template: 'overlay_url' ou 'overlay_urls' est requis")
     video_url: str = inp["video_url"]
     block: dict = inp["video_block"]  # {x, y, w, h, fit}
     canvas: dict = inp["canvas"]      # {width, height}
@@ -345,7 +789,7 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
         codec, codec_args, audio_codec, audio_args, encoding_debug = build_caption_encoding_settings(
             export_profile,
             video_info,
-            use_nvenc=_nvenc_enabled(),
+            use_nvenc=_nvenc_enabled(source="render_template"),
             preview=False,
             for_composite=True,
         )
@@ -385,15 +829,39 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
                 f"{normalized_block['canvas_w']}x{normalized_block['canvas_h']} "
                 f"profile={export_profile} target_bitrate={encoding_debug['effective_video_bitrate']}"
             )
-            return subprocess.run(cmd, capture_output=True, text=True, timeout=10 * 60)
+            print(f"[worker/render_template] FFmpeg cmd: {_format_command(cmd)}", flush=True)
+            return subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=10 * 60,
+            )
 
         try:
             result = _run_ffmpeg(codec, codec_args, audio_codec, audio_args)
         except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("FFmpeg timeout pendant le composite vidéo") from exc
+            raise RuntimeError(
+                f"FFmpeg timeout pendant le composite vidéo: {_format_command(exc.cmd)}"
+            ) from exc
 
         if result.returncode != 0:
             if codec == "h264_nvenc":
+                _log_command_failure(
+                    "[worker/render_template] NVENC failure",
+                    command=result.args,
+                    returncode=result.returncode,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                )
+                _mark_nvenc_runtime_failure(
+                    "render_template/runtime",
+                    command=result.args,
+                    returncode=result.returncode,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                )
                 print("[worker/render_template] NVENC failed, retry with libx264")
                 fallback_codec, fallback_args, fallback_audio_codec, fallback_audio_args, _ = build_caption_encoding_settings(
                     export_profile,
@@ -405,18 +873,35 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
                 try:
                     fallback = _run_ffmpeg(fallback_codec, fallback_args, fallback_audio_codec, fallback_audio_args)
                 except subprocess.TimeoutExpired as exc:
-                    raise RuntimeError("FFmpeg timeout pendant le composite vidéo (fallback libx264)") from exc
+                    raise RuntimeError(
+                        f"FFmpeg timeout pendant le composite vidéo (fallback libx264): {_format_command(exc.cmd)}"
+                    ) from exc
                 if fallback.returncode == 0:
                     result = fallback
                     codec = fallback_codec
+                    print("[worker/render_template] fallback libx264 succeeded", flush=True)
                 else:
+                    _log_command_failure(
+                        "[worker/render_template] Fallback failure",
+                        command=fallback.args,
+                        returncode=fallback.returncode,
+                        stdout=fallback.stdout,
+                        stderr=fallback.stderr,
+                    )
                     raise RuntimeError(
                         f"FFmpeg error ({codec} puis {fallback_codec}):\n"
-                        f"NVENC:\n{result.stderr[-1200:]}\n\n"
-                        f"Fallback:\n{fallback.stderr[-1200:]}"
+                        f"NVENC:\n{_trim_output(result.stderr)}\n\n"
+                        f"Fallback:\n{_trim_output(fallback.stderr)}"
                     )
             else:
-                raise RuntimeError(f"FFmpeg error ({codec}):\n{result.stderr[-2000:]}")
+                _log_command_failure(
+                    "[worker/render_template] FFmpeg failure",
+                    command=result.args,
+                    returncode=result.returncode,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                )
+                raise RuntimeError(f"FFmpeg error ({codec}):\n{_trim_output(result.stderr)}")
 
         # 4. Upload vers R2
         print(f"[worker/render_template] Uploading result to R2: {output_key}")
@@ -446,6 +931,7 @@ def _handle_transcribe(inp: dict) -> dict[str, Any]:
 
     from engine.transcribe import transcribe_with_word_timestamps
 
+    _require_fields(inp, ("audio_url", "output_key"), "transcribe")
     audio_url: str = inp["audio_url"]
     output_key: str = inp["output_key"]
     job_id: str = inp.get("job_id", "unknown")
@@ -739,10 +1225,15 @@ def _content_type_for_format(export_format: str) -> str:
 
 
 if __name__ == "__main__":
-    # ── Démarrage du worker : log GPU, check NVENC, warmup modèles ───────────
+    # ── Démarrage du worker : log GPU, check NVENC, lazy-load transcription ──
     # Tout ce qui est fait ici tourne AVANT runpod.serverless.start(), donc hors billing job.
-    # Les workers RunPod restent vivants entre les jobs (idle timeout) — les caches
-    # module-level garantissent que modèles et check NVENC ne sont chargés qu'une fois.
+    # Les workers RunPod restent vivants entre les jobs (idle timeout). On garde un
+    # probe NVENC au boot pour le diagnostic, mais Whisper passe en lazy-load par job.
+
+    try:
+        _log_worker_runtime_info()
+    except Exception as _e:
+        print(f"[worker] Runtime info: ignoré ({_e})", flush=True)
 
     # 1. Log GPU hardware
     try:
@@ -763,26 +1254,18 @@ if __name__ == "__main__":
         print(f"[worker] GPU log: ignoré ({_e})", flush=True)
 
     # 2. Check NVENC en avance (résultat mis en cache dans _NVENC)
-    #    Évite que le premier job captions/render_template subisse le délai du test d'encodage.
+    #    Évite que le premier job captions/render_template subisse le délai du test d'encodage,
+    #    mais un échec n'invalide plus tout le worker jusqu'à son redémarrage.
     try:
-        _nvenc_ok = _nvenc_enabled()
+        _nvenc_ok = _nvenc_enabled(source="startup", force_refresh=True)
         print(f"[worker] NVENC: {'disponible ✓' if _nvenc_ok else 'indisponible → fallback libx264'}", flush=True)
     except Exception as _e:
         print(f"[worker] NVENC check: ignoré ({_e})", flush=True)
 
-    # 3. Warmup Whisper : charger les modèles en VRAM pour éliminer le cold start du 1er job
-    try:
-        from engine.transcribe import _get_whisper_model, _get_align_model, _resolve_device
-        _device, _compute_type = _resolve_device()
-        if _device == "cuda":
-            print("[worker] Warmup: chargement des modèles whisper en VRAM...", flush=True)
-            _get_whisper_model("large-v3-turbo", _device, _compute_type)
-            _get_whisper_model("large-v3", _device, _compute_type)
-            _get_align_model("fr", _device)
-            print("[worker] Warmup: modèles prêts — worker opérationnel.", flush=True)
-        else:
-            print("[worker] Warmup: pas de CUDA, skip chargement modèles.", flush=True)
-    except Exception as _e:
-        print(f"[worker] Warmup modèles: ignoré ({_e})", flush=True)
+    # 3. Warmup transcription supprimé : Whisper/alignement restent lazy-load.
+    print(
+        "[worker] Warmup transcription: lazy-load activé — aucun modèle Whisper chargé au boot.",
+        flush=True,
+    )
 
     runpod.serverless.start({"handler": handler})

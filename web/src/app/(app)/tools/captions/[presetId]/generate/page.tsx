@@ -1,10 +1,16 @@
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notFound, redirect } from "next/navigation";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import CaptionsGenerateForm from "@/components/captions/CaptionsGenerateForm";
 import { getFromR2 } from "@/lib/r2";
 import type { Segment } from "@/lib/transcriptionProcess";
+import { getUserContext } from "@/lib/userContext";
+import {
+  CaptionPromptStorageUnavailableError,
+  getCaptionPromptStorageMessage,
+  listCaptionPromptRows,
+} from "@/lib/captionPromptStore";
+import "../../captions.css";
 
 type Props = {
   params: Promise<{ presetId: string }>;
@@ -14,11 +20,12 @@ type Props = {
 export default async function CaptionsGeneratePage({ params, searchParams }: Props) {
   const { presetId } = await params;
   const { captionJobId, transcriptionId } = await searchParams;
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const userContext = await getUserContext();
+  if (!userContext) redirect("/login");
 
-  const isAdmin = session.user.role === "ADMIN";
-  if (!isAdmin && !(await hasTool(session.user.id, TOOLS.CAPTIONS))) {
+  const isAdmin = userContext.canAdminBypass;
+  const effectiveUserId = userContext.effectiveUser.id;
+  if (!isAdmin && !(await hasTool(effectiveUserId, TOOLS.CAPTIONS))) {
     redirect("/home");
   }
 
@@ -27,7 +34,7 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
     preset = await prisma.captionPreset.findUnique({ where: { id: presetId } });
   } else {
     const access = await prisma.captionPresetAccess.findFirst({
-      where: { userId: session.user.id, presetId },
+      where: { userId: effectiveUserId, presetId },
       include: { preset: true },
     });
     preset = access?.preset ?? null;
@@ -41,7 +48,7 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
     const prevJob = await prisma.captionJob.findFirst({
       where: isAdmin
         ? { id: captionJobId }
-        : { id: captionJobId, userId: session.user.id },
+        : { id: captionJobId, userId: effectiveUserId },
       select: { srtContent: true },
     });
     initialSrt = prevJob?.srtContent ?? null;
@@ -53,7 +60,7 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
     const txJob = await prisma.transcriptionJob.findFirst({
       where: isAdmin
         ? { id: transcriptionId }
-        : { id: transcriptionId, userId: session.user.id },
+        : { id: transcriptionId, userId: effectiveUserId },
       select: { status: true, outputJsonKey: true },
     });
     if (txJob?.status === "COMPLETED" && txJob.outputJsonKey) {
@@ -63,6 +70,25 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
       } catch {
         // Silently ignore — fallback to no preloaded segments
       }
+    }
+  }
+
+  let promptStorageAvailable = true;
+  let promptStorageMessage: string | null = null;
+  let prompts = [] as Awaited<ReturnType<typeof listCaptionPromptRows>>;
+
+  try {
+    prompts = await listCaptionPromptRows();
+  } catch (error) {
+    if (error instanceof CaptionPromptStorageUnavailableError) {
+      promptStorageAvailable = false;
+      promptStorageMessage = getCaptionPromptStorageMessage(error);
+      console.warn("[captions/generate] caption prompts unavailable", {
+        reason: error.reason,
+        message: error.message,
+      });
+    } else {
+      throw error;
     }
   }
 
@@ -76,6 +102,9 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
       }}
       initialSrt={initialSrt}
       initialSegments={initialSegments}
+      initialPrompts={prompts}
+      promptStorageAvailable={promptStorageAvailable}
+      promptStorageMessage={promptStorageMessage}
       aiConfig={{
         hasClaude: !!process.env.ANTHROPIC_API_KEY,
         hasGpt: !!process.env.OPENAI_API_KEY,

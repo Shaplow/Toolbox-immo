@@ -1,12 +1,12 @@
 ﻿"use client";
 
-import { useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useMemo, useState } from "react";
 import { useBuilderStore } from "@/lib/store/builderStore";
-import { collectBuilderFonts, type BuilderFontEntry } from "@/lib/builderFonts";
+import { collectBuilderFontsFromSources, type BuilderFontEntry } from "@/lib/builderFonts";
 import { toast } from "@/components/ui/Toast";
 import type { TemplateJSON } from "@/types/template";
 import { CANVAS_FORMATS } from "@/types/template";
-import { normalizeTemplateJSON, serializeTemplateJSON } from "@/lib/templateNormalization";
+import { serializeTemplateJSON } from "@/lib/templateNormalization";
 import { createLayoutDebugStorageKey, stringifyLayoutDebugSnapshot, type LayoutDebugSnapshot } from "@/lib/layoutDebug";
 import { BlocksPanel } from "./BlocksPanel";
 import { Canvas } from "./Canvas";
@@ -33,10 +33,27 @@ export function BuilderClient({
   const [globalFonts, setGlobalFonts] = useState<BuilderFontEntry[]>([]);
   const [layoutDebugSnapshot, setLayoutDebugSnapshot] = useState<LayoutDebugSnapshot | null>(null);
   const [showResolvedTextPreview, setShowResolvedTextPreview] = useState(false);
+  const blockFontFamilies = useMemo(
+    () => template.blocks.map((block) => (block as { style?: { fontFamily?: string } }).style?.fontFamily),
+    [template.blocks]
+  );
+  const builderFonts = useMemo(
+    () => collectBuilderFontsFromSources({
+      customFonts: template.theme.customFonts,
+      headingFont: template.theme.fonts.heading,
+      bodyFont: template.theme.fonts.body,
+      blockFontFamilies,
+    }, globalFonts),
+    [blockFontFamilies, globalFonts, template.theme.customFonts, template.theme.fonts.body, template.theme.fonts.heading]
+  );
+  const fontRefreshKey = useMemo(
+    () => builderFonts.map((font) => `${font.family}:${font.url ?? ""}`).join("|"),
+    [builderFonts]
+  );
 
   // Init store with server data
   useEffect(() => {
-    setTemplate(normalizeTemplateJSON(initialJSON));
+    setTemplate(initialJSON);
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -62,10 +79,8 @@ export function BuilderClient({
 
   // Inject custom fonts into document head for builder preview
   useEffect(() => {
-    const collected = collectBuilderFonts(template, globalFonts);
-
     const googleFamilies: string[] = [];
-    for (const { family, url } of collected) {
+    for (const { family, url } of builderFonts) {
       if (url) {
         const id = `font-face-${family.replace(/\s+/g, "-")}`;
         const css = `@font-face{font-family:'${family}';src:url('${url}');font-display:swap;}`;
@@ -82,7 +97,7 @@ export function BuilderClient({
     }
 
     const managedLocalStyleIds = new Set(
-      collected
+      builderFonts
         .filter((font) => Boolean(font.url))
         .map((font) => `font-face-${font.family.replace(/\s+/g, "-")}`)
     );
@@ -109,9 +124,12 @@ export function BuilderClient({
     } else {
       document.getElementById("google-fonts-builder")?.remove();
     }
-  }, [globalFonts, template.blocks, template.theme.customFonts, template.theme.fonts.body, template.theme.fonts.heading]);
+  }, [builderFonts]);
 
-  const handleSave = useCallback(async () => {
+  const saveTemplate = useCallback(async (options?: { showSuccessToast?: boolean }) => {
+    const showSuccessToast = options?.showSuccessToast ?? true;
+    if (isSaving) return false;
+
     setSaving(true);
     try {
       const res = await fetch(`/api/templates/${templateId}`, {
@@ -123,15 +141,50 @@ export function BuilderClient({
         }),
       });
       if (res.ok) {
-        toast.success("Template sauvegardé ✓");
+        if (showSuccessToast) {
+          toast.success("Template sauvegardé ✓");
+        }
+        return true;
       } else {
         toast.error("Échec de la sauvegarde");
+        return false;
       }
     } catch {
       toast.error("Erreur réseau lors de la sauvegarde");
+      return false;
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-  }, [template, templateId, setSaving]);
+  }, [isSaving, setSaving, template, templateId]);
+
+  const handleSave = useCallback(async () => {
+    void saveTemplate();
+  }, [saveTemplate]);
+
+  const handleOpenPreview = useCallback(async (href: string) => {
+    const previewWindow = window.open("", "_blank");
+    if (!previewWindow) {
+      toast.error("Le navigateur a bloqué l'ouverture de l'aperçu");
+      return;
+    }
+
+    previewWindow.document.title = "Sauvegarde du template…";
+    previewWindow.document.body.innerHTML = "<p style=\"font-family:sans-serif;padding:24px;color:#111827\">Sauvegarde du template…</p>";
+
+    const saved = await saveTemplate({ showSuccessToast: false });
+    if (!saved) {
+      previewWindow.close();
+      return;
+    }
+
+    previewWindow.location.replace(new URL(href, window.location.origin).toString());
+  }, [saveTemplate]);
+
+  const handleOpenGenerate = useCallback(async () => {
+    const saved = await saveTemplate({ showSuccessToast: false });
+    if (!saved) return;
+    window.location.assign(`/generate/${templateId}`);
+  }, [saveTemplate, templateId]);
 
   // Ctrl+S shortcut
   useEffect(() => {
@@ -230,7 +283,7 @@ export function BuilderClient({
             title="Annuler (Ctrl+Z)"
             className="px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30"
           >
-            ↩ Annuler
+            ↩
           </button>
           <button
             onClick={redo}
@@ -238,33 +291,28 @@ export function BuilderClient({
             title="Rétablir (Ctrl+Y)"
             className="px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30"
           >
-            ↪ Rétablir
+            ↪
           </button>
         </div>
 
         <div className="flex-1" />
 
-        <a
-          href={`/preview/${templateId}`}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
+          onClick={() => void handleOpenPreview(`/preview/${templateId}`)}
+          disabled={isSaving}
           className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
         >
           👁 Aperçu
-        </a>
-        <a
-          href={`/preview/${templateId}?debug=layout`}
-          target="_blank"
-          className="text-xs px-3 py-1.5 border border-amber-300 bg-amber-50 rounded-lg text-amber-800 hover:bg-amber-100 transition-colors"
-        >
-          Debug layout
-        </a>
-        <a
-          href={`/generate/${templateId}`}
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleOpenGenerate()}
+          disabled={isSaving}
           className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
         >
           Générer →
-        </a>
+        </button>
         <button
           onClick={handleSave}
           disabled={isSaving}
@@ -345,6 +393,7 @@ export function BuilderClient({
 
         {/* Center: Canvas */}
         <Canvas
+          fontRefreshKey={fontRefreshKey}
           onLayoutDebugSnapshotChange={setLayoutDebugSnapshot}
           showResolvedTextPreview={showResolvedTextPreview}
         />

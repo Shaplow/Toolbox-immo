@@ -12,6 +12,16 @@ const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/x-m4v", "video/webm"];
 const ALLOWED_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES];
+const MIME_TO_EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+  "video/x-m4v": "m4v",
+  "video/webm": "webm",
+};
 
 export const config = {
   api: {
@@ -91,7 +101,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     bb.on("file", (_fieldName, fileStream, info) => {
       hasFile = true;
 
-      const { filename: originalName, mimeType } = info;
+      const { mimeType } = info;
       if (!ALLOWED_TYPES.includes(mimeType)) {
         fileStream.resume();
         send(400, { error: "Type de fichier non supporté" });
@@ -100,7 +110,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
 
       const isVideo = ALLOWED_VIDEO_TYPES.includes(mimeType);
       const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
-      const ext = path.extname(originalName || "").replace(/^\./, "") || "bin";
+      const ext = MIME_TO_EXT[mimeType] ?? "bin";
       const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
       const tmpPath = path.join(UPLOAD_DIR, `${filename}.part`);
       const finalPath = path.join(UPLOAD_DIR, filename);

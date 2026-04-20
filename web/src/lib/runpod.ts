@@ -1,3 +1,41 @@
+const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY;
+const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
+
+/** Returns true when both RUNPOD_API_KEY and RUNPOD_ENDPOINT_ID are set. */
+export function runpodConfigured(): boolean {
+  return !!(RUNPOD_API_KEY && RUNPOD_ENDPOINT_ID);
+}
+
+export interface RunpodStatusResponse<TOutput = unknown> {
+  id: string;
+  status: "IN_QUEUE" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | "CANCELLED" | "TIMED_OUT";
+  output?: TOutput;
+  error?: string;
+}
+
+/**
+ * Fetch the status of a RunPod job.
+ * Throws on HTTP error or network failure (no retry — callers poll on their own schedule).
+ */
+export async function fetchRunpodStatus<TOutput = unknown>(
+  endpointId: string,
+  apiKey: string,
+  runpodJobId: string
+): Promise<RunpodStatusResponse<TOutput>> {
+  const res = await fetch(
+    `https://api.runpod.ai/v2/${endpointId}/status/${runpodJobId}`,
+    {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    }
+  );
+  if (!res.ok) {
+    throw new Error(`RunPod status API ${res.status}: ${await res.text()}`);
+  }
+  return res.json() as Promise<RunpodStatusResponse<TOutput>>;
+}
+
 const TRANSIENT_RUNPOD_STATUS = new Set([429, 502, 503, 504]);
 
 type SubmitRunpodJobOptions = {
@@ -64,5 +102,6 @@ export async function submitRunpodJob<TResponse>(
     await sleep(retryDelaysMs[attempt]);
   }
 
-  throw lastError ?? new Error("RunPod submit failed");
+  // lastError is always set when we reach here — the loop only continues after catching
+  throw lastError!;
 }

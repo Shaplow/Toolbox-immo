@@ -45,7 +45,7 @@ const CHUNK_OVERLAP_TOKENS = 800;
 
 const SRT_MAX_CHARS_PER_LINE = 42;
 const SRT_MAX_DURATION       = 4.0;
-const SRT_MIN_DURATION       = 0.8;
+const SRT_MIN_DURATION       = 0.5;
 const SRT_PAUSE_FORCE_CUT    = 0.5;
 const SRT_PAUSE_SOFT_CUT     = 0.35;
 
@@ -364,11 +364,11 @@ export function buildSubtitlesFromWords(segments: Segment[]): Segment[] {
       continue;
     }
 
-    // Comma + long duration + enough chars + not ending on determiner
+    // Comma + sufficient duration + enough chars + not ending on determiner
     if (
       word.word.endsWith(",") &&
-      duration > 2.5 &&
-      rawText.length > 25 &&
+      duration > 1.8 &&
+      rawText.length > 18 &&
       buffer.length >= 3 &&
       !isDeterminer(buffer[buffer.length - 2]?.word ?? "")
     ) {
@@ -380,8 +380,8 @@ export function buildSubtitlesFromWords(segments: Segment[]): Segment[] {
     // Soft pause + loaded buffer + not ending on determiner
     if (
       nextGap >= SRT_PAUSE_SOFT_CUT &&
-      duration > 1.5 &&
-      rawText.length > 28 &&
+      duration > 1.2 &&
+      rawText.length > 20 &&
       !isDeterminer(word.word)
     ) {
       subtitles.push(flushBuffer(buffer));

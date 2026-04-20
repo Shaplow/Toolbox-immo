@@ -1,8 +1,19 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mic, Upload, Clock, CheckCircle, XCircle, Loader2, FileAudio } from "lucide-react";
+import {
+  Mic,
+  Upload,
+  Clock,
+  CheckCircle,
+  XCircle,
+  Loader2,
+  FileAudio,
+  Play,
+  RefreshCw,
+  Settings2,
+} from "lucide-react";
 
 const AUDIO_ACCEPT = ".mp3,.wav,.m4a,.flac,.ogg,.aac,.mp4,.mov,.mkv,.webm";
 
@@ -20,32 +31,97 @@ type Job = {
   errorMsg: string | null;
 };
 
+type JobDraft = {
+  model: string;
+  language: string;
+  enableDiarization: boolean;
+};
+
+type UploadState = {
+  total: number;
+  currentIndex: number;
+  currentName: string;
+  progress: number | null;
+  completed: number;
+};
+
+type Feedback = {
+  type: "success" | "error";
+  message: string;
+};
+
+const LANGUAGE_OPTIONS = [
+  { value: "fr", label: "Français" },
+  { value: "en", label: "Anglais" },
+  { value: "es", label: "Espagnol" },
+  { value: "de", label: "Allemand" },
+  { value: "it", label: "Italien" },
+  { value: "auto", label: "Détection auto" },
+];
+
+const MODEL_OPTIONS = [
+  {
+    value: "turbo",
+    label: "Rapide",
+    timing: "Résultat en ~1 min",
+    description: "Idéal pour préparer un lot rapidement.",
+  },
+  {
+    value: "large-v3",
+    label: "Haute précision",
+    timing: "Résultat en 2–4 min",
+    description: "Mieux pour accents, réunions et rushs complexes.",
+  },
+];
+
+const STATUS_ICON: Record<Job["status"], React.ReactNode> = {
+  QUEUED: <Clock className="h-4 w-4 text-amber-500" />,
+  PROCESSING: <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />,
+  COMPLETED: <CheckCircle className="h-4 w-4 text-green-500" />,
+  FAILED: <XCircle className="h-4 w-4 text-red-500" />,
+};
+
+const STATUS_LABEL: Record<Job["status"], string> = {
+  QUEUED: "Prêt à lancer",
+  PROCESSING: "En cours",
+  COMPLETED: "Terminé",
+  FAILED: "Échec",
+};
+
+const STATUS_TONE: Record<Job["status"], string> = {
+  QUEUED: "bg-amber-50 text-amber-700",
+  PROCESSING: "bg-indigo-50 text-indigo-700",
+  COMPLETED: "bg-green-50 text-green-700",
+  FAILED: "bg-red-50 text-red-700",
+};
+
 function fmtDuration(seconds: number | null): string {
   if (!seconds) return "—";
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleString("fr-FR", {
-    day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
-const STATUS_ICON: Record<Job["status"], React.ReactNode> = {
-  QUEUED:     <Clock className="w-4 h-4 text-gray-400" />,
-  PROCESSING: <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />,
-  COMPLETED:  <CheckCircle className="w-4 h-4 text-green-500" />,
-  FAILED:     <XCircle className="w-4 h-4 text-red-500" />,
-};
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
-const STATUS_LABEL: Record<Job["status"], string> = {
-  QUEUED:     "En attente",
-  PROCESSING: "En cours",
-  COMPLETED:  "Terminé",
-  FAILED:     "Échec",
-};
+async function readJson<T>(response: Response): Promise<T | null> {
+  try {
+    return await response.json() as T;
+  } catch {
+    return null;
+  }
+}
 
 export function TranscriptionList({
   initialJobs,
@@ -56,264 +132,864 @@ export function TranscriptionList({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [dragging, setDragging] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [model, setModel] = useState("turbo");
-  const [language, setLanguage] = useState("fr");
-  const [enableDiarization, setEnableDiarization] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [defaultConfig, setDefaultConfig] = useState<JobDraft>({
+    model: "turbo",
+    language: "fr",
+    enableDiarization: false,
+  });
+  const [queuedDrafts, setQueuedDrafts] = useState<Record<string, JobDraft>>({});
+  const [dirtyJobIds, setDirtyJobIds] = useState<Record<string, boolean>>({});
+  const [savingJobIds, setSavingJobIds] = useState<Record<string, boolean>>({});
+  const [startingJobIds, setStartingJobIds] = useState<Record<string, boolean>>({});
+  const [refreshing, setRefreshing] = useState(false);
+  const [uploadState, setUploadState] = useState<UploadState | null>(null);
+  const [startingBatch, setStartingBatch] = useState(false);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [jobErrors, setJobErrors] = useState<Record<string, string>>({});
 
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const queuedJobs = jobs.filter((job) => job.status === "QUEUED");
+  const processingJobs = jobs.filter((job) => job.status === "PROCESSING");
+  const historyJobs = jobs.filter((job) => job.status === "COMPLETED" || job.status === "FAILED");
+  const queueJobs = jobs.filter((job) => job.status === "QUEUED" || job.status === "PROCESSING");
 
-  const submit = useCallback(async (file: File) => {
-    setError(null);
-    setSubmitting(true);
-    setUploadProgress(null);
-    try {
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-
-      // ── Étape 1 : obtenir une URL pré-signée + jobId (pas de fichier envoyé ici) ──
-      const prepareRes = await fetch("/api/transcription", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name, ext, model, language, enable_diarization: enableDiarization }),
-      });
-      const prepareData = await prepareRes.json() as { jobId?: string; uploadUrl?: string; error?: string };
-      if (!prepareRes.ok) throw new Error(prepareData.error ?? `Erreur ${prepareRes.status}`);
-
-      const { jobId, uploadUrl } = prepareData;
-      if (!jobId) throw new Error("Réponse invalide du serveur");
-
-      if (uploadUrl) {
-        // ── Étape 2 : upload direct vers R2 (contourne complètement Next.js) ──
-        setUploadProgress(0);
-        await new Promise<void>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open("PUT", uploadUrl);
-          xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-          xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
-          };
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) resolve();
-            else reject(new Error(`Upload R2 échoué : ${xhr.status}`));
-          };
-          xhr.onerror = () => reject(new Error("Erreur réseau pendant l'upload"));
-          xhr.send(file);
-        });
-        setUploadProgress(100);
-
-        // ── Étape 3 : déclencher RunPod ──────────────────────────────────────
-        const submitRes = await fetch(`/api/transcription/${jobId}/submit`, { method: "POST" });
-        if (!submitRes.ok) {
-          const submitErr = await submitRes.json() as { error?: string };
-          throw new Error(submitErr.error ?? `Erreur submit ${submitRes.status}`);
-        }
-      }
-
-      router.push(`/tools/transcription/${jobId}`);
-    } catch (err) {
-      setError(String(err instanceof Error ? err.message : err));
-      setSubmitting(false);
-      setUploadProgress(null);
-    }
-  }, [model, language, enableDiarization, router]);
-
-  const handleFile = useCallback(async (file: File) => {
-    await submit(file);
-  }, [submit]);
-
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) await handleFile(file);
-  }, [handleFile]);
-
-  const handleFileInput = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) await handleFile(file);
-    e.target.value = "";
-  }, [handleFile]);
+  const getDraftForJob = useCallback((job: Job): JobDraft => {
+    return queuedDrafts[job.id] ?? {
+      model: job.model,
+      language: job.language,
+      enableDiarization: job.enableDiarization,
+    };
+  }, [queuedDrafts]);
 
   const refreshJobs = useCallback(async () => {
+    setRefreshing(true);
     try {
-      const res = await fetch("/api/transcription");
-      if (res.ok) {
-        const data = await res.json() as { jobs: Job[] };
-        setJobs(data.jobs);
+      const response = await fetch("/api/transcription", { cache: "no-store" });
+      const payload = await readJson<{ jobs?: Job[]; error?: string }>(response);
+      if (!response.ok) {
+        throw new Error(payload?.error ?? `Erreur ${response.status}`);
       }
-    } catch { /* silently ignore */ }
+      setJobs(payload?.jobs ?? []);
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: `Impossible d'actualiser la liste : ${getErrorMessage(error)}`,
+      });
+    } finally {
+      setRefreshing(false);
+    }
   }, []);
 
+  const refreshProcessingJobs = useCallback(async () => {
+    if (!processingJobs.length) return;
+
+    try {
+      const results = await Promise.all(
+        processingJobs.map(async (job) => {
+          const response = await fetch(`/api/transcription/${job.id}`, { cache: "no-store" });
+          if (!response.ok) return null;
+          return await readJson<Job>(response);
+        })
+      );
+
+      const updates = new Map(
+        results
+          .filter((result): result is Job => result != null)
+          .map((job) => [job.id, job])
+      );
+
+      if (updates.size > 0) {
+        setJobs((currentJobs) =>
+          currentJobs.map((job) => updates.get(job.id) ?? job)
+        );
+      }
+    } catch {
+      // Ignore background polling errors. The manual refresh remains available.
+    }
+  }, [processingJobs]);
+
+  useEffect(() => {
+    if (!processingJobs.length) return;
+
+    const interval = window.setInterval(() => {
+      void refreshProcessingJobs();
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, [processingJobs.length, refreshProcessingJobs]);
+
+  const uploadToPresignedUrl = useCallback(
+    (file: File, uploadUrl: string, onProgress: (progress: number) => void) => {
+      return new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", uploadUrl);
+        xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            onProgress(Math.round((event.loaded / event.total) * 100));
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+            return;
+          }
+          reject(new Error(`Upload R2 échoué : ${xhr.status}`));
+        };
+        xhr.onerror = () => reject(new Error("Erreur réseau pendant l'upload"));
+        xhr.send(file);
+      });
+    },
+    []
+  );
+
+  const prepareQueuedJobs = useCallback(async (files: File[]) => {
+    if (!files.length) return;
+
+    setFeedback(null);
+    setUploadState({
+      total: files.length,
+      currentIndex: 0,
+      currentName: "",
+      progress: null,
+      completed: 0,
+    });
+
+    let successCount = 0;
+    const errors: string[] = [];
+
+    for (const [index, file] of files.entries()) {
+      try {
+        const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+
+        setUploadState({
+          total: files.length,
+          currentIndex: index + 1,
+          currentName: file.name,
+          progress: 0,
+          completed: successCount,
+        });
+
+        const prepareResponse = await fetch("/api/transcription", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.name,
+            ext,
+            model: defaultConfig.model,
+            language: defaultConfig.language,
+            enable_diarization: defaultConfig.enableDiarization,
+          }),
+        });
+        const preparePayload = await readJson<{ jobId?: string; uploadUrl?: string; error?: string }>(prepareResponse);
+        if (!prepareResponse.ok) {
+          throw new Error(preparePayload?.error ?? `Erreur ${prepareResponse.status}`);
+        }
+        if (!preparePayload?.jobId || !preparePayload.uploadUrl) {
+          throw new Error("Le serveur n'a pas renvoyé de job en attente exploitable.");
+        }
+
+        await uploadToPresignedUrl(file, preparePayload.uploadUrl, (progress) => {
+          setUploadState((currentState) => {
+            if (!currentState) return currentState;
+            return { ...currentState, progress };
+          });
+        });
+
+        successCount += 1;
+        setUploadState((currentState) => {
+          if (!currentState) return currentState;
+          return {
+            ...currentState,
+            completed: successCount,
+            progress: 100,
+          };
+        });
+      } catch (error) {
+        errors.push(`${file.name} : ${getErrorMessage(error)}`);
+      }
+    }
+
+    setUploadState(null);
+    await refreshJobs();
+
+    if (successCount > 0 && errors.length === 0) {
+      setFeedback({
+        type: "success",
+        message: `${successCount} rush${successCount > 1 ? "s" : ""} ajouté${successCount > 1 ? "s" : ""} à la file d'attente.`,
+      });
+      return;
+    }
+
+    if (successCount > 0) {
+      setFeedback({
+        type: "error",
+        message: `${successCount} rush${successCount > 1 ? "s" : ""} préparé${successCount > 1 ? "s" : ""}, ${errors.length} échec${errors.length > 1 ? "s" : ""}. ${errors[0]}`,
+      });
+      return;
+    }
+
+    setFeedback({
+      type: "error",
+      message: errors[0] ?? "Impossible de préparer les rushs pour la transcription.",
+    });
+  }, [defaultConfig, refreshJobs, uploadToPresignedUrl]);
+
+  const handleFiles = useCallback(async (fileList: FileList | null) => {
+    const files = Array.from(fileList ?? []).filter((file) => file.size > 0);
+    if (!files.length) return;
+    await prepareQueuedJobs(files);
+  }, [prepareQueuedJobs]);
+
+  const handleDrop = useCallback(async (event: React.DragEvent) => {
+    event.preventDefault();
+    setDragging(false);
+    await handleFiles(event.dataTransfer.files);
+  }, [handleFiles]);
+
+  const handleFileInput = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    await handleFiles(event.target.files);
+    event.target.value = "";
+  }, [handleFiles]);
+
+  const updateQueuedDraft = useCallback((job: Job, patch: Partial<JobDraft>) => {
+    const currentDraft = queuedDrafts[job.id] ?? {
+      model: job.model,
+      language: job.language,
+      enableDiarization: job.enableDiarization,
+    };
+    const nextDraft = { ...currentDraft, ...patch };
+
+    setQueuedDrafts((currentDrafts) => ({
+      ...currentDrafts,
+      [job.id]: nextDraft,
+    }));
+
+    setDirtyJobIds((currentDirtyJobIds) => {
+      const nextDirtyJobIds = { ...currentDirtyJobIds };
+      const isDirty =
+        nextDraft.model !== job.model ||
+        nextDraft.language !== job.language ||
+        nextDraft.enableDiarization !== job.enableDiarization;
+
+      if (isDirty) {
+        nextDirtyJobIds[job.id] = true;
+      } else {
+        delete nextDirtyJobIds[job.id];
+      }
+
+      return nextDirtyJobIds;
+    });
+
+    setJobErrors((currentJobErrors) => {
+      const nextJobErrors = { ...currentJobErrors };
+      delete nextJobErrors[job.id];
+      return nextJobErrors;
+    });
+  }, [queuedDrafts]);
+
+  const applyDefaultConfigToQueuedJobs = useCallback(() => {
+    if (!queuedJobs.length) return;
+
+    setQueuedDrafts((currentDrafts) => {
+      const nextDrafts = { ...currentDrafts };
+      for (const job of queuedJobs) {
+        nextDrafts[job.id] = { ...defaultConfig };
+      }
+      return nextDrafts;
+    });
+
+    setDirtyJobIds(() => {
+      const nextDirtyJobIds: Record<string, boolean> = {};
+      for (const job of queuedJobs) {
+        const isDirty =
+          job.model !== defaultConfig.model ||
+          job.language !== defaultConfig.language ||
+          job.enableDiarization !== defaultConfig.enableDiarization;
+        if (isDirty) {
+          nextDirtyJobIds[job.id] = true;
+        }
+      }
+      return nextDirtyJobIds;
+    });
+
+    setJobErrors((currentJobErrors) => {
+      const nextJobErrors = { ...currentJobErrors };
+      for (const job of queuedJobs) {
+        delete nextJobErrors[job.id];
+      }
+      return nextJobErrors;
+    });
+  }, [defaultConfig, queuedJobs]);
+
+  const saveQueuedJobConfig = useCallback(async (job: Job) => {
+    const draft = getDraftForJob(job);
+    setSavingJobIds((currentSavingJobIds) => ({
+      ...currentSavingJobIds,
+      [job.id]: true,
+    }));
+
+    setJobErrors((currentJobErrors) => {
+      const nextJobErrors = { ...currentJobErrors };
+      delete nextJobErrors[job.id];
+      return nextJobErrors;
+    });
+
+    try {
+      const response = await fetch(`/api/transcription/${job.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: draft.model,
+          language: draft.language,
+          enable_diarization: draft.enableDiarization,
+        }),
+      });
+      const payload = await readJson<(Job & { error?: string }) | { error?: string }>(response);
+      if (!response.ok) {
+        throw new Error(payload?.error ?? `Erreur ${response.status}`);
+      }
+
+      const updatedJob = {
+        ...job,
+        ...(payload as Job),
+      };
+
+      setJobs((currentJobs) =>
+        currentJobs.map((candidate) => (candidate.id === job.id ? updatedJob : candidate))
+      );
+      setQueuedDrafts((currentDrafts) => ({
+        ...currentDrafts,
+        [job.id]: {
+          model: updatedJob.model,
+          language: updatedJob.language,
+          enableDiarization: updatedJob.enableDiarization,
+        },
+      }));
+      setDirtyJobIds((currentDirtyJobIds) => {
+        const nextDirtyJobIds = { ...currentDirtyJobIds };
+        delete nextDirtyJobIds[job.id];
+        return nextDirtyJobIds;
+      });
+
+      return updatedJob;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setJobErrors((currentJobErrors) => ({
+        ...currentJobErrors,
+        [job.id]: message,
+      }));
+      throw error;
+    } finally {
+      setSavingJobIds((currentSavingJobIds) => {
+        const nextSavingJobIds = { ...currentSavingJobIds };
+        delete nextSavingJobIds[job.id];
+        return nextSavingJobIds;
+      });
+    }
+  }, [getDraftForJob]);
+
+  const startQueuedJob = useCallback(async (job: Job) => {
+    setStartingJobIds((currentStartingJobIds) => ({
+      ...currentStartingJobIds,
+      [job.id]: true,
+    }));
+
+    setJobErrors((currentJobErrors) => {
+      const nextJobErrors = { ...currentJobErrors };
+      delete nextJobErrors[job.id];
+      return nextJobErrors;
+    });
+
+    try {
+      if (dirtyJobIds[job.id]) {
+        await saveQueuedJobConfig(job);
+      }
+
+      const response = await fetch(`/api/transcription/${job.id}/submit`, { method: "POST" });
+      const payload = await readJson<{ error?: string }>(response);
+      if (!response.ok) {
+        throw new Error(payload?.error ?? `Erreur ${response.status}`);
+      }
+
+      setJobs((currentJobs) =>
+        currentJobs.map((candidate) => (
+          candidate.id === job.id
+            ? { ...candidate, status: "PROCESSING" }
+            : candidate
+        ))
+      );
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setJobErrors((currentJobErrors) => ({
+        ...currentJobErrors,
+        [job.id]: message,
+      }));
+      throw error;
+    } finally {
+      setStartingJobIds((currentStartingJobIds) => {
+        const nextStartingJobIds = { ...currentStartingJobIds };
+        delete nextStartingJobIds[job.id];
+        return nextStartingJobIds;
+      });
+    }
+  }, [dirtyJobIds, saveQueuedJobConfig]);
+
+  const startQueuedBatch = useCallback(async () => {
+    if (!queuedJobs.length) return;
+
+    setStartingBatch(true);
+    setFeedback(null);
+
+    const results = await Promise.allSettled(
+      queuedJobs.map(async (job) => {
+        await startQueuedJob(job);
+        return job.id;
+      })
+    );
+
+    const startedCount = results.filter((result) => result.status === "fulfilled").length;
+    const failedCount = results.length - startedCount;
+
+    await refreshJobs();
+
+    if (failedCount === 0) {
+      setFeedback({
+        type: "success",
+        message: `${startedCount} transcription${startedCount > 1 ? "s" : ""} lancée${startedCount > 1 ? "s" : ""}.`,
+      });
+    } else {
+      setFeedback({
+        type: "error",
+        message: `${startedCount} transcription${startedCount > 1 ? "s" : ""} lancée${startedCount > 1 ? "s" : ""}, ${failedCount} échec${failedCount > 1 ? "s" : ""}.`,
+      });
+    }
+
+    setStartingBatch(false);
+  }, [queuedJobs, refreshJobs, startQueuedJob]);
+
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white">
-          <Mic className="w-5 h-5" />
+    <div className="mx-auto max-w-5xl space-y-8 px-4 py-8">
+      <div className="flex flex-col gap-4 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-600 text-white">
+            <Mic className="h-5 w-5" />
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-xl font-semibold text-gray-900">Transcription</h1>
+            <p className="text-sm text-gray-500">
+              Uploadez vos rushs, laissez-les en attente, ajustez la config puis lancez une ou plusieurs transcriptions quand vous êtes prêt.
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Transcription</h1>
-          <p className="text-sm text-gray-500">Convertissez audio et vidéo en texte, SRT ou chunks pour l&apos;IA</p>
+
+        <div className="flex flex-wrap gap-2 text-xs font-medium">
+          <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
+            {queuedJobs.length} en attente
+          </span>
+          <span className="rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">
+            {processingJobs.length} en cours
+          </span>
+          <span className="rounded-full bg-gray-100 px-3 py-1 text-gray-600">
+            {historyJobs.length} dans l&apos;historique
+          </span>
         </div>
       </div>
 
-      {/* Upload zone */}
       <div
         role="button"
         tabIndex={0}
-        className={`relative border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-colors ${
-          dragging ? "border-indigo-400 bg-indigo-50" : "border-gray-200 hover:border-indigo-300 hover:bg-gray-50"
-        } ${submitting ? "pointer-events-none opacity-70" : ""}`}
-        onDragEnter={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={(e) => { e.preventDefault(); setDragging(false); }}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => void handleDrop(e)}
-        onClick={() => fileInputRef.current?.click()}
-        onKeyDown={(e) => { if (e.key === "Enter") fileInputRef.current?.click(); }}
+        className={`relative rounded-3xl border-2 border-dashed p-10 text-center transition-colors ${
+          dragging ? "border-teal-400 bg-teal-50" : "border-gray-200 bg-white hover:border-teal-300 hover:bg-gray-50"
+        } ${uploadState ? "pointer-events-none opacity-80" : "cursor-pointer"}`}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          event.preventDefault();
+          setDragging(false);
+        }}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => void handleDrop(event)}
+        onClick={() => {
+          if (!uploadState) fileInputRef.current?.click();
+        }}
+        onKeyDown={(event) => {
+          if (!uploadState && (event.key === "Enter" || event.key === " ")) {
+            event.preventDefault();
+            fileInputRef.current?.click();
+          }
+        }}
       >
         <input
           ref={fileInputRef}
           type="file"
           accept={AUDIO_ACCEPT}
+          multiple
           className="hidden"
-          onChange={(e) => void handleFileInput(e)}
+          onChange={(event) => void handleFileInput(event)}
         />
-        {submitting ? (
-          <div className="flex flex-col items-center gap-3 text-indigo-600">
-            <Loader2 className="w-8 h-8 animate-spin" />
-            {uploadProgress !== null && uploadProgress < 100 ? (
-              <div className="w-48 space-y-1">
-                <p className="font-medium text-sm text-center">Upload en cours… {uploadProgress}%</p>
-                <div className="h-1.5 bg-indigo-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-indigo-500 transition-all duration-150" style={{ width: `${uploadProgress}%` }} />
-                </div>
+
+        {uploadState ? (
+          <div className="mx-auto flex max-w-md flex-col items-center gap-4 text-teal-700">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <div className="space-y-1">
+              <p className="text-sm font-semibold">
+                Préparation {uploadState.currentIndex}/{uploadState.total}
+              </p>
+              <p className="text-sm text-teal-600">{uploadState.currentName}</p>
+            </div>
+            <div className="w-full space-y-2">
+              <div className="h-2 overflow-hidden rounded-full bg-teal-100">
+                <div
+                  className="h-full bg-teal-500 transition-all duration-150"
+                  style={{ width: `${uploadState.progress ?? 0}%` }}
+                />
               </div>
-            ) : (
-              <p className="font-medium">Envoi en cours…</p>
-            )}
+              <div className="flex items-center justify-between text-xs text-teal-600">
+                <span>{uploadState.progress ?? 0}%</span>
+                <span>{uploadState.completed} rush prêt{uploadState.completed > 1 ? "s" : ""}</span>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-3 text-gray-500">
-            <Upload className="w-8 h-8" />
-            <div>
-              <p className="font-medium text-gray-700">Déposez un fichier audio ou vidéo</p>
-              <p className="text-sm mt-1">mp3, wav, m4a, mp4, mov… — ou cliquez pour sélectionner</p>
+            <Upload className="h-8 w-8" />
+            <div className="space-y-1">
+              <p className="text-base font-medium text-gray-700">Déposez un ou plusieurs rushs audio / vidéo</p>
+              <p className="text-sm">mp3, wav, m4a, mp4, mov, mkv, webm... Les fichiers restent en attente jusqu&apos;au lancement manuel.</p>
             </div>
           </div>
         )}
       </div>
 
-      {/* Options */}
-      <div className="bg-gray-50 rounded-xl p-4 space-y-4">
-        <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Options</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1 sm:col-span-2">
+      <div className="space-y-4 rounded-3xl bg-gray-50 p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Config par défaut</p>
+            <p className="mt-1 text-sm text-gray-600">
+              Ces options s&apos;appliquent aux nouveaux rushs. Vous pourrez encore ajuster chaque job en attente avant de le lancer.
+            </p>
+          </div>
+          {queuedJobs.length > 0 && (
+            <button
+              type="button"
+              onClick={applyDefaultConfigToQueuedJobs}
+              className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-teal-300 hover:text-teal-700"
+            >
+              <Settings2 className="h-4 w-4" />
+              Appliquer aux {queuedJobs.length} en attente
+            </button>
+          )}
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px]">
+          <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700">Modèle de transcription</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setModel("turbo")}
-                className={`rounded-xl border p-3 text-left transition-colors ${
-                  model === "turbo"
-                    ? "border-indigo-500 bg-indigo-50"
-                    : "border-gray-200 bg-white hover:border-gray-300"
-                }`}
-              >
-                <div className="text-sm font-medium text-gray-800">Rapide</div>
-                <div className="text-xs text-gray-500 mt-0.5">Résultat en ~1 min</div>
-                <div className="text-xs text-gray-400 mt-1">Idéal pour audio studio</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setModel("large-v3")}
-                className={`rounded-xl border p-3 text-left transition-colors ${
-                  model === "large-v3"
-                    ? "border-indigo-500 bg-indigo-50"
-                    : "border-gray-200 bg-white hover:border-gray-300"
-                }`}
-              >
-                <div className="text-sm font-medium text-gray-800">Haute précision</div>
-                <div className="text-xs text-gray-500 mt-0.5">Résultat en 2–4 min</div>
-                <div className="text-xs text-gray-400 mt-1">Accents, réunions, jargon</div>
-              </button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {MODEL_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setDefaultConfig((currentConfig) => ({ ...currentConfig, model: option.value }))}
+                  className={`rounded-2xl border p-4 text-left transition-colors ${
+                    defaultConfig.model === option.value
+                      ? "border-teal-500 bg-teal-50"
+                      : "border-gray-200 bg-white hover:border-gray-300"
+                  }`}
+                >
+                  <div className="text-sm font-semibold text-gray-800">{option.label}</div>
+                  <div className="mt-0.5 text-xs text-gray-500">{option.timing}</div>
+                  <div className="mt-1 text-xs text-gray-400">{option.description}</div>
+                </button>
+              ))}
             </div>
           </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">Langue</label>
-            <select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="fr">Français</option>
-              <option value="en">Anglais</option>
-              <option value="es">Espagnol</option>
-              <option value="de">Allemand</option>
-              <option value="it">Italien</option>
-            </select>
+
+          <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4">
+            <label className="space-y-1">
+              <span className="text-sm font-medium text-gray-700">Langue</span>
+              <select
+                value={defaultConfig.language}
+                onChange={(event) => setDefaultConfig((currentConfig) => ({
+                  ...currentConfig,
+                  language: event.target.value,
+                }))}
+                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                {LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex items-start gap-3 rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3">
+              <input
+                type="checkbox"
+                checked={defaultConfig.enableDiarization}
+                onChange={(event) => setDefaultConfig((currentConfig) => ({
+                  ...currentConfig,
+                  enableDiarization: event.target.checked,
+                }))}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="text-sm text-gray-700">
+                Identifier les intervenants
+                <span className="mt-0.5 block text-xs text-gray-400">
+                  Active la diarisation, plus lente mais utile pour les interviews et podcasts.
+                </span>
+              </span>
+            </label>
           </div>
         </div>
-        <label className="flex items-center gap-3 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={enableDiarization}
-            onChange={(e) => setEnableDiarization(e.target.checked)}
-            className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-          />
-          <span className="text-sm text-gray-700">
-            Identifier les intervenants
-            <span className="ml-1.5 text-gray-400 text-xs">(diarisation — allonge le traitement)</span>
-          </span>
-        </label>
       </div>
 
-      {error && (
-        <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-          {error}
+      {feedback && (
+        <div className={`rounded-2xl border px-4 py-3 text-sm ${
+          feedback.type === "success"
+            ? "border-green-200 bg-green-50 text-green-700"
+            : "border-red-200 bg-red-50 text-red-700"
+        }`}>
+          {feedback.message}
         </div>
       )}
 
-      {/* Jobs list */}
-      {jobs.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-700">Transcriptions récentes</p>
+      <section className="space-y-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-800">File de transcription</h2>
+            <p className="text-sm text-gray-500">Les rushs ne partent plus automatiquement. Vous contrôlez le départ, un par un ou en lot.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => void refreshJobs()}
-              className="text-xs text-indigo-600 hover:underline"
+              disabled={refreshing}
+              className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
+              {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Actualiser
             </button>
+            {queuedJobs.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void startQueuedBatch()}
+                disabled={startingBatch}
+                className="inline-flex items-center gap-2 rounded-full bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {startingBatch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                Lancer les {queuedJobs.length} en attente
+              </button>
+            )}
           </div>
-          <ul className="space-y-2">
-            {jobs.map((job) => (
-              <li key={job.id}>
-                <a
-                  href={`/tools/transcription/${job.id}`}
-                  className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 hover:border-indigo-200 hover:bg-indigo-50/30 transition-colors"
-                >
-                  <FileAudio className="w-5 h-5 text-gray-300 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">
-                      {job.inputFilename ?? "Fichier inconnu"}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      {fmtDate(job.createdAt)}
-                      {job.duration != null && ` · ${fmtDuration(job.duration)}`}
-                      {job.hasDiarization && " · Diarisé"}
-                    </p>
+        </div>
+
+        {queueJobs.length === 0 ? (
+          <div className="rounded-3xl border border-dashed border-gray-200 bg-white px-6 py-10 text-center text-sm text-gray-500">
+            Aucun rush en attente ou en cours. Ajoutez vos fichiers ci-dessus pour préparer un lot.
+          </div>
+        ) : (
+          <ul className="space-y-3">
+            {queueJobs.map((job) => {
+              const draft = getDraftForJob(job);
+              const isDirty = !!dirtyJobIds[job.id];
+              const isSaving = !!savingJobIds[job.id];
+              const isStarting = !!startingJobIds[job.id];
+
+              return (
+                <li key={job.id} className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-gray-500">
+                        <FileAudio className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 space-y-1">
+                        <p className="truncate text-sm font-semibold text-gray-900">
+                          {job.inputFilename ?? "Fichier inconnu"}
+                        </p>
+                        <p className="text-xs text-gray-400">Ajouté le {fmtDate(job.createdAt)}</p>
+                      </div>
+                    </div>
+
+                    <div className={`inline-flex items-center gap-2 self-start rounded-full px-3 py-1 text-xs font-semibold ${STATUS_TONE[job.status]}`}>
+                      {STATUS_ICON[job.status]}
+                      {STATUS_LABEL[job.status]}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {STATUS_ICON[job.status]}
-                    <span className="text-xs text-gray-500">{STATUS_LABEL[job.status]}</span>
+
+                  {job.status === "QUEUED" ? (
+                    <div className="mt-5 space-y-4">
+                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <label className="space-y-1">
+                            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Modèle</span>
+                            <select
+                              value={draft.model}
+                              onChange={(event) => updateQueuedDraft(job, { model: event.target.value })}
+                              className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            >
+                              {MODEL_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="space-y-1">
+                            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Langue</span>
+                            <select
+                              value={draft.language}
+                              onChange={(event) => updateQueuedDraft(job, { language: event.target.value })}
+                              className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            >
+                              {LANGUAGE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+
+                        <label className="flex items-start gap-3 rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3">
+                          <input
+                            type="checkbox"
+                            checked={draft.enableDiarization}
+                            onChange={(event) => updateQueuedDraft(job, { enableDiarization: event.target.checked })}
+                            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span className="text-sm text-gray-700">
+                            Diarisation
+                            <span className="mt-0.5 block text-xs text-gray-400">
+                              Pour distinguer les intervenants avant l&apos;envoi.
+                            </span>
+                          </span>
+                        </label>
+                      </div>
+
+                      {jobErrors[job.id] && (
+                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                          {jobErrors[job.id]}
+                        </div>
+                      )}
+
+                      <div className="flex flex-col gap-3 border-t border-gray-100 pt-4 md:flex-row md:items-center md:justify-between">
+                        <p className="text-sm text-gray-500">
+                          {isDirty
+                            ? "Configuration modifiée localement. Enregistrez-la maintenant ou laissez le lancement l'enregistrer pour vous."
+                            : "Rush prêt. Vous pouvez le lancer seul ou avec le lot complet."}
+                        </p>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          {isDirty && (
+                            <button
+                              type="button"
+                              onClick={() => void saveQueuedJobConfig(job)}
+                              disabled={isSaving || isStarting}
+                              className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                              Enregistrer
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void startQueuedJob(job)
+                                .then(() => {
+                                  setFeedback({
+                                    type: "success",
+                                    message: `${job.inputFilename ?? "La transcription"} a été lancée.`,
+                                  });
+                                })
+                                .catch(() => {
+                                  // L'erreur reste affichée au niveau du job.
+                                });
+                            }}
+                            disabled={isSaving || isStarting}
+                            className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isStarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                            Lancer maintenant
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-5 flex flex-col gap-4 border-t border-gray-100 pt-4 md:flex-row md:items-center md:justify-between">
+                      <div className="flex flex-wrap gap-2 text-xs font-medium text-gray-500">
+                        <span className="rounded-full bg-gray-100 px-3 py-1">{job.model === "large-v3" ? "Haute précision" : "Rapide"}</span>
+                        <span className="rounded-full bg-gray-100 px-3 py-1">{job.language.toUpperCase()}</span>
+                        {job.enableDiarization && (
+                          <span className="rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">Diarisation</span>
+                        )}
+                        {job.duration != null && (
+                          <span className="rounded-full bg-gray-100 px-3 py-1">{fmtDuration(job.duration)}</span>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/tools/transcription/${job.id}`)}
+                        className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700"
+                      >
+                        Ouvrir le détail
+                      </button>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {historyJobs.length > 0 && (
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-800">Historique</h2>
+            <p className="text-sm text-gray-500">Les transcriptions terminées ou en échec restent accessibles ici.</p>
+          </div>
+
+          <ul className="space-y-3">
+            {historyJobs.map((job) => (
+              <li key={job.id} className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-gray-500">
+                      <FileAudio className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 space-y-1">
+                      <p className="truncate text-sm font-semibold text-gray-900">
+                        {job.inputFilename ?? "Fichier inconnu"}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {fmtDate(job.createdAt)}
+                        {job.duration != null && ` · ${fmtDuration(job.duration)}`}
+                        {job.hasDiarization && " · Diarisé"}
+                      </p>
+                      {job.status === "FAILED" && job.errorMsg && (
+                        <p className="text-xs text-red-500">{job.errorMsg}</p>
+                      )}
+                    </div>
                   </div>
-                </a>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${STATUS_TONE[job.status]}`}>
+                      {STATUS_ICON[job.status]}
+                      {STATUS_LABEL[job.status]}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/tools/transcription/${job.id}`)}
+                      className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700"
+                    >
+                      Ouvrir
+                    </button>
+                  </div>
+                </div>
               </li>
             ))}
           </ul>
-        </div>
+        </section>
       )}
     </div>
   );

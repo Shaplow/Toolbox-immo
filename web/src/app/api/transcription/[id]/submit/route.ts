@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getR2PublicUrl } from "@/lib/r2";
-import { submitRunpodJob } from "@/lib/runpod";
+import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -34,14 +34,26 @@ export async function POST(
   if (job.userId !== session.user.id && session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
-  if (job.status !== "QUEUED") {
-    return NextResponse.json({ error: "Job déjà soumis ou terminé" }, { status: 409 });
-  }
   if (!job.inputKey) {
     return NextResponse.json({ error: "Clé source manquante" }, { status: 400 });
   }
-  if (!RUNPOD_API_KEY || !RUNPOD_ENDPOINT_ID) {
+  if (!RUNPOD_API_KEY || !RUNPOD_ENDPOINT_ID || !runpodConfigured()) {
     return NextResponse.json({ error: "RunPod non configuré" }, { status: 503 });
+  }
+  if (job.enableDiarization && !HF_TOKEN) {
+    return NextResponse.json(
+      { error: "La diarisation n'est pas disponible sur ce serveur (HF_TOKEN non configuré)." },
+      { status: 503 }
+    );
+  }
+
+  // Atomic status transition — prevents concurrent double-submit
+  const claimed = await prisma.transcriptionJob.updateMany({
+    where: { id: job.id, status: "QUEUED" },
+    data: { status: "PROCESSING" },
+  });
+  if (claimed.count === 0) {
+    return NextResponse.json({ error: "Job déjà soumis ou terminé" }, { status: 409 });
   }
 
   const audioUrl    = getR2PublicUrl(job.inputKey);
@@ -80,7 +92,7 @@ export async function POST(
 
   await prisma.transcriptionJob.update({
     where: { id: job.id },
-    data: { status: "PROCESSING", runpodJobId, outputJsonKey: outputKey },
+    data: { runpodJobId, outputJsonKey: outputKey },
   });
 
   return NextResponse.json({ jobId: job.id });

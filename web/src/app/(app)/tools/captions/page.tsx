@@ -6,7 +6,6 @@ import { getUserContext } from "@/lib/userContext";
 export default async function CaptionsPage() {
   const userContext = await getUserContext();
   if (!userContext?.effectiveUser.id) redirect("/login");
-  if (userContext.isImpersonating) redirect("/home");
 
   const isAdmin = userContext.canAdminBypass;
   if (!isAdmin && !(await hasTool(userContext.effectiveUser.id, TOOLS.CAPTIONS))) {

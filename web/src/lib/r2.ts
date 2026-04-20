@@ -46,9 +46,42 @@ export function requireR2(): void {
   }
 }
 
+// ─── Retry helper ─────────────────────────────────────────────────────────────
+
+const RETRY_DELAYS_MS = [500, 1500, 3000];
+
+async function withRetry<T>(
+  label: string,
+  fn: () => Promise<T>,
+  retries = RETRY_DELAYS_MS
+): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries.length; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (attempt < retries.length) {
+        console.warn(`[r2/${label}] attempt ${attempt + 1} failed, retrying in ${retries[attempt]}ms:`, err);
+        await new Promise((res) => setTimeout(res, retries[attempt]));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+// ─── Client singleton ─────────────────────────────────────────────────────────
+// Reuse the same S3Client instance across requests within a Node.js process.
+// Recreated only when the account/credentials change (should never happen in practice).
+
+let _s3Client: S3Client | null = null;
+let _s3ClientKey = "";
+
 function createClient(): S3Client {
   const { accountId, accessKeyId, secretAccessKey } = getR2Config();
-  return new S3Client({
+  const key = `${accountId}:${accessKeyId}`;
+  if (_s3Client && _s3ClientKey === key) return _s3Client;
+  _s3Client = new S3Client({
     region: "auto",
     endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
     credentials: {
@@ -56,6 +89,8 @@ function createClient(): S3Client {
       secretAccessKey: secretAccessKey!,
     },
   });
+  _s3ClientKey = key;
+  return _s3Client;
 }
 
 // ─── Presigned Upload URL ─────────────────────────────────────────────────────
@@ -113,7 +148,7 @@ export async function uploadToR2(
     ...(contentLength ? { ContentLength: contentLength } : {}),
   });
 
-  await client.send(command);
+  await withRetry(`upload:${key}`, () => client.send(command));
 
   return {
     key,
@@ -127,7 +162,7 @@ export async function deleteFromR2(key: string): Promise<void> {
   requireR2();
   const { bucket } = getR2Config();
   const client = createClient();
-  await client.send(new DeleteObjectCommand({ Bucket: bucket!, Key: key }));
+  await withRetry(`delete:${key}`, () => client.send(new DeleteObjectCommand({ Bucket: bucket!, Key: key })));
 }
 
 // ─── Public URL ───────────────────────────────────────────────────────────────
@@ -148,8 +183,8 @@ export async function getFromR2(key: string): Promise<Buffer> {
   requireR2();
   const { bucket } = getR2Config();
   const client = createClient();
-  const response = await client.send(
-    new GetObjectCommand({ Bucket: bucket!, Key: key })
+  const response = await withRetry(`get:${key}`, () =>
+    client.send(new GetObjectCommand({ Bucket: bucket!, Key: key }))
   );
   if (!response.Body) throw new Error(`R2 object empty: ${key}`);
   // Response.Body is a ReadableStream (Web Streams API) in Node 18+

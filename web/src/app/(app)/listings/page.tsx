@@ -1,12 +1,17 @@
 ﻿import { prisma } from "@/lib/prisma";
-import Link from "next/link";
 import { ListingsClient, type ListingRow, type CaptionJobRow, type TranscriptionJobRow, type DescriptionJobRow, type DerushJobRow } from "@/components/listings/ListingsClient";
-import { getUserContext } from "@/lib/userContext";
+import { getUserContext, parsePermissions } from "@/lib/userContext";
 
 export default async function ListingsPage() {
   const userContext = await getUserContext();
   const userId = userContext!.effectiveUser.id;
   const isAdmin = userContext!.canAdminBypass;
+
+  const userPerms = parsePermissions(userContext!.effectiveUser.permissions);
+  const hasCaptions = isAdmin || userPerms.includes("captions");
+  const hasTranscription = isAdmin || userPerms.includes("transcription");
+  const hasDescription = isAdmin || userPerms.includes("description");
+  const hasDerush = isAdmin || userPerms.includes("derush");
 
   const listings = await prisma.listing.findMany({
     where: isAdmin ? {} : { userId },
@@ -184,7 +189,18 @@ export default async function ListingsPage() {
         </div>
       </div>
 
-      <ListingsClient initialListings={rows} initialCaptionJobs={captionRows} initialTranscriptionJobs={transcriptionRows} initialDescriptionJobs={descriptionRows} initialDerushJobs={derushRows} isAdmin={isAdmin} />
+      <ListingsClient
+        initialListings={rows}
+        initialCaptionJobs={captionRows}
+        initialTranscriptionJobs={transcriptionRows}
+        initialDescriptionJobs={descriptionRows}
+        initialDerushJobs={derushRows}
+        isAdmin={isAdmin}
+        hasCaptions={hasCaptions}
+        hasTranscription={hasTranscription}
+        hasDescription={hasDescription}
+        hasDerush={hasDerush}
+      />
     </div>
   );
 }

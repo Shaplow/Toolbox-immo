@@ -6,7 +6,29 @@ import {
   Wand2, ChevronDown, ChevronUp, Clock, CheckCircle2, AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { Caption, parseSRT, parseHighlightedSRT, serializeSRT } from "@/lib/srt";
+import {
+  Caption,
+  applyHighlightMarkersToCaptions,
+  parseSRT,
+  parseHighlightedSRT,
+  serializeSRT,
+} from "@/lib/srt";
+import {
+  buildTimingStatuses,
+  buildTimedSegmentsFromCaptions,
+  buildTimedSegmentsFromSegments,
+  buildWordTimestampsForSubmission,
+  type CaptionTimingStatus,
+  realignTimedCaptions,
+  timedSegmentsToCaptions,
+} from "@/lib/captionWordTiming";
+import {
+  DEFAULT_CAPTION_AUTO_HIGHLIGHT,
+  type AutoHighlightMode,
+  type AutoHighlightPlacement,
+  type CaptionPromptRow,
+} from "@/lib/captionPrompt";
+import { getNextHighlightGroup } from "@/lib/captionHighlightCycle";
 import CaptionEditor from "@/components/captions/CaptionEditor";
 import { SegmentTrimEditor } from "@/components/captions/SegmentTrimEditor";
 import { buildSubtitlesFromWords, type Segment } from "@/lib/transcriptionProcess";
@@ -31,10 +53,6 @@ type QueuedJob = {
   createdAt: Date;
 };
 
-type CustomPrompt = { id: string; name: string; prompt: string };
-
-const STORAGE_KEY = "caption_ai_prompts";
-
 function srtTimeToSeconds(t: string): number {
   // Handles "HH:MM:SS,mmm" and "HH:MM:SS.mmm"
   const m = t.match(/(\d+):(\d+):(\d+)[,.](\d+)/);
@@ -42,17 +60,14 @@ function srtTimeToSeconds(t: string): number {
   return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000;
 }
 
-function loadPrompts(): CustomPrompt[] {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]") as CustomPrompt[];
-  } catch {
-    return [];
-  }
+function formatAutoHighlightModeLabel(mode: AutoHighlightMode): string {
+  if (mode === "highlight1") return "HL1";
+  if (mode === "highlight2") return "HL2";
+  return "HL1 + HL2";
 }
 
-function savePrompts(prompts: CustomPrompt[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(prompts));
+function formatAutoHighlightPlacementLabel(placement: AutoHighlightPlacement): string {
+  return placement === "before" ? "avant le prompt" : "après le prompt";
 }
 
 function nested(obj: Record<string, unknown>, ...keys: string[]): unknown {
@@ -68,11 +83,17 @@ export default function CaptionsGenerateForm({
   preset,
   initialSrt,
   initialSegments,
+  initialPrompts,
+  promptStorageAvailable = true,
+  promptStorageMessage = null,
   aiConfig = { hasClaude: true, hasGpt: true },
 }: {
   preset: PresetData;
   initialSrt?: string | null;
   initialSegments?: Segment[] | null;
+  initialPrompts: CaptionPromptRow[];
+  promptStorageAvailable?: boolean;
+  promptStorageMessage?: string | null;
   aiConfig?: { hasClaude: boolean; hasGpt: boolean };
 }) {
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -97,24 +118,35 @@ export default function CaptionsGenerateForm({
   // Queue of submitted jobs
   const [jobs, setJobs] = useState<QueuedJob[]>([]);
 
+  // Source of truth for per-word timing. Real timings are kept when available,
+  // and synthetic timings are generated for plain SRT imports so the editor can
+  // stay on the JSON path after manual or AI edits.
+  const [timedSegments, setTimedSegments] = useState<Segment[] | null>(null);
+  const [timingStatuses, setTimingStatuses] = useState<CaptionTimingStatus[] | null>(null);
+
   // AI corrector state
   const [showAI, setShowAI] = useState(false);
   const [aiModel, setAiModel] = useState<AIModel>(
     aiConfig.hasClaude ? "claude" : "gpt"
   );
-  const [customPrompts, setCustomPrompts] = useState<CustomPrompt[]>(() => loadPrompts());
+  const [customPrompts] = useState<CaptionPromptRow[]>(initialPrompts);
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
-  const [newPromptName, setNewPromptName] = useState("");
-  const [newPromptText, setNewPromptText] = useState("");
-  const [showNewPromptForm, setShowNewPromptForm] = useState(false);
-  const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
 
   const baseTransform =
     (nested(preset.config, "base", "text_transform") as TextTransform | undefined) ?? "none";
+  const highlightTransform =
+    (nested(preset.config, "highlight", "text_transform") as TextTransform | undefined) ?? baseTransform;
   const highlight2Enabled =
     (nested(preset.config, "highlight2", "enabled") as boolean | undefined) ?? false;
+  const highlight2Transform =
+    (nested(preset.config, "highlight2", "text_transform") as TextTransform | undefined) ?? highlightTransform;
+  const selectedPrompt = customPrompts.find((p) => p.id === selectedPromptId) ?? null;
+  const selectedPromptAutoHighlight = selectedPrompt?.autoHighlight ?? DEFAULT_CAPTION_AUTO_HIGHLIGHT;
+  const selectedPromptNeedsHighlight2 =
+    selectedPromptAutoHighlight.enabled &&
+    (selectedPromptAutoHighlight.mode === "highlight2" || selectedPromptAutoHighlight.mode === "both");
 
   // Pre-load SRT from a previous job (bypasses TrimEditor — regen flow)
   useEffect(() => {
@@ -122,6 +154,8 @@ export default function CaptionsGenerateForm({
       const { captions: parsed, highlighted: hl } = parseHighlightedSRT(initialSrt);
       setCaptions(parsed);
       setHighlighted(hl);
+      setTimedSegments(buildTimedSegmentsFromCaptions(parsed));
+      setTimingStatuses(buildTimingStatuses(parsed.length, "estimated"));
     }
   }, [initialSrt]);
 
@@ -156,11 +190,19 @@ export default function CaptionsGenerateForm({
     setHighlighted((prev) => {
       const next = new Map(prev);
       const current = next.get(key);
-      if (current === undefined) next.set(key, 0);
-      else if (current === 0 && highlight2Enabled) next.set(key, 1);
-      else next.delete(key);
+      const nextGroup = getNextHighlightGroup(current, highlight2Enabled);
+      if (nextGroup === undefined) next.delete(key);
+      else next.set(key, nextGroup);
       return next;
     });
+  };
+
+  const handleCaptionEditorChange = (updated: Caption[]) => {
+    const realigned = realignTimedCaptions(timedSegments, updated, highlighted, timingStatuses);
+    setTimedSegments(realigned.segments);
+    setCaptions(timedSegmentsToCaptions(realigned.segments));
+    setHighlighted(realigned.highlighted);
+    setTimingStatuses(realigned.timingStatuses);
   };
 
   const canGenerate = !!videoFile && (!!subsFile || captions.length > 0) && !showTrimEditor;
@@ -173,10 +215,21 @@ export default function CaptionsGenerateForm({
     setMessage("Rendu en cours…");
     setRenderProgress(0.05);
 
-    const srtContent =
-      captions.length > 0 ? serializeSRT(captions, highlighted) : await subsFile!.text();
-    const srtBlob = new Blob([srtContent], { type: "text/plain" });
-    const srtFileName = subsFile?.name ?? "captions.srt";
+    // Prefer JSON word timestamps whenever we have a timed word model.
+    // Real WhisperX timings are preserved when available; plain SRT imports get
+    // synthetic timings so edits and AI corrections can stay on the word path.
+    const hasWordData =
+      timedSegments !== null &&
+      captions.length === timedSegments.length &&
+      timedSegments.some((s) => Array.isArray(s.words) && s.words.length > 0);
+
+    const subsContent = hasWordData
+      ? buildWordTimestampsForSubmission(timedSegments!, highlighted)
+      : captions.length > 0
+      ? serializeSRT(captions, highlighted)
+      : await subsFile!.text();
+    const srtBlob = new Blob([subsContent], { type: "text/plain" });
+    const srtFileName = hasWordData ? "captions.json" : (subsFile?.name ?? "captions.srt");
     const configWithProfile = { ...preset.config, export_profile: exportProfile };
 
     let fakeVal = 0.05;
@@ -236,46 +289,17 @@ export default function CaptionsGenerateForm({
     }
   };
 
-  const handleSavePrompt = () => {
-    if (!newPromptName.trim() || !newPromptText.trim()) return;
-    let updated: CustomPrompt[];
-    if (editingPromptId) {
-      updated = customPrompts.map((p) =>
-        p.id === editingPromptId ? { ...p, name: newPromptName.trim(), prompt: newPromptText.trim() } : p
-      );
-      setSelectedPromptId(editingPromptId);
-      setEditingPromptId(null);
-    } else {
-      const newP: CustomPrompt = { id: crypto.randomUUID(), name: newPromptName.trim(), prompt: newPromptText.trim() };
-      updated = [...customPrompts, newP];
-      setSelectedPromptId(newP.id);
-    }
-    setCustomPrompts(updated);
-    savePrompts(updated);
-    setNewPromptName("");
-    setNewPromptText("");
-    setShowNewPromptForm(false);
-  };
-
-  const handleEditPrompt = (p: CustomPrompt) => {
-    setEditingPromptId(p.id);
-    setNewPromptName(p.name);
-    setNewPromptText(p.prompt);
-    setShowNewPromptForm(true);
-  };
-
-  const handleDeletePrompt = (id: string) => {
-    const updated = customPrompts.filter((p) => p.id !== id);
-    setCustomPrompts(updated);
-    savePrompts(updated);
-    if (selectedPromptId === id) setSelectedPromptId(updated[0]?.id ?? null);
-  };
-
   const handleAICorrect = async () => {
     if (captions.length === 0) { setAiError("Importez d'abord un fichier .srt"); return; }
-    const selected = customPrompts.find((p) => p.id === selectedPromptId);
-    const prompt = selected?.prompt.trim() ?? "";
-    if (!prompt) { setAiError("Sélectionnez un prompt ou créez-en un"); return; }
+    if (!promptStorageAvailable) {
+      setAiError(promptStorageMessage ?? "Les prompts ne sont pas disponibles sur cette instance.");
+      return;
+    }
+    if (!selectedPromptId || !selectedPrompt) { setAiError("Sélectionnez un prompt disponible"); return; }
+    if (selectedPromptNeedsHighlight2 && !highlight2Enabled) {
+      setAiError("Le preset actuel n'active pas Highlight 2. Choisissez HL1 ou activez Highlight 2 dans le preset.");
+      return;
+    }
 
     setAiLoading(true);
     setAiError("");
@@ -283,12 +307,23 @@ export default function CaptionsGenerateForm({
       const res = await fetch("/api/captions/correct", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ captions, prompt, model: aiModel }),
+        body: JSON.stringify({
+          captions: applyHighlightMarkersToCaptions(captions, highlighted),
+          promptId: selectedPromptId,
+          model: aiModel,
+        }),
       });
-      const data = await res.json() as { captions?: Caption[]; error?: string };
+      const data = await res.json() as {
+        captions?: Caption[];
+        highlighted?: Array<[string, number]>;
+        error?: string;
+      };
       if (!res.ok || !data.captions) throw new Error(data.error ?? "Erreur inconnue");
-      setCaptions(data.captions);
-      setHighlighted(new Map()); // reset highlights after correction
+      const realigned = realignTimedCaptions(timedSegments, data.captions, undefined, timingStatuses);
+      setTimedSegments(realigned.segments);
+      setCaptions(timedSegmentsToCaptions(realigned.segments));
+      setHighlighted(new Map(data.highlighted ?? []));
+      setTimingStatuses(realigned.timingStatuses);
     } catch (err) {
       setAiError(String(err instanceof Error ? err.message : err));
     } finally {
@@ -407,6 +442,8 @@ export default function CaptionsGenerateForm({
                       setShowTrimEditor(true);
                       setCaptions([]);
                       setHighlighted(new Map());
+                      setTimedSegments(null);
+                      setTimingStatuses(null);
                     } catch {
                       // Silently ignore malformed JSON
                     }
@@ -423,6 +460,8 @@ export default function CaptionsGenerateForm({
                     setShowTrimEditor(true);
                     setCaptions([]);
                     setHighlighted(new Map());
+                    setTimedSegments(null);
+                    setTimingStatuses(null);
                   });
                 }
               }}
@@ -435,9 +474,12 @@ export default function CaptionsGenerateForm({
           <SegmentTrimEditor
             segments={pendingSegments}
             videoFile={videoFile}
-            onConfirm={(srt) => {
-              const parsed = parseSRT(srt);
-              setCaptions(parsed);
+            onConfirm={(_srt, segs) => {
+              const nextTimedSegments = buildTimedSegmentsFromSegments(segs);
+              const hasOriginalWordData = segs.some((segment) => Array.isArray(segment.words) && segment.words.length > 0);
+              setTimedSegments(nextTimedSegments);
+              setTimingStatuses(buildTimingStatuses(nextTimedSegments.length, hasOriginalWordData ? "original" : "estimated"));
+              setCaptions(timedSegmentsToCaptions(nextTimedSegments));
               setHighlighted(new Map());
               setShowTrimEditor(false);
             }}
@@ -445,6 +487,8 @@ export default function CaptionsGenerateForm({
               setShowTrimEditor(false);
               setPendingSegments(null);
               setSubsFile(null);
+              setTimedSegments(null);
+              setTimingStatuses(null);
             }}
           />
         )}
@@ -517,7 +561,7 @@ export default function CaptionsGenerateForm({
                 </div>
 
                 {/* Custom prompts list */}
-                {customPrompts.length > 0 && (
+                {customPrompts.length > 0 ? (
                   <div className="flex flex-col gap-1.5 mb-3">
                     {customPrompts.map((p) => (
                       <div
@@ -532,71 +576,64 @@ export default function CaptionsGenerateForm({
                           onClick={() => setSelectedPromptId(p.id)}
                           className="flex-1 text-left text-xs px-3 py-2 text-violet-700"
                         >
-                          {selectedPromptId === p.id
-                            ? <span className="font-semibold">{p.name}</span>
-                            : p.name
-                          }
-                        </button>
-                        <button
-                          onClick={() => handleEditPrompt(p)}
-                          className="shrink-0 text-violet-300 hover:text-violet-600 transition-colors text-xs px-1"
-                          title="Modifier ce prompt"
-                        >
-                          ✎
-                        </button>
-                        <button
-                          onClick={() => handleDeletePrompt(p.id)}
-                          className="shrink-0 pr-2 text-violet-300 hover:text-red-400 transition-colors text-sm"
-                          title="Supprimer ce prompt"
-                        >
-                          ×
+                          <div className="flex items-center gap-2">
+                            {selectedPromptId === p.id
+                              ? <span className="font-semibold">{p.name}</span>
+                              : <span>{p.name}</span>
+                            }
+                            {p.autoHighlight.enabled && (
+                              <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+                                {formatAutoHighlightModeLabel(p.autoHighlight.mode)}
+                              </span>
+                            )}
+                          </div>
+                          {p.autoHighlight.enabled && (
+                            <p className="mt-1 text-[10px] text-violet-400">
+                              Auto-highlight {formatAutoHighlightPlacementLabel(p.autoHighlight.placement)}
+                            </p>
+                          )}
                         </button>
                       </div>
                     ))}
                   </div>
+                ) : (
+                  <div className="mb-3 rounded-xl border border-violet-100 bg-white px-3 py-2.5">
+                    <p className="text-[11px] text-violet-500">
+                      Aucun prompt disponible pour le moment. Contactez votre administrateur.
+                    </p>
+                  </div>
                 )}
 
-                {/* Add prompt form */}
-                {showNewPromptForm ? (
-                  <div className="mb-3 bg-white border border-violet-200 rounded-xl p-3 flex flex-col gap-2">
-                    <p className="text-xs font-semibold text-violet-700 mb-0.5">{editingPromptId ? "Modifier le prompt" : "Nouveau prompt"}</p>
-                    <input
-                      autoFocus
-                      value={newPromptName}
-                      onChange={(e) => setNewPromptName(e.target.value)}
-                      placeholder="Nom du prompt…"
-                      className="w-full text-xs border border-violet-100 rounded-lg px-2.5 py-1.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-300"
-                    />
-                    <textarea
-                      value={newPromptText}
-                      onChange={(e) => setNewPromptText(e.target.value)}
-                      placeholder="Instructions de correction…"
-                      rows={3}
-                      className="w-full text-xs border border-violet-100 rounded-lg px-2.5 py-1.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-300 resize-none"
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleSavePrompt}
-                        disabled={!newPromptName.trim() || !newPromptText.trim()}
-                        className="flex-1 text-xs py-1.5 bg-violet-600 text-white rounded-lg font-medium hover:bg-violet-700 disabled:opacity-40 transition-colors"
-                      >
-                        Enregistrer
-                      </button>
-                      <button
-                        onClick={() => { setShowNewPromptForm(false); setEditingPromptId(null); setNewPromptName(""); setNewPromptText(""); }}
-                        className="flex-1 text-xs py-1.5 border border-violet-200 text-violet-600 rounded-lg hover:bg-violet-50 transition-colors"
-                      >
-                        Annuler
-                      </button>
-                    </div>
+                {selectedPrompt?.autoHighlight.enabled && (
+                  <div className="mb-3 rounded-xl border border-violet-200 bg-white px-3 py-2.5">
+                    <p className="text-[11px] font-semibold text-violet-700">Auto-highlight actif</p>
+                    <p className="mt-0.5 text-[11px] text-violet-600">
+                      {formatAutoHighlightModeLabel(selectedPrompt.autoHighlight.mode)} · consigne insérée {formatAutoHighlightPlacementLabel(selectedPrompt.autoHighlight.placement)}
+                    </p>
+                    {selectedPrompt.autoHighlight.prompt && (
+                      <p className="mt-1 text-[11px] text-violet-500">
+                        {selectedPrompt.autoHighlight.prompt}
+                      </p>
+                    )}
                   </div>
-                ) : (
-                  <button
-                    onClick={() => setShowNewPromptForm(true)}
-                    className="w-full text-xs py-1.5 mb-3 border border-dashed border-violet-300 text-violet-500 rounded-lg hover:bg-violet-50 transition-colors"
-                  >
-                    + Nouveau prompt
-                  </button>
+                )}
+
+                {selectedPromptNeedsHighlight2 && !highlight2Enabled && (
+                  <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
+                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                    <p className="text-[11px] leading-5">
+                      Le prompt sélectionné demande Highlight 2, mais ce preset ne l&apos;active pas.
+                    </p>
+                  </div>
+                )}
+
+                {!promptStorageAvailable && (
+                  <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
+                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                    <p className="text-[11px] leading-5">
+                      {promptStorageMessage ?? "Les prompts captions ne sont pas disponibles sur cette instance."}
+                    </p>
+                  </div>
                 )}
 
                 {aiError && (
@@ -605,7 +642,12 @@ export default function CaptionsGenerateForm({
 
                 <button
                   onClick={handleAICorrect}
-                  disabled={aiLoading || !selectedPromptId}
+                  disabled={
+                    !promptStorageAvailable ||
+                    aiLoading ||
+                    !selectedPromptId ||
+                    (selectedPromptNeedsHighlight2 && !highlight2Enabled)
+                  }
                   className="w-full flex items-center justify-center gap-2 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold transition-colors"
                 >
                   {aiLoading ? (
@@ -623,14 +665,19 @@ export default function CaptionsGenerateForm({
               </div>
             )}
 
-            <CaptionEditor
-              captions={captions}
-              onChange={setCaptions}
-              highlighted={highlighted}
-              onToggleWord={toggleWord}
-              baseTransform={baseTransform}
-              highlight2Enabled={highlight2Enabled}
-            />
+            <div className="cx" style={{ background: "transparent", minHeight: 0 }}>
+              <CaptionEditor
+                captions={captions}
+                onChange={handleCaptionEditorChange}
+                highlighted={highlighted}
+                onToggleWord={toggleWord}
+                timingStatuses={timingStatuses ?? undefined}
+                baseTransform={baseTransform}
+                highlightTransform={highlightTransform}
+                highlight2Transform={highlight2Transform}
+                highlight2Enabled={highlight2Enabled}
+              />
+            </div>
           </div>
         )}
 

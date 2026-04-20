@@ -32,9 +32,11 @@ const ZOOM_STEP = 0.1;
 const KEYBOARD_SCROLL_STEP = 120;
 
 export function Canvas({
+  fontRefreshKey,
   onLayoutDebugSnapshotChange,
   showResolvedTextPreview,
 }: {
+  fontRefreshKey?: string;
   onLayoutDebugSnapshotChange?: (snapshot: LayoutDebugSnapshot | null) => void;
   showResolvedTextPreview: boolean;
 }) {
@@ -84,12 +86,12 @@ export function Canvas({
 
       filters.set(id, {
         id,
-        blur: getPerLineTextGooFilterBlur(backgroundRadius, zoom),
+        blur: getPerLineTextGooFilterBlur(backgroundRadius),
       });
     }
 
     return [...filters.values()];
-  }, [blocks, zoom]);
+  }, [blocks]);
 
   /** Snap a value to the nearest GRID_SIZE increment if snap is on */
   const snap = useCallback((v: number) =>
@@ -294,6 +296,11 @@ export function Canvas({
 
     let cancelled = false;
     const fontSet = document.fonts;
+    const frameId = window.requestAnimationFrame(() => {
+      if (!cancelled) {
+        setFontMetricsVersion((current) => current + 1);
+      }
+    });
     const bump = () => {
       if (cancelled) return;
       setFontMetricsVersion((current) => current + 1);
@@ -308,10 +315,11 @@ export function Canvas({
 
     return () => {
       cancelled = true;
+      window.cancelAnimationFrame(frameId);
       fontSet.removeEventListener("loadingdone", bump);
       fontSet.removeEventListener("loadingerror", bump);
     };
-  }, [template.blocks, template.theme.customFonts, template.theme.fonts.body, template.theme.fonts.heading]);
+  }, [fontRefreshKey]);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, block: AnyBlock) => {
@@ -1061,16 +1069,18 @@ function BlockPreview({
   void _autoLayout;
   const textContentRef = useRef<HTMLDivElement>(null);
   const [fittedFontSizePx, setFittedFontSizePx] = useState<number | null>(null);
+  const useTransformScaling = !preferPrintUnits && zoom !== 1;
+  const styleScale = useTransformScaling ? 1 : zoom;
   const style: React.CSSProperties = {
     width: "100%",
     height: "100%",
     overflow: "hidden",
     userSelect: "none",
-    fontSize: zoom * 12,
+    fontSize: styleScale * 12,
   };
 
   const baseTextFontSizePx = block.type === "text"
-    ? (block.style.fontSize ?? 14) * (4 / 3) * zoom
+    ? (block.style.fontSize ?? 14) * (4 / 3) * styleScale
     : null;
 
   useLayoutEffect(() => {
@@ -1092,10 +1102,10 @@ function BlockPreview({
       const fitHeight = backgroundEnabled && backgroundMode === "fixed"
         ? backgroundSize.height - backgroundPadding.top - backgroundPadding.bottom
         : block.h - (backgroundEnabled ? backgroundPadding.top + backgroundPadding.bottom : 0);
-      const availableWidth = Math.max(0, fitWidth) * zoom;
-      const availableHeight = Math.max(0, fitHeight) * zoom;
-    const minFontSizePx = block.rules.minFontSize * (4 / 3) * zoom;
-    const step = Math.max(0.5, zoom * 0.5);
+      const availableWidth = Math.max(0, fitWidth) * styleScale;
+      const availableHeight = Math.max(0, fitHeight) * styleScale;
+    const minFontSizePx = block.rules.minFontSize * (4 / 3) * styleScale;
+    const step = Math.max(0.5, styleScale * 0.5);
     let nextFontSize = baseFontSize;
 
     contentNode.style.fontSize = `${baseFontSize}px`;
@@ -1115,7 +1125,7 @@ function BlockPreview({
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [baseTextFontSizePx, block, fontMetricsVersion, zoom]);
+  }, [baseTextFontSizePx, block, fontMetricsVersion, styleScale]);
 
   let content: React.ReactNode;
 
@@ -1137,14 +1147,14 @@ function BlockPreview({
       const backgroundPadding = getTextBackgroundPadding(block.style);
       const backgroundRadius = getTextBackgroundBorderRadius(block.style);
       const textFontSize = block.style.fontSize ?? 14;
-      const resolvedFontSize = fittedFontSizePx ?? (preferPrintUnits ? `${textFontSize * zoom}pt` : baseTextFontSizePx ?? undefined);
+      const resolvedFontSize = fittedFontSizePx ?? (preferPrintUnits ? `${textFontSize * styleScale}pt` : baseTextFontSizePx ?? undefined);
       const innerTextStyle: React.CSSProperties = {
         fontFamily: block.style.fontFamily ?? defaultFontFamily,
         fontSize: resolvedFontSize,
         fontWeight: block.style.fontWeight,
         color: block.style.color ?? defaultTextColor,
-        letterSpacing: block.style.letterSpacing !== undefined ? `${block.style.letterSpacing * zoom}px` : undefined,
-        textShadow: buildTextShadowValue(block.style, zoom),
+        letterSpacing: block.style.letterSpacing !== undefined ? `${block.style.letterSpacing * styleScale}px` : undefined,
+        textShadow: buildTextShadowValue(block.style, styleScale),
         textAlign: block.style.textAlign,
         textTransform: block.rules.uppercase ? "uppercase" : undefined,
         lineHeight: "normal",
@@ -1153,12 +1163,12 @@ function BlockPreview({
       };
 
       if (contentPadding.top === contentPadding.right && contentPadding.top === contentPadding.bottom && contentPadding.top === contentPadding.left) {
-        if (contentPadding.top > 0) innerTextStyle.padding = contentPadding.top * zoom;
+        if (contentPadding.top > 0) innerTextStyle.padding = contentPadding.top * styleScale;
       } else {
-        innerTextStyle.paddingTop = contentPadding.top * zoom;
-        innerTextStyle.paddingRight = contentPadding.right * zoom;
-        innerTextStyle.paddingBottom = contentPadding.bottom * zoom;
-        innerTextStyle.paddingLeft = contentPadding.left * zoom;
+        innerTextStyle.paddingTop = contentPadding.top * styleScale;
+        innerTextStyle.paddingRight = contentPadding.right * styleScale;
+        innerTextStyle.paddingBottom = contentPadding.bottom * styleScale;
+        innerTextStyle.paddingLeft = contentPadding.left * styleScale;
       }
 
       if (block.rules.maxLines) {
@@ -1183,7 +1193,7 @@ function BlockPreview({
       );
 
       if (backgroundEnabled && backgroundMode === "per-line") {
-        const vPadPx = (backgroundPadding.top + backgroundPadding.bottom) * zoom;
+        const vPadPx = (backgroundPadding.top + backgroundPadding.bottom) * styleScale;
         const uniformPad = backgroundPadding.top === backgroundPadding.right
           && backgroundPadding.top === backgroundPadding.bottom
           && backgroundPadding.top === backgroundPadding.left;
@@ -1191,19 +1201,19 @@ function BlockPreview({
         const backgroundColor = block.style.backgroundColor ?? "#FFFFFF";
         const shouldApplyPerLineGoo = shouldApplyPerLineTextGoo(backgroundRadius);
         const perLineGooFilterId = shouldApplyPerLineGoo ? getPerLineTextGooFilterId(backgroundRadius) : null;
-        const effectiveBackgroundRadius = getPerLineTextEffectiveRadius(backgroundRadius) * zoom;
+        const effectiveBackgroundRadius = getPerLineTextEffectiveRadius(backgroundRadius) * styleScale;
         const bridgeMetrics = textAlign === "left"
-          ? getPerLineTextSideBridgeMetrics(effectiveBackgroundRadius, backgroundPadding.left * zoom)
+          ? getPerLineTextSideBridgeMetrics(effectiveBackgroundRadius, backgroundPadding.left * styleScale)
           : textAlign === "right"
-            ? getPerLineTextSideBridgeMetrics(effectiveBackgroundRadius, backgroundPadding.right * zoom)
+            ? getPerLineTextSideBridgeMetrics(effectiveBackgroundRadius, backgroundPadding.right * styleScale)
             : { inset: 0, width: 0 };
         const backgroundSpanStyle: React.CSSProperties = {
           fontFamily: block.style.fontFamily ?? defaultFontFamily,
           fontSize: resolvedFontSize,
           fontWeight: block.style.fontWeight,
           color: block.style.color ?? defaultTextColor,
-          letterSpacing: block.style.letterSpacing !== undefined ? `${block.style.letterSpacing * zoom}px` : undefined,
-          textShadow: buildTextShadowValue(block.style, zoom),
+          letterSpacing: block.style.letterSpacing !== undefined ? `${block.style.letterSpacing * styleScale}px` : undefined,
+          textShadow: buildTextShadowValue(block.style, styleScale),
           textTransform: block.rules.uppercase ? "uppercase" : undefined,
           textAlign: block.style.textAlign,
           lineHeight: vPadPx > 0 ? `calc(1em + ${vPadPx}px)` : "normal",
@@ -1216,12 +1226,12 @@ function BlockPreview({
           borderRadius: effectiveBackgroundRadius > 0 ? effectiveBackgroundRadius : undefined,
           opacity: block.style.opacity,
           ...(uniformPad
-            ? { padding: backgroundPadding.top > 0 ? backgroundPadding.top * zoom : undefined }
+            ? { padding: backgroundPadding.top > 0 ? backgroundPadding.top * styleScale : undefined }
             : {
-                paddingTop: backgroundPadding.top > 0 ? backgroundPadding.top * zoom : undefined,
-                paddingRight: backgroundPadding.right > 0 ? backgroundPadding.right * zoom : undefined,
-                paddingBottom: backgroundPadding.bottom > 0 ? backgroundPadding.bottom * zoom : undefined,
-                paddingLeft: backgroundPadding.left > 0 ? backgroundPadding.left * zoom : undefined,
+                paddingTop: backgroundPadding.top > 0 ? backgroundPadding.top * styleScale : undefined,
+                paddingRight: backgroundPadding.right > 0 ? backgroundPadding.right * styleScale : undefined,
+                paddingBottom: backgroundPadding.bottom > 0 ? backgroundPadding.bottom * styleScale : undefined,
+                paddingLeft: backgroundPadding.left > 0 ? backgroundPadding.left * styleScale : undefined,
               }),
         };
         const textForegroundStyle: React.CSSProperties = {
@@ -1279,28 +1289,28 @@ function BlockPreview({
                   className="block-text-background"
                   style={{
                     backgroundColor: block.style.backgroundColor ?? "#FFFFFF",
-                    borderRadius: backgroundRadius > 0 ? backgroundRadius * zoom : undefined,
+                    borderRadius: backgroundRadius > 0 ? backgroundRadius * styleScale : undefined,
                     opacity: block.style.opacity,
                     display: backgroundMode === "fixed" ? "flex" : "inline-flex",
                     flexDirection: "column",
                     justifyContent: backgroundMode === "fixed" ? justifyContent : undefined,
-                    width: backgroundMode === "fixed" ? backgroundSize.width * zoom : "fit-content",
-                    height: backgroundMode === "fixed" ? backgroundSize.height * zoom : undefined,
+                    width: backgroundMode === "fixed" ? backgroundSize.width * styleScale : "fit-content",
+                    height: backgroundMode === "fixed" ? backgroundSize.height * styleScale : undefined,
                     padding: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
-                      ? backgroundPadding.top * zoom
+                      ? backgroundPadding.top * styleScale
                       : undefined,
                     paddingTop: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
                       ? undefined
-                      : backgroundPadding.top * zoom,
+                      : backgroundPadding.top * styleScale,
                     paddingRight: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
                       ? undefined
-                      : backgroundPadding.right * zoom,
+                      : backgroundPadding.right * styleScale,
                     paddingBottom: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
                       ? undefined
-                      : backgroundPadding.bottom * zoom,
+                      : backgroundPadding.bottom * styleScale,
                     paddingLeft: backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left
                       ? undefined
-                      : backgroundPadding.left * zoom,
+                      : backgroundPadding.left * styleScale,
                     boxSizing: "border-box",
                     maxWidth: "100%",
                     maxHeight: "100%",
@@ -1328,14 +1338,14 @@ function BlockPreview({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: 24 * zoom,
+            fontSize: 24 * styleScale,
             color: "rgba(255,255,255,0.6)",
             flexDirection: "column",
-            gap: 4 * zoom,
+            gap: 4 * styleScale,
           }}
         >
           <span>🎥</span>
-          {block.binding && <span style={{ fontSize: 10 * zoom, opacity: 0.7 }}>{block.binding}</span>}
+          {block.binding && <span style={{ fontSize: 10 * styleScale, opacity: 0.7 }}>{block.binding}</span>}
         </div>
       );
       break;
@@ -1362,7 +1372,7 @@ function BlockPreview({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: 24 * zoom,
+            fontSize: 24 * styleScale,
             color: "#9CA3AF",
           }}
         >
@@ -1400,7 +1410,7 @@ function BlockPreview({
         diamond:   "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
       };
       const clip = CLIP[block.shape] ?? "";
-      const br = block.shape === "circle" ? "50%" : `${(block.borderRadius ?? 0) * zoom}px`;
+      const br = block.shape === "circle" ? "50%" : `${(block.borderRadius ?? 0) * styleScale}px`;
       content = (
         <div
           style={{
@@ -1408,7 +1418,7 @@ function BlockPreview({
             height: "100%",
             backgroundColor: block.fillColor,
             borderRadius: br,
-            border: block.borderWidth ? `${block.borderWidth * zoom}px solid ${block.borderColor ?? "transparent"}` : undefined,
+            border: block.borderWidth ? `${block.borderWidth * styleScale}px solid ${block.borderColor ?? "transparent"}` : undefined,
             boxSizing: "border-box",
             clipPath: clip || undefined,
             opacity: block.opacity ?? 1,
@@ -1420,8 +1430,30 @@ function BlockPreview({
   }
 
   return (
-    <div onMouseDown={onMouseDown} onClick={(e) => e.stopPropagation()} style={{ width: "100%", height: "100%" }}>
-      {content}
+    <div
+      onMouseDown={onMouseDown}
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        width: "100%",
+        height: "100%",
+        overflow: useTransformScaling ? "hidden" : undefined,
+      }}
+    >
+      <div
+        style={useTransformScaling
+          ? {
+              width: block.w,
+              height: block.h,
+              transform: `scale(${zoom})`,
+              transformOrigin: "top left",
+            }
+          : {
+              width: "100%",
+              height: "100%",
+            }}
+      >
+        {content}
+      </div>
     </div>
   );
 }

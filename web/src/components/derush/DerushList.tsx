@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Scissors, Upload, Clock, CheckCircle, XCircle, Loader2, Film, Plus, X, ChevronDown, Settings } from "lucide-react";
 import type { DerushJobCreatePayload, DerushFormat } from "@/types/derush";
 
@@ -245,7 +246,7 @@ export function DerushList({ initialJobs }: { initialJobs: Job[] }) {
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-violet-600 rounded-xl flex items-center justify-center text-white">
+        <div className="w-10 h-10 bg-rose-600 rounded-xl flex items-center justify-center text-white">
           <Scissors className="w-5 h-5" />
         </div>
         <div>
@@ -259,7 +260,7 @@ export function DerushList({ initialJobs }: { initialJobs: Job[] }) {
         role="button"
         tabIndex={0}
         className={`relative border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-colors ${
-          dragging ? "border-violet-400 bg-violet-50" : "border-gray-200 hover:border-violet-300 hover:bg-gray-50"
+          dragging ? "border-rose-400 bg-rose-50" : "border-gray-200 hover:border-rose-300 hover:bg-gray-50"
         } ${submitting ? "pointer-events-none opacity-60" : ""}`}
         onDragEnter={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={(e) => { e.preventDefault(); setDragging(false); }}
@@ -288,7 +289,7 @@ export function DerushList({ initialJobs }: { initialJobs: Job[] }) {
               {uploadProgress[idx] !== undefined && (
                 <div className="w-20">
                   <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-violet-500 transition-all duration-150" style={{ width: `${uploadProgress[idx]}%` }} />
+                    <div className="h-full bg-rose-500 transition-all duration-150" style={{ width: `${uploadProgress[idx]}%` }} />
                   </div>
                 </div>
               )}
@@ -315,7 +316,7 @@ export function DerushList({ initialJobs }: { initialJobs: Job[] }) {
               type="button"
               onClick={() => setAnalysisMode(mode)}
               className={`rounded-xl border p-3 text-left transition-colors ${
-                analysisMode === mode ? "border-violet-500 bg-violet-50" : "border-gray-200 bg-white hover:border-gray-300"
+                analysisMode === mode ? "border-rose-500 bg-rose-50" : "border-gray-200 bg-white hover:border-gray-300"
               }`}
             >
               <div className="text-sm font-medium text-gray-800">{mode === "vision" ? "Vision IA" : "Transcription"}</div>
@@ -337,7 +338,7 @@ export function DerushList({ initialJobs }: { initialJobs: Job[] }) {
               <select
                 value={presetId}
                 onChange={(e) => setPresetId(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm pr-8 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm pr-8 focus:outline-none focus:ring-2 focus:ring-rose-500"
               >
                 <option value="">— Paramètres par défaut —</option>
                 {presets.map((p) => (
@@ -358,7 +359,7 @@ export function DerushList({ initialJobs }: { initialJobs: Job[] }) {
             <select
               value={visionProvider}
               onChange={(e) => setVisionProvider(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
             >
               <option value="heuristic">Heuristique (OpenCV — local, gratuit)</option>
             </select>
@@ -374,16 +375,16 @@ export function DerushList({ initialJobs }: { initialJobs: Job[] }) {
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-gray-700">Format de segmentation</label>
-                  <a href="/tools/derush/formats" className="flex items-center gap-1 text-xs text-violet-600 hover:underline">
+                  <Link href="/tools/derush/formats" className="flex items-center gap-1 text-xs text-rose-600 hover:underline">
                     <Settings className="w-3 h-3" />
                     Gérer les formats
-                  </a>
+                  </Link>
                 </div>
                 <div className="relative">
                   <select
                     value={formatId}
                     onChange={(e) => setFormatId(e.target.value)}
-                    className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm pr-8 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm pr-8 focus:outline-none focus:ring-2 focus:ring-rose-500"
                   >
                     <option value="">— Aucun format (découpe par défaut) —</option>
                     {formats.map((f) => (
@@ -409,7 +410,7 @@ export function DerushList({ initialJobs }: { initialJobs: Job[] }) {
                 type="checkbox"
                 checked={enableDiarization}
                 onChange={(e) => setEnableDiarization(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-rose-500"
               />
               <span className="text-sm text-gray-700">Activer la séparation par speaker (diarisation)</span>
             </label>
@@ -420,7 +421,7 @@ export function DerushList({ initialJobs }: { initialJobs: Job[] }) {
                 <select
                   value={transcrLang}
                   onChange={(e) => setTranscrLang(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
                 >
                   <option value="fr">Français</option>
                   <option value="en">English</option>
@@ -436,7 +437,7 @@ export function DerushList({ initialJobs }: { initialJobs: Job[] }) {
                 <select
                   value={transcrModel}
                   onChange={(e) => setTranscrModel(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
                 >
                   {WHISPER_MODELS.map((m) => (
                     <option key={m.value} value={m.value}>{m.label}</option>
@@ -488,7 +489,7 @@ export function DerushList({ initialJobs }: { initialJobs: Job[] }) {
         type="button"
         onClick={() => void submitJob()}
         disabled={pendingFiles.length === 0 || submitting}
-        className="w-full rounded-xl bg-violet-600 px-4 py-3 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+        className="w-full rounded-xl bg-rose-600 px-4 py-3 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
       >
         {submitting ? (
           <>
@@ -509,7 +510,7 @@ export function DerushList({ initialJobs }: { initialJobs: Job[] }) {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-gray-700">Analyses récentes</p>
-            <button type="button" onClick={() => void refreshJobs()} className="text-xs text-violet-600 hover:underline">
+            <button type="button" onClick={() => void refreshJobs()} className="text-xs text-rose-600 hover:underline">
               Actualiser
             </button>
           </div>
@@ -518,7 +519,7 @@ export function DerushList({ initialJobs }: { initialJobs: Job[] }) {
               <li key={job.id}>
                 <a
                   href={`/tools/derush/${job.id}`}
-                  className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 hover:border-violet-200 hover:bg-violet-50/30 transition-colors"
+                  className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 hover:border-rose-200 hover:bg-rose-50/30 transition-colors"
                 >
                   <Film className="w-5 h-5 text-gray-300 shrink-0" />
                   <div className="flex-1 min-w-0">

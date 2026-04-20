@@ -17,40 +17,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getR2PublicUrl } from "@/lib/r2";
+import { getR2PublicUrl, deleteFromR2, r2Configured } from "@/lib/r2";
+import { fetchRunpodStatus, runpodConfigured } from "@/lib/runpod";
 
-const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY;
+const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
 
-// RunPod status values
-type RunpodStatus =
-  | "IN_QUEUE"
-  | "IN_PROGRESS"
-  | "COMPLETED"
-  | "FAILED"
-  | "CANCELLED"
-  | "TIMED_OUT";
-
-interface RunpodStatusResponse {
-  id: string;
-  status: RunpodStatus;
-  output?: { video_url?: string; output_key?: string };
-  error?: string;
-}
-
-async function fetchRunpodStatus(runpodJobId: string): Promise<RunpodStatusResponse> {
-  const res = await fetch(
-    `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/status/${runpodJobId}`,
-    {
-      headers: { Authorization: `Bearer ${RUNPOD_API_KEY}` },
-      cache: "no-store",
-    }
-  );
-  if (!res.ok) {
-    throw new Error(`RunPod status API ${res.status}: ${await res.text()}`);
-  }
-  return res.json();
-}
+/** Jobs PROCESSING without resolution for longer than this are considered stalled. */
+const STALL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 export async function GET(
   _req: NextRequest,
@@ -84,72 +58,80 @@ export async function GET(
     });
   }
   if (job.status === "FAILED") {
-    return NextResponse.json({ status: "FAILED", error: "Le rendu a échoué" });
+    return NextResponse.json({ status: "FAILED", error: job.errorMsg ?? "Le rendu a échoué" });
   }
 
-  // ─── Mode local : DONE (équivalent COMPLETED) ─────────────────────────────
-  if (job.status === "DONE") {
-    return NextResponse.json({
-      status: "DONE",
-      videoUrl: job.outputUrl,
-      srtContent: job.srtContent ?? null,
-      presetId: job.presetId ?? null,
-    });
+  // ─── Stall detection ─────────────────────────────────────────────────────
+  // Gate: only declare "stall" on jobs that were actually submitted to RunPod.
+  // A QUEUED job with no runpodJobId is pre-submit (e.g. create race) — give it
+  // a shorter grace window and a distinct message so it can be distinguished.
+  if (job.status === "PROCESSING" || job.status === "QUEUED") {
+    const ageMs = Date.now() - job.updatedAt.getTime();
+    const stallWindow = job.runpodJobId ? STALL_MS : Math.min(STALL_MS, 15 * 60 * 1000); // 15 min for unsubmitted
+    if (ageMs > stallWindow) {
+      const errorMsg = job.runpodJobId
+        ? "Le rendu RunPod n'a plus répondu depuis plus de 2 heures"
+        : "Le job n'a jamais été soumis à RunPod — il peut être soumis à nouveau";
+      const stalled = await prisma.captionJob.update({
+        where: { id: job.id },
+        data: { status: "FAILED", errorMsg },
+      });
+      console.warn(`[render/captions/status] job ${job.id} stalled after ${Math.round(ageMs / 60_000)} min (runpodJobId=${job.runpodJobId ?? "none"}) — marked FAILED`);
+      return NextResponse.json({ status: stalled.status, error: errorMsg });
+    }
   }
 
   // ─── Si PROCESSING, interroger RunPod ────────────────────────────────────
   if (job.status === "PROCESSING" && job.runpodJobId) {
-    if (!RUNPOD_API_KEY || !RUNPOD_ENDPOINT_ID) {
+    if (!RUNPOD_API_KEY || !RUNPOD_ENDPOINT_ID || !runpodConfigured()) {
       return NextResponse.json({ status: job.status });
     }
 
     try {
-      const runpodStatus = await fetchRunpodStatus(job.runpodJobId);
+      const runpodRes = await fetchRunpodStatus<{ video_url?: string; output_key?: string }>(
+        RUNPOD_ENDPOINT_ID,
+        RUNPOD_API_KEY,
+        job.runpodJobId
+      );
 
-      if (
-        runpodStatus.status === "COMPLETED" &&
-        runpodStatus.output
-      ) {
-        // Build the public URL from the output key
-        const outputKey =
-          runpodStatus.output.output_key ?? job.outputKey ?? "";
-        const videoUrl =
-          runpodStatus.output.video_url ??
+      if (runpodRes.status === "COMPLETED" && runpodRes.output) {
+        const outputKey  = runpodRes.output.output_key ?? job.outputKey ?? "";
+        const videoUrl   =
+          runpodRes.output.video_url ??
           (outputKey ? getR2PublicUrl(outputKey) : null);
 
-        // Mettre à jour la DB
         await prisma.captionJob.update({
           where: { id: job.id },
-          data: {
-            status: "COMPLETED",
-            outputUrl: videoUrl ?? undefined,
-          },
+          data:  { status: "COMPLETED", outputUrl: videoUrl ?? undefined, inputKey: null },
         });
-
+        // Delete source video — no longer needed
+        if (job.inputKey && r2Configured()) {
+          deleteFromR2(job.inputKey).catch(() => { /* ignore */ });
+        }
         return NextResponse.json({ status: "COMPLETED", videoUrl });
       }
 
       if (
-        runpodStatus.status === "FAILED" ||
-        runpodStatus.status === "CANCELLED" ||
-        runpodStatus.status === "TIMED_OUT"
+        runpodRes.status === "FAILED" ||
+        runpodRes.status === "CANCELLED" ||
+        runpodRes.status === "TIMED_OUT"
       ) {
+        const errorMsg = runpodRes.error ?? `RunPod job ${runpodRes.status}`;
         await prisma.captionJob.update({
           where: { id: job.id },
-          data: { status: "FAILED" },
+          data:  { status: "FAILED", errorMsg, inputKey: null },
         });
-        return NextResponse.json({
-          status: "FAILED",
-          error: runpodStatus.error ?? `RunPod job ${runpodStatus.status}`,
-        });
+        if (job.inputKey && r2Configured()) {
+          deleteFromR2(job.inputKey).catch(() => { /* ignore */ });
+        }
+        return NextResponse.json({ status: "FAILED", error: errorMsg });
       }
 
-      // IN_QUEUE ou IN_PROGRESS → on retourne PROCESSING
+      // IN_QUEUE ou IN_PROGRESS
       return NextResponse.json({ status: "PROCESSING" });
     } catch (err) {
       console.error("[render/captions/status] RunPod status fetch failed:", err);
-      // On retourne quand même le statut DB sans planter
-      return NextResponse.json({ status: job.status });
+      return NextResponse.json({ status: job.status, runpodUnreachable: true });
     }
   }
 
@@ -170,5 +152,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const job = await prisma.captionJob.findUnique({ where: { id } });
   if (!job) return NextResponse.json({ error: "Job introuvable" }, { status: 404 });
   await prisma.captionJob.delete({ where: { id } });
+  console.warn(`[captions/DELETE] admin=${session.user.id} deleted captionJob=${id} status=${job.status}`);
   return NextResponse.json({ ok: true });
 }

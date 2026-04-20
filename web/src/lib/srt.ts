@@ -5,6 +5,9 @@
   text: string    // possibly multi-line
 }
 
+const HIGHLIGHT_OPEN_RE = /^\{HL:(\d+)\}/
+const HIGHLIGHT_CLOSE_RE = /^\{\/HL:(\d+)\}/
+
 /** Parse an SRT string into Caption objects */
 export function parseSRT(raw: string): Caption[] {
   const blocks = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split(/\n{2,}/)
@@ -23,6 +26,27 @@ export function parseSRT(raw: string): Caption[] {
   return captions
 }
 
+function serializeCaptionText(text: string, captionIndex: number, highlighted?: Map<string, number>): string {
+  if (!highlighted || highlighted.size === 0) return text
+
+  const words = text.split(/(\s+)/)
+  let wordIdx = 0
+  const out: string[] = []
+
+  for (const token of words) {
+    if (/^\s+$/.test(token)) {
+      out.push(token)
+    } else {
+      const key = `${captionIndex}-${wordIdx}`
+      const group = highlighted.get(key)
+      out.push(group !== undefined ? `{HL:${group}}${token}{/HL:${group}}` : token)
+      wordIdx++
+    }
+  }
+
+  return out.join('')
+}
+
 /**
  * Re-serialize Caption[] back to SRT string.
  * If `highlighted` is provided (Map of "captionIndex-wordIndex" → group index),
@@ -31,25 +55,21 @@ export function parseSRT(raw: string): Caption[] {
  */
 export function serializeSRT(captions: Caption[], highlighted?: Map<string, number>): string {
   return captions.map(c => {
-    let text = c.text
-    if (highlighted && highlighted.size > 0) {
-      const words = c.text.split(/(\s+)/) // keep whitespace tokens
-      let wordIdx = 0
-      const out: string[] = []
-      for (const token of words) {
-        if (/^\s+$/.test(token)) {
-          out.push(token)
-        } else {
-          const key = `${c.index}-${wordIdx}`
-          const group = highlighted.get(key)
-          out.push(group !== undefined ? `{HL:${group}}${token}{/HL:${group}}` : token)
-          wordIdx++
-        }
-      }
-      text = out.join('')
-    }
+    const text = serializeCaptionText(c.text, c.index, highlighted)
     return `${c.index}\n${c.start} --> ${c.end}\n${text}`
   }).join('\n\n') + '\n'
+}
+
+export function applyHighlightMarkersToCaptions(
+  captions: Caption[],
+  highlighted?: Map<string, number>
+): Caption[] {
+  if (!highlighted || highlighted.size === 0) return captions
+
+  return captions.map(c => ({
+    ...c,
+    text: serializeCaptionText(c.text, c.index, highlighted),
+  }))
 }
 
 /** Build a File from the current caption list */
@@ -67,39 +87,93 @@ export function normalizeWord(w: string): string {
   return w.toLowerCase().replace(/[^a-z0-9àâäéèêëîïôùûüç'-]/gi, '').trim()
 }
 
+function parseHighlightedCaptionText(
+  text: string,
+  captionIndex: number,
+  highlighted: Map<string, number>
+): { text: string; malformed: boolean } {
+  const tokens = text.split(/(\s+)/)
+  const cleanTokens: string[] = []
+  let wordIdx = 0
+  let activeGroup: number | null = null
+  let malformed = false
+
+  for (const token of tokens) {
+    if (token === '' || /^\s+$/.test(token)) {
+      cleanTokens.push(token)
+      continue
+    }
+
+    let cleanToken = ''
+    let tokenGroup: number | null = activeGroup
+    let cursor = 0
+
+    while (cursor < token.length) {
+      const rest = token.slice(cursor)
+      const openMatch = HIGHLIGHT_OPEN_RE.exec(rest)
+      if (openMatch) {
+        const group = parseInt(openMatch[1], 10)
+        if (activeGroup !== null || (tokenGroup !== null && tokenGroup !== group)) {
+          malformed = true
+        }
+        activeGroup = group
+        tokenGroup = group
+        cursor += openMatch[0].length
+        continue
+      }
+
+      const closeMatch = HIGHLIGHT_CLOSE_RE.exec(rest)
+      if (closeMatch) {
+        const group = parseInt(closeMatch[1], 10)
+        if (activeGroup === null || activeGroup !== group) {
+          malformed = true
+        }
+        activeGroup = null
+        cursor += closeMatch[0].length
+        continue
+      }
+
+      cleanToken += token[cursor]
+      cursor += 1
+    }
+
+    if (cleanToken !== '') {
+      if (tokenGroup !== null) {
+        highlighted.set(`${captionIndex}-${wordIdx}`, tokenGroup)
+      }
+      cleanTokens.push(cleanToken)
+      wordIdx += 1
+    }
+  }
+
+  if (activeGroup !== null) {
+    malformed = true
+  }
+
+  return { text: cleanTokens.join(''), malformed }
+}
+
+export function parseHighlightedCaptions(
+  rawCaptions: Caption[]
+): { captions: Caption[], highlighted: Map<string, number>, malformed: boolean } {
+  const highlighted = new Map<string, number>()
+  let malformed = false
+
+  const captions = rawCaptions.map(c => {
+    const parsed = parseHighlightedCaptionText(c.text, c.index, highlighted)
+    malformed = malformed || parsed.malformed
+    return { ...c, text: parsed.text }
+  })
+
+  return { captions, highlighted, malformed }
+}
+
 /**
  * Parse an SRT that may contain {HL:N}word{/HL:N} markers.
  * Returns clean captions (markers stripped) + the reconstructed highlighted map
  * so the CaptionEditor can display the words as already-highlighted without
  * showing raw marker text.
  */
-export function parseHighlightedSRT(raw: string): { captions: Caption[], highlighted: Map<string, number> } {
-  const parsed = parseSRT(raw)
-  const highlighted = new Map<string, number>()
-  const HL_RE = /^\{HL:(\d+)\}([\s\S]*?)\{\/HL:\d+\}$/
-
-  const captions = parsed.map(c => {
-    const tokens = c.text.split(/(\s+)/)
-    let wordIdx = 0
-    const cleanTokens: string[] = []
-
-    for (const token of tokens) {
-      if (token === '' || /^\s+$/.test(token)) {
-        cleanTokens.push(token)
-      } else {
-        const m = HL_RE.exec(token)
-        if (m) {
-          highlighted.set(`${c.index}-${wordIdx}`, parseInt(m[1], 10))
-          cleanTokens.push(m[2])
-        } else {
-          cleanTokens.push(token)
-        }
-        wordIdx++
-      }
-    }
-
-    return { ...c, text: cleanTokens.join('') }
-  })
-
-  return { captions, highlighted }
+export function parseHighlightedSRT(raw: string): { captions: Caption[], highlighted: Map<string, number>, malformed: boolean } {
+  return parseHighlightedCaptions(parseSRT(raw))
 }

@@ -15,7 +15,7 @@ type SegmentState = {
 type Props = {
   segments: Segment[];
   videoFile: File | null;
-  onConfirm: (srt: string) => void;
+  onConfirm: (srt: string, segments: Segment[]) => void;
   onCancel: () => void;
 };
 
@@ -72,7 +72,31 @@ function buildFinalSrt(segments: Segment[], states: SegmentState[]): string {
   return lines.join("\n");
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+function buildFinalSegments(segments: Segment[], states: SegmentState[]): Segment[] {
+  const result: Segment[] = [];
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const state = states[i];
+    if (!state.included) continue;
+    const hasWords = Array.isArray(seg.words) && seg.words.length > 0;
+    if (hasWords) {
+      const words = seg.words!;
+      const si = Math.min(state.trimStartIdx, words.length - 1);
+      const ei = Math.max(Math.min(state.trimEndIdx, words.length - 1), si);
+      const trimmedWords = words.slice(si, ei + 1);
+      result.push({
+        start: trimmedWords[0].start,
+        end: trimmedWords[trimmedWords.length - 1].end,
+        text: trimmedWords.map((w) => w.word).join(" "),
+        words: trimmedWords,
+        ...(seg.speaker ? { speaker: seg.speaker } : {}),
+      });
+    } else {
+      result.push({ start: seg.start, end: seg.end, text: seg.text, ...(seg.speaker ? { speaker: seg.speaker } : {}) });
+    }
+  }
+  return result;
+}
 
 export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -155,7 +179,8 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
 
   const handleConfirm = () => {
     const srt = buildFinalSrt(segments, states);
-    onConfirm(srt);
+    const segs = buildFinalSegments(segments, states);
+    onConfirm(srt, segs);
   };
 
   return (

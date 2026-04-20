@@ -53,18 +53,28 @@ def _optimal_batch_size(device: str) -> int:
 def _get_whisper_model(model_size: str, device: str, compute_type: str) -> Any:
     import whisperx
     key = f"{model_size}|{device}|{compute_type}"
-    if key not in _WHISPER_CACHE:
-        print(f"[transcribe] chargement modèle {model_size} ({device}/{compute_type})...", flush=True)
-        _WHISPER_CACHE[key] = whisperx.load_model(model_size, device, compute_type=compute_type)
+    if key in _WHISPER_CACHE:
+        print(f"[transcribe] modèle {model_size} réutilisé depuis le cache ({device}/{compute_type})", flush=True)
+        return _WHISPER_CACHE[key]
+
+    t0 = time.time()
+    print(f"[transcribe] chargement modèle {model_size} ({device}/{compute_type})...", flush=True)
+    _WHISPER_CACHE[key] = whisperx.load_model(model_size, device, compute_type=compute_type)
+    print(f"[transcribe] modèle {model_size} prêt — {time.time()-t0:.1f}s", flush=True)
     return _WHISPER_CACHE[key]
 
 
 def _get_align_model(language: str, device: str) -> tuple[Any, Any]:
     import whisperx
     key = f"{language}|{device}"
-    if key not in _ALIGN_CACHE:
-        print(f"[transcribe] chargement modèle d'alignement ({language})...", flush=True)
-        _ALIGN_CACHE[key] = whisperx.load_align_model(language_code=language, device=device)
+    if key in _ALIGN_CACHE:
+        print(f"[transcribe] alignement {language} réutilisé depuis le cache ({device})", flush=True)
+        return _ALIGN_CACHE[key]
+
+    t0 = time.time()
+    print(f"[transcribe] chargement modèle d'alignement ({language})...", flush=True)
+    _ALIGN_CACHE[key] = whisperx.load_align_model(language_code=language, device=device)
+    print(f"[transcribe] alignement {language} prêt — {time.time()-t0:.1f}s", flush=True)
     return _ALIGN_CACHE[key]
 
 

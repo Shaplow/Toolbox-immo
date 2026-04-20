@@ -20,9 +20,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { uploadToR2, deleteFromR2, r2Configured, getR2PublicUrl, createPresignedUploadUrl } from "@/lib/r2";
-import { submitRunpodJob } from "@/lib/runpod";
+import { uploadToR2, deleteFromR2, r2Configured, createPresignedUploadUrl } from "@/lib/r2";
+import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 
 const RUNPOD_API_KEY    = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -31,12 +32,25 @@ const CAPTIONS_API_URL  = process.env.CAPTIONS_API_URL ?? "http://localhost:8000
 // HF_TOKEN transmis au worker uniquement si l'utilisateur active la diarisation
 const HF_TOKEN          = process.env.HF_TOKEN;
 
+
 const AUDIO_EXTENSIONS = new Set([
   "mp3", "wav", "m4a", "flac", "ogg", "aac", "mp4", "mov", "mkv", "webm",
 ]);
 
-function runpodConfigured(): boolean {
-  return !!(RUNPOD_API_KEY && RUNPOD_ENDPOINT_ID);
+const ALLOWED_MODELS = new Set([
+  "turbo", "large-v3", "large-v3-turbo", "medium", "small", "base", "tiny",
+]);
+
+const ALLOWED_LANGUAGE_RE = /^[a-z]{2,3}$|^auto$/;
+
+function sanitizeModel(value: unknown): string {
+  const s = String(value ?? "turbo").trim().toLowerCase();
+  return ALLOWED_MODELS.has(s) ? s : "turbo";
+}
+
+function sanitizeLanguage(value: unknown): string {
+  const s = String(value ?? "fr").trim().toLowerCase();
+  return ALLOWED_LANGUAGE_RE.test(s) ? s : "fr";
 }
 
 function toBoolean(value: FormDataEntryValue | null, def = false): boolean {
@@ -54,11 +68,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
   const isAdmin = session.user.role === "ADMIN";
-  if (!isAdmin) {
-    const { hasTool, TOOLS } = await import("@/lib/permissions");
-    if (!(await hasTool(session.user.id, TOOLS.TRANSCRIPTION))) {
-      return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
-    }
+  if (!isAdmin && !(await hasTool(session.user.id, TOOLS.TRANSCRIPTION))) {
+    return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
   // ─── Mode RunPod via JSON (presigned URL — pas de fichier dans Next.js) ──
@@ -87,9 +98,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const model            = String(body.model ?? "turbo");
-    const language         = String(body.language ?? "fr");
+    const model            = sanitizeModel(body.model);
+    const language         = sanitizeLanguage(body.language);
     const enableDiarization = String(body.enable_diarization ?? "false").toLowerCase() === "true";
+    if (enableDiarization && !HF_TOKEN) {
+      return NextResponse.json(
+        { error: "La diarisation n’est pas disponible sur ce serveur (HF_TOKEN non configuré)." },
+        { status: 503 }
+      );
+    }
     const userId = session.user.id;
     const jobTimestamp = Date.now();
 
@@ -148,9 +165,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const model            = String(formData.get("model") ?? "turbo");
-  const language         = String(formData.get("language") ?? "fr");
+  const model            = sanitizeModel(formData.get("model"));
+  const language         = sanitizeLanguage(formData.get("language"));
   const enableDiarization = toBoolean(formData.get("enable_diarization"));
+  if (enableDiarization && !HF_TOKEN) {
+    return NextResponse.json(
+      { error: "La diarisation n’est pas disponible sur ce serveur (HF_TOKEN non configuré)." },
+      { status: 503 }
+    );
+  }
 
   const jobTimestamp = Date.now();
   const userId = session.user.id;
@@ -265,6 +288,7 @@ export async function POST(req: NextRequest) {
       model,
       language,
       enableDiarization,
+      outputJsonKey,
     },
   });
 

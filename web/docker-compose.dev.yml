@@ -1,12 +1,12 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: templategen-db
+    container_name: toolbox-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: templategen
-      POSTGRES_PASSWORD: templategen
-      POSTGRES_DB: templategen
+      POSTGRES_USER: toolbox
+      POSTGRES_PASSWORD: toolbox
+      POSTGRES_DB: toolbox
     ports:
       - "5432:5432"
     volumes:

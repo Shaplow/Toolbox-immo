@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type FontAsset = {
   id: string;
@@ -24,6 +24,12 @@ function isCaptionCompatible(font: Pick<FontAsset, "originalName" | "url">): boo
   return CAPTION_EXTENSIONS.has(getExtension(font));
 }
 
+async function readJsonSafely<T>(res: Response): Promise<T | null> {
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) return null;
+  return await res.json() as T;
+}
+
 export function AdminFontsPanel() {
   const [fonts, setFonts] = useState<FontAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,15 +37,10 @@ export function AdminFontsPanel() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  async function readJsonSafely<T>(res: Response): Promise<T | null> {
-    const contentType = res.headers.get("content-type") ?? "";
-    if (!contentType.includes("application/json")) return null;
-    return await res.json() as T;
-  }
-
-  async function loadFonts(options?: { silent?: boolean }) {
+  const loadFonts = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) setLoading(true);
     setError(null);
     try {
@@ -53,7 +54,7 @@ export function AdminFontsPanel() {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -76,7 +77,7 @@ export function AdminFontsPanel() {
         setSyncing(false);
       }
     })();
-  }, []);
+  }, [loadFonts]);
 
   async function handleUpload(file: File) {
     setUploading(true);
@@ -96,15 +97,16 @@ export function AdminFontsPanel() {
   }
 
   async function handleDelete(font: FontAsset) {
-    if (!window.confirm(`Supprimer la police ${font.family} ?`)) return;
     setError(null);
     try {
       const res = await fetch(`/api/font-assets/${font.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({})) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Suppression impossible");
       setFonts((current) => current.filter((item) => item.id !== font.id));
+      setConfirmDeleteId(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Suppression impossible");
+      setConfirmDeleteId(null);
     }
   }
 
@@ -224,13 +226,32 @@ export function AdminFontsPanel() {
                     >
                       Ouvrir
                     </a>
-                    <button
-                      type="button"
-                      onClick={() => void handleDelete(font)}
-                      className="px-3 py-1.5 text-xs rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
-                    >
-                      Supprimer
-                    </button>
+                    {confirmDeleteId === font.id ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void handleDelete(font)}
+                          className="px-3 py-1.5 text-xs rounded-lg bg-red-500 text-white hover:bg-red-600"
+                        >
+                          Confirmer
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50"
+                        >
+                          Annuler
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(font.id)}
+                        className="px-3 py-1.5 text-xs rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
+                      >
+                        Supprimer
+                      </button>
+                    )}
                   </div>
                 </div>
               );

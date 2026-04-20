@@ -23,7 +23,7 @@ interface RunpodStatusResponse {
 async function fetchRunpodStatus(jobId: string): Promise<RunpodStatusResponse> {
   const res = await fetch(
     `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/status/${jobId}`,
-    { headers: { Authorization: `Bearer ${RUNPOD_API_KEY}` }, cache: "no-store" }
+    { headers: { Authorization: `Bearer ${RUNPOD_API_KEY}` }, cache: "no-store", signal: AbortSignal.timeout(10_000) }
   );
   if (!res.ok) throw new Error(`RunPod status ${res.status}`);
   return res.json();
@@ -110,6 +110,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
       // IN_QUEUE / IN_PROGRESS → on retourne le statut courant
     } catch (e) {
       console.error("[Render polling RunPod]", e);
+      // Signal RunPod unreachable so the client can show a warning rather than
+      // silently appearing stuck on every poll.
+      return NextResponse.json({ ...render, runpodUnreachable: true });
     }
   } else if (
     render.status === "PROCESSING" &&
@@ -166,5 +169,6 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const render = await prisma.render.findUnique({ where: { id } });
   if (!render) return NextResponse.json({ error: "Render introuvable" }, { status: 404 });
   await prisma.render.delete({ where: { id } });
+  console.warn(`[renders/DELETE] admin=${session.user.id} deleted render=${id} status=${render.status}`);
   return NextResponse.json({ ok: true });
 }

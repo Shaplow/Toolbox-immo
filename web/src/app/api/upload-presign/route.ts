@@ -24,11 +24,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Type de fichier non supporté" }, { status: 400 });
   }
 
+  // Require size so we can reject oversized requests before generating the URL.
+  // The app-level check is the primary size gate; presigned PUT URLs do not carry
+  // a built-in size policy in standard S3/R2, so we rely on client honesty for the
+  // actual upload size. Future hardening: switch to presigned POST with conditions.
+  if (typeof size !== "number" || size <= 0) {
+    return NextResponse.json(
+      { error: "La taille du fichier (size) est requise" },
+      { status: 400 }
+    );
+  }
+
   const isVideo = ALLOWED_VIDEO_TYPES.includes(contentType);
   const isAudio = ALLOWED_AUDIO_TYPES.includes(contentType);
   const maxSize = isVideo ? MAX_VIDEO_SIZE : isAudio ? MAX_AUDIO_SIZE : MAX_IMAGE_SIZE;
 
-  if (typeof size === "number" && size > maxSize) {
+  if (size > maxSize) {
     return NextResponse.json(
       { error: `Fichier trop volumineux (max ${isVideo ? "2000" : isAudio ? "200" : "50"} MB)` },
       { status: 400 }

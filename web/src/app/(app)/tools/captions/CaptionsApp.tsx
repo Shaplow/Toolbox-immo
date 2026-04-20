@@ -5,54 +5,18 @@ import type { ReactNode } from 'react'
 import Link from 'next/link'
 import {
   Film, Type, Sparkles, LayoutTemplate, Eye,
-  Bold, Italic, Upload, Layers, FileText, Settings2, X, BookMarked, Save, ChevronLeft
+  Bold, Italic, Upload, Layers, FileText, Settings2, X, Save, ChevronLeft
 } from 'lucide-react'
 import CaptionsCard from '@/components/captions/CaptionsCard'
 import { CaptionsField } from '@/components/captions/CaptionsField'
 import CaptionEditor from '@/components/captions/CaptionEditor'
+import { getNextHighlightGroup } from '@/lib/captionHighlightCycle'
+import { DEFAULT_CAPTION_CONFIG, mergeCaptionConfig, type CaptionConfigState } from '@/lib/captionPresetConfig'
 import { Caption, parseSRT, serializeSRT } from '@/lib/srt'
 
 const API_BASE = '/api/captions'
 
-type ConfigState = {
-  base: { font: string; size_ratio: number; bold: boolean; italic: boolean; text_transform: 'none'|'upper'|'lower'|'title'; color: string; spacing: number }
-  highlight: { font: string; size_ratio: number; bold: boolean; italic: boolean; text_transform: 'none'|'upper'|'lower'|'title'; color: string; spacing: number }
-  highlight2: { enabled: boolean; font: string; size_ratio: number; bold: boolean; italic: boolean; text_transform: 'none'|'upper'|'lower'|'title'; color: string; spacing: number }
-  layout: {
-    anchor: 'bottom' | 'center' | 'top'
-    max_lines: number
-    line_gap: number
-    max_width_ratio: number
-    vertical_offset: number
-    safe_left: number
-    safe_right: number
-    safe_top: number
-    safe_bottom: number
-    auto_safe_area: boolean
-  }
-  effects: {
-    shadow_enabled: boolean
-    shadow_distance: number
-    shadow_blur: number
-    shadow_angle: number
-    shadow_alpha: number
-    shadow_color: string
-    shadow_targets: { base: boolean; highlight: boolean; highlight2: boolean }
-    glow_enabled: boolean
-    glow_color: string
-    glow_color_auto: boolean
-    glow_targets: { base: boolean; highlight: boolean; highlight2: boolean }
-    glow_intensity: number
-    outline_enabled: boolean
-    outline_color: string
-    outline_width: number
-    outline_targets: { base: boolean; highlight: boolean; highlight2: boolean }
-  }
-  animation: 'none' | 'appear' | 'reveal' | 'word_pop'
-  animation_enabled: boolean
-  export_profile: 'draft' | 'balanced' | 'final'
-  preview_time: number
-}
+type ConfigState = CaptionConfigState
 
 /** Preset stocké en base de données */
 type Preset = {
@@ -63,25 +27,7 @@ type Preset = {
   createdAt: string
 }
 
-const emptyConfig: ConfigState = {
-  base: { font: 'Playfair Display SemiBold', size_ratio: 0.062, bold: true, italic: false, text_transform: 'none', color: '#ffffff', spacing: 0 },
-  highlight: { font: 'Didot', size_ratio: 0.068, bold: false, italic: true, text_transform: 'none', color: '#c88b3a', spacing: 0 },
-  highlight2: { enabled: false, font: 'Didot', size_ratio: 0.068, bold: false, italic: true, text_transform: 'none', color: '#3ab8c8', spacing: 0 },
-  layout: {
-    anchor: 'center', max_lines: 2, line_gap: 0.22, max_width_ratio: 1.0,
-    vertical_offset: 0, safe_left: 0.06, safe_right: 0.06, safe_top: 0.08, safe_bottom: 0.18, auto_safe_area: true,
-  },
-  effects: {
-    shadow_enabled: false, shadow_distance: 0, shadow_blur: 0, shadow_angle: 90, shadow_alpha: 0.45, shadow_color: '#000000',
-    shadow_targets: { base: true, highlight: true, highlight2: true },
-    glow_enabled: false, glow_color: '#c88b3a', glow_color_auto: false,
-    glow_targets: { base: true, highlight: true, highlight2: true },
-    glow_intensity: 0,
-    outline_enabled: false, outline_color: '#000000', outline_width: 3,
-    outline_targets: { base: true, highlight: true, highlight2: true },
-  },
-  animation: 'reveal', animation_enabled: true, export_profile: 'balanced', preview_time: 0,
-}
+const emptyConfig: ConfigState = DEFAULT_CAPTION_CONFIG
 
 // ── Session persistence ───────────────────────────────────────────────────────
 // Survit à la navigation inter-onglets. TTL = 10 min.
@@ -134,18 +80,7 @@ export default function CaptionsApp({
   const [videoFile, setVideoFile] = useState<File | null>(null)
   const [subsFile, setSubsFile] = useState<File | null>(null)
   const [captions, setCaptions] = useState<Caption[]>(() => draft?.captions ?? [])
-  const [config, setConfig] = useState<ConfigState>(() => draft ? {
-    ...emptyConfig, ...draft.config,
-    base:       { ...emptyConfig.base,       ...draft.config.base },
-    highlight:  { ...emptyConfig.highlight,  ...draft.config.highlight },
-    highlight2: { ...emptyConfig.highlight2, ...draft.config.highlight2 },
-    effects: {
-      ...emptyConfig.effects, ...draft.config.effects,
-      shadow_targets: { ...emptyConfig.effects.shadow_targets, ...draft.config.effects.shadow_targets },
-      glow_targets:   { ...emptyConfig.effects.glow_targets,   ...draft.config.effects.glow_targets },
-    },
-    layout: { ...emptyConfig.layout, ...draft.config.layout },
-  } : emptyConfig)
+  const [config, setConfig] = useState<ConfigState>(() => draft ? mergeCaptionConfig(draft.config) : emptyConfig)
   const [previewUrl, setPreviewUrl] = useState('')
   const [videoUrl, setVideoUrl] = useState('')
   const [busy, setBusy] = useState(false)
@@ -157,8 +92,10 @@ export default function CaptionsApp({
   )
   const [presets, setPresets] = useState<Preset[]>([])
   const [presetsLoading, setPresetsLoading] = useState(true)
-  const [presetName, setPresetName] = useState('')
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null)
+  const [loadedPresetName, setLoadedPresetName] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'ok' | 'err'>('idle')
   // Mémo du nom de fichier SRT restauré (pour ré-affichage)
   const [restoredSubsFileName] = useState<string>(() => draft?.subsFileName ?? '')
   const [draftBanner, setDraftBanner] = useState<boolean>(() => !!draft)
@@ -174,40 +111,27 @@ export default function CaptionsApp({
     }
   }
 
-  const savePreset = async () => {
-    const name = presetName.trim()
-    if (!name) return
-    const res = await fetch('/api/caption-presets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, config }),
-    })
-    if (res.ok) {
-      setPresetName('')
-      await fetchPresets()
+  const updatePreset = async () => {
+    if (!initialPresetId) return
+    setSaving(true)
+    setSaveStatus('idle')
+    try {
+      const res = await fetch(`/api/caption-presets/${initialPresetId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config }),
+      })
+      setSaveStatus(res.ok ? 'ok' : 'err')
+    } catch {
+      setSaveStatus('err')
+    } finally {
+      setSaving(false)
+      setTimeout(() => setSaveStatus('idle'), 2000)
     }
   }
 
   const loadPreset = (p: Preset) => {
-    setConfig({
-      ...emptyConfig, ...p.config,
-      base:       { ...emptyConfig.base,       ...p.config.base },
-      highlight:  { ...emptyConfig.highlight,  ...p.config.highlight },
-      highlight2: { ...emptyConfig.highlight2, ...(p.config as ConfigState).highlight2 },
-      effects: {
-        ...emptyConfig.effects, ...p.config.effects,
-        shadow_targets: { ...emptyConfig.effects.shadow_targets, ...p.config.effects.shadow_targets },
-        glow_targets: { ...emptyConfig.effects.glow_targets, ...p.config.effects.glow_targets },
-        outline_targets: { ...emptyConfig.effects.outline_targets, ...(p.config.effects.outline_targets ?? {}) },
-      },
-      layout: { ...emptyConfig.layout, ...p.config.layout },
-    })
-  }
-
-  const deletePreset = async (id: string, isBuiltin: boolean) => {
-    if (isBuiltin) return
-    await fetch(`/api/caption-presets/${id}`, { method: 'DELETE' })
-    await fetchPresets()
+    setConfig(mergeCaptionConfig(p.config))
   }
 
   useEffect(() => {
@@ -225,19 +149,7 @@ export default function CaptionsApp({
       fetch(`${API_BASE}/api/default-config`)
         .then(r => r.ok ? r.json() : Promise.reject())
         .then((data) => {
-          setConfig({
-            ...emptyConfig, ...data,
-            base: { ...emptyConfig.base, ...(data.base ?? {}) },
-            highlight: { ...emptyConfig.highlight, ...(data.highlight ?? {}) },
-            highlight2: { ...emptyConfig.highlight2, ...(data.highlight2 ?? {}) },
-            effects: {
-              ...emptyConfig.effects, ...(data.effects ?? {}),
-              shadow_targets: { ...emptyConfig.effects.shadow_targets, ...((data.effects ?? {}).shadow_targets ?? {}) },
-              glow_targets: { ...emptyConfig.effects.glow_targets, ...((data.effects ?? {}).glow_targets ?? {}) },
-              outline_targets: { ...emptyConfig.effects.outline_targets, ...((data.effects ?? {}).outline_targets ?? {}) },
-            },
-            layout: { ...emptyConfig.layout, ...(data.layout ?? {}) },
-          })
+          setConfig(mergeCaptionConfig(data as Partial<ConfigState>))
         })
         .catch(() => setMessage('⚠ API captions non joignable — lance : docker compose up render-engine'))
     } else {
@@ -252,8 +164,8 @@ export default function CaptionsApp({
   useEffect(() => {
     if (!initialPresetId || presets.length === 0 || initialLoadDone.current) return
     const p = presets.find(x => x.id === initialPresetId)
-    if (p) { loadPreset(p); initialLoadDone.current = true }
-  }, [presets, initialPresetId]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (p) { loadPreset(p); setLoadedPresetName(p.name); initialLoadDone.current = true }
+  }, [presets, initialPresetId])
 
   // Sauvegarde automatique du brouillon (debounce 800ms)
   useEffect(() => {
@@ -375,9 +287,9 @@ export default function CaptionsApp({
     setHighlighted(prev => {
       const next = new Map(prev)
       const current = next.get(key)
-      if (current === undefined) { next.set(key, 0) }
-      else if (current === 0 && config.highlight2.enabled) { next.set(key, 1) }
-      else { next.delete(key) }
+      const nextGroup = getNextHighlightGroup(current, config.highlight2.enabled)
+      if (nextGroup === undefined) next.delete(key)
+      else next.set(key, nextGroup)
       return next
     })
   }
@@ -439,31 +351,74 @@ export default function CaptionsApp({
   return (
     <div className="cx">
       <div className="cx-page">
-        <header className="cx-topbar">
-          <div className="cx-topbar-brand">
+        {/* Page header — matches app style */}
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
             {backUrl && (
-              <Link href={backUrl} className="cx-btn-ghost" style={{display:'flex',alignItems:'center',gap:4,textDecoration:'none'}}>
+              <Link href={backUrl} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 transition-colors mr-1">
                 <ChevronLeft size={14}/>Retour
               </Link>
             )}
-            <Film size={20}/>
-            <h1>Captions<span>moteur Python — render-engine:8000</span></h1>
+            <div className="w-10 h-10 bg-violet-600 rounded-xl flex items-center justify-center text-white shrink-0">
+              <Film size={20}/>
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900">
+                {loadedPresetName ?? (initialPresetId ? 'Modifier le preset' : 'Nouveau preset')}
+              </h1>
+              <p className="text-sm text-gray-500 mt-0.5">Réglez la typo, les effets et le placement des sous-titres</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <span className="inline-flex items-center rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-medium text-violet-700">
+                  {loadedPresetName ? 'Preset chargé' : initialPresetId ? 'Preset existant' : 'Nouveau preset'}
+                </span>
+                <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 ring-1 ring-gray-200">
+                  {captions.length} bloc{captions.length > 1 ? 's' : ''}
+                </span>
+                <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 ring-1 ring-gray-200">
+                  {highlighted.size} mot{highlighted.size > 1 ? 's' : ''} en highlight
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="cx-top-actions">
-            <button className="cx-btn-ghost" onClick={() => {
-              setConfig(emptyConfig)
-              setCaptions([])
-              setHighlighted(new Map())
-              setVideoFile(null)
-              setSubsFile(null)
-              setPreviewUrl('')
-              setVideoUrl('')
-              setDraftBanner(false)
-              clearDraft()
-            }}>Reset</button>
-            <button className="cx-btn-primary" disabled={busy} onClick={() => runAction('render-full')}><Film size={14}/>Render Full</button>
+          <div className="flex items-center gap-2">
+            <button
+              className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors bg-white"
+              onClick={() => {
+                setConfig(emptyConfig)
+                setCaptions([])
+                setHighlighted(new Map())
+                setVideoFile(null)
+                setSubsFile(null)
+                setPreviewUrl('')
+                setVideoUrl('')
+                setDraftBanner(false)
+                clearDraft()
+              }}
+            >
+              Réinitialiser
+            </button>
+            {initialPresetId && (
+              <button
+                className={`flex items-center gap-1.5 px-4 py-1.5 text-xs rounded-lg disabled:opacity-60 transition-colors font-medium ${
+                  saveStatus === 'ok' ? 'bg-green-600 text-white' :
+                  saveStatus === 'err' ? 'bg-red-500 text-white' :
+                  'border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100'
+                }`}
+                disabled={saving}
+                onClick={() => void updatePreset()}
+              >
+                <Save size={13}/>{saving ? 'Sauvegarde…' : saveStatus === 'ok' ? 'Sauvegardé ✓' : saveStatus === 'err' ? 'Erreur' : 'Enregistrer'}
+              </button>
+            )}
+            <button
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs bg-violet-600 hover:bg-violet-700 text-white rounded-lg disabled:opacity-60 transition-colors font-medium"
+              disabled={busy}
+              onClick={() => runAction('render-full')}
+            >
+              <Film size={13}/>Rendu final
+            </button>
           </div>
-        </header>
+        </div>
 
         {draftBanner && (
           <div className="cx-draft-banner">
@@ -479,13 +434,13 @@ export default function CaptionsApp({
                 <Settings2 size={14}/>Rendu
               </button>
               <button className={`cx-tab-btn${tab === 'captions' ? ' active' : ''}`} onClick={() => setTab('captions')}>
-                <FileText size={14}/>Captions
+                <FileText size={14}/>Texte
                 {captions.length > 0 && <span className="cx-tab-badge">{captions.length}</span>}
               </button>
             </div>
 
             {tab === 'render' && <>
-              <CaptionsCard title="Médias" subtitle="Import vidéo + sous-titres" icon={<Upload size={15}/>}>
+              <CaptionsCard title="Médias" subtitle="Vidéo source et fichier .srt" icon={<Upload size={15}/>}> 
                 <div className="cx-grid two">
                   <F label="Vidéo"><input type="file" accept="video/*" onChange={e => setVideoFile(e.target.files?.[0] ?? null)} /></F>
                   <F label={`Sous-titres (.srt)${!subsFile && captions.length > 0 ? ` ✓ ${restoredSubsFileName || 'restauré'}` : ''}`}>
@@ -499,7 +454,7 @@ export default function CaptionsApp({
                 </div>
               </CaptionsCard>
 
-              <CaptionsCard title="Typo Base" icon={<Type size={15}/>}>
+              <CaptionsCard title="Style principal" subtitle="Texte par défaut" icon={<Type size={15}/>}> 
                 <div style={{display:'grid', gridTemplateColumns:'minmax(0,1fr) 44px', gap:10, alignItems:'end'}}>
                   <F label="Police"><select value={config.base.font} onChange={e => setConfig(c => ({ ...c, base: { ...c.base, font: e.target.value } }))}>{fonts.map(f => <option key={f}>{f}</option>)}</select></F>
                   <F label="Couleur"><input type="color" value={config.base.color} onChange={e => setConfig(c => ({ ...c, base: { ...c.base, color: e.target.value } }))} /></F>
@@ -519,7 +474,7 @@ export default function CaptionsApp({
                 </F>
               </CaptionsCard>
 
-              <CaptionsCard title="Typo Highlight" icon={<Layers size={15}/>}>
+              <CaptionsCard title="Highlight 1" subtitle="Style du premier niveau d'accent" icon={<Layers size={15}/>}> 
                 <div style={{display:'grid', gridTemplateColumns:'minmax(0,1fr) 44px', gap:10, alignItems:'end'}}>
                   <F label="Police"><select value={config.highlight.font} onChange={e => setConfig(c => ({ ...c, highlight: { ...c.highlight, font: e.target.value } }))}>{fonts.map(f => <option key={f}>{f}</option>)}</select></F>
                   <F label="Couleur"><input type="color" value={config.highlight.color} onChange={e => setConfig(c => ({ ...c, highlight: { ...c.highlight, color: e.target.value } }))} /></F>
@@ -539,7 +494,7 @@ export default function CaptionsApp({
                 </F>
               </CaptionsCard>
 
-              <CaptionsCard title="Highlight 2" icon={<Layers size={15}/>}>
+              <CaptionsCard title="Highlight 2" subtitle="Deuxième niveau d'accent" icon={<Layers size={15}/>}> 
                 <label className="cx-toggle-row" style={{marginBottom: config.highlight2.enabled ? 10 : 0}}>
                   <input type="checkbox" checked={config.highlight2.enabled} onChange={e => setConfig(c => ({ ...c, highlight2: { ...c.highlight2, enabled: e.target.checked } }))} />
                   <span className="cx-toggle-label">Activer un 2ᵉ style highlight</span>
@@ -565,7 +520,7 @@ export default function CaptionsApp({
                 </>)}
               </CaptionsCard>
 
-              <CaptionsCard title="Effets" icon={<Sparkles size={15}/>}>
+              <CaptionsCard title="Effets" subtitle="Ombre, lueur et contour" icon={<Sparkles size={15}/>}> 
                 <div className="cx-effect-block">
                   <label className="cx-toggle-row">
                     <input type="checkbox" checked={config.effects.shadow_enabled} onChange={e => setConfig(c => ({ ...c, effects: { ...c.effects, shadow_enabled: e.target.checked } }))} />
@@ -636,9 +591,9 @@ export default function CaptionsApp({
             </>}
 
             {tab === 'captions' && (
-              <CaptionsCard title="Éditeur de captions" subtitle="Cliquez les mots pour les highlight" icon={<FileText size={15}/>}>
+              <CaptionsCard title="Texte & highlights" subtitle="Cliquez sur les mots pour changer leur style" icon={<FileText size={15}/>}> 
                 <div>
-                  <div className="cx-field-label" style={{marginBottom:6}}>Mots highlight actifs</div>
+                  <div className="cx-field-label" style={{marginBottom:6}}>Mots actifs</div>
                   <div className="cx-kw-chips">
                     {highlightChips.length === 0
                       ? <span className="cx-kw-empty">Aucun — cliquez un mot ci-dessous</span>
@@ -657,6 +612,8 @@ export default function CaptionsApp({
                   highlighted={highlighted}
                   onToggleWord={toggleWord}
                   baseTransform={config.base.text_transform}
+                  highlightTransform={config.highlight.text_transform}
+                  highlight2Transform={config.highlight2.text_transform}
                   highlight2Enabled={config.highlight2.enabled}
                 />
               </CaptionsCard>
@@ -664,38 +621,12 @@ export default function CaptionsApp({
           </section>
 
           <aside className="cx-right-col">
-            <CaptionsCard title="Presets" subtitle="Styles sauvegardés" icon={<BookMarked size={15}/>}>
-              <div className="cx-preset-save-row">
-                <input type="text" placeholder="Nom du preset…" value={presetName} onChange={e => setPresetName(e.target.value)} onKeyDown={e => e.key === 'Enter' && savePreset()} />
-                <button onClick={() => void savePreset()} title="Sauvegarder"><Save size={13}/>Sauvegarder</button>
-              </div>
-              <div className="cx-preset-list">
-                {presetsLoading
-                  ? <div className="cx-preset-empty">Chargement…</div>
-                  : presets.length === 0
-                  ? <div className="cx-preset-empty">Aucun preset sauvegardé</div>
-                  : presets.map(p => (
-                    <div key={p.id} className={`cx-preset-item${p.isBuiltin ? ' cx-preset-item--builtin' : ''}`}>
-                      <span className="cx-preset-item-name">
-                        {p.name}
-                        {p.isBuiltin && <span className="cx-preset-builtin-badge">intégré</span>}
-                      </span>
-                      <span className="cx-preset-item-meta">
-                        {p.isBuiltin ? '' : new Date(p.createdAt).toLocaleDateString('fr-FR')}
-                      </span>
-                      <button className="cx-preset-load" onClick={() => loadPreset(p)}>Charger</button>
-                      {!p.isBuiltin && <button className="cx-preset-delete" onClick={() => void deletePreset(p.id, p.isBuiltin)}><X size={11}/></button>}
-                    </div>
-                  ))
-                }
-              </div>
-            </CaptionsCard>
-
-            <CaptionsCard title="Preview" subtitle={status} icon={<Eye size={15}/>}>
+            <CaptionsCard title="Aperçu" subtitle={status} icon={<Eye size={15}/>}> 
+              {/* eslint-disable-next-line @next/next/no-img-element -- preview is a dynamic blob URL from the render API */}
               {previewUrl ? <img className="cx-preview-image" src={previewUrl} alt="preview" /> : <div className="cx-preview-placeholder">Aucun preview</div>}
               <div className="cx-actions-row">
-                <button disabled={busy} onClick={() => runAction('preview')}><Eye size={13}/>Preview</button>
-                <button disabled={busy} onClick={() => runAction('render-preview')}><Film size={13}/>Render 6s</button>
+                <button disabled={busy} onClick={() => runAction('preview')}><Eye size={13}/>Image</button>
+                <button disabled={busy} onClick={() => runAction('render-preview')}><Film size={13}/>Clip 6 s</button>
               </div>
               <F label="Profil d&apos;export">
                 <select value={config.export_profile} onChange={e => setConfig(c => ({ ...c, export_profile: e.target.value as ConfigState['export_profile'] }))}>
@@ -716,7 +647,7 @@ export default function CaptionsApp({
               {videoUrl && <video className="cx-preview-video" controls src={videoUrl} />}
             </CaptionsCard>
 
-            <CaptionsCard title="Layout" icon={<LayoutTemplate size={15}/>}>
+            <CaptionsCard title="Placement" subtitle="Position, largeur et animation" icon={<LayoutTemplate size={15}/>}> 
               <div className="cx-grid two">
                 <F label="Position">
                   <select value={config.layout.anchor} onChange={e => setConfig(c => ({ ...c, layout: { ...c.layout, anchor: e.target.value as ConfigState['layout']['anchor'] } }))}>

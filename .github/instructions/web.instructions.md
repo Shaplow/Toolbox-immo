@@ -1,0 +1,49 @@
+---
+applyTo: "web/**/*.ts,web/**/*.tsx,web/**/*.js,web/**/*.jsx,web/**/*.mjs,web/**/*.css,web/**/*.prisma"
+---
+
+# Web App Instructions
+
+- The web app is a Next.js App Router codebase with React 19, Prisma, NextAuth, and a large amount of product-specific logic in `web/src/lib/` and `web/src/components/`.
+- Prefer targeted edits over broad refactors. This codebase mixes builder logic, admin tooling, preview rendering, and several product modules, so unrelated cleanup easily causes regressions.
+- When editing the template builder, keep these layers distinct:
+  - the visible React preview in `web/src/components/builder/`
+  - the hidden measurement layer used for auto-layout and text metrics
+  - the HTML preview pipeline in `web/src/lib/renderer/buildHTML.ts`
+- Builder layout bugs are often caused by font loading, measurement invalidation, group auto-layout, or preview parity. Do not assume the render engine is involved until HTML preview has been checked.
+- Captions and transcription are more distributed than the template render pipeline. There is not one single orchestration module for them, so trace the request across route handlers, job persistence, shared helpers, and render-engine endpoints before changing structure.
+- For render-related bugs, inspect these files early:
+  - `web/src/components/builder/Canvas.tsx`
+  - `web/src/components/builder/BuilderClient.tsx`
+  - `web/src/components/builder/PropertiesPanel.tsx`
+  - `web/src/lib/groupLayout.ts`
+  - `web/src/lib/templateNormalization.ts`
+  - `web/src/lib/templateConditions.ts`
+  - `web/src/lib/renderer/buildHTML.ts`
+- For captions and transcription work, inspect these files early:
+  - `web/src/app/api/render/captions/route.ts`
+  - `web/src/app/api/render/captions/[id]/route.ts`
+  - `web/src/app/api/transcription/route.ts`
+  - `web/src/app/api/transcription/[id]/route.ts`
+  - `web/src/app/api/transcription/[id]/submit/route.ts`
+  - `web/src/lib/captionsEngine.ts`
+  - `web/src/lib/runpod.ts`
+  - `web/src/lib/renderer/generateRender.ts`
+  - `web/src/lib/renderer/renderWorkflow.ts`
+- For derush work, inspect these files early:
+  - `web/src/app/api/derush/` (routes: route, [id]/route, [id]/submit, [id]/result, [id]/segments, [id]/export, formats)
+  - `web/src/lib/derushProcess.ts`
+  - `web/src/types/derush.ts`
+  - `web/src/components/derush/`
+  - `render-engine/engine/derush/orchestrator.py`
+- For description generation, inspect these files early:
+  - `web/src/app/api/description/` (routes: jobs, generate, prompts)
+  - `web/src/components/description/DescriptionTool.tsx`
+- For admin or permission-gated work, inspect these files early:
+  - `web/src/lib/userContext.ts` (resolveUserContext, getUserContext, IMPERSONATION_COOKIE_NAME)
+  - `web/src/lib/permissions.ts` (TOOLS, hasTool, getUserTools)
+  - `web/src/app/api/admin/` (users, impersonation, accesses routes)
+- If the request also touches derush or description generation, check whether they reuse transcription artifacts before inventing a parallel workflow.
+- For Prisma changes, keep schema, migrations, and any API expectations aligned. Do not change persisted data shape casually to work around a UI issue.
+- For UI and UX work, prefer clearer hierarchy, spacing, copy, and state handling over decorative redesign. Reuse existing UI primitives when possible, but do not preserve obviously broken interaction patterns just for consistency.
+- Minimum validation for web changes is targeted ESLint on touched files. Run a build when runtime boundaries or framework configuration changed.

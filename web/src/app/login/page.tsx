@@ -40,8 +40,8 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-12 h-12 bg-indigo-600 rounded-xl mb-4">
             <span className="text-white text-xl font-bold">T</span>
           </div>
-          <h1 className="text-2xl font-semibold text-gray-900">TemplateGen</h1>
-          <p className="text-sm text-gray-500 mt-1">Générateur de visuels immobiliers</p>
+          <h1 className="text-2xl font-semibold text-gray-900">Toolbox Immo</h1>
+          <p className="text-sm text-gray-500 mt-1">Votre espace de création immobilière</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

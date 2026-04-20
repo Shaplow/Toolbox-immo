@@ -41,7 +41,7 @@ export function NewTemplateButton() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 text-sm bg-gray-900 hover:bg-gray-700 text-white font-medium px-4 py-2 rounded-lg transition-colors"
+        className="flex items-center gap-1.5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-4 py-2 rounded-lg transition-colors"
       >
         <Plus size={14} />
         Nouveau template
