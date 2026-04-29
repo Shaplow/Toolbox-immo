@@ -152,6 +152,7 @@ async function generateWithClaude(
         "Tu es un expert en rédaction. Génère uniquement le texte demandé, sans commentaire, introduction ni balise markdown.",
       messages: [{ role: "user", content }],
     }),
+    signal: AbortSignal.timeout(60_000),
   });
 
   if (!res.ok) {
@@ -206,6 +207,7 @@ async function generateWithGPT(
       ],
       temperature: 0.5,
     }),
+    signal: AbortSignal.timeout(60_000),
   });
 
   if (!res.ok) {

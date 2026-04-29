@@ -224,6 +224,37 @@ export interface ImageBlock extends BaseBlock {
 }
 
 /**
+ * Règle de sélection structurée pour les assets de bibliothèque média.
+ * Permet de combiner une stratégie de tri avec un filtre optionnel par tag.
+ */
+export interface MediaSelectionRuleConfig {
+  /** Stratégie de sélection. */
+  strategy: "least_used" | "oldest_used" | "random" | "manual";
+  /**
+   * Tag littéral — restreint la sélection aux assets ayant ce tag.
+   * Prioritaire sur tagFilterParam si les deux sont définis.
+   */
+  tagFilter?: string;
+  /**
+   * Clé d'un champ du schéma du template dont la valeur sera utilisée comme
+   * tag de filtre à la génération. Permet d'avoir une règle dynamique par
+   * agent/négociateur sans dupliquer le template.
+   * Ex: "agent" → formData["agent"] = "martin" → filtre par tag "martin".
+   */
+  tagFilterParam?: string;
+}
+
+/**
+ * Règle de sélection d'un asset média depuis une bibliothèque.
+ * Accepte soit une chaîne simple (rétrocompat) soit un objet structuré.
+ */
+export type MediaSelectionRule =
+  | "oldest_used"
+  | "least_used"
+  | "manual"
+  | MediaSelectionRuleConfig;
+
+/**
  * Bloc vidéo : remplace une image par une vidéo dans le template.
  * À la génération, active le pipeline RunPod (FFmpeg composite)
  * au lieu du pipeline Node.js (PNG/PDF direct).
@@ -238,6 +269,10 @@ export interface VideoBlock extends BaseBlock {
   mute?: boolean;
   /** Volume de l'audio de cette vidéo (0–1, défaut 1.0). */
   audioVolume?: number;
+  /** ID de la MediaLibrary (type="video") liée à ce bloc. Metadata only — aucun effet sur le preview. */
+  libraryId?: string;
+  /** Règle de sélection automatique depuis la bibliothèque. */
+  selectionRule?: MediaSelectionRule;
 }
 
 /**
@@ -290,6 +325,10 @@ export interface MusicBlock extends BaseBlock {
   fadeIn?: number;
   /** Fondu de sortie en secondes (défaut 0). */
   fadeOut?: number;
+  /** ID de la MediaLibrary (type="audio") liée à ce bloc. Metadata only — aucun effet sur le preview. */
+  libraryId?: string;
+  /** Règle de sélection automatique depuis la bibliothèque audio. */
+  audioSelectionRule?: MediaSelectionRule;
 }
 
 export type AnyBlock =
@@ -365,6 +404,15 @@ export interface TemplateJSON {
   groups: LayerGroup[];
   formSections: TemplateFormSection[];
   schema: SchemaField[];
+  /** Configuration des bibliothèques de contenu liées à cette template. */
+  contentLibrary?: {
+    /** ID de la DataLibrary pour cette template (ex: bibliothèque RPI). */
+    dataLibraryId?: string;
+    /** ID de la DataCampaign active (peut être surchargé à la génération). */
+    dataCampaignId?: string;
+    /** Règle de sélection automatique d'une DataEntry. */
+    dataSelectionRule?: "not_used_in_cycle" | "least_used" | "manual";
+  };
   timeline?: undefined; // V2 placeholder
 }
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import {
   Mic,
   Upload,
@@ -14,6 +15,7 @@ import {
   RefreshCw,
   Settings2,
 } from "lucide-react";
+import { fmtDate, fmtDuration } from "@/lib/jobUtils";
 
 const AUDIO_ACCEPT = ".mp3,.wav,.m4a,.flac,.ogg,.aac,.mp4,.mov,.mkv,.webm";
 
@@ -95,21 +97,6 @@ const STATUS_TONE: Record<Job["status"], string> = {
   FAILED: "bg-red-50 text-red-700",
 };
 
-function fmtDuration(seconds: number | null): string {
-  if (!seconds) return "—";
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-}
-
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString("fr-FR", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -207,12 +194,31 @@ export function TranscriptionList({
     }
   }, [processingJobs]);
 
+  // SSE fast path — transcription jobs updated immediately when webhook fires
+  useAllJobEvents((event) => {
+    if (event.jobType !== "transcription") return;
+    setJobs((currentJobs) =>
+      currentJobs.map((job) =>
+        job.id === event.jobId
+          ? {
+              ...job,
+              status: event.status as Job["status"],
+              ...(typeof event.segmentCount === "number" ? { segmentCount: event.segmentCount } : {}),
+              ...(typeof event.duration === "number" ? { duration: event.duration } : {}),
+              ...(typeof event.hasDiarization === "boolean" ? { hasDiarization: event.hasDiarization } : {}),
+            }
+          : job
+      )
+    );
+  });
+
+  // Polling fallback — 10 s, backup when SSE unavailable (dev, no tunnel)
   useEffect(() => {
     if (!processingJobs.length) return;
 
     const interval = window.setInterval(() => {
       void refreshProcessingJobs();
-    }, 5000);
+    }, 10000);
 
     return () => window.clearInterval(interval);
   }, [processingJobs.length, refreshProcessingJobs]);

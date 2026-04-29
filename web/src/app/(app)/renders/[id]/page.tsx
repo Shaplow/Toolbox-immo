@@ -43,7 +43,6 @@ export default async function RenderPage({ params }: Props) {
         renderId={render.id}
         initialStatus={render.status}
         pngUrl={render.pngUrl}
-        pdfUrl={render.pdfUrl}
         videoUrl={render.videoUrl}
         errorMsg={render.errorMsg}
         templateId={render.template?.id ?? ""}

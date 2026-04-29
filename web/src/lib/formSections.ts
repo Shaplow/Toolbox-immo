@@ -98,6 +98,8 @@ type PositionedSectionField = {
 };
 
 function getFieldGridSpan(field: SchemaField, columns: number): number {
+  // Explicit column placement → always 1 cell; the field is pinned to a specific column.
+  if (field.sectionLayout?.column) return 1;
   return (field.type === "image" || field.type === "video") && columns > 1 ? 2 : 1;
 }
 
@@ -214,7 +216,9 @@ export function getFormSectionGridClass(section: Pick<ResolvedFormSection, "fiel
 
 export function getFieldSpanClass(field: SchemaField, columns: TemplateSectionColumnCount): string {
   if (field.type === "image" || field.type === "video") {
-    return columns > 1 ? "xl:col-span-2" : "xl:col-span-1";
+    // Only span the full row when the field has no explicit column placement.
+    if (columns > 1 && !field.sectionLayout?.column) return "xl:col-span-2";
+    return "xl:col-span-1";
   }
   return "xl:col-span-1";
 }
@@ -310,7 +314,8 @@ export function getFieldStaticPlacementStyle(
   const style: { gridColumn?: string; gridRow?: string } = {};
 
   if (columns > 1 && rawColumn) {
-    const span = (field.type === "image" || field.type === "video") && columns > 1 ? 2 : 1;
+    // Explicit column placement → span 1; full-row span only for unpinned image/video.
+    const span = (field.type === "image" || field.type === "video") && !rawColumn ? 2 : 1;
     const maxStart = Math.max(1, columns - span + 1);
     const start = Math.max(1, Math.min(rawColumn, maxStart));
 
@@ -323,4 +328,68 @@ export function getFieldStaticPlacementStyle(
   }
 
   return Object.keys(style).length > 0 ? style : undefined;
+}
+
+/**
+ * Computes per-field inline grid styles for an entire section at once.
+ * Knows which row each field occupies, so image/video fields with an explicit
+ * column placement that are ALONE on their row still span the full row width.
+ */
+export function computeSectionFieldStyles(
+  fields: SchemaField[],
+  columns: TemplateSectionColumnCount,
+): Map<string, { gridColumn?: string; gridRow?: string }> {
+  const result = new Map<string, { gridColumn?: string; gridRow?: string }>();
+  if (columns <= 1) return result;
+
+  // Place all fields to discover row assignments
+  const occupied = new Set<string>();
+  const positioned: Array<{ key: string; row: number; column: number; isMedia: boolean; rawColumn?: number; rawRow?: number }> = [];
+
+  for (const field of fields) {
+    const position = resolveFieldPosition(field, occupied, columns);
+    reserveFieldCells(occupied, position.row, position.column, getFieldGridSpan(field, columns));
+    positioned.push({
+      key: field.key,
+      row: position.row,
+      column: position.column,
+      isMedia: field.type === "image" || field.type === "video",
+      rawColumn: field.sectionLayout?.column,
+      rawRow: field.sectionLayout?.row,
+    });
+  }
+
+  // Build a row → keys map to detect lonely fields
+  const rowOccupants = new Map<number, string[]>();
+  for (const item of positioned) {
+    if (!rowOccupants.has(item.row)) rowOccupants.set(item.row, []);
+    rowOccupants.get(item.row)!.push(item.key);
+  }
+
+  for (const item of positioned) {
+    const style: { gridColumn?: string; gridRow?: string } = {};
+
+    if (item.rawColumn) {
+      let span = 1;
+      if (item.isMedia) {
+        // Alone in its row → span full width even though it has an explicit column
+        const rowMates = rowOccupants.get(item.row) ?? [];
+        if (rowMates.length === 1) span = 2;
+      }
+      const maxStart = Math.max(1, columns - span + 1);
+      const start = Math.max(1, Math.min(item.rawColumn, maxStart));
+      style.gridColumn = `${start} / span ${span}`;
+    }
+
+    if (item.rawRow) {
+      const row = Math.max(1, Math.min(item.rawRow, MAX_SECTION_LAYOUT_ROWS));
+      style.gridRow = `${row}`;
+    }
+
+    if (Object.keys(style).length > 0) {
+      result.set(item.key, style);
+    }
+  }
+
+  return result;
 }

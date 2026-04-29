@@ -1,10 +1,10 @@
-import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { getUserContext } from "@/lib/userContext";
 import { AdminFontsPanel } from "@/components/admin/AdminFontsPanel";
 
 export default async function AdminFontsPage() {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") redirect("/tools/templates");
+  const userContext = await getUserContext();
+  if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") redirect("/tools/templates");
 
   return (
     <div className="p-8 max-w-5xl mx-auto">

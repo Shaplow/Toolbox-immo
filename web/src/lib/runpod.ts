@@ -36,6 +36,80 @@ export async function fetchRunpodStatus<TOutput = unknown>(
   return res.json() as Promise<RunpodStatusResponse<TOutput>>;
 }
 
+// ─── Job phase resolver ───────────────────────────────────────────────────────
+
+/**
+ * Resolved phase returned by resolveRunpodJobPhase.
+ *
+ *   completed   — RunPod job finished successfully; `output` is populated.
+ *   failed      — RunPod job finished with an error; `error` is populated.
+ *   in_progress — job is still IN_QUEUE or IN_PROGRESS; no action needed.
+ *   stalled     — job exceeded the stall window; caller should mark it FAILED.
+ *   unreachable — RunPod API threw; job age is within stall window; caller may
+ *                 surface a warning but should NOT mark it FAILED yet.
+ */
+export type RunpodJobPhase<TOutput> =
+  | { phase: "completed"; output: TOutput }
+  | { phase: "failed"; error: string }
+  | { phase: "in_progress" }
+  | { phase: "stalled" }
+  | { phase: "unreachable" };
+
+/**
+ * Central RunPod poll + stall detection helper used by all status routes.
+ *
+ * Callers pass the already-loaded job fields; this function calls RunPod,
+ * applies stall detection, and returns a discriminated union so each route
+ * can update its own DB model without duplicating the decision logic.
+ *
+ * @param endpointId       RUNPOD_ENDPOINT_ID
+ * @param apiKey           RUNPOD_API_KEY
+ * @param runpodJobId      The RunPod job to query.
+ * @param jobUpdatedAt     job.updatedAt — used for stall detection.
+ * @param stallMs          How long PROCESSING without resolution is considered stalled.
+ */
+export async function resolveRunpodJobPhase<TOutput = unknown>(
+  endpointId: string,
+  apiKey: string,
+  runpodJobId: string,
+  jobUpdatedAt: Date,
+  stallMs: number
+): Promise<RunpodJobPhase<TOutput>> {
+  try {
+    const rp = await fetchRunpodStatus<TOutput>(endpointId, apiKey, runpodJobId);
+
+    if (rp.status === "COMPLETED") {
+      return { phase: "completed", output: rp.output as TOutput };
+    }
+
+    if (
+      rp.status === "FAILED" ||
+      rp.status === "CANCELLED" ||
+      rp.status === "TIMED_OUT"
+    ) {
+      return { phase: "failed", error: rp.error ?? `RunPod job ${rp.status}` };
+    }
+
+    // IN_QUEUE or IN_PROGRESS — check stall before returning
+    const ageMs = Date.now() - jobUpdatedAt.getTime();
+    if (ageMs > stallMs) {
+      return { phase: "stalled" };
+    }
+
+    return { phase: "in_progress" };
+  } catch (err) {
+    // RunPod unreachable — apply stall check anyway so genuinely abandoned jobs
+    // eventually surface as FAILED even when RunPod stays down.
+    const ageMs = Date.now() - jobUpdatedAt.getTime();
+    if (ageMs > stallMs) {
+      return { phase: "stalled" };
+    }
+    // Log here so every caller gets the error without duplicating the log line.
+    console.error("[runpod/resolveRunpodJobPhase] RunPod status fetch failed:", err);
+    return { phase: "unreachable" };
+  }
+}
+
 const TRANSIENT_RUNPOD_STATUS = new Set([429, 502, 503, 504]);
 
 type SubmitRunpodJobOptions = {

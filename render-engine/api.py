@@ -18,7 +18,6 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 from app import FONTS_DIR, OUTPUTS_DIR, _parse_srt_content, _render_captions_preview, _render_captions_video, _resolve_captions_engine
-from engine.cairo_renderer import CairoRendererNotReadyError
 from engine.fonts import list_font_names, scan_fonts
 from engine.template_composite import (
     OverlaySegment,

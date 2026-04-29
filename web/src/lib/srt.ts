@@ -8,6 +8,58 @@
 const HIGHLIGHT_OPEN_RE = /^\{HL:(\d+)\}/
 const HIGHLIGHT_CLOSE_RE = /^\{\/HL:(\d+)\}/
 
+// Punctuation that terminates a sentence — next SRT block starts fresh.
+const SENTENCE_END_RE = /[.!?…]+\s*$/
+
+function _srtSeconds(t: string): number {
+  const m = t.match(/(\d+):(\d+):(\d+)[,.](\d+)/)
+  if (!m) return 0
+  return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000
+}
+
+/**
+ * Merge consecutive SRT captions that belong to the same sentence.
+ * Two blocks are merged when ALL of:
+ *  - the previous block's text does NOT end with sentence-ending punctuation (.!?…)
+ *  - the gap between the two blocks is ≤ maxGapSeconds (default 0.6 s)
+ *
+ * This fixes Whisper's habit of splitting a sentence like
+ *   "…EN PLEIN CŒUR" / "DE paris."
+ * into separate tiny blocks.
+ *
+ * Call this BEFORE parseHighlightedCaptions so that inline {HL:N}…{/HL:N}
+ * markers in the raw text are preserved by the text concatenation and re-parsed
+ * with correct word indices by parseHighlightedCaptions.
+ */
+export function mergeSentenceCaptions(captions: Caption[], maxGapSeconds = 0.6): Caption[] {
+  if (captions.length === 0) return []
+
+  const merged: Caption[] = []
+  let current = { ...captions[0] }
+
+  for (let i = 1; i < captions.length; i++) {
+    const next = captions[i]
+    const gap = _srtSeconds(next.start) - _srtSeconds(current.end)
+    const prevEndsWithSentence = SENTENCE_END_RE.test(current.text)
+
+    if (!prevEndsWithSentence && gap <= maxGapSeconds) {
+      // Merge: extend current block to include next
+      current = {
+        ...current,
+        end: next.end,
+        text: current.text.trim() + ' ' + next.text.trim(),
+      }
+    } else {
+      merged.push(current)
+      current = { ...next }
+    }
+  }
+  merged.push(current)
+
+  // Re-index sequentially from 1
+  return merged.map((c, i) => ({ ...c, index: i + 1 }))
+}
+
 /** Parse an SRT string into Caption objects */
 export function parseSRT(raw: string): Caption[] {
   const blocks = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split(/\n{2,}/)
@@ -175,5 +227,5 @@ export function parseHighlightedCaptions(
  * showing raw marker text.
  */
 export function parseHighlightedSRT(raw: string): { captions: Caption[], highlighted: Map<string, number>, malformed: boolean } {
-  return parseHighlightedCaptions(parseSRT(raw))
+  return parseHighlightedCaptions(mergeSentenceCaptions(parseSRT(raw)))
 }

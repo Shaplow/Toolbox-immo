@@ -126,6 +126,7 @@ def _build_audio_args(
     audio_codec: str,
     audio_codec_args: list[str],
     music_input_index: int,
+    source_has_audio: bool = True,
 ) -> tuple[list[str], str | None, list[str], list[str]]:
     """
     Returns (music_input_flags, audio_filter_chain, audio_map_flags, audio_codec_flags).
@@ -135,9 +136,15 @@ def _build_audio_args(
 
     When no music_path is provided and source_volume == 1.0, returns the
     backward-compatible flags: ``-map 0:a?`` + ``-c:a aac``.
+
+    ``source_has_audio=False`` prevents any ``[0:a]`` reference in the filtergraph
+    when the input video has no audio stream.
     """
     if not music_path:
         # No music — just source audio (optionally attenuated or muted)
+        if not source_has_audio:
+            # Source has no audio stream at all — output no audio track
+            return ([], None, [], [])
         if mute_source:
             # Produce silent audio track
             return (
@@ -168,8 +175,8 @@ def _build_audio_args(
 
     mi = music_input_index  # shorthand
 
-    if mute_source:
-        # Only music, no source audio
+    if mute_source or not source_has_audio:
+        # Only music, no source audio (either muted or absent)
         chain = f"[{mi}:a]volume={music_volume}"
         if music_fade_in > 0:
             chain += f",afade=t=in:d={music_fade_in}"
@@ -223,6 +230,7 @@ def build_template_ffmpeg_cmd(
     music_loop: bool = False,
     music_fade_in: float = 0.0,
     music_fade_out: float = 0.0,
+    source_has_audio: bool = True,
 ) -> list[str]:
     """Single-overlay command (legacy fast path)."""
     audio_codec_args = audio_codec_args or ["-b:a", "192k"]
@@ -243,6 +251,7 @@ def build_template_ffmpeg_cmd(
         audio_codec=audio_codec,
         audio_codec_args=audio_codec_args,
         music_input_index=2,
+        source_has_audio=source_has_audio,
     )
 
     # Merge audio filter into the video filter_complex if needed
@@ -286,6 +295,7 @@ def build_template_ffmpeg_cmd_timed(
     music_loop: bool = False,
     music_fade_in: float = 0.0,
     music_fade_out: float = 0.0,
+    source_has_audio: bool = True,
 ) -> list[str]:
     """Multi-overlay command with per-segment time windows."""
     audio_codec_args = audio_codec_args or ["-b:a", "192k"]
@@ -312,6 +322,7 @@ def build_template_ffmpeg_cmd_timed(
         audio_codec=audio_codec,
         audio_codec_args=audio_codec_args,
         music_input_index=music_input_index,
+        source_has_audio=source_has_audio,
     )
 
     # Merge audio filter into the video filter_complex if needed

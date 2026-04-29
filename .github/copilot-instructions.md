@@ -21,8 +21,9 @@ Toolbox Immo is a monorepo with two active application layers.
 - Builder UI: `web/src/components/builder/`
 - Template render pipeline: `web/src/lib/renderer/`, `web/src/app/preview/`, `web/src/app/api/renders/`
 - Captions and transcription orchestration: `web/src/app/api/render/captions/`, `web/src/app/api/transcription/`, `web/src/lib/captionsEngine.ts`, `web/src/lib/runpod.ts`
+- RunPod webhook callbacks: `web/src/app/api/webhooks/runpod/`, `web/src/lib/webhooks/runpod.ts`
 - Derush module: `web/src/app/api/derush/`, `web/src/lib/derushProcess.ts`, `web/src/types/derush.ts`, `web/src/components/derush/`, `render-engine/engine/derush/`
-- Description generation: `web/src/app/api/description/`, `web/src/components/description/DescriptionTool.tsx`
+- Description generation: `web/src/app/api/description/`, `web/src/components/description/DescriptionTool.tsx`, `web/src/components/admin/DescriptionPromptsPanel.tsx`
 - Admin and permissions: `web/src/app/api/admin/`, `web/src/lib/userContext.ts`, `web/src/lib/permissions.ts`
 - Template normalization and layout: `web/src/lib/templateNormalization.ts`, `web/src/lib/groupLayout.ts`, `web/src/lib/templateConditions.ts`
 - Auth and data model: `web/src/lib/auth.ts`, `web/prisma/schema.prisma`
@@ -53,4 +54,4 @@ Toolbox Immo is a monorepo with two active application layers.
 
 - Apply the repo-wide guidance here first.
 - Then read the matching path-specific instructions in `.github/instructions/` before editing files in `web/` or `render-engine/`.
-- Load the skills in `.github/skills/` when the task is clearly about builder debugging, RunPod/render triage, captions/transcription pipelines, ASS subtitle rendering, UI and UX remediation, app hardening, security review, admin/permissions changes, derush workflow, or the Content Library system (MediaLibrary, MediaAsset, DataLibrary, DataCampaign, DataEntry, library bindings, selection rules, generation pre-fill).
+- Load the skills in `.github/skills/` when the task is clearly about builder debugging, RunPod/render triage, captions/transcription pipelines, ASS subtitle rendering, UI and UX remediation, app hardening, security review, admin/permissions changes, derush workflow, the Content Library system (MediaLibrary, MediaAsset, DataLibrary, DataCampaign, DataEntry, library bindings, selection rules, generation pre-fill), or description generation (DescriptionJob, DescriptionPrompt, Claude/GPT generation).

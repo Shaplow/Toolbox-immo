@@ -1,35 +1,18 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getR2PublicUrl } from "@/lib/r2";
 import { RENDER_PIPELINE, RENDER_STAGE } from "@/lib/renderer/renderWorkflow";
 import { IMPERSONATION_COOKIE_NAME, resolveUserContext } from "@/lib/userContext";
 
 type Params = { params: Promise<{ id: string }> };
 
-const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY;
-const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
-const LOCAL_STALL_MS = 10 * 60 * 1000;
+// LOCAL_STALL_MS must exceed LOCAL_VIDEO_RENDER_TIMEOUT_MS (10 min in generateRender.ts)
+// so the fetch timeout always fires before the stall detector, preventing a race where
+// the stall marks the render ERROR while the fetch is still running or just completed.
+const LOCAL_STALL_MS = 12 * 60 * 1000;
 const PRE_SUBMIT_STALL_MS = 2 * 60 * 1000;
 
-type RunpodStatus = "IN_QUEUE" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | "CANCELLED" | "TIMED_OUT";
-interface RunpodStatusResponse {
-  id: string;
-  status: RunpodStatus;
-  output?: { video_url?: string; output_key?: string };
-  error?: string;
-}
-
-async function fetchRunpodStatus(jobId: string): Promise<RunpodStatusResponse> {
-  const res = await fetch(
-    `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/status/${jobId}`,
-    { headers: { Authorization: `Bearer ${RUNPOD_API_KEY}` }, cache: "no-store", signal: AbortSignal.timeout(10_000) }
-  );
-  if (!res.ok) throw new Error(`RunPod status ${res.status}`);
-  return res.json();
-}
-
-// GET /api/renders/:id — statut + urls de téléchargement (+ polling RunPod pour les renders vidéo)
+// GET /api/renders/:id — statut courant (RunPod completes via webhook, pas de polling ici)
 export async function GET(_req: NextRequest, { params }: Params) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -53,68 +36,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const now = Date.now();
   const heartbeatAge = render.lastHeartbeatAt ? now - render.lastHeartbeatAt.getTime() : null;
 
-  // ─── Polling RunPod (renders vidéo en cours) ────────────────────────────
-  if (render.runpodJobId && render.status === "PROCESSING" && RUNPOD_API_KEY && RUNPOD_ENDPOINT_ID) {
-    try {
-      const rp = await fetchRunpodStatus(render.runpodJobId);
-      if (rp.status === "COMPLETED") {
-        const videoUrl = rp.output?.video_url ?? (rp.output?.output_key ? getR2PublicUrl(rp.output.output_key) : null);
-        render = await prisma.render.update({
-          where: { id },
-          data: {
-            status: "DONE",
-            stage: RENDER_STAGE.DONE,
-            statusDetail: "Vidéo RunPod terminée",
-            progress: 1,
-            videoUrl: videoUrl ?? undefined,
-            finishedAt: new Date(),
-            lastHeartbeatAt: new Date(),
-          },
-        });
-      } else if (rp.status === "IN_QUEUE") {
-        render = await prisma.render.update({
-          where: { id },
-          data: {
-            pipeline: RENDER_PIPELINE.VIDEO_RUNPOD,
-            stage: RENDER_STAGE.VIDEO_RUNPOD_QUEUED,
-            statusDetail: "Job en attente côté RunPod",
-            progress: Math.max(render.progress ?? 0.6, 0.62),
-            lastHeartbeatAt: new Date(),
-          },
-        });
-      } else if (rp.status === "IN_PROGRESS") {
-        render = await prisma.render.update({
-          where: { id },
-          data: {
-            pipeline: RENDER_PIPELINE.VIDEO_RUNPOD,
-            stage: RENDER_STAGE.VIDEO_RUNPOD_PROCESSING,
-            statusDetail: "RunPod encode la vidéo",
-            progress: Math.max(render.progress ?? 0.7, 0.78),
-            lastHeartbeatAt: new Date(),
-          },
-        });
-      } else if (["FAILED", "CANCELLED", "TIMED_OUT"].includes(rp.status)) {
-        render = await prisma.render.update({
-          where: { id },
-          data: {
-            status: "ERROR",
-            stage: RENDER_STAGE.ERROR,
-            statusDetail: rp.error ?? `RunPod job ${rp.status}`,
-            errorMsg: rp.error ?? `RunPod job ${rp.status}`,
-            progress: 1,
-            finishedAt: new Date(),
-            lastHeartbeatAt: new Date(),
-          },
-        });
-      }
-      // IN_QUEUE / IN_PROGRESS → on retourne le statut courant
-    } catch (e) {
-      console.error("[Render polling RunPod]", e);
-      // Signal RunPod unreachable so the client can show a warning rather than
-      // silently appearing stuck on every poll.
-      return NextResponse.json({ ...render, runpodUnreachable: true });
-    }
-  } else if (
+  // ─── Local stall (render vidéo local sans heartbeat) ────────────────────
+  if (
     render.status === "PROCESSING" &&
     render.pipeline === RENDER_PIPELINE.VIDEO_LOCAL &&
     heartbeatAge !== null &&
@@ -133,6 +56,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       },
     });
   } else if (
+    // ─── Pre-submit stall (RunPod sans runpodJobId) ───────────────────────
     render.status === "PROCESSING" &&
     render.pipeline === RENDER_PIPELINE.VIDEO_RUNPOD &&
     !render.runpodJobId &&

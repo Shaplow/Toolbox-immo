@@ -10,6 +10,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getR2PublicUrl, r2Configured } from "@/lib/r2";
 import { submitRunpodJob } from "@/lib/runpod";
+import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -41,6 +42,15 @@ export async function POST(
   }
   if (!r2Configured()) {
     return NextResponse.json({ error: "R2 non configuré" }, { status: 503 });
+  }
+
+  // Atomic status transition — prevents concurrent double-submit
+  const claimed = await prisma.derushJob.updateMany({
+    where: { id: job.id, status: "QUEUED" },
+    data: { status: "PROCESSING" },
+  });
+  if (claimed.count === 0) {
+    return NextResponse.json({ error: "Job déjà soumis ou terminé" }, { status: 409 });
   }
 
   const inputFiles = JSON.parse(job.inputFiles) as { key: string; filename: string }[];
@@ -75,6 +85,7 @@ export async function POST(
     transcriptionOutputUrl = getR2PublicUrl(job.transcriptionInputKey);
   }
 
+  const webhookUrl = getRunpodWebhookUrl("/api/webhooks/runpod/derush");
   const payload = {
     input: {
       job_type: "derush_vision",
@@ -94,6 +105,7 @@ export async function POST(
       enable_diarization: job.enableDiarization,
       ...(transcriptionOutputUrl ? { transcription_output_url: transcriptionOutputUrl } : {}),
     },
+    ...(webhookUrl ? { webhook: webhookUrl } : {}),
   };
 
   type RunpodSubmitResponse = { id: string };
@@ -105,6 +117,11 @@ export async function POST(
       payload
     );
   } catch (err) {
+    // Revert status so the user can retry via /submit
+    await prisma.derushJob.update({
+      where: { id: job.id },
+      data: { status: "FAILED", errorMsg: String(err) },
+    });
     console.error("[derush/submit] RunPod submit failed:", err);
     return NextResponse.json({ error: "Erreur lors de la soumission RunPod" }, { status: 502 });
   }
@@ -112,7 +129,6 @@ export async function POST(
   const updated = await prisma.derushJob.update({
     where: { id: job.id },
     data: {
-      status: "PROCESSING",
       runpodJobId: runpodRes.id,
       outputJsonKey,
     },

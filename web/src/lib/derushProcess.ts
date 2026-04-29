@@ -6,7 +6,7 @@
  *   - generateXmlTimeline()    : génère FCPXML 1.9 ou Premiere xmeml côté serveur (sans FFmpeg)
  *   - scoreSummary()           : statistiques de score agrégées
  *   - applyPresetDefaults()    : fusionne un preset partiel avec les valeurs par défaut
- *   - formatTimecode()         : secondes → HH:MM:SS:FF (pour l'affichage UI)
+ *   - formatTime()             : secondes → HH:MM:SS.mmm (pour l'affichage dans les timelines)
  */
 
 import type {
@@ -129,25 +129,7 @@ export function applyPresetDefaults(partial?: Partial<DerushPresetConfig>): Deru
   };
 }
 
-// ─── Timecode format ──────────────────────────────────────────────────────────
-
-/**
- * secondes (float) → "HH:MM:SS:FF" (affichage UI, non-drop frame)
- */
-export function formatTimecode(seconds: number, fps = 25): string {
-  const totalFrames = Math.round(seconds * fps);
-  const frames = totalFrames % fps;
-  const totalSecs = Math.floor(totalFrames / fps);
-  const secs = totalSecs % 60;
-  const mins = Math.floor(totalSecs / 60) % 60;
-  const hrs = Math.floor(totalSecs / 3600);
-  return [
-    String(hrs).padStart(2, "0"),
-    String(mins).padStart(2, "0"),
-    String(secs).padStart(2, "0"),
-    String(frames).padStart(2, "0"),
-  ].join(":");
-}
+// ─── Format time ─────────────────────────────────────────────────────────────
 
 /**
  * secondes → "HH:MM:SS.mmm" (pour l'affichage dans les timelines)

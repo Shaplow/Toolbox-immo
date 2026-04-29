@@ -25,7 +25,6 @@ import { resolveBlockForListing, resolveBlockState } from "@/lib/templateConditi
 import type { AnyBlock } from "@/types/template";
 import { Resizable } from "re-resizable";
 
-const GRID_SIZE = 10; // canvas units
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.1;
@@ -46,6 +45,8 @@ export function Canvas({
     selectedGroupId,
     selectBlock,
     selectGroup,
+    multiSelectedBlockIds,
+    setMultiSelection,
     updateBlock,
     updateBlocks,
     undo,
@@ -56,8 +57,8 @@ export function Canvas({
   const [zoom, setZoom] = useState(0.5);
   const [showGrid, setShowGrid] = useState(false);
   const [snapToGrid, setSnapToGrid] = useState(false);
-  // Multi-select: set of block ids (Ctrl+click to toggle)
-  const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
+  // Multi-select: derived Set from store for O(1) lookups
+  const multiSelected = useMemo(() => new Set(multiSelectedBlockIds), [multiSelectedBlockIds]);
   const [isPanningView, setIsPanningView] = useState(false);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -93,10 +94,21 @@ export function Canvas({
     return [...filters.values()];
   }, [blocks]);
 
-  /** Snap a value to the nearest GRID_SIZE increment if snap is on */
+  /** Effective grid unit in canvas coordinates — scales with zoom so snap steps
+   *  stay ~12 screen pixels apart regardless of zoom level. */
+  const effectiveGridSize = useMemo(() => {
+    const targetScreenPx = 12;
+    const rawUnit = targetScreenPx / zoom;
+    const niceValues = [1, 2, 5, 10, 20, 50, 100];
+    return niceValues.reduce((best, v) =>
+      Math.abs(v - rawUnit) < Math.abs(best - rawUnit) ? v : best
+    );
+  }, [zoom]);
+
+  /** Snap a value to the nearest grid increment if snap is on */
   const snap = useCallback((v: number) =>
-    snapToGrid ? Math.round(v / GRID_SIZE) * GRID_SIZE : Math.round(v),
-    [snapToGrid]
+    snapToGrid ? Math.round(v / effectiveGridSize) * effectiveGridSize : Math.round(v),
+    [snapToGrid, effectiveGridSize]
   );
 
   const clampZoom = useCallback((value: number) => {
@@ -169,13 +181,30 @@ export function Canvas({
     block: AnyBlock,
     direction: string,
     deltaWidth: number,
-    deltaHeight: number
+    deltaHeight: number,
+    lockRatio = false
   ) => {
     const normalizedDirection = direction.toLowerCase();
     const widthDelta = deltaWidth / zoom;
     const heightDelta = deltaHeight / zoom;
-    const nextWidth = Math.max(0, snap(block.w + widthDelta));
-    const nextHeight = Math.max(0, snap(block.h + heightDelta));
+    let nextWidth = Math.max(0, snap(block.w + widthDelta));
+    let nextHeight = Math.max(0, snap(block.h + heightDelta));
+
+    if (lockRatio && block.w > 0 && block.h > 0) {
+      const ratio = block.w / block.h;
+      // Determine the dominant axis: whichever produced the larger relative delta
+      const relW = Math.abs(widthDelta) / block.w;
+      const relH = Math.abs(heightDelta) / block.h;
+      const cornerResize = normalizedDirection.length === 2; // e.g. "topright"
+      if (cornerResize ? relW >= relH : normalizedDirection.includes("left") || normalizedDirection.includes("right")) {
+        // Width is primary
+        nextHeight = Math.max(0, snap(nextWidth / ratio));
+      } else {
+        // Height is primary
+        nextWidth = Math.max(0, snap(nextHeight * ratio));
+      }
+    }
+
     let nextX = block.x;
     let nextY = block.y;
 
@@ -345,16 +374,28 @@ export function Canvas({
         return;
       }
 
+      // Cmd/Ctrl+click on a grouped block: toggle the entire group in multi-select
+      if ((e.ctrlKey || e.metaKey) && block.groupId && !isAutoLayoutMember) {
+        const groupBlockIds = blocks
+          .filter((b) => b.groupId === block.groupId)
+          .map((b) => b.id);
+        const next = new Set(multiSelectedBlockIds);
+        const allSelected = groupBlockIds.every((id) => next.has(id));
+        if (allSelected) {
+          groupBlockIds.forEach((id) => next.delete(id));
+        } else {
+          groupBlockIds.forEach((id) => next.add(id));
+        }
+        setMultiSelection([...next]);
+        return;
+      }
+
       if (isGroupSelection && block.groupId) {
-        const ids = blocks.filter((candidate) => candidate.groupId === block.groupId).map((candidate) => candidate.id);
         const origPositions: Record<string, { x: number; y: number }> = {};
-        for (const id of ids) {
+        for (const id of multiSelectedBlockIds) {
           const candidate = blocks.find((current) => current.id === id);
           if (candidate) origPositions[id] = { x: candidate.x, y: candidate.y };
         }
-
-        setMultiSelected(new Set(ids));
-        selectGroup(block.groupId);
 
         dragging.current = {
           id: block.id,
@@ -398,36 +439,43 @@ export function Canvas({
 
       // --- Multi-select logic ---
       if (e.ctrlKey || e.metaKey) {
-        // Toggle this block in multi-selection; keep last clicked as primary
-        setMultiSelected((prev) => {
-          const next = new Set(prev);
-          if (next.has(block.id)) {
-            next.delete(block.id);
-            selectBlock(next.size > 0 ? [...next][next.size - 1] : null);
-          } else {
-            next.add(block.id);
-            selectBlock(block.id);
-          }
-          return next;
-        });
+        // Toggle this block (or its entire group) in multi-selection
+        const targetIds = block.groupId
+          ? blocks.filter((b) => b.groupId === block.groupId).map((b) => b.id)
+          : [block.id];
+        const next = new Set(multiSelectedBlockIds);
+        const allSelected = targetIds.every((id) => next.has(id));
+        if (allSelected) {
+          targetIds.forEach((id) => next.delete(id));
+        } else {
+          targetIds.forEach((id) => next.add(id));
+        }
+        setMultiSelection([...next]);
         return; // don't start drag on ctrl+click
       }
 
-      // Regular click: if not already in multi-select, clear multi-select
-      if (!multiSelected.has(block.id)) {
-        setMultiSelected(new Set([block.id]));
-      }
+      // Regular click (no Cmd): always select only this block.
+      // If the block was already part of a multi-selection, keep the existing
+      // positions for drag purposes but reset the visual selection on mouseup
+      // when no drag occurred.
+      const wasInMultiSelect = multiSelected.has(block.id) && multiSelected.size > 1;
+      // Capture full multi-selection BEFORE resetting (closure values are pre-reset)
+      const prevMultiIds = [...multiSelectedBlockIds];
+      // Reset selection to just this block immediately
       selectBlock(block.id);
 
-      // Capture original positions for all selected blocks (or just this one)
-      const ids = multiSelected.has(block.id) ? [...multiSelected] : [block.id];
+      // Drag: if the block was in a multi-select, move all of them together;
+      // otherwise move only this block.
+      const dragIds = wasInMultiSelect ? prevMultiIds : [block.id];
       const origPositions: Record<string, { x: number; y: number }> = {};
-      for (const id of ids) {
+      for (const id of dragIds) {
         const b = blocks.find((bl) => bl.id === id);
         if (b) origPositions[id] = { x: b.x, y: b.y };
       }
       // Always include dragged block
       origPositions[block.id] = { x: block.x, y: block.y };
+
+      let hasDragged = false;
 
       dragging.current = {
         id: block.id,
@@ -438,6 +486,7 @@ export function Canvas({
       };
 
       function onMove(ev: MouseEvent) {
+        hasDragged = true;
         if (!dragging.current) return;
         const rawDx = (ev.clientX - dragging.current.startX) / zoom;
         const rawDy = (ev.clientY - dragging.current.startY) / zoom;
@@ -460,6 +509,12 @@ export function Canvas({
       function onUp() {
         const current = dragging.current;
         dragging.current = null;
+        // If no drag happened and we started from a multi-select, keep selection
+        // narrowed to just the clicked block (already set above via selectBlock).
+        if (hasDragged && wasInMultiSelect) {
+          // drag happened across all, restore visual multi-select
+          setMultiSelection(dragIds);
+        }
         if (current) {
           recordHistory(current.historyTemplate);
         }
@@ -470,7 +525,7 @@ export function Canvas({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [zoom, snap, blocks, groupMap, multiSelected, recordHistory, selectBlock, selectGroup, selectedGroupId, updateBlock, updateBlocks]
+    [zoom, snap, blocks, groupMap, multiSelected, multiSelectedBlockIds, setMultiSelection, recordHistory, selectBlock, selectGroup, selectedGroupId, updateBlock, updateBlocks]
   );
 
   const zoomIn = () => applyZoom(zoom + ZOOM_STEP);
@@ -530,6 +585,134 @@ export function Canvas({
   const autoLayoutMeasurementBlocks = useMemo(() => {
     return visibleResolvedBlocks.filter(({ group }) => isAutoLayoutGroup(group));
   }, [visibleResolvedBlocks]);
+
+  /** Bounding box of the currently selected non-auto-layout group (canvas units). */
+  const groupBounds = useMemo(() => {
+    if (!selectedGroupId) return null;
+    const group = groupMap.get(selectedGroupId);
+    if (!group || isAutoLayoutGroup(group)) return null;
+    const groupBlocks = blocks.filter((b) => b.groupId === selectedGroupId);
+    if (groupBlocks.length === 0) return null;
+    const minX = Math.min(...groupBlocks.map((b) => b.x));
+    const minY = Math.min(...groupBlocks.map((b) => b.y));
+    const maxX = Math.max(...groupBlocks.map((b) => b.x + b.w));
+    const maxY = Math.max(...groupBlocks.map((b) => b.y + b.h));
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  }, [selectedGroupId, groupMap, blocks]);
+
+  /** Bounding box of the current free multi-selection (canvas units). Only shown when > 1 block selected and no group selection. */
+  const multiSelectBounds = useMemo(() => {
+    if (selectedGroupId) return null;
+    if (multiSelectedBlockIds.length < 2) return null;
+    const selBlocks = blocks.filter((b) => multiSelectedBlockIds.includes(b.id));
+    if (selBlocks.length < 2) return null;
+    const minX = Math.min(...selBlocks.map((b) => b.x));
+    const minY = Math.min(...selBlocks.map((b) => b.y));
+    const maxX = Math.max(...selBlocks.map((b) => b.x + b.w));
+    const maxY = Math.max(...selBlocks.map((b) => b.y + b.h));
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  }, [selectedGroupId, multiSelectedBlockIds, blocks]);
+
+  const groupResizing = useRef<{
+    origin: { x: number; y: number; w: number; h: number };
+    blockOrigins: Array<{ id: string; x: number; y: number; w: number; h: number }>;
+    historyTemplate: typeof template;
+  } | null>(null);
+
+  /** Generic proportional resize handler — used by both the group overlay and the multi-select overlay. */
+  const handleBoundsResizeMouseDown = useCallback(
+    (
+      e: React.MouseEvent,
+      direction: string,
+      targetBlockIds: string[],
+      bounds: { x: number; y: number; w: number; h: number }
+    ) => {
+      const origin = { ...bounds };
+      const targetBlocks = blocks.filter((b) => targetBlockIds.includes(b.id));
+      groupResizing.current = {
+        origin,
+        blockOrigins: targetBlocks.map((b) => ({ id: b.id, x: b.x, y: b.y, w: b.w, h: b.h })),
+        historyTemplate: useBuilderStore.getState().template,
+      };
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const dir = direction.toLowerCase();
+
+      function onMove(ev: MouseEvent) {
+        const current = groupResizing.current;
+        if (!current) return;
+        const { origin: orig, blockOrigins } = current;
+        const rawDx = (ev.clientX - startX) / zoom;
+        const rawDy = (ev.clientY - startY) / zoom;
+
+        let newX = orig.x;
+        let newY = orig.y;
+        let newW = orig.w;
+        let newH = orig.h;
+
+        if (dir.includes("e")) newW = Math.max(10, orig.w + rawDx);
+        if (dir.includes("w")) { newW = Math.max(10, orig.w - rawDx); newX = orig.x + orig.w - newW; }
+        if (dir.includes("s")) newH = Math.max(10, orig.h + rawDy);
+        if (dir.includes("n")) { newH = Math.max(10, orig.h - rawDy); newY = orig.y + orig.h - newH; }
+
+        if (ev.shiftKey && orig.w > 0 && orig.h > 0) {
+          const ratio = orig.w / orig.h;
+          const cornerResize = dir.length === 2;
+          const relW = Math.abs(newW - orig.w) / orig.w;
+          const relH = Math.abs(newH - orig.h) / orig.h;
+          if (cornerResize ? relW >= relH : dir === "e" || dir === "w") {
+            newH = newW / ratio;
+            // Anchor the opposite edge
+            if (dir.includes("n")) newY = orig.y + orig.h - newH;
+          } else {
+            newW = newH * ratio;
+            if (dir.includes("w")) newX = orig.x + orig.w - newW;
+          }
+          newW = Math.max(10, newW);
+          newH = Math.max(10, newH);
+        }
+
+        const scaleX = newW / orig.w;
+        const scaleY = newH / orig.h;
+
+        updateBlocks(
+          blockOrigins.map((bo) => ({
+            id: bo.id,
+            changes: {
+              x: snap(newX + (bo.x - orig.x) * scaleX),
+              y: snap(newY + (bo.y - orig.y) * scaleY),
+              w: Math.max(1, snap(bo.w * scaleX)),
+              h: Math.max(1, snap(bo.h * scaleY)),
+            } as Partial<AnyBlock>,
+          })),
+          { history: false }
+        );
+      }
+
+      function onUp() {
+        const current = groupResizing.current;
+        groupResizing.current = null;
+        if (current) recordHistory(current.historyTemplate);
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      }
+
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [blocks, zoom, snap, updateBlocks, recordHistory]
+  );
+
+  const handleGroupResizeMouseDown = useCallback(
+    (e: React.MouseEvent, direction: string) => {
+      if (!selectedGroupId || !groupBounds) return;
+      const groupBlockIds = blocks
+        .filter((b) => b.groupId === selectedGroupId)
+        .map((b) => b.id);
+      handleBoundsResizeMouseDown(e, direction, groupBlockIds, groupBounds);
+    },
+    [selectedGroupId, groupBounds, blocks, handleBoundsResizeMouseDown]
+  );
 
   useLayoutEffect(() => {
     const nextEntries: Array<[string, BlockLayoutSize]> = [];
@@ -655,12 +838,12 @@ export function Canvas({
     });
   }, [autoLayoutMeasurementBlocks, displayedPositionMap, fontMetricsVersion, onLayoutDebugSnapshotChange, template.groups]);
 
-  // Grid CSS background (scales with zoom)
+  // Grid CSS background (scales with zoom; uses adaptive grid size)
   const gridStyle: React.CSSProperties = showGrid ? {
     backgroundImage:
       `linear-gradient(rgba(99,102,241,0.12) 1px, transparent 1px),` +
       `linear-gradient(90deg, rgba(99,102,241,0.12) 1px, transparent 1px)`,
-    backgroundSize: `${GRID_SIZE * zoom}px ${GRID_SIZE * zoom}px`,
+    backgroundSize: `${effectiveGridSize * zoom}px ${effectiveGridSize * zoom}px`,
   } : {};
 
   return (
@@ -690,12 +873,12 @@ export function Canvas({
         {/* Snap toggle */}
         <button
           onClick={() => setSnapToGrid((v) => !v)}
-          title="Snap to grid (10px)"
+          title={`Snap to grid (${effectiveGridSize}px canvas units at current zoom)`}
           className={`text-xs px-2 py-0.5 border rounded transition-colors ${
             snapToGrid ? "bg-indigo-100 border-indigo-300 text-indigo-700" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
           }`}
         >
-          🧲 Snap
+          🧲 Snap{snapToGrid ? ` (${effectiveGridSize})` : ""}
         </button>
 
         {/* Multi-select hint */}
@@ -765,8 +948,6 @@ export function Canvas({
             return;
           }
           selectBlock(null);
-          selectGroup(null);
-          setMultiSelected(new Set());
         }}
         style={{ cursor: isPanningView ? "grabbing" : isSpacePressed ? "grab" : "default" }}
       >
@@ -836,7 +1017,7 @@ export function Canvas({
             const isGroupSelected = Boolean(selectedGroupId && block.groupId === selectedGroupId);
             const isAutoLayoutMember = isAutoLayoutGroup(group);
             const outlineColor = isPrimary ? "#F59E0B" : isGroupSelected ? "#2563EB" : isMulti ? "#818CF8" : "transparent";
-            const pointerEvents = selectedBlockId && !isPrimary ? "none" : "auto";
+            const pointerEvents: React.CSSProperties["pointerEvents"] = "auto";
             const isLocked = Boolean(block.locked || group?.locked);
             const layoutPosition = displayedPositionMap.get(block.id);
             const effectiveSize = measuredAutoLayoutSizes[block.id] ?? { width: displayBlock.w, height: displayBlock.h };
@@ -872,6 +1053,7 @@ export function Canvas({
                 <div
                   key={block.id}
                   data-builder-block-id={block.id}
+                  onClick={(e) => e.stopPropagation()}
                   style={{
                     ...wrapperStyle,
                     width: displayBlock.w * zoom,
@@ -923,21 +1105,24 @@ export function Canvas({
                 minWidth={0}
                 minHeight={0}
                 onResizeStart={() => {
+                  // Prevent the mouseup that ends the resize from reaching the scroll
+                  // container's click handler (which would deselect the block).
+                  suppressNextClickRef.current = true;
                   resizing.current = {
                     id: block.id,
                     origin: { x: block.x, y: block.y, w: block.w, h: block.h },
                     historyTemplate: useBuilderStore.getState().template,
                   };
                 }}
-                onResize={(_e, dir, _ref, d) => {
+                onResize={(e, dir, _ref, d) => {
                   const current = resizing.current;
                   if (!current) return;
-                  updateBlock(block.id, applyResize(current.origin as AnyBlock, dir, d.width, d.height), { history: false });
+                  updateBlock(block.id, applyResize(current.origin as AnyBlock, dir, d.width, d.height, (e as MouseEvent).shiftKey), { history: false });
                 }}
-                onResizeStop={(_e, dir, _ref, d) => {
+                onResizeStop={(e, dir, _ref, d) => {
                   const current = resizing.current;
                   if (!current) return;
-                  updateBlock(block.id, applyResize(current.origin as AnyBlock, dir, d.width, d.height), { history: false });
+                  updateBlock(block.id, applyResize(current.origin as AnyBlock, dir, d.width, d.height, (e as MouseEvent).shiftKey), { history: false });
                   recordHistory(current.historyTemplate);
                   resizing.current = null;
                 }}
@@ -985,6 +1170,130 @@ export function Canvas({
               </Resizable>
             );
           })}
+          {/* Group bounding-box border + proportional resize handles */}
+          {groupBounds && selectedGroupId && (() => {
+            const sg = groupMap.get(selectedGroupId);
+            if (!sg || isAutoLayoutGroup(sg)) return null;
+            const HANDLE_SIZE = 8;
+            const half = HANDLE_SIZE / 2;
+            const sx = groupBounds.x * zoom;
+            const sy = groupBounds.y * zoom;
+            const sw = groupBounds.w * zoom;
+            const sh = groupBounds.h * zoom;
+            const DIRECTIONS = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
+            const cursorMap: Record<string, string> = {
+              n: "n-resize", ne: "ne-resize", e: "e-resize", se: "se-resize",
+              s: "s-resize", sw: "sw-resize", w: "w-resize", nw: "nw-resize",
+            };
+            return (
+              <>
+                {/* Dashed border overlay — pointer-events:none so clicks reach blocks */}
+                <div style={{
+                  position: "absolute",
+                  left: sx,
+                  top: sy,
+                  width: sw,
+                  height: sh,
+                  border: "1.5px dashed rgba(37,99,235,0.55)",
+                  boxSizing: "border-box",
+                  pointerEvents: "none",
+                  zIndex: 9998,
+                }} />
+                {/* Resize handles */}
+                {DIRECTIONS.map((dir) => {
+                  let left = 0, top = 0;
+                  if (dir.includes("w")) left = sx - half;
+                  else if (dir.includes("e")) left = sx + sw - half;
+                  else left = sx + sw / 2 - half;
+                  if (dir.includes("n")) top = sy - half;
+                  else if (dir.includes("s")) top = sy + sh - half;
+                  else top = sy + sh / 2 - half;
+                  return (
+                    <div
+                      key={`gh-${dir}`}
+                      style={{
+                        position: "absolute",
+                        left,
+                        top,
+                        width: HANDLE_SIZE,
+                        height: HANDLE_SIZE,
+                        background: "white",
+                        border: "1.5px solid #2563EB",
+                        borderRadius: 2,
+                        cursor: cursorMap[dir],
+                        zIndex: 9999,
+                        boxSizing: "border-box",
+                      }}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        handleGroupResizeMouseDown(e, dir);
+                      }}
+                    />
+                  );
+                })}
+              </>
+            );
+          })()}
+          {/* Multi-select bounding-box border + proportional resize handles */}
+          {multiSelectBounds && (() => {
+            const HANDLE_SIZE = 8;
+            const half = HANDLE_SIZE / 2;
+            const sx = multiSelectBounds.x * zoom;
+            const sy = multiSelectBounds.y * zoom;
+            const sw = multiSelectBounds.w * zoom;
+            const sh = multiSelectBounds.h * zoom;
+            const DIRECTIONS = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
+            const cursorMap: Record<string, string> = {
+              n: "n-resize", ne: "ne-resize", e: "e-resize", se: "se-resize",
+              s: "s-resize", sw: "sw-resize", w: "w-resize", nw: "nw-resize",
+            };
+            return (
+              <>
+                <div style={{
+                  position: "absolute",
+                  left: sx,
+                  top: sy,
+                  width: sw,
+                  height: sh,
+                  border: "1.5px dashed rgba(129,140,248,0.7)",
+                  boxSizing: "border-box",
+                  pointerEvents: "none",
+                  zIndex: 9998,
+                }} />
+                {DIRECTIONS.map((dir) => {
+                  let left = 0, top = 0;
+                  if (dir.includes("w")) left = sx - half;
+                  else if (dir.includes("e")) left = sx + sw - half;
+                  else left = sx + sw / 2 - half;
+                  if (dir.includes("n")) top = sy - half;
+                  else if (dir.includes("s")) top = sy + sh - half;
+                  else top = sy + sh / 2 - half;
+                  return (
+                    <div
+                      key={`msh-${dir}`}
+                      style={{
+                        position: "absolute",
+                        left,
+                        top,
+                        width: HANDLE_SIZE,
+                        height: HANDLE_SIZE,
+                        background: "white",
+                        border: "1.5px solid #818CF8",
+                        borderRadius: 2,
+                        cursor: cursorMap[dir],
+                        zIndex: 9999,
+                        boxSizing: "border-box",
+                      }}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        handleBoundsResizeMouseDown(e, dir, multiSelectedBlockIds, multiSelectBounds);
+                      }}
+                    />
+                  );
+                })}
+              </>
+            );
+          })()}
         </div>
         </div>
       </div>

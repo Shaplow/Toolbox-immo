@@ -80,7 +80,7 @@ class BlockRules(BaseModel):
     max_duration: float = Field(default=4.5, ge=1.0, le=10.0)
 
 
-CaptionEngine = Literal["ass", "cairo"]
+CaptionEngine = Literal["ass"]
 
 
 class RenderConfig(BaseModel):
@@ -92,6 +92,9 @@ class RenderConfig(BaseModel):
     animation: AnimationConfig
     block_rules: BlockRules = Field(default_factory=BlockRules)
     engine: CaptionEngine = "ass"
+    # When True, trailing punctuation (.,:!?;) is stripped from each word's
+    # displayed text. Block splitting still uses the original text with punctuation.
+    strip_punctuation: bool = False
 
 
 def default_premium_config() -> RenderConfig:

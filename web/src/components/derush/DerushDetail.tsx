@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
   ArrowLeft, CheckCircle, XCircle, Loader2, Clock,
   Download, Film, RefreshCw, Scissors, Star, ChevronDown,
   ThumbsUp, ThumbsDown, Pencil,
 } from "lucide-react";
 import type { DerushSegment, DerushExportFormat, DerushWorkflow, DerushScoreBreakdown } from "@/types/derush";
+import { useJobPolling } from "@/lib/hooks/useJobPolling";
+import { useJobEvent } from "@/lib/hooks/jobEventBus";
 
 type JobDetail = {
   id: string;
@@ -96,12 +99,28 @@ export function DerushDetail({ job: initialJob }: { job: JobDetail }) {
     } catch { /* ignore */ }
   }, [job.id]);
 
-  // Poll while not terminal
+  // Polling fallback (5 s interval, stops automatically on terminal state)
+  const { data: pollData } = useJobPolling<JobDetail>({
+    fetchFn: () => fetch(`/api/derush/${job.id}`).then((r) => r.json()),
+    isTerminal: (d) => d.status === "COMPLETED" || d.status === "FAILED",
+    intervalMs: 5000,
+    enabled: job.status !== "COMPLETED" && job.status !== "FAILED",
+  });
   useEffect(() => {
-    if (job.status === "COMPLETED" || job.status === "FAILED") return;
-    const interval = setInterval(() => void poll(), 5000);
-    return () => clearInterval(interval);
-  }, [job.status, poll]);
+    if (pollData) setJob(pollData);
+  }, [pollData]);
+
+  // SSE fast path — immediate update when webhook fires
+  const jobEvent = useJobEvent(job.id);
+  useEffect(() => {
+    if (!jobEvent || jobEvent.jobType !== "derush") return;
+    setJob((prev) => ({
+      ...prev,
+      status: jobEvent.status as JobDetail["status"],
+      ...(typeof jobEvent.segmentCount === "number" ? { segmentCount: jobEvent.segmentCount } : {}),
+      ...(typeof jobEvent.totalDuration === "number" ? { totalDuration: jobEvent.totalDuration } : {}),
+    }));
+  }, [jobEvent]);
 
   // Load segments once COMPLETED
   useEffect(() => {
@@ -229,12 +248,12 @@ export function DerushDetail({ job: initialJob }: { job: JobDetail }) {
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
       {/* Header */}
       <div className="flex items-start gap-4">
-        <a
+        <Link
           href="/tools/derush"
           className="mt-0.5 p-2 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-        </a>
+        </Link>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-xl font-semibold text-gray-900">

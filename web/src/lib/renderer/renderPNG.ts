@@ -56,7 +56,7 @@ export async function renderPNG(
     await page.setViewport({ width, height, deviceScaleFactor: scaleFactor });
     // domcontentloaded au lieu de networkidle0 — les fonts sont embedées en base64,
     // networkidle0 peut boucler indéfiniment si une ressource externe ne répond pas.
-    await page.setContent(html, { waitUntil: "domcontentloaded" });
+    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 60_000 });
     // Wait for all fonts to be applied (ils sont en base64 donc instantané)
     await page.evaluate(() => document.fonts.ready);
     await page.waitForFunction(() => (window as Window & { __templateReady?: boolean }).__templateReady === true, { timeout: 5000 }).catch(() => undefined);

@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getR2PublicUrl } from "@/lib/r2";
+import { getR2PublicUrl, objectExistsInR2, r2Configured } from "@/lib/r2";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
@@ -40,6 +40,9 @@ export async function POST(
   if (!RUNPOD_API_KEY || !RUNPOD_ENDPOINT_ID || !runpodConfigured()) {
     return NextResponse.json({ error: "RunPod non configuré" }, { status: 503 });
   }
+  if (!r2Configured()) {
+    return NextResponse.json({ error: "R2 non configuré" }, { status: 503 });
+  }
   if (job.enableDiarization && !HF_TOKEN) {
     return NextResponse.json(
       { error: "La diarisation n'est pas disponible sur ce serveur (HF_TOKEN non configuré)." },
@@ -54,6 +57,26 @@ export async function POST(
   });
   if (claimed.count === 0) {
     return NextResponse.json({ error: "Job déjà soumis ou terminé" }, { status: 409 });
+  }
+
+  // Verify the source file was actually uploaded to R2 before committing to RunPod.
+  // If the presigned upload failed silently the worker would receive a 403/404 download
+  // error, which is hard to diagnose. Catching it here gives a clear actionable message.
+  try {
+    const exists = await objectExistsInR2(job.inputKey);
+    if (!exists) {
+      await prisma.transcriptionJob.update({
+        where: { id: job.id },
+        data: { status: "FAILED", errorMsg: "Fichier source introuvable en R2 — l'upload a peut-être échoué" },
+      });
+      return NextResponse.json(
+        { error: "Fichier source introuvable. Veuillez relancer l'upload." },
+        { status: 422 }
+      );
+    }
+  } catch (err) {
+    // R2 head-check failure is non-fatal — proceed optimistically and let the worker report
+    console.warn("[transcription/submit] R2 head-check failed (proceeding):", err);
   }
 
   const audioUrl    = getR2PublicUrl(job.inputKey);

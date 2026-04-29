@@ -80,9 +80,10 @@ def _line_height_design(font) -> int:
 
 
 def _should_split_block(prev_word: WordTimestamp, next_word: WordTimestamp, max_duration: float, pause_threshold: float, current_start: float) -> bool:
-    # Always split on SRT caption boundaries (caption_index > 0 means it was set by the parser)
-    if next_word.caption_index > 0 and next_word.caption_index != prev_word.caption_index:
-        return True
+    # Note: SRT caption boundaries are intentionally NOT used as hard split points.
+    # Whisper-generated SRTs often break lines mid-sentence, which would create tiny
+    # orphan blocks.  Natural signals (pauses, sentence-ending punctuation, max
+    # duration) produce better phrase-level grouping.
     gap = next_word.start - prev_word.end
     duration = next_word.end - current_start
     return (

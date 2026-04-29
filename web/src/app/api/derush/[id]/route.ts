@@ -6,37 +6,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { resolveRunpodJobPhase } from "@/lib/runpod";
 
 const RUNPOD_API_KEY      = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID  = process.env.RUNPOD_ENDPOINT_ID;
 
-type RunpodStatus =
-  | "IN_QUEUE" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | "CANCELLED" | "TIMED_OUT";
+/** Jobs PROCESSING without resolution longer than this are stalled. */
+const STALL_MS = 2 * 60 * 60 * 1000; // 2 hours
+/** QUEUED jobs that were never submitted are abandoned after this window. */
+const PRE_SUBMIT_STALL_MS = 15 * 60 * 1000; // 15 minutes
 
-interface RunpodStatusResponse {
-  id: string;
-  status: RunpodStatus;
-  output?: {
-    output_key?: string;
-    segment_count?: number;
-    total_duration?: number;
-    analysis_mode?: string;
-    error?: string;
-  };
+type DerushJobOutput = {
+  output_key?: string;
+  segment_count?: number;
+  total_duration?: number;
+  analysis_mode?: string;
   error?: string;
-}
-
-async function fetchRunpodStatus(jobId: string): Promise<RunpodStatusResponse> {
-  const res = await fetch(
-    `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/status/${jobId}`,
-    {
-      headers: { Authorization: `Bearer ${RUNPOD_API_KEY}` },
-      cache: "no-store",
-    }
-  );
-  if (!res.ok) throw new Error(`RunPod ${res.status}: ${await res.text()}`);
-  return res.json();
-}
+};
 
 export async function GET(
   _req: NextRequest,
@@ -62,43 +48,78 @@ export async function GET(
     return NextResponse.json(formatJob(job));
   }
 
+  // Pre-submit stall: QUEUED without runpodJobId never reached RunPod
+  if ((job.status === "QUEUED" || job.status === "PROCESSING") && !job.runpodJobId) {
+    const ageMs = Date.now() - job.updatedAt.getTime();
+    if (ageMs > PRE_SUBMIT_STALL_MS) {
+      const errorMsg = "Le job n'a jamais été soumis à RunPod — il peut être soumis à nouveau";
+      const updated = await prisma.derushJob.update({
+        where: { id: job.id },
+        data: { status: "FAILED", errorMsg },
+        include: { preset: { select: { id: true, name: true } } },
+      });
+      console.warn(`[derush/status] job ${job.id} stalled (unsubmitted) after ${Math.round(ageMs / 60_000)} min — marked FAILED`);
+      return NextResponse.json(formatJob(updated));
+    }
+    return NextResponse.json(formatJob(job));
+  }
+
   // Poll RunPod si PROCESSING
   if (job.status === "PROCESSING" && job.runpodJobId && RUNPOD_API_KEY && RUNPOD_ENDPOINT_ID) {
-    try {
-      const rp = await fetchRunpodStatus(job.runpodJobId);
+    const resolved = await resolveRunpodJobPhase<DerushJobOutput>(
+      RUNPOD_ENDPOINT_ID,
+      RUNPOD_API_KEY,
+      job.runpodJobId,
+      job.updatedAt,
+      STALL_MS
+    );
 
-      if (rp.status === "COMPLETED" && rp.output) {
-        const out = rp.output;
-        const updated = await prisma.derushJob.update({
-          where: { id: job.id },
-          data: {
-            status: "COMPLETED",
-            outputJsonKey: out.output_key ?? job.outputJsonKey,
-            segmentCount: out.segment_count ?? null,
-            totalDuration: out.total_duration ?? null,
-          },
-          include: { preset: { select: { id: true, name: true } } },
-        });
-        return NextResponse.json(formatJob(updated));
-      }
-
-      if (["FAILED", "CANCELLED", "TIMED_OUT"].includes(rp.status)) {
-        const updated = await prisma.derushJob.update({
-          where: { id: job.id },
-          data: {
-            status: "FAILED",
-            errorMsg: rp.error ?? `RunPod job ${rp.status}`,
-          },
-          include: { preset: { select: { id: true, name: true } } },
-        });
-        return NextResponse.json(formatJob(updated));
-      }
-    } catch (err) {
-      console.error("[derush/status] RunPod poll failed:", err);
+    if (resolved.phase === "completed") {
+      const out = resolved.output;
+      const updated = await prisma.derushJob.update({
+        where: { id: job.id },
+        data: {
+          status: "COMPLETED",
+          outputJsonKey: out?.output_key ?? job.outputJsonKey,
+          segmentCount: out?.segment_count ?? null,
+          totalDuration: out?.total_duration ?? null,
+        },
+        include: { preset: { select: { id: true, name: true } } },
+      });
+      return NextResponse.json(formatJob(updated));
     }
+
+    if (resolved.phase === "failed" || resolved.phase === "stalled") {
+      const errorMsg =
+        resolved.phase === "stalled"
+          ? "Le job RunPod n'a plus répondu depuis plus de 2 heures"
+          : (resolved as { phase: "failed"; error: string }).error;
+      const updated = await prisma.derushJob.update({
+        where: { id: job.id },
+        data: { status: "FAILED", errorMsg },
+        include: { preset: { select: { id: true, name: true } } },
+      });
+      if (resolved.phase === "stalled") {
+        console.warn(`[derush/status] job ${job.id} stalled (runpodJobId=${job.runpodJobId}) — marked FAILED`);
+      }
+      return NextResponse.json(formatJob(updated));
+    }
+
+    if (resolved.phase === "unreachable") {
+      return NextResponse.json({ ...formatJob(job), runpodUnreachable: true });
+    }
+    // in_progress — fall through
   }
 
   return NextResponse.json(formatJob(job));
+}
+
+function parseInputFiles(raw: string): unknown[] {
+  try {
+    return JSON.parse(raw) as unknown[];
+  } catch {
+    return [];
+  }
 }
 
 function formatJob(job: {
@@ -126,7 +147,7 @@ function formatJob(job: {
     transcriptionJobId: job.transcriptionJobId,
     presetId: job.presetId,
     presetName: job.preset?.name ?? null,
-    fileCount: (JSON.parse(job.inputFiles) as unknown[]).length,
+    fileCount: parseInputFiles(job.inputFiles).length,
     segmentCount: job.segmentCount,
     totalDuration: job.totalDuration,
     hasOutput: !!job.outputJsonKey,

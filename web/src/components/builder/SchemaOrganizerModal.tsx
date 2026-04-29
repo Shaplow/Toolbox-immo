@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, GripVertical, LayoutPanelTop, Minus, Monitor, Plus, Smartphone, SquareSplitHorizontal, Tablet, Trash2, X } from "lucide-react";
-import { MAX_SECTION_LAYOUT_ROWS, UNSECTIONED_FORM_SECTION_ID, buildVisibleFormSections, getFieldPlacementClass, getFieldSpanClass, getFieldStaticPlacementStyle, getFormSectionGridClass, getFormSectionSpanClass, getSectionFieldsInVisualOrder, type ResolvedFormSection } from "@/lib/formSections";
+import { MAX_SECTION_LAYOUT_ROWS, UNSECTIONED_FORM_SECTION_ID, buildVisibleFormSections, computeSectionFieldStyles, getFieldPlacementClass, getFieldSpanClass, getFieldStaticPlacementStyle, getFormSectionGridClass, getFormSectionSpanClass, getSectionFieldsInVisualOrder, type ResolvedFormSection } from "@/lib/formSections";
 import {
   SCHEMA_FIELD_TYPES,
   buildSchemaPreviewData,
@@ -487,7 +487,7 @@ export function SchemaOrganizerModal({
 
   function getPreviewFieldSpanClass(field: SchemaField, section: ResolvedFormSection, viewport: PreviewViewport): string {
     if (viewport === "desktop") return `${getFieldSpanClass(field, section.fieldColumns)} ${getFieldPlacementClass(field, section.fieldColumns)}`.trim();
-    if (viewport === "tablet") return (field.type === "image" || field.type === "video") && section.fieldColumns > 1 ? "md:col-span-2" : "md:col-span-1";
+    if (viewport === "tablet") return (field.type === "image" || field.type === "video") && section.fieldColumns > 1 && !field.sectionLayout?.column ? "md:col-span-2" : "md:col-span-1";
     return "col-span-1";
   }
 
@@ -981,19 +981,19 @@ export function SchemaOrganizerModal({
                       </div>
 
                       <div className={`mt-4 ${getPreviewSectionGridClass(section, previewViewport)}`}>
-                        {getSectionFieldsInVisualOrder(section.fields, section.fieldColumns).map((field) => (
+                        {(() => {
+                          const effectiveCols = previewViewport === "desktop" ? section.fieldColumns : previewViewport === "tablet" ? Math.min(section.fieldColumns, 2) as typeof section.fieldColumns : 1;
+                          const fieldStyles = previewViewport !== "mobile" ? computeSectionFieldStyles(section.fields, effectiveCols as typeof section.fieldColumns) : new Map();
+                          return getSectionFieldsInVisualOrder(section.fields, section.fieldColumns).map((field) => (
                           <div
                             key={field.key}
                             className={getPreviewFieldSpanClass(field, section, previewViewport)}
-                            style={getFieldStaticPlacementStyle(
-                              field,
-                              previewViewport === "desktop" ? section.fieldColumns : previewViewport === "tablet" ? Math.min(section.fieldColumns, 2) : 1,
-                              previewViewport !== "mobile"
-                            )}
+                            style={fieldStyles.get(field.key)}
                           >
                             <PreviewFieldCard field={field} value={previewValues[field.key]} />
                           </div>
-                        ))}
+                          ));
+                        })()}
                       </div>
                     </section>
                   ))}

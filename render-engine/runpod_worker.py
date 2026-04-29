@@ -40,6 +40,7 @@ from app import _parse_srt_content, _parse_text_auto, _render_captions_video
 from engine.encoding_profiles import build_caption_encoding_settings
 from engine.models import RenderConfig, WordTimestamp
 from engine.probe import probe_video
+from engine.media_edit import process_media_edit
 from engine.runtime_fonts import prepare_runtime_fonts
 from engine.template_composite import (
     OverlaySegment,
@@ -447,6 +448,8 @@ def handler(job: dict) -> dict[str, Any]:
         return _handle_derush_vision(inp)
     if job_type == "derush_export":
         return _handle_derush_export(inp)
+    if job_type == "media_edit":
+        return _handle_media_edit(inp)
     return _handle_captions(inp)
 
 
@@ -783,7 +786,9 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
             music_loop=_music_loop,
             music_fade_in=_music_fade_in,
             music_fade_out=_music_fade_out,
+            source_has_audio=video_info.has_audio,
         )
+        print(f"[worker/render_template] source has_audio={video_info.has_audio}", flush=True)
 
         out_video = tmp_path / f"result_{stamp}.mp4"
         codec, codec_args, audio_codec, audio_args, encoding_debug = build_caption_encoding_settings(
@@ -1224,9 +1229,61 @@ def _content_type_for_format(export_format: str) -> str:
     }.get(export_format, "application/octet-stream")
 
 
+# ─── Media edit handler ───────────────────────────────────────────────────────
+
+def _handle_media_edit(inp: dict) -> dict:
+    """
+    Edit a rush video: trim, mix-to-mono, loudnorm.
+
+    Input:
+      asset_url  : URL publique R2 du fichier source
+      r2_key     : clé R2 du fichier (pour réécriture au même endroit)
+      params     : { trimStart?, trimEnd?, mixToMono?, normalize? }
+      job_id     : MediaEditJob.id (pour logs)
+
+    Output:
+      { duration: float, r2_key: str, video_url: str }
+
+    Le fichier traité écrase l'original sur R2.
+    """
+    _require_fields(inp, ("asset_url", "r2_key", "params"), "media_edit")
+    asset_url: str = inp["asset_url"]
+    r2_key: str = inp["r2_key"]
+    params: dict = inp["params"]
+    job_id: str = inp.get("job_id", "unknown")
+
+    print(f"[worker/media_edit] job={job_id} r2_key={r2_key} params={params}", flush=True)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        import time as _time
+        stamp = int(_time.time() * 1000)
+
+        # 1. Télécharger l'asset source
+        src_ext = Path(asset_url.split("?")[0]).suffix or ".mp4"
+        src_path = tmp_path / f"source_{stamp}{src_ext}"
+        print(f"[worker/media_edit] Download: {asset_url}", flush=True)
+        _download_file(asset_url, src_path)
+
+        # 2. Traitement FFmpeg
+        out_path = tmp_path / f"edited_{stamp}.mp4"
+        result = process_media_edit(src_path, out_path, params)
+        duration: float = result["duration"]
+
+        # 3. Upload au même r2_key (écrasement)
+        print(f"[worker/media_edit] Upload to R2: {r2_key}", flush=True)
+        public_url = _upload_to_r2(r2_key, out_path, "video/mp4")
+
+    print(f"[worker/media_edit] Done job={job_id} duration={duration:.2f}s url={public_url}", flush=True)
+    return {
+        "duration": duration,
+        "r2_key": r2_key,
+        "video_url": public_url,
+    }
+
+
 if __name__ == "__main__":
-    # ── Démarrage du worker : log GPU, check NVENC, lazy-load transcription ──
-    # Tout ce qui est fait ici tourne AVANT runpod.serverless.start(), donc hors billing job.
+    # ── Démarrage du worker : log GPU, check NVENC, lazy-load transcription ──    # Tout ce qui est fait ici tourne AVANT runpod.serverless.start(), donc hors billing job.
     # Les workers RunPod restent vivants entre les jobs (idle timeout). On garde un
     # probe NVENC au boot pour le diagnostic, mais Whisper passe en lazy-load par job.
 

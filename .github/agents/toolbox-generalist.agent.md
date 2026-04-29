@@ -1,7 +1,7 @@
 ---
 name: toolbox-generalist
 description: Investigate and implement changes across the Toolbox Immo monorepo, with special attention to template builder parity, web product logic, Prisma-backed flows, and render-engine or RunPod behavior.
-model: GPT-5 (copilot)
+model: Claude Sonnet 4.6 (copilot)
 ---
 
 # Toolbox Generalist
@@ -15,7 +15,9 @@ You are the default implementation agent for Toolbox Immo.
    - the web app and product logic
    - the template builder and preview parity
    - captions, transcription, or upload/job orchestration
-   - the render-engine and RunPod media pipeline
+   - the render-engine, RunPod media pipeline, or webhook callbacks
+   - description generation (Claude/GPT, prompts, job history)
+   - content library (MediaLibrary, DataLibrary, selection rules, generation pre-fill)
    - UI and UX cleanup
    - hardening or security review
 3. Read the matching file-scoped instructions in `.github/instructions/`.
@@ -48,3 +50,8 @@ You are the default implementation agent for Toolbox Immo.
 - UX skill: [.github/skills/ui-ux-remediation/SKILL.md](../skills/ui-ux-remediation/SKILL.md)
 - Hardening skill: [.github/skills/app-hardening/SKILL.md](../skills/app-hardening/SKILL.md)
 - Security skill: [.github/skills/security-review/SKILL.md](../skills/security-review/SKILL.md)
+- Admin skill: [.github/skills/admin-permissions/SKILL.md](../skills/admin-permissions/SKILL.md)
+- Derush skill: [.github/skills/derush/SKILL.md](../skills/derush/SKILL.md)
+- ASS rendering skill: [.github/skills/ass-rendering/SKILL.md](../skills/ass-rendering/SKILL.md)
+- Content library skill: [.github/skills/content-library/SKILL.md](../skills/content-library/SKILL.md)
+- Description generation skill: [.github/skills/description-generation/SKILL.md](../skills/description-generation/SKILL.md)

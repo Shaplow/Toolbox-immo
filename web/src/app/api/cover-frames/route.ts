@@ -44,7 +44,42 @@ export async function POST(req: NextRequest) {
     }
     form.append("video", new Blob([new Uint8Array(buf)], { type: "video/mp4" }), path.basename(safePath));
   } else {
-    // URL distante (R2 / CDN) : le render engine peut la télécharger directement
+    // URL distante (R2 / CDN) : valider que le schéma est http(s) et le domaine est autorisé
+    // pour éviter les requêtes SSRF vers des services internes (metadata cloud, render-engine, etc.)
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(videoUrl);
+    } catch {
+      return NextResponse.json({ error: "videoUrl invalide" }, { status: 400 });
+    }
+
+    if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+      return NextResponse.json({ error: "videoUrl doit être une URL http(s)" }, { status: 400 });
+    }
+
+    const r2PublicUrl = process.env.R2_PUBLIC_URL;
+    const allowedHosts: string[] = [];
+    if (r2PublicUrl) {
+      try { allowedHosts.push(new URL(r2PublicUrl).hostname); } catch { /* ignore */ }
+    }
+    // Allow public CDN/R2 hostname patterns — block private/internal IP ranges
+    const hostname = parsedUrl.hostname;
+    const isPrivateIp =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "0.0.0.0" ||
+      /^10\./.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+      /^192\.168\./.test(hostname) ||
+      /^169\.254\./.test(hostname) || // link-local / AWS metadata
+      hostname.endsWith(".internal") ||
+      hostname.endsWith(".local");
+
+    if (isPrivateIp) {
+      return NextResponse.json({ error: "videoUrl pointe vers un réseau privé" }, { status: 400 });
+    }
+
+    // Le render engine peut télécharger directement cette URL publique
     form.append("video_url", videoUrl);
   }
 

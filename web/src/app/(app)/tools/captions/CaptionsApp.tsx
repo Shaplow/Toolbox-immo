@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useJobEvent } from '@/lib/hooks/jobEventBus'
+import { useJobPolling } from '@/lib/hooks/useJobPolling'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import {
@@ -101,6 +103,10 @@ export default function CaptionsApp({
   const [draftBanner, setDraftBanner] = useState<boolean>(() => !!draft)
 
   const initialLoadDone = useRef(false)
+  // Job en attente de complétion RunPod (null = pas de render en cours)
+  const [renderingJobId, setRenderingJobId] = useState<string | null>(null)
+  // Mode du render en cours (nécessaire pour le message de completion)
+  const renderingModeRef = useRef<'render-preview' | 'render-full'>('render-full')
 
   const fetchPresets = async () => {
     try {
@@ -167,6 +173,52 @@ export default function CaptionsApp({
     if (p) { loadPreset(p); setLoadedPresetName(p.name); initialLoadDone.current = true }
   }, [presets, initialPresetId])
 
+  // ── SSE fast path — résolution immédiate via webhook ──────────────────────
+  const jobEvent = useJobEvent(renderingJobId ?? '')
+  useEffect(() => {
+    if (!jobEvent || jobEvent.jobType !== 'captions' || !renderingJobId) return
+    if (jobEvent.status === 'COMPLETED' || jobEvent.status === 'DONE') {
+      setVideoUrl(typeof jobEvent.videoUrl === 'string' ? jobEvent.videoUrl : '')
+      setRenderProgress(1)
+      setMessage(renderingModeRef.current === 'render-preview' ? 'Render preview 6s OK' : 'Render complet OK')
+      setRenderingJobId(null)
+      setBusy(false)
+      setTimeout(() => setRenderProgress(-1), 1500)
+    } else if (jobEvent.status === 'FAILED') {
+      setMessage(`Erreur rendu : ${String(jobEvent.errorMsg ?? 'Rendu échoué')}`)
+      setRenderingJobId(null)
+      setBusy(false)
+      setTimeout(() => setRenderProgress(-1), 1500)
+    }
+  }, [jobEvent, renderingJobId])
+
+  // ── Polling fallback (10 s) — actif uniquement si SSE indisponible ─────────
+  const { data: pollData } = useJobPolling<{ status: string; videoUrl?: string; outputUrl?: string; error?: string }>({
+    fetchFn: () => fetch(`/api/render/captions/${renderingJobId}`).then(r => r.json()),
+    isTerminal: (d) => d.status === 'COMPLETED' || d.status === 'DONE' || d.status === 'FAILED',
+    intervalMs: 10000,
+    enabled: renderingJobId !== null,
+  })
+  useEffect(() => {
+    if (!pollData || !renderingJobId) return
+    if (pollData.status === 'COMPLETED' || pollData.status === 'DONE') {
+      setVideoUrl(pollData.videoUrl ?? pollData.outputUrl ?? '')
+      setRenderProgress(1)
+      setMessage(renderingModeRef.current === 'render-preview' ? 'Render preview 6s OK' : 'Render complet OK')
+      setRenderingJobId(null)
+      setBusy(false)
+      setTimeout(() => setRenderProgress(-1), 1500)
+    } else if (pollData.status === 'FAILED') {
+      setMessage(`Erreur rendu : ${pollData.error ?? 'Rendu échoué'}`)
+      setRenderingJobId(null)
+      setBusy(false)
+      setTimeout(() => setRenderProgress(-1), 1500)
+    } else {
+      setRenderProgress(p => Math.min(p + 0.02, 0.9))
+      setMessage(pollData.status === 'PROCESSING' ? 'Rendu en cours…' : 'En file d\'attente…')
+    }
+  }, [pollData, renderingJobId])
+
   // Sauvegarde automatique du brouillon (debounce 800ms)
   useEffect(() => {
     if (captions.length === 0 && highlighted.size === 0) return
@@ -223,6 +275,8 @@ export default function CaptionsApp({
       fakeProgressVal = Math.min(fakeProgressVal + 0.008, 0.88)
       setRenderProgress(fakeProgressVal)
     }, 800)
+    // Set to true when we hand off to SSE/polling — finally block must NOT reset busy
+    let submittedToRunPod = false
     try {
       const form = new FormData()
       form.append('video', videoFile)
@@ -248,38 +302,23 @@ export default function CaptionsApp({
 
       setMessage('Job RunPod soumis — en attente du résultat…')
       setRenderProgress(0.15)
-      clearInterval(fakeProgressTimer) // stop fake progress, RunPod polling takes over
+      clearInterval(fakeProgressTimer) // stop fake progress, SSE/polling takes over
 
-      // ── Mode RunPod : polling statut toutes les 2s ────────────────────────
-      await new Promise<void>((resolve, reject) => {
-        const poll = setInterval(async () => {
-          try {
-            const statusRes = await fetch(`/api/render/captions/${captionJobId}`)
-            if (!statusRes.ok) { clearInterval(poll); reject(new Error(`Status ${statusRes.status}`)); return }
-            const status = await statusRes.json()
-            if (status.status === 'COMPLETED' || status.status === 'DONE') {
-              clearInterval(poll)
-              setVideoUrl(status.videoUrl ?? status.outputUrl)
-              setRenderProgress(1)
-              setMessage(mode === 'render-preview' ? 'Render preview 6s OK' : 'Render complet OK')
-              resolve()
-            } else if (status.status === 'FAILED') {
-              clearInterval(poll)
-              reject(new Error(status.error ?? 'Rendu échoué'))
-            } else {
-              // QUEUED ou PROCESSING : avancer un peu la barre
-              setRenderProgress(p => Math.min(p + 0.02, 0.9))
-              setMessage(status.status === 'PROCESSING' ? 'Rendu en cours…' : 'En file d\'attente…')
-            }
-          } catch (e) { clearInterval(poll); reject(e) }
-        }, 2000)
-      })
+      // ── Mode RunPod : SSE primaire + polling fallback 10s ────────────────
+      submittedToRunPod = true
+      renderingModeRef.current = mode as 'render-preview' | 'render-full'
+      setRenderingJobId(captionJobId)
+      // Effects above will handle busy state + videoUrl when job completes
+      return
     } catch (error) {
       setMessage(`Erreur rendu : ${String(error)}`)
     } finally {
       clearInterval(fakeProgressTimer)
-      setBusy(false)
-      setTimeout(() => setRenderProgress(-1), 1500)
+      // If handed off to RunPod (SSE/polling), busy + progress are managed by completion effects
+      if (!submittedToRunPod) {
+        setBusy(false)
+        setTimeout(() => setRenderProgress(-1), 1500)
+      }
     }
   }
 

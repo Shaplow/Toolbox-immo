@@ -18,7 +18,6 @@ except ImportError:  # pragma: no cover
 from pydantic import ValidationError
 
 from engine.ass_writer import write_ass_file
-from engine.cairo_renderer import CairoRendererNotReadyError, burn_subtitles_cairo, render_preview_frame_cairo
 from engine.fonts import list_font_names
 from engine.layout import build_layout
 from engine.models import RenderConfig, WordTimestamp, default_premium_config
@@ -362,18 +361,6 @@ def _render_captions_preview(
         auto_safe_area=auto_safe_area,
         fonts_dir=fonts_dir,
     )
-    if effective_cfg.engine == "cairo":
-        render_preview_frame_cairo(
-            input_video=video_path,
-            output_image=output_image,
-            words=words,
-            config=effective_cfg,
-            video_info=video_info,
-            fonts_dir=effective_fonts_dir,
-            at_seconds=at_seconds,
-        )
-        return None
-
     ass_path = _render_ass_from_context(words, effective_cfg, video_info, effective_fonts_dir)
     render_preview_frame(
         input_video=video_path,
@@ -407,25 +394,6 @@ def _render_captions_video(
         auto_safe_area=auto_safe_area,
         fonts_dir=fonts_dir,
     )
-    if effective_cfg.engine == "cairo":
-        burn_subtitles_cairo(
-            input_video=video_path,
-            output_video=output_video,
-            words=words,
-            config=effective_cfg,
-            video_info=video_info,
-            fonts_dir=effective_fonts_dir,
-            preview=preview,
-            preview_seconds=preview_seconds,
-            quality_profile=quality_profile,
-            progress_path=progress_path,
-            video_codec=video_codec,
-            video_codec_args=video_codec_args,
-            audio_codec=audio_codec,
-            audio_codec_args=audio_codec_args,
-        )
-        return None
-
     ass_path = _render_ass_from_context(words, effective_cfg, video_info, effective_fonts_dir)
     burn_subtitles(
         input_video=video_path,

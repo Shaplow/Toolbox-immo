@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { templateId, listingId } = body;
+    const { templateId, listingId, usedAssets } = body;
 
     if (!templateId || !listingId) {
       return NextResponse.json(
@@ -48,9 +48,53 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Listing introuvable" }, { status: 404 });
     }
 
+    // Valider usedAssets — vérifier que chaque ID référencé existe en DB.
+    // Empêche de gonfler les compteurs d'usage d'assets arbitraires via
+    // un payload modifié côté client.
+    const sanitizedUsedAssets: {
+      videoAssets?: Record<string, string>;
+      audioAssetId?: string;
+      dataEntryId?: string;
+    } = {};
+
+    if (usedAssets && typeof usedAssets === "object") {
+      const raw = usedAssets as { videoAssets?: unknown; audioAssetId?: unknown; dataEntryId?: unknown };
+
+      // Video assets: blockId → assetId
+      if (raw.videoAssets && typeof raw.videoAssets === "object" && !Array.isArray(raw.videoAssets)) {
+        const videoMap = raw.videoAssets as Record<string, unknown>;
+        const ids = Object.values(videoMap).filter((v): v is string => typeof v === "string");
+        if (ids.length > 0) {
+          const found = await prisma.mediaAsset.findMany({ where: { id: { in: ids } }, select: { id: true } });
+          const validIds = new Set(found.map((a) => a.id));
+          sanitizedUsedAssets.videoAssets = Object.fromEntries(
+            Object.entries(videoMap)
+              .filter(([, v]) => typeof v === "string" && validIds.has(v as string)) as [string, string][]
+          );
+        }
+      }
+
+      // Audio asset
+      if (typeof raw.audioAssetId === "string") {
+        const found = await prisma.mediaAsset.findUnique({ where: { id: raw.audioAssetId }, select: { id: true } });
+        if (found) sanitizedUsedAssets.audioAssetId = raw.audioAssetId;
+      }
+
+      // Data entry
+      if (typeof raw.dataEntryId === "string") {
+        const found = await prisma.dataEntry.findUnique({ where: { id: raw.dataEntryId }, select: { id: true } });
+        if (found) sanitizedUsedAssets.dataEntryId = raw.dataEntryId;
+      }
+    }
+
     // Créer le render en PENDING
     const render = await prisma.render.create({
-      data: { templateId, listingId, status: "PENDING" },
+      data: {
+        templateId,
+        listingId,
+        status: "PENDING",
+        usedAssets: JSON.stringify(sanitizedUsedAssets),
+      },
     });
 
     const kickoff = await startRenderGeneration(render.id);

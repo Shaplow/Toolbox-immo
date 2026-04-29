@@ -1,57 +1,12 @@
 ﻿import Link from "next/link";
-import { LayoutTemplate, AlignLeft, Image as ImageIcon, Mic, FileText, Scissors, List } from "lucide-react";
+import { List } from "lucide-react";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
+import { TOOL_META, TOOL_ORDER } from "@/lib/toolMeta";
 
-const tools = [
-  {
-    href: "/tools/templates",
-    label: "Générateur de templates",
-    description: "Créez et gérez des templates visuels pour vos annonces immobilières. Générez des visuels personnalisés en quelques clics.",
-    icon: <LayoutTemplate size={20} />,
-    color: "indigo",
-    badge: null,
-  },
-  {
-    href: "/tools/captions",
-    label: "Sous-titres",
-    description: "Incrustez des sous-titres stylisés et animés dans vos vidéos de présentation. Animations mot à mot, mise en avant, polices personnalisées.",
-    icon: <AlignLeft size={20} />,
-    color: "violet",
-    badge: "Bêta",
-  },
-  {
-    href: "/tools/transcription",
-    label: "Transcription",
-    description: "Convertissez audio et vidéo en texte, SRT ou chunks pour l'IA. Identification des intervenants incluse.",
-    icon: <Mic size={20} />,
-    color: "teal",
-    badge: null,
-  },
-  {
-    href: "/tools/description",
-    label: "Descriptions IA",
-    description: "Générez des descriptions de biens immobiliers à partir d'une transcription ou d'un fichier SRT.",
-    icon: <FileText size={20} />,
-    color: "amber",
-    badge: null,
-  },
-  {
-    href: "/tools/derush",
-    label: "Dérush",
-    description: "Sélection automatique des meilleurs plans par vision IA ou transcription. Export XML pour la post-production.",
-    icon: <Scissors size={20} />,
-    color: "rose",
-    badge: null,
-  },
-  {
-    href: "/tools/cover",
-    label: "Covers vidéo",
-    description: "Extrayez les meilleures frames de votre vidéo pour choisir la cover idéale. Tirages successifs, sélection multiple et téléchargement direct.",
-    icon: <ImageIcon size={20} />,
-    color: "emerald",
-    badge: null,
-  },
-];
+const tools = TOOL_ORDER.map((key) => {
+  const { href, cardLabel, description, Icon, color, badge } = TOOL_META[key];
+  return { href, label: cardLabel, description, icon: <Icon size={20} />, color, badge };
+});
 
 const colorMap: Record<string, string> = {
   indigo:  "bg-indigo-50 border-indigo-100 hover:border-indigo-300 group-hover:text-indigo-700",

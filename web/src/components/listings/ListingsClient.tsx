@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Film, RefreshCw, Download, LayoutTemplate, Mic, AlignLeft, Copy, Check, Scissors } from "lucide-react";
 import { DeleteListingButton } from "./DeleteListingButton";
+import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -12,7 +13,6 @@ export type RenderRow = {
   id: string;
   status: string;
   pngUrl: string | null;
-  pdfUrl: string | null;
   videoUrl: string | null;
   errorMsg: string | null;
   createdAt: string;
@@ -155,7 +155,7 @@ export function ListingsClient({
   hasDescription?: boolean;
   hasDerush?: boolean;
 }) {
-  const [tab, setTab] = useState<"visuels" | "captions" | "transcription" | "description" | "derush">("visuels");
+  const [tab, setTab] = useState<"templates" | "captions" | "transcription" | "description" | "derush">("templates");
   const [userFilter, setUserFilter] = useState<string | null>(null);
   const router = useRouter();
   // Flat map of render states keyed by renderId
@@ -209,31 +209,42 @@ export function ListingsClient({
     for (const j of initialCaptionJobs) m[j.id] = j;
     return m;
   });
-  const captionStatesRef = useRef(captionStates);
-  useEffect(() => {
-    captionStatesRef.current = captionStates;
-  }, [captionStates]);
 
   const [transcriptionStates, setTranscriptionStates] = useState<Record<string, TranscriptionJobRow>>(() => {
     const m: Record<string, TranscriptionJobRow> = {};
     for (const j of initialTranscriptionJobs) m[j.id] = j;
     return m;
   });
-  const transcriptionStatesRef = useRef(transcriptionStates);
-  useEffect(() => {
-    transcriptionStatesRef.current = transcriptionStates;
-  }, [transcriptionStates]);
+
+  // SSE fast path — captions and transcription updated instantly via webhook
+  useAllJobEvents((event) => {
+    if (event.jobType === "captions") {
+      setCaptionStates((prev) => {
+        if (!prev[event.jobId]) return prev;
+        return {
+          ...prev,
+          [event.jobId]: {
+            ...prev[event.jobId],
+            status: event.status === "COMPLETED" ? "DONE" : event.status,
+            outputUrl: typeof event.videoUrl === "string" ? event.videoUrl : prev[event.jobId].outputUrl,
+          },
+        };
+      });
+    } else if (event.jobType === "transcription") {
+      setTranscriptionStates((prev) => {
+        if (!prev[event.jobId]) return prev;
+        return { ...prev, [event.jobId]: { ...prev[event.jobId], status: event.status } };
+      });
+    }
+  });
 
   useEffect(() => {
     const timer = setInterval(async () => {
       const pendingRenders = Object.values(renderStatesRef.current).filter(
         (r) => r.status === "PROCESSING" || r.status === "PENDING"
       );
-      const pendingCaptions = Object.values(captionStatesRef.current).filter(
-        (j) => j.status === "PROCESSING" || j.status === "QUEUED"
-      );
-      await Promise.all([
-        ...pendingRenders.map(async (r) => {
+      await Promise.all(
+        pendingRenders.map(async (r) => {
           try {
             const res = await fetch(`/api/renders/${r.id}`);
             if (!res.ok) return;
@@ -242,35 +253,9 @@ export function ListingsClient({
               setRenderStates((prev) => ({ ...prev, [r.id]: { ...prev[r.id], ...data } }));
             }
           } catch { /* ignore */ }
-        }),
-        ...pendingCaptions.map(async (j) => {
-          try {
-            const res = await fetch(`/api/render/captions/${j.id}`);
-            if (!res.ok) return;
-            const data = await res.json() as { status: string; videoUrl?: string };
-            const mapped = (data.status === "COMPLETED" || data.status === "DONE") ? "DONE" : data.status;
-            if (mapped !== captionStatesRef.current[j.id]?.status) {
-              setCaptionStates((prev) => ({
-                ...prev,
-                [j.id]: { ...prev[j.id], status: mapped, outputUrl: data.videoUrl ?? prev[j.id].outputUrl },
-              }));
-            }
-          } catch { /* ignore */ }
-        }),
-        ...Object.values(transcriptionStatesRef.current)
-          .filter((j) => j.status === "PROCESSING" || j.status === "QUEUED")
-          .map(async (j) => {
-            try {
-              const res = await fetch(`/api/transcription/${j.id}`);
-              if (!res.ok) return;
-              const data = await res.json() as Partial<TranscriptionJobRow> & { status: string };
-              if (data.status !== transcriptionStatesRef.current[j.id]?.status) {
-                setTranscriptionStates((prev) => ({ ...prev, [j.id]: { ...prev[j.id], ...data } }));
-              }
-            } catch { /* ignore */ }
-          }),
-      ]);
-    }, 2500);
+        })
+      );
+    }, 5000);
     return () => clearInterval(timer);
   }, []);
 
@@ -329,7 +314,7 @@ export function ListingsClient({
   const derushGroups = useMemo(() => groupByDate(filteredDerush), [filteredDerush]);
 
   const activeGroups =
-    tab === "visuels" ? listingGroups :
+    tab === "templates" ? listingGroups :
     tab === "captions" ? captionGroups :
     tab === "transcription" ? transcriptionGroups :
     tab === "derush" ? derushGroups :
@@ -341,14 +326,14 @@ export function ListingsClient({
       {/* Tabs */}
       <div className="flex items-center gap-1 mb-6 bg-gray-100 p-1 rounded-xl w-fit">
         <button
-          onClick={() => setTab("visuels")}
+          onClick={() => setTab("templates")}
           className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-            tab === "visuels" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            tab === "templates" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
           }`}
         >
           Templates
           <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-            tab === "visuels" ? "bg-indigo-100 text-indigo-600" : "bg-gray-200 text-gray-500"
+            tab === "templates" ? "bg-indigo-100 text-indigo-600" : "bg-gray-200 text-gray-500"
           }`}>
             {filteredListings.length}
           </span>
@@ -447,7 +432,7 @@ export function ListingsClient({
       {/* Empty state */}
       {isEmpty && tab !== "derush" && (
         <div className="text-center py-24 text-gray-400">
-          {tab === "visuels" ? (
+          {tab === "templates" ? (
             <>
               <LayoutTemplate size={40} className="mx-auto mb-4 opacity-30" />
               <p className="font-medium">Aucun template pour l&apos;instant</p>
@@ -509,7 +494,7 @@ export function ListingsClient({
               <div className="flex-1 border-t border-gray-100" />
             </div>
             <div className="space-y-3">
-              {tab === "visuels"
+              {tab === "templates"
                 ? (activeGroups[group] as ListingRow[]).map((listing) => {
                     const renders = listing.renders
                       .map((r) => renderStates[r.id] ?? r)

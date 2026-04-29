@@ -13,7 +13,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VERSION_FILE="${SCRIPT_DIR}/render-engine/VERSION"
 DOCKER_IMAGE="kodexfr/toolbox-render"
-DOCKER_CACHE_IMAGE="${DOCKER_IMAGE}:buildcache"
+# Cache local sur la machine de build (évite les 400 Docker Hub sur mode=max volumineux).
+# Le cache persiste entre les builds tant que ~/.cache/toolbox-render-buildcache/ existe.
+# Supprimer ce dossier pour forcer un full rebuild propre.
+DOCKER_LOCAL_CACHE="${HOME}/.cache/toolbox-render-buildcache"
 SERVER_IP="37.27.246.85"
 SERVER_USER="root"
 
@@ -81,14 +84,17 @@ deploy_docker() {
 
   # Build + push direct via Buildx
   # --push évite le gros export local (--load) puis un second upload via docker push.
-  # Le cache registry réduit fortement les rebuilds quand seules quelques couches changent.
+  # Cache local (type=local,mode=max) : stocke tous les layers intermédiaires sur le Mac.
+  # Beaucoup plus fiable que le cache registry (Docker Hub rejette les blobs mode=max >2 GB).
+  # Sur un simple changement de code (.py), seul le dernier COPY . . est reconstruit.
   header "Build + Push linux/amd64"
+  mkdir -p "${DOCKER_LOCAL_CACHE}"
   run "docker buildx build \
     --platform linux/amd64 \
     -f \"${SCRIPT_DIR}/render-engine/Dockerfile.runpod\" \
     -t \"${NEW_TAG}\" \
-    --cache-from type=registry,ref=\"${DOCKER_CACHE_IMAGE}\" \
-    --cache-to type=registry,ref=\"${DOCKER_CACHE_IMAGE}\",mode=max \
+    --cache-from type=local,src=\"${DOCKER_LOCAL_CACHE}\" \
+    --cache-to type=local,dest=\"${DOCKER_LOCAL_CACHE}\",mode=max \
     --provenance=false \
     --push \
     \"${SCRIPT_DIR}/render-engine\""

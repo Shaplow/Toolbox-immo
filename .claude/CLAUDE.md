@@ -12,9 +12,10 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
    - general web app or Prisma behavior
    - captions, transcription, or file-upload workflow orchestration
    - derush workflow (analysis, scoring, segment overrides, export)
-   - description generation workflow
+   - description generation workflow (Claude/GPT, prompts, transcript/image inputs)
+   - content library (MediaLibrary, DataLibrary, selection rules, generation pre-fill, asset editing)
    - admin, permissions, or impersonation
-   - render-engine, FFmpeg, RunPod, or storage pipeline
+   - render-engine, FFmpeg, RunPod, storage pipeline, or webhook callbacks
    - UI and UX cleanup
 2. Read `.github/copilot-instructions.md` first, then the relevant file-scoped instructions in `.github/instructions/`.
 3. Use the matching skill in `.github/skills/` when the task falls into a repeated workflow.
@@ -37,7 +38,7 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
 ## Skills Available In Repo
 
 - `.github/skills/template-builder-debug/`
-- `.github/skills/runpod-render-ops/`
+- `.github/skills/runpod-render-ops/` — render engine, FFmpeg, RunPod, webhooks, R2
 - `.github/skills/captions-transcription/`
 - `.github/skills/ass-rendering/` — ASS file generation: line spacing, shadows, glow, animation presets, libass quirks
 - `.github/skills/ui-ux-remediation/`
@@ -45,7 +46,8 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
 - `.github/skills/security-review/`
 - `.github/skills/admin-permissions/`
 - `.github/skills/derush/`
-- `.github/skills/content-library/` — MediaLibrary, MediaAsset, DataLibrary, DataCampaign, DataEntry, builder bindings, selection rules, generation pre-fill, usage tracking
+- `.github/skills/content-library/` — MediaLibrary, MediaAsset, DataLibrary, DataCampaign, DataEntry, builder bindings, selection rules, generation pre-fill, asset editing via RunPod, usage tracking
+- `.github/skills/description-generation/` — DescriptionJob, DescriptionPrompt, Claude/GPT generation, transcript/image inputs, admin prompt management
 
 ## Agents Available In Repo
 

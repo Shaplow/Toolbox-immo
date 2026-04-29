@@ -1,19 +1,16 @@
 ---
 name: content-library
 description: >
-  Implement and evolve the Content Library system in Toolbox Immo. Use when a
-  task involves MediaLibrary, MediaAsset, DataLibrary, DataCampaign, DataEntry,
-  library-to-VideoBlock bindings in the builder, generation form pre-fill,
-  selection rules (oldest_used, least_used, round_robin), or batch generation.
+  Work with the Content Library system in Toolbox Immo. Use when a task involves
+  MediaLibrary, MediaAsset, DataLibrary, DataCampaign, DataEntry, library-to-VideoBlock
+  bindings in the builder, generation form pre-fill, selection rules (oldest_used,
+  least_used, not_used_in_cycle, manual), asset editing via RunPod, or usage tracking.
 ---
 
-# Content Library Skill
-
-## Purpose
+# Content Library
 
 The Content Library system is a shared asset and data management layer that sits
-**before** the generation form. It replaces ad-hoc video/audio picking and
-manual text entry with organised, rule-driven libraries managed by admins.
+**before** the generation form. Libraries are admin-managed and shared across all users.
 
 Three distinct library types exist:
 
@@ -23,17 +20,15 @@ Three distinct library types exist:
 | Audio | `MediaLibrary` (type="audio") | Music tracks uploaded to R2 |
 | Data | `DataLibrary` + `DataCampaign` + `DataEntry` | Text data per template type (RPI, RTIPS…) |
 
-All libraries are **admin-managed and shared** across users. No per-user private
-libraries in V1.
-
 ---
 
-## Architecture Overview
+## Architecture
 
 ```
 Admin UI
   └── creates/uploads MediaLibrary + MediaAsset (video, audio)
   └── creates DataLibrary → DataCampaign → DataEntry (CSV import or form)
+  └── edits/trims MediaAsset via RunPod media-edit job (async, webhook)
 
 Builder
   └── VideoBlock → libraryId + selectionRule
@@ -41,382 +36,174 @@ Builder
   └── Template-level → dataLibraryId + dataCampaignId + dataSelectionRule
 
 Generation form
-  └── reads linked libraries → applies rules → pre-fills fields
+  └── contentLibraryResolver.ts resolves libraries → pre-fills fields
   └── user reviews and confirms before launching render
+
+Post-render
+  └── recordLibraryUsage() increments usageCount + sets lastUsedAt + usedInCycle
 ```
 
 ---
 
-## Data Model
+## Prisma Models
 
-### Prisma models to add to `web/prisma/schema.prisma`
+All five models exist in `web/prisma/schema.prisma`: `MediaLibrary`, `MediaAsset`,
+`DataLibrary`, `DataCampaign`, `DataEntry`.
 
-```prisma
-// ─── Content Library ─────────────────────────────────────────────────────────
+After any schema change: `cd web && npm run db:generate && npm run db:push`
 
-/// Bibliothèque de médias (vidéos rush ou musiques). Gérée par les admins.
-model MediaLibrary {
-  id          String       @id @default(cuid())
-  name        String
-  /// "video" | "audio"
-  type        String
-  /// JSON string[] — tags de type template : ["RPI","RTIPS","RPOD"] 
-  tags        String       @default("[]")
-  description String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  assets      MediaAsset[]
-}
+Key fields to know:
 
-/// Un fichier média dans une bibliothèque (stocké sur R2).
-model MediaAsset {
-  id         String       @id @default(cuid())
-  libraryId  String
-  library    MediaLibrary @relation(fields: [libraryId], references: [id], onDelete: Cascade)
-  filename   String
-  r2Key      String       @unique
-  url        String
-  /// "video/mp4" | "audio/mpeg" etc.
-  mimeType   String
-  /// Durée en secondes (remplie au probe après upload)
-  duration   Float?
-  /// Nombre de fois utilisé dans une génération
-  usageCount Int          @default(0)
-  lastUsedAt DateTime?
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
-}
-
-/// Bibliothèque de données texte, rattachée à un type de template (RPI, RTIPS…).
-model DataLibrary {
-  id           String         @id @default(cuid())
-  name         String
-  /// Identifiant métier du type : "RPI" | "RTIPS" | "RPOD" | etc.
-  templateType String
-  description  String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  campaigns    DataCampaign[]
-}
-
-/// Cycle de données (ex: "RPI Q1 2026"). Une fiche active à la fois par library.
-model DataCampaign {
-  id          String      @id @default(cuid())
-  libraryId   String
-  library     DataLibrary @relation(fields: [libraryId], references: [id], onDelete: Cascade)
-  name        String      // "RPI Q1 2026"
-  isActive    Boolean     @default(true)
-  /// Quand resetUsedInCycle() est appelé, tous les DataEntry.usedInCycle → false
-  cycleResetAt DateTime?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  entries     DataEntry[]
-}
-
-/// Une fiche de données texte (une ligne de l'Excel d'origine).
-model DataEntry {
-  id           String       @id @default(cuid())
-  campaignId   String
-  campaign     DataCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  /// JSON — champs libres selon le templateType (ex: {quartier, prix_m2, evo_5ans})
-  fields       String       @default("{}")
-  usageCount   Int          @default(0)
-  lastUsedAt   DateTime?
-  /// Remis à false au reset de cycle. Permet la règle "pas encore utilisé ce cycle".
-  usedInCycle  Boolean      @default(false)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-}
-```
-
----
+- `MediaAsset.usageCount` / `lastUsedAt` — updated by `recordLibraryUsage()` after each render
+- `DataEntry.usedInCycle` — set to `true` after use; reset to `false` by campaign reset endpoint
+- `DataCampaign.isActive` — only one per `DataLibrary` may be active at a time
+- `Render.usedAssets` — JSON `{ videoAssets: { blockId: assetId }, audioAssetId?, dataEntryId? }`
 
 ## Template JSON Extensions
 
-These fields extend the existing `TemplateJSON` type in
-`web/src/types/template.ts`. **Do not remove existing fields.**
+These fields are in the existing types in `web/src/types/template.ts`:
 
 ```typescript
-// Inside TemplateJSON (top-level template config)
-export interface TemplateContentLibraryConfig {
-  /** ID of the MediaLibrary (type="audio") to use for this template */
-  audioLibraryId?: string;
-  /** Rule for auto-selecting a music track */
-  audioSelectionRule?: "oldest_used" | "manual";
-  /** ID of the DataLibrary for this template's type */
-  dataLibraryId?: string;
-  /** Active DataCampaign ID (can be overridden at generation time) */
-  dataCampaignId?: string;
-  /** Rule for auto-selecting a DataEntry */
-  dataSelectionRule?: "not_used_in_cycle" | "least_used" | "manual";
-}
-```
-
-For `VideoBlock`, add inside its existing interface:
-
-```typescript
-// Inside VideoBlock
-libraryId?: string;          // ID of the MediaLibrary (type="video")
+// VideoBlock
+libraryId?: string;
 selectionRule?: "oldest_used" | "least_used" | "manual";
+
+// TemplateJSON (top-level)
+audioLibraryId?: string;
+audioSelectionRule?: "oldest_used" | "manual";
+dataLibraryId?: string;
+dataCampaignId?: string;
+dataSelectionRule?: "not_used_in_cycle" | "least_used" | "manual";
 ```
 
----
+These fields are **metadata only** — they have no effect on builder preview or HTML render.
 
-## Selection Rules Reference
+## Selection Rules
 
 | Rule | Applies to | Behaviour |
 |------|-----------|-----------|
-| `oldest_used` | Video, Audio | Pick the asset with the oldest `lastUsedAt` (or never used, i.e. `null`, first) |
+| `oldest_used` | Video, Audio | Pick the asset with the oldest `lastUsedAt` (`null` first) |
 | `least_used` | Video, DataEntry | Pick the one with the lowest `usageCount` |
 | `not_used_in_cycle` | DataEntry | Pick any entry where `usedInCycle = false`; fall back to `least_used` if all used |
 | `manual` | All | No auto-selection — show the library picker for user to choose |
 
-After a render completes (`RenderStatus.DONE`):
-- Increment `usageCount` and set `lastUsedAt = now()` on each used asset/entry.
-- Set `usedInCycle = true` on each used `DataEntry`.
+Resolver: `web/src/lib/contentLibraryResolver.ts` → `resolveLibraryPrefill(templateId)`
 
----
+After a render completes (`RenderStatus.DONE`), `recordLibraryUsage(renderId)` in
+`web/src/lib/recordLibraryUsage.ts` increments counters atomically. A failed render
+must not consume an asset.
 
-## Implementation Phases
+## Admin API Routes
 
-Work through phases sequentially. Each phase has a clear deliverable and
-validation step. Do not skip ahead — later phases depend on earlier ones being
-stable.
-
----
-
-### Phase 1 — Prisma Schema
-
-**Files:** `web/prisma/schema.prisma`
-
-1. Add the four models above (`MediaLibrary`, `MediaAsset`, `DataLibrary`,
-   `DataCampaign`, `DataEntry`).
-2. Run `cd web && npm run db:generate && npm run db:push`.
-3. Verify no migration errors.
-
-**Deliverable:** DB tables created, Prisma client regenerated.
-
----
-
-### Phase 2 — Admin API Routes
-
-**Files:** `web/src/app/api/admin/libraries/`
-
-Create REST endpoints under `/api/admin/libraries/`:
+**Base:** `web/src/app/api/admin/libraries/`
 
 ```
-GET    /api/admin/libraries/media           — list MediaLibrary (+ asset count)
-POST   /api/admin/libraries/media           — create MediaLibrary
-DELETE /api/admin/libraries/media/[id]      — delete (cascade deletes assets)
+GET    /admin/libraries/media                          — list MediaLibrary
+POST   /admin/libraries/media                          — create MediaLibrary
+DELETE /admin/libraries/media/[id]                     — delete (cascade assets)
 
-GET    /api/admin/libraries/media/[id]/assets     — list MediaAsset
-POST   /api/admin/libraries/media/[id]/upload     — upload + probe → R2 → MediaAsset
-DELETE /api/admin/libraries/media/assets/[id]     — delete asset (+ R2 cleanup)
+GET    /admin/libraries/media/[id]/assets              — list MediaAsset
+POST   /admin/libraries/media/[id]/upload              — upload + probe → R2 → MediaAsset
+DELETE /admin/libraries/media/assets/[assetId]         — delete asset (+ R2 cleanup)
+POST   /admin/libraries/media/assets/[assetId]/edit    — submit RunPod media-edit job
 
-GET    /api/admin/libraries/data            — list DataLibrary (+ campaign count)
-POST   /api/admin/libraries/data            — create DataLibrary
-DELETE /api/admin/libraries/data/[id]       — delete
+GET    /admin/libraries/data                           — list DataLibrary
+POST   /admin/libraries/data                           — create DataLibrary
+DELETE /admin/libraries/data/[id]                      — delete
 
-GET    /api/admin/libraries/data/[id]/campaigns     — list DataCampaign
-POST   /api/admin/libraries/data/[id]/campaigns     — create DataCampaign
-POST   /api/admin/libraries/data/campaigns/[id]/import  — CSV/XLSX import → DataEntry[]
-POST   /api/admin/libraries/data/campaigns/[id]/reset   — set usedInCycle=false on all entries
-DELETE /api/admin/libraries/data/campaigns/[id]    — delete campaign
+GET    /admin/libraries/data/[id]/campaigns            — list DataCampaign
+POST   /admin/libraries/data/[id]/campaigns            — create DataCampaign
+POST   /admin/libraries/data/campaigns/[id]/import     — CSV/XLSX import → DataEntry[]
+POST   /admin/libraries/data/campaigns/[id]/reset      — set usedInCycle=false on all entries
+DELETE /admin/libraries/data/campaigns/[id]            — delete campaign
 ```
 
-**Security rules:**
-- All routes require admin role check (use existing `requireAdmin` pattern from
-  `web/src/lib/userContext.ts` or `web/src/lib/permissions.ts`).
-- Upload route: validate MIME type server-side (only `video/*` and `audio/*`).
-- CSV import: parse server-side, reject files > 5 MB, sanitise all fields before
-  inserting.
+All routes require admin role check via `web/src/lib/userContext.ts`.
 
-**R2 upload pattern:**
-Follow the same pattern used in captions/derush uploads:
-`web/src/app/api/transcription/` and `web/src/lib/runpod.ts` for R2 key
-conventions. Use `content-library/videos/` and `content-library/audio/` as R2
-key prefixes.
+## Media-Edit Async Flow (RunPod)
 
-**Deliverable:** All admin routes functional, tested via manual curl or UI.
+Asset editing (trim/crop) is async via RunPod webhook, not polling:
 
----
+```
+POST /admin/libraries/media/assets/[assetId]/edit
+  → submitRunpodJob() with job_type: "media_edit"
+  → asset updated to pending state
 
-### Phase 3 — Admin UI
+RunPod → POST /api/webhooks/runpod/media-edit
+  → verifyRunpodWebhook() checks X-Webhook-Secret
+  → parseRunpodWebhookBody() parses the body
+  → updates MediaAsset.url / r2Key / duration on success
+  → sets error state on failure
+```
+
+Webhook helper: `web/src/lib/webhooks/runpod.ts` (`verifyRunpodWebhook`, `parseRunpodWebhookBody`)
+Webhook route: `web/src/app/api/webhooks/runpod/media-edit/route.ts`
+
+## Admin UI
 
 **Files:** `web/src/components/admin/libraries/`, `web/src/app/(app)/admin/libraries/`
 
-Create a dedicated "Bibliothèques" section in the admin panel.
+Components: `MediaLibrariesPanel`, `MediaAssetsPanel`, `MediaAssetEditModal`,
+`DataLibrariesPanel`, `DataCampaignsPanel`, `DataEntriesPanel`.
 
-UI structure:
-```
-/admin/libraries
-  /admin/libraries/media        — MediaLibrary list + create
-  /admin/libraries/media/[id]   — asset list + upload, delete
-  /admin/libraries/data         — DataLibrary list + create
-  /admin/libraries/data/[id]    — campaign list + create
-  /admin/libraries/data/[id]/[campaignId] — entry list + CSV import + cycle reset
-```
-
-Key UX notes (follow the ui-ux-remediation skill conventions):
-- Show `usageCount` and `lastUsedAt` per asset — helps verify rotation is
-  working.
+Key UX rules:
+- Show `usageCount` and `lastUsedAt` per asset.
 - In DataCampaign view, show how many entries are `usedInCycle=true` vs not.
 - "Reset cycle" button must require a confirmation dialog.
-- Only one `DataCampaign` can be `isActive=true` per `DataLibrary` — enforce
-  this in the UI (toggle-style activation that deactivates the previous one).
+- Only one `DataCampaign` can be `isActive=true` per `DataLibrary` — deactivate
+  the previous one in the same transaction when activating another.
 
-**Deliverable:** Admin can manage all three library types without touching the DB
-directly.
+## Generation Form Pre-fill
 
----
+`web/src/lib/contentLibraryResolver.ts` resolves library config to concrete
+pre-filled values. Called when the template has at least one library binding.
 
-### Phase 4 — Builder Integration
-
-**Files:**
-- `web/src/types/template.ts` — extend `VideoBlock`
-- `web/src/components/builder/` — VideoBlock panel sidebar
-
-Add to the `VideoBlock` properties panel in the builder:
-- **Library** dropdown: fetches available `MediaLibrary` of type "video" via
-  `/api/admin/libraries/media`, sets `block.libraryId`.
-- **Selection rule** dropdown: `oldest_used | least_used | manual`. Only visible
-  when `libraryId` is set.
-
-Add to the template settings panel (top-level config):
-- **Audio library** dropdown (type="audio"), sets `template.audioLibraryId`.
-- **Audio selection rule**, sets `template.audioSelectionRule`.
-- **Data library** dropdown, sets `template.dataLibraryId`.
-- **Data campaign** dropdown (filtered by selected library, only active ones),
-  sets `template.dataCampaignId`.
-- **Data selection rule**, sets `template.dataSelectionRule`.
-
-**Important:** These fields are purely metadata stored in `Template.jsonData`.
-Do not trigger a re-render of the preview when they change — they have no visual
-effect in the builder.
-
-**Deliverable:** A template can be fully configured with library bindings and
-saved.
-
----
-
-### Phase 5 — Generation Form Pre-fill
-
-**Files:**
-- `web/src/app/(app)/` generation form component
-- `web/src/lib/contentLibraryResolver.ts` (new helper)
-
-Create `web/src/lib/contentLibraryResolver.ts`:
-
-```typescript
-// Resolves a template's library config into concrete pre-filled values
-// for the generation form.
-export async function resolveLibraryPrefill(templateId: string): Promise<{
-  videoSuggestions: Record<string, MediaAsset>; // blockId → suggested asset
-  audioSuggestion: MediaAsset | null;
-  dataSuggestion: DataEntry | null;
-}>;
-```
-
-Logic per rule:
-- `oldest_used`: `ORDER BY lastUsedAt ASC NULLS FIRST LIMIT 1`
-- `least_used`: `ORDER BY usageCount ASC LIMIT 1`
-- `not_used_in_cycle`: `WHERE usedInCycle = false ORDER BY usageCount ASC LIMIT 1`,
-  fall back to `least_used` if empty
-- `manual`: return `null` — form shows the library picker, user selects manually
-
-In the generation form:
-- Call `resolveLibraryPrefill` when the template has at least one library binding.
-- Pre-fill the video picker for each `VideoBlock` that has a `libraryId`.
-- Pre-fill the audio picker.
-- Pre-fill text fields from `DataEntry.fields` (map field names to form field names
-  by convention — document the convention in the `DataLibrary.templateType`).
-- Show a **"Selected from library"** badge on pre-filled fields so the user knows
-  they were auto-selected.
-- The user can override any pre-filled field before launching.
-
-**After the render completes** (in the render status update handler in
-`web/src/app/api/renders/`):
-- Call a helper `recordLibraryUsage(renderId)` that increments `usageCount`,
-  sets `lastUsedAt`, and sets `usedInCycle = true` for all assets/entries that
-  were used in this render.
-- Store which assets were used as JSON in `Render` or as a separate join table
-  (start with a JSON field `usedAssets` on `Render` — a join table is only
-  needed if querying by asset becomes necessary).
-
-**Deliverable:** Generating a template with library bindings pre-fills the form
-and updates usage counters after completion.
-
----
-
-### Phase 6 — Batch Generation (V2)
-
-> Do not implement until Phase 5 is stable in production.
-
-Batch allows generating N videos at once from a DataCampaign without manual
-review of each form.
-
-High-level design:
-- User selects template + campaign → previews the N resolved pre-fills as a
-  table (one row = one DataEntry).
-- User can adjust individual rows before confirming.
-- Confirm → enqueue N `Render` jobs (use existing render queue).
-- Show batch progress in a dedicated view.
-
-Key invariant: the batch must consume entries in the same order the resolver
-would (respects selection rules), and must not double-pick the same asset across
-rows of the same batch run.
-
----
+- Pre-fills video picker per `VideoBlock` with a `libraryId`.
+- Pre-fills audio picker.
+- Pre-fills text fields from `DataEntry.fields` (see field mapping below).
+- Shows a "Selected from library" badge on pre-filled fields.
+- User can override any pre-filled field before launching.
 
 ## Field Mapping Convention (Data Library → Form)
 
-Each `DataLibrary.templateType` has a known set of field names. Document them
-here as they are created. These names must be stable — changing them breaks
-existing `DataEntry` records.
+Field names in `DataEntry.fields` are stable identifiers. Changing them breaks
+existing entries.
 
 | templateType | DataEntry fields |
 |-------------|-----------------|
 | `RPI` | `quartier`, `arrondissement`, `prix_m2`, `evo_5ans_pct` |
 | `RTIPS` | `hook`, `theme`, `tip1`, `tip2`, `tip3` |
 
-Add new rows to this table when adding a new template type. The form pre-fill
-logic maps these field names to form input names — keep naming consistent.
+Add new rows when adding a new template type.
 
----
+## Batch Generation (V2 — not yet implemented)
 
-## Files to Know
+Do not implement until generation form pre-fill is stable in production.
+Design: select template + campaign → preview N pre-fills as table → confirm →
+enqueue N `Render` jobs. Must respect selection rules and not double-pick
+assets across rows of the same batch.
+
+## Key Files
 
 | File | Role |
 |------|------|
-| `web/prisma/schema.prisma` | Add the 4 new models here |
-| `web/src/types/template.ts` | Extend `VideoBlock` and `TemplateJSON` |
-| `web/src/lib/contentLibraryResolver.ts` | Selection rule engine (create) |
-| `web/src/app/api/admin/libraries/` | Admin CRUD + upload routes (create) |
-| `web/src/components/builder/` | VideoBlock panel + template settings panel |
-| `web/src/app/api/renders/` | Post-render usage tracking hook |
-| `web/src/lib/permissions.ts` | Check admin gate before using this in new routes |
+| `web/prisma/schema.prisma` | All five content library models |
+| `web/src/types/template.ts` | `VideoBlock` and `TemplateJSON` library fields |
+| `web/src/lib/contentLibraryResolver.ts` | Selection rule engine |
+| `web/src/lib/recordLibraryUsage.ts` | Post-render usage tracking |
+| `web/src/app/api/admin/libraries/` | Admin CRUD + upload routes |
+| `web/src/app/api/admin/libraries/media/assets/[assetId]/edit/` | Asset-edit RunPod submission |
+| `web/src/app/api/webhooks/runpod/media-edit/` | Asset-edit completion webhook |
+| `web/src/lib/webhooks/runpod.ts` | Shared webhook auth + body parse helpers |
+| `web/src/components/admin/libraries/` | Admin UI panels |
+| `web/src/app/api/renders/` | Post-render hook that calls `recordLibraryUsage` |
 
----
+## Invariants
 
-## Warnings and Invariants
+- **Resolver nulls on missing IDs.** Deleted library → `resolveLibraryPrefill` returns `null`, no throw.
+- **Usage tracking on DONE only.** Failed renders must not consume assets.
+- **Cycle reset is destructive.** Always confirm first.
+- **R2 cleanup on asset delete.** Delete R2 object first, then DB row. Abort if R2 delete fails.
+- **One active campaign per DataLibrary.** Enforce in API and UI.
+- **Builder fields are metadata only.** `libraryId` / `selectionRule` on `VideoBlock` have no effect on `buildHTML.ts` or canvas rendering.
 
-- **Never skip Phase order.** The builder (Phase 4) writes library IDs into
-  `Template.jsonData`. If those IDs don't exist in the DB (Phase 1–2 not done),
-  the resolver silently returns nulls.
-- **usage tracking must be atomic.** Increment counters only on `RenderStatus.DONE`,
-  not on `PROCESSING`. A failed render must not consume the asset.
-- **Cycle reset is destructive.** Always confirm before calling
-  `campaigns/[id]/reset`. It cannot be undone.
-- **R2 key cleanup on asset delete.** When deleting a `MediaAsset`, always delete
-  the R2 object first, then the DB row. If R2 delete fails, abort and surface the
-  error — do not leave orphaned DB rows pointing to missing R2 keys.
-- **One active campaign per DataLibrary.** Enforce both in the API and the UI.
-  If activating a new campaign, deactivate the previous one in the same
-  transaction.
-- **Builder fields are purely metadata.** `libraryId` and `selectionRule` on a
-  `VideoBlock` have zero effect on the builder preview or the HTML render — they
-  are only read by the generation form resolver. Do not add logic for them in
-  `buildHTML.ts` or the canvas layer.
-- **Security:** All admin library routes must check admin role. The `resolveLibraryPrefill`
-  call in the generation form should only read public asset URLs — never expose
-  raw R2 keys to the client.

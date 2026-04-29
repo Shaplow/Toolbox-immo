@@ -24,6 +24,7 @@ import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { uploadToR2, deleteFromR2, r2Configured, createPresignedUploadUrl } from "@/lib/r2";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
+import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 
 const RUNPOD_API_KEY    = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -293,6 +294,7 @@ export async function POST(req: NextRequest) {
   });
 
   // ─── Soumettre à RunPod ───────────────────────────────────────────────────
+  const webhookUrl = getRunpodWebhookUrl("/api/webhooks/runpod/transcription");
   const runpodPayload = {
     input: {
       job_type: "transcribe",
@@ -304,6 +306,7 @@ export async function POST(req: NextRequest) {
       enable_diarization: enableDiarization,
       hf_token: enableDiarization ? (HF_TOKEN ?? null) : null,
     },
+    ...(webhookUrl ? { webhook: webhookUrl } : {}),
   };
 
   let runpodJobId: string;

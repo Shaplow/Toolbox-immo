@@ -13,6 +13,7 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Readable } from "stream";
@@ -117,6 +118,33 @@ export async function createPresignedUploadUrl(
   return getSignedUrl(client, command, { expiresIn });
 }
 
+// ─── Presigned Download URL ───────────────────────────────────────────────────
+
+/**
+ * Génère une URL GET pré-signée permettant de télécharger un fichier R2 directement
+ * depuis le browser avec le bon nom de fichier (Content-Disposition: attachment).
+ * @param key        Chemin dans le bucket, ex: "content-library/videos/abc.mp4"
+ * @param filename   Nom de fichier à proposer au téléchargement
+ * @param expiresIn  Durée de validité en secondes (défaut: 1 heure)
+ */
+export async function createPresignedDownloadUrl(
+  key: string,
+  filename: string,
+  expiresIn = 3600
+): Promise<string> {
+  requireR2();
+  const { bucket } = getR2Config();
+  const client = createClient();
+  // Sanitize filename for use in the header value
+  const safeFilename = filename.replace(/[\\"/\r\n]/g, "_");
+  const command = new GetObjectCommand({
+    Bucket: bucket!,
+    Key: key,
+    ResponseContentDisposition: `attachment; filename="${safeFilename}"`,
+  });
+  return getSignedUrl(client, command, { expiresIn });
+}
+
 // ─── Upload ───────────────────────────────────────────────────────────────────
 
 export interface UploadResult {
@@ -154,6 +182,26 @@ export async function uploadToR2(
     key,
     url: `${publicUrl!.replace(/\/$/, "")}/${key}`,
   };
+}
+
+// ─── Existence check ─────────────────────────────────────────────────────────
+
+/**
+ * Returns true when the key exists in R2.
+ * Throws only on genuine network / auth errors (not on 404).
+ */
+export async function objectExistsInR2(key: string): Promise<boolean> {
+  requireR2();
+  const { bucket } = getR2Config();
+  const client = createClient();
+  try {
+    await client.send(new HeadObjectCommand({ Bucket: bucket!, Key: key }));
+    return true;
+  } catch (err: unknown) {
+    const code = (err as { name?: string; $metadata?: { httpStatusCode?: number } });
+    if (code.$metadata?.httpStatusCode === 404 || code.name === "NotFound") return false;
+    throw err;
+  }
 }
 
 // ─── Delete ───────────────────────────────────────────────────────────────────

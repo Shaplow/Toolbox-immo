@@ -2,12 +2,10 @@
  * Port TypeScript du module process.py (module externe transcription).
  *
  * Fonctions de post-traitement des segments de transcription bruts :
- *   - mergeSegments()       : fusion des micro-segments du même speaker
- *   - tagSegments()         : détection backstage / retake / banter / content
  *   - generateSrt()         : format SRT standard (output principal)
- *   - generateFullClean()   : texte structuré avec tags
- *   - generateContentOnly() : passages éditoriaux seuls
  *   - generateChunks()      : découpage ~9000 tokens avec overlap pour IA
+ *   - buildSubtitlesFromWords() : segmentation SRT par timestamps de mots
+ *   - auditSRT()            : score et avertissements qualité SRT
  */
 
 export interface Word {
@@ -229,7 +227,7 @@ function tagSegment(text: string, duration: number): TaggedSegment["tag"] {
 
 // ─── Étape 1 : fusion ─────────────────────────────────────────────────────────
 
-export function mergeSegments(
+function mergeSegments(
   segments: Segment[],
   mergeGap = MERGE_GAP,
   maxDuration = MAX_MERGED_DURATION,
@@ -262,7 +260,7 @@ export function mergeSegments(
 
 // ─── Étape 2 : tagging ────────────────────────────────────────────────────────
 
-export function tagSegments(segments: Segment[]): TaggedSegment[] {
+function tagSegments(segments: Segment[]): TaggedSegment[] {
   return segments.map((seg) => {
     const duration = seg.end - seg.start;
     const tag = tagSegment(seg.text, duration);
@@ -273,6 +271,9 @@ export function tagSegments(segments: Segment[]): TaggedSegment[] {
 // ─── Segmentation SRT par word timestamps ────────────────────────────────────
 
 function findBestCutInBuffer(buffer: WorkWord[]): number {
+  // If the last word already ends a sentence, accept the whole buffer as-is
+  // rather than splitting off that word and creating a one-word orphan segment.
+  if (/[.!?]$/.test(buffer[buffer.length - 1].word)) return buffer.length - 1;
   for (let j = buffer.length - 2; j >= 0; j--) {
     const gapAfter = buffer[j + 1].start - buffer[j].end;
     if (gapAfter >= SRT_PAUSE_SOFT_CUT) return j;
@@ -391,21 +392,37 @@ export function buildSubtitlesFromWords(segments: Segment[]): Segment[] {
 
   if (buffer.length > 0) subtitles.push(flushBuffer(buffer));
 
-  // Post-pass: merge subtitles that are too short with the next one
+  // Post-pass: merge subtitles that are too short OR end on a dangling
+  // article/determiner (e.g. "VENEZ JE VOUS LE") with the following segment.
   const merged: Segment[] = [];
   for (let i = 0; i < subtitles.length; i++) {
     const sub = subtitles[i];
     const dur = sub.end - sub.start;
-    if (dur < SRT_MIN_DURATION && i < subtitles.length - 1) {
+    const subWords = sub.words ?? [];
+    const lastWordOfSub = subWords[subWords.length - 1]?.word ?? sub.text.trim().split(/\s+/).pop() ?? "";
+    const endsOnDeterminer = isDeterminer(lastWordOfSub);
+
+    const shouldMerge =
+      i < subtitles.length - 1 &&
+      (dur < SRT_MIN_DURATION || endsOnDeterminer);
+
+    if (shouldMerge) {
       const next = subtitles[i + 1];
+      // Allow slightly over-duration merges when forced by a dangling determiner
+      const maxAllowed = endsOnDeterminer ? SRT_MAX_DURATION * 1.5 : SRT_MAX_DURATION;
       const mergedDur = next.end - sub.start;
-      if (mergedDur <= SRT_MAX_DURATION) {
+      if (mergedDur <= maxAllowed) {
         const rawMerged = sub.text.replace("\n", " ") + " " + next.text.replace("\n", " ");
+        const mergedWords = [
+          ...(sub.words ?? []),
+          ...(next.words ?? []),
+        ];
         merged.push({
           start: sub.start,
           end: next.end,
           text: wrapSubtitleText(rawMerged),
           speaker: sub.speaker,
+          words: mergedWords.length > 0 ? mergedWords : undefined,
         });
         i++;
         continue;
@@ -439,23 +456,9 @@ export function generateSrt(segments: Segment[]): string {
 
 // ─── Génération texte structuré ───────────────────────────────────────────────
 
-function formatBlock(seg: TaggedSegment, showTag = false): string {
+function formatBlock(seg: TaggedSegment): string {
   const speaker = seg.speaker ?? "SPEAKER_?";
-  const tag = showTag ? ` [${seg.tag}]` : "";
-  return `[${fmtTs(seg.start)} → ${fmtTs(seg.end)}] ${speaker}${tag}\n${seg.text.trim()}`;
-}
-
-export function generateFullClean(segments: Segment[]): string {
-  const tagged = tagSegments(mergeSegments(segments));
-  return tagged.map((s) => formatBlock(s, true)).join("\n\n");
-}
-
-export function generateContentOnly(segments: Segment[]): string {
-  const tagged = tagSegments(mergeSegments(segments));
-  return tagged
-    .filter((s) => s.tag === "CONTENT" || s.tag === "BANTER")
-    .map((s) => formatBlock(s))
-    .join("\n\n");
+  return `[${fmtTs(seg.start)} → ${fmtTs(seg.end)}] ${speaker}\n${seg.text.trim()}`;
 }
 
 // ─── Chunking IA ──────────────────────────────────────────────────────────────

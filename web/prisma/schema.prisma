@@ -151,12 +151,14 @@ model Render {
   /// Progression approximative 0..1 pour l'UI
   progress     Float?
   pngUrl       String?
-  pdfUrl       String?
   /// URL vidéo finale (renders avec un VideoBlock — pipeline RunPod)
   videoUrl     String?
   /// ID du job RunPod (pour polling — null si pipeline Node.js)
   runpodJobId  String?  @unique
   errorMsg     String?
+  /// JSON map des assets de bibliothèque utilisés pour ce render
+  /// { videoAssets: { blockId: assetId }, audioAssetId?: string, dataEntryId?: string }
+  usedAssets   String   @default("{}")
   createdAt    DateTime     @default(now())
   startedAt    DateTime?
   finishedAt   DateTime?
@@ -342,4 +344,99 @@ model DerushExport {
   errorMsg     String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+}
+
+// ─── Content Library ─────────────────────────────────────────────────────────
+
+/// Bibliothèque de médias (vidéos rush ou musiques). Gérée par les admins.
+model MediaLibrary {
+  id          String       @id @default(cuid())
+  name        String
+  /// "video" | "audio"
+  type        String
+  /// JSON string[] — tags de type template : ["RPI","RTIPS","RPOD"]
+  tags        String       @default("[]")
+  description String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  assets      MediaAsset[]
+}
+
+/// Un fichier média dans une bibliothèque (stocké sur R2).
+model MediaAsset {
+  id         String       @id @default(cuid())
+  libraryId  String
+  library    MediaLibrary @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  filename   String
+  r2Key      String       @unique
+  url        String
+  /// "video/mp4" | "audio/mpeg" etc.
+  mimeType   String
+  /// Durée en secondes (remplie au probe après upload)
+  duration   Float?
+  /// JSON string[] — tags métier associés au fichier : ["RPI","RTIPS","RPOD"]
+  tags       String    @default("[]")
+  /// Nombre de fois utilisé dans une génération
+  usageCount Int          @default(0)
+  lastUsedAt DateTime?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  editJobs   MediaEditJob[]
+}
+
+/// Job d'édition d'un rush (trim, audio fix). Traitement RunPod, destructif (écrase l'original).
+model MediaEditJob {
+  id         String     @id @default(cuid())
+  assetId    String
+  asset      MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  /// "pending" | "processing" | "done" | "failed"
+  status     String     @default("pending")
+  /// JSON MediaEditParams : { trimStart?, trimEnd?, mixToMono?, normalize? }
+  params     String     @default("{}")
+  runpodId   String?    @unique
+  errorMsg   String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+}
+
+/// Bibliothèque de données texte, rattachée à un type de template (RPI, RTIPS…).
+model DataLibrary {
+  id           String         @id @default(cuid())
+  name         String
+  /// Identifiant métier du type : "RPI" | "RTIPS" | "RPOD" | etc.
+  templateType String
+  description  String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  campaigns    DataCampaign[]
+}
+
+/// Cycle de données (ex: "RPI Q1 2026"). Une fiche active à la fois par library.
+model DataCampaign {
+  id           String      @id @default(cuid())
+  libraryId    String
+  library      DataLibrary @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  /// Nom du cycle, ex: "RPI Q1 2026"
+  name         String
+  isActive     Boolean     @default(true)
+  /// Date du dernier reset de cycle (tous les usedInCycle remis à false)
+  cycleResetAt DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  entries      DataEntry[]
+}
+
+/// Une fiche de données texte (une ligne de l'Excel d'origine).
+model DataEntry {
+  id          String       @id @default(cuid())
+  campaignId  String
+  campaign    DataCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  /// JSON — champs libres selon le templateType (ex: {quartier, prix_m2, evo_5ans_pct})
+  fields      String       @default("{}")
+  usageCount  Int          @default(0)
+  lastUsedAt  DateTime?
+  /// Remis à false au reset de cycle. Permet la règle "pas encore utilisé ce cycle".
+  usedInCycle Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 }

@@ -11,6 +11,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getR2PublicUrl } from "@/lib/r2";
 import { submitRunpodJob } from "@/lib/runpod";
+import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -59,6 +60,7 @@ export async function POST(
     configData = JSON.parse(job.config) as Record<string, unknown>;
   } catch { /* fallback: empty config */ }
 
+  const webhookUrl = getRunpodWebhookUrl("/api/webhooks/runpod/captions");
   const payload = {
     input: {
       video_url:      videoUrl,
@@ -68,6 +70,7 @@ export async function POST(
       output_key:     job.outputKey,
       caption_job_id: job.id,
     },
+    ...(webhookUrl ? { webhook: webhookUrl } : {}),
   };
 
   let runpodJobId: string;

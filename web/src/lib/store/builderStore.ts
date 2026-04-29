@@ -9,6 +9,8 @@ interface BuilderState {
   template: TemplateJSON;
   selectedBlockId: string | null;
   selectedGroupId: string | null;
+  /** IDs of blocks that are part of the current multi-selection (canvas + panel). */
+  multiSelectedBlockIds: string[];
   isSaving: boolean;
   // Undo/redo history
   past: TemplateJSON[];
@@ -18,6 +20,8 @@ interface BuilderState {
   setTemplate: (t: TemplateJSON) => void;
   selectBlock: (id: string | null) => void;
   selectGroup: (id: string | null) => void;
+  /** Atomic multi-selection: sets ids, normalises selectedGroupId, clears selectedBlockId. */
+  setMultiSelection: (ids: string[]) => void;
   addBlock: (block: AnyBlock) => void;
   addGroup: (group: LayerGroup) => void;
   updateBlock: (id: string, changes: Partial<AnyBlock>, options?: { history?: boolean }) => void;
@@ -31,6 +35,7 @@ interface BuilderState {
   moveBlockZ: (id: string, direction: "up" | "down") => void;
   updateCanvas: (changes: Partial<TemplateJSON["canvas"]>) => void;
   updateTheme: (changes: Partial<TemplateJSON["theme"]>) => void;
+  updateContentLibrary: (changes: Partial<NonNullable<TemplateJSON["contentLibrary"]>>) => void;
   setFormat: (format: CanvasFormat) => void;
   setSchema: (schema: SchemaField[]) => void;
   setFormSections: (formSections: TemplateFormSection[]) => void;
@@ -95,6 +100,7 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
   template: emptyTemplate(),
   selectedBlockId: null,
   selectedGroupId: null,
+  multiSelectedBlockIds: [],
   isSaving: false,
   past: [],
   future: [],
@@ -105,11 +111,39 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
     future: [],
     selectedBlockId: null,
     selectedGroupId: null,
+    multiSelectedBlockIds: [],
   }),
 
-  selectBlock: (id) => set({ selectedBlockId: id, selectedGroupId: id ? null : get().selectedGroupId }),
+  selectBlock: (id) => {
+    if (id) {
+      set({ selectedBlockId: id, selectedGroupId: null, multiSelectedBlockIds: [id] });
+    } else {
+      set({ selectedBlockId: null, selectedGroupId: null, multiSelectedBlockIds: [] });
+    }
+  },
 
-  selectGroup: (id) => set({ selectedGroupId: id, selectedBlockId: id ? null : get().selectedBlockId }),
+  selectGroup: (id) => {
+    if (!id) {
+      set({ selectedGroupId: null, selectedBlockId: null, multiSelectedBlockIds: [] });
+      return;
+    }
+    const groupBlockIds = get().template.blocks
+      .filter((b) => b.groupId === id)
+      .map((b) => b.id);
+    set({ selectedGroupId: id, selectedBlockId: null, multiSelectedBlockIds: groupBlockIds });
+  },
+
+  setMultiSelection: (ids) => {
+    const allBlocks = get().template.blocks;
+    let groupId: string | null = null;
+    if (ids.length > 0) {
+      const firstGid = allBlocks.find((b) => b.id === ids[0])?.groupId ?? null;
+      if (firstGid && ids.every((id) => allBlocks.find((b) => b.id === id)?.groupId === firstGid)) {
+        groupId = firstGid;
+      }
+    }
+    set({ multiSelectedBlockIds: ids, selectedGroupId: groupId, selectedBlockId: null });
+  },
 
   addBlock: (block) => {
     const next = syncAutoLayoutGroups({
@@ -265,6 +299,14 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
     const next = {
       ...get().template,
       theme: { ...get().template.theme, ...changes },
+    };
+    withHistory(get, set, next);
+  },
+
+  updateContentLibrary: (changes) => {
+    const next = {
+      ...get().template,
+      contentLibrary: { ...get().template.contentLibrary, ...changes },
     };
     withHistory(get, set, next);
   },

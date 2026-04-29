@@ -2,8 +2,11 @@
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { UNSECTIONED_FORM_SECTION_ID, getFieldPlacementClass, getFieldSpanClass, getFieldStaticPlacementStyle, getFormSectionGridClass, getFormSectionSpanClass, getSectionFieldsInVisualOrder, buildVisibleFormSections } from "@/lib/formSections";
+import { UNSECTIONED_FORM_SECTION_ID, computeSectionFieldStyles, getFieldPlacementClass, getFieldSpanClass, getFormSectionGridClass, getFormSectionSpanClass, getSectionFieldsInVisualOrder, buildVisibleFormSections } from "@/lib/formSections";
 import type { SchemaField, TemplateFormSection } from "@/types/template";
+import type { LibraryPrefillContext, LibraryAssetOption } from "@/types/libraryPrefill";
+import { LibraryFieldInput } from "@/components/form/LibraryPicker";
+import type { JobEventPayload } from "@/lib/sseStore";
 
 interface Props {
   templateId: string;
@@ -11,6 +14,7 @@ interface Props {
   formSections: TemplateFormSection[];
   mediaFieldAspectRatios?: Record<string, number>;
   initialValues?: Record<string, unknown>;
+  libraryPrefillContext?: LibraryPrefillContext;
 }
 
 const DEFAULT_MEDIA_PREVIEW_ASPECT_RATIO = 16 / 9;
@@ -21,7 +25,6 @@ type Variant = {
   num: number;
   status: "polling" | "done" | "error";
   imageUrl?: string;
-  pdfUrl?: string;
   videoUrl?: string; // render vidéo (pipeline RunPod)
   errorMsg?: string;
   stage?: string;
@@ -39,7 +42,45 @@ function resolveInitialFieldValue(field: SchemaField, initialValue: unknown): un
   return "";
 }
 
-export function ListingForm({ templateId, schema, formSections, mediaFieldAspectRatios = {}, initialValues }: Props) {
+function buildUsedAssets(
+  ctx: LibraryPrefillContext,
+  selections: Record<string, LibraryAssetOption | null>,
+): { videoAssets?: Record<string, string>; audioAssetId?: string; dataEntryId?: string } | undefined {
+  const fieldMap = ctx.fieldLibraryMap ?? {};
+  const videoAssets: Record<string, string> = {};
+  let audioAssetId: string | undefined;
+  for (const [fieldKey, meta] of Object.entries(fieldMap)) {
+    const sel = selections[fieldKey];
+    if (!sel) continue;
+    if (meta.type === "video") {
+      videoAssets[meta.blockId] = sel.id;
+    } else {
+      audioAssetId = sel.id;
+    }
+  }
+  const hasVideo = Object.keys(videoAssets).length > 0;
+  const hasAny = hasVideo || audioAssetId || ctx.dataSuggestion?.entryId;
+  if (!hasAny) return undefined;
+  return {
+    videoAssets: hasVideo ? videoAssets : undefined,
+    audioAssetId,
+    dataEntryId: ctx.dataSuggestion?.entryId,
+  };
+}
+
+export function ListingForm({ templateId, schema, formSections, mediaFieldAspectRatios = {}, initialValues, libraryPrefillContext }: Props) {
+  // Keys of data fields pre-filled from a DataEntry (drives badge display)
+  const libraryPrefilledKeys = useMemo(
+    () => new Set(libraryPrefillContext?.prefilledDataKeys ?? []),
+    [libraryPrefillContext],
+  );
+
+  // Track which library asset is currently selected per field key
+  const [librarySelections, setLibrarySelections] = useState<Record<string, LibraryAssetOption | null>>(
+    () => Object.fromEntries(
+      Object.entries(libraryPrefillContext?.initialSuggestions ?? {}).map(([k, v]) => [k, v]),
+    ),
+  );
   const router = useRouter();
   const [values, setValues] = useState<Record<string, unknown>>(() =>
     Object.fromEntries(schema.map((field) => [field.key, resolveInitialFieldValue(field, initialValues?.[field.key])]))
@@ -53,13 +94,95 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
   const pollTimers = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
   // Reuse the same listingId for all generates in this session (variants on the same listing)
   const listingIdRef = useRef<string | null>(null);
+  // SSE source — shared across all variants
+  const sseSourceRef = useRef<EventSource | null>(null);
+
+  // Resolve a variant to its terminal state (called from both poll and SSE paths)
+  const resolveVariant = useCallback((renderId: string, data: {
+    status: string;
+    pngUrl?: string;
+    videoUrl?: string;
+    errorMsg?: string;
+    stage?: string;
+    statusDetail?: string;
+    progress?: number | null;
+  }) => {
+    clearInterval(pollTimers.current.get(renderId));
+    pollTimers.current.delete(renderId);
+    setVariants((prev) => prev.map((v) =>
+      v.id === renderId
+        ? {
+            ...v,
+            status: data.status === "DONE" ? "done" : "error",
+            imageUrl: data.pngUrl,
+            videoUrl: data.videoUrl,
+            errorMsg: data.errorMsg ?? undefined,
+            stage: data.stage,
+            statusDetail: data.statusDetail,
+            progress: data.progress ?? null,
+          }
+        : v
+    ));
+    // Close SSE when all active polls are done
+    if (pollTimers.current.size === 0) {
+      sseSourceRef.current?.close();
+      sseSourceRef.current = null;
+    }
+  }, []);
+
+  const startPolling = useCallback((renderId: string) => {
+    // Open SSE once for the whole session
+    if (!sseSourceRef.current) {
+      const source = new EventSource("/api/events/jobs");
+      sseSourceRef.current = source;
+      source.addEventListener("job", (e) => {
+        try {
+          const event = JSON.parse(e.data) as JobEventPayload;
+          if (event.jobType !== "render") return;
+          if (event.status === "DONE" || event.status === "ERROR") {
+            const videoUrl = "videoUrl" in event ? (event.videoUrl ?? undefined) : undefined;
+            const errorMsg = "errorMsg" in event ? (event.errorMsg ?? undefined) : undefined;
+            resolveVariant(event.jobId, { status: event.status, videoUrl, errorMsg });
+          }
+        } catch { /* ignore parse errors */ }
+      });
+    }
+
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/renders/${renderId}`);
+        const data = await res.json() as {
+          status: string;
+          pngUrl?: string;
+          videoUrl?: string;
+          errorMsg?: string;
+          stage?: string;
+          statusDetail?: string;
+          progress?: number | null;
+        };
+        setVariants((prev) => prev.map((v) =>
+          v.id === renderId
+            ? {
+                ...v,
+                stage: data.stage,
+                statusDetail: data.statusDetail,
+                progress: data.progress ?? null,
+              }
+            : v
+        ));
+        if (data.status === "DONE" || data.status === "ERROR") {
+          resolveVariant(renderId, data);
+        }
+      } catch {
+        clearInterval(pollTimers.current.get(renderId));
+        pollTimers.current.delete(renderId);
+        setVariants((prev) => prev.map((v) => v.id === renderId ? { ...v, status: "error" } : v));
+      }
+    }, 2000);
+    pollTimers.current.set(renderId, timer);
+  }, [resolveVariant]);
 
   function handleChange(key: string, value: unknown) {
-    setValues((v) => ({ ...v, [key]: value }));
-    setErrors((e) => { const next = { ...e }; delete next[key]; return next; });
-  }
-
-  async function handleUpload(key: string, file: File) {
     setUploadProgress((p) => ({ ...p, [key]: 0 }));
 
     // Étape 1 : obtenir l'URL pré-signée R2
@@ -113,58 +236,6 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
     });
   }
 
-  const startPolling = useCallback((renderId: string) => {
-    const timer = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/renders/${renderId}`);
-        const data = await res.json() as {
-          status: string;
-          pngUrl?: string;
-          pdfUrl?: string;
-          videoUrl?: string;
-          errorMsg?: string;
-          stage?: string;
-          statusDetail?: string;
-          progress?: number | null;
-        };
-        setVariants((prev) => prev.map((v) =>
-          v.id === renderId
-            ? {
-                ...v,
-                stage: data.stage,
-                statusDetail: data.statusDetail,
-                progress: data.progress ?? null,
-              }
-            : v
-        ));
-        if (data.status === "DONE" || data.status === "ERROR") {
-          clearInterval(timer);
-          pollTimers.current.delete(renderId);
-          setVariants((prev) => prev.map((v) =>
-            v.id === renderId
-              ? {
-                  ...v,
-                  status: data.status === "DONE" ? "done" : "error",
-                  imageUrl: data.pngUrl,
-                  pdfUrl: data.pdfUrl,
-                  videoUrl: data.videoUrl,
-                  errorMsg: data.errorMsg ?? undefined,
-                  stage: data.stage,
-                  statusDetail: data.statusDetail,
-                  progress: data.progress ?? null,
-                }
-              : v
-          ));
-        }
-      } catch {
-        clearInterval(timer);
-        pollTimers.current.delete(renderId);
-        setVariants((prev) => prev.map((v) => v.id === renderId ? { ...v, status: "error" } : v));
-      }
-    }, 2000);
-    pollTimers.current.set(renderId, timer);
-  }, []);
-
   const sections = useMemo(() => buildVisibleFormSections(schema, formSections, values), [formSections, schema, values]);
   const hasOnlyUnsectionedSection = sections.length === 1 && sections[0]?.id === UNSECTIONED_FORM_SECTION_ID;
   const visibleFields = useMemo(() => sections.flatMap((section) => section.fields), [sections]);
@@ -177,6 +248,14 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
     () => visibleRequiredFields.filter((field) => !isFilledValue(values[field.key])),
     [values, visibleRequiredFields]
   );
+
+  // Cleanup all intervals and SSE on unmount
+  useEffect(() => {
+    return () => {
+      pollTimers.current.forEach((t) => clearInterval(t));
+      sseSourceRef.current?.close();
+    };
+  }, []);
 
   useEffect(() => {
     setErrors((current) => {
@@ -246,7 +325,11 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
       const renderRes = await fetch("/api/renders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ templateId, listingId }),
+        body: JSON.stringify({
+          templateId,
+          listingId,
+          usedAssets: libraryPrefillContext ? buildUsedAssets(libraryPrefillContext, librarySelections) : undefined,
+        }),
       });
       const renderContentType = renderRes.headers.get("content-type") ?? "";
       let render: { id?: string; error?: string } = {};
@@ -327,25 +410,47 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
             ) : null}
 
             <div className={getFormSectionGridClass(section)}>
-              {getSectionFieldsInVisualOrder(section.fields, section.fieldColumns).map((field) => (
+              {(() => {
+                const fieldStyles = computeSectionFieldStyles(section.fields, section.fieldColumns);
+                return getSectionFieldsInVisualOrder(section.fields, section.fieldColumns).map((field) => (
                 <div
                   key={field.key}
                   className={`${getFieldSpanClass(field, section.fieldColumns)} ${getFieldPlacementClass(field, section.fieldColumns)}`.trim()}
-                  style={getFieldStaticPlacementStyle(field, section.fieldColumns, true)}
+                  style={fieldStyles.get(field.key)}
                 >
-                  <FieldInput
-                    field={field}
-                    value={values[field.key]}
-                    previewAspectRatio={mediaFieldAspectRatios[field.key]}
-                    focalPoint={(field.type === "image" || field.type === "video") ? (values[field.key + "_focalpoint"] as { x: number; y: number } | null) ?? null : null}
-                    error={errors[field.key]}
-                    uploadProgress={uploadProgress[field.key] ?? null}
-                    onChange={(v) => handleChange(field.key, v)}
-                    onUpload={(f) => handleUpload(field.key, f)}
-                    onFocalChange={(fp) => handleChange(field.key + "_focalpoint", fp)}
-                  />
+                  {libraryPrefillContext?.fieldLibraryMap[field.key] ? (
+                    <LibraryFieldInput
+                      field={field}
+                      libraryMeta={libraryPrefillContext.fieldLibraryMap[field.key]}
+                      currentSelection={librarySelections[field.key] ?? null}
+                      onSelect={(asset) => {
+                        setLibrarySelections((prev) => ({ ...prev, [field.key]: asset }));
+                        handleChange(field.key, asset.url);
+                      }}
+                      error={errors[field.key]}
+                      tagFilter={
+                        libraryPrefillContext.fieldLibraryMap[field.key].tagFilterParam
+                          ? String(values[libraryPrefillContext.fieldLibraryMap[field.key].tagFilterParam!] ?? "")
+                          : undefined
+                      }
+                    />
+                  ) : (
+                    <FieldInput
+                      field={field}
+                      value={values[field.key]}
+                      previewAspectRatio={mediaFieldAspectRatios[field.key]}
+                      focalPoint={(field.type === "image" || field.type === "video") ? (values[field.key + "_focalpoint"] as { x: number; y: number } | null) ?? null : null}
+                      error={errors[field.key]}
+                      uploadProgress={uploadProgress[field.key] ?? null}
+                      onChange={(v) => handleChange(field.key, v)}
+                      onUpload={(f) => handleUpload(field.key, f)}
+                      onFocalChange={(fp) => handleChange(field.key + "_focalpoint", fp)}
+                      fromLibrary={libraryPrefilledKeys.has(field.key)}
+                    />
+                  )}
                 </div>
-              ))}
+              ));
+              })()}
             </div>
             </section>
           ))}
@@ -526,6 +631,7 @@ function FieldInput({
   onChange,
   onUpload,
   onFocalChange,
+  fromLibrary,
 }: {
   field: SchemaField;
   value: unknown;
@@ -536,6 +642,7 @@ function FieldInput({
   onChange: (v: unknown) => void;
   onUpload: (f: File) => void;
   onFocalChange?: (fp: { x: number; y: number }) => void;
+  fromLibrary?: boolean;
 }) {
   const isConditional = Boolean(field.showIf);
   const helperText = field.description || (isConditional
@@ -554,6 +661,12 @@ function FieldInput({
           <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
             <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
             conditionnel
+          </span>
+        )}
+        {fromLibrary && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-600">
+            <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
+            depuis la bibliothèque
           </span>
         )}
       </div>

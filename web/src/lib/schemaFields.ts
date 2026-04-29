@@ -182,22 +182,31 @@ export function buildSchemaPreviewData(schema: SchemaField[]): ListingData {
   };
 
   for (const field of schema) {
+    // 1. Valeur par défaut explicite
     if (field.default !== undefined && field.default !== null && field.default !== "") {
       out[field.key] = field.default;
       continue;
     }
+
+    // 2. Placeholder (pour tous les types avant les fallbacks)
+    if (field.placeholder !== undefined && field.placeholder !== null && field.placeholder !== "") {
+      out[field.key] = field.placeholder;
+      continue;
+    }
+
+    // 3. Fallbacks par type
     switch (field.type) {
-      case "number":
-        out[field.key] = 0;
-        break;
       case "boolean":
+        // Utilisé dans les conditionnels, pas en texte direct
         out[field.key] = false;
         break;
       case "select":
-        out[field.key] = field.options?.[0] ?? "";
+        // Premier choix si disponible, sinon variable brute
+        out[field.key] = field.options?.[0] ?? `{{${field.key}}}`;
         break;
       default:
-        out[field.key] = field.placeholder ?? `[${field.label || field.key}]`;
+        // Texte, nombre, image… : laisser la variable visible
+        out[field.key] = `{{${field.key}}}`;
         break;
     }
   }

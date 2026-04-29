@@ -8,9 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     fontconfig \
     libass9 \
-    libcairo2 \
     libpango-1.0-0 \
-    libpangocairo-1.0-0 \
     libsndfile1 \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
@@ -33,7 +31,6 @@ RUN mkdir -p outputs/temp/api
 
 ENV PYTHONUNBUFFERED=1
 ENV CAPTIONS_ENGINE=ass
-ENV PANGOCAIRO_BACKEND=fc
 
 # Expose port FastAPI
 EXPOSE 8000

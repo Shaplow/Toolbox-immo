@@ -2,18 +2,19 @@
 import type { Prisma } from "@prisma/client";
 import { buildHTML } from "./buildHTML";
 import { renderPNG } from "./renderPNG";
-import { renderPDF } from "./renderPDF";
 import { validateConformite } from "@/lib/validation/conformite";
-import type { TemplateJSON, CanvasFormat, ImageBlock, VideoBlock, MusicBlock, AnyBlock } from "@/types/template";
+import type { TemplateJSON, ImageBlock, VideoBlock, MusicBlock, AnyBlock } from "@/types/template";
 import type { ListingData } from "@/types/listing";
 import { writeFile, mkdir, stat, readFile } from "fs/promises";
 import path from "path";
 import { uploadToR2, r2Configured, deleteFromR2 } from "@/lib/r2";
 import { submitRunpodJob } from "@/lib/runpod";
+import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import { isBlockVisibleForListing, resolveBlockForListing } from "@/lib/templateConditions";
 import { getVisibleFieldKeys } from "@/lib/formSections";
 import { RENDER_PIPELINE, RENDER_STAGE } from "./renderWorkflow";
+import { recordLibraryUsage } from "@/lib/recordLibraryUsage";
 
 const OUTPUT_DIR = path.join(process.cwd(), "public", "renders");
 const LOCAL_VIDEO_RENDER_TIMEOUT_MS = 10 * 60 * 1000;
@@ -74,7 +75,6 @@ type RenderTrackingUpdate = {
   errorMsg?: string | null;
   runpodJobId?: string | null;
   pngUrl?: string | null;
-  pdfUrl?: string | null;
   videoUrl?: string | null;
   startedAt?: Date;
   finishedAt?: Date | null;
@@ -91,7 +91,6 @@ async function updateRenderTracking(renderId: string, update: RenderTrackingUpda
     errorMsg: update.errorMsg,
     runpodJobId: update.runpodJobId,
     pngUrl: update.pngUrl,
-    pdfUrl: update.pdfUrl,
     videoUrl: update.videoUrl,
     startedAt: update.startedAt,
     finishedAt: update.finishedAt,
@@ -249,18 +248,7 @@ export async function generateRender(renderId: string): Promise<void> {
   const pngFilename = `${renderId}.png`;
   await writeFile(path.join(OUTPUT_DIR, pngFilename), pngBuffer);
 
-  // 7. Générer PDF
-  await updateRenderTracking(renderId, {
-    pipeline: RENDER_PIPELINE.IMAGE,
-    stage: RENDER_STAGE.IMAGE_RENDER_PDF,
-    statusDetail: "Export PDF en cours",
-    progress: 0.8,
-  });
-  const pdfBuffer = await renderPDF(html, canvas.format as CanvasFormat, width, height);
-  const pdfFilename = `${renderId}.pdf`;
-  await writeFile(path.join(OUTPUT_DIR, pdfFilename), pdfBuffer);
-
-  // 8. Mettre à jour le render en DB (avec avertissements éventuels)
+  // 7. Mettre à jour le render en DB (avec avertissements éventuels)
   await updateRenderTracking(renderId, {
     status: "DONE",
     pipeline: RENDER_PIPELINE.IMAGE,
@@ -268,12 +256,14 @@ export async function generateRender(renderId: string): Promise<void> {
     statusDetail: "Visuel généré",
     progress: 1,
     pngUrl: `/renders/${pngFilename}`,
-    pdfUrl: `/renders/${pdfFilename}`,
     errorMsg: warnings.length > 0
       ? `WARNINGS:${JSON.stringify(warnings)}`
       : null,
     finishedAt: new Date(),
   });
+
+  // Enregistrer l'usage des assets de bibliothèque (best-effort)
+  void recordLibraryUsage(renderId);
 }
 
 // ─── Pipeline vidéo (RunPod ou local) ────────────────────────────────────────
@@ -432,9 +422,7 @@ async function generateVideoRender(
       progress: 0.12,
     });
 
-    const overlayPlan = computeOverlayPlan(templateJson.canvas.maxDuration !== undefined
-      ? templateJson.blocks  // also consider maxDuration present
-      : templateJson.blocks);
+    const overlayPlan = computeOverlayPlan(templateJson.blocks);
 
     let overlayBuffers: Buffer[];
     if (overlayPlan === null) {
@@ -544,11 +532,15 @@ async function generateVideoRender(
           output_key: outputKey,
           render_id: renderId,
         },
+        ...(() => {
+          const webhookUrl = getRunpodWebhookUrl("/api/webhooks/runpod/renders");
+          return webhookUrl ? { webhook: webhookUrl } : {};
+        })(),
       },
       { timeoutMs: RUNPOD_SUBMIT_TIMEOUT_MS }
     );
 
-    // 5. Stocker le runpodJobId — le polling dans GET /api/renders/:id terminera le job
+    // 5. Stocker le runpodJobId — le webhook /api/webhooks/runpod/renders terminera le job
     await updateRenderTracking(renderId, {
       status: "PROCESSING",
       pipeline: RENDER_PIPELINE.VIDEO_RUNPOD,
@@ -755,6 +747,9 @@ async function generateVideoRenderLocal(
       videoUrl: finalUrl,
       finishedAt: new Date(),
     });
+
+    // Enregistrer l'usage des assets de bibliothèque (best-effort)
+    void recordLibraryUsage(renderId);
   } catch (err) {
     console.error(`[videoLocal] ${renderId} — ERROR:`, err);
     await failRender(

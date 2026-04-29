@@ -29,6 +29,7 @@ import { normalizeCaptionConfig } from "@/lib/captionsEngine";
 import { prisma } from "@/lib/prisma";
 import { uploadToR2, deleteFromR2, r2Configured, createPresignedUploadUrl } from "@/lib/r2";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
+import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 
 const RUNPOD_API_KEY    = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -39,6 +40,9 @@ type RunpodSubmitResponse = { id: string };
 const VIDEO_EXTENSIONS = new Set([
   "mp4", "mov", "mkv", "webm", "avi", "m4v",
 ]);
+
+/** Max SRT/subtitle content size stored in DB and sent to the worker. */
+const MAX_SRT_BYTES = 512_000; // 512 KB
 
 function extractCaptionFontFamilies(configData: Record<string, unknown>): string[] {
   const baseFont = (configData.base as { font?: string } | undefined)?.font;
@@ -153,6 +157,9 @@ export async function POST(req: NextRequest) {
     if (!srtContent) {
       return NextResponse.json({ error: "srtContent manquant" }, { status: 400 });
     }
+    if (Buffer.byteLength(srtContent) > MAX_SRT_BYTES) {
+      return NextResponse.json({ error: `Sous-titres trop volumineux (${Math.round(MAX_SRT_BYTES / 1024)} Ko max)` }, { status: 400 });
+    }
     if (!body.config) {
       return NextResponse.json({ error: "config manquant" }, { status: 400 });
     }
@@ -204,6 +211,7 @@ export async function POST(req: NextRequest) {
         outputKey,
         config:     JSON.stringify(configData),
         srtContent,
+        srtFilename,
         presetId:   presetId ?? null,
       },
     });
@@ -265,6 +273,7 @@ export async function POST(req: NextRequest) {
         inputUrl:   videoFile.name,
         config:     configPayload,
         srtContent: srtContentLocal,
+        srtFilename: subtitlesFile.name,
         presetId:   presetId ?? null,
       },
     });
@@ -330,6 +339,9 @@ export async function POST(req: NextRequest) {
 
   // ── Upload vidéo vers R2 ──────────────────────────────────────────────────
   const srtContent    = await subtitlesFile.text();
+  if (Buffer.byteLength(srtContent) > MAX_SRT_BYTES) {
+    return NextResponse.json({ error: `Sous-titres trop volumineux (${Math.round(MAX_SRT_BYTES / 1024)} Ko max)` }, { status: 400 });
+  }
   const jobTimestamp  = Date.now();
   const videoExt      = (videoFile.name.split(".").pop() ?? "mp4").toLowerCase();
   const inputVideoKey = `inputs/captions/${session.user.id}/${jobTimestamp}/video.${videoExt}`;
@@ -356,6 +368,7 @@ export async function POST(req: NextRequest) {
       outputKey,
       config:    configPayload,
       srtContent,
+      srtFilename: subtitlesFile.name,
       presetId:  presetId ?? null,
     },
   });
@@ -369,6 +382,7 @@ export async function POST(req: NextRequest) {
       output_key:     outputKey,
       caption_job_id: captionJob.id,
     },
+    ...(() => { const u = getRunpodWebhookUrl("/api/webhooks/runpod/captions"); return u ? { webhook: u } : {}; })(),
   };
 
   let runpodJobId: string;

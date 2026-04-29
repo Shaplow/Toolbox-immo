@@ -117,7 +117,9 @@ def _hl_style_with_shadow(hl_style: StyleConfig, base_style: StyleConfig) -> Sty
     return hl_style
 
 
-def _apply_transform(word: str, text_transform: str) -> str:
+def _apply_transform(word: str, text_transform: str, strip_punct: bool = False) -> str:
+    if strip_punct:
+        word = re.sub(r"[.,;:!?]+$", "", word)
     if text_transform == 'upper': return word.upper()
     if text_transform == 'lower': return word.lower()
     if text_transform == 'title': return word.title()
@@ -467,7 +469,49 @@ def _write_word_pop_events(
                 content.append(f"Dialogue: {lyr},{ev_start},{ev_end},Base,,0,0,0,,{{{tag}}}{wtext}")
 
 
-def _write_reveal_base_events(content: list[str], block: SubtitleBlock, config: RenderConfig, block_end: str):
+# Minimum centiseconds the last step (= last word fully visible) must stay on screen.
+# When the natural voice timing leaves less than this, all intermediate word-onset
+# times are compressed proportionally so the last step gains enough reading room.
+_MIN_LAST_WORD_CS = 30  # 0.3 s
+
+
+def _compute_step_pairs(
+    all_words: list,   # list of (li, wi, word) tuples
+    block_end_cs: int,
+) -> list[tuple[int, int]]:
+    """Return (start_cs, end_cs) for each word step.
+
+    If the last step's natural duration is less than _MIN_LAST_WORD_CS the
+    intermediate onset times are scaled down proportionally so the last word
+    always gets at least _MIN_LAST_WORD_CS centiseconds of screen time.
+
+    Pairs where start_cs == end_cs are zero-duration and should be skipped
+    by the caller (same handling as before compression was added)."""
+    n = len(all_words)
+    if n == 0:
+        return []
+
+    onsets = [_to_cs_floor(all_words[i][2].start) for i in range(n)]
+    first_cs = onsets[0]
+    last_cs  = onsets[-1]
+    natural_last_dur = block_end_cs - last_cs
+
+    if natural_last_dur < _MIN_LAST_WORD_CS and n > 1:
+        natural_range = last_cs - first_cs
+        target_last = block_end_cs - _MIN_LAST_WORD_CS
+        if natural_range > 0 and target_last > first_cs:
+            scale = (target_last - first_cs) / natural_range
+            onsets = [first_cs + int(round((s - first_cs) * scale)) for s in onsets]
+
+    pairs: list[tuple[int, int]] = []
+    for i in range(n):
+        s = onsets[i]
+        e = onsets[i + 1] if i + 1 < n else block_end_cs
+        pairs.append((s, max(s, e)))
+    return pairs
+
+
+def _write_reveal_base_events(content: list[str], block: SubtitleBlock, config: RenderConfig, block_end_cs: int):
     """Typewriter reveal — one Dialogue event per LINE per word step.
     All lines are emitted on every step (future lines as invisible placeholders)
     so the overall block height is stable and never jumps."""
@@ -478,13 +522,12 @@ def _write_reveal_base_events(content: list[str], block: SubtitleBlock, config: 
         for li, line in enumerate(block.lines)
         for wi, word in enumerate(line.words)
     ]
-    for step, (cur_li, cur_wi, _cur_word) in enumerate(all_words):
-        start_cs = _to_cs_floor(all_words[step][2].start)
-        if step + 1 < len(all_words):
-            end_cs = _to_cs_floor(all_words[step + 1][2].start)
-        else:
-            end_cs = _to_cs_ceil(block.end)
-        end_cs = max(start_cs, end_cs)
+    step_pairs = _compute_step_pairs(all_words, block_end_cs)
+    for step, ((start_cs, end_cs), (cur_li, cur_wi, _cur_word)) in enumerate(zip(step_pairs, all_words)):
+        # Skip zero-duration steps — libass ignores them; the next valid step
+        # will show all accumulated words up to cur_wi correctly.
+        if end_cs <= start_cs:
+            continue
         ev_start = _ass_time_cs(start_cs)
         ev_end = _ass_time_cs(end_cs)
         for li, line in enumerate(block.lines):
@@ -500,7 +543,7 @@ def _write_reveal_base_events(content: list[str], block: SubtitleBlock, config: 
             content.append(f"Dialogue: 0,{ev_start},{ev_end},Base,,0,0,0,,{{{tag}}}{text}")
 
 
-def _write_appear_base_events(content: list[str], block: SubtitleBlock, config: RenderConfig, block_end: str):
+def _write_appear_base_events(content: list[str], block: SubtitleBlock, config: RenderConfig, block_end_cs: int):
     """Word-pop appear — same multi-line structure as reveal mode."""
     if not block.lines:
         return
@@ -509,13 +552,12 @@ def _write_appear_base_events(content: list[str], block: SubtitleBlock, config: 
         for li, line in enumerate(block.lines)
         for wi, word in enumerate(line.words)
     ]
-    for step, (cur_li, cur_wi, _cur_word) in enumerate(all_words):
-        start_cs = _to_cs_floor(all_words[step][2].start)
-        if step + 1 < len(all_words):
-            end_cs = _to_cs_floor(all_words[step + 1][2].start)
-        else:
-            end_cs = _to_cs_ceil(block.end)
-        end_cs = max(start_cs, end_cs)
+    step_pairs = _compute_step_pairs(all_words, block_end_cs)
+    for step, ((start_cs, end_cs), (cur_li, cur_wi, _cur_word)) in enumerate(zip(step_pairs, all_words)):
+        # Skip zero-duration steps — libass ignores them; the next valid step
+        # shows all accumulated words, preserving the appear effect.
+        if end_cs <= start_cs:
+            continue
         ev_start = _ass_time_cs(start_cs)
         ev_end = _ass_time_cs(end_cs)
         for li, line in enumerate(block.lines):
@@ -630,6 +672,16 @@ def write_ass_file(
     content.append("[Events]")
     content.append("Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text")
 
+    # Strip trailing punctuation from displayed words if requested.
+    # Width measurement in layout.py is already done at this point, so the tiny
+    # visual difference from removing a trailing period is acceptable.
+    if config.strip_punctuation:
+        _punct_re = re.compile(r"[.,;:!?]+$")
+        for _blk in blocks:
+            for _ln in _blk.lines:
+                for _pw in _ln.words:
+                    _pw.word = _punct_re.sub("", _pw.word) or _pw.word
+
     preset = config.animation.preset
     animated = preset in ("reveal", "appear")
     word_pop = preset == "word_pop"
@@ -647,7 +699,7 @@ def write_ass_file(
 
     # Queue de lecture : durée supplémentaire après le dernier mot pour laisser
     # le temps de lire le caption. Clamped au gap disponible avant le bloc suivant.
-    READING_QUEUE_CS = 80   # 0.8 s de queue de lecture maximum
+    READING_QUEUE_CS = 20   # 0.2 s de queue de lecture maximum
     MIN_BLOCK_DUR_CS = 80   # durée minimale d'affichage d'un bloc (0.8 s)
     INTER_BLOCK_GAP_CS = 5  # gap minimal à laisser entre deux blocs (50 ms)
 
@@ -681,7 +733,7 @@ def write_ass_file(
                 # ── Appear: one Dialogue per line per word-step ───────────────
                 # Per-step events allow static \4a masking for future words so
                 # libass \t(\4a) issues are bypassed entirely.
-                _write_appear_base_events(content, effective_block, config, block_end)
+                _write_appear_base_events(content, effective_block, config, block_end_cs)
             else:
                 # ── Reveal: letter-by-letter via \t() in one Dialogue per line ─
                 center_x = video_info.width // 2

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Scissors, Upload, Clock, CheckCircle, XCircle, Loader2, Film, Plus, X, ChevronDown, Settings } from "lucide-react";
 import type { DerushJobCreatePayload, DerushFormat } from "@/types/derush";
+import { fmtDate, fmtDuration } from "@/lib/jobUtils";
 
 const VIDEO_ACCEPT = ".mp4,.mov,.mkv,.webm,.avi,.mts,.m2ts,.mxf";
 const SRT_ACCEPT   = ".srt,.json,.vtt";
@@ -29,18 +30,7 @@ type Job = {
   createdAt: string;
 };
 
-function fmtDuration(seconds: number | null): string {
-  if (!seconds) return "—";
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString("fr-FR", {
-    day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
-  });
-}
 
 const STATUS_ICON: Record<Job["status"], React.ReactNode> = {
   QUEUED:     <Clock className="w-4 h-4 text-gray-400" />,

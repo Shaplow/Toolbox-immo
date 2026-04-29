@@ -44,14 +44,21 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
 
   // Pre-load SRT from a previous job if captionJobId is provided
   let initialSrt: string | null = null;
+  let initialSubsJson: string | null = null;
   if (captionJobId) {
     const prevJob = await prisma.captionJob.findFirst({
       where: isAdmin
         ? { id: captionJobId }
         : { id: captionJobId, userId: effectiveUserId },
-      select: { srtContent: true },
+      select: { srtContent: true, srtFilename: true },
     });
-    initialSrt = prevJob?.srtContent ?? null;
+    if (prevJob?.srtContent) {
+      if (prevJob.srtFilename?.endsWith(".json")) {
+        initialSubsJson = prevJob.srtContent;
+      } else {
+        initialSrt = prevJob.srtContent;
+      }
+    }
   }
 
   // Pre-load segments from a transcription job if transcriptionId is provided
@@ -101,6 +108,7 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
         config: JSON.parse(preset.config) as Record<string, unknown>,
       }}
       initialSrt={initialSrt}
+      initialSubsJson={initialSubsJson}
       initialSegments={initialSegments}
       initialPrompts={prompts}
       promptStorageAvailable={promptStorageAvailable}

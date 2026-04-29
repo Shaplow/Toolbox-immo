@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import {
   Film, FileText, Upload, X, ChevronLeft, Download,
   Wand2, ChevronDown, ChevronUp, Clock, CheckCircle2, AlertCircle,
@@ -82,6 +83,7 @@ function nested(obj: Record<string, unknown>, ...keys: string[]): unknown {
 export default function CaptionsGenerateForm({
   preset,
   initialSrt,
+  initialSubsJson,
   initialSegments,
   initialPrompts,
   promptStorageAvailable = true,
@@ -90,6 +92,8 @@ export default function CaptionsGenerateForm({
 }: {
   preset: PresetData;
   initialSrt?: string | null;
+  /** Word-level JSON produced by buildWordTimestampsForSubmission — used for regen when the job used the JSON path. */
+  initialSubsJson?: string | null;
   initialSegments?: Segment[] | null;
   initialPrompts: CaptionPromptRow[];
   promptStorageAvailable?: boolean;
@@ -159,7 +163,67 @@ export default function CaptionsGenerateForm({
     }
   }, [initialSrt]);
 
-  // Poll pending jobs in the queue
+  // Pre-load from word-level JSON (regen from a job that used the JSON path)
+  useEffect(() => {
+    if (!initialSubsJson) return;
+    try {
+      type SubsWord = {
+        word: string; start: number; end: number;
+        highlight: boolean; highlight_group: number; caption_index: number;
+      };
+      const items = JSON.parse(initialSubsJson) as SubsWord[];
+      if (!Array.isArray(items) || items.length === 0) return;
+
+      // Group words by caption_index (1-based)
+      const groups = new Map<number, SubsWord[]>();
+      for (const item of items) {
+        const g = groups.get(item.caption_index) ?? [];
+        g.push(item);
+        groups.set(item.caption_index, g);
+      }
+
+      const sortedIndices = [...groups.keys()].sort((a, b) => a - b);
+      const restoredSegments: Segment[] = [];
+      const restoredHighlighted = new Map<string, number>();
+
+      for (const captionIndex of sortedIndices) {
+        const words = groups.get(captionIndex)!;
+        words.forEach((item, wordIndex) => {
+          if (item.highlight) {
+            restoredHighlighted.set(`${captionIndex}-${wordIndex}`, item.highlight_group);
+          }
+        });
+        restoredSegments.push({
+          start: words[0].start,
+          end: words[words.length - 1].end,
+          text: words.map((w) => w.word).join(" "),
+          words: words.map((w) => ({ word: w.word, start: w.start, end: w.end })),
+        });
+      }
+
+      const restoredCaptions = timedSegmentsToCaptions(restoredSegments);
+      setCaptions(restoredCaptions);
+      setHighlighted(restoredHighlighted);
+      setTimedSegments(restoredSegments);
+      setTimingStatuses(buildTimingStatuses(restoredSegments.length, "original"));
+    } catch {
+      // Malformed JSON — silently skip
+    }
+  }, [initialSubsJson]);
+
+  // SSE fast path — caption jobs updated immediately when webhook fires
+  useAllJobEvents((event) => {
+    if (event.jobType !== "captions") return;
+    setJobs((prev) =>
+      prev.map((j) => {
+        if (j.id !== event.jobId) return j;
+        const mapped = event.status === "COMPLETED" || event.status === "DONE" ? "DONE" : event.status;
+        return { ...j, status: mapped, videoUrl: typeof event.videoUrl === "string" ? event.videoUrl : j.videoUrl };
+      })
+    );
+  });
+
+  // Polling fallback — 10 s, only active when SSE is unavailable (dev, no tunnel)
   useEffect(() => {
     const pending = jobs.filter((j) => j.status === "QUEUED" || j.status === "PROCESSING");
     if (pending.length === 0) return;
@@ -182,7 +246,7 @@ export default function CaptionsGenerateForm({
           } catch { /* ignore */ }
         })
       );
-    }, 2500);
+    }, 10000);
     return () => clearInterval(timer);
   }, [jobs]);
 

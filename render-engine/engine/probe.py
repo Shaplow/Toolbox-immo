@@ -14,6 +14,29 @@ class VideoInfo:
     video_bitrate: int | None = None
     container_bitrate: int | None = None
     fps: float | None = None
+    has_audio: bool = False
+
+
+def _probe_has_audio(video_path: str) -> bool:
+    """Return True if the file contains at least one audio stream."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "a:0",
+                "-show_entries", "stream=index",
+                "-of", "json",
+                video_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return False
+        return bool(json.loads(result.stdout).get("streams"))
+    except Exception:
+        return False
 
 
 def probe_video(video_path: str | Path) -> VideoInfo:
@@ -57,4 +80,5 @@ def probe_video(video_path: str | Path) -> VideoInfo:
         video_bitrate=int(video_bitrate) if video_bitrate else None,
         container_bitrate=int(container_bitrate) if container_bitrate else None,
         fps=fps,
+        has_audio=_probe_has_audio(video_path),
     )

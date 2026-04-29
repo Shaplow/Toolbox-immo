@@ -16,14 +16,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { deleteFromR2, r2Configured } from "@/lib/r2";
-import { fetchRunpodStatus } from "@/lib/runpod";
+import { resolveRunpodJobPhase } from "@/lib/runpod";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
 const HF_TOKEN           = process.env.HF_TOKEN;
 
-/** Jobs PROCESSING/QUEUED without resolution for longer than this are considered stalled. */
+/** Jobs PROCESSING without resolution for longer than this are considered stalled. */
 const STALL_MS = 2 * 60 * 60 * 1000; // 2 hours
+/** Jobs QUEUED without a runpodJobId for longer than this are considered abandoned. */
+const PRE_SUBMIT_STALL_MS = 30 * 60 * 1000; // 30 minutes
 
 const ALLOWED_MODELS = new Set([
   "turbo", "large-v3", "large-v3-turbo", "medium", "small", "base", "tiny",
@@ -78,80 +80,75 @@ export async function GET(
   if (job.status === "COMPLETED" || job.status === "FAILED") {
     return NextResponse.json(formatJob(job));
   }
-  // ─── Stall detection ─────────────────────────────────────────────────────
-  // Gate: jobs that were submitted to RunPod use STALL_MS; jobs that are still
-  // QUEUED (presigned path — browser hasn't uploaded yet) get a shorter 30-min
-  // grace window before being considered abandoned.
-  if (job.status === "PROCESSING" || job.status === "QUEUED") {
+  // ─── Pre-submit stall (QUEUED / PROCESSING without runpodJobId) ──────────
+  if ((job.status === "QUEUED" || job.status === "PROCESSING") && !job.runpodJobId) {
     const ageMs = Date.now() - job.updatedAt.getTime();
-    const isSubmitted = !!job.runpodJobId;
-    const stallWindow = isSubmitted ? STALL_MS : 30 * 60 * 1000; // 30 min for unsubmitted
-    if (ageMs > stallWindow) {
-      const errorMsg = isSubmitted
-        ? "Job bloqué : pas de réponse depuis plus de 2 heures"
-        : "Job abandonné : le fichier source n'a jamais été uploadé";
+    if (ageMs > PRE_SUBMIT_STALL_MS) {
+      const errorMsg = "Job abandonné : le fichier source n'a jamais été uploadé";
       const updated = await prisma.transcriptionJob.update({
         where: { id: job.id },
         data: { status: "FAILED", errorMsg },
       });
-      console.warn(`[transcription/status] job ${job.id} stalled after ${Math.round(ageMs / 60_000)} min (runpodJobId=${job.runpodJobId ?? "none"}) — marked FAILED`);
+      console.warn(`[transcription/status] job ${job.id} stalled (unsubmitted) after ${Math.round(ageMs / 60_000)} min — marked FAILED`);
       return NextResponse.json(formatJob(updated));
     }
+    return NextResponse.json(formatJob(job));
   }
-  // ─── Si PROCESSING avec runpodJobId, interroger RunPod ───────────────────
+  // ─── Si PROCESSING avec runpodJobId, déléguer à resolveRunpodJobPhase ─────
   if (job.status === "PROCESSING" && job.runpodJobId && RUNPOD_API_KEY && RUNPOD_ENDPOINT_ID) {
-    try {
-      const runpodRes = await fetchRunpodStatus<RunpodOutput>(
-        RUNPOD_ENDPOINT_ID,
-        RUNPOD_API_KEY,
-        job.runpodJobId
-      );
+    const resolved = await resolveRunpodJobPhase<RunpodOutput>(
+      RUNPOD_ENDPOINT_ID,
+      RUNPOD_API_KEY,
+      job.runpodJobId,
+      job.updatedAt,
+      STALL_MS
+    );
 
-      if (runpodRes.status === "COMPLETED" && runpodRes.output) {
-        const out = runpodRes.output;
-        const updated = await prisma.transcriptionJob.update({
-          where: { id: job.id },
-          data: {
-            status: "COMPLETED",
-            outputJsonKey: out.output_key ?? job.outputJsonKey,
-            segmentCount: out.segment_count ?? null,
-            duration: out.duration ?? null,
-            hasDiarization: out.has_diarization ?? false,
-            // Libérer la clé source — inutile de garder la vidéo/audio en R2
-            inputKey: null,
-          },
-        });
-        // Supprimer l'audio source de R2 (temporaire — souvent des rushs lourds)
-        if (job.inputKey && r2Configured()) {
-          deleteFromR2(job.inputKey).catch(() => { /* ignore */ });
-        }
-        return NextResponse.json(formatJob(updated));
+    if (resolved.phase === "completed") {
+      const out = resolved.output;
+      const updated = await prisma.transcriptionJob.update({
+        where: { id: job.id },
+        data: {
+          status: "COMPLETED",
+          outputJsonKey: out?.output_key ?? job.outputJsonKey,
+          segmentCount: out?.segment_count ?? null,
+          duration: out?.duration ?? null,
+          hasDiarization: out?.has_diarization ?? false,
+          inputKey: null,
+        },
+      });
+      if (job.inputKey && r2Configured()) {
+        deleteFromR2(job.inputKey).catch((err) =>
+          console.warn(`[transcription/status] R2 cleanup failed for key=${job.inputKey}:`, err)
+        );
       }
+      return NextResponse.json(formatJob(updated));
+    }
 
-      if (
-        runpodRes.status === "FAILED" ||
-        runpodRes.status === "CANCELLED" ||
-        runpodRes.status === "TIMED_OUT"
-      ) {
-        const updated = await prisma.transcriptionJob.update({
-          where: { id: job.id },
-          data: {
-            status: "FAILED",
-            errorMsg: runpodRes.error ?? `RunPod job ${runpodRes.status}`,
-            inputKey: null,
-          },
-        });
-        if (job.inputKey && r2Configured()) {
-          deleteFromR2(job.inputKey).catch(() => { /* ignore */ });
-        }
-        return NextResponse.json(formatJob(updated));
+    if (resolved.phase === "failed" || resolved.phase === "stalled") {
+      const errorMsg =
+        resolved.phase === "stalled"
+          ? "Job bloqué : pas de réponse depuis plus de 2 heures"
+          : (resolved as { phase: "failed"; error: string }).error;
+      const updated = await prisma.transcriptionJob.update({
+        where: { id: job.id },
+        data: { status: "FAILED", errorMsg, inputKey: null },
+      });
+      if (job.inputKey && r2Configured()) {
+        deleteFromR2(job.inputKey).catch((err) =>
+          console.warn(`[transcription/status] R2 cleanup failed for key=${job.inputKey}:`, err)
+        );
       }
-    } catch (err) {
-      console.error("[transcription/status] RunPod status fetch failed:", err);
-      // Return current DB status but flag that RunPod was unreachable so the
-      // client can show a warning rather than silently appearing stuck.
+      if (resolved.phase === "stalled") {
+        console.warn(`[transcription/status] job ${job.id} stalled (runpodJobId=${job.runpodJobId}) — marked FAILED`);
+      }
+      return NextResponse.json(formatJob(updated));
+    }
+
+    if (resolved.phase === "unreachable") {
       return NextResponse.json({ ...formatJob(job), runpodUnreachable: true });
     }
+    // in_progress — fall through
   }
 
   return NextResponse.json(formatJob(job));

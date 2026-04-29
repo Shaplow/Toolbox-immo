@@ -20,6 +20,7 @@ import { useBuilderStore } from "@/lib/store/builderStore";
 import type {
   AnyBlock, TextBlock, ImageBlock, VideoBlock, DPEBlock,
   ShapeBlock, ShapeKind, BlockStyle, TextRules, SchemaField, BlockConditionalRule, LayerGroup, MusicBlock,
+  MediaSelectionRule, MediaSelectionRuleConfig,
 } from "@/types/template";
 import type { ListingData } from "@/types/listing";
 
@@ -32,7 +33,7 @@ export function PropertiesPanel({
   showResolvedTextPreview: boolean;
   onShowResolvedTextPreviewChange: (value: boolean) => void;
 }) {
-  const { template, selectedBlockId, selectedGroupId, updateBlock, updateGroup, moveGroupBlocks, setSchema } = useBuilderStore();
+  const { template, selectedBlockId, selectedGroupId, multiSelectedBlockIds, updateBlock, updateBlocks, updateGroup, moveGroupBlocks, setSchema, updateContentLibrary } = useBuilderStore();
   const block = template.blocks.find((b) => b.id === selectedBlockId) ?? null;
   const group = template.groups.find((item) => item.id === selectedGroupId) ?? null;
 
@@ -472,6 +473,123 @@ export function PropertiesPanel({
     );
   }
 
+  // Multi-selection panel (≥2 blocks, no single block or group selected)
+  if (!block && !group && multiSelectedBlockIds.length >= 2) {
+    const selectedBlocks = template.blocks.filter((b) => multiSelectedBlockIds.includes(b.id));
+    const count = selectedBlocks.length;
+
+    // Bounding box of current selection
+    const minX = Math.min(...selectedBlocks.map((b) => b.x));
+    const minY = Math.min(...selectedBlocks.map((b) => b.y));
+    const maxX = Math.max(...selectedBlocks.map((b) => b.x + b.w));
+    const maxY = Math.max(...selectedBlocks.map((b) => b.y + b.h));
+    const bboxCenterX = (minX + maxX) / 2;
+    const bboxCenterY = (minY + maxY) / 2;
+
+    function applyAlign(changes: (b: AnyBlock) => Partial<AnyBlock>) {
+      updateBlocks(selectedBlocks.map((b) => ({ id: b.id, changes: changes(b) })));
+    }
+
+    // Distribute evenly — requires ≥3 blocks
+    function distributeH() {
+      if (selectedBlocks.length < 3) return;
+      const sorted = [...selectedBlocks].sort((a, b) => a.x - b.x);
+      const totalW = sorted.reduce((s, b) => s + b.w, 0);
+      const span = sorted[sorted.length - 1].x + sorted[sorted.length - 1].w - sorted[0].x;
+      const gap = (span - totalW) / (sorted.length - 1);
+      let cursor = sorted[0].x + sorted[0].w;
+      const updates = sorted.slice(1).map((b) => {
+        const x = Math.round(cursor + gap);
+        cursor = x + b.w;
+        return { id: b.id, changes: { x } as Partial<AnyBlock> };
+      });
+      updateBlocks(updates);
+    }
+
+    function distributeV() {
+      if (selectedBlocks.length < 3) return;
+      const sorted = [...selectedBlocks].sort((a, b) => a.y - b.y);
+      const totalH = sorted.reduce((s, b) => s + b.h, 0);
+      const span = sorted[sorted.length - 1].y + sorted[sorted.length - 1].h - sorted[0].y;
+      const gap = (span - totalH) / (sorted.length - 1);
+      let cursor = sorted[0].y + sorted[0].h;
+      const updates = sorted.slice(1).map((b) => {
+        const y = Math.round(cursor + gap);
+        cursor = y + b.h;
+        return { id: b.id, changes: { y } as Partial<AnyBlock> };
+      });
+      updateBlocks(updates);
+    }
+
+    const canDistribute = count >= 3;
+
+    const alignActions: { title: string; label: string; fn: () => void }[] = [
+      { title: "Aligner les bords gauches",        label: "⇤",  fn: () => applyAlign(() => ({ x: minX })) },
+      { title: "Centrer horizontalement",           label: "↔",  fn: () => applyAlign((b) => ({ x: Math.round(bboxCenterX - b.w / 2) })) },
+      { title: "Aligner les bords droits",          label: "⇥",  fn: () => applyAlign((b) => ({ x: maxX - b.w })) },
+      { title: "Aligner les bords hauts",           label: "⇡",  fn: () => applyAlign(() => ({ y: minY })) },
+      { title: "Centrer verticalement",             label: "↕",  fn: () => applyAlign((b) => ({ y: Math.round(bboxCenterY - b.h / 2) })) },
+      { title: "Aligner les bords bas",             label: "⇣",  fn: () => applyAlign((b) => ({ y: maxY - b.h })) },
+    ];
+
+    const distributeActions: { title: string; label: string; fn: () => void; disabled: boolean }[] = [
+      { title: canDistribute ? "Distribuer horizontalement" : "Nécessite ≥ 3 éléments", label: "⇹ H", fn: distributeH, disabled: !canDistribute },
+      { title: canDistribute ? "Distribuer verticalement"   : "Nécessite ≥ 3 éléments", label: "⇹ V", fn: distributeV, disabled: !canDistribute },
+    ];
+
+    return (
+      <aside className="w-64 bg-white border-l border-gray-200 flex flex-col shrink-0 overflow-y-auto">
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            Sélection multiple
+          </p>
+          <span className="text-xs text-gray-400">{count} éléments</span>
+        </div>
+
+        <div className="p-4 space-y-4 text-xs">
+          <Section label="Aligner">
+            <div className="grid grid-cols-3 gap-1">
+              {alignActions.map(({ title, label, fn }) => (
+                <button
+                  key={title}
+                  type="button"
+                  title={title}
+                  onClick={fn}
+                  className="py-2 rounded border border-gray-200 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-colors"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-400 leading-4 mt-1">
+              Les bords gauche, centre, droite — puis haut, milieu, bas — par rapport à la sélection.
+            </p>
+          </Section>
+
+          <Section label="Distribuer">
+            <div className="grid grid-cols-2 gap-1">
+              {distributeActions.map(({ title, label, fn, disabled }) => (
+                <button
+                  key={title}
+                  type="button"
+                  title={title}
+                  onClick={fn}
+                  disabled={disabled}
+                  className="py-2 rounded border border-gray-200 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-400 leading-4 mt-1">
+              Espace égal entre les éléments (nécessite ≥ 3).
+            </p>
+          </Section>
+        </div>
+      </aside>
+    );
+  }
+
   if (!block) {
     return (
       <aside className="w-64 bg-white border-l border-gray-200 flex flex-col shrink-0 overflow-y-auto">
@@ -494,6 +612,8 @@ export function PropertiesPanel({
               <p><span className="font-medium text-gray-800">Espace + glisser</span> pour deplacer la vue</p>
             </div>
           </div>
+
+          <DataLibrarySection template={template} updateContentLibrary={updateContentLibrary} />
         </div>
       </aside>
     );
@@ -607,6 +727,7 @@ export function PropertiesPanel({
             </label>
             <p className="text-[10px] text-gray-400 mt-1">Nom de la variable qui contiendra le fichier audio.</p>
           </Section>
+          <MusicLibrarySection mb={mb} updateBlock={updateBlock} />
         </div>
       </aside>
     );
@@ -1358,6 +1479,7 @@ function FontFamilyPicker({
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setQuery(value ?? "");
   }, [value]);
 
@@ -1946,7 +2068,7 @@ function TextProps({
                 onChange={(e) => onChange({ rules: { ...block.rules, minFontSize: e.target.value ? Number(e.target.value) : undefined } })}
                 className="border border-gray-200 rounded px-2 py-1"
               />
-              <span className="text-[10px] text-gray-400">Le texte reduit jusqu'a cette taille minimale s'il ne rentre pas dans la box.</span>
+              <span className="text-[10px] text-gray-400">Le texte réduit jusqu&apos;à cette taille minimale s&apos;il ne rentre pas dans la box.</span>
             </label>
           )}
           <label className="flex items-center gap-2">
@@ -2128,7 +2250,238 @@ function ImageProps({ block, onChange }: { block: ImageBlock; onChange: (c: Part
   );
 }
 
+function DataLibrarySection({
+  template,
+  updateContentLibrary,
+}: {
+  template: import("@/types/template").TemplateJSON;
+  updateContentLibrary: (changes: Partial<NonNullable<import("@/types/template").TemplateJSON["contentLibrary"]>>) => void;
+}) {
+  const [dataLibraries, setDataLibraries] = useState<{ id: string; name: string; templateType: string }[]>([]);
+  const [campaigns, setCampaigns] = useState<{ id: string; name: string; isActive: boolean }[]>([]);
+  const cl = template.contentLibrary;
+
+  useEffect(() => {
+    fetch("/api/admin/libraries/data")
+      .then((r) => r.ok ? r.json() as Promise<{ id: string; name: string; templateType: string }[]> : [])
+      .then(setDataLibraries)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!cl?.dataLibraryId) return;
+    let active = true;
+    fetch(`/api/admin/libraries/data/${cl.dataLibraryId}/campaigns`)
+      .then((r) => r.ok ? r.json() as Promise<{ id: string; name: string; isActive: boolean }[]> : [])
+      .then((data) => { if (active) setCampaigns(data); })
+      .catch(() => {});
+    return () => { active = false; setCampaigns([]); };
+  }, [cl?.dataLibraryId]);
+
+  if (dataLibraries.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Bibliothèque de données</p>
+      <label className="flex flex-col gap-0.5">
+        <span className="text-gray-400 text-[11px]">Bibliothèque</span>
+        <select
+          value={cl?.dataLibraryId ?? ""}
+          onChange={(e) => updateContentLibrary({ dataLibraryId: e.target.value || undefined, dataCampaignId: undefined })}
+          className="border border-gray-200 rounded px-2 py-1 text-sm"
+        >
+          <option value="">— Aucune —</option>
+          {dataLibraries.map((lib) => (
+            <option key={lib.id} value={lib.id}>{lib.name}</option>
+          ))}
+        </select>
+      </label>
+      {cl?.dataLibraryId && campaigns.length > 0 && (
+        <label className="flex flex-col gap-0.5">
+          <span className="text-gray-400 text-[11px]">Campagne active</span>
+          <select
+            value={cl?.dataCampaignId ?? ""}
+            onChange={(e) => updateContentLibrary({ dataCampaignId: e.target.value || undefined })}
+            className="border border-gray-200 rounded px-2 py-1 text-sm"
+          >
+            <option value="">— Sélectionner —</option>
+            {campaigns.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}{c.isActive ? " ✓" : ""}</option>
+            ))}
+          </select>
+        </label>
+      )}
+      {cl?.dataCampaignId && (
+        <label className="flex flex-col gap-0.5">
+          <span className="text-gray-400 text-[11px]">Règle de sélection</span>
+          <select
+            value={cl?.dataSelectionRule ?? "not_used_in_cycle"}
+            onChange={(e) => updateContentLibrary({ dataSelectionRule: e.target.value as NonNullable<typeof cl>["dataSelectionRule"] })}
+            className="border border-gray-200 rounded px-2 py-1 text-sm"
+          >
+            <option value="not_used_in_cycle">Non utilisée ce cycle</option>
+            <option value="least_used">La moins utilisée</option>
+            <option value="manual">Manuelle (choix à la génération)</option>
+          </select>
+        </label>
+      )}
+    </div>
+  );
+}
+
+function normalizeSelectionRule(rule: MediaSelectionRule | undefined): MediaSelectionRuleConfig {
+  if (!rule) return { strategy: "least_used" };
+  if (typeof rule === "string") return { strategy: rule };
+  return rule;
+}
+
+function buildSelectionRule(strategy: string, tagFilter: string, tagFilterParam: string): MediaSelectionRule {
+  const s = strategy as MediaSelectionRuleConfig["strategy"];
+  if (s === "manual") return "manual";
+  const tag = tagFilter.trim();
+  const param = tagFilterParam.trim();
+  if (param) return { strategy: s, tagFilterParam: param };
+  if (tag) return { strategy: s, tagFilter: tag };
+  return s === "random" ? { strategy: s } : s;
+}
+
+function SelectionRuleEditor({
+  rule,
+  onChange,
+  strategies,
+  schema,
+}: {
+  rule: MediaSelectionRule | undefined;
+  onChange: (r: MediaSelectionRule) => void;
+  strategies: { value: string; label: string }[];
+  schema?: { key: string; label?: string; type: string }[];
+}) {
+  const { strategy, tagFilter, tagFilterParam } = normalizeSelectionRule(rule);
+  const paramFields = schema?.filter((f) => ["select", "text"].includes(f.type)) ?? [];
+  const tagMode = tagFilterParam ? "param" : "literal";
+
+  function handleTagModeChange(mode: "literal" | "param") {
+    const s = strategy as MediaSelectionRuleConfig["strategy"];
+    if (mode === "param") onChange({ strategy: s, tagFilterParam: paramFields[0]?.key ?? "" });
+    else onChange(buildSelectionRule(strategy, "", ""));
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <select
+        value={strategy}
+        onChange={(e) => onChange(buildSelectionRule(e.target.value, tagFilter ?? "", tagFilterParam ?? ""))}
+        className="border border-gray-200 rounded px-2 py-1 text-sm"
+      >
+        {strategies.map((s) => (
+          <option key={s.value} value={s.value}>{s.label}</option>
+        ))}
+      </select>
+      {strategy !== "manual" && (
+        <>
+          {paramFields.length > 0 && (
+            <div className="flex gap-1">
+              {(["literal", "param"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => handleTagModeChange(m)}
+                  className={`flex-1 text-[10px] rounded px-2 py-0.5 border transition-colors ${
+                    tagMode === m
+                      ? "bg-indigo-600 text-white border-indigo-600"
+                      : "bg-white text-gray-500 border-gray-200 hover:border-indigo-300"
+                  }`}
+                >
+                  {m === "literal" ? "Tag fixe" : "Depuis un champ"}
+                </button>
+              ))}
+            </div>
+          )}
+          {tagMode === "param" && paramFields.length > 0 ? (
+            <select
+              value={tagFilterParam ?? ""}
+              onChange={(e) => {
+                const s = strategy as MediaSelectionRuleConfig["strategy"];
+                onChange({ strategy: s, tagFilterParam: e.target.value });
+              }}
+              className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+            >
+              <option value="">— Choisir un champ —</option>
+              {paramFields.map((f) => (
+                <option key={f.key} value={f.key}>{f.label || f.key}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={tagFilter ?? ""}
+              onChange={(e) => onChange(buildSelectionRule(strategy, e.target.value, ""))}
+              placeholder="Filtrer par tag (optionnel)"
+              className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-600 placeholder:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+            />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function MusicLibrarySection({ mb, updateBlock }: { mb: MusicBlock; updateBlock: (id: string, c: Partial<AnyBlock>) => void }) {  const [audioLibraries, setAudioLibraries] = useState<{ id: string; name: string }[]>([]);
+  const schema = useBuilderStore((s) => s.template.schema);
+  useEffect(() => {
+    fetch("/api/admin/libraries/media?type=audio")
+      .then((r) => r.ok ? r.json() as Promise<{ id: string; name: string }[]> : [])
+      .then(setAudioLibraries)
+      .catch(() => {});
+  }, []);
+
+  if (audioLibraries.length === 0) return null;
+
+  return (
+    <Section label="Bibliothèque audio">
+      <label className="flex flex-col gap-0.5">
+        <span className="text-gray-400 text-[11px]">Bibliothèque</span>
+        <select
+          value={mb.libraryId ?? ""}
+          onChange={(e) => updateBlock(mb.id, { libraryId: e.target.value || undefined } as Partial<AnyBlock>)}
+          className="border border-gray-200 rounded px-2 py-1 text-sm"
+        >
+          <option value="">— Aucune (upload manuel) —</option>
+          {audioLibraries.map((lib) => (
+            <option key={lib.id} value={lib.id}>{lib.name}</option>
+          ))}
+        </select>
+      </label>
+      {mb.libraryId && (
+        <label className="flex flex-col gap-0.5 mt-2">
+          <span className="text-gray-400 text-[11px]">À la génération</span>
+          <SelectionRuleEditor
+            rule={mb.audioSelectionRule}
+            onChange={(r) => updateBlock(mb.id, { audioSelectionRule: r } as Partial<AnyBlock>)}
+            strategies={[
+              { value: "oldest_used", label: "La plus ancienne" },
+              { value: "least_used", label: "Moins utilisée" },
+              { value: "random", label: "Aléatoire" },
+              { value: "manual", label: "Manuelle (choix à la génération)" },
+            ]}
+            schema={schema}
+          />
+        </label>
+      )}
+    </Section>
+  );
+}
+
 function VideoProps({ block, onChange }: { block: VideoBlock; onChange: (c: Partial<VideoBlock>) => void }) {
+  const [videoLibraries, setVideoLibraries] = useState<{ id: string; name: string }[]>([]);
+  const schema = useBuilderStore((s) => s.template.schema);
+  useEffect(() => {
+    fetch("/api/admin/libraries/media?type=video")
+      .then((r) => r.ok ? r.json() as Promise<{ id: string; name: string }[]> : [])
+      .then(setVideoLibraries)
+      .catch(() => {});
+  }, []);
+
   return (
     <Section label="Options vidéo">
       <label className="flex flex-col gap-0.5">
@@ -2183,6 +2536,39 @@ function VideoProps({ block, onChange }: { block: VideoBlock; onChange: (c: Part
         🎬 Ce bloc déclenche le pipeline RunPod.<br />
         La vidéo sera composite via FFmpeg avec le template en overlay PNG.
       </p>
+      {videoLibraries.length > 0 && (
+        <>
+          <label className="flex flex-col gap-0.5 mt-3">
+            <span className="text-gray-400 text-[11px]">Bibliothèque vidéo</span>
+            <select
+              value={block.libraryId ?? ""}
+              onChange={(e) => onChange({ libraryId: e.target.value || undefined })}
+              className="border border-gray-200 rounded px-2 py-1 text-sm"
+            >
+              <option value="">— Aucune (upload manuel) —</option>
+              {videoLibraries.map((lib) => (
+                <option key={lib.id} value={lib.id}>{lib.name}</option>
+              ))}
+            </select>
+          </label>
+          {block.libraryId && (
+            <label className="flex flex-col gap-0.5 mt-2">
+              <span className="text-gray-400 text-[11px]">À la génération</span>
+              <SelectionRuleEditor
+                rule={block.selectionRule}
+                onChange={(r) => onChange({ selectionRule: r })}
+                strategies={[
+                  { value: "least_used", label: "Moins utilisée" },
+                  { value: "oldest_used", label: "La plus ancienne" },
+                  { value: "random", label: "Aléatoire" },
+                  { value: "manual", label: "Manuelle (choix à la génération)" },
+                ]}
+                schema={schema}
+              />
+            </label>
+          )}
+        </>
+      )}
     </Section>
   );
 }
@@ -2307,7 +2693,7 @@ function ConditionalRulesSection({
         </p>
         {conditionFields.length === 0 && (
           <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
-            Ajoute d'abord un champ de type liste ou oui/non dans le schéma pour créer une variante conditionnelle.
+            Ajoute d&apos;abord un champ de type liste ou oui/non dans le schéma pour créer une variante conditionnelle.
           </p>
         )}
         {conditionalRules.map((rule, index) => {

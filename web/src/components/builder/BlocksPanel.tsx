@@ -78,6 +78,8 @@ export function BlocksPanel() {
     assignBlocksToGroup,
     selectBlock,
     selectGroup,
+    multiSelectedBlockIds,
+    setMultiSelection,
     updateBlock,
     updateGroup,
     removeBlock,
@@ -87,6 +89,7 @@ export function BlocksPanel() {
     selectedBlockId,
     selectedGroupId,
   } = useBuilderStore();
+  const multiSelectedSet = useMemo(() => new Set(multiSelectedBlockIds), [multiSelectedBlockIds]);
   const [draggedBlockId, setDraggedBlockId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
@@ -263,6 +266,8 @@ export function BlocksPanel() {
           const blocks = groupedBlocks.get(group.id) ?? [];
           const isSelected = selectedGroupId === group.id;
           const isDropTarget = dropTarget === group.id;
+          const groupBlockIds = blocks.map((b) => b.id);
+          const isMultiSelected = groupBlockIds.length > 0 && groupBlockIds.every((id) => multiSelectedSet.has(id));
           return (
             <div
               key={group.id}
@@ -281,12 +286,32 @@ export function BlocksPanel() {
               className={`rounded-xl border transition-colors ${
                 isDropTarget
                   ? "border-indigo-400 bg-indigo-50"
-                  : isSelected
-                    ? "border-indigo-200 bg-indigo-50/50"
-                    : "border-gray-200 bg-gray-50/60"
+                  : isMultiSelected
+                    ? "border-violet-300 bg-violet-50/50"
+                    : isSelected
+                      ? "border-indigo-200 bg-indigo-50/50"
+                      : "border-gray-200 bg-gray-50/60"
               }`}
             >
-              <div onClick={() => selectGroup(group.id)} className="flex items-center gap-2 px-2.5 py-2 cursor-pointer">
+              <div
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey) {
+                    // Cmd/Ctrl+click: toggle all blocks of this group in multi-select
+                    const groupBlockIds = (groupedBlocks.get(group.id) ?? []).map((b) => b.id);
+                    const next = new Set(multiSelectedSet);
+                    const allSelected = groupBlockIds.length > 0 && groupBlockIds.every((id) => next.has(id));
+                    if (allSelected) {
+                      groupBlockIds.forEach((id) => next.delete(id));
+                    } else {
+                      groupBlockIds.forEach((id) => next.add(id));
+                    }
+                    setMultiSelection([...next]);
+                  } else {
+                    selectGroup(group.id);
+                  }
+                }}
+                className="flex items-center gap-2 px-2.5 py-2 cursor-pointer"
+              >
                 <button
                   type="button"
                   onClick={(e) => {

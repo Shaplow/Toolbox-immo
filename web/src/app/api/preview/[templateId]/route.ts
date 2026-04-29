@@ -1,4 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { buildHTML } from "@/lib/renderer/buildHTML";
 import { buildSchemaPreviewData } from "@/lib/schemaFields";
@@ -14,6 +15,11 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ templateId: string }> }
 ) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  }
+
   const { templateId } = await params;
   try {
     const template = await prisma.template.findUniqueOrThrow({
@@ -34,6 +40,11 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ templateId: string }> }
 ) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  }
+
   const { templateId } = await params;
   try {
     const body = await req.json() as { data?: Record<string, unknown> };

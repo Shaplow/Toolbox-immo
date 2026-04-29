@@ -2,9 +2,11 @@
 import { notFound } from "next/navigation";
 import { ListingForm } from "@/components/form/ListingForm";
 import { collectTemplateConditionValues, normalizeTemplateJSON } from "@/lib/templateNormalization";
-import type { TemplateJSON, SchemaField } from "@/types/template";
+import type { TemplateJSON, MusicBlock } from "@/types/template";
 import { DPE_AUTO_FIELDS } from "@/lib/renderer/blocks/renderDPEBlock";
 import { getUserContext } from "@/lib/userContext";
+import { resolveLibraryPrefill } from "@/lib/contentLibraryResolver";
+import type { LibraryPrefillContext } from "@/types/libraryPrefill";
 
 function buildMediaFieldAspectRatios(json: TemplateJSON): Record<string, number> {
   const ratios = new Map<string, { ratio: number; area: number }>();
@@ -116,6 +118,80 @@ export default async function GeneratePage({ params, searchParams }: Props) {
   const mergedSchema = [...schemaMap.values()];
   const mediaFieldAspectRatios = buildMediaFieldAspectRatios(json);
 
+  // ─── Content Library pre-fill ──────────────────────────────────────────────
+  let libraryPrefillContext: LibraryPrefillContext | undefined;
+  const hasLibraryBindings =
+    json.blocks.some((b) => (b.type === "video" || b.type === "music") && b.libraryId) ||
+    !!json.contentLibrary?.dataCampaignId;
+
+  if (hasLibraryBindings) {
+    const fieldLibraryMap: Record<string, { libraryId: string; blockId: string; type: "video" | "audio"; tagFilterParam?: string }> = {};
+    const initialSuggestions: Record<string, { id: string; url: string; filename: string } | null> = {};
+    const prefilledDataKeys: string[] = [];
+    let dataSuggestion: { entryId: string; fields: Record<string, string> } | null = null;
+
+    // Build fieldLibraryMap — always, even when regenerating
+    for (const block of json.blocks) {
+      if (block.type === "video" && block.binding && block.libraryId) {
+        const rule = block.selectionRule;
+        const tagFilterParam = (typeof rule === "object" && rule !== null && "tagFilterParam" in rule)
+          ? (rule as { tagFilterParam?: string }).tagFilterParam
+          : undefined;
+        fieldLibraryMap[block.binding] = { libraryId: block.libraryId, blockId: block.id, type: "video" as const, tagFilterParam };
+      }
+    }
+    const musicBlock = json.blocks.find((b): b is MusicBlock => b.type === "music" && !!b.libraryId);
+    if (musicBlock?.binding && musicBlock.libraryId) {
+      const rule = musicBlock.audioSelectionRule;
+      const tagFilterParam = (typeof rule === "object" && rule !== null && "tagFilterParam" in rule)
+        ? (rule as { tagFilterParam?: string }).tagFilterParam
+        : undefined;
+      fieldLibraryMap[musicBlock.binding] = { libraryId: musicBlock.libraryId, blockId: musicBlock.id, type: "audio" as const, tagFilterParam };
+    }
+
+    if (listingId) {
+      // Regenerating from an existing listing: try to match stored URLs back to library assets
+      // so the picker shows the previously used asset as the current selection.
+      for (const [fieldKey, meta] of Object.entries(fieldLibraryMap)) {
+        const existingUrl = initialValues?.[fieldKey] as string | undefined;
+        if (existingUrl) {
+          const asset = await prisma.mediaAsset.findFirst({
+            where: { libraryId: meta.libraryId, url: existingUrl },
+            select: { id: true, filename: true, url: true },
+          });
+          initialSuggestions[fieldKey] = asset ?? null;
+        } else {
+          initialSuggestions[fieldKey] = null;
+        }
+      }
+      // No dataSuggestion when regenerating — text fields already pre-filled from listing
+    } else {
+      // Fresh generation: use resolveLibraryPrefill
+      const prefill = await resolveLibraryPrefill(json, initialValues ?? undefined);
+
+      for (const block of json.blocks) {
+        if (block.type === "video" && block.binding && block.libraryId) {
+          const suggestion = prefill.videoSuggestions[block.id] ?? null;
+          initialSuggestions[block.binding] = suggestion;
+          if (suggestion) initialValues = { ...initialValues, [block.binding]: suggestion.url };
+        }
+      }
+      if (musicBlock?.binding && musicBlock.libraryId) {
+        initialSuggestions[musicBlock.binding] = prefill.audioSuggestion ?? null;
+        if (prefill.audioSuggestion) initialValues = { ...initialValues, [musicBlock.binding]: prefill.audioSuggestion.url };
+      }
+      if (prefill.dataSuggestion) {
+        for (const [key, value] of Object.entries(prefill.dataSuggestion.fields)) {
+          initialValues = { ...initialValues, [key]: value };
+          prefilledDataKeys.push(key);
+        }
+        dataSuggestion = prefill.dataSuggestion;
+      }
+    }
+
+    libraryPrefillContext = { fieldLibraryMap, initialSuggestions, prefilledDataKeys, dataSuggestion };
+  }
+
   return (
     <div className="px-4 py-8 xl:px-8 max-w-[1680px] mx-auto">
       <div className="mb-8">
@@ -134,6 +210,7 @@ export default async function GeneratePage({ params, searchParams }: Props) {
         formSections={json.formSections ?? []}
         mediaFieldAspectRatios={mediaFieldAspectRatios}
         initialValues={initialValues}
+        libraryPrefillContext={libraryPrefillContext}
       />
     </div>
   );

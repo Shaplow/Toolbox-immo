@@ -1,6 +1,7 @@
 ﻿import { redirect } from "next/navigation";
 import { AppNav } from "@/components/layout/AppNav";
 import { getUserContext } from "@/lib/userContext";
+import { JobEventsProvider } from "@/components/providers/JobEventsProvider";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const userContext = await getUserContext();
@@ -14,7 +15,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         isImpersonating={userContext.isImpersonating}
       />
       <main className="flex-1 overflow-y-auto">
-        {children}
+        <JobEventsProvider>
+          {children}
+        </JobEventsProvider>
       </main>
     </div>
   );

@@ -6,6 +6,8 @@ import {
   ArrowLeft, CheckCircle, XCircle, Loader2, Clock,
   Download, FileText, FileJson, Layers, Mic2, RefreshCw, Scissors, ArrowRight,
 } from "lucide-react";
+import { useJobPolling } from "@/lib/hooks/useJobPolling";
+import { useJobEvent } from "@/lib/hooks/jobEventBus";
 
 type JobDetail = {
   id: string;
@@ -50,21 +52,29 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
   const [qualityScore, setQualityScore] = useState<number | null>(null);
   const [qualityWarningCount, setQualityWarningCount] = useState(0);
 
-  const poll = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/transcription/${job.id}`);
-      if (!res.ok) return;
-      const data = await res.json() as JobDetail;
-      setJob(data);
-    } catch { /* ignore */ }
-  }, [job.id]);
-
-  // Poll while not terminal
+  // Polling fallback (5 s interval, stops automatically on terminal state)
+  const { data: pollData } = useJobPolling<JobDetail>({
+    fetchFn: () => fetch(`/api/transcription/${job.id}`).then((r) => r.json()),
+    isTerminal: (d) => d.status === "COMPLETED" || d.status === "FAILED",
+    intervalMs: 5000,
+    enabled: job.status !== "COMPLETED" && job.status !== "FAILED",
+  });
   useEffect(() => {
-    if (job.status === "COMPLETED" || job.status === "FAILED") return;
-    const interval = setInterval(() => void poll(), 5000);
-    return () => clearInterval(interval);
-  }, [job.status, poll]);
+    if (pollData) setJob(pollData);
+  }, [pollData]);
+
+  // SSE fast path — immediate update when webhook fires
+  const jobEvent = useJobEvent(job.id);
+  useEffect(() => {
+    if (!jobEvent || jobEvent.jobType !== "transcription") return;
+    setJob((prev) => ({
+      ...prev,
+      status: jobEvent.status as JobDetail["status"],
+      ...(typeof jobEvent.segmentCount === "number" ? { segmentCount: jobEvent.segmentCount } : {}),
+      ...(typeof jobEvent.duration === "number" ? { duration: jobEvent.duration } : {}),
+      ...(typeof jobEvent.hasDiarization === "boolean" ? { hasDiarization: jobEvent.hasDiarization } : {}),
+    }));
+  }, [jobEvent]);
 
   // Fetch QA audit once job is completed
   useEffect(() => {
@@ -113,8 +123,6 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
     sessionStorage.setItem("transcription_pending_id", job.id);
     router.push("/tools/captions");
   }, [job.id, router]);
-
-  const isTerminal = job.status === "COMPLETED" || job.status === "FAILED";
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">

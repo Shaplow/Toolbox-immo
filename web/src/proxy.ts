@@ -7,7 +7,8 @@ import { auth } from "@/lib/auth";
  * Logique :
  * - /login          → public, redirige vers /home si déjà connecté
  * - /api/auth/*     → public (NextAuth handlers)
- * - /api/captions/* → authentification requise (proxy Python, vérifié dans la route)
+ * - /api/webhooks/* → public (callbacks RunPod, vérifiés par RUNPOD_WEBHOOK_SECRET)
+ * - /api/preview/*  → public (rendu HTML template, protégé dans la route elle-même)
  * - /api/*          → authentification requise
  * - /(app)/*        → authentification requise (le layout (app) vérifie aussi)
  * - /*              → authentification requise par défaut
@@ -21,6 +22,9 @@ export async function proxy(req: NextRequest) {
 
   // Routes publiques — toujours accessibles
   if (pathname.startsWith("/api/auth")) return NextResponse.next();
+
+  // Webhooks RunPod — protégés par RUNPOD_WEBHOOK_SECRET dans chaque handler
+  if (pathname.startsWith("/api/webhooks/")) return NextResponse.next();
 
   // Route interne de génération — protégée par INTERNAL_API_KEY (pas de session)
   if (pathname.match(/^\/api\/renders\/[^/]+\/generate$/)) {

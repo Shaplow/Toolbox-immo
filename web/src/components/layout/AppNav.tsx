@@ -4,8 +4,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState, type ReactNode } from "react";
-import { Home, LayoutTemplate, Film, Image as ImageIcon, Mic, AlignLeft, Scissors, List, Users, Type, MessageSquare, LogOut } from "lucide-react";
+import { Home, List, Users, Type, MessageSquare, Library, LogOut } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
+import { TOOL_META, TOOL_ORDER } from "@/lib/toolMeta";
 
 type NavItem = {
   href: string;
@@ -17,6 +18,12 @@ type NavSection = {
   title?: string;
   items: NavItem[];
 };
+
+/** Build a NavItem from TOOL_META at nav icon size. */
+function toolNavItem(key: keyof typeof TOOL_META): NavItem {
+  const { href, navLabel, Icon } = TOOL_META[key];
+  return { href, label: navLabel, icon: <Icon size={16} /> };
+}
 
 export function AppNav({
   actualUser,
@@ -62,14 +69,7 @@ export function AppNav({
           items: [{ href: "/home", label: "Accueil", icon: <Home size={16} /> }],
         },
         {
-          items: [
-            { href: "/tools/templates", label: "Templates", icon: <LayoutTemplate size={16} /> },
-            { href: "/tools/captions", label: "Sous-titres", icon: <Film size={16} /> },
-            { href: "/tools/cover", label: "Covers", icon: <ImageIcon size={16} /> },
-            { href: "/tools/transcription", label: "Transcription", icon: <Mic size={16} /> },
-            { href: "/tools/description", label: "Descriptions", icon: <AlignLeft size={16} /> },
-            { href: "/tools/derush", label: "Dérush", icon: <Scissors size={16} /> },
-          ],
+          items: TOOL_ORDER.map(toolNavItem),
         },
         {
           title: "Suivi",
@@ -80,7 +80,8 @@ export function AppNav({
           items: [
             { href: "/admin/users", label: "Utilisateurs", icon: <Users size={16} /> },
             { href: "/admin/fonts", label: "Typographies", icon: <Type size={16} /> },
-            { href: "/admin/prompts", label: "Prompts", icon: <MessageSquare size={16} /> },
+            { href: "/admin/libraries", label: "Bibliothèques", icon: <Library size={16} /> },
+            { href: "/admin/prompts", label: "Prompts IA", icon: <MessageSquare size={16} /> },
           ],
         },
       ]
@@ -90,29 +91,18 @@ export function AppNav({
         },
         {
           items: [
-            ...(hasTemplates ? [{ href: "/tools/templates", label: "Templates", icon: <LayoutTemplate size={16} /> as ReactNode }] : []),
-            ...(hasCaptions ? [{ href: "/tools/captions", label: "Sous-titres", icon: <Film size={16} /> as ReactNode }] : []),
-            ...(hasCovers ? [{ href: "/tools/cover", label: "Covers", icon: <ImageIcon size={16} /> as ReactNode }] : []),
-            ...(hasTranscription ? [{ href: "/tools/transcription", label: "Transcription", icon: <Mic size={16} /> as ReactNode }] : []),
-            ...(hasDescription ? [{ href: "/tools/description", label: "Descriptions", icon: <AlignLeft size={16} /> as ReactNode }] : []),
-            ...(hasDerush ? [{ href: "/tools/derush", label: "Dérush", icon: <Scissors size={16} /> as ReactNode }] : []),
+            ...(hasTemplates ? [toolNavItem("templates")] : []),
+            ...(hasCaptions ? [toolNavItem("captions")] : []),
+            ...(hasTranscription ? [toolNavItem("transcription")] : []),
+            ...(hasDescription ? [toolNavItem("description")] : []),
+            ...(hasDerush ? [toolNavItem("derush")] : []),
+            ...(hasCovers ? [toolNavItem("covers")] : []),
           ],
         },
         {
           title: "Suivi",
           items: [{ href: "/listings", label: "Mes générations", icon: <List size={16} /> }],
         },
-        ...(isAdminView
-          ? [
-              {
-                title: "Admin",
-                items: [
-                  { href: "/admin/users", label: "Utilisateurs", icon: <Users size={16} /> as ReactNode },
-                  { href: "/admin/fonts", label: "Typographies", icon: <Type size={16} /> as ReactNode },
-                ],
-              },
-            ]
-          : []),
       ];
 
   return (

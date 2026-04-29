@@ -3,14 +3,25 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { getRenderStageLabel } from "@/lib/renderer/renderWorkflow";
+import { useJobPolling } from "@/lib/hooks/useJobPolling";
+import type { JobEventPayload } from "@/lib/sseStore";
 
 type RenderStatus = "PENDING" | "PROCESSING" | "DONE" | "ERROR";
+
+interface RenderData {
+  status: RenderStatus;
+  pngUrl?: string | null;
+  videoUrl?: string | null;
+  errorMsg?: string | null;
+  stage?: string | null;
+  statusDetail?: string | null;
+  progress?: number | null;
+}
 
 interface Props {
   renderId: string;
   initialStatus: string;
   pngUrl: string | null;
-  pdfUrl: string | null;
   videoUrl?: string | null;
   errorMsg: string | null;
   templateId: string;
@@ -20,35 +31,56 @@ interface Props {
   progress?: number | null;
 }
 
-export function RenderResult({ renderId, initialStatus, pngUrl: initPng, pdfUrl: initPdf, videoUrl: initVideo, errorMsg: initErr, templateId, stage: initStage, statusDetail: initDetail, progress: initProgress }: Props) {
+export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUrl: initVideo, errorMsg: initErr, templateId, stage: initStage, statusDetail: initDetail, progress: initProgress }: Props) {
   const [status, setStatus] = useState<RenderStatus>(initialStatus as RenderStatus);
   const [pngUrl, setPngUrl] = useState(initPng);
-  const [pdfUrl, setPdfUrl] = useState(initPdf);
   const [videoUrl, setVideoUrl] = useState(initVideo ?? null);
   const [errorMsg, setErrorMsg] = useState(initErr);
   const [stage, setStage] = useState(initStage ?? null);
   const [statusDetail, setStatusDetail] = useState(initDetail ?? null);
   const [progress, setProgress] = useState<number | null>(initProgress ?? null);
 
-  const poll = useCallback(async () => {
-    const res = await fetch(`/api/renders/${renderId}`);
-    const data = await res.json();
+  const isTerminal = useCallback((s: RenderStatus) => s === "DONE" || s === "ERROR", []);
+
+  const apply = useCallback((data: RenderData) => {
     setStatus(data.status);
     if (data.pngUrl) setPngUrl(data.pngUrl);
-    if (data.pdfUrl) setPdfUrl(data.pdfUrl);
     if (data.videoUrl) setVideoUrl(data.videoUrl);
     if (data.errorMsg) setErrorMsg(data.errorMsg);
     setStage(data.stage ?? null);
     setStatusDetail(data.statusDetail ?? null);
     setProgress(typeof data.progress === "number" ? data.progress : null);
-  }, [renderId]);
+  }, []);
+
+  // ─── Periodic poll ───────────────────────────────────────────────────────
+  const { data: polled } = useJobPolling<RenderData>({
+    fetchFn: useCallback(() => fetch(`/api/renders/${renderId}`).then((r) => r.json()), [renderId]),
+    isTerminal: useCallback((d: RenderData) => d.status === "DONE" || d.status === "ERROR", []),
+    intervalMs: 2000,
+    enabled: status === "PENDING" || status === "PROCESSING",
+  });
 
   useEffect(() => {
-    if (status === "PENDING" || status === "PROCESSING") {
-      const interval = setInterval(poll, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [status, poll]);
+    if (polled) apply(polled);
+  }, [polled, apply]);
+
+  // ─── SSE — stop polling immediately when webhook fires ───────────────────
+  useEffect(() => {
+    if (isTerminal(status)) return;
+    const source = new EventSource("/api/events/jobs");
+    source.addEventListener("job", (e) => {
+      try {
+        const event = JSON.parse(e.data) as JobEventPayload;
+        if (event.jobType === "render" && event.jobId === renderId) {
+          setStatus(event.status as RenderStatus);
+          if ("videoUrl" in event && event.videoUrl) setVideoUrl(event.videoUrl);
+          if ("errorMsg" in event && event.errorMsg) setErrorMsg(event.errorMsg);
+          source.close();
+        }
+      } catch { /* ignore parse errors */ }
+    });
+    return () => source.close();
+  }, [renderId, status, isTerminal]);
 
   return (
     <div className="space-y-6">

@@ -1,10 +1,10 @@
-import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { getUserContext } from "@/lib/userContext";
 import { PresetsPanel } from "@/components/admin/PresetsPanel";
 
 export default async function AdminPresetsPage() {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") redirect("/home");
+  const userContext = await getUserContext();
+  if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") redirect("/home");
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
