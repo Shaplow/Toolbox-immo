@@ -56,21 +56,33 @@ tar czf "${TMP_ARCHIVE}" \
   --exclude='./**/__pycache__' \
   --exclude='./**/*.pyc' \
   --exclude='./.env' \
-  --exclude='./.env.local' \
+  --exclude='./.env.*' \
   --exclude='./web/.env' \
   --exclude='./web/.env.local' \
   --exclude='./web/public/uploads' \
   --exclude='./web/public/renders' \
-  --exclude='./render-engine/outputs' \
-  --exclude='./venv' \
-  --exclude='./render-engine/venv' \
+  --exclude='./render-engine' \
   .
 
 echo "▶ Envoi de l'archive vers le serveur..."
 scp $SSH_OPTS "${TMP_ARCHIVE}" "${SSH_TARGET}:/tmp/toolbox-deploy.tar.gz"
 
+# Envoi du fichier d'environnement prod (local uniquement, jamais dans l'archive)
+ENV_PROD="${PROJECT_ROOT}/.env.prod"
+if [ ! -f "${ENV_PROD}" ]; then
+  echo "❌ Fichier .env.prod introuvable à la racine du projet !"
+  echo "   Crée ce fichier avec les secrets de production avant de déployer."
+  rm -f "${TMP_ARCHIVE}"
+  exit 1
+fi
+echo "▶ Envoi de .env.prod..."
+scp $SSH_OPTS "${ENV_PROD}" "${SSH_TARGET}:/tmp/toolbox-env-prod"
+
 echo "▶ Extraction sur le serveur..."
-ssh $SSH_OPTS "${SSH_TARGET}" "cd /var/www/toolbox && tar xzf /tmp/toolbox-deploy.tar.gz && rm /tmp/toolbox-deploy.tar.gz"
+ssh $SSH_OPTS "${SSH_TARGET}" "
+  cd /var/www/toolbox && tar xzf /tmp/toolbox-deploy.tar.gz && rm /tmp/toolbox-deploy.tar.gz
+  mv /tmp/toolbox-env-prod /var/www/toolbox/web/.env.local
+"
 
 rm -f "${TMP_ARCHIVE}"
 

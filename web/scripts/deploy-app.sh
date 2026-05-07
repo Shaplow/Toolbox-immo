@@ -27,7 +27,7 @@ cp .env.local .env
 
 # ── 1. Dépendances Node ─────────────────────────────────────────────────────
 echo ""
-echo "▶ 1/6  npm install..."
+echo "▶ 1/4  npm install..."
 PKG_HASH_FILE=".deploy-pkg-hash"
 PKG_HASH_CURRENT=$(md5sum package.json package-lock.json 2>/dev/null | md5sum | cut -d' ' -f1)
 PKG_HASH_PREV=$(cat "$PKG_HASH_FILE" 2>/dev/null || echo "")
@@ -38,54 +38,34 @@ else
   echo "$PKG_HASH_CURRENT" > "$PKG_HASH_FILE"
 fi
 
-# ── 2. Render-engine Python ────────────────────────────────────────────────
+# ── 2. Prisma (sans seed auto) ─────────────────────────────────────────────
 echo ""
-echo "▶ 2/6  Render-engine — venv + pip install..."
-RENDER_DIR="$(dirname "$(pwd)")/render-engine"
-if [ ! -d "${RENDER_DIR}/venv" ]; then
-  python3 -m venv "${RENDER_DIR}/venv"
-fi
-PIP_HASH_FILE="${RENDER_DIR}/.deploy-pip-hash"
-PIP_HASH_CURRENT=$(md5sum "${RENDER_DIR}/requirements.txt" 2>/dev/null | cut -d' ' -f1)
-PIP_HASH_PREV=$(cat "$PIP_HASH_FILE" 2>/dev/null || echo "")
-if [ "$PIP_HASH_CURRENT" = "$PIP_HASH_PREV" ]; then
-  echo "   ⏭  requirements.txt inchangé — pip install skippé"
-else
-  "${RENDER_DIR}/venv/bin/pip" install --quiet --upgrade pip
-  "${RENDER_DIR}/venv/bin/pip" install --quiet -r "${RENDER_DIR}/requirements.txt"
-  echo "$PIP_HASH_CURRENT" > "$PIP_HASH_FILE"
-fi
-
-# ── 3. Prisma (sans seed auto) ─────────────────────────────────────────────
-echo ""
-echo "▶ 3/6  Prisma — migrations PostgreSQL (sans seed)..."
+echo "▶ 2/4  Prisma — migrations PostgreSQL (sans seed)..."
 ./node_modules/.bin/prisma migrate deploy
 ./node_modules/.bin/prisma generate
 
-# ── 4. Import des données (si demandé) ─────────────────────────────────────
+# ── 3. Import des données (si demandé) ─────────────────────────────────────
 if [ "$IMPORT_DATA" = true ]; then
   if [ -f "scripts/data-export.json" ]; then
     echo ""
-    echo "▶ 4/6  Import données SQLite → PostgreSQL..."
+    echo "▶ 3/4  Import données SQLite → PostgreSQL..."
     ./node_modules/.bin/tsx scripts/import-postgres.mjs
   else
     echo "⚠️  --import-data spécifié mais scripts/data-export.json introuvable."
   fi
 else
   echo ""
-  echo "▶ 4/6  (Pas d'import de données — ajoutez --import-data pour importer)"
+  echo "▶ 3/4  (Pas d'import de données — ajoutez --import-data pour importer)"
 fi
 
-# ── 5. Build Next.js ────────────────────────────────────────────────────────
+# ── 4. Build Next.js + PM2 ─────────────────────────────────────────────────
 echo ""
-echo "▶ 5/6  Build Next.js..."
+echo "▶ 4/4  Build Next.js..."
 npm run build
 
-# ── 6. PM2 ─────────────────────────────────────────────────────────────────
 echo ""
-echo "▶ 6/6  Démarrage/redémarrage PM2..."
+echo "▶ 4/4  Démarrage/redémarrage PM2..."
 pm2 delete toolbox-web 2>/dev/null || true
-pm2 delete toolbox-render 2>/dev/null || true
 pm2 start ecosystem.config.js
 pm2 save
 
@@ -97,7 +77,7 @@ echo ""
 pm2 status
 echo ""
 echo "  Next.js tourne sur le port 3000."
-echo "  Render-engine tourne sur le port 8000 (interne uniquement)."
+echo "  Render-engine : RunPod serverless (pas de process local)."
 echo "  Pour configurer Nginx (reverse proxy), lancez :"
 echo "    bash scripts/setup-nginx.sh votre-domaine.fr"
 echo ""
