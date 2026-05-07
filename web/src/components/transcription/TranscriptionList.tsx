@@ -13,8 +13,9 @@ import {
   FileAudio,
   Play,
   RefreshCw,
-  Settings2,
+  X,
 } from "lucide-react";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { fmtDate, fmtDuration } from "@/lib/jobUtils";
 
 const AUDIO_ACCEPT = ".mp3,.wav,.m4a,.flac,.ogg,.aac,.mp4,.mov,.mkv,.webm";
@@ -34,7 +35,6 @@ type Job = {
 };
 
 type JobDraft = {
-  model: string;
   language: string;
   enableDiarization: boolean;
 };
@@ -52,6 +52,8 @@ type Feedback = {
   message: string;
 };
 
+const DEFAULT_JOB_CONFIG: JobDraft = { language: "fr", enableDiarization: false };
+
 const LANGUAGE_OPTIONS = [
   { value: "fr", label: "Français" },
   { value: "en", label: "Anglais" },
@@ -59,21 +61,6 @@ const LANGUAGE_OPTIONS = [
   { value: "de", label: "Allemand" },
   { value: "it", label: "Italien" },
   { value: "auto", label: "Détection auto" },
-];
-
-const MODEL_OPTIONS = [
-  {
-    value: "turbo",
-    label: "Rapide",
-    timing: "Résultat en ~1 min",
-    description: "Idéal pour préparer un lot rapidement.",
-  },
-  {
-    value: "large-v3",
-    label: "Haute précision",
-    timing: "Résultat en 2–4 min",
-    description: "Mieux pour accents, réunions et rushs complexes.",
-  },
 ];
 
 const STATUS_ICON: Record<Job["status"], React.ReactNode> = {
@@ -84,10 +71,10 @@ const STATUS_ICON: Record<Job["status"], React.ReactNode> = {
 };
 
 const STATUS_LABEL: Record<Job["status"], string> = {
-  QUEUED: "Prêt à lancer",
-  PROCESSING: "En cours",
+  QUEUED: "En attente",
+  PROCESSING: "Analyse en cours",
   COMPLETED: "Terminé",
-  FAILED: "Échec",
+  FAILED: "Erreur",
 };
 
 const STATUS_TONE: Record<Job["status"], string> = {
@@ -119,15 +106,12 @@ export function TranscriptionList({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [dragging, setDragging] = useState(false);
-  const [defaultConfig, setDefaultConfig] = useState<JobDraft>({
-    model: "turbo",
-    language: "fr",
-    enableDiarization: false,
-  });
+  const defaultConfig = DEFAULT_JOB_CONFIG;
   const [queuedDrafts, setQueuedDrafts] = useState<Record<string, JobDraft>>({});
   const [dirtyJobIds, setDirtyJobIds] = useState<Record<string, boolean>>({});
   const [savingJobIds, setSavingJobIds] = useState<Record<string, boolean>>({});
   const [startingJobIds, setStartingJobIds] = useState<Record<string, boolean>>({});
+  const [cancellingJobIds, setCancellingJobIds] = useState<Record<string, boolean>>({});
   const [refreshing, setRefreshing] = useState(false);
   const [uploadState, setUploadState] = useState<UploadState | null>(null);
   const [startingBatch, setStartingBatch] = useState(false);
@@ -141,7 +125,6 @@ export function TranscriptionList({
 
   const getDraftForJob = useCallback((job: Job): JobDraft => {
     return queuedDrafts[job.id] ?? {
-      model: job.model,
       language: job.language,
       enableDiarization: job.enableDiarization,
     };
@@ -281,7 +264,7 @@ export function TranscriptionList({
           body: JSON.stringify({
             filename: file.name,
             ext,
-            model: defaultConfig.model,
+            model: "turbo",
             language: defaultConfig.language,
             enable_diarization: defaultConfig.enableDiarization,
           }),
@@ -373,7 +356,6 @@ export function TranscriptionList({
     setDirtyJobIds((currentDirtyJobIds) => {
       const nextDirtyJobIds = { ...currentDirtyJobIds };
       const isDirty =
-        nextDraft.model !== job.model ||
         nextDraft.language !== job.language ||
         nextDraft.enableDiarization !== job.enableDiarization;
 
@@ -393,40 +375,6 @@ export function TranscriptionList({
     });
   }, [queuedDrafts]);
 
-  const applyDefaultConfigToQueuedJobs = useCallback(() => {
-    if (!queuedJobs.length) return;
-
-    setQueuedDrafts((currentDrafts) => {
-      const nextDrafts = { ...currentDrafts };
-      for (const job of queuedJobs) {
-        nextDrafts[job.id] = { ...defaultConfig };
-      }
-      return nextDrafts;
-    });
-
-    setDirtyJobIds(() => {
-      const nextDirtyJobIds: Record<string, boolean> = {};
-      for (const job of queuedJobs) {
-        const isDirty =
-          job.model !== defaultConfig.model ||
-          job.language !== defaultConfig.language ||
-          job.enableDiarization !== defaultConfig.enableDiarization;
-        if (isDirty) {
-          nextDirtyJobIds[job.id] = true;
-        }
-      }
-      return nextDirtyJobIds;
-    });
-
-    setJobErrors((currentJobErrors) => {
-      const nextJobErrors = { ...currentJobErrors };
-      for (const job of queuedJobs) {
-        delete nextJobErrors[job.id];
-      }
-      return nextJobErrors;
-    });
-  }, [defaultConfig, queuedJobs]);
-
   const saveQueuedJobConfig = useCallback(async (job: Job) => {
     const draft = getDraftForJob(job);
     setSavingJobIds((currentSavingJobIds) => ({
@@ -445,7 +393,6 @@ export function TranscriptionList({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: draft.model,
           language: draft.language,
           enable_diarization: draft.enableDiarization,
         }),
@@ -466,7 +413,6 @@ export function TranscriptionList({
       setQueuedDrafts((currentDrafts) => ({
         ...currentDrafts,
         [job.id]: {
-          model: updatedJob.model,
           language: updatedJob.language,
           enableDiarization: updatedJob.enableDiarization,
         },
@@ -573,22 +519,37 @@ export function TranscriptionList({
     setStartingBatch(false);
   }, [queuedJobs, refreshJobs, startQueuedJob]);
 
-  return (
-    <div className="mx-auto max-w-5xl space-y-8 px-4 py-8">
-      <div className="flex flex-col gap-4 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-600 text-white">
-            <Mic className="h-5 w-5" />
-          </div>
-          <div className="space-y-1">
-            <h1 className="text-xl font-semibold text-gray-900">Transcription</h1>
-            <p className="text-sm text-gray-500">
-              Uploadez vos rushs, laissez-les en attente, ajustez la config puis lancez une ou plusieurs transcriptions quand vous êtes prêt.
-            </p>
-          </div>
-        </div>
+  const cancelJob = useCallback(async (job: Job) => {
+    setCancellingJobIds((prev) => ({ ...prev, [job.id]: true }));
+    try {
+      const response = await fetch(`/api/transcription/${job.id}`, { method: "DELETE" });
+      if (!response.ok) return;
+      setJobs((currentJobs) =>
+        currentJobs.map((candidate) =>
+          candidate.id === job.id
+            ? { ...candidate, status: "FAILED", errorMsg: "Annulé" }
+            : candidate
+        )
+      );
+    } finally {
+      setCancellingJobIds((prev) => {
+        const next = { ...prev };
+        delete next[job.id];
+        return next;
+      });
+    }
+  }, []);
 
-        <div className="flex flex-wrap gap-2 text-xs font-medium">
+  return (
+    <div className="p-8 max-w-5xl mx-auto space-y-8">
+      <div>
+        <ToolPageHeader
+          icon={Mic}
+          iconColor="teal"
+          title="Transcription"
+          subtitle="Uploadez vos rushs, laissez-les en attente, ajustez la config puis lancez une ou plusieurs transcriptions quand vous êtes prêt."
+        />
+        <div className="-mt-4 mb-2 flex flex-wrap gap-2 text-xs font-medium">
           <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
             {queuedJobs.length} en attente
           </span>
@@ -604,7 +565,7 @@ export function TranscriptionList({
       <div
         role="button"
         tabIndex={0}
-        className={`relative rounded-3xl border-2 border-dashed p-10 text-center transition-colors ${
+        className={`relative rounded-2xl border-2 border-dashed p-10 text-center transition-colors ${
           dragging ? "border-teal-400 bg-teal-50" : "border-gray-200 bg-white hover:border-teal-300 hover:bg-gray-50"
         } ${uploadState ? "pointer-events-none opacity-80" : "cursor-pointer"}`}
         onDragEnter={(event) => {
@@ -669,87 +630,6 @@ export function TranscriptionList({
         )}
       </div>
 
-      <div className="space-y-4 rounded-3xl bg-gray-50 p-5">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Config par défaut</p>
-            <p className="mt-1 text-sm text-gray-600">
-              Ces options s&apos;appliquent aux nouveaux rushs. Vous pourrez encore ajuster chaque job en attente avant de le lancer.
-            </p>
-          </div>
-          {queuedJobs.length > 0 && (
-            <button
-              type="button"
-              onClick={applyDefaultConfigToQueuedJobs}
-              className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-teal-300 hover:text-teal-700"
-            >
-              <Settings2 className="h-4 w-4" />
-              Appliquer aux {queuedJobs.length} en attente
-            </button>
-          )}
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px]">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Modèle de transcription</label>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {MODEL_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setDefaultConfig((currentConfig) => ({ ...currentConfig, model: option.value }))}
-                  className={`rounded-2xl border p-4 text-left transition-colors ${
-                    defaultConfig.model === option.value
-                      ? "border-teal-500 bg-teal-50"
-                      : "border-gray-200 bg-white hover:border-gray-300"
-                  }`}
-                >
-                  <div className="text-sm font-semibold text-gray-800">{option.label}</div>
-                  <div className="mt-0.5 text-xs text-gray-500">{option.timing}</div>
-                  <div className="mt-1 text-xs text-gray-400">{option.description}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4">
-            <label className="space-y-1">
-              <span className="text-sm font-medium text-gray-700">Langue</span>
-              <select
-                value={defaultConfig.language}
-                onChange={(event) => setDefaultConfig((currentConfig) => ({
-                  ...currentConfig,
-                  language: event.target.value,
-                }))}
-                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
-              >
-                {LANGUAGE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-
-            <label className="flex items-start gap-3 rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3">
-              <input
-                type="checkbox"
-                checked={defaultConfig.enableDiarization}
-                onChange={(event) => setDefaultConfig((currentConfig) => ({
-                  ...currentConfig,
-                  enableDiarization: event.target.checked,
-                }))}
-                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-              />
-              <span className="text-sm text-gray-700">
-                Identifier les intervenants
-                <span className="mt-0.5 block text-xs text-gray-400">
-                  Active la diarisation, plus lente mais utile pour les interviews et podcasts.
-                </span>
-              </span>
-            </label>
-          </div>
-        </div>
-      </div>
-
       {feedback && (
         <div className={`rounded-2xl border px-4 py-3 text-sm ${
           feedback.type === "success"
@@ -771,7 +651,7 @@ export function TranscriptionList({
               type="button"
               onClick={() => void refreshJobs()}
               disabled={refreshing}
-              className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Actualiser
@@ -781,7 +661,7 @@ export function TranscriptionList({
                 type="button"
                 onClick={() => void startQueuedBatch()}
                 disabled={startingBatch}
-                className="inline-flex items-center gap-2 rounded-full bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {startingBatch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                 Lancer les {queuedJobs.length} en attente
@@ -791,7 +671,7 @@ export function TranscriptionList({
         </div>
 
         {queueJobs.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-gray-200 bg-white px-6 py-10 text-center text-sm text-gray-500">
+          <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-10 text-center text-sm text-gray-500">
             Aucun rush en attente ou en cours. Ajoutez vos fichiers ci-dessus pour préparer un lot.
           </div>
         ) : (
@@ -803,10 +683,10 @@ export function TranscriptionList({
               const isStarting = !!startingJobIds[job.id];
 
               return (
-                <li key={job.id} className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+                <li key={job.id} className="rounded-xl border border-gray-200 bg-white p-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex min-w-0 items-start gap-3">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-gray-500">
+                      <div className="flex w-10 h-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-500">
                         <FileAudio className="h-5 w-5" />
                       </div>
                       <div className="min-w-0 space-y-1">
@@ -821,66 +701,57 @@ export function TranscriptionList({
                       {STATUS_ICON[job.status]}
                       {STATUS_LABEL[job.status]}
                     </div>
+
+                    {/* Cancel button for active jobs */}
+                    {(job.status === "QUEUED" || job.status === "PROCESSING") && (
+                      <button
+                        type="button"
+                        onClick={() => void cancelJob(job)}
+                        disabled={cancellingJobIds[job.id] || isStarting}
+                        title="Annuler"
+                        className="ml-auto shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-40 transition-colors"
+                      >
+                        {cancellingJobIds[job.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                      </button>
+                    )}
                   </div>
 
                   {job.status === "QUEUED" ? (
-                    <div className="mt-5 space-y-4">
-                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <label className="space-y-1">
-                            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Modèle</span>
-                            <select
-                              value={draft.model}
-                              onChange={(event) => updateQueuedDraft(job, { model: event.target.value })}
-                              className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                            >
-                              {MODEL_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                              ))}
-                            </select>
-                          </label>
+                    <div className="mt-4 space-y-3">
+                      <div className="flex flex-wrap gap-4 items-end">
+                        <label className="space-y-1 min-w-[150px]">
+                          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Langue</span>
+                          <select
+                            value={draft.language}
+                            onChange={(event) => updateQueuedDraft(job, { language: event.target.value })}
+                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          >
+                            {LANGUAGE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </label>
 
-                          <label className="space-y-1">
-                            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Langue</span>
-                            <select
-                              value={draft.language}
-                              onChange={(event) => updateQueuedDraft(job, { language: event.target.value })}
-                              className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                            >
-                              {LANGUAGE_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
-
-                        <label className="flex items-start gap-3 rounded-2xl border border-gray-100 bg-gray-50 px-3 py-3">
+                        <label className="flex items-center gap-2.5 cursor-pointer pb-0.5">
                           <input
                             type="checkbox"
                             checked={draft.enableDiarization}
                             onChange={(event) => updateQueuedDraft(job, { enableDiarization: event.target.checked })}
-                            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
                           />
-                          <span className="text-sm text-gray-700">
-                            Diarisation
-                            <span className="mt-0.5 block text-xs text-gray-400">
-                              Pour distinguer les intervenants avant l&apos;envoi.
-                            </span>
-                          </span>
+                          <span className="text-sm text-gray-700">Identifier les intervenants</span>
                         </label>
                       </div>
 
                       {jobErrors[job.id] && (
-                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                           {jobErrors[job.id]}
                         </div>
                       )}
 
-                      <div className="flex flex-col gap-3 border-t border-gray-100 pt-4 md:flex-row md:items-center md:justify-between">
+                      <div className="flex flex-col gap-3 border-t border-gray-100 pt-3 md:flex-row md:items-center md:justify-between">
                         <p className="text-sm text-gray-500">
-                          {isDirty
-                            ? "Configuration modifiée localement. Enregistrez-la maintenant ou laissez le lancement l'enregistrer pour vous."
-                            : "Rush prêt. Vous pouvez le lancer seul ou avec le lot complet."}
+                          Rush prêt. Lancez-le seul ou avec le lot complet.
                         </p>
 
                         <div className="flex flex-wrap items-center gap-2">
@@ -889,7 +760,7 @@ export function TranscriptionList({
                               type="button"
                               onClick={() => void saveQueuedJobConfig(job)}
                               disabled={isSaving || isStarting}
-                              className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                               Enregistrer
@@ -911,21 +782,20 @@ export function TranscriptionList({
                                 });
                             }}
                             disabled={isSaving || isStarting}
-                            className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {isStarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                            Lancer maintenant
+                            Lancer
                           </button>
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-5 flex flex-col gap-4 border-t border-gray-100 pt-4 md:flex-row md:items-center md:justify-between">
+                    <div className="mt-4 flex flex-col gap-4 border-t border-gray-100 pt-4 md:flex-row md:items-center md:justify-between">
                       <div className="flex flex-wrap gap-2 text-xs font-medium text-gray-500">
-                        <span className="rounded-full bg-gray-100 px-3 py-1">{job.model === "large-v3" ? "Haute précision" : "Rapide"}</span>
                         <span className="rounded-full bg-gray-100 px-3 py-1">{job.language.toUpperCase()}</span>
                         {job.enableDiarization && (
-                          <span className="rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">Diarisation</span>
+                          <span className="rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">Intervenants identifiés</span>
                         )}
                         {job.duration != null && (
                           <span className="rounded-full bg-gray-100 px-3 py-1">{fmtDuration(job.duration)}</span>
@@ -935,7 +805,7 @@ export function TranscriptionList({
                       <button
                         type="button"
                         onClick={() => router.push(`/tools/transcription/${job.id}`)}
-                        className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700"
+                        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700"
                       >
                         Ouvrir le détail
                       </button>
@@ -957,10 +827,10 @@ export function TranscriptionList({
 
           <ul className="space-y-3">
             {historyJobs.map((job) => (
-              <li key={job.id} className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+              <li key={job.id} className="rounded-xl border border-gray-200 bg-white p-5">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex min-w-0 items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-gray-500">
+                    <div className="flex w-10 h-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-500">
                       <FileAudio className="h-5 w-5" />
                     </div>
                     <div className="min-w-0 space-y-1">
@@ -970,7 +840,7 @@ export function TranscriptionList({
                       <p className="text-xs text-gray-400">
                         {fmtDate(job.createdAt)}
                         {job.duration != null && ` · ${fmtDuration(job.duration)}`}
-                        {job.hasDiarization && " · Diarisé"}
+                        {job.hasDiarization && " · Intervenants identifiés"}
                       </p>
                       {job.status === "FAILED" && job.errorMsg && (
                         <p className="text-xs text-red-500">{job.errorMsg}</p>
@@ -986,7 +856,7 @@ export function TranscriptionList({
                     <button
                       type="button"
                       onClick={() => router.push(`/tools/transcription/${job.id}`)}
-                      className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700"
+                      className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700"
                     >
                       Ouvrir
                     </button>

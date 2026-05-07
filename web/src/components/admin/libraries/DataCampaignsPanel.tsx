@@ -4,6 +4,34 @@ import { useEffect, useState, useCallback } from "react";
 import { Plus, Trash2, ChevronRight, RotateCcw } from "lucide-react";
 import Link from "next/link";
 
+const USAGE_POLICIES = [
+  {
+    value: "cycle",
+    label: "Cycle global",
+    description: "Tour à tour. Une fois tout utilisé, reset manuel pour recommencer.",
+  },
+  {
+    value: "cycle_per_account",
+    label: "Cycle par compte",
+    description: "Chaque compte tourne indépendamment. Quand tout est utilisé par ce compte, recommence automatiquement.",
+  },
+  {
+    value: "once_per_account",
+    label: "1 fois par compte",
+    description: "Chaque compte peut utiliser chaque fiche max 1 fois. Rien de plus ensuite.",
+  },
+  {
+    value: "once_global",
+    label: "1 fois global",
+    description: "Chaque fiche utilisée 1 fois par n'importe quel compte ne sera plus jamais proposée.",
+  },
+  {
+    value: "unlimited",
+    label: "Sans limite",
+    description: "Toujours la fiche la moins récemment utilisée. Aucun blocage.",
+  },
+] as const;
+
 interface DataCampaign {
   id: string;
   name: string;
@@ -12,6 +40,7 @@ interface DataCampaign {
   createdAt: string;
   _count: { entries: number };
   usedInCycleCount: number;
+  usagePolicy: string;
 }
 
 interface Props {
@@ -24,7 +53,7 @@ export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ name: "", isActive: false });
+  const [form, setForm] = useState({ name: "", isActive: false, usagePolicy: "cycle" });
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -51,7 +80,7 @@ export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
     const res = await fetch(`/api/admin/libraries/data/${libraryId}/campaigns`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: form.name, isActive: form.isActive }),
+      body: JSON.stringify({ name: form.name, isActive: form.isActive, usagePolicy: form.usagePolicy }),
     });
     if (!res.ok) {
       const d = await res.json() as { error?: string };
@@ -59,7 +88,7 @@ export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
       return;
     }
     setCreating(false);
-    setForm({ name: "", isActive: false });
+    setForm({ name: "", isActive: false, usagePolicy: "cycle" });
     void load();
   }
 
@@ -120,7 +149,20 @@ export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
                 placeholder="Ex: RPI Q1 2026"
               />
             </div>
-            <div className="flex items-center gap-2 pt-5">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Politique d&apos;utilisation</label>
+              <select
+                value={form.usagePolicy}
+                onChange={(e) => setForm((f) => ({ ...f, usagePolicy: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              >
+                {USAGE_POLICIES.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-gray-400 mt-1">{USAGE_POLICIES.find((p) => p.value === form.usagePolicy)?.description}</p>
+            </div>
+            <div className="flex items-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setForm((f) => ({ ...f, isActive: !f.isActive }))}
@@ -203,6 +245,9 @@ export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
                     <p className="text-[11px] text-gray-400 mt-0.5">
                       {c._count.entries} entrée{c._count.entries !== 1 ? "s" : ""} · {c.usedInCycleCount} utilisée{c.usedInCycleCount !== 1 ? "s" : ""} ce cycle
                       {c.cycleResetAt && ` · Reset : ${new Date(c.cycleResetAt).toLocaleDateString("fr-FR")}`}
+                    </p>
+                    <p className="text-[10px] text-indigo-500 mt-0.5">
+                      {USAGE_POLICIES.find((p) => p.value === (c.usagePolicy ?? "cycle"))?.label ?? c.usagePolicy}
                     </p>
                   </div>
 

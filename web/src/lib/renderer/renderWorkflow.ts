@@ -2,6 +2,8 @@ export const RENDER_PIPELINE = {
   IMAGE: "image",
   VIDEO_LOCAL: "video-local",
   VIDEO_RUNPOD: "video-runpod",
+  SEQUENCE_RUNPOD: "sequence-runpod",
+  SEQUENCE_LOCAL: "sequence-local",
 } as const;
 
 export const RENDER_STAGE = {
@@ -20,6 +22,14 @@ export const RENDER_STAGE = {
   VIDEO_LOCAL_SEND: "VIDEO_LOCAL_SEND",
   VIDEO_LOCAL_COMPOSITING: "VIDEO_LOCAL_COMPOSITING",
   VIDEO_FINALIZING: "VIDEO_FINALIZING",
+  // Sequence-specific stages
+  SEQ_RESOLVE_SLOTS: "SEQ_RESOLVE_SLOTS",
+  SEQ_RENDER_OVERLAYS: "SEQ_RENDER_OVERLAYS",
+  SEQ_UPLOAD_OVERLAYS: "SEQ_UPLOAD_OVERLAYS",
+  SEQ_SUBMIT_RUNPOD: "SEQ_SUBMIT_RUNPOD",
+  SEQ_RUNPOD_QUEUED: "SEQ_RUNPOD_QUEUED",
+  SEQ_RUNPOD_PROCESSING: "SEQ_RUNPOD_PROCESSING",
+  SEQ_LOCAL_SEND: "SEQ_LOCAL_SEND",
   DONE: "DONE",
   ERROR: "ERROR",
   STALLED: "STALLED",
@@ -41,6 +51,13 @@ const STAGE_LABELS: Record<string, string> = {
   VIDEO_LOCAL_SEND: "Envoi au moteur vidéo",
   VIDEO_LOCAL_COMPOSITING: "Composite vidéo local",
   VIDEO_FINALIZING: "Finalisation du MP4",
+  SEQ_RESOLVE_SLOTS: "Résolution des clips",
+  SEQ_RENDER_OVERLAYS: "Rendu des overlays",
+  SEQ_UPLOAD_OVERLAYS: "Upload des overlays",
+  SEQ_SUBMIT_RUNPOD: "Soumission séquence RunPod",
+  SEQ_RUNPOD_QUEUED: "Séquence en attente RunPod",
+  SEQ_RUNPOD_PROCESSING: "RunPod encode la séquence",
+  SEQ_LOCAL_SEND: "Envoi de la séquence",
   DONE: "Terminé",
   ERROR: "Erreur",
   STALLED: "Rendu bloqué",

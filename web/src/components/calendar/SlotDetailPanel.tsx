@@ -1,0 +1,270 @@
+"use client";
+
+import { useState, useCallback } from "react";
+import { X, ExternalLink, Trash2, Check, Clapperboard } from "lucide-react";
+import { STATUS_LABELS, CONTENT_TYPES, type SlotStatus, type PublicationSlot } from "@/types/calendar";
+import { FlexFieldsEditor } from "./FlexFieldsEditor";
+
+interface SlotDetailPanelProps {
+  slot: PublicationSlot;
+  onUpdated: (slot: PublicationSlot) => void;
+  onDeleted: (id: string) => void;
+  onClose: () => void;
+}
+
+const STATUSES = Object.keys(STATUS_LABELS) as SlotStatus[];
+
+export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose }: SlotDetailPanelProps) {
+  const [form, setForm] = useState({
+    title: slot.title ?? "",
+    caption: slot.caption ?? "",
+    notes: slot.notes ?? "",
+    status: slot.status,
+    contentType: slot.contentType,
+    fieldSchema: slot.fieldSchema,
+    fields: slot.fields,
+  });
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const set = useCallback(<K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    setSaved(false);
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/calendar/slots/${slot.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: form.title || null,
+          caption: form.caption || null,
+          notes: form.notes || null,
+          status: form.status,
+          contentType: form.contentType,
+          fields: form.fields,
+          fieldSchema: form.fieldSchema,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        throw new Error(err.error ?? "Erreur lors de la sauvegarde");
+      }
+      const updated = await res.json() as PublicationSlot;
+      onUpdated(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm("Supprimer ce slot ? Cette action est irréversible.")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/calendar/slots/${slot.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Erreur lors de la suppression");
+      onDeleted(slot.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
+      setDeleting(false);
+    }
+  }
+
+  const scheduledDate = new Date(slot.scheduledAt);
+
+  return (
+    <>
+      {/* Overlay */}
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+
+      {/* Drawer */}
+      <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white z-50 shadow-2xl flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">
+              {scheduledDate.toLocaleDateString("fr-FR", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+              })}{" "}
+              à{" "}
+              {scheduledDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+            </h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              @{slot.account.handle} · {slot.account.offre}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+          {/* Status + type row */}
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Statut</label>
+              <select
+                value={form.status}
+                onChange={(e) => set("status", e.target.value as SlotStatus)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              >
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+              <select
+                value={form.contentType}
+                onChange={(e) => set("contentType", e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              >
+                {CONTENT_TYPES.map((ct) => (
+                  <option key={ct} value={ct}>{ct}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Title */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Titre</label>
+            <input
+              type="text"
+              value={form.title}
+              onChange={(e) => set("title", e.target.value)}
+              placeholder="Nom du bien, propriétaire…"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+          </div>
+
+          {/* Caption */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Légende Instagram</label>
+            <textarea
+              value={form.caption}
+              onChange={(e) => set("caption", e.target.value)}
+              rows={3}
+              placeholder="Texte de la publication…"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+            />
+          </div>
+
+          {/* Flex fields */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-2">
+              Informations complémentaires
+            </label>
+            <FlexFieldsEditor
+              schema={form.fieldSchema}
+              values={form.fields}
+              onChange={(schema, values) => {
+                set("fieldSchema", schema);
+                set("fields", values);
+              }}
+            />
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Notes internes</label>
+            <textarea
+              value={form.notes}
+              onChange={(e) => set("notes", e.target.value)}
+              rows={2}
+              placeholder="Notes privées, instructions pour le monteur…"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+            />
+          </div>
+
+          {/* Render link */}
+          {slot.render && (
+            <div className="rounded-lg border border-gray-200 p-3">
+              <p className="text-xs font-medium text-gray-600 mb-2">Render final</p>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  slot.render.status === "DONE"
+                    ? "bg-green-100 text-green-700"
+                    : slot.render.status === "ERROR"
+                    ? "bg-red-100 text-red-700"
+                    : "bg-amber-100 text-amber-700"
+                }`}>
+                  {slot.render.status}
+                </span>
+                <a
+                  href={slot.render.videoUrl ?? slot.render.pngUrl ?? `/renders/${slot.render.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ml-auto text-xs text-indigo-600 hover:underline flex items-center gap-1"
+                >
+                  Voir <ExternalLink size={11} />
+                </a>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => { void handleDelete(); }}
+            disabled={deleting}
+            className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+          >
+            <Trash2 size={15} />
+          </button>
+
+          <div className="flex-1" />
+
+          {/* Generate button — only when a template is linked */}
+          {slot.templateId && (
+            <a
+              href={`/generate/${slot.templateId}?accountId=${slot.accountId}&slotId=${slot.id}`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
+              title="Ouvrir le formulaire de génération pré-rempli pour ce compte"
+            >
+              <Clapperboard size={14} />
+              Générer
+            </a>
+          )}
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+          >
+            Fermer
+          </button>
+          <button
+            type="button"
+            onClick={() => { void handleSave(); }}
+            disabled={saving}
+            className="px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-60 flex items-center gap-2"
+          >
+            {saved ? <><Check size={14} /> Sauvegardé</> : saving ? "Sauvegarde…" : "Sauvegarder"}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}

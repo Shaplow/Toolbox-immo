@@ -46,7 +46,7 @@ export async function GET(
   if (!job) {
     return NextResponse.json({ error: "Job introuvable" }, { status: 404 });
   }
-  if (job.userId !== session.user.id) {
+  if (job.userId !== session.user.id && session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 

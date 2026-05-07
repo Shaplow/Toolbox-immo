@@ -25,7 +25,7 @@ const HF_TOKEN           = process.env.HF_TOKEN;
 /** Jobs PROCESSING without resolution for longer than this are considered stalled. */
 const STALL_MS = 2 * 60 * 60 * 1000; // 2 hours
 /** Jobs QUEUED without a runpodJobId for longer than this are considered abandoned. */
-const PRE_SUBMIT_STALL_MS = 30 * 60 * 1000; // 30 minutes
+const PRE_SUBMIT_STALL_MS = 15 * 60 * 1000; // 15 minutes
 
 const ALLOWED_MODELS = new Set([
   "turbo", "large-v3", "large-v3-turbo", "medium", "small", "base", "tiny",
@@ -205,6 +205,48 @@ export async function PATCH(
       errorMsg: null,
     },
   });
+
+  return NextResponse.json(formatJob(updated));
+}
+
+/**
+ * DELETE /api/transcription/[id]
+ *
+ * Annule un job de transcription qui est encore QUEUED ou PROCESSING.
+ * Le job est marqué FAILED avec errorMsg "Annulé".
+ * Le fichier audio R2 est supprimé si présent.
+ */
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const job = await prisma.transcriptionJob.findUnique({ where: { id } });
+  if (!job) {
+    return NextResponse.json({ error: "Job introuvable" }, { status: 404 });
+  }
+  if (job.userId !== session.user.id && session.user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+  }
+  if (job.status === "COMPLETED" || job.status === "FAILED") {
+    return NextResponse.json({ error: "Ce job ne peut plus être annulé." }, { status: 409 });
+  }
+
+  const updated = await prisma.transcriptionJob.update({
+    where: { id: job.id },
+    data: { status: "FAILED", errorMsg: "Annulé", inputKey: null },
+  });
+
+  if (job.inputKey && r2Configured()) {
+    deleteFromR2(job.inputKey).catch((err) =>
+      console.warn(`[transcription/cancel] R2 cleanup failed for key=${job.inputKey}:`, err)
+    );
+  }
 
   return NextResponse.json(formatJob(updated));
 }

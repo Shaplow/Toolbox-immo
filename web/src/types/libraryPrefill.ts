@@ -31,4 +31,52 @@ export interface LibraryPrefillContext {
   prefilledDataKeys: string[];
   /** full data suggestion with entryId for usage tracking */
   dataSuggestion?: { entryId: string; fields: Record<string, string> } | null;
+  /**
+   * Libraries whose selection used set_sequence.
+   * Passed to the render endpoint so recordLibraryUsage can advance cursor.
+   */
+  setSequencedLibraryIds?: string[];
+  /**
+   * libraryId → resolved setTag used in this generation.
+   * Stored in Render.usedAssets so recordLibraryUsage can persist lastUsedSetTag.
+   */
+  usedSetTagByLibrary?: Record<string, string>;
+  /**
+   * libraryId → resolved category used in this generation.
+   * Stored in Render.usedAssets so recordLibraryUsage can persist lastUsedCategory.
+   */
+  usedCategoryByLibrary?: Record<string, string>;
+  /**
+   * Instagram accounts to show in the account selector (only when at least one block
+   * uses theme_sequence). Empty means no selector needed.
+   */
+  instagramAccounts?: { id: string; name: string; handle: string; offre: string }[];
+  /** ID of the currently selected Instagram account (from URL searchParam). */
+  selectedAccountId?: string;
+  /**
+   * PublicationSlot ID when generation is triggered from the calendar.
+   * Passed to the render endpoint so the render is linked back to the slot.
+   */
+  slotId?: string;
+  /**
+   * libraryId → cursor snapshot taken at prefill time.
+   * Passed to the render endpoint so the cursor can be conditionally reverted
+   * if the render fails (see revertLibraryCursors in recordLibraryUsage.ts).
+   */
+  prevCursorStateByLibrary?: Record<string, {
+    prevCursor: number;
+    claimedCursor: number;
+    prevLastUsedCategory: string | null;
+    claimedLastUsedCategory: string | null;
+  }>;
+  /**
+   * DataEntry claim state taken at prefill time for failure-recovery revert.
+   */
+  prevDataEntryState?: {
+    entryId: string;
+    campaignId: string;
+    usagePolicy: string;
+    claimType: "usedInCycle" | "perAccountUsage";
+    accountId?: string;
+  };
 }

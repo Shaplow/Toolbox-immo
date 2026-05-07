@@ -63,15 +63,17 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Asset introuvable" }, { status: 404 });
   }
 
-  // R2 en premier — ne pas supprimer la row si R2 échoue
-  try {
-    await deleteFromR2(asset.r2Key);
-  } catch (err) {
-    console.error(`[admin/libraries/media/assets] R2 delete failed for ${asset.r2Key}:`, err);
-    return NextResponse.json(
-      { error: "Échec suppression du fichier sur R2. Réessayez." },
-      { status: 500 }
-    );
+  // R2 en premier — ne pas supprimer la row si R2 échoue (ignoré en dev sans config R2)
+  if (r2Configured()) {
+    try {
+      await deleteFromR2(asset.r2Key);
+    } catch (err) {
+      console.error(`[admin/libraries/media/assets] R2 delete failed for ${asset.r2Key}:`, err);
+      return NextResponse.json(
+        { error: "Échec suppression du fichier sur R2. Réessayez." },
+        { status: 500 }
+      );
+    }
   }
 
   try {
@@ -84,9 +86,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 }
 
 // PATCH /api/admin/libraries/media/assets/[assetId]
-// Champs acceptés : duration, tags, incrementUsage
-// incrementUsage: true → incrémente usageCount + met à jour lastUsedAt
-//   (utile quand le média a été utilisé en dehors de l'app, ex: montage externe)
+// Champs acceptés : duration, tags, setTag, category, incrementUsage, usageCount, resetUsage, lastUsedAt
 export async function PATCH(req: NextRequest, { params }: Params) {
   const session = await auth();
   if (!session?.user?.id || adminOnly(session.user.role)) {
@@ -94,26 +94,84 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const { assetId: assetIdPatch } = await params;
-  const body = await req.json() as { duration?: number; tags?: string[]; incrementUsage?: boolean };
+  const body = await req.json() as {
+    duration?: number;
+    tags?: string[];
+    setTag?: string | null;
+    category?: string | null;
+    incrementUsage?: boolean;
+    usageCount?: number;
+    resetUsage?: boolean;
+    lastUsedAt?: string | null;
+    accessAccountIds?: string[];
+    resetUsageForAccount?: string;
+  };
 
   const data: Record<string, unknown> = {};
   if (typeof body.duration === "number") data.duration = body.duration;
   if (Array.isArray(body.tags)) data.tags = JSON.stringify(body.tags);
+  if ("setTag" in body) data.setTag = body.setTag ?? null;
+  if ("category" in body) data.category = body.category ?? null;
   if (body.incrementUsage === true) {
     data.usageCount = { increment: 1 };
     data.lastUsedAt = new Date();
+  } else if (typeof body.usageCount === "number" && body.resetUsage !== true) {
+    data.usageCount = body.usageCount;
+    data.lastUsedAt = body.usageCount === 0 ? null : new Date();
+  }
+  if (body.resetUsage === true) {
+    data.usageCount = 0;
+    data.lastUsedAt = null;
+  }
+  if ("lastUsedAt" in body && body.incrementUsage !== true && body.resetUsage !== true) {
+    data.lastUsedAt = body.lastUsedAt ? new Date(body.lastUsedAt) : null;
   }
 
-  if (Object.keys(data).length === 0) {
+  // Handle access account IDs separately (replace all access entries)
+  const hasAccessUpdate = Array.isArray(body.accessAccountIds);
+  const hasDataUpdate = Object.keys(data).length > 0;
+  const hasReset = body.resetUsage === true;
+  const hasResetForAccount = typeof body.resetUsageForAccount === "string" && body.resetUsageForAccount.length > 0;
+
+  if (!hasDataUpdate && !hasAccessUpdate && !hasResetForAccount) {
     return NextResponse.json({ error: "Aucun champ à mettre à jour" }, { status: 400 });
   }
 
   try {
-    const asset = await prisma.mediaAsset.update({
-      where: { id: assetIdPatch },
-      data,
+    await prisma.$transaction(async (tx) => {
+      if (hasReset) {
+        // Also wipe all per-account usage entries so per-account rotation resets too
+        await tx.mediaAssetUsage.deleteMany({ where: { assetId: assetIdPatch } });
+      }
+      if (hasResetForAccount) {
+        // Wipe only the specified account's usage record (global and other accounts stay intact)
+        await tx.mediaAssetUsage.deleteMany({
+          where: { assetId: assetIdPatch, accountId: body.resetUsageForAccount },
+        });
+      }
+      if (hasDataUpdate) {
+        await tx.mediaAsset.update({ where: { id: assetIdPatch }, data });
+      }
+      if (hasAccessUpdate) {
+        // Replace all access entries atomically
+        await tx.mediaAssetAccess.deleteMany({ where: { assetId: assetIdPatch } });
+        if (body.accessAccountIds!.length > 0) {
+          await tx.mediaAssetAccess.createMany({
+            data: body.accessAccountIds!.map((accountId) => ({ assetId: assetIdPatch, accountId })),
+            skipDuplicates: true,
+          });
+        }
+      }
     });
-    return NextResponse.json(asset);
+
+    const asset = await prisma.mediaAsset.findUnique({
+      where: { id: assetIdPatch },
+      include: { accesses: { select: { accountId: true } } },
+    });
+    if (!asset) return NextResponse.json({ error: "Asset introuvable" }, { status: 404 });
+
+    const { accesses, ...rest } = asset;
+    return NextResponse.json({ ...rest, accessAccountIds: accesses.map((a) => a.accountId) });
   } catch (err) {
     console.error(`[admin/libraries/media/assets/${assetIdPatch}] PATCH error:`, err);
     return NextResponse.json({ error: "Erreur serveur lors de la mise à jour" }, { status: 500 });

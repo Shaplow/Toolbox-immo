@@ -965,6 +965,27 @@ export function Canvas({
             ...gridStyle,
           }}
         >
+          {/* Video sequence badge */}
+          {template.videoSequence && template.videoSequence.length > 0 && (
+            <div
+              style={{
+                position: "absolute",
+                top: 8 * zoom,
+                right: 8 * zoom,
+                zIndex: 9999,
+                background: "rgba(79,70,229,0.85)",
+                color: "white",
+                fontSize: 10 * zoom,
+                padding: `${4 * zoom}px ${8 * zoom}px`,
+                borderRadius: 4 * zoom,
+                pointerEvents: "none",
+                whiteSpace: "nowrap",
+                backdropFilter: "blur(2px)",
+              }}
+            >
+              🎬 Séquence · {template.videoSequence.length} clip{template.videoSequence.length > 1 ? "s" : ""}
+            </div>
+          )}
           {/* Hidden SVG filter definitions — used by per-line text background gooey effect */}
           <svg width="0" height="0" style={{ position: "absolute", overflow: "hidden" }} aria-hidden="true">
             <defs>

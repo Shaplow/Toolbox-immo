@@ -27,12 +27,37 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Bibliothèque introuvable" }, { status: 404 });
   }
 
+  const accountId = _req.nextUrl.searchParams.get("accountId") ?? undefined;
+
   try {
-    const assets = await prisma.mediaAsset.findMany({
-      where: { libraryId: id },
-      orderBy: { createdAt: "desc" },
+    const [assets, accountUsages] = await Promise.all([
+      prisma.mediaAsset.findMany({
+        where: { libraryId: id },
+        orderBy: { createdAt: "desc" },
+        include: { accesses: { select: { accountId: true } } },
+      }),
+      accountId
+        ? prisma.mediaAssetUsage.findMany({
+            where: { accountId, asset: { libraryId: id } },
+            select: { assetId: true, lastUsedAt: true, usageCount: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const usageMap = new Map(accountUsages.map((u) => [u.assetId, u]));
+
+    const result = assets.map((a) => {
+      const { accesses, ...rest } = a;
+      const accountUsage = accountId ? (usageMap.get(a.id) ?? null) : undefined;
+      return {
+        ...rest,
+        accessAccountIds: accesses.map((acc) => acc.accountId),
+        lastUsedAt: accountId ? (accountUsage?.lastUsedAt ?? null) : a.lastUsedAt,
+        usageCount: accountId ? (accountUsage?.usageCount ?? 0) : a.usageCount,
+      };
     });
-    return NextResponse.json(assets);
+
+    return NextResponse.json(result);
   } catch (err) {
     console.error(`[admin/libraries/media/${id}/assets] findMany error:`, err);
     return NextResponse.json({ error: "Erreur serveur lors du chargement des assets" }, { status: 500 });

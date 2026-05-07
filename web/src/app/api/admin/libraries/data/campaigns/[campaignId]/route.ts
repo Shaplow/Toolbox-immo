@@ -49,9 +49,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Campaign introuvable" }, { status: 404 });
   }
 
-  const body = await req.json() as { isActive?: boolean };
-  if (typeof body.isActive !== "boolean") {
-    return NextResponse.json({ error: "isActive (boolean) requis" }, { status: 400 });
+  const body = await req.json() as { isActive?: boolean; usagePolicy?: string };
+
+  const VALID_POLICIES = ["cycle", "cycle_per_account", "once_per_account", "once_global", "unlimited"];
+
+  if (typeof body.isActive !== "boolean" && !body.usagePolicy) {
+    return NextResponse.json({ error: "isActive (boolean) ou usagePolicy requis" }, { status: 400 });
+  }
+
+  const dataUpdate: Record<string, unknown> = {};
+  if (typeof body.isActive === "boolean") dataUpdate.isActive = body.isActive;
+  if (body.usagePolicy && VALID_POLICIES.includes(body.usagePolicy)) {
+    dataUpdate.usagePolicy = body.usagePolicy;
   }
 
   try {
@@ -65,7 +74,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       }
       return tx.dataCampaign.update({
         where: { id: campaignIdPatch },
-        data: { isActive: body.isActive },
+        data: dataUpdate,
       });
     });
     return NextResponse.json(updated);

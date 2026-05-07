@@ -15,6 +15,8 @@ interface Props {
   mediaFieldAspectRatios?: Record<string, number>;
   initialValues?: Record<string, unknown>;
   libraryPrefillContext?: LibraryPrefillContext;
+  /** Quand true, la génération se lance automatiquement au montage sans afficher le formulaire. */
+  autoSubmit?: boolean;
 }
 
 const DEFAULT_MEDIA_PREVIEW_ASPECT_RATIO = 16 / 9;
@@ -45,7 +47,7 @@ function resolveInitialFieldValue(field: SchemaField, initialValue: unknown): un
 function buildUsedAssets(
   ctx: LibraryPrefillContext,
   selections: Record<string, LibraryAssetOption | null>,
-): { videoAssets?: Record<string, string>; audioAssetId?: string; dataEntryId?: string } | undefined {
+): { videoAssets?: Record<string, string>; audioAssetId?: string; dataEntryId?: string; setSequencedLibraryIds?: string[]; usedSetTagByLibrary?: Record<string, string>; usedCategoryByLibrary?: Record<string, string>; prevCursorStateByLibrary?: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null }>; prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: "usedInCycle" | "perAccountUsage"; accountId?: string } } | undefined {
   const fieldMap = ctx.fieldLibraryMap ?? {};
   const videoAssets: Record<string, string> = {};
   let audioAssetId: string | undefined;
@@ -65,10 +67,15 @@ function buildUsedAssets(
     videoAssets: hasVideo ? videoAssets : undefined,
     audioAssetId,
     dataEntryId: ctx.dataSuggestion?.entryId,
+    setSequencedLibraryIds: ctx.setSequencedLibraryIds?.length ? ctx.setSequencedLibraryIds : undefined,
+    usedSetTagByLibrary: ctx.usedSetTagByLibrary && Object.keys(ctx.usedSetTagByLibrary).length > 0 ? ctx.usedSetTagByLibrary : undefined,
+    usedCategoryByLibrary: ctx.usedCategoryByLibrary && Object.keys(ctx.usedCategoryByLibrary).length > 0 ? ctx.usedCategoryByLibrary : undefined,
+    prevCursorStateByLibrary: ctx.prevCursorStateByLibrary && Object.keys(ctx.prevCursorStateByLibrary).length > 0 ? ctx.prevCursorStateByLibrary : undefined,
+    prevDataEntryState: ctx.prevDataEntryState ?? undefined,
   };
 }
 
-export function ListingForm({ templateId, schema, formSections, mediaFieldAspectRatios = {}, initialValues, libraryPrefillContext }: Props) {
+export function ListingForm({ templateId, schema, formSections, mediaFieldAspectRatios = {}, initialValues, libraryPrefillContext, autoSubmit }: Props) {
   // Keys of data fields pre-filled from a DataEntry (drives badge display)
   const libraryPrefilledKeys = useMemo(
     () => new Set(libraryPrefillContext?.prefilledDataKeys ?? []),
@@ -82,6 +89,8 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
     ),
   );
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
+  const autoSubmitFiredRef = useRef(false);
   const [values, setValues] = useState<Record<string, unknown>>(() =>
     Object.fromEntries(schema.map((field) => [field.key, resolveInitialFieldValue(field, initialValues?.[field.key])]))
   );
@@ -140,8 +149,8 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
           const event = JSON.parse(e.data) as JobEventPayload;
           if (event.jobType !== "render") return;
           if (event.status === "DONE" || event.status === "ERROR") {
-            const videoUrl = "videoUrl" in event ? (event.videoUrl ?? undefined) : undefined;
-            const errorMsg = "errorMsg" in event ? (event.errorMsg ?? undefined) : undefined;
+            const videoUrl = "videoUrl" in event ? (event.videoUrl as string | undefined) ?? undefined : undefined;
+            const errorMsg = "errorMsg" in event ? (event.errorMsg as string | undefined) ?? undefined : undefined;
             resolveVariant(event.jobId, { status: event.status, videoUrl, errorMsg });
           }
         } catch { /* ignore parse errors */ }
@@ -182,58 +191,64 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
     pollTimers.current.set(renderId, timer);
   }, [resolveVariant]);
 
-  function handleChange(key: string, value: unknown) {
-    setUploadProgress((p) => ({ ...p, [key]: 0 }));
+  async function handleChange(key: string, value: unknown) {
+    if (value instanceof File) {
+      const file = value;
+      setUploadProgress((p) => ({ ...p, [key]: 0 }));
 
-    // Étape 1 : obtenir l'URL pré-signée R2
-    let uploadUrl: string;
-    let publicUrl: string;
-    try {
-      const res = await fetch("/api/upload-presign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size }),
-      });
-      const data = await res.json() as { uploadUrl?: string; publicUrl?: string; error?: string };
-      if (!res.ok || !data.uploadUrl || !data.publicUrl) {
-        setSubmitErrors([data.error ?? "Erreur préparation upload"]);
+      // Étape 1 : obtenir l'URL pré-signée R2
+      let uploadUrl: string;
+      let publicUrl: string;
+      try {
+        const res = await fetch("/api/upload-presign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size }),
+        });
+        const data = await res.json() as { uploadUrl?: string; publicUrl?: string; error?: string };
+        if (!res.ok || !data.uploadUrl || !data.publicUrl) {
+          setSubmitErrors([data.error ?? "Erreur préparation upload"]);
+          setUploadProgress((p) => ({ ...p, [key]: null }));
+          return;
+        }
+        uploadUrl = data.uploadUrl;
+        publicUrl = data.publicUrl;
+      } catch {
+        setSubmitErrors(["Erreur réseau (presign)"]);
         setUploadProgress((p) => ({ ...p, [key]: null }));
         return;
       }
-      uploadUrl = data.uploadUrl;
-      publicUrl = data.publicUrl;
-    } catch {
-      setSubmitErrors(["Erreur réseau (presign)"]);
-      setUploadProgress((p) => ({ ...p, [key]: null }));
+
+      // Étape 2 : PUT directement vers R2 avec suivi de progression
+      await new Promise<void>((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            setUploadProgress((p) => ({ ...p, [key]: Math.round((e.loaded / e.total) * 100) }));
+          }
+        };
+        xhr.onload = () => {
+          setUploadProgress((p) => ({ ...p, [key]: null }));
+          if (xhr.status >= 200 && xhr.status < 300) {
+            handleChange(key, publicUrl);
+          } else {
+            setSubmitErrors([`Erreur upload R2 (${xhr.status})`]);
+          }
+          resolve();
+        };
+        xhr.onerror = () => {
+          setUploadProgress((p) => ({ ...p, [key]: null }));
+          setSubmitErrors(["Erreur upload réseau"]);
+          resolve();
+        };
+        xhr.open("PUT", uploadUrl);
+        xhr.setRequestHeader("Content-Type", file.type);
+        xhr.send(file);
+      });
       return;
     }
 
-    // Étape 2 : PUT directement vers R2 avec suivi de progression
-    await new Promise<void>((resolve) => {
-      const xhr = new XMLHttpRequest();
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          setUploadProgress((p) => ({ ...p, [key]: Math.round((e.loaded / e.total) * 100) }));
-        }
-      };
-      xhr.onload = () => {
-        setUploadProgress((p) => ({ ...p, [key]: null }));
-        if (xhr.status >= 200 && xhr.status < 300) {
-          handleChange(key, publicUrl);
-        } else {
-          setSubmitErrors([`Erreur upload R2 (${xhr.status})`]);
-        }
-        resolve();
-      };
-      xhr.onerror = () => {
-        setUploadProgress((p) => ({ ...p, [key]: null }));
-        setSubmitErrors(["Erreur upload réseau"]);
-        resolve();
-      };
-      xhr.open("PUT", uploadUrl);
-      xhr.setRequestHeader("Content-Type", file.type);
-      xhr.send(file);
-    });
+    setValues((prev) => ({ ...prev, [key]: value }));
   }
 
   const sections = useMemo(() => buildVisibleFormSections(schema, formSections, values), [formSections, schema, values]);
@@ -248,6 +263,16 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
     () => visibleRequiredFields.filter((field) => !isFilledValue(values[field.key])),
     [values, visibleRequiredFields]
   );
+
+  // Auto-submit on mount when autoSubmit=true
+  useEffect(() => {
+    if (autoSubmit && !autoSubmitFiredRef.current) {
+      autoSubmitFiredRef.current = true;
+      // Small delay so state settles before submitting
+      const t = setTimeout(() => formRef.current?.requestSubmit(), 50);
+      return () => clearTimeout(t);
+    }
+  }, [autoSubmit]);
 
   // Cleanup all intervals and SSE on unmount
   useEffect(() => {
@@ -329,6 +354,8 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
           templateId,
           listingId,
           usedAssets: libraryPrefillContext ? buildUsedAssets(libraryPrefillContext, librarySelections) : undefined,
+          accountId: libraryPrefillContext?.selectedAccountId ?? undefined,
+          publicationSlotId: libraryPrefillContext?.slotId ?? undefined,
         }),
       });
       const renderContentType = renderRes.headers.get("content-type") ?? "";
@@ -365,7 +392,48 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
   return (
     <div className="grid gap-6 md:grid-cols-4 items-start">
       {/* ── Form ─────────────────────────────────────────────────────────── */}
-      <form onSubmit={handleGenerate} className="min-w-0 space-y-6 order-2 md:order-none md:col-span-3">
+      {autoSubmit && variants.length === 0 && submitErrors.length === 0 ? (
+        <div className="md:col-span-4 flex flex-col items-center justify-center gap-4 py-24">
+          <div className="h-10 w-10 rounded-full border-4 border-indigo-600 border-t-transparent animate-spin" />
+          <p className="text-sm text-gray-500">Génération automatique en cours…</p>
+        </div>
+      ) : autoSubmit && submitErrors.length > 0 ? (
+        <div className="md:col-span-4 bg-red-50 border border-red-200 rounded-2xl p-6 space-y-2">
+          {submitErrors.map((e) => (
+            <p key={e} className="text-sm text-red-700">{e}</p>
+          ))}
+          <button
+            type="button"
+            onClick={() => { autoSubmitFiredRef.current = false; formRef.current?.requestSubmit(); }}
+            className="mt-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm hover:bg-red-700"
+          >
+            Réessayer
+          </button>
+        </div>
+      ) : null}
+      <form ref={formRef} onSubmit={handleGenerate} className={`min-w-0 space-y-6 order-2 md:order-none md:col-span-3 ${autoSubmit ? "hidden" : ""}`}>
+        {/* ── Instagram account selector (theme_sequence templates) ── */}
+        {(libraryPrefillContext?.instagramAccounts?.length ?? 0) > 0 && (
+          <div className="rounded-xl border border-pink-200 bg-pink-50 p-4 flex items-center gap-3">
+            <span className="text-sm font-medium text-pink-800 shrink-0">Compte Instagram</span>
+            <select
+              value={libraryPrefillContext?.selectedAccountId ?? ""}
+              onChange={(e) => {
+                const id = e.target.value;
+                const url = new URL(window.location.href);
+                if (id) { url.searchParams.set("accountId", id); } else { url.searchParams.delete("accountId"); }
+                router.push(url.toString());
+              }}
+              className="flex-1 rounded-lg border border-pink-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300"
+            >
+              <option value="">— Sélectionner un compte —</option>
+              {libraryPrefillContext!.instagramAccounts!.map((a) => (
+                <option key={a.id} value={a.id}>@{a.handle} · {a.name} ({a.offre})</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {submitErrors.length > 0 && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
             {submitErrors.map((e) => (
@@ -443,7 +511,7 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
                       error={errors[field.key]}
                       uploadProgress={uploadProgress[field.key] ?? null}
                       onChange={(v) => handleChange(field.key, v)}
-                      onUpload={(f) => handleUpload(field.key, f)}
+                      onUpload={(f) => handleChange(field.key, f)}
                       onFocalChange={(fp) => handleChange(field.key + "_focalpoint", fp)}
                       fromLibrary={libraryPrefilledKeys.has(field.key)}
                     />
@@ -488,7 +556,7 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
       </form>
 
       {/* ── Variants panel ───────────────────────────────────────────────── */}
-      <div className="w-full shrink-0 md:sticky md:top-6 space-y-3 order-1 md:order-none md:col-span-1">
+      <div className={`w-full shrink-0 md:sticky md:top-6 space-y-3 order-1 md:order-none ${autoSubmit && variants.length > 0 ? "md:col-span-4" : "md:col-span-1"}`}>
         {!hasOnlyUnsectionedSection ? <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
           <p className="text-[11px] font-semibold tracking-[0.18em] uppercase text-gray-400 mb-3">Navigation</p>
           <div className="space-y-2">
@@ -621,6 +689,51 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
   );
 }
 
+/** Champ select avec support des options dynamiques (optionsSource). */
+function SelectFieldInput({
+  field,
+  value,
+  onChange,
+  controlClassName,
+}: {
+  field: SchemaField;
+  value: string;
+  onChange: (v: unknown) => void;
+  controlClassName: string;
+}) {
+  const [dynamicOptions, setDynamicOptions] = useState<{ value: string; label: string }[] | null>(null);
+
+  useEffect(() => {
+    if (field.optionsSource?.type !== "ig-accounts-from-library") return;
+    const libraryId = field.optionsSource.libraryId;
+    fetch(`/api/admin/libraries/media/${libraryId}/ig-accounts`)
+      .then((r) => r.ok ? r.json() : { accounts: [] })
+      .then((data: { accounts: { handle: string; name: string }[] }) => {
+        setDynamicOptions(data.accounts.map((a) => ({ value: a.handle, label: `${a.name} (@${a.handle})` })));
+      })
+      .catch(() => setDynamicOptions([]));
+  }, [field.optionsSource?.type, field.optionsSource?.libraryId]);
+
+  const options: { value: string; label: string }[] = dynamicOptions
+    ?? (field.options ?? []).map((o) => ({ value: o, label: o }));
+
+  const isLoading = field.optionsSource && dynamicOptions === null;
+
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={isLoading}
+      className={controlClassName}
+    >
+      <option value="">{isLoading ? "Chargement…" : "—"}</option>
+      {options.map((opt) => (
+        <option key={opt.value} value={opt.value}>{opt.label}</option>
+      ))}
+    </select>
+  );
+}
+
 function FieldInput({
   field,
   value,
@@ -696,16 +809,7 @@ function FieldInput({
           uploadProgress={uploadProgress}
         />
       ) : field.type === "select" ? (
-        <select
-          value={String(value ?? "")}
-          onChange={(e) => onChange(e.target.value)}
-          className={controlClassName}
-        >
-          <option value="">—</option>
-          {field.options?.map((opt) => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
-        </select>
+        <SelectFieldInput field={field} value={String(value ?? "")} onChange={onChange} controlClassName={controlClassName} />
       ) : field.type === "boolean" ? (
         <label className="flex items-center gap-2 cursor-pointer">
           <input

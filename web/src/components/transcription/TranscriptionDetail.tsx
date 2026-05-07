@@ -214,7 +214,7 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
           </div>
           <button
             type="button"
-            onClick={() => void poll()}
+            onClick={() => { void fetch(`/api/transcription/${job.id}`).then((r) => r.json()).then((d: JobDetail) => setJob(d)); }}
             className="flex items-center gap-1.5 text-sm text-indigo-600 hover:underline"
           >
             <RefreshCw className="w-3.5 h-3.5" />

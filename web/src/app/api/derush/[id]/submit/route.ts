@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getR2PublicUrl, r2Configured } from "@/lib/r2";
+import { getR2PublicUrl, objectExistsInR2, r2Configured } from "@/lib/r2";
 import { submitRunpodJob } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 
@@ -55,7 +55,37 @@ export async function POST(
 
   const inputFiles = JSON.parse(job.inputFiles) as { key: string; filename: string }[];
   if (inputFiles.length === 0) {
+    await prisma.derushJob.update({
+      where: { id: job.id },
+      data: { status: "FAILED", errorMsg: "Aucun fichier source enregistré" },
+    });
     return NextResponse.json({ error: "Aucun fichier source enregistré" }, { status: 400 });
+  }
+
+  // Verify each source file was actually uploaded to R2 before committing to RunPod.
+  // Mirrors the same guard in /api/render/captions/[id]/submit and /api/transcription/[id]/submit.
+  try {
+    const missingKeys: string[] = [];
+    for (const file of inputFiles) {
+      const exists = await objectExistsInR2(file.key);
+      if (!exists) missingKeys.push(file.filename);
+    }
+    if (missingKeys.length > 0) {
+      await prisma.derushJob.update({
+        where: { id: job.id },
+        data: {
+          status: "FAILED",
+          errorMsg: `Fichier(s) source introuvable(s) en R2 — l'upload a peut-être échoué : ${missingKeys.join(", ")}`,
+        },
+      });
+      return NextResponse.json(
+        { error: `Fichier(s) source introuvable(s). Veuillez relancer l'upload : ${missingKeys.join(", ")}` },
+        { status: 422 }
+      );
+    }
+  } catch (err) {
+    // R2 head-check failure is non-fatal — proceed optimistically and let the worker report
+    console.warn("[derush/submit] R2 head-check failed (proceeding):", err);
   }
 
   const outputPrefix = `derush/${job.userId}/${job.id}`;
@@ -117,7 +147,6 @@ export async function POST(
       payload
     );
   } catch (err) {
-    // Revert status so the user can retry via /submit
     await prisma.derushJob.update({
       where: { id: job.id },
       data: { status: "FAILED", errorMsg: String(err) },

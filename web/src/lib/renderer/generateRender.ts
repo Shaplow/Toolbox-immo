@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { buildHTML } from "./buildHTML";
 import { renderPNG } from "./renderPNG";
 import { validateConformite } from "@/lib/validation/conformite";
-import type { TemplateJSON, ImageBlock, VideoBlock, MusicBlock, AnyBlock } from "@/types/template";
+import type { TemplateJSON, ImageBlock, VideoBlock, MusicBlock, AnyBlock, VideoSequenceSlot } from "@/types/template";
 import type { ListingData } from "@/types/listing";
 import { writeFile, mkdir, stat, readFile } from "fs/promises";
 import path from "path";
@@ -15,6 +15,7 @@ import { isBlockVisibleForListing, resolveBlockForListing } from "@/lib/template
 import { getVisibleFieldKeys } from "@/lib/formSections";
 import { RENDER_PIPELINE, RENDER_STAGE } from "./renderWorkflow";
 import { recordLibraryUsage } from "@/lib/recordLibraryUsage";
+import { selectMediaAsset, selectMediaAssetBySetSequence, normalizeRule } from "@/lib/contentLibraryResolver";
 
 const OUTPUT_DIR = path.join(process.cwd(), "public", "renders");
 const LOCAL_VIDEO_RENDER_TIMEOUT_MS = 10 * 60 * 1000;
@@ -206,8 +207,15 @@ export async function generateRender(renderId: string): Promise<void> {
   console.log(
     `[generateRender] ${renderId} — activeVideoBlocks: ${videoBlocks.length}, USE_RUNPOD=${process.env.USE_RUNPOD}`
   );
+
+  // videoSequence (multi-clip) takes priority over single VideoBlock
+  if (templateJson.videoSequence && templateJson.videoSequence.length > 0) {
+    await generateSequenceRender(renderId, templateJson, enrichedListing, render.accountId ?? null);
+    return;
+  }
+
   if (videoBlocks.length > 0) {
-    await generateVideoRender(renderId, templateJson, enrichedListing, videoBlocks);
+    await generateVideoRender(renderId, templateJson, enrichedListing, videoBlocks, render.accountId ?? null);
     return;
   }
 
@@ -286,20 +294,34 @@ interface OverlayPlan {
 /**
  * Computes a timed overlay plan from template blocks.
  *
+ * When `slotId` is provided, per-slot timing overrides (`block.slotTimings[slotId]`)
+ * take priority over the global `appearAt`/`hideAt` fields.
+ *
  * Returns `null` when no block has timing fields → single-overlay fast path,
  * 100% backward compatible with existing behaviour.
  */
-function computeOverlayPlan(blocks: AnyBlock[]): OverlayPlan | null {
-  const hasAnyTiming = blocks.some(
-    (b) => (b.appearAt !== undefined && b.appearAt > 0) || b.hideAt !== undefined
-  );
+function computeOverlayPlan(blocks: AnyBlock[], slotId?: string): OverlayPlan | null {
+  // Resolve effective timing for a block (per-slot override takes priority)
+  function timing(b: AnyBlock) {
+    const ov = slotId ? b.slotTimings?.[slotId] : undefined;
+    return {
+      appearAt: ov?.appearAt ?? b.appearAt,
+      hideAt: ov?.hideAt ?? b.hideAt,
+    };
+  }
+
+  const hasAnyTiming = blocks.some((b) => {
+    const { appearAt, hideAt } = timing(b);
+    return (appearAt !== undefined && appearAt > 0) || hideAt !== undefined;
+  });
   if (!hasAnyTiming) return null;
 
   // Collect all time breakpoints
   const bpSet = new Set<number>([0]);
   for (const b of blocks) {
-    if (b.appearAt !== undefined && b.appearAt > 0) bpSet.add(b.appearAt);
-    if (b.hideAt !== undefined) bpSet.add(b.hideAt);
+    const { appearAt, hideAt } = timing(b);
+    if (appearAt !== undefined && appearAt > 0) bpSet.add(appearAt);
+    if (hideAt !== undefined) bpSet.add(hideAt);
   }
   const breakpoints = Array.from(bpSet).sort((a, b) => a - b);
 
@@ -310,8 +332,9 @@ function computeOverlayPlan(blocks: AnyBlock[]): OverlayPlan | null {
     const intervalEnd = i + 1 < breakpoints.length ? breakpoints[i + 1] : null;
     const hidden = blocks
       .filter((b) => {
-        const ap = b.appearAt ?? 0;
-        const hp = b.hideAt;
+        const { appearAt, hideAt } = timing(b);
+        const ap = appearAt ?? 0;
+        const hp = hideAt;
         return !(intervalStart >= ap && (hp === undefined || intervalStart < hp));
       })
       .map((b) => b.id);
@@ -349,22 +372,49 @@ function computeOverlayPlan(blocks: AnyBlock[]): OverlayPlan | null {
   return { states, segments };
 }
 
-/** Resolves the first music block and its audio URL from the listing data. */
-function resolveMusicConfig(
+/**
+ * Resolves the first music block and its audio URL.
+ *
+ * Resolution order:
+ *  1. Explicit binding in listingData (form field URL).
+ *  2. Library resolution via musicBlock.libraryId + audioSelectionRule (no binding required).
+ *
+ * Returns null when no MusicBlock exists, no URL can be resolved, or the URL is
+ * not a valid http/https URL (to prevent cryptic FFmpeg failures inside the worker).
+ */
+async function resolveMusicConfig(
   templateJson: TemplateJSON,
   listingData: ListingData,
-): { musicUrl: string; block: MusicBlock } | null {
+  accountId: string | null,
+): Promise<{ musicUrl: string; block: MusicBlock; assetId: string | null } | null> {
   const musicBlock = templateJson.blocks.find(
     (b): b is MusicBlock => b.type === "music"
   );
   if (!musicBlock) return null;
 
-  const rawMusicUrl = musicBlock.binding
+  // 1. Try explicit binding (form field)
+  let rawMusicUrl: string | undefined = musicBlock.binding
     ? (listingData as Record<string, unknown>)[musicBlock.binding] as string | undefined
     : undefined;
+  let audioAssetId: string | null = null;
+
+  // 2. Fall back to library resolution when no URL came from the form
+  if (!rawMusicUrl && musicBlock.libraryId) {
+    const asset = await selectMediaAsset(
+      musicBlock.libraryId,
+      musicBlock.audioSelectionRule,
+      undefined,
+      accountId ?? undefined,
+    );
+    if (asset) {
+      rawMusicUrl = asset.url;
+      audioAssetId = asset.id;
+    }
+  }
+
   if (!rawMusicUrl) return null;
 
-  // Validate that the URL is a reachable https/http URL before including it in
+  // Validate that the URL is a reachable http/https URL before including it in
   // the RunPod payload. An unvalidated arbitrary string from listing data would
   // produce a cryptic FFmpeg download failure deep inside the worker.
   try {
@@ -378,7 +428,47 @@ function resolveMusicConfig(
     return null;
   }
 
-  return { musicUrl: rawMusicUrl, block: musicBlock };
+  return { musicUrl: rawMusicUrl, block: musicBlock, assetId: audioAssetId };
+}
+
+/**
+ * Best-effort: merge audioAssetId into a render's stored usedAssets JSON.
+ * Called when server-side library resolution picked the audio URL (no form binding).
+ */
+async function mergeAudioAssetId(renderId: string, assetId: string): Promise<void> {
+  try {
+    const render = await prisma.render.findUnique({
+      where: { id: renderId },
+      select: { usedAssets: true },
+    });
+    let stored: Record<string, unknown> = {};
+    try { stored = JSON.parse(render?.usedAssets ?? "{}") as Record<string, unknown>; } catch { /* ignore */ }
+    stored.audioAssetId = assetId;
+    await prisma.render.update({ where: { id: renderId }, data: { usedAssets: JSON.stringify(stored) } });
+  } catch (err) {
+    console.warn(`[mergeAudioAssetId] failed for render ${renderId}:`, err);
+  }
+}
+
+/**
+ * Best-effort: add a video assetId to the render's usedAssets videoAssets map.
+ * Called when a single VideoBlock.libraryId was used instead of a form binding.
+ */
+async function mergeVideoAsset(renderId: string, blockId: string, assetId: string): Promise<void> {
+  try {
+    const render = await prisma.render.findUnique({
+      where: { id: renderId },
+      select: { usedAssets: true },
+    });
+    let stored: Record<string, unknown> = {};
+    try { stored = JSON.parse(render?.usedAssets ?? "{}") as Record<string, unknown>; } catch { /* ignore */ }
+    const videoAssets = ((stored.videoAssets ?? {}) as Record<string, string>);
+    videoAssets[blockId] = assetId;
+    stored.videoAssets = videoAssets;
+    await prisma.render.update({ where: { id: renderId }, data: { usedAssets: JSON.stringify(stored) } });
+  } catch (err) {
+    console.warn(`[mergeVideoAsset] failed for render ${renderId}:`, err);
+  }
 }
 
 async function generateVideoRender(
@@ -386,10 +476,11 @@ async function generateVideoRender(
   templateJson: TemplateJSON,
   listingData: ListingData,
   videoBlocks: VideoBlock[],
+  accountId: string | null,
 ): Promise<void> {
   const useRunpod = process.env.USE_RUNPOD !== "false";
   if (!useRunpod) {
-    await generateVideoRenderLocal(renderId, templateJson, listingData, videoBlocks);
+    await generateVideoRenderLocal(renderId, templateJson, listingData, videoBlocks, accountId);
     return;
   }
   const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY;
@@ -463,13 +554,28 @@ async function generateVideoRender(
       progress: 0.38,
     });
     const videoBlock = videoBlocks[0];
-    const videoUrl = videoBlock.binding
+    let videoUrl: string | undefined = videoBlock.binding
       ? (listingData as Record<string, unknown>)[videoBlock.binding] as string | undefined
       : undefined;
+    let singleVideoAssetId: string | null = null;
+
+    // Fallback: library resolution when the form provided no URL
+    if (!videoUrl && videoBlock.libraryId) {
+      const asset = await selectMediaAsset(
+        videoBlock.libraryId,
+        videoBlock.selectionRule,
+        undefined,
+        accountId ?? undefined,
+      );
+      if (asset) {
+        videoUrl = asset.url;
+        singleVideoAssetId = asset.id;
+      }
+    }
 
     if (!videoUrl) {
       throw new Error(
-        `Bloc vidéo sans URL : renseigne la variable "${videoBlock.binding ?? "(pas de binding)"}" dans le formulaire`
+        `Bloc vidéo sans URL : renseigne la variable "${videoBlock.binding ?? "(pas de binding)"}" dans le formulaire, ou configure une bibliothèque dans l'onglet Vidéo & Musique`
       );
     }
 
@@ -481,7 +587,8 @@ async function generateVideoRender(
     const crop_y = focalPoint?.y ?? 0.5;
 
     // Resolve optional music block
-    const music = resolveMusicConfig(templateJson, listingData);
+    const music = await resolveMusicConfig(templateJson, listingData, accountId);
+    if (music?.assetId) await mergeAudioAssetId(renderId, music.assetId);
 
     // 4. Soumettre le job RunPod
     await updateRenderTracking(renderId, {
@@ -541,6 +648,7 @@ async function generateVideoRender(
     );
 
     // 5. Stocker le runpodJobId — le webhook /api/webhooks/runpod/renders terminera le job
+    if (singleVideoAssetId) await mergeVideoAsset(renderId, videoBlock.id, singleVideoAssetId);
     await updateRenderTracking(renderId, {
       status: "PROCESSING",
       pipeline: RENDER_PIPELINE.VIDEO_RUNPOD,
@@ -570,6 +678,7 @@ async function generateVideoRenderLocal(
   templateJson: TemplateJSON,
   listingData: ListingData,
   videoBlocks: VideoBlock[],
+  accountId: string | null,
 ): Promise<void> {
   try {
     const { width, height } = templateJson.canvas;
@@ -617,13 +726,28 @@ async function generateVideoRenderLocal(
       progress: 0.28,
     });
     const videoBlock = videoBlocks[0];
-    const rawVideoUrl = videoBlock.binding
+    let rawVideoUrl: string | undefined = videoBlock.binding
       ? (listingData as Record<string, unknown>)[videoBlock.binding] as string | undefined
       : undefined;
+    let singleVideoAssetId: string | null = null;
+
+    // Fallback: library resolution when the form provided no URL
+    if (!rawVideoUrl && videoBlock.libraryId) {
+      const asset = await selectMediaAsset(
+        videoBlock.libraryId,
+        videoBlock.selectionRule,
+        undefined,
+        accountId ?? undefined,
+      );
+      if (asset) {
+        rawVideoUrl = asset.url;
+        singleVideoAssetId = asset.id;
+      }
+    }
 
     if (!rawVideoUrl) {
       throw new Error(
-        `Bloc vidéo sans URL : renseigne la variable "${videoBlock.binding ?? "(pas de binding)"}" dans le formulaire`
+        `Bloc vidéo sans URL : renseigne la variable "${videoBlock.binding ?? "(pas de binding)"}" dans le formulaire, ou configure une bibliothèque dans l'onglet Vidéo & Musique`
       );
     }
     console.log(`[generateRender] rawVideoUrl = "${rawVideoUrl}"`);
@@ -636,7 +760,8 @@ async function generateVideoRenderLocal(
     const crop_y = focalPoint?.y ?? 0.5;
 
     // Resolve optional music block
-    const music = resolveMusicConfig(templateJson, listingData);
+    const music = await resolveMusicConfig(templateJson, listingData, accountId);
+    if (music?.assetId) await mergeAudioAssetId(renderId, music.assetId);
 
     // 3. Envoyer overlay(s) + vidéo à render-engine pour composite FFmpeg
     const form = new FormData();
@@ -738,6 +863,7 @@ async function generateVideoRenderLocal(
       : `/api/captions${data.videoUrl.startsWith("/") ? data.videoUrl : `/${data.videoUrl}`}`;
 
     console.log(`[videoLocal] ${renderId} — DONE: ${finalUrl}`);
+    if (singleVideoAssetId) await mergeVideoAsset(renderId, videoBlock.id, singleVideoAssetId);
     await updateRenderTracking(renderId, {
       status: "DONE",
       pipeline: RENDER_PIPELINE.VIDEO_LOCAL,
@@ -756,6 +882,527 @@ async function generateVideoRenderLocal(
       renderId,
       err instanceof Error ? err.message : "Erreur génération vidéo locale",
       RENDER_PIPELINE.VIDEO_LOCAL
+    );
+  }
+}
+
+// ─── Pipeline séquence (multi-clip : intro → contenu → outro) ────────────────
+
+/**
+ * Résout l'URL vidéo pour un slot de séquence.
+ * Priorité : listingData[binding] → résolution serveur via library → erreur.
+ */
+async function resolveSlotVideoUrl(
+  slot: VideoSequenceSlot,
+  listingData: ListingData,
+  accountId: string | null,
+): Promise<{ url: string; assetId: string | null; resolvedSetTag: string | null; resolvedCategory: string | null }> {
+  // 1. Binding explicite dans les données du formulaire
+  if (slot.binding) {
+    const raw = (listingData as Record<string, unknown>)[slot.binding] as string | undefined;
+    if (raw && (raw.startsWith("http") || raw.startsWith("/"))) {
+      return { url: raw, assetId: null, resolvedSetTag: null, resolvedCategory: null };
+    }
+  }
+
+  // 2. Résolution serveur depuis la bibliothèque
+  if (slot.libraryId) {
+    const rule = slot.selectionRule;
+    const ruleConfig = normalizeRule(rule);
+    const strategy = ruleConfig.strategy;
+
+    if (strategy === "theme_sequence") {
+      const asset = await selectMediaAssetBySetSequence(
+        slot.libraryId,
+        accountId ?? undefined,
+        undefined,
+        undefined,
+        undefined,
+        ruleConfig,
+      );
+      if (asset) {
+        return {
+          url: asset.url,
+          assetId: asset.id,
+          resolvedSetTag: asset.resolvedSetTag,
+          resolvedCategory: asset.resolvedCategory,
+        };
+      }
+    } else {
+      const asset = await selectMediaAsset(slot.libraryId, rule, undefined, accountId ?? undefined);
+      if (asset) {
+        return { url: asset.url, assetId: asset.id, resolvedSetTag: null, resolvedCategory: null };
+      }
+    }
+  }
+
+  throw new Error(
+    `Slot "${slot.id}" : aucune vidéo trouvée (binding="${slot.binding ?? "—"}", libraryId="${slot.libraryId ?? "—"}")`
+  );
+}
+
+/**
+ * Resolves the VideoBlock to use for a slot's position/crop params in the FFmpeg composite.
+ *
+ * Priority:
+ *  1. `slot.videoBlockId` — explicit link set by the builder.
+ *  2. A VideoBlock whose `binding` matches `slot.binding` (form-sourced slots).
+ *  3. Full-canvas cover (library slots with no explicit block configured).
+ */
+function videoBlockForSlot(
+  slot: VideoSequenceSlot,
+  blocks: AnyBlock[],
+  canvasW: number,
+  canvasH: number,
+): { x: number; y: number; w: number; h: number; fit: string } {
+  const vb =
+    (slot.videoBlockId ? blocks.find((b) => b.type === "video" && b.id === slot.videoBlockId) : undefined) ??
+    (slot.binding ? blocks.find((b) => b.type === "video" && b.binding === slot.binding) : undefined);
+  return vb
+    ? { x: vb.x, y: vb.y, w: vb.w, h: vb.h, fit: (vb as VideoBlock).fit ?? "cover" }
+    : { x: 0, y: 0, w: canvasW, h: canvasH, fit: "cover" };
+}
+
+/**
+ * Returns the audio params for a slot's source video.
+ * Reads from the resolved VideoBlock (via videoBlockId or binding match).
+ */
+function slotSourceAudioParams(
+  slot: VideoSequenceSlot,
+  blocks: AnyBlock[],
+): { music_source_volume: number; music_mute_source: boolean } {
+  const vb =
+    (slot.videoBlockId ? blocks.find((b) => b.type === "video" && b.id === slot.videoBlockId) : undefined) ??
+    (slot.binding ? blocks.find((b) => b.type === "video" && b.binding === slot.binding) : undefined);
+  if (!vb) return { music_source_volume: 1.0, music_mute_source: false };
+  const vBlock = vb as VideoBlock;
+  return {
+    music_source_volume: vBlock.audioVolume ?? 1.0,
+    music_mute_source: vBlock.mute ?? false,
+  };
+}
+
+/**
+ * Accumulates set-sequence tracking data from a resolved slot into the tracking maps.
+ * Extracted to deduplicate identical logic between RunPod and local pipelines.
+ */
+function accumulateSlotTracking(
+  slot: VideoSequenceSlot,
+  resolved: { assetId: string | null; resolvedSetTag: string | null; resolvedCategory: string | null },
+  setSequencedLibraryIds: string[],
+  usedSetTagByLibrary: Record<string, string>,
+  usedCategoryByLibrary: Record<string, string>,
+  sequenceSlotAssets: Record<string, string>,
+) {
+  if (resolved.assetId) sequenceSlotAssets[slot.id] = resolved.assetId;
+  if (slot.libraryId && normalizeRule(slot.selectionRule).strategy === "theme_sequence") {
+    if (!setSequencedLibraryIds.includes(slot.libraryId)) {
+      setSequencedLibraryIds.push(slot.libraryId);
+    }
+    if (resolved.resolvedSetTag) usedSetTagByLibrary[slot.libraryId] = resolved.resolvedSetTag;
+    if (resolved.resolvedCategory) usedCategoryByLibrary[slot.libraryId] = resolved.resolvedCategory;
+  }
+}
+
+// ── Slot overlay result type ──────────────────────────────────────────────────
+
+interface SlotOverlayResult {
+  /** Rendered PNG buffer(s). Index matches OverlayPlan.states. null = no overlay at all. */
+  buffers: (Buffer | null)[];
+  /** null = single overlay (buffers[0]); non-null = timed, use plan.segments for timing. */
+  plan: OverlayPlan | null;
+}
+
+/**
+ * Renders overlay PNG(s) for a slot, respecting:
+ *  - overlayGroupIds visibility filter
+ *  - per-slot block timing (slotTimings / global appearAt / hideAt)
+ *
+ * Returns a SlotOverlayResult:
+ *  - `{ buffers: [null], plan: null }` → no overlay (overlayGroupIds: [])
+ *  - `{ buffers: [buf], plan: null }` → single overlay (no timed visibility in this slot)
+ *  - `{ buffers: [buf0, buf1, ...], plan }` → timed overlays
+ */
+async function renderSlotOverlay(
+  templateJson: TemplateJSON,
+  listingData: ListingData,
+  slot: VideoSequenceSlot,
+  width: number,
+  height: number,
+): Promise<SlotOverlayResult> {
+  if (Array.isArray(slot.overlayGroupIds) && slot.overlayGroupIds.length === 0) {
+    return { buffers: [null], plan: null };
+  }
+
+  // Compute which blocks are hidden by the group filter for this slot
+  let baseHiddenByGroup: string[] = [];
+  if (slot.overlayGroupIds !== undefined) {
+    baseHiddenByGroup = templateJson.blocks
+      .filter((b) => !b.groupId || !slot.overlayGroupIds!.includes(b.groupId))
+      .map((b) => b.id);
+  }
+
+  // Check for timed visibility within this slot (respects slotTimings[slot.id])
+  const plan = computeOverlayPlan(templateJson.blocks, slot.id);
+
+  if (plan === null) {
+    // Fast path: single overlay
+    const html = await buildHTML(templateJson, listingData, {
+      overlayMode: true,
+      hiddenBlockIds: baseHiddenByGroup,
+    });
+    return { buffers: [await renderPNG(html, width, height, 1, true)], plan: null };
+  }
+
+  // Timed path: one PNG per unique visibility state, merged with group filter
+  const buffers = await Promise.all(
+    plan.states.map(async (state) => {
+      const hidden = [...new Set([...baseHiddenByGroup, ...state.hiddenBlockIds])];
+      const html = await buildHTML(templateJson, listingData, {
+        overlayMode: true,
+        hiddenBlockIds: hidden,
+      });
+      return renderPNG(html, width, height, 1, true);
+    })
+  );
+  return { buffers, plan };
+}
+
+async function generateSequenceRender(
+  renderId: string,
+  templateJson: TemplateJSON,
+  listingData: ListingData,
+  accountId: string | null,
+): Promise<void> {
+  const useRunpod = process.env.USE_RUNPOD !== "false";
+  if (!useRunpod) {
+    await generateSequenceRenderLocal(renderId, templateJson, listingData, accountId);
+    return;
+  }
+
+  const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY;
+  const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
+  if (!RUNPOD_API_KEY || !RUNPOD_ENDPOINT_ID) {
+    await failRender(renderId, "RunPod non configuré (RUNPOD_API_KEY / RUNPOD_ENDPOINT_ID manquants)", RENDER_PIPELINE.SEQUENCE_RUNPOD);
+    return;
+  }
+  if (!r2Configured()) {
+    await failRender(renderId, "R2 non configuré — requis pour les renders séquence", RENDER_PIPELINE.SEQUENCE_RUNPOD);
+    return;
+  }
+
+  const slots = templateJson.videoSequence!;
+  const { width, height } = templateJson.canvas;
+
+  // Track overlay R2 keys for cleanup on failure
+  const overlayKeys: string[] = [];
+  // Track set-sequence libraries for cursor advancement
+  const setSequencedLibraryIds: string[] = [];
+  const usedSetTagByLibrary: Record<string, string> = {};
+  const usedCategoryByLibrary: Record<string, string> = {};
+  const sequenceSlotAssets: Record<string, string> = {};
+
+  try {
+    // 1. Résoudre les URLs vidéo de chaque slot
+    await updateRenderTracking(renderId, {
+      pipeline: RENDER_PIPELINE.SEQUENCE_RUNPOD,
+      stage: RENDER_STAGE.SEQ_RESOLVE_SLOTS,
+      statusDetail: "Résolution des clips de la séquence",
+      progress: 0.08,
+    });
+
+    const resolvedSlots = await Promise.all(
+      slots.map(async (slot) => {
+        const resolved = await resolveSlotVideoUrl(slot, listingData, accountId);
+        accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, usedCategoryByLibrary, sequenceSlotAssets);
+        return { slot, videoUrl: resolved.url };
+      })
+    );
+
+    // 2. Rendre les overlays PNG par slot (avec support timed overlays)
+    await updateRenderTracking(renderId, {
+      pipeline: RENDER_PIPELINE.SEQUENCE_RUNPOD,
+      stage: RENDER_STAGE.SEQ_RENDER_OVERLAYS,
+      statusDetail: "Rendu des overlays de séquence",
+      progress: 0.18,
+    });
+
+    const slotOverlays = await Promise.all(
+      resolvedSlots.map(({ slot }) => renderSlotOverlay(templateJson, listingData, slot, width, height))
+    );
+
+    // 3. Uploader les overlays vers R2
+    await updateRenderTracking(renderId, {
+      pipeline: RENDER_PIPELINE.SEQUENCE_RUNPOD,
+      stage: RENDER_STAGE.SEQ_UPLOAD_OVERLAYS,
+      statusDetail: "Upload des overlays de séquence",
+      progress: 0.32,
+    });
+
+    // For each slot, upload all non-null overlay buffers and build the slot overlay descriptor
+    const slotOverlayDescriptors = await Promise.all(
+      slotOverlays.map(async (result, i) => {
+        const uploaded: (string | null)[] = await Promise.all(
+          result.buffers.map(async (buf, j) => {
+            if (!buf) return null;
+            const key = `overlays/${renderId}_seq${i}_${j}.png`;
+            overlayKeys.push(key);
+            return (await uploadToR2(key, buf, "image/png")).url;
+          })
+        );
+        // Single overlay: use legacy overlay_url field for backward compat
+        // Timed: use overlay_urls + overlay_segments per slot
+        if (result.plan === null) {
+          return { overlay_url: uploaded[0] ?? null };
+        }
+        return {
+          overlay_urls: uploaded,
+          overlay_segments: result.plan.segments,
+        };
+      })
+    );
+
+    // 4. Résoudre la musique (MusicBlock du template)
+    const music = await resolveMusicConfig(templateJson, listingData, accountId);
+
+    // 5. Construire le payload slots pour RunPod
+    const runpodSlots = resolvedSlots.map(({ slot, videoUrl }, i) => {
+      const audioParams = slotSourceAudioParams(slot, templateJson.blocks);
+      const musicBlock = music?.block;
+      const slotAudioOverride = musicBlock?.slotAudio?.[slot.id];
+      return {
+        slot_id: slot.id,
+        video_url: videoUrl,
+        video_block: videoBlockForSlot(slot, templateJson.blocks, width, height),
+        ...slotOverlayDescriptors[i],
+        ...(slot.maxDuration !== undefined ? { max_duration: slot.maxDuration } : {}),
+        music_source_volume: slotAudioOverride?.volume !== undefined ? slotAudioOverride.volume : audioParams.music_source_volume,
+        music_mute_source: slotAudioOverride?.mute !== undefined ? slotAudioOverride.mute : audioParams.music_mute_source,
+        ...(slotAudioOverride?.startAt !== undefined ? { music_start_at: slotAudioOverride.startAt } : {}),
+        ...(slotAudioOverride?.stopAt !== undefined ? { music_stop_at: slotAudioOverride.stopAt } : {}),
+      };
+    });
+
+    // 6. Soumettre le job RunPod
+    await updateRenderTracking(renderId, {
+      pipeline: RENDER_PIPELINE.SEQUENCE_RUNPOD,
+      stage: RENDER_STAGE.SEQ_SUBMIT_RUNPOD,
+      statusDetail: "Soumission de la séquence RunPod",
+      progress: 0.5,
+    });
+
+    const outputKey = `renders/${renderId}.mp4`;
+    const runpodData = await submitRunpodJob<{ id: string }>(
+      RUNPOD_ENDPOINT_ID,
+      RUNPOD_API_KEY,
+      {
+        input: {
+          job_type: "render_sequence",
+          export_profile: "template",
+          canvas: { width, height },
+          slots: runpodSlots,
+          output_key: outputKey,
+          render_id: renderId,
+          ...(templateJson.canvas.maxDuration !== undefined && templateJson.canvas.maxDuration > 0
+            ? { max_duration: templateJson.canvas.maxDuration }
+            : {}),
+          ...(music ? {
+            music_url: music.musicUrl,
+            music_volume: music.block.volume ?? 0.3,
+            music_loop: music.block.loop ?? false,
+            music_fade_in: music.block.fadeIn ?? 0,
+            music_fade_out: music.block.fadeOut ?? 0,
+          } : {}),
+        },
+        ...(() => {
+          const webhookUrl = getRunpodWebhookUrl("/api/webhooks/runpod/renders");
+          return webhookUrl ? { webhook: webhookUrl } : {};
+        })(),
+      },
+      { timeoutMs: RUNPOD_SUBMIT_TIMEOUT_MS }
+    );
+
+    // 7. Persist usedAssets so recordLibraryUsage can advance cursors on DONE
+    await prisma.render.update({
+      where: { id: renderId },
+      data: {
+        usedAssets: JSON.stringify({
+          videoAssets: sequenceSlotAssets,
+          ...(music?.assetId ? { audioAssetId: music.assetId } : {}),
+          setSequencedLibraryIds,
+          usedSetTagByLibrary,
+          usedCategoryByLibrary,
+        }),
+      },
+    });
+
+    await updateRenderTracking(renderId, {
+      status: "PROCESSING",
+      pipeline: RENDER_PIPELINE.SEQUENCE_RUNPOD,
+      stage: RENDER_STAGE.SEQ_RUNPOD_QUEUED,
+      statusDetail: `Séquence RunPod soumise (${runpodData.id})`,
+      progress: 0.6,
+      runpodJobId: runpodData.id,
+    });
+  } catch (err) {
+    if (overlayKeys.length > 0) {
+      await Promise.allSettled(
+        overlayKeys.map((k) =>
+          deleteFromR2(k).catch((e) => console.warn(`[generateSequenceRender] R2 cleanup failed key=${k}:`, e))
+        )
+      );
+    }
+    await failRender(
+      renderId,
+      err instanceof Error ? err.message : "Erreur génération séquence",
+      RENDER_PIPELINE.SEQUENCE_RUNPOD
+    );
+  }
+}
+
+async function generateSequenceRenderLocal(
+  renderId: string,
+  templateJson: TemplateJSON,
+  listingData: ListingData,
+  accountId: string | null,
+): Promise<void> {
+  const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
+  const slots = templateJson.videoSequence!;
+  const { width, height } = templateJson.canvas;
+
+  // Track set-sequence libraries for cursor advancement (mirrors RunPod path)
+  const setSequencedLibraryIds: string[] = [];
+  const usedSetTagByLibrary: Record<string, string> = {};
+  const usedCategoryByLibrary: Record<string, string> = {};
+  const sequenceSlotAssets: Record<string, string> = {};
+
+  try {
+    // Resolve slots
+    await updateRenderTracking(renderId, {
+      pipeline: RENDER_PIPELINE.SEQUENCE_LOCAL,
+      stage: RENDER_STAGE.SEQ_RESOLVE_SLOTS,
+      statusDetail: "Résolution des clips",
+      progress: 0.08,
+    });
+
+    const resolvedSlots = await Promise.all(
+      slots.map(async (slot) => {
+        const resolved = await resolveSlotVideoUrl(slot, listingData, accountId);
+        accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, usedCategoryByLibrary, sequenceSlotAssets);
+        return { slot, videoUrl: resolved.url };
+      })
+    );
+
+    // Render overlays (with timed overlay support)
+    const slotOverlays = await Promise.all(
+      resolvedSlots.map(({ slot }) => renderSlotOverlay(templateJson, listingData, slot, width, height))
+    );
+
+    // Resolve music
+    const music = await resolveMusicConfig(templateJson, listingData, accountId);
+
+    // For local path, convert local /uploads/ paths to absolute URLs using NEXTAUTH_URL
+    const resolveVideoUrl = (rawUrl: string): string => {
+      if (rawUrl.startsWith("http")) return rawUrl;
+      const base = (process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
+      return `${base}${rawUrl}`;
+    };
+
+    const localSlots = resolvedSlots.map(({ slot, videoUrl }, i) => {
+      const overlayResult = slotOverlays[i];
+      const audioParams = slotSourceAudioParams(slot, templateJson.blocks);
+      const musicBlock = music?.block;
+      const slotAudioOverride = musicBlock?.slotAudio?.[slot.id];
+      // Single overlay: legacy overlay_data (base64) field; timed: overlay_data_list + overlay_segments
+      const overlayPayload = overlayResult.plan === null
+        ? { overlay_data: overlayResult.buffers[0]?.toString("base64") ?? null }
+        : {
+            overlay_data_list: overlayResult.buffers.map((b) => b?.toString("base64") ?? null),
+            overlay_segments: overlayResult.plan.segments,
+          };
+      return {
+        slot_id: slot.id,
+        video_url: resolveVideoUrl(videoUrl),
+        video_block: videoBlockForSlot(slot, templateJson.blocks, width, height),
+        ...overlayPayload,
+        ...(slot.maxDuration !== undefined ? { max_duration: slot.maxDuration } : {}),
+        music_source_volume: slotAudioOverride?.volume !== undefined ? slotAudioOverride.volume : audioParams.music_source_volume,
+        music_mute_source: slotAudioOverride?.mute !== undefined ? slotAudioOverride.mute : audioParams.music_mute_source,
+        ...(slotAudioOverride?.startAt !== undefined ? { music_start_at: slotAudioOverride.startAt } : {}),
+        ...(slotAudioOverride?.stopAt !== undefined ? { music_stop_at: slotAudioOverride.stopAt } : {}),
+      };
+    });
+
+    await updateRenderTracking(renderId, {
+      pipeline: RENDER_PIPELINE.SEQUENCE_LOCAL,
+      stage: RENDER_STAGE.SEQ_LOCAL_SEND,
+      statusDetail: "Envoi de la séquence au render-engine",
+      progress: 0.42,
+    });
+
+    const res = await fetch(`${CAPTIONS_API}/api/render_sequence`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        canvas: { width, height },
+        slots: localSlots,
+        export_profile: "template",
+        ...(templateJson.canvas.maxDuration !== undefined && templateJson.canvas.maxDuration > 0
+          ? { max_duration: templateJson.canvas.maxDuration }
+          : {}),
+        ...(music ? {
+          music_url: music.musicUrl,
+          music_volume: music.block.volume ?? 0.3,
+          music_loop: music.block.loop ?? false,
+          music_fade_in: music.block.fadeIn ?? 0,
+          music_fade_out: music.block.fadeOut ?? 0,
+        } : {}),
+      }),
+      signal: AbortSignal.timeout(LOCAL_VIDEO_RENDER_TIMEOUT_MS),
+    });
+
+    if (!res.ok) {
+      throw new Error(`render-engine ${res.status}: ${await res.text()}`);
+    }
+
+    const data = await res.json() as { videoUrl?: string };
+    if (!data.videoUrl) throw new Error("render-engine n'a pas renvoyé d'URL vidéo");
+
+    const finalUrl = data.videoUrl.startsWith("http")
+      ? data.videoUrl
+      : `/api/captions${data.videoUrl.startsWith("/") ? data.videoUrl : `/${data.videoUrl}`}`;
+
+    // Persist usedAssets before marking DONE so recordLibraryUsage can advance cursors
+    await prisma.render.update({
+      where: { id: renderId },
+      data: {
+        usedAssets: JSON.stringify({
+          videoAssets: sequenceSlotAssets,
+          ...(music?.assetId ? { audioAssetId: music.assetId } : {}),
+          setSequencedLibraryIds,
+          usedSetTagByLibrary,
+          usedCategoryByLibrary,
+        }),
+      },
+    });
+
+    await updateRenderTracking(renderId, {
+      status: "DONE",
+      pipeline: RENDER_PIPELINE.SEQUENCE_LOCAL,
+      stage: RENDER_STAGE.DONE,
+      statusDetail: "Séquence générée localement",
+      progress: 1,
+      videoUrl: finalUrl,
+      finishedAt: new Date(),
+    });
+
+    void recordLibraryUsage(renderId);
+  } catch (err) {
+    console.error(`[sequenceLocal] ${renderId} — ERROR:`, err);
+    await failRender(
+      renderId,
+      err instanceof Error ? err.message : "Erreur génération séquence locale",
+      RENDER_PIPELINE.SEQUENCE_LOCAL
     );
   }
 }

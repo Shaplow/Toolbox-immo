@@ -700,7 +700,7 @@ def write_ass_file(
     # Queue de lecture : durée supplémentaire après le dernier mot pour laisser
     # le temps de lire le caption. Clamped au gap disponible avant le bloc suivant.
     READING_QUEUE_CS = 20   # 0.2 s de queue de lecture maximum
-    MIN_BLOCK_DUR_CS = 80   # durée minimale d'affichage d'un bloc (0.8 s)
+    MIN_BLOCK_DUR_CS = 30   # durée minimale anti-flash d'un bloc (0.3 s)
     INTER_BLOCK_GAP_CS = 5  # gap minimal à laisser entre deux blocs (50 ms)
 
     for index, block in enumerate(blocks):

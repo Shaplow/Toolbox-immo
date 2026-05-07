@@ -1,6 +1,6 @@
 ---
-name: template-builder-debug
-description: Diagnose template builder issues involving auto-layout groups, text measurement, builder versus HTML preview mismatches, timed visibility, background effects, and preview parity. Use when a bug touches Canvas.tsx, buildHTML.ts, layout snapshots, or template rendering logic in the web app.
+name: template-builder
+description: Work on the template builder: auto-layout groups, text measurement, builder versus HTML preview mismatches, timed visibility, background effects, and preview parity. Use when a task touches Canvas.tsx, buildHTML.ts, layout snapshots, or template rendering logic in the web app.
 ---
 
 # Template Builder Debug

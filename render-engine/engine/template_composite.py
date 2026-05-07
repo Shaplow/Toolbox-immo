@@ -344,3 +344,43 @@ def build_template_ffmpeg_cmd_timed(
         *audio_codec_flags,
         str(out_path),
     ]
+
+
+def build_template_ffmpeg_cmd_video_only(
+    video_path: str | Path,
+    out_path: str | Path,
+    block: dict[str, float | int | str],
+    video_codec: str,
+    video_codec_args: list[str],
+    audio_codec: str = "aac",
+    audio_codec_args: list[str] | None = None,
+    max_duration: float | None = None,
+    source_has_audio: bool = True,
+) -> list[str]:
+    """
+    Scale/crop the source video to the canvas without any overlay PNG.
+
+    Used for sequence slots where overlay_url is null (raw clip, no graphic).
+    Audio is kept from the source (passthrough).
+    """
+    audio_codec_args = audio_codec_args or ["-b:a", "192k"]
+    video_filter = _build_video_scale_filter(block)
+    # Reuse the [base] label output by _build_video_scale_filter and add a final even-dimension scale
+    filter_complex = f"{video_filter};[base]scale=trunc(iw/2)*2:trunc(ih/2)*2[out]"
+
+    duration_args = ["-t", str(max_duration)] if max_duration is not None else []
+    audio_args: list[str] = ["-map", "0:a?", "-c:a", audio_codec, *audio_codec_args] if source_has_audio else []
+
+    return [
+        "ffmpeg", "-y",
+        "-i", str(video_path),
+        "-filter_complex", filter_complex,
+        "-map", "[out]",
+        *audio_args,
+        "-shortest",
+        *duration_args,
+        "-c:v", video_codec, *video_codec_args,
+        "-movflags", "+faststart",
+        "-pix_fmt", "yuv420p",
+        str(out_path),
+    ]

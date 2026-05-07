@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Plus, Trash2, Video, Music2, ChevronRight, Search } from "lucide-react";
+import { Plus, Trash2, Video, Music2, ChevronRight, Search, Pencil, Check, X } from "lucide-react";
 import Link from "next/link";
 
 interface MediaLibrary {
@@ -9,10 +9,13 @@ interface MediaLibrary {
   name: string;
   type: "video" | "audio";
   tags: string;
+  setSequence: string;
   description: string | null;
   createdAt: string;
   _count: { assets: number };
 }
+
+type EditForm = { name: string; tags: string; description: string };
 
 export function MediaLibrariesPanel() {
   const [libraries, setLibraries] = useState<MediaLibrary[]>([]);
@@ -21,6 +24,10 @@ export function MediaLibrariesPanel() {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: "", type: "video" as "video" | "audio", tags: "", description: "" });
   const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<EditForm>({ name: "", tags: "", description: "" });
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"" | "video" | "audio">("");
 
@@ -85,6 +92,33 @@ export function MediaLibrariesPanel() {
     }
     setCreating(false);
     setForm({ name: "", type: "video", tags: "", description: "" });
+    void load();
+  }
+
+  function startEdit(lib: MediaLibrary) {
+    const tags = (() => { try { return (JSON.parse(lib.tags) as string[]).join(", "); } catch { return ""; } })();
+    setEditForm({ name: lib.name, tags, description: lib.description ?? "" });
+    setEditError(null);
+    setEditingId(lib.id);
+  }
+
+  async function handleSaveEdit(id: string) {
+    if (!editForm.name.trim()) { setEditError("Le nom est requis"); return; }
+    setEditSaving(true);
+    setEditError(null);
+    const tags = editForm.tags.split(",").map((t) => t.trim()).filter(Boolean);
+    const res = await fetch(`/api/admin/libraries/media/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editForm.name.trim(), tags, description: editForm.description.trim() || null }),
+    });
+    setEditSaving(false);
+    if (!res.ok) {
+      const d = await res.json() as { error?: string };
+      setEditError(d.error ?? "Erreur lors de la sauvegarde");
+      return;
+    }
+    setEditingId(null);
     void load();
   }
 
@@ -267,35 +301,102 @@ export function MediaLibrariesPanel() {
 
                 {/* Content */}
                 <div className="flex-1 p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-semibold text-gray-900 leading-snug">{lib.name}</p>
-                    <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded border ${
-                      lib.type === "video"
-                        ? "text-indigo-600 bg-indigo-50 border-indigo-200"
-                        : "text-emerald-600 bg-emerald-50 border-emerald-200"
-                    }`}>
-                      {lib.type === "video" ? "Vidéo" : "Audio"}
-                    </span>
-                  </div>
-
-                  {lib.description && (
-                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">{lib.description}</p>
-                  )}
-
-                  {tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {tags.map((tag) => (
-                        <span key={tag} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{tag}</span>
-                      ))}
+                  {editingId === lib.id ? (
+                    /* ── Edit form ── */
+                    <div className="space-y-3" onClick={(e) => e.stopPropagation()}>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Nom *</label>
+                        <input
+                          autoFocus
+                          value={editForm.name}
+                          onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Types (séparés par virgule)</label>
+                        <input
+                          value={editForm.tags}
+                          onChange={(e) => setEditForm((f) => ({ ...f, tags: e.target.value }))}
+                          placeholder="RPI, RTIPS, RPOD"
+                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                        <input
+                          value={editForm.description}
+                          onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                        />
+                      </div>
+                      {editError && <p className="text-xs text-red-600">{editError}</p>}
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={() => { void handleSaveEdit(lib.id); }}
+                          disabled={editSaving}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                          <Check size={12} /> Enregistrer
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="flex items-center gap-1 px-3 py-1.5 border border-gray-200 text-xs rounded-lg hover:bg-gray-50"
+                        >
+                          <X size={12} /> Annuler
+                        </button>
+                      </div>
                     </div>
-                  )}
+                  ) : (
+                    /* ── Display ── */
+                    <>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-semibold text-gray-900 leading-snug">{lib.name}</p>
+                        <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded border ${
+                          lib.type === "video"
+                            ? "text-indigo-600 bg-indigo-50 border-indigo-200"
+                            : "text-emerald-600 bg-emerald-50 border-emerald-200"
+                        }`}>
+                          {lib.type === "video" ? "Vidéo" : "Audio"}
+                        </span>
+                      </div>
 
-                  <p className="text-xs text-gray-400 mt-3">
-                    {lib._count.assets} fichier{lib._count.assets !== 1 ? "s" : ""}
-                  </p>
+                      {lib.description && (
+                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{lib.description}</p>
+                      )}
+
+                      {tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {tags.map((tag) => (
+                            <span key={tag} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{tag}</span>
+                          ))}
+                        </div>
+                      )}
+
+                      {(() => {
+                        try {
+                          const seq = JSON.parse(lib.setSequence) as string[];
+                          if (seq.length > 0) return (
+                            <p className="text-[10px] text-pink-500 mt-2">🔄 {seq.join(" → ")}</p>
+                          );
+                        } catch { /* ignore */ }
+                        return (
+                          <p className="text-[10px] text-emerald-600 mt-2 flex items-center gap-1">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                            Rotation auto
+                          </p>
+                        );
+                      })()}
+
+                      <p className="text-xs text-gray-400 mt-3">
+                        {lib._count.assets} fichier{lib._count.assets !== 1 ? "s" : ""}
+                      </p>
+                    </>
+                  )}
                 </div>
 
                 {/* Footer actions */}
+                {editingId !== lib.id && (
                 <div className="flex items-center border-t border-gray-100">
                   <Link
                     href={`/admin/libraries/media/${lib.id}`}
@@ -305,12 +406,21 @@ export function MediaLibrariesPanel() {
                   </Link>
                   <div className="w-px h-5 bg-gray-100" />
                   <button
+                    onClick={() => startEdit(lib)}
+                    className="px-3.5 py-2.5 text-gray-300 hover:text-indigo-500 transition-colors"
+                    title="Modifier"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <div className="w-px h-5 bg-gray-100" />
+                  <button
                     onClick={() => { void handleDelete(lib.id, lib.name); }}
                     className="px-3.5 py-2.5 text-gray-300 hover:text-red-500 transition-colors"
                   >
                     <Trash2 size={14} />
                   </button>
                 </div>
+                )}
               </div>
             );
           })}

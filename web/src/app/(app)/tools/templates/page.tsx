@@ -6,6 +6,7 @@ import { EditTemplateInfoButton } from "@/components/templates/EditTemplateInfoB
 import { ImportTemplateButton } from "@/components/templates/ImportTemplateButton";
 import { TemplateAdminActions } from "@/components/templates/TemplateAdminActions";
 import { getUserContext } from "@/lib/userContext";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 
 export default async function TemplatesPage() {
   const userContext = await getUserContext();
@@ -41,28 +42,13 @@ export default async function TemplatesPage() {
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shrink-0">
-            <LayoutTemplate size={20} />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900">Templates</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {templates.length} template{templates.length !== 1 ? "s" : ""}
-              {clientKeys.filter((key) => key !== "__none__").length > 0 && (
-                <> &middot; {clientKeys.filter((key) => key !== "__none__").length} client{clientKeys.filter((key) => key !== "__none__").length !== 1 ? "s" : ""}</>
-              )}
-            </p>
-          </div>
-        </div>
-        {isAdmin ? (
-          <div className="flex items-center gap-2">
-            <ImportTemplateButton />
-            <NewTemplateButton />
-          </div>
-        ) : null}
-      </div>
+      <ToolPageHeader
+        icon={LayoutTemplate}
+        iconColor="indigo"
+        title="Templates"
+        subtitle={<>{templates.length} template{templates.length !== 1 ? "s" : ""}{clientKeys.filter((key) => key !== "__none__").length > 0 && (<> &middot; {clientKeys.filter((key) => key !== "__none__").length} client{clientKeys.filter((key) => key !== "__none__").length !== 1 ? "s" : ""}</>)}</>}
+        actions={isAdmin ? <><ImportTemplateButton /><NewTemplateButton /></> : undefined}
+      />
 
       {templates.length === 0 ? (
         <div className="text-center py-24 text-gray-400">

@@ -28,6 +28,7 @@ import { prisma } from "@/lib/prisma";
 import { hasTool } from "@/lib/permissions";
 
 const MAX_TRANSCRIPT_CHARS = 50_000;
+const MAX_PERSONALIZATION_CHARS = 2_000;
 const MAX_REFERENCE_IMAGE_BYTES = 4 * 1024 * 1024;
 const REFERENCE_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
@@ -296,10 +297,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const clampedPersonalization = personalization?.slice(0, MAX_PERSONALIZATION_CHARS);
   const userMessage = buildUserMessage(
     prompt.prompt,
     normalizedTranscriptText,
-    personalization,
+    clampedPersonalization,
     !!referenceImage
   );
   const normalizedInputFilename = inputFilename?.trim()

@@ -74,25 +74,32 @@ export async function POST(req: NextRequest, { params }: Params) {
     normalize,
   };
 
-  // ── Check no active job already running ─────────────────────────────────
-  const activeJob = await prisma.mediaEditJob.findFirst({
-    where: { assetId, status: { in: ["pending", "processing"] } },
+  // ── Check no active job and create atomically ────────────────────────────
+  // The check + create are wrapped in a transaction so two concurrent requests
+  // for the same asset cannot both pass the active-job guard simultaneously.
+  let conflictJobId: string | undefined;
+  const job = await prisma.$transaction(async (tx) => {
+    const existing = await tx.mediaEditJob.findFirst({
+      where: { assetId, status: { in: ["pending", "processing"] } },
+    });
+    if (existing) {
+      conflictJobId = existing.id;
+      return null;
+    }
+    return tx.mediaEditJob.create({
+      data: {
+        assetId,
+        status: "pending",
+        params: JSON.stringify(editParams),
+      },
+    });
   });
-  if (activeJob) {
+  if (!job) {
     return NextResponse.json(
-      { error: "Un job d'édition est déjà en cours pour cet asset", jobId: activeJob.id },
+      { error: "Un job d'édition est déjà en cours pour cet asset", jobId: conflictJobId },
       { status: 409 }
     );
   }
-
-  // ── Create job in DB ─────────────────────────────────────────────────────
-  const job = await prisma.mediaEditJob.create({
-    data: {
-      assetId,
-      status: "pending",
-      params: JSON.stringify(editParams),
-    },
-  });
 
   // ── Submit to RunPod ─────────────────────────────────────────────────────
   if (!runpodConfigured()) {

@@ -98,10 +98,11 @@ model Template {
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
   userId    String
-  user      User             @relation(fields: [userId], references: [id])
-  listings  Listing[]
-  renders   Render[]
-  accesses  TemplateAccess[]
+  user              User             @relation(fields: [userId], references: [id])
+  listings          Listing[]
+  renders           Render[]
+  accesses          TemplateAccess[]
+  publicationSlots  PublicationSlot[]
 }
 
 model FontAsset {
@@ -157,8 +158,14 @@ model Render {
   runpodJobId  String?  @unique
   errorMsg     String?
   /// JSON map des assets de bibliothèque utilisés pour ce render
-  /// { videoAssets: { blockId: assetId }, audioAssetId?: string, dataEntryId?: string }
+  /// { videoAssets: { blockId: assetId }, audioAssetId?: string, dataEntryId?: string, setSequencedLibraryIds?: string[] }
   usedAssets   String   @default("{}")
+  /// Compte Instagram pour lequel ce render a été généré (optionnel)
+  accountId    String?
+  account      InstagramAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  /// Slot de calendrier auquel ce render est rattaché (optionnel)
+  publicationSlotId String? @unique
+  publicationSlot   PublicationSlot? @relation(fields: [publicationSlotId], references: [id], onDelete: SetNull)
   createdAt    DateTime     @default(now())
   startedAt    DateTime?
   finishedAt   DateTime?
@@ -357,9 +364,15 @@ model MediaLibrary {
   /// JSON string[] — tags de type template : ["RPI","RTIPS","RPOD"]
   tags        String       @default("[]")
   description String?
+  /// JSON string[] — ordre explicite des setTags pour la rotation : ["tenue1-set1","tenue2-set1","tenue1-set2"]
+  setSequence String       @default("[]")
+  /// JSON Record<string,string> — setTag → famille : {"tenue1-set1":"tenue1","tenue1-set2":"tenue1","tenue2-set1":"tenue2"}
+  /// En mode auto, tous les setTags d'une même famille sont exclus ensemble après utilisation.
+  setFamilies String       @default("{}")
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   assets      MediaAsset[]
+  accountCursors AccountLibraryCursor[]
 }
 
 /// Un fichier média dans une bibliothèque (stocké sur R2).
@@ -376,12 +389,23 @@ model MediaAsset {
   duration   Float?
   /// JSON string[] — tags métier associés au fichier : ["RPI","RTIPS","RPOD"]
   tags       String    @default("[]")
-  /// Nombre de fois utilisé dans une génération
+  /// Clé de groupement pour les paires intro/outro (même lieu, même tenue).
+  /// Les assets partageant le même setTag sont sélectionnés ensemble lors d'une résolution theme_sequence.
+  setTag     String?
+  /// Catégorie de rotation : stockée par asset (permet le même nom de set dans plusieurs catégories).
+  /// L'unité de rotation est le couple (category, setTag). Null = pas de catégorie assignée.
+  category   String?
+  /// Nombre de fois utilisé dans une génération (agrégat global)
   usageCount Int          @default(0)
+  /// Dernier timestamp d'utilisation global (agrégat de tous comptes)
   lastUsedAt DateTime?
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
   editJobs   MediaEditJob[]
+  /// Entrées de contrôle d'accès (0 entrées = global/tous comptes)
+  accesses   MediaAssetAccess[]
+  /// Suivi d'utilisation par compte
+  usages     MediaAssetUsage[]
 }
 
 /// Job d'édition d'un rush (trim, audio fix). Traitement RunPod, destructif (écrase l'original).
@@ -421,6 +445,16 @@ model DataCampaign {
   isActive     Boolean     @default(true)
   /// Date du dernier reset de cycle (tous les usedInCycle remis à false)
   cycleResetAt DateTime?
+  ///
+  /// Politique d'utilisation des fiches :
+  /// - "cycle"             : tour à tour global. usedInCycle=true après usage, reset manuel.
+  /// - "cycle_per_account" : tour à tour par compte. Chaque compte consomme ses fiches
+  ///                         indépendamment ; quand tout est utilisé → recommence.
+  /// - "once_per_account"  : max 1 usage par compte. Une fois toutes les fiches utilisées
+  ///                         par un compte, plus rien n'est suggéré.
+  /// - "once_global"       : max 1 usage au total tous comptes confondus.
+  /// - "unlimited"         : pas de contrainte, toujours least_used.
+  usagePolicy  String      @default("cycle")
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
   entries      DataEntry[]
@@ -433,10 +467,163 @@ model DataEntry {
   campaign    DataCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   /// JSON — champs libres selon le templateType (ex: {quartier, prix_m2, evo_5ans_pct})
   fields      String       @default("{}")
+  /// Identifiant de set (regroupe les fiches d'un même thème/lot).
+  setTag      String?
+  /// Famille de sets — utilisé pour l'exclusion consécutive en rotation auto.
+  category    String?
   usageCount  Int          @default(0)
   lastUsedAt  DateTime?
   /// Remis à false au reset de cycle. Permet la règle "pas encore utilisé ce cycle".
   usedInCycle Boolean      @default(false)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+  accesses    DataEntryAccess[]
+  usages      DataEntryUsage[]
+}
+
+/// Compte Instagram client géré par l'admin (pas de login propre dans l'app).
+model InstagramAccount {
+  id        String   @id @default(cuid())
+  name      String
+  /// Handle Instagram sans le @
+  handle    String   @unique
+  /// "ESSENTIEL" | "CONFIRME" | "CEO"
+  offre     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  cursors            AccountLibraryCursor[]
+  renders            Render[]
+  publicationSlots   PublicationSlot[]
+  assetAccesses      MediaAssetAccess[]
+  assetUsages        MediaAssetUsage[]
+  entryAccesses      DataEntryAccess[]
+  entryUsages        DataEntryUsage[]
+}
+
+/// Contrôle d'accès d'une fiche de données par compte.
+/// 0 entrée pour une fiche = accès global. 1+ entrées = restreint aux comptes listés.
+model DataEntryAccess {
+  entryId   String
+  accountId String
+  entry     DataEntry        @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account   InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, accountId])
+}
+
+/// Suivi d'utilisation d'une fiche de données par compte.
+/// Permet la rotation indépendante pour chaque négociateur partageant une bibliothèque de données.
+model DataEntryUsage {
+  entryId    String
+  accountId  String
+  lastUsedAt DateTime?
+  usageCount Int              @default(0)
+  entry      DataEntry        @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account    InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, accountId])
+}
+
+/// Contrôle d'accès d'un asset par compte : si au moins une entrée existe pour cet asset,
+/// seuls les comptes listés peuvent utiliser cet asset. 0 entrée = accès global.
+model MediaAssetAccess {
+  assetId   String
+  accountId String
+  asset     MediaAsset       @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  account   InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, accountId])
+}
+
+/// Suivi d'utilisation par compte : compteur et date d'utilisation isolés par compte.
+/// Permet la rotation indépendante pour chaque négociateur partageant une bibliothèque.
+model MediaAssetUsage {
+  assetId    String
+  accountId  String
+  lastUsedAt DateTime?
+  usageCount Int              @default(0)
+  asset      MediaAsset       @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  account    InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, accountId])
+}
+
+/// Curseur de position dans la séquence de thèmes d'une bibliothèque, par compte Instagram.
+/// Clé composite unique (accountId, libraryId) — chaque compte avance indépendamment.
+model AccountLibraryCursor {
+  id              String           @id @default(cuid())
+  accountId       String
+  account         InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  libraryId       String
+  library         MediaLibrary     @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  /// Index courant dans MediaLibrary.setSequence (mode override uniquement)
+  cursor          Int              @default(0)
+  /// Dernier setTag utilisé — permet d'éviter deux fois le même groupe de suite (mode auto et override)
+  lastUsedSetTag  String?
+  /// Dernière catégorie utilisée — pour l'exclusion famille en mode auto (deux sets de même catégorie ne se suivent pas)
+  lastUsedCategory String?
+  lastAdvancedAt  DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([accountId, libraryId])
+}
+
+// ─── Calendrier de publication ───────────────────────────────────────────────
+
+/// Règle de planification par offre : 1 règle = 1 type de contenu, 1 jour, 1 heure.
+/// Exemple : offre=ESSENTIEL, dayOfWeek=1 (Lundi), publishTime="19:00", contentType="RVA4"
+model OfferScheduleRule {
+  id          String   @id @default(cuid())
+  /// "ESSENTIEL" | "CONFIRME" | "CEO" | "COMPTE_AGENCE"
+  offre       String
+  /// Jour ISO : 1=Lundi, 2=Mardi … 7=Dimanche
+  dayOfWeek   Int
+  /// Heure cible au format "HH:MM" (ex: "19:00")
+  publishTime String
+  /// Type de contenu : "RPI" | "RVA4" | "RVA5" | "RTIPS" | "RPOD" | "REACT" | "RQR"
+  contentType String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([offre, dayOfWeek, publishTime, contentType])
+  @@index([offre])
+  @@index([dayOfWeek])
+}
+
+/// Slot réel dans le calendrier opérationnel pour un compte Instagram donné.
+model PublicationSlot {
+  id          String           @id @default(cuid())
+  accountId   String
+  account     InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  /// Date et heure cible de publication (UTC)
+  scheduledAt DateTime
+  /// Type de contenu : "RPI" | "RVA4" | "RVA5" | "RTIPS" | "RPOD" | "REACT" | "RQR"
+  contentType String
+  /// "TO_DO" | "IN_PROGRESS" | "READY" | "CHECKING" | "DONE"
+  status      String           @default("TO_DO")
+  title       String?
+  /// Texte de la légende Instagram (pour la CM)
+  caption     String?
+  /// Champs libres saisis par l'utilisateur (JSON Record<string, string>)
+  /// ex: {"adresse":"12 rue ...","prix":"350 000 €","propriétaire":"Dupont"}
+  fields      String           @default("{}")
+  /// Noms des champs définis par l'admin ou l'utilisateur (JSON string[])
+  /// ex: ["adresse","prix","propriétaire"]
+  fieldSchema String           @default("[]")
+  /// Template lié (optionnel — peut être déterminé après création du slot)
+  templateId  String?
+  template    Template?        @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  /// Render final rattaché au slot (relation inverse de Render.publicationSlotId)
+  render      Render?
+  /// true = créé automatiquement par le moteur de génération / cron
+  isAuto      Boolean          @default(false)
+  notes       String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([accountId, scheduledAt])
+  @@index([status, scheduledAt])
+  @@index([contentType, scheduledAt])
 }

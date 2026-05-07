@@ -1,5 +1,5 @@
 ---
-name: runpod-render-ops
+name: render-engine
 description: Investigate and fix render-engine, FFmpeg, RunPod, NVENC, R2, and template-video or captions pipeline issues. Use when a task involves runpod_worker.py, render.py, template_composite.py, encoding profiles, media uploads, RunPod webhook callbacks, or local versus RunPod parity.
 ---
 

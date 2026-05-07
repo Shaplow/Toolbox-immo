@@ -11,7 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { getR2PublicUrl } from "@/lib/r2";
 import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runpod";
 import { notifyUser } from "@/lib/sseStore";
-import { recordLibraryUsage } from "@/lib/recordLibraryUsage";
+import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsage";
 import { RENDER_STAGE } from "@/lib/renderer/renderWorkflow";
 
 type RenderOutput = {
@@ -93,6 +93,7 @@ export async function POST(req: NextRequest) {
       status: "ERROR",
       errorMsg,
     });
+    void revertLibraryCursors(render.id);
     console.error(`[webhook/renders] render=${render.id} failed: ${errorMsg}`);
   }
 

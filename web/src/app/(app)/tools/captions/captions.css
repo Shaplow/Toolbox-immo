@@ -974,6 +974,32 @@
   border-color: var(--cx-accent-h);
 }
 
+.cx .cx-editor-split-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  width: 18px;
+  min-height: 18px;
+  margin: 0 1px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: transparent;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.1s, background 0.1s;
+}
+
+.cx .cx-editor-words-text:hover .cx-editor-split-btn {
+  color: #c4b5fd;
+}
+
+.cx .cx-editor-split-btn:hover {
+  color: #7c3aed !important;
+  background: #ede9fe;
+}
+
 /* ── responsive ─────────────────────────────────────── */
 @media (min-width: 1101px) {
   .cx .cx-right-col {

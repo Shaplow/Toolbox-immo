@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
 import Link from "next/link";
-import { Video, Database } from "lucide-react";
+import { Video, Database, Instagram, Type, MessageSquare } from "lucide-react";
 
 export default async function LibrariesHubPage() {
   const userContext = await getUserContext();
@@ -42,6 +42,45 @@ export default async function LibrariesHubPage() {
           <div>
             <p className="font-medium text-gray-900">Bibliothèques de données</p>
             <p className="text-sm text-gray-500 mt-0.5">Données texte RPI, RTIPS… importées depuis Excel</p>
+          </div>
+        </Link>
+
+        <Link
+          href="/admin/accounts"
+          className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-pink-300 hover:bg-pink-50 transition-colors"
+        >
+          <div className="p-2 bg-pink-100 rounded-lg text-pink-600">
+            <Instagram size={20} />
+          </div>
+          <div>
+            <p className="font-medium text-gray-900">Comptes Instagram</p>
+            <p className="text-sm text-gray-500 mt-0.5">Clients avec séquence de thèmes et curseurs</p>
+          </div>
+        </Link>
+
+        <Link
+          href="/admin/fonts"
+          className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-violet-300 hover:bg-violet-50 transition-colors"
+        >
+          <div className="p-2 bg-violet-100 rounded-lg text-violet-600">
+            <Type size={20} />
+          </div>
+          <div>
+            <p className="font-medium text-gray-900">Typographies</p>
+            <p className="text-sm text-gray-500 mt-0.5">Polices personnalisées chargées dans les templates</p>
+          </div>
+        </Link>
+
+        <Link
+          href="/admin/prompts"
+          className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-amber-300 hover:bg-amber-50 transition-colors"
+        >
+          <div className="p-2 bg-amber-100 rounded-lg text-amber-600">
+            <MessageSquare size={20} />
+          </div>
+          <div>
+            <p className="font-medium text-gray-900">Prompts IA</p>
+            <p className="text-sm text-gray-500 mt-0.5">Prompts de génération de descriptions immobilières</p>
           </div>
         </Link>
       </div>

@@ -1,4 +1,7 @@
-gradio>=4.44.0
+# gradio est intentionnellement absent ici : il est uniquement utilisé par app.py (UI locale hors Docker).
+# L'inclure crée un conflit huggingface-hub entre gradio 6.x et pyannote-audio 4.x sur aarch64,
+# ce qui force pip à backtracker jusqu'à pyannote 3.x → lightning>=2.0.1 introuvable sur aarch64.
+# Pour utiliser app.py en dehors de Docker : pip install gradio
 pillow>=10.4.0
 pydantic>=2.8.0
 fastapi>=0.115.0
@@ -9,7 +12,9 @@ httpx>=0.27.0
 boto3>=1.34.0
 
 # Transcription (WhisperX + faster-whisper)
-whisperx>=3.1.0
+# Épinglé à 3.8.5 : la contrainte >=3.1.0 déclenchait un backtracking massif de pip
+# (3.8.x → 3.7.x → ... → 3.2.0) qui finissait sur pyannote.audio==3.1.1 → lightning fail.
+whisperx==3.8.5
 faster-whisper>=1.0.0
 
 # Derush vision pipeline

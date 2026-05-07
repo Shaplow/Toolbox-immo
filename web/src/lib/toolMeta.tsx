@@ -91,9 +91,9 @@ export const TOOL_META: Record<ToolKey, ToolMeta> = {
 /** Ordered list of tool keys as they should appear in the UI. */
 export const TOOL_ORDER: ToolKey[] = [
   "templates",
-  "captions",
   "transcription",
+  "captions",
   "description",
-  "derush",
   "covers",
+  "derush",
 ];

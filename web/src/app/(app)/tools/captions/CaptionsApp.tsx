@@ -278,21 +278,67 @@ export default function CaptionsApp({
     // Set to true when we hand off to SSE/polling — finally block must NOT reset busy
     let submittedToRunPod = false
     try {
-      const form = new FormData()
-      form.append('video', videoFile)
-      form.append('subtitles', srtBlob, srtFileName)
-      form.append('config', JSON.stringify(config))
-      form.append('preview_mode', mode === 'render-preview' ? 'true' : 'false')
+      // ── Mode RunPod : URL présignée (upload direct browser → R2) ─────────
+      // Essayer le mode presigned d'abord ; 503 = fallback multipart (local)
+      const prepRes = await fetch('/api/render/captions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename:    videoFile.name,
+          ext:         videoFile.name.split('.').pop()?.toLowerCase() ?? 'mp4',
+          srtContent,
+          srtFilename,
+          config,
+          previewMode: mode === 'render-preview',
+        }),
+      })
 
-      const submitRes = await fetch('/api/render/captions', { method: 'POST', body: form })
-      if (!submitRes.ok) {
-        const err = await submitRes.json().catch(() => ({ error: submitRes.statusText }))
-        throw new Error(err.error ?? submitRes.statusText)
+      let captionJobId: string
+      let immediateVideoUrl: string | undefined
+
+      if (prepRes.ok) {
+        const { captionJobId: jobId, uploadUrl } = await prepRes.json() as { captionJobId: string; uploadUrl: string }
+        captionJobId = jobId
+
+        // Upload direct vers R2 — contourne le serveur Next.js
+        setMessage('Upload vidéo…')
+        setRenderProgress(0.25)
+        const r2Res = await fetch(uploadUrl, {
+          method: 'PUT',
+          body: videoFile,
+          headers: { 'Content-Type': videoFile.type || 'video/mp4' },
+        })
+        if (!r2Res.ok) throw new Error(`Upload R2 échoué : ${r2Res.status}`)
+
+        // Soumettre à RunPod
+        setMessage('Soumission RunPod…')
+        setRenderProgress(0.45)
+        const submitRes = await fetch(`/api/render/captions/${captionJobId}/submit`, { method: 'POST' })
+        if (!submitRes.ok) {
+          const err = await submitRes.json().catch(() => ({ error: submitRes.statusText })) as { error?: string }
+          throw new Error(err.error ?? submitRes.statusText)
+        }
+      } else if (prepRes.status === 503) {
+        // ── Mode local (USE_RUNPOD=false) : fallback multipart ───────────────
+        const form = new FormData()
+        form.append('video', videoFile)
+        form.append('subtitles', srtBlob, srtFileName)
+        form.append('config', JSON.stringify(config))
+        form.append('preview_mode', mode === 'render-preview' ? 'true' : 'false')
+        const fallbackRes = await fetch('/api/render/captions', { method: 'POST', body: form })
+        if (!fallbackRes.ok) {
+          const err = await fallbackRes.json().catch(() => ({ error: fallbackRes.statusText })) as { error?: string }
+          throw new Error(err.error ?? fallbackRes.statusText)
+        }
+        const fallbackData = await fallbackRes.json() as { captionJobId?: string; videoUrl?: string }
+        captionJobId = fallbackData.captionJobId!
+        immediateVideoUrl = fallbackData.videoUrl
+      } else {
+        const err = await prepRes.json().catch(() => ({ error: prepRes.statusText })) as { error?: string }
+        throw new Error(err.error ?? prepRes.statusText)
       }
-      const submitData = await submitRes.json()
-      const { captionJobId, videoUrl: immediateVideoUrl } = submitData
 
-      // ── Mode local : videoUrl déjà dans la réponse, pas besoin de polluer ──
+      // ── Mode local : videoUrl déjà dans la réponse ───────────────────────
       if (immediateVideoUrl) {
         setVideoUrl(immediateVideoUrl)
         setRenderProgress(1)
@@ -301,13 +347,13 @@ export default function CaptionsApp({
       }
 
       setMessage('Job RunPod soumis — en attente du résultat…')
-      setRenderProgress(0.15)
+      setRenderProgress(0.5)
       clearInterval(fakeProgressTimer) // stop fake progress, SSE/polling takes over
 
       // ── Mode RunPod : SSE primaire + polling fallback 10s ────────────────
       submittedToRunPod = true
       renderingModeRef.current = mode as 'render-preview' | 'render-full'
-      setRenderingJobId(captionJobId)
+      setRenderingJobId(captionJobId!)
       // Effects above will handle busy state + videoUrl when job completes
       return
     } catch (error) {

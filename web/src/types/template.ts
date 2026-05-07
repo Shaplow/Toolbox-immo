@@ -99,10 +99,16 @@ export interface BaseBlock {
   locked?: boolean;  // si true : pas de drag/resize accidentel
   binding?: string; // variable name from schema
   animations: AnimationDef[]; // V2 — kept empty in V1
-  /** Seconde d'apparition dans la vidéo. undefined ou 0 = dès le début. Ne s'applique que pour les templates vidéo. */
+  /** Seconde d'apparition dans la vidéo (global). undefined ou 0 = dès le début. Ne s'applique que pour les templates vidéo. */
   appearAt?: number;
-  /** Seconde de disparition dans la vidéo. undefined = visible jusqu'à la fin. Ne s'applique que pour les templates vidéo. */
+  /** Seconde de disparition dans la vidéo (global). undefined = visible jusqu'à la fin. Ne s'applique que pour les templates vidéo. */
   hideAt?: number;
+  /**
+   * Overrides de timing par slot de séquence. Clé = slot.id.
+   * Prioritaire sur `appearAt`/`hideAt` pour ce slot spécifique.
+   * Permet d'avoir un bloc qui apparaît à 2s dans le clip 1 et à 0.5s dans le clip 2.
+   */
+  slotTimings?: Record<string, { appearAt?: number; hideAt?: number }>;
   /** Règles conditionnelles du bloc (modèle actuel). */
   conditionalRules?: BlockConditionalRule[];
   /** @deprecated Compat legacy lu puis normalisé côté application. */
@@ -224,24 +230,60 @@ export interface ImageBlock extends BaseBlock {
 }
 
 /**
+ * Condition de filtre par tag sur un asset de bibliothèque.
+ * Plusieurs conditions peuvent être combinées avec AND ou OR.
+ */
+export interface TagCondition {
+  /**
+   * Valeur littérale du tag, OU clé d'un champ du schéma si `fromParam` est true.
+   * Ex: "lola" (littéral) ou "agent" (champ schéma → formData["agent"]).
+   */
+  tag: string;
+  /** Si true, la valeur de `tag` est une clé de champ résolue à la génération. */
+  fromParam?: boolean;
+  /** Si true, l'asset NE doit PAS avoir ce tag. */
+  negate?: boolean;
+}
+
+/**
  * Règle de sélection structurée pour les assets de bibliothèque média.
- * Permet de combiner une stratégie de tri avec un filtre optionnel par tag.
+ * Permet de combiner une stratégie de tri avec des filtres optionnels par tag et compte IG.
  */
 export interface MediaSelectionRuleConfig {
   /** Stratégie de sélection. */
-  strategy: "least_used" | "oldest_used" | "random" | "manual";
+  strategy: "least_used" | "oldest_used" | "random" | "manual" | "theme_sequence";
   /**
    * Tag littéral — restreint la sélection aux assets ayant ce tag.
+   * Rétrocompatibilité : préférer `tagConditions` pour les nouvelles règles.
    * Prioritaire sur tagFilterParam si les deux sont définis.
    */
   tagFilter?: string;
   /**
-   * Clé d'un champ du schéma du template dont la valeur sera utilisée comme
-   * tag de filtre à la génération. Permet d'avoir une règle dynamique par
-   * agent/négociateur sans dupliquer le template.
-   * Ex: "agent" → formData["agent"] = "martin" → filtre par tag "martin".
+   * Clé d'un champ du schéma dont la valeur sera utilisée comme tag de filtre.
+   * Rétrocompatibilité : préférer `tagConditions` pour les nouvelles règles.
    */
   tagFilterParam?: string;
+  /**
+   * Liste de conditions de filtre par tag.
+   * Remplace tagFilter/tagFilterParam pour les nouvelles règles.
+   */
+  tagConditions?: TagCondition[];
+  /**
+   * Opérateur logique entre les conditions de `tagConditions`.
+   * "AND" (défaut) = l'asset doit satisfaire toutes les conditions.
+   * "OR" = l'asset doit satisfaire au moins une condition.
+   */
+  tagConditionsOperator?: "AND" | "OR";
+  /**
+   * Filtre par compte Instagram (handle/identifiant littéral).
+   * L'asset doit avoir ce tag (convention : les assets sont tagués avec le handle IG).
+   */
+  igAccountFilter?: string;
+  /**
+   * Clé d'un champ du schéma dont la valeur sera utilisée comme filtre compte IG.
+   * Résolue depuis formData à la génération.
+   */
+  igAccountFilterParam?: string;
 }
 
 /**
@@ -252,6 +294,7 @@ export type MediaSelectionRule =
   | "oldest_used"
   | "least_used"
   | "manual"
+  | "theme_sequence"
   | MediaSelectionRuleConfig;
 
 /**
@@ -329,6 +372,20 @@ export interface MusicBlock extends BaseBlock {
   libraryId?: string;
   /** Règle de sélection automatique depuis la bibliothèque audio. */
   audioSelectionRule?: MediaSelectionRule;
+  /**
+   * Overrides audio comportement par slot de séquence. Clé = slot.id.
+   * Prioritaire sur les champs globaux pour ce slot spécifique.
+   */
+  slotAudio?: Record<string, {
+    /** Volume override pour ce slot (0–1). Utilise `volume` si absent. */
+    volume?: number;
+    /** Silence total sur ce slot. */
+    mute?: boolean;
+    /** Commence à lire à cette position en secondes dans ce clip (défaut 0). */
+    startAt?: number;
+    /** S'arrête à cette position en secondes dans ce clip. */
+    stopAt?: number;
+  }>;
 }
 
 export type AnyBlock =
@@ -350,6 +407,18 @@ export type SchemaFieldType =
   | "boolean"
   | "url";
 
+/**
+ * Source dynamique d'options pour un champ "select".
+ * Au lieu d'une liste statique, les options sont chargées depuis une
+ * bibliothèque média au moment de l'affichage du formulaire.
+ */
+export interface SchemaFieldOptionsSource {
+  /** Seul type supporté actuellement : comptes IG ayant du contenu dans la bibliothèque. */
+  type: "ig-accounts-from-library";
+  /** ID de la MediaLibrary à interroger. */
+  libraryId: string;
+}
+
 export interface SchemaField {
   key: string; // ex: "price_eur"
   label: string; // ex: "Prix (€)"
@@ -358,7 +427,9 @@ export interface SchemaField {
   type: SchemaFieldType;
   required: boolean;
   description?: string; // hint affiché sous le champ dans le formulaire
-  options?: string[]; // pour type "select"
+  options?: string[]; // pour type "select" avec liste statique
+  /** Source dynamique d'options (remplace `options` si défini). */
+  optionsSource?: SchemaFieldOptionsSource;
   default?: unknown;
   placeholder?: string;
   formatThousands?: boolean;
@@ -396,6 +467,40 @@ export interface TemplateFormSection {
   layout?: TemplateFormSectionLayout;
 }
 
+/**
+ * Slot dans une séquence vidéo multi-clip (intro → contenu → outro).
+ * Lorsque `videoSequence` est défini sur un template, le pipeline
+ * « render_sequence » est utilisé au lieu du pipeline vidéo standard.
+ */
+export interface VideoSequenceSlot {
+  /** Identifiant interne du slot (généré automatiquement). */
+  id: string;
+  /** Nom affiché dans l'interface (ex: "Accroche", "Tour du bien", "Logo fin"). */
+  label?: string;
+  /** Clé du schéma pour la vidéo fournie manuellement dans le formulaire. */
+  binding?: string;
+  /** ID de la MediaLibrary (type="video") pour la résolution automatique. */
+  libraryId?: string;
+  /** Règle de sélection depuis la bibliothèque. "theme_sequence" pour intro/outro. */
+  selectionRule?: MediaSelectionRule;
+  /**
+   * ID explicite du VideoBlock du template que ce slot utilise pour le positionnement
+   * (x, y, w, h, fit) lors du composite FFmpeg.
+   * Si absent, le pipeline cherche un VideoBlock dont le binding = slot.binding.
+   * S'il n'en trouve pas, canvas complet (0, 0, w, h, cover) est utilisé.
+   */
+  videoBlockId?: string;
+  /**
+   * IDs des groupes de blocs visibles dans l'overlay de ce slot.
+   * - `undefined` : tous les blocs visibles (overlay complet).
+   * - `[]`        : aucun overlay (vidéo nue, sans titre).
+   * - `["ID1"]`   : seulement les blocs de ces groupes.
+   */
+  overlayGroupIds?: string[];
+  /** Cap optionnel sur la durée de ce clip en secondes. */
+  maxDuration?: number;
+}
+
 // ─── Template JSON (structure complète) ────────────────────────────────────────
 export interface TemplateJSON {
   canvas: TemplateCanvas;
@@ -413,6 +518,19 @@ export interface TemplateJSON {
     /** Règle de sélection automatique d'une DataEntry. */
     dataSelectionRule?: "not_used_in_cycle" | "least_used" | "manual";
   };
+  /**
+   * Contrôle la façon dont le formulaire de génération est présenté.
+   * - "manual" (défaut) : formulaire affiché, valeurs pré-remplies depuis la DataCampaign
+   * - "auto" : pas de formulaire — tout est résolu depuis les bibliothèques et la DataCampaign
+   * - "both" : l'utilisateur choisit le mode au moment de lancer la génération
+   */
+  generationMode?: "manual" | "auto" | "both";
+  /**
+   * Séquence de clips vidéo ordonnés (intro → contenu → outro).
+   * Si défini, le pipeline `render_sequence` est utilisé.
+   * Si absent ou vide, comportement standard (bloc vidéo unique).
+   */
+  videoSequence?: VideoSequenceSlot[];
   timeline?: undefined; // V2 placeholder
 }
 

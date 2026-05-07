@@ -71,12 +71,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Bibliothèque introuvable" }, { status: 404 });
   }
 
-  const body = await req.json() as { name?: string; isActive?: boolean };
-  const { name, isActive = false } = body;
+  const body = await req.json() as { name?: string; isActive?: boolean; usagePolicy?: string };
+  const { name, isActive = false, usagePolicy = "cycle" } = body;
 
   if (!name?.trim()) {
     return NextResponse.json({ error: "Le nom est requis" }, { status: 400 });
   }
+
+  const VALID_POLICIES = ["cycle", "cycle_per_account", "once_per_account", "once_global", "unlimited"];
+  const policy = VALID_POLICIES.includes(usagePolicy) ? usagePolicy : "cycle";
 
   // Si la nouvelle campaign doit être active, désactiver les autres
   try {
@@ -92,6 +95,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           libraryId: libId,
           name: name.trim(),
           isActive,
+          usagePolicy: policy,
         },
       });
     });

@@ -4,6 +4,7 @@ import { hasTool } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { DescriptionTool, type DescriptionPromptRow, type DescriptionJobRow } from "@/components/description/DescriptionTool";
 import { FileText } from "lucide-react";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 
 export default async function DescriptionPage() {
   const userContext = await getUserContext();
@@ -60,17 +61,12 @@ export default async function DescriptionPage() {
 
   return (
     <div className="p-8">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="w-10 h-10 bg-amber-500 rounded-xl flex items-center justify-center text-white shrink-0">
-          <FileText size={20} />
-        </div>
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Générateur de descriptions</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Créez des descriptions à partir d&apos;un fichier SRT/JSON, d&apos;une transcription existante ou uniquement d&apos;une image si besoin.
-          </p>
-        </div>
-      </div>
+      <ToolPageHeader
+        icon={FileText}
+        iconColor="amber"
+        title="Générateur de descriptions"
+        subtitle="Créez des descriptions à partir d'un fichier SRT/JSON, d'une transcription existante ou uniquement d'une image si besoin."
+      />
 
       <DescriptionTool
         initialPrompts={initialPrompts}

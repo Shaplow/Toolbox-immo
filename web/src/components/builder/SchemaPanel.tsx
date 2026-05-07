@@ -179,7 +179,8 @@ export function SchemaPanel() {
       key: newField.key.trim(),
       label: newField.label.trim() || newField.key.trim(),
       description: newField.description || undefined,
-      options: newField.type === "select" ? parseSelectOptions(newOptionsDraft) : undefined,
+      optionsSource: newField.type === "select" ? newField.optionsSource : undefined,
+      options: newField.type === "select" && !newField.optionsSource ? parseSelectOptions(newOptionsDraft) : undefined,
     };
     setSchema([...schema, nextField]);
     setKeyError("");
@@ -192,7 +193,8 @@ export function SchemaPanel() {
       key: editingDraft.key,
       label: editingDraft.label.trim() || editingDraft.key,
       description: editingDraft.description || undefined,
-      options: editingDraft.type === "select" ? parseSelectOptions(editingOptionsDraft) : undefined,
+      optionsSource: editingDraft.type === "select" ? editingDraft.optionsSource : undefined,
+      options: editingDraft.type === "select" && !editingDraft.optionsSource ? parseSelectOptions(editingOptionsDraft) : undefined,
     };
     updateField(editingKey, nextField);
     stopEditing();
@@ -578,6 +580,99 @@ export function SchemaPanel() {
   );
 }
 
+/** Sous-composant pour la section "Options" d'un champ select. */
+function SelectOptionsEditor({
+  field,
+  optionsDraft,
+  onOptionsDraftChange,
+  onFieldChange,
+}: {
+  field: SchemaFieldDraft;
+  optionsDraft: string;
+  onOptionsDraftChange: (v: string) => void;
+  onFieldChange: (changes: Partial<SchemaFieldDraft>) => void;
+}) {
+  const isDynamic = field.optionsSource?.type === "ig-accounts-from-library";
+  const [videoLibraries, setVideoLibraries] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    if (!isDynamic && field.optionsSource === undefined) return;
+    fetch("/api/admin/libraries/media?type=video")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: { id: string; name: string }[]) => setVideoLibraries(data))
+      .catch(() => {});
+  }, [isDynamic, field.optionsSource]);
+
+  return (
+    <div className="flex flex-col gap-2">
+      {/* Mode toggle */}
+      <span className="text-gray-500">Options</span>
+      <div className="flex rounded-lg overflow-hidden border border-gray-200 text-[11px]">
+        <button
+          type="button"
+          onClick={() => onFieldChange({ optionsSource: undefined })}
+          className={`flex-1 px-2 py-1.5 transition-colors ${!isDynamic ? "bg-indigo-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+        >
+          Manuelle
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setVideoLibraries([]);
+            fetch("/api/admin/libraries/media?type=video")
+              .then((r) => r.ok ? r.json() : [])
+              .then((data: { id: string; name: string }[]) => setVideoLibraries(data))
+              .catch(() => {});
+            onFieldChange({ optionsSource: { type: "ig-accounts-from-library", libraryId: "" }, options: undefined });
+          }}
+          className={`flex-1 px-2 py-1.5 transition-colors ${isDynamic ? "bg-indigo-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+        >
+          Comptes IG d&apos;une lib
+        </button>
+      </div>
+
+      {!isDynamic ? (
+        <label className="flex flex-col gap-1">
+          <textarea
+            rows={4}
+            value={optionsDraft}
+            onChange={(e) => {
+              onOptionsDraftChange(e.target.value);
+              const options = parseSelectOptions(e.target.value);
+              onFieldChange({
+                options,
+                default: typeof field.default === "string" && options.includes(field.default) ? field.default : options[0] ?? undefined,
+              });
+            }}
+            placeholder={"vendeur\nacquéreur"}
+            className="border border-gray-200 rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400 font-mono text-[11px]"
+          />
+          <span className="text-[10px] text-gray-400">Une option par ligne.</span>
+        </label>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          <label className="flex flex-col gap-1">
+            <span className="text-gray-500">Bibliothèque vidéo</span>
+            <select
+              value={field.optionsSource?.libraryId ?? ""}
+              onChange={(e) => onFieldChange({ optionsSource: { type: "ig-accounts-from-library", libraryId: e.target.value } })}
+              className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            >
+              <option value="">Choisir une bibliothèque…</option>
+              {videoLibraries.map((lib) => (
+                <option key={lib.id} value={lib.id}>{lib.name}</option>
+              ))}
+            </select>
+          </label>
+          <p className="text-[10px] text-indigo-600 bg-indigo-50 rounded px-2 py-1 leading-relaxed">
+            Les options du select seront auto-remplies avec les comptes Instagram qui ont du contenu dans cette bibliothèque.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SchemaFieldEditor({
   mode,
   field,
@@ -676,24 +771,12 @@ function SchemaFieldEditor({
         </label>
 
         {field.type === "select" && (
-          <label className="flex flex-col gap-1">
-            <span className="text-gray-500">Options</span>
-            <textarea
-              rows={4}
-              value={optionsDraft}
-              onChange={(e) => {
-                onOptionsDraftChange(e.target.value);
-                const options = parseSelectOptions(e.target.value);
-                onFieldChange({
-                  options,
-                  default: typeof field.default === "string" && options.includes(field.default) ? field.default : options[0] ?? undefined,
-                });
-              }}
-              placeholder={"vendeur\nacquéreur"}
-              className="border border-gray-200 rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400 font-mono text-[11px]"
-            />
-            <span className="text-[10px] text-gray-400">Une option par ligne.</span>
-          </label>
+          <SelectOptionsEditor
+            field={field}
+            optionsDraft={optionsDraft}
+            onOptionsDraftChange={onOptionsDraftChange}
+            onFieldChange={onFieldChange}
+          />
         )}
 
         {field.type === "number" && (

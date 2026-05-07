@@ -13,7 +13,7 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
    - captions, transcription, or file-upload workflow orchestration
    - derush workflow (analysis, scoring, segment overrides, export)
    - description generation workflow (Claude/GPT, prompts, transcript/image inputs)
-   - content library (MediaLibrary, DataLibrary, selection rules, generation pre-fill, asset editing)
+   - content library (MediaLibrary, MediaAsset, setTag, setSequence, AccountLibraryCursor, DataLibrary, selection rules, set_sequence rotation, generation pre-fill, asset editing, offer-based automation)
    - admin, permissions, or impersonation
    - render-engine, FFmpeg, RunPod, storage pipeline, or webhook callbacks
    - UI and UX cleanup
@@ -37,22 +37,38 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
 
 ## Skills Available In Repo
 
-- `.github/skills/template-builder-debug/`
-- `.github/skills/runpod-render-ops/` — render engine, FFmpeg, RunPod, webhooks, R2
+- `.github/skills/template-builder/`
+- `.github/skills/render-engine/` — render engine, FFmpeg, RunPod, webhooks, R2
 - `.github/skills/captions-transcription/`
 - `.github/skills/ass-rendering/` — ASS file generation: line spacing, shadows, glow, animation presets, libass quirks
-- `.github/skills/ui-ux-remediation/`
+- `.github/skills/ui-design/`
 - `.github/skills/app-hardening/`
 - `.github/skills/security-review/`
 - `.github/skills/admin-permissions/`
 - `.github/skills/derush/`
-- `.github/skills/content-library/` — MediaLibrary, MediaAsset, DataLibrary, DataCampaign, DataEntry, builder bindings, selection rules, generation pre-fill, asset editing via RunPod, usage tracking
+- `.github/skills/content-library/` — MediaLibrary, MediaAsset (setTag, category, tags, setSequence), MediaAssetAccess, MediaAssetUsage, DataLibrary, DataCampaign, DataEntry, AccountLibraryCursor, builder bindings, selection rules (theme_sequence/oldest_used/least_used), generation pre-fill, recordLibraryUsage, offer-based automation
+- `.github/skills/asset-rotation/` — rotation algorithm internals: auto mode (group discovery, category exclusion, per-account ordering), override mode (cursor), pickFromGroup, per-account isolation via MediaAssetUsage, rotation simulation, common bugs, extending to DataEntry
 - `.github/skills/description-generation/` — DescriptionJob, DescriptionPrompt, Claude/GPT generation, transcript/image inputs, admin prompt management
 
 ## Agents Available In Repo
 
 - `.github/agents/toolbox-generalist.agent.md` — default implementation agent
+- `.github/agents/feature-planner.agent.md` — interviews for product vision, produces a phased plan with commit boundaries and agent handoff
 - `.github/agents/skill-manager.agent.md` — maintains skills, agents, and repo docs
+- `.github/agents/code-reviewer.agent.md` — reviews code for quality, conventions, and regression risk; produces a report, does not implement
+- `.github/agents/security-auditor.agent.md` — OWASP paper audit: auth, permissions, inputs, secrets, uploads; produces a threat report, does not implement
+- `.github/agents/bug-hunter.agent.md` — hunts bugs, edge cases, and integration failures in a specific module; produces a ranked bug report, does not implement
+- `.github/agents/ux-auditor.agent.md` — walks through a module as a user, audits the full workflow experience, surfaces friction points and missing states; produces a ranked friction report, does not implement
+
+## Prompts Available In Repo
+
+Stored in `.github/prompts/` — invoke with `/` in Copilot chat:
+
+- `implement-feature` — feed a planner output into toolbox-generalist for phase-by-phase implementation
+- `review-feature` — trigger code-reviewer on a list of modified files
+- `hunt-bugs` — trigger bug-hunter on a specific module
+- `security-audit` — trigger security-auditor on a specific surface
+- `triage` — describe your task and get a routing recommendation (which agent, which order)
 
 ## Validation Rule
 

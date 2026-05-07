@@ -23,6 +23,7 @@ from engine.template_composite import (
     OverlaySegment,
     build_template_ffmpeg_cmd,
     build_template_ffmpeg_cmd_timed,
+    build_template_ffmpeg_cmd_video_only,
     normalize_video_block,
 )
 from engine.encoding_profiles import build_caption_encoding_settings
@@ -476,6 +477,315 @@ async def render_template_local(
             pass
 
     return {"videoUrl": f"/outputs/temp/api/{out_path.name}"}
+
+
+@app.post("/api/render_sequence")
+async def render_sequence_local(request: Request):
+    """
+    Mode local (USE_RUNPOD=false) : assemble a multi-clip video sequence.
+
+    JSON body:
+      canvas        : {width, height}
+      slots         : list of slot objects:
+        slot_id              : str
+        video_url            : str
+        video_block          : {x, y, w, h, fit}
+        overlay_data?        : base64 PNG | null          — single overlay (legacy)
+        overlay_data_list?   : list[base64 PNG | null]   — timed overlays
+        overlay_segments?    : list[{index, start, end}]
+        max_duration?        : float
+        music_source_volume? : float  (default 1.0)
+        music_mute_source?   : bool   (default false)
+        music_start_at?      : float  (unused server-side for now)
+        music_stop_at?       : float  (unused server-side for now)
+      export_profile: "template" (default)
+      music_url?    : URL of audio track to mix
+      music_volume? : float (default 0.3)
+      music_loop?   : bool
+      music_fade_in?: float seconds
+      music_fade_out?: float seconds
+
+    Returns: {"videoUrl": "/outputs/..."}
+    """
+    import base64
+    import subprocess as _sp
+    import httpx
+
+    body = await request.json()
+    canvas: dict = body.get("canvas", {})
+    slots: list[dict] = body.get("slots", [])
+    export_profile = str(body.get("export_profile", "template") or "template")
+    music_url: str | None = body.get("music_url")
+    _music_volume = float(body.get("music_volume", 0.3))
+    # Global fallbacks (kept for backward compat; per-slot values take precedence)
+    _global_music_source_volume = float(body.get("music_source_volume", 1.0))
+    _global_music_mute_source = bool(body.get("music_mute_source", False))
+    _music_loop = bool(body.get("music_loop", False))
+    _music_fade_in = float(body.get("music_fade_in", 0))
+    _music_fade_out = float(body.get("music_fade_out", 0))
+    _global_max_duration: float | None = float(body["max_duration"]) if body.get("max_duration") is not None else None
+
+    canvas_w = int(canvas.get("width", 1080))
+    canvas_h = int(canvas.get("height", 1920))
+
+    if not slots:
+        raise HTTPException(status_code=400, detail="'slots' est requis et ne peut pas être vide")
+
+    work_dir = OUTPUTS_DIR / "temp" / "api"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    stamp = int(time.time() * 1000)
+
+    clip_paths: list[Path] = []
+    any_audio = False
+    final_path: Path | None = None
+
+    try:
+        for i, slot in enumerate(slots):
+            slot_id = slot.get("slot_id", str(i))
+            video_url: str = slot["video_url"]
+            block: dict = slot.get("video_block", {"x": 0, "y": 0, "w": canvas_w, "h": canvas_h, "fit": "cover"})
+            max_dur: float | None = float(slot["max_duration"]) if slot.get("max_duration") is not None else None
+            # Per-slot audio params
+            slot_source_volume = float(slot.get("music_source_volume", _global_music_source_volume))
+            slot_mute_source = bool(slot.get("music_mute_source", _global_music_mute_source))
+
+            # Timed overlays vs single overlay
+            timed_slot = "overlay_data_list" in slot
+            if timed_slot:
+                overlay_data_list: list[str | None] = slot["overlay_data_list"]
+                raw_segments = slot["overlay_segments"]
+                slot_segments = [
+                    {"index": int(s["index"]), "start": float(s["start"]), "end": float(s["end"]) if s.get("end") is not None else None}
+                    for s in raw_segments
+                ]
+            else:
+                overlay_data: str | None = slot.get("overlay_data")  # base64 PNG or null
+
+            # Download video
+            video_ext = Path(video_url.split("?")[0]).suffix or ".mp4"
+            video_path = work_dir / f"seq_{stamp}_slot{i}_video{video_ext}"
+            try:
+                async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+                    resp = await client.get(video_url)
+                    resp.raise_for_status()
+                    video_path.write_bytes(resp.content)
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=f"Impossible de télécharger la vidéo du slot={slot_id}: {exc}")
+
+            video_info = probe_video(video_path)
+            if video_info.has_audio:
+                any_audio = True
+
+            normalized_block = normalize_video_block(block, canvas_w, canvas_h)
+            clip_path = work_dir / f"seq_{stamp}_clip{i}.mp4"
+
+            _codec, _codec_args, _audio_codec, _audio_args, _ = build_caption_encoding_settings(
+                export_profile, video_info, use_nvenc=False, preview=False, for_composite=True
+            )
+
+            if timed_slot:
+                seg_clip_paths: list[Path] = []
+                for seg_i, seg in enumerate(slot_segments):  # type: ignore[possibly-undefined]
+                    seg_b64 = overlay_data_list[seg["index"]] if overlay_data_list[seg["index"]] else None  # type: ignore[possibly-undefined]
+                    seg_dur: float | None = (seg["end"] - seg["start"]) if seg["end"] is not None else None
+                    if seg_dur is not None and max_dur is not None:
+                        seg_dur = min(seg_dur, max_dur - seg["start"])
+                    seg_out = work_dir / f"seq_{stamp}_slot{i}_seg{seg_i}.mp4"
+
+                    trim_path = work_dir / f"seq_{stamp}_slot{i}_seg{seg_i}_trim.mp4"
+                    trim_cmd = [
+                        "ffmpeg", "-y",
+                        "-ss", str(seg["start"]),
+                        *(["-t", str(seg_dur)] if seg_dur is not None else []),
+                        "-i", str(video_path),
+                        "-c", "copy", str(trim_path),
+                    ]
+                    await asyncio.to_thread(_sp.run, trim_cmd, capture_output=True, check=True, timeout=2 * 60)
+
+                    if seg_b64:
+                        seg_overlay_path = work_dir / f"seq_{stamp}_slot{i}_seg{seg_i}_overlay.png"
+                        seg_overlay_path.write_bytes(base64.b64decode(seg_b64))
+                        seg_cmd = build_template_ffmpeg_cmd(
+                            video_path=trim_path, overlay_path=seg_overlay_path, out_path=seg_out,
+                            block=normalized_block, video_codec=_codec, video_codec_args=_codec_args,
+                            audio_codec=_audio_codec, audio_codec_args=_audio_args,
+                            max_duration=None, source_has_audio=video_info.has_audio,
+                        )
+                    else:
+                        seg_cmd = build_template_ffmpeg_cmd_video_only(
+                            video_path=trim_path, out_path=seg_out,
+                            block=normalized_block, video_codec=_codec, video_codec_args=_codec_args,
+                            audio_codec=_audio_codec, audio_codec_args=_audio_args,
+                            max_duration=None, source_has_audio=video_info.has_audio,
+                        )
+                    proc = await asyncio.to_thread(_sp.run, seg_cmd, capture_output=True, text=True, timeout=10 * 60)
+                    if proc.returncode != 0:
+                        raise HTTPException(status_code=500, detail=f"FFmpeg timed-overlay error slot={slot_id} seg={seg_i}: {proc.stderr[-800:]}")
+                    seg_clip_paths.append(seg_out)
+
+                if len(seg_clip_paths) == 1:
+                    clip_path = seg_clip_paths[0]
+                else:
+                    seg_concat = work_dir / f"seq_{stamp}_slot{i}_segconcat.txt"
+                    seg_concat.write_text("\n".join(f"file '{p.resolve()}'" for p in seg_clip_paths), encoding="utf-8")
+                    concat_proc = await asyncio.to_thread(_sp.run, [
+                        "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(seg_concat), "-c", "copy", str(clip_path)
+                    ], capture_output=True, text=True, timeout=5 * 60)
+                    if concat_proc.returncode != 0:
+                        raise HTTPException(status_code=500, detail=f"FFmpeg timed-overlay concat error slot={slot_id}: {concat_proc.stderr[-800:]}")
+            else:
+                if overlay_data:  # type: ignore[possibly-undefined]
+                    overlay_path = work_dir / f"seq_{stamp}_slot{i}_overlay.png"
+                    overlay_path.write_bytes(base64.b64decode(overlay_data))
+                    cmd = build_template_ffmpeg_cmd(
+                        video_path=video_path, overlay_path=overlay_path, out_path=clip_path,
+                        block=normalized_block, video_codec=_codec, video_codec_args=_codec_args,
+                        audio_codec=_audio_codec, audio_codec_args=_audio_args,
+                        max_duration=max_dur, source_has_audio=video_info.has_audio,
+                    )
+                else:
+                    cmd = build_template_ffmpeg_cmd_video_only(
+                        video_path=video_path, out_path=clip_path,
+                        block=normalized_block, video_codec=_codec, video_codec_args=_codec_args,
+                        audio_codec=_audio_codec, audio_codec_args=_audio_args,
+                        max_duration=max_dur, source_has_audio=video_info.has_audio,
+                    )
+
+                logger.info("[render_sequence] slot=%s FFmpeg start", slot_id)
+                try:
+                    proc = await asyncio.to_thread(_sp.run, cmd, capture_output=True, text=True, timeout=10 * 60)
+                except _sp.TimeoutExpired:
+                    raise HTTPException(status_code=504, detail=f"FFmpeg timeout pour slot={slot_id}")
+                if proc.returncode != 0:
+                    raise HTTPException(status_code=500, detail=f"FFmpeg error slot={slot_id}: {proc.stderr[-800:]}")
+
+            clip_paths.append(clip_path)
+            logger.info("[render_sequence] slot=%s clip ready: %s", slot_id, clip_path.name)
+            _ = (slot_source_volume, slot_mute_source)  # used in music mix below
+
+        # ── Aggregate per-slot audio params ──────────────────────────────────
+        effective_mute_source: bool = any(
+            bool(s.get("music_mute_source", _global_music_mute_source))
+            for s in slots
+        )
+        per_slot_volumes = [float(s.get("music_source_volume", _global_music_source_volume)) for s in slots]
+        effective_source_volume: float = (
+            0.0 if effective_mute_source
+            else (sum(per_slot_volumes) / len(per_slot_volumes) if per_slot_volumes else _global_music_source_volume)
+        )
+
+        # ── Concat ────────────────────────────────────────────────────────────
+        combined_path = work_dir / f"seq_{stamp}_combined.mp4"
+        if len(clip_paths) == 1:
+            combined_path = clip_paths[0]
+        else:
+            concat_list = work_dir / f"seq_{stamp}_concat.txt"
+            concat_list.write_text(
+                "\n".join(f"file '{p.resolve()}'" for p in clip_paths),
+                encoding="utf-8",
+            )
+            concat_cmd = [
+                "ffmpeg", "-y",
+                "-f", "concat", "-safe", "0",
+                "-i", str(concat_list),
+                "-c", "copy",
+                str(combined_path),
+            ]
+            try:
+                proc = await asyncio.to_thread(_sp.run, concat_cmd, capture_output=True, text=True, timeout=5 * 60)
+            except _sp.TimeoutExpired:
+                raise HTTPException(status_code=504, detail="FFmpeg timeout pendant la concaténation")
+            if proc.returncode != 0:
+                raise HTTPException(status_code=500, detail=f"FFmpeg concat error: {proc.stderr[-800:]}")
+
+        # ── Music mix ─────────────────────────────────────────────────────────
+        final_path = combined_path
+        if music_url:
+            music_path = work_dir / f"seq_{stamp}_music.mp3"
+            try:
+                async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+                    resp = await client.get(music_url)
+                    resp.raise_for_status()
+                    music_path.write_bytes(resp.content)
+            except Exception as exc:
+                logger.warning("[render_sequence] Failed to download music: %s", exc)
+                music_path = None  # type: ignore[assignment]
+
+            if music_path and music_path.exists():
+                combined_info = probe_video(combined_path)
+                total_dur = combined_info.duration if combined_info.duration else None
+                # Use effective output duration for fade-out (accounts for global cap)
+                effective_dur = (
+                    min(total_dur, _global_max_duration)
+                    if total_dur is not None and _global_max_duration is not None
+                    else (_global_max_duration or total_dur)
+                )
+
+                music_vol_filter = f"[1:a]volume={_music_volume}"
+                if _music_fade_in > 0:
+                    music_vol_filter += f",afade=t=in:d={_music_fade_in}"
+                if _music_fade_out > 0 and effective_dur is not None:
+                    st = max(0, effective_dur - _music_fade_out)
+                    music_vol_filter += f",afade=t=out:st={st}:d={_music_fade_out}"
+                if any_audio and not effective_mute_source:
+                    source_filter = f"[0:a]volume={effective_source_volume}"
+                    audio_filter = f"{source_filter}[va];{music_vol_filter}[msc];[va][msc]amix=inputs=2:duration=first[aout]"
+                else:
+                    audio_filter = f"{music_vol_filter}[aout]"
+                loop_flags = ["-stream_loop", "-1"] if _music_loop else []
+                final_path = work_dir / f"seq_{stamp}_final.mp4"
+                music_cmd = [
+                    "ffmpeg", "-y",
+                    "-i", str(combined_path),
+                    *loop_flags, "-i", str(music_path),
+                    "-filter_complex", audio_filter,
+                    "-map", "0:v", "-map", "[aout]",
+                    "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                    "-shortest", str(final_path),
+                ]
+                try:
+                    proc = await asyncio.to_thread(_sp.run, music_cmd, capture_output=True, text=True, timeout=5 * 60)
+                except _sp.TimeoutExpired:
+                    logger.warning("[render_sequence] Music mix timeout, using combined without music")
+                    final_path = combined_path
+                if proc.returncode != 0:
+                    logger.warning("[render_sequence] Music mix failed: %s", proc.stderr[-400:])
+                    final_path = combined_path
+
+        # ── Global max_duration cap (optional) ───────────────────────────────
+        if _global_max_duration is not None:
+            capped_path = work_dir / f"seq_{stamp}_capped.mp4"
+            cap_cmd = [
+                "ffmpeg", "-y",
+                "-i", str(final_path),
+                "-t", str(_global_max_duration),
+                "-c", "copy",
+                str(capped_path),
+            ]
+            try:
+                proc = await asyncio.to_thread(_sp.run, cap_cmd, capture_output=True, text=True, timeout=5 * 60)
+                if proc.returncode == 0:
+                    final_path = capped_path
+                else:
+                    logger.warning("[render_sequence] max_duration cap failed (non-fatal): %s", proc.stderr[-400:])
+            except _sp.TimeoutExpired:
+                logger.warning("[render_sequence] max_duration cap timeout, skipping")
+
+        return {"videoUrl": f"/outputs/temp/api/{final_path.name}"}
+
+    finally:
+        # Clean up intermediate files (clips, overlays, videos) but keep the final output
+        for p in work_dir.glob(f"seq_{stamp}_slot*"):
+            try:
+                p.unlink(missing_ok=True)
+            except Exception:
+                pass
+        for p in clip_paths:
+            if final_path is None or p != final_path:
+                try:
+                    p.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
 
 @app.post("/api/transcribe")

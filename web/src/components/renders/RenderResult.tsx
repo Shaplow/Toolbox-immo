@@ -73,8 +73,8 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
         const event = JSON.parse(e.data) as JobEventPayload;
         if (event.jobType === "render" && event.jobId === renderId) {
           setStatus(event.status as RenderStatus);
-          if ("videoUrl" in event && event.videoUrl) setVideoUrl(event.videoUrl);
-          if ("errorMsg" in event && event.errorMsg) setErrorMsg(event.errorMsg);
+          if ("videoUrl" in event && event.videoUrl) setVideoUrl(event.videoUrl as string);
+          if ("errorMsg" in event && event.errorMsg) setErrorMsg(event.errorMsg as string);
           source.close();
         }
       } catch { /* ignore parse errors */ }

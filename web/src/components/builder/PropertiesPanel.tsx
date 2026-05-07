@@ -19,8 +19,7 @@ import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackground
 import { useBuilderStore } from "@/lib/store/builderStore";
 import type {
   AnyBlock, TextBlock, ImageBlock, VideoBlock, DPEBlock,
-  ShapeBlock, ShapeKind, BlockStyle, TextRules, SchemaField, BlockConditionalRule, LayerGroup, MusicBlock,
-  MediaSelectionRule, MediaSelectionRuleConfig,
+  ShapeBlock, ShapeKind, BlockStyle, SchemaField, BlockConditionalRule, LayerGroup, MusicBlock,
 } from "@/types/template";
 import type { ListingData } from "@/types/listing";
 
@@ -33,7 +32,7 @@ export function PropertiesPanel({
   showResolvedTextPreview: boolean;
   onShowResolvedTextPreviewChange: (value: boolean) => void;
 }) {
-  const { template, selectedBlockId, selectedGroupId, multiSelectedBlockIds, updateBlock, updateBlocks, updateGroup, moveGroupBlocks, setSchema, updateContentLibrary } = useBuilderStore();
+  const { template, selectedBlockId, selectedGroupId, multiSelectedBlockIds, updateBlock, updateBlocks, updateGroup, moveGroupBlocks, setSchema } = useBuilderStore();
   const block = template.blocks.find((b) => b.id === selectedBlockId) ?? null;
   const group = template.groups.find((item) => item.id === selectedGroupId) ?? null;
 
@@ -613,7 +612,6 @@ export function PropertiesPanel({
             </div>
           </div>
 
-          <DataLibrarySection template={template} updateContentLibrary={updateContentLibrary} />
         </div>
       </aside>
     );
@@ -642,56 +640,14 @@ export function PropertiesPanel({
             </label>
           </Section>
 
-          <Section label="Musique">
-            {/* Volume musique */}
-            <label className="flex flex-col gap-1">
-              <div className="flex justify-between">
-                <span className="text-gray-400 uppercase">Volume musique</span>
-                <span className="text-gray-600">{Math.round((mb.volume ?? 0.3) * 100)}%</span>
-              </div>
-              <input
-                type="range" min={0} max={1} step={0.05}
-                value={mb.volume ?? 0.3}
-                onChange={(e) => updateBlock(mb.id, { volume: Number(e.target.value) } as Partial<AnyBlock>)}
-                className="w-full"
-              />
-            </label>
+          <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2.5 flex items-start gap-2">
+            <span className="shrink-0 text-indigo-400 mt-0.5">🎬</span>
+            <p className="text-[10px] text-indigo-700 leading-relaxed">
+              Source, volume, fondu et bibliothèque audio → onglet <strong>Vidéo & Musique</strong> (panneau gauche).
+            </p>
+          </div>
 
-            {/* Boucler */}
-            <label className="flex items-center gap-2 mt-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={mb.loop ?? false}
-                onChange={(e) => updateBlock(mb.id, { loop: e.target.checked } as Partial<AnyBlock>)}
-                className="rounded"
-              />
-              <span className="text-gray-600">Boucler la musique</span>
-            </label>
-
-            {/* Fade in / out */}
-            <div className="grid grid-cols-2 gap-2 mt-3">
-              <label className="flex flex-col gap-0.5">
-                <span className="text-gray-400 uppercase">Fade in (s)</span>
-                <input
-                  type="number" min={0} step={0.5}
-                  value={mb.fadeIn ?? 0}
-                  onChange={(e) => updateBlock(mb.id, { fadeIn: Number(e.target.value) } as Partial<AnyBlock>)}
-                  className="border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                />
-              </label>
-              <label className="flex flex-col gap-0.5">
-                <span className="text-gray-400 uppercase">Fade out (s)</span>
-                <input
-                  type="number" min={0} step={0.5}
-                  value={mb.fadeOut ?? 0}
-                  onChange={(e) => updateBlock(mb.id, { fadeOut: Number(e.target.value) } as Partial<AnyBlock>)}
-                  className="border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                />
-              </label>
-            </div>
-          </Section>
-
-          <Section label="Variable">
+          <Section label="Variable (upload formulaire)">
             <label className="flex flex-col gap-0.5">
               <span className="text-gray-400 uppercase">Binding</span>
               <input
@@ -727,7 +683,6 @@ export function PropertiesPanel({
             </label>
             <p className="text-[10px] text-gray-400 mt-1">Nom de la variable qui contiendra le fichier audio.</p>
           </Section>
-          <MusicLibrarySection mb={mb} updateBlock={updateBlock} />
         </div>
       </aside>
     );
@@ -840,9 +795,10 @@ export function PropertiesPanel({
           </div>
         </Section>
 
-        {/* Timing vidéo — visible uniquement si le template a un bloc vidéo */}
-        {template.blocks.some((b) => b.type === "video") && block.type !== "video" ? (
+        {/* Timing vidéo — visible si le template a un bloc vidéo OU une séquence */}
+        {((template.blocks.some((b) => b.type === "video") || (template.videoSequence?.length ?? 0) > 0)) && block.type !== "video" ? (
           <Section label="Timing vidéo">
+            {/* Global fallback (non-sequence or per-slot not set) */}
             <div className="grid grid-cols-2 gap-2">
               <label className="flex flex-col gap-0.5">
                 <span className="text-gray-400 uppercase text-[10px]">Apparaît à (s)</span>
@@ -882,6 +838,13 @@ export function PropertiesPanel({
             <p className="text-[10px] text-gray-400 mt-1">
               Vide = valeur par défaut (0 s / fin de vidéo). Pas d&apos;effet sur les renders image.
             </p>
+
+            {/* Per-slot overrides: renvoi vers la timeline */}
+            {(template.videoSequence?.length ?? 0) > 0 && (
+              <p className="text-[10px] text-indigo-500 mt-1">
+                Pour ajuster par clip : sélectionnez ce bloc + un clip dans la timeline ci-dessous.
+              </p>
+            )}
           </Section>
         ) : null}
 
@@ -2250,238 +2213,7 @@ function ImageProps({ block, onChange }: { block: ImageBlock; onChange: (c: Part
   );
 }
 
-function DataLibrarySection({
-  template,
-  updateContentLibrary,
-}: {
-  template: import("@/types/template").TemplateJSON;
-  updateContentLibrary: (changes: Partial<NonNullable<import("@/types/template").TemplateJSON["contentLibrary"]>>) => void;
-}) {
-  const [dataLibraries, setDataLibraries] = useState<{ id: string; name: string; templateType: string }[]>([]);
-  const [campaigns, setCampaigns] = useState<{ id: string; name: string; isActive: boolean }[]>([]);
-  const cl = template.contentLibrary;
-
-  useEffect(() => {
-    fetch("/api/admin/libraries/data")
-      .then((r) => r.ok ? r.json() as Promise<{ id: string; name: string; templateType: string }[]> : [])
-      .then(setDataLibraries)
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!cl?.dataLibraryId) return;
-    let active = true;
-    fetch(`/api/admin/libraries/data/${cl.dataLibraryId}/campaigns`)
-      .then((r) => r.ok ? r.json() as Promise<{ id: string; name: string; isActive: boolean }[]> : [])
-      .then((data) => { if (active) setCampaigns(data); })
-      .catch(() => {});
-    return () => { active = false; setCampaigns([]); };
-  }, [cl?.dataLibraryId]);
-
-  if (dataLibraries.length === 0) return null;
-
-  return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Bibliothèque de données</p>
-      <label className="flex flex-col gap-0.5">
-        <span className="text-gray-400 text-[11px]">Bibliothèque</span>
-        <select
-          value={cl?.dataLibraryId ?? ""}
-          onChange={(e) => updateContentLibrary({ dataLibraryId: e.target.value || undefined, dataCampaignId: undefined })}
-          className="border border-gray-200 rounded px-2 py-1 text-sm"
-        >
-          <option value="">— Aucune —</option>
-          {dataLibraries.map((lib) => (
-            <option key={lib.id} value={lib.id}>{lib.name}</option>
-          ))}
-        </select>
-      </label>
-      {cl?.dataLibraryId && campaigns.length > 0 && (
-        <label className="flex flex-col gap-0.5">
-          <span className="text-gray-400 text-[11px]">Campagne active</span>
-          <select
-            value={cl?.dataCampaignId ?? ""}
-            onChange={(e) => updateContentLibrary({ dataCampaignId: e.target.value || undefined })}
-            className="border border-gray-200 rounded px-2 py-1 text-sm"
-          >
-            <option value="">— Sélectionner —</option>
-            {campaigns.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}{c.isActive ? " ✓" : ""}</option>
-            ))}
-          </select>
-        </label>
-      )}
-      {cl?.dataCampaignId && (
-        <label className="flex flex-col gap-0.5">
-          <span className="text-gray-400 text-[11px]">Règle de sélection</span>
-          <select
-            value={cl?.dataSelectionRule ?? "not_used_in_cycle"}
-            onChange={(e) => updateContentLibrary({ dataSelectionRule: e.target.value as NonNullable<typeof cl>["dataSelectionRule"] })}
-            className="border border-gray-200 rounded px-2 py-1 text-sm"
-          >
-            <option value="not_used_in_cycle">Non utilisée ce cycle</option>
-            <option value="least_used">La moins utilisée</option>
-            <option value="manual">Manuelle (choix à la génération)</option>
-          </select>
-        </label>
-      )}
-    </div>
-  );
-}
-
-function normalizeSelectionRule(rule: MediaSelectionRule | undefined): MediaSelectionRuleConfig {
-  if (!rule) return { strategy: "least_used" };
-  if (typeof rule === "string") return { strategy: rule };
-  return rule;
-}
-
-function buildSelectionRule(strategy: string, tagFilter: string, tagFilterParam: string): MediaSelectionRule {
-  const s = strategy as MediaSelectionRuleConfig["strategy"];
-  if (s === "manual") return "manual";
-  const tag = tagFilter.trim();
-  const param = tagFilterParam.trim();
-  if (param) return { strategy: s, tagFilterParam: param };
-  if (tag) return { strategy: s, tagFilter: tag };
-  return s === "random" ? { strategy: s } : s;
-}
-
-function SelectionRuleEditor({
-  rule,
-  onChange,
-  strategies,
-  schema,
-}: {
-  rule: MediaSelectionRule | undefined;
-  onChange: (r: MediaSelectionRule) => void;
-  strategies: { value: string; label: string }[];
-  schema?: { key: string; label?: string; type: string }[];
-}) {
-  const { strategy, tagFilter, tagFilterParam } = normalizeSelectionRule(rule);
-  const paramFields = schema?.filter((f) => ["select", "text"].includes(f.type)) ?? [];
-  const tagMode = tagFilterParam ? "param" : "literal";
-
-  function handleTagModeChange(mode: "literal" | "param") {
-    const s = strategy as MediaSelectionRuleConfig["strategy"];
-    if (mode === "param") onChange({ strategy: s, tagFilterParam: paramFields[0]?.key ?? "" });
-    else onChange(buildSelectionRule(strategy, "", ""));
-  }
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <select
-        value={strategy}
-        onChange={(e) => onChange(buildSelectionRule(e.target.value, tagFilter ?? "", tagFilterParam ?? ""))}
-        className="border border-gray-200 rounded px-2 py-1 text-sm"
-      >
-        {strategies.map((s) => (
-          <option key={s.value} value={s.value}>{s.label}</option>
-        ))}
-      </select>
-      {strategy !== "manual" && (
-        <>
-          {paramFields.length > 0 && (
-            <div className="flex gap-1">
-              {(["literal", "param"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => handleTagModeChange(m)}
-                  className={`flex-1 text-[10px] rounded px-2 py-0.5 border transition-colors ${
-                    tagMode === m
-                      ? "bg-indigo-600 text-white border-indigo-600"
-                      : "bg-white text-gray-500 border-gray-200 hover:border-indigo-300"
-                  }`}
-                >
-                  {m === "literal" ? "Tag fixe" : "Depuis un champ"}
-                </button>
-              ))}
-            </div>
-          )}
-          {tagMode === "param" && paramFields.length > 0 ? (
-            <select
-              value={tagFilterParam ?? ""}
-              onChange={(e) => {
-                const s = strategy as MediaSelectionRuleConfig["strategy"];
-                onChange({ strategy: s, tagFilterParam: e.target.value });
-              }}
-              className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-300"
-            >
-              <option value="">— Choisir un champ —</option>
-              {paramFields.map((f) => (
-                <option key={f.key} value={f.key}>{f.label || f.key}</option>
-              ))}
-            </select>
-          ) : (
-            <input
-              type="text"
-              value={tagFilter ?? ""}
-              onChange={(e) => onChange(buildSelectionRule(strategy, e.target.value, ""))}
-              placeholder="Filtrer par tag (optionnel)"
-              className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-600 placeholder:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-300"
-            />
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-function MusicLibrarySection({ mb, updateBlock }: { mb: MusicBlock; updateBlock: (id: string, c: Partial<AnyBlock>) => void }) {  const [audioLibraries, setAudioLibraries] = useState<{ id: string; name: string }[]>([]);
-  const schema = useBuilderStore((s) => s.template.schema);
-  useEffect(() => {
-    fetch("/api/admin/libraries/media?type=audio")
-      .then((r) => r.ok ? r.json() as Promise<{ id: string; name: string }[]> : [])
-      .then(setAudioLibraries)
-      .catch(() => {});
-  }, []);
-
-  if (audioLibraries.length === 0) return null;
-
-  return (
-    <Section label="Bibliothèque audio">
-      <label className="flex flex-col gap-0.5">
-        <span className="text-gray-400 text-[11px]">Bibliothèque</span>
-        <select
-          value={mb.libraryId ?? ""}
-          onChange={(e) => updateBlock(mb.id, { libraryId: e.target.value || undefined } as Partial<AnyBlock>)}
-          className="border border-gray-200 rounded px-2 py-1 text-sm"
-        >
-          <option value="">— Aucune (upload manuel) —</option>
-          {audioLibraries.map((lib) => (
-            <option key={lib.id} value={lib.id}>{lib.name}</option>
-          ))}
-        </select>
-      </label>
-      {mb.libraryId && (
-        <label className="flex flex-col gap-0.5 mt-2">
-          <span className="text-gray-400 text-[11px]">À la génération</span>
-          <SelectionRuleEditor
-            rule={mb.audioSelectionRule}
-            onChange={(r) => updateBlock(mb.id, { audioSelectionRule: r } as Partial<AnyBlock>)}
-            strategies={[
-              { value: "oldest_used", label: "La plus ancienne" },
-              { value: "least_used", label: "Moins utilisée" },
-              { value: "random", label: "Aléatoire" },
-              { value: "manual", label: "Manuelle (choix à la génération)" },
-            ]}
-            schema={schema}
-          />
-        </label>
-      )}
-    </Section>
-  );
-}
-
 function VideoProps({ block, onChange }: { block: VideoBlock; onChange: (c: Partial<VideoBlock>) => void }) {
-  const [videoLibraries, setVideoLibraries] = useState<{ id: string; name: string }[]>([]);
-  const schema = useBuilderStore((s) => s.template.schema);
-  useEffect(() => {
-    fetch("/api/admin/libraries/media?type=video")
-      .then((r) => r.ok ? r.json() as Promise<{ id: string; name: string }[]> : [])
-      .then(setVideoLibraries)
-      .catch(() => {});
-  }, []);
-
   return (
     <Section label="Options vidéo">
       <label className="flex flex-col gap-0.5">
@@ -2533,42 +2265,9 @@ function VideoProps({ block, onChange }: { block: VideoBlock; onChange: (c: Part
         </label>
       )}
       <p className="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
-        🎬 Ce bloc déclenche le pipeline RunPod.<br />
-        La vidéo sera composite via FFmpeg avec le template en overlay PNG.
+        🎬 Ce bloc est le fond vidéo du template.<br />
+        La source et la bibliothèque se configurent dans l&apos;onglet <strong>Séquence</strong>.
       </p>
-      {videoLibraries.length > 0 && (
-        <>
-          <label className="flex flex-col gap-0.5 mt-3">
-            <span className="text-gray-400 text-[11px]">Bibliothèque vidéo</span>
-            <select
-              value={block.libraryId ?? ""}
-              onChange={(e) => onChange({ libraryId: e.target.value || undefined })}
-              className="border border-gray-200 rounded px-2 py-1 text-sm"
-            >
-              <option value="">— Aucune (upload manuel) —</option>
-              {videoLibraries.map((lib) => (
-                <option key={lib.id} value={lib.id}>{lib.name}</option>
-              ))}
-            </select>
-          </label>
-          {block.libraryId && (
-            <label className="flex flex-col gap-0.5 mt-2">
-              <span className="text-gray-400 text-[11px]">À la génération</span>
-              <SelectionRuleEditor
-                rule={block.selectionRule}
-                onChange={(r) => onChange({ selectionRule: r })}
-                strategies={[
-                  { value: "least_used", label: "Moins utilisée" },
-                  { value: "oldest_used", label: "La plus ancienne" },
-                  { value: "random", label: "Aléatoire" },
-                  { value: "manual", label: "Manuelle (choix à la génération)" },
-                ]}
-                schema={schema}
-              />
-            </label>
-          )}
-        </>
-      )}
     </Section>
   );
 }

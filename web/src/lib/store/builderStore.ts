@@ -1,5 +1,5 @@
 ﻿import { create } from "zustand";
-import type { TemplateJSON, AnyBlock, CanvasFormat, LayerGroup, SchemaField, TemplateFormSection } from "@/types/template";
+import type { TemplateJSON, AnyBlock, CanvasFormat, LayerGroup, SchemaField, TemplateFormSection, VideoSequenceSlot } from "@/types/template";
 import { emptyTemplate, defaultCanvas } from "@/types/template";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 
@@ -9,6 +9,8 @@ interface BuilderState {
   template: TemplateJSON;
   selectedBlockId: string | null;
   selectedGroupId: string | null;
+  /** ID of the currently selected video sequence slot (for right-panel config). */
+  selectedSlotId: string | null;
   /** IDs of blocks that are part of the current multi-selection (canvas + panel). */
   multiSelectedBlockIds: string[];
   isSaving: boolean;
@@ -20,6 +22,9 @@ interface BuilderState {
   setTemplate: (t: TemplateJSON) => void;
   selectBlock: (id: string | null) => void;
   selectGroup: (id: string | null) => void;
+  selectSlot: (id: string | null) => void;
+  /** Select a block and a slot simultaneously (for timeline timing edit mode). */
+  selectBoth: (blockId: string, slotId: string) => void;
   /** Atomic multi-selection: sets ids, normalises selectedGroupId, clears selectedBlockId. */
   setMultiSelection: (ids: string[]) => void;
   addBlock: (block: AnyBlock) => void;
@@ -36,6 +41,8 @@ interface BuilderState {
   updateCanvas: (changes: Partial<TemplateJSON["canvas"]>) => void;
   updateTheme: (changes: Partial<TemplateJSON["theme"]>) => void;
   updateContentLibrary: (changes: Partial<NonNullable<TemplateJSON["contentLibrary"]>>) => void;
+  updateVideoSequence: (slots: VideoSequenceSlot[] | undefined) => void;
+  setGenerationMode: (mode: TemplateJSON["generationMode"]) => void;
   setFormat: (format: CanvasFormat) => void;
   setSchema: (schema: SchemaField[]) => void;
   setFormSections: (formSections: TemplateFormSection[]) => void;
@@ -100,6 +107,7 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
   template: emptyTemplate(),
   selectedBlockId: null,
   selectedGroupId: null,
+  selectedSlotId: null,
   multiSelectedBlockIds: [],
   isSaving: false,
   past: [],
@@ -111,14 +119,23 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
     future: [],
     selectedBlockId: null,
     selectedGroupId: null,
+    selectedSlotId: null,
     multiSelectedBlockIds: [],
   }),
 
+  selectSlot: (id) => {
+    set({ selectedSlotId: id, selectedBlockId: null, selectedGroupId: null, multiSelectedBlockIds: [] });
+  },
+
+  selectBoth: (blockId, slotId) => {
+    set({ selectedBlockId: blockId, selectedSlotId: slotId, selectedGroupId: null, multiSelectedBlockIds: [blockId] });
+  },
+
   selectBlock: (id) => {
     if (id) {
-      set({ selectedBlockId: id, selectedGroupId: null, multiSelectedBlockIds: [id] });
+      set({ selectedBlockId: id, selectedGroupId: null, selectedSlotId: null, multiSelectedBlockIds: [id] });
     } else {
-      set({ selectedBlockId: null, selectedGroupId: null, multiSelectedBlockIds: [] });
+      set({ selectedBlockId: null, selectedGroupId: null, selectedSlotId: null, multiSelectedBlockIds: [] });
     }
   },
 
@@ -308,6 +325,16 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
       ...get().template,
       contentLibrary: { ...get().template.contentLibrary, ...changes },
     };
+    withHistory(get, set, next);
+  },
+
+  updateVideoSequence: (slots) => {
+    const next = { ...get().template, videoSequence: slots };
+    withHistory(get, set, next);
+  },
+
+  setGenerationMode: (mode) => {
+    const next = { ...get().template, generationMode: mode };
     withHistory(get, set, next);
   },
 

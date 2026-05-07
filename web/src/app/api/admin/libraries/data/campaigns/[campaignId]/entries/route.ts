@@ -9,13 +9,16 @@ function adminOnly(role?: string) {
 type Params = { params: Promise<{ campaignId: string }> };
 
 // GET /api/admin/libraries/data/campaigns/[campaignId]/entries
-export async function GET(_req: NextRequest, { params }: Params) {
+// Query params: ?accountId= (optional) → returns per-account usageCount/lastUsedAt
+export async function GET(req: NextRequest, { params }: Params) {
   const session = await auth();
   if (!session?.user?.id || adminOnly(session.user.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
   const { campaignId } = await params;
+  const accountId = req.nextUrl.searchParams.get("accountId") ?? undefined;
+
   try {
     const campaign = await prisma.dataCampaign.findUnique({ where: { id: campaignId } });
     if (!campaign) {
@@ -24,9 +27,28 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     const entries = await prisma.dataEntry.findMany({
       where: { campaignId },
+      include: {
+        accesses: { select: { accountId: true } },
+        usages: accountId
+          ? { where: { accountId }, select: { usageCount: true, lastUsedAt: true } }
+          : false,
+      },
       orderBy: [{ usedInCycle: "asc" }, { usageCount: "asc" }, { createdAt: "asc" }],
     });
-    return NextResponse.json(entries);
+
+    const result = entries.map((e) => {
+      const { accesses, usages, ...rest } = e;
+      const accessAccountIds = accesses.map((a) => a.accountId);
+      const perAccount = Array.isArray(usages) && usages.length > 0 ? usages[0] : null;
+      return {
+        ...rest,
+        accessAccountIds,
+        usageCount: perAccount ? perAccount.usageCount : rest.usageCount,
+        lastUsedAt: perAccount ? perAccount.lastUsedAt?.toISOString() ?? null : rest.lastUsedAt,
+      };
+    });
+
+    return NextResponse.json(result);
   } catch (err) {
     console.error(`[admin/libraries/data/campaigns/${campaignId}/entries] GET error:`, err);
     return NextResponse.json({ error: "Erreur serveur lors du chargement" }, { status: 500 });

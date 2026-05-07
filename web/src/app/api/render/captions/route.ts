@@ -204,15 +204,16 @@ export async function POST(req: NextRequest) {
 
     const captionJob = await prisma.captionJob.create({
       data: {
-        userId:     session.user.id,
-        status:     "QUEUED",
-        inputUrl:   filename,
+        userId:      session.user.id,
+        status:      "QUEUED",
+        inputUrl:    filename,
         inputKey,
         outputKey,
-        config:     JSON.stringify(configData),
+        config:      JSON.stringify(configData),
         srtContent,
         srtFilename,
-        presetId:   presetId ?? null,
+        previewMode,
+        presetId:    presetId ?? null,
       },
     });
 
@@ -314,7 +315,7 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       await prisma.captionJob.update({
         where: { id: captionJob.id },
-        data:  { status: "FAILED" },
+        data:  { status: "FAILED", errorMsg: String(err) },
       });
       return NextResponse.json(
         { error: `Erreur rendu local : ${String(err)}` },
@@ -396,7 +397,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     await prisma.captionJob.update({
       where: { id: captionJob.id },
-      data:  { status: "FAILED" },
+      data:  { status: "FAILED", errorMsg: String(err) },
     });
     try { await deleteFromR2(inputVideoKey); } catch { /* ignore */ }
     console.error("[render/captions] RunPod submit failed:", err);

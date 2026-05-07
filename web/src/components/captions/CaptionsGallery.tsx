@@ -3,10 +3,11 @@
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Film, Pencil, Plus, AlignLeft, Scissors, X } from "lucide-react";
+import { AlignLeft, Film, Pencil, Plus, Scissors, X } from "lucide-react";
 import { CaptionPresetActions } from "@/components/captions/CaptionPresetActions";
 import { ImportCaptionPresetButton } from "@/components/captions/ImportCaptionPresetButton";
 import { DEFAULT_CAPTION_CONFIG } from "@/lib/captionPresetConfig";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 
 type Preset = {
   id: string;
@@ -137,36 +138,28 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <div className="p-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-violet-600 rounded-xl flex items-center justify-center text-white shrink-0">
-            <AlignLeft size={20} />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900">Captions</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {presets.length} preset{presets.length !== 1 ? "s" : ""}
-            </p>
-          </div>
-        </div>
-        {isAdmin && (
-          <div className="flex items-center gap-2">
-            <ImportCaptionPresetButton onImported={() => fetchPresets()} />
-            <button
-              type="button"
-              onClick={() => {
-                setShowCreateForm((current) => !current);
-                setCreateError("");
-              }}
-              className="flex items-center gap-1.5 text-sm bg-violet-600 text-white px-4 py-2 rounded-lg hover:bg-violet-700 transition-colors"
-            >
-              <Plus size={14} />
-              {showCreateForm ? "Fermer" : "Creer un preset"}
-            </button>
-          </div>
-        )}
-      </div>
+      <ToolPageHeader
+          icon={AlignLeft}
+          iconColor="violet"
+          title="Captions"
+          subtitle={`${presets.length} preset${presets.length !== 1 ? "s" : ""}`}
+          actions={isAdmin ? (
+            <>
+              <ImportCaptionPresetButton onImported={() => fetchPresets()} />
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateForm((current) => !current);
+                  setCreateError("");
+                }}
+                className="flex items-center gap-1.5 text-sm bg-violet-600 text-white px-4 py-2 rounded-xl hover:bg-violet-700 transition-colors"
+              >
+                <Plus size={14} />
+                {showCreateForm ? "Fermer" : "Creer un preset"}
+              </button>
+            </>
+          ) : undefined}
+        />
 
       {isAdmin && showCreateForm && (
         <form

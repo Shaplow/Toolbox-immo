@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { templateId, listingId, usedAssets } = body;
+    const { templateId, listingId, usedAssets, accountId, publicationSlotId } = body;
 
     if (!templateId || !listingId) {
       return NextResponse.json(
@@ -55,10 +55,15 @@ export async function POST(req: NextRequest) {
       videoAssets?: Record<string, string>;
       audioAssetId?: string;
       dataEntryId?: string;
+      setSequencedLibraryIds?: string[];
+      usedSetTagByLibrary?: Record<string, string>;
+      usedCategoryByLibrary?: Record<string, string>;
+      prevCursorStateByLibrary?: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null }>;
+      prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: string; accountId?: string };
     } = {};
 
     if (usedAssets && typeof usedAssets === "object") {
-      const raw = usedAssets as { videoAssets?: unknown; audioAssetId?: unknown; dataEntryId?: unknown };
+    const raw = usedAssets as { videoAssets?: unknown; audioAssetId?: unknown; dataEntryId?: unknown; setSequencedLibraryIds?: unknown; usedSetTagByLibrary?: unknown; usedCategoryByLibrary?: unknown; prevCursorStateByLibrary?: unknown; prevDataEntryState?: unknown };
 
       // Video assets: blockId → assetId
       if (raw.videoAssets && typeof raw.videoAssets === "object" && !Array.isArray(raw.videoAssets)) {
@@ -85,6 +90,97 @@ export async function POST(req: NextRequest) {
         const found = await prisma.dataEntry.findUnique({ where: { id: raw.dataEntryId }, select: { id: true } });
         if (found) sanitizedUsedAssets.dataEntryId = raw.dataEntryId;
       }
+
+      // Set sequenced libraries — validate each libraryId exists
+      if (Array.isArray(raw.setSequencedLibraryIds)) {
+        const ids = (raw.setSequencedLibraryIds as unknown[]).filter((v): v is string => typeof v === "string");
+        if (ids.length > 0) {
+          const found = await prisma.mediaLibrary.findMany({ where: { id: { in: ids } }, select: { id: true } });
+          const validIds = new Set(found.map((l) => l.id));
+          sanitizedUsedAssets.setSequencedLibraryIds = ids.filter((id) => validIds.has(id));
+        }
+      }
+
+      // usedSetTagByLibrary — pass through as-is (no sensitive data, strings only)
+      if (raw.usedSetTagByLibrary && typeof raw.usedSetTagByLibrary === "object" && !Array.isArray(raw.usedSetTagByLibrary)) {
+        const map = raw.usedSetTagByLibrary as Record<string, unknown>;
+        const sanitized = Object.fromEntries(
+          Object.entries(map).filter(([, v]) => typeof v === "string"),
+        ) as Record<string, string>;
+        if (Object.keys(sanitized).length > 0) sanitizedUsedAssets.usedSetTagByLibrary = sanitized;
+      }
+
+      // usedCategoryByLibrary — pass through as-is (strings only)
+      if (raw.usedCategoryByLibrary && typeof raw.usedCategoryByLibrary === "object" && !Array.isArray(raw.usedCategoryByLibrary)) {
+        const map = raw.usedCategoryByLibrary as Record<string, unknown>;
+        const sanitized = Object.fromEntries(
+          Object.entries(map).filter(([, v]) => typeof v === "string"),
+        ) as Record<string, string>;
+        if (Object.keys(sanitized).length > 0) sanitizedUsedAssets.usedCategoryByLibrary = sanitized;
+      }
+
+      // prevCursorStateByLibrary — cursor snapshots for failure-recovery revert.
+      // Validate shape: each value must have the four expected numeric/nullable-string fields.
+      if (raw.prevCursorStateByLibrary && typeof raw.prevCursorStateByLibrary === "object" && !Array.isArray(raw.prevCursorStateByLibrary)) {
+        const map = raw.prevCursorStateByLibrary as Record<string, unknown>;
+        const sanitized: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null }> = {};
+        for (const [libId, v] of Object.entries(map)) {
+          if (v && typeof v === "object" && !Array.isArray(v)) {
+            const s = v as Record<string, unknown>;
+            if (typeof s.prevCursor === "number" && typeof s.claimedCursor === "number"
+              && (s.prevLastUsedCategory === null || typeof s.prevLastUsedCategory === "string")
+              && (s.claimedLastUsedCategory === null || typeof s.claimedLastUsedCategory === "string")) {
+              sanitized[libId] = {
+                prevCursor: s.prevCursor,
+                claimedCursor: s.claimedCursor,
+                prevLastUsedCategory: s.prevLastUsedCategory as string | null,
+                claimedLastUsedCategory: s.claimedLastUsedCategory as string | null,
+              };
+            }
+          }
+        }
+        if (Object.keys(sanitized).length > 0) sanitizedUsedAssets.prevCursorStateByLibrary = sanitized;
+      }
+
+      // prevDataEntryState — claim state for DataEntry failure-recovery revert.
+      if (raw.prevDataEntryState && typeof raw.prevDataEntryState === "object" && !Array.isArray(raw.prevDataEntryState)) {
+        const s = raw.prevDataEntryState as Record<string, unknown>;
+        if (typeof s.entryId === "string" && typeof s.campaignId === "string"
+          && typeof s.usagePolicy === "string"
+          && (s.claimType === "usedInCycle" || s.claimType === "perAccountUsage")
+          && (s.accountId === undefined || typeof s.accountId === "string")) {
+          sanitizedUsedAssets.prevDataEntryState = {
+            entryId: s.entryId,
+            campaignId: s.campaignId,
+            usagePolicy: s.usagePolicy,
+            claimType: s.claimType,
+            accountId: s.accountId as string | undefined,
+          };
+        }
+      }
+    }
+
+    // Validate accountId if provided
+    let validatedAccountId: string | undefined;
+    if (typeof accountId === "string" && accountId) {
+      const account = await prisma.instagramAccount.findFirst({
+        where: isAdmin
+          ? { id: accountId }
+          : { id: accountId, userId: userContext.effectiveUser.id },
+        select: { id: true },
+      });
+      if (account) validatedAccountId = account.id;
+    }
+
+    // Validate publicationSlotId if provided — must exist and not already be linked
+    let validatedSlotId: string | undefined;
+    if (typeof publicationSlotId === "string" && publicationSlotId) {
+      const slot = await prisma.publicationSlot.findUnique({
+        where: { id: publicationSlotId },
+        select: { id: true, render: { select: { id: true } } },
+      });
+      if (slot && !slot.render) validatedSlotId = slot.id;
+      // If slot already has a render, ignore the link — don't error, just don't overwrite
     }
 
     // Créer le render en PENDING
@@ -94,6 +190,8 @@ export async function POST(req: NextRequest) {
         listingId,
         status: "PENDING",
         usedAssets: JSON.stringify(sanitizedUsedAssets),
+        ...(validatedAccountId ? { accountId: validatedAccountId } : {}),
+        ...(validatedSlotId ? { publicationSlotId: validatedSlotId } : {}),
       },
     });
 

@@ -46,6 +46,7 @@ from engine.template_composite import (
     OverlaySegment,
     build_template_ffmpeg_cmd,
     build_template_ffmpeg_cmd_timed,
+    build_template_ffmpeg_cmd_video_only,
     normalize_video_block,
 )
 from api import _build_config, _to_bool
@@ -442,6 +443,8 @@ def handler(job: dict) -> dict[str, Any]:
 
     if job_type == "render_template":
         return _handle_render_template(inp)
+    if job_type == "render_sequence":
+        return _handle_render_sequence(inp)
     if job_type == "transcribe":
         return _handle_transcribe(inp)
     if job_type == "derush_vision":
@@ -913,6 +916,375 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
         public_url = _upload_to_r2(output_key, out_video, "video/mp4")
 
     print(f"[worker/render_template] Done — {public_url}")
+    return {
+        "video_url": public_url,
+        "output_key": output_key,
+    }
+
+
+def _handle_render_sequence(inp: dict) -> dict[str, Any]:
+    """
+    Assemble a multi-clip video sequence:
+      1. For each slot: scale/crop video → clip_N.mp4 (with or without overlay PNG(s))
+      2. FFmpeg concat all clips → combined.mp4
+      3. If music: mix onto combined.mp4 with -c:v copy → final.mp4
+      4. Upload final.mp4 to R2 → return video_url
+
+    Input payload:
+      canvas        : {width, height}
+      slots         : list of slot objects:
+        slot_id             : str
+        video_url           : str
+        video_block         : {x, y, w, h, fit}
+        overlay_url?        : str | null           — single overlay PNG (legacy)
+        overlay_urls?       : list[str | null]     — timed overlays
+        overlay_segments?   : list[{index, start, end}]
+        max_duration?       : float
+        music_source_volume?: float  — per-slot source audio volume (default 1.0)
+        music_mute_source?  : bool   — per-slot mute source audio (default false)
+        music_start_at?     : float  — seek position in music track for this slot
+        music_stop_at?      : float  — stop music at this position (unused for now, future)
+      output_key    : R2 destination key
+      export_profile: "template" (default)
+      music_url?          : optional audio track URL
+      music_volume?       : float (default 0.3)
+      music_loop?         : bool
+      music_fade_in?      : float seconds
+      music_fade_out?     : float seconds
+    """
+    _require_fields(inp, ("canvas", "slots", "output_key"), "render_sequence")
+    canvas: dict = inp["canvas"]
+    slots: list[dict] = inp["slots"]
+    output_key: str = inp["output_key"]
+    export_profile = str(inp.get("export_profile", "template") or "template")
+
+    music_url: str | None = inp.get("music_url")
+    _music_volume = float(inp.get("music_volume", 0.3))
+    # Global fallback audio params (used if slot does not specify per-slot values)
+    _global_music_source_volume = float(inp.get("music_source_volume", 1.0))
+    _global_music_mute_source = _to_bool(inp.get("music_mute_source", False), False)
+    _music_loop = _to_bool(inp.get("music_loop", False), False)
+    _music_fade_in = float(inp.get("music_fade_in", 0))
+    _music_fade_out = float(inp.get("music_fade_out", 0))
+    # Global duration cap for the final output (applied after concat + music mix)
+    _global_max_duration: float | None = float(inp["max_duration"]) if inp.get("max_duration") is not None else None
+
+    canvas_w = int(canvas["width"])
+    canvas_h = int(canvas["height"])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        stamp = int(time.time() * 1000)
+
+        clip_paths: list[Path] = []
+        any_audio = False
+
+        for i, slot in enumerate(slots):
+            slot_id = slot.get("slot_id", str(i))
+            video_url: str = slot["video_url"]
+            block: dict = slot.get("video_block", {"x": 0, "y": 0, "w": canvas_w, "h": canvas_h, "fit": "cover"})
+            max_dur: float | None = float(slot["max_duration"]) if slot.get("max_duration") is not None else None
+            # Per-slot audio params (fall back to global if absent)
+            slot_source_volume = float(slot.get("music_source_volume", _global_music_source_volume))
+            slot_mute_source = _to_bool(slot.get("music_mute_source", _global_music_mute_source), _global_music_mute_source)
+
+            # Overlay: timed (overlay_urls + overlay_segments) or single (overlay_url)
+            timed_slot = "overlay_urls" in slot
+            if timed_slot:
+                slot_overlay_urls: list[str | None] = slot["overlay_urls"]
+                raw_slot_segs = slot["overlay_segments"]
+                slot_segments = [
+                    {"index": int(s["index"]), "start": float(s["start"]), "end": float(s["end"]) if s.get("end") is not None else None}
+                    for s in raw_slot_segs
+                ]
+            else:
+                overlay_url: str | None = slot.get("overlay_url")
+
+            # Download video
+            video_ext = Path(video_url.split("?")[0]).suffix or ".mp4"
+            video_path = tmp_path / f"slot_{i}_video_{stamp}{video_ext}"
+            print(f"[worker/render_sequence] slot={slot_id} Download video: {video_url}")
+            _download_file(video_url, video_path)
+            video_info = probe_video(video_path)
+            if video_info.has_audio:
+                any_audio = True
+
+            normalized_block = normalize_video_block(block, canvas_w, canvas_h)
+            clip_path = tmp_path / f"clip_{i}_{stamp}.mp4"
+
+            codec, codec_args, audio_codec, audio_args, _ = build_caption_encoding_settings(
+                export_profile,
+                video_info,
+                use_nvenc=_nvenc_enabled(source="render_sequence"),
+                preview=False,
+                for_composite=True,
+            )
+
+            def _run_slot_ffmpeg(
+                c: str,
+                c_args: list[str],
+                a_codec: str,
+                a_args: list[str],
+                v_path: Path = video_path,
+                o_path: Path = clip_path,
+                norm_block: dict = normalized_block,
+                v_info=video_info,
+                resolved_overlay_url: str | None = None if timed_slot else overlay_url,  # type: ignore[possibly-undefined]
+                m_dur: float | None = max_dur,
+                _i: int = i,
+            ) -> subprocess.CompletedProcess:
+                if resolved_overlay_url:
+                    overlay_path = tmp_path / f"slot_{_i}_overlay_{stamp}.png"
+                    print(f"[worker/render_sequence] slot={slot_id} Download overlay: {resolved_overlay_url}")
+                    _download_file(resolved_overlay_url, overlay_path)
+                    cmd = build_template_ffmpeg_cmd(
+                        video_path=v_path,
+                        overlay_path=overlay_path,
+                        out_path=o_path,
+                        block=norm_block,
+                        video_codec=c,
+                        video_codec_args=c_args,
+                        audio_codec=a_codec,
+                        audio_codec_args=a_args,
+                        max_duration=m_dur,
+                        source_has_audio=v_info.has_audio,
+                    )
+                else:
+                    cmd = build_template_ffmpeg_cmd_video_only(
+                        video_path=v_path,
+                        out_path=o_path,
+                        block=norm_block,
+                        video_codec=c,
+                        video_codec_args=c_args,
+                        audio_codec=a_codec,
+                        audio_codec_args=a_args,
+                        max_duration=m_dur,
+                        source_has_audio=v_info.has_audio,
+                    )
+                print(f"[worker/render_sequence] slot={slot_id} FFmpeg cmd: {_format_command(cmd)}", flush=True)
+                return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10 * 60)
+
+            if timed_slot:
+                # Timed overlays: build a sub-clip per segment, then concat them into clip_path
+                seg_clip_paths: list[Path] = []
+                for seg_i, seg in enumerate(slot_segments):  # type: ignore[possibly-undefined]
+                    seg_overlay_url = slot_overlay_urls[seg["index"]] if slot_overlay_urls[seg["index"]] else None  # type: ignore[possibly-undefined]
+                    seg_dur: float | None = (seg["end"] - seg["start"]) if seg["end"] is not None else None
+                    if seg_dur is not None and max_dur is not None:
+                        seg_dur = min(seg_dur, max_dur - seg["start"])
+                    seg_out = tmp_path / f"slot_{i}_seg{seg_i}_{stamp}.mp4"
+
+                    # Trim source video to the segment window
+                    trim_path = tmp_path / f"slot_{i}_seg{seg_i}_trim_{stamp}.mp4"
+                    trim_cmd = [
+                        "ffmpeg", "-y",
+                        "-ss", str(seg["start"]),
+                        *(["-t", str(seg_dur)] if seg_dur is not None else []),
+                        "-i", str(video_path),
+                        "-c", "copy",
+                        str(trim_path),
+                    ]
+                    subprocess.run(trim_cmd, capture_output=True, check=True, timeout=2 * 60)
+
+                    if seg_overlay_url:
+                        seg_overlay_path = tmp_path / f"slot_{i}_seg{seg_i}_overlay_{stamp}.png"
+                        _download_file(seg_overlay_url, seg_overlay_path)
+                        seg_cmd = build_template_ffmpeg_cmd(
+                            video_path=trim_path,
+                            overlay_path=seg_overlay_path,
+                            out_path=seg_out,
+                            block=normalized_block,
+                            video_codec=codec,
+                            video_codec_args=codec_args,
+                            audio_codec=audio_codec,
+                            audio_codec_args=audio_args,
+                            max_duration=None,
+                            source_has_audio=video_info.has_audio,
+                        )
+                    else:
+                        seg_cmd = build_template_ffmpeg_cmd_video_only(
+                            video_path=trim_path,
+                            out_path=seg_out,
+                            block=normalized_block,
+                            video_codec=codec,
+                            video_codec_args=codec_args,
+                            audio_codec=audio_codec,
+                            audio_codec_args=audio_args,
+                            max_duration=None,
+                            source_has_audio=video_info.has_audio,
+                        )
+                    subprocess.run(seg_cmd, capture_output=True, check=True, timeout=10 * 60)
+                    seg_clip_paths.append(seg_out)
+
+                if len(seg_clip_paths) == 1:
+                    clip_path = seg_clip_paths[0]
+                else:
+                    seg_concat_list = tmp_path / f"slot_{i}_segconcat_{stamp}.txt"
+                    seg_concat_list.write_text(
+                        "\n".join(f"file '{p.resolve()}'" for p in seg_clip_paths),
+                        encoding="utf-8",
+                    )
+                    subprocess.run(
+                        ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(seg_concat_list), "-c", "copy", str(clip_path)],
+                        capture_output=True, check=True, timeout=5 * 60
+                    )
+            else:
+                try:
+                    result = _run_slot_ffmpeg(codec, codec_args, audio_codec, audio_args)
+                except subprocess.TimeoutExpired as exc:
+                    raise RuntimeError(f"FFmpeg timeout pour le slot={slot_id}: {_format_command(exc.cmd)}") from exc
+
+                if result.returncode != 0:
+                    if codec == "h264_nvenc":
+                        _mark_nvenc_runtime_failure(
+                            "render_sequence/runtime",
+                            command=result.args,
+                            returncode=result.returncode,
+                            stdout=result.stdout,
+                            stderr=result.stderr,
+                        )
+                        print(f"[worker/render_sequence] NVENC failed for slot={slot_id}, retry with libx264")
+                        fb_codec, fb_args, fb_audio_codec, fb_audio_args, _ = build_caption_encoding_settings(
+                            export_profile, video_info, use_nvenc=False, preview=False, for_composite=True
+                        )
+                        try:
+                            result = _run_slot_ffmpeg(fb_codec, fb_args, fb_audio_codec, fb_audio_args)
+                        except subprocess.TimeoutExpired as exc:
+                            raise RuntimeError(f"FFmpeg timeout (fallback) pour slot={slot_id}") from exc
+                        if result.returncode != 0:
+                            raise RuntimeError(f"FFmpeg error slot={slot_id} (libx264):\n{_trim_output(result.stderr)}")
+                    else:
+                        raise RuntimeError(f"FFmpeg error slot={slot_id} ({codec}):\n{_trim_output(result.stderr)}")
+
+            clip_paths.append(clip_path)
+            print(f"[worker/render_sequence] slot={slot_id} clip ready: {clip_path.name}")
+            # Store per-slot audio params for the music mix phase
+            # We'll pass them when building the final mix — for now accumulate them
+            # (the music mix is applied globally after concat, so we use the first
+            #  non-muted slot's params as a representative; per-slot music would need
+            #  a more complex per-clip approach)
+            _ = (slot_source_volume, slot_mute_source)  # used below in Phase 3
+
+        # ── Aggregate per-slot audio params for the music mix ─────────────────
+        # The concat produces a single stream, so we derive an effective source
+        # volume.  Strategy: if any slot mutes, all source audio is muted; otherwise
+        # average the per-slot volumes (most setups use the same value for all slots).
+        effective_mute_source: bool = any(
+            _to_bool(s.get("music_mute_source", _global_music_mute_source), _global_music_mute_source)
+            for s in slots
+        )
+        per_slot_volumes = [
+            float(s.get("music_source_volume", _global_music_source_volume))
+            for s in slots
+        ]
+        effective_source_volume: float = (
+            0.0 if effective_mute_source else (sum(per_slot_volumes) / len(per_slot_volumes) if per_slot_volumes else _global_music_source_volume)
+        )
+
+        # ── Phase 2: Concatenate all clips ────────────────────────────────────
+        combined_path = tmp_path / f"combined_{stamp}.mp4"
+        if len(clip_paths) == 1:
+            combined_path = clip_paths[0]
+        else:
+            concat_list_path = tmp_path / f"concat_{stamp}.txt"
+            concat_list_path.write_text(
+                "\n".join(f"file '{p.resolve()}'" for p in clip_paths),
+                encoding="utf-8",
+            )
+            concat_cmd = [
+                "ffmpeg", "-y",
+                "-f", "concat", "-safe", "0",
+                "-i", str(concat_list_path),
+                "-c", "copy",
+                str(combined_path),
+            ]
+            print(f"[worker/render_sequence] Concatenating {len(clip_paths)} clips")
+            concat_result = subprocess.run(concat_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5 * 60)
+            if concat_result.returncode != 0:
+                raise RuntimeError(f"FFmpeg concat error:\n{_trim_output(concat_result.stderr)}")
+            print(f"[worker/render_sequence] Concat done: {combined_path.name}")
+
+        # ── Phase 3: Mix music (optional) ─────────────────────────────────────
+        final_path = tmp_path / f"final_{stamp}.mp4"
+        if music_url:
+            music_path = tmp_path / f"music_{stamp}.mp3"
+            print(f"[worker/render_sequence] Download music: {music_url}")
+            try:
+                _download_file(music_url, music_path)
+            except Exception as exc:
+                print(f"[worker/render_sequence] Failed to download music, skipping: {exc}")
+                music_path = None  # type: ignore[assignment]
+
+            if music_path and music_path.exists():
+                combined_info = probe_video(combined_path)
+                total_dur = combined_info.duration if combined_info.duration else None
+                # Use the effective output duration for fade-out timing (accounts for global cap)
+                effective_dur = (
+                    min(total_dur, _global_max_duration)
+                    if total_dur is not None and _global_max_duration is not None
+                    else (_global_max_duration or total_dur)
+                )
+
+                music_vol_filter = f"[1:a]volume={_music_volume}"
+                if _music_fade_in > 0:
+                    music_vol_filter += f",afade=t=in:d={_music_fade_in}"
+                if _music_fade_out > 0 and effective_dur is not None:
+                    st = max(0, effective_dur - _music_fade_out)
+                    music_vol_filter += f",afade=t=out:st={st}:d={_music_fade_out}"
+
+                if any_audio and not effective_mute_source:
+                    source_filter = f"[0:a]volume={effective_source_volume}"
+                    audio_filter = f"{source_filter}[va];{music_vol_filter}[msc];[va][msc]amix=inputs=2:duration=first[aout]"
+                else:
+                    audio_filter = f"{music_vol_filter}[aout]"
+
+                loop_flags = ["-stream_loop", "-1"] if _music_loop else []
+                music_cmd = [
+                    "ffmpeg", "-y",
+                    "-i", str(combined_path),
+                    *loop_flags, "-i", str(music_path),
+                    "-filter_complex", audio_filter,
+                    "-map", "0:v",
+                    "-map", "[aout]",
+                    "-c:v", "copy",
+                    "-c:a", "aac", "-b:a", "192k",
+                    "-shortest",
+                    str(final_path),
+                ]
+                print(f"[worker/render_sequence] Music mix cmd: {_format_command(music_cmd)}", flush=True)
+                music_result = subprocess.run(music_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5 * 60)
+                if music_result.returncode != 0:
+                    print(f"[worker/render_sequence] Music mix failed, using combined without music: {_trim_output(music_result.stderr)}")
+                    final_path = combined_path
+                else:
+                    print(f"[worker/render_sequence] Music mix done: {final_path.name}")
+            else:
+                final_path = combined_path
+        else:
+            final_path = combined_path
+
+        # ── Phase 4: Apply global max_duration cap (optional) ─────────────────
+        if _global_max_duration is not None:
+            capped_path = tmp_path / f"capped_{stamp}.mp4"
+            cap_cmd = [
+                "ffmpeg", "-y",
+                "-i", str(final_path),
+                "-t", str(_global_max_duration),
+                "-c", "copy",
+                str(capped_path),
+            ]
+            print(f"[worker/render_sequence] Applying global max_duration={_global_max_duration}s")
+            cap_result = subprocess.run(cap_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5 * 60)
+            if cap_result.returncode == 0:
+                final_path = capped_path
+            else:
+                print(f"[worker/render_sequence] max_duration cap failed (non-fatal): {_trim_output(cap_result.stderr)}")
+
+        # ── Phase 5: Upload to R2 ─────────────────────────────────────────────
+        print(f"[worker/render_sequence] Uploading result to R2: {output_key}")
+        public_url = _upload_to_r2(output_key, final_path, "video/mp4")
+
+    print(f"[worker/render_sequence] Done — {public_url}")
     return {
         "video_url": public_url,
         "output_key": output_key,

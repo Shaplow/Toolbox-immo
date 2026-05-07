@@ -31,12 +31,13 @@ function buildMediaFieldAspectRatios(json: TemplateJSON): Record<string, number>
 
 type Props = {
   params: Promise<{ templateId: string }>;
-  searchParams: Promise<{ listingId?: string }>;
+  searchParams: Promise<{ listingId?: string; accountId?: string; slotId?: string }>;
 };
 
 export default async function GeneratePage({ params, searchParams }: Props) {
   const { templateId } = await params;
-  const { listingId } = await searchParams;
+  const { listingId, accountId: rawAccountId, slotId } = await searchParams;
+  let accountId: string | undefined = rawAccountId;
   const userContext = await getUserContext();
   if (!userContext) notFound();
   const userId = userContext.effectiveUser.id;
@@ -49,6 +50,22 @@ export default async function GeneratePage({ params, searchParams }: Props) {
     });
     if (existingListing) {
       initialValues = JSON.parse(existingListing.jsonData) as Record<string, unknown>;
+    }
+  }
+
+  // If slotId provided: load slot to derive accountId and merge flex fields
+  if (slotId) {
+    const slot = await prisma.publicationSlot.findFirst({
+      where: { id: slotId },
+      select: { accountId: true, fields: true },
+    });
+    if (slot) {
+      if (!accountId) accountId = slot.accountId;
+      try {
+        const slotFields = JSON.parse(slot.fields) as Record<string, string>;
+        // Slot fields are base values; listingId data (if any) takes precedence
+        initialValues = { ...slotFields, ...initialValues };
+      } catch { /* ignore malformed JSON */ }
     }
   }
 
@@ -118,11 +135,35 @@ export default async function GeneratePage({ params, searchParams }: Props) {
   const mergedSchema = [...schemaMap.values()];
   const mediaFieldAspectRatios = buildMediaFieldAspectRatios(json);
 
+  // ─── Resolve ig_account handle BEFORE library prefill ────────────────────
+  // igAccountFilterParam in SelectionRuleEditor references a form field (e.g. "ig_account").
+  // The value must be in formData when resolveLibraryPrefill is called so the resolver
+  // can apply the IG tag filter correctly. Only inject if not already present.
+  if (accountId && !initialValues?.ig_account) {
+    const hasIgField = json.schema.some((f) => f.key === "ig_account");
+    if (hasIgField) {
+      const igAccount = await prisma.instagramAccount.findUnique({
+        where: { id: accountId },
+        select: { handle: true },
+      });
+      if (igAccount) initialValues = { ...initialValues, ig_account: igAccount.handle };
+    }
+  }
+
   // ─── Content Library pre-fill ──────────────────────────────────────────────
   let libraryPrefillContext: LibraryPrefillContext | undefined;
   const hasLibraryBindings =
     json.blocks.some((b) => (b.type === "video" || b.type === "music") && b.libraryId) ||
     !!json.contentLibrary?.dataCampaignId;
+
+  // Detect if any video block uses theme_sequence — needs an Instagram account selector
+  const hasThemeSequenceBlocks = json.blocks.some((b) => {
+    if (b.type !== "video" || !b.libraryId) return false;
+    const rule = (b as import("@/types/template").VideoBlock).selectionRule;
+    if (!rule) return false;
+    if (typeof rule === "string") return rule === "theme_sequence";
+    return rule.strategy === "theme_sequence";
+  });
 
   if (hasLibraryBindings) {
     const fieldLibraryMap: Record<string, { libraryId: string; blockId: string; type: "video" | "audio"; tagFilterParam?: string }> = {};
@@ -149,6 +190,17 @@ export default async function GeneratePage({ params, searchParams }: Props) {
       fieldLibraryMap[musicBlock.binding] = { libraryId: musicBlock.libraryId, blockId: musicBlock.id, type: "audio" as const, tagFilterParam };
     }
 
+    // Fetch Instagram accounts if needed (for theme_sequence blocks)
+    const instagramAccounts = hasThemeSequenceBlocks
+      ? await prisma.instagramAccount.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, handle: true, offre: true } })
+      : [];
+
+    let setSequencedLibraryIds: string[] = [];
+    let usedSetTagByLibrary: Record<string, string> | undefined;
+    let usedCategoryByLibrary: Record<string, string> | undefined;
+    let prevCursorStateByLibrary: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null }> | undefined;
+    let prevDataEntryState: { entryId: string; campaignId: string; usagePolicy: string; claimType: "usedInCycle" | "perAccountUsage"; accountId?: string } | undefined;
+
     if (listingId) {
       // Regenerating from an existing listing: try to match stored URLs back to library assets
       // so the picker shows the previously used asset as the current selection.
@@ -166,8 +218,19 @@ export default async function GeneratePage({ params, searchParams }: Props) {
       }
       // No dataSuggestion when regenerating — text fields already pre-filled from listing
     } else {
-      // Fresh generation: use resolveLibraryPrefill
-      const prefill = await resolveLibraryPrefill(json, initialValues ?? undefined);
+      // Fresh generation: use resolveLibraryPrefill (pass accountId if a theme_sequence block exists)
+      const prefill = await resolveLibraryPrefill(json, initialValues ?? undefined, accountId ?? undefined);
+      setSequencedLibraryIds = prefill.setSequencedLibraryIds ?? [];
+      usedSetTagByLibrary = prefill.usedSetTagByLibrary && Object.keys(prefill.usedSetTagByLibrary).length > 0
+        ? prefill.usedSetTagByLibrary
+        : undefined;
+      usedCategoryByLibrary = prefill.usedCategoryByLibrary && Object.keys(prefill.usedCategoryByLibrary).length > 0
+        ? prefill.usedCategoryByLibrary
+        : undefined;
+      prevCursorStateByLibrary = prefill.prevCursorStateByLibrary && Object.keys(prefill.prevCursorStateByLibrary).length > 0
+        ? prefill.prevCursorStateByLibrary
+        : undefined;
+      prevDataEntryState = prefill.prevDataEntryState ?? undefined;
 
       for (const block of json.blocks) {
         if (block.type === "video" && block.binding && block.libraryId) {
@@ -189,8 +252,41 @@ export default async function GeneratePage({ params, searchParams }: Props) {
       }
     }
 
-    libraryPrefillContext = { fieldLibraryMap, initialSuggestions, prefilledDataKeys, dataSuggestion };
+    libraryPrefillContext = {
+      fieldLibraryMap,
+      initialSuggestions,
+      prefilledDataKeys,
+      dataSuggestion,
+      setSequencedLibraryIds,
+      usedSetTagByLibrary,
+      usedCategoryByLibrary,
+      prevCursorStateByLibrary,
+      prevDataEntryState,
+      instagramAccounts,
+      selectedAccountId: accountId,
+      slotId,
+    };
   }
+
+  // For "auto" mode: filter out video schema fields covered by videoSequence libraryId slots
+  const autoMode = json.generationMode === "auto";
+  // Collect the bindings of sequence slots that are manually fed from form fields.
+  // Video schema fields whose key matches one of these bindings are kept even in
+  // auto mode. Video fields that would feed a library-resolved slot (or are
+  // completely orphaned) are removed so the form isn't cluttered.
+  const sequenceManualSlotBindings = new Set(
+    (json.videoSequence ?? [])
+      .filter((s) => s.binding && !s.libraryId) // explicit binding, no library
+      .map((s) => s.binding as string),
+  );
+  // When generationMode is "auto" and videoSequence handles videos, remove orphan video fields
+  const finalSchema = autoMode && (json.videoSequence?.length ?? 0) > 0
+    ? mergedSchema.filter((f) => {
+        if (f.type !== "video") return true;
+        // Keep only video fields that feed a manual sequence slot
+        return sequenceManualSlotBindings.has(f.key);
+      })
+    : mergedSchema;
 
   return (
     <div className="px-4 py-8 xl:px-8 max-w-[1680px] mx-auto">
@@ -202,15 +298,18 @@ export default async function GeneratePage({ params, searchParams }: Props) {
           Template : <span className="text-indigo-700 font-medium">{template.name}</span>
           {template.client && ` · ${template.client}`}
           {initialValues && " · formulaire pré-rempli"}
+          {autoMode && " · génération automatique"}
         </p>
       </div>
       <ListingForm
+        key={accountId ?? ""}
         templateId={templateId}
-        schema={mergedSchema}
+        schema={finalSchema}
         formSections={json.formSections ?? []}
         mediaFieldAspectRatios={mediaFieldAspectRatios}
         initialValues={initialValues}
         libraryPrefillContext={libraryPrefillContext}
+        autoSubmit={autoMode}
       />
     </div>
   );

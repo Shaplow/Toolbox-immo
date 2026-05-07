@@ -123,7 +123,7 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
   }, []);
 
   // ── Polling ───────────────────────────────────────────────────────────────
-  const pollJobStatusRef = useRef<() => Promise<void>>();
+  const pollJobStatusRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   const pollJobStatus = useCallback(async () => {
     try {

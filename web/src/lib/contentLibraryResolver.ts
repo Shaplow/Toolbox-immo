@@ -10,19 +10,11 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import type {
   TemplateJSON, VideoBlock, MusicBlock,
   MediaSelectionRule, MediaSelectionRuleConfig,
 } from "@/types/template";
-
-export interface LibraryPrefill {
-  /** blockId → suggested asset */
-  videoSuggestions: Record<string, { id: string; url: string; filename: string }>;
-  /** Single audio asset suggestion (first MusicBlock with a libraryId) */
-  audioSuggestion: { id: string; url: string; filename: string } | null;
-  /** Parsed fields from the selected DataEntry */
-  dataSuggestion: { entryId: string; fields: Record<string, string> } | null;
-}
 
 /** Normalize a MediaSelectionRule (legacy string or structured object) into a config. */
 export function normalizeRule(rule: MediaSelectionRule | undefined): MediaSelectionRuleConfig {
@@ -32,8 +24,7 @@ export function normalizeRule(rule: MediaSelectionRule | undefined): MediaSelect
 }
 
 /**
- * Resolve the effective tag for a rule, combining literal tagFilter and
- * dynamic tagFilterParam (looked up from formData).
+ * Resolve the effective tag for a rule (legacy: tagFilter / tagFilterParam).
  * tagFilter takes precedence over tagFilterParam if both are defined.
  */
 function resolveTag(
@@ -48,95 +39,572 @@ function resolveTag(
   return undefined;
 }
 
-/** Select the best asset from a MediaLibrary according to rule. */
-async function selectMediaAsset(
+/**
+ * Build a Prisma.Sql WHERE fragment for all tag conditions in a rule config.
+ * Returns an empty fragment if no conditions apply.
+ * The fragment starts with AND when non-empty.
+ * Assumes the MediaAsset table is aliased as `ma` in the calling query.
+ */
+function buildTagFragment(
+  config: MediaSelectionRuleConfig,
+  formData?: Record<string, unknown>,
+): Prisma.Sql {
+  const parts: Prisma.Sql[] = [];
+
+  // Legacy path: no tagConditions → fall back to single tagFilter/tagFilterParam
+  if (!config.tagConditions?.length && !config.igAccountFilter && !config.igAccountFilterParam) {
+    const legacyTag = resolveTag(config, formData);
+    if (legacyTag) {
+      const likeVal = `%"${legacyTag}"%`;
+      parts.push(Prisma.sql`lower(ma.tags) ILIKE ${likeVal}`);
+    }
+  }
+
+  // tagConditions — each condition is an ILIKE (or NOT ILIKE) on ma.tags
+  const condParts: Prisma.Sql[] = [];
+  for (const c of config.tagConditions ?? []) {
+    const rawTag = c.fromParam && formData
+      ? (typeof formData[c.tag] === "string" ? (formData[c.tag] as string).trim() : "")
+      : c.tag.trim();
+    if (!rawTag) continue;
+    const likeVal = `%"${rawTag.toLowerCase()}"%`;
+    if (c.negate) {
+      condParts.push(Prisma.sql`NOT lower(ma.tags) ILIKE ${likeVal}`);
+    } else {
+      condParts.push(Prisma.sql`lower(ma.tags) ILIKE ${likeVal}`);
+    }
+  }
+  if (condParts.length > 0) {
+    const op = config.tagConditionsOperator === "OR" ? " OR " : " AND ";
+    parts.push(
+      condParts.length === 1
+        ? condParts[0]!
+        : Prisma.sql`(${Prisma.join(condParts, op)})`,
+    );
+  }
+
+  // igAccountFilter — additional AND tag condition (IG handle stored as tag)
+  const igTag =
+    config.igAccountFilter?.trim() ||
+    (config.igAccountFilterParam && formData
+      ? typeof formData[config.igAccountFilterParam] === "string"
+        ? (formData[config.igAccountFilterParam] as string).trim()
+        : ""
+      : "");
+  if (igTag) {
+    const likeVal = `%"${igTag.toLowerCase()}"%`;
+    parts.push(Prisma.sql`lower(ma.tags) ILIKE ${likeVal}`);
+  }
+
+  if (parts.length === 0) return Prisma.sql``;
+  return parts.length === 1
+    ? Prisma.sql`AND ${parts[0]!}`
+    : Prisma.sql`AND (${Prisma.join(parts, " AND ")})`;
+}
+
+/** Select the best asset from a MediaLibrary according to rule.
+ * Respects MediaAssetAccess: with accountId → global OR accessible; without → global only.
+ * Ordering uses per-account MediaAssetUsage when accountId is provided,
+ * falling back to global MediaAsset counters otherwise.
+ *
+ * @param excludeAssetIds Optional set of asset IDs to skip (used when multiple blocks share the same library).
+ * @public — also used by generateSequenceRender for slot resolution at render time.
+ */
+export async function selectMediaAsset(
   libraryId: string,
   rule: MediaSelectionRule | undefined,
   formData?: Record<string, unknown>,
+  accountId?: string,
+  excludeAssetIds?: string[],
 ): Promise<{ id: string; url: string; filename: string } | null> {
   const config = normalizeRule(rule);
   const { strategy } = config;
 
   if (strategy === "manual") return null;
 
-  const tag = resolveTag(config, formData);
+  const tagFrag = buildTagFragment(config, formData);
 
-  // Prisma WHERE clause with optional case-insensitive tag filter.
-  const tagWhere = tag
-    ? { tags: { contains: `"${tag}"`, mode: "insensitive" as const } }
-    : {};
+  // Access filter: with accountId → global OR restricted-to-me; without → global only
+  const accessFilter = accountId
+    ? Prisma.sql`AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
+        OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))`
+    : Prisma.sql`AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)`;
+
+  // Exclusion filter: skip already-picked assets from sibling blocks in the same generation
+  const excludeFrag =
+    excludeAssetIds && excludeAssetIds.length > 0
+      ? Prisma.sql`AND ma.id NOT IN (${Prisma.join(excludeAssetIds.map((id) => Prisma.sql`${id}`), ", ")})`
+      : Prisma.sql``;
+
+  type AssetRow = { id: string; url: string; filename: string };
 
   if (strategy === "random") {
-    const count = await prisma.mediaAsset.count({ where: { libraryId, ...tagWhere } });
-    if (count === 0) return null;
-    const skip = Math.floor(Math.random() * count);
-    const asset = await prisma.mediaAsset.findFirst({
-      where: { libraryId, ...tagWhere },
-      skip,
-    });
-    return asset ? { id: asset.id, url: asset.url, filename: asset.filename } : null;
+    const rows = await prisma.$queryRaw<AssetRow[]>(
+      Prisma.sql`SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+        WHERE ma."libraryId" = ${libraryId}
+        ${accessFilter}
+        ${tagFrag}
+        ${excludeFrag}
+        ORDER BY RANDOM() LIMIT 1`
+    );
+    return rows[0] ?? null;
   }
 
   if (strategy === "oldest_used") {
-    // ORDER BY lastUsedAt ASC NULLS FIRST — Prisma doesn't expose NULLS FIRST natively.
-    if (tag) {
-      const rows = await prisma.$queryRaw<{ id: string; url: string; filename: string }[]>`
-        SELECT id, url, filename
-        FROM "MediaAsset"
-        WHERE "libraryId" = ${libraryId}
-          AND lower(tags) ILIKE ${`%"${tag}"%`}
-        ORDER BY "lastUsedAt" ASC NULLS FIRST, "createdAt" ASC
-        LIMIT 1
-      `;
+    if (accountId) {
+      const rows = await prisma.$queryRaw<AssetRow[]>(
+        Prisma.sql`SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+          LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
+          WHERE ma."libraryId" = ${libraryId}
+          ${accessFilter}
+          ${tagFrag}
+          ${excludeFrag}
+          ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`
+      );
       return rows[0] ?? null;
     }
-    const rows = await prisma.$queryRaw<{ id: string; url: string; filename: string }[]>`
-      SELECT id, url, filename
-      FROM "MediaAsset"
-      WHERE "libraryId" = ${libraryId}
-      ORDER BY "lastUsedAt" ASC NULLS FIRST, "createdAt" ASC
-      LIMIT 1
-    `;
+    const rows = await prisma.$queryRaw<AssetRow[]>(
+      Prisma.sql`SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+        WHERE ma."libraryId" = ${libraryId}
+        ${accessFilter}
+        ${tagFrag}
+        ${excludeFrag}
+        ORDER BY ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`
+    );
     return rows[0] ?? null;
   }
 
   // least_used (default)
-  const asset = await prisma.mediaAsset.findFirst({
-    where: { libraryId, ...tagWhere },
-    orderBy: [{ usageCount: "asc" }, { lastUsedAt: "asc" }, { createdAt: "asc" }],
-  });
+  if (accountId) {
+    const rows = await prisma.$queryRaw<AssetRow[]>(
+      Prisma.sql`SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+        LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
+        WHERE ma."libraryId" = ${libraryId}
+        ${accessFilter}
+        ${tagFrag}
+        ${excludeFrag}
+        ORDER BY COALESCE(mau."usageCount", 0) ASC, mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`
+    );
+    return rows[0] ?? null;
+  }
+  const rows = await prisma.$queryRaw<AssetRow[]>(
+    Prisma.sql`SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+      WHERE ma."libraryId" = ${libraryId}
+      ${accessFilter}
+      ${tagFrag}
+      ${excludeFrag}
+      ORDER BY ma."usageCount" ASC, ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`
+  );
+  return rows[0] ?? null;
+}
 
-  if (!asset) return null;
-  return { id: asset.id, url: asset.url, filename: asset.filename };
+/**
+ * Select an asset using the set_sequence strategy.
+ *
+ * @public — also used by generateSequenceRender for slot resolution at render time.
+ *
+ * **Auto mode** (setSequence empty or not set):
+ *   1. Collect all distinct (category, setTag) groups eligible for this account.
+ *      Eligible = global (no MediaAssetAccess rows) OR account-specific (has access entry for accountId).
+ *      Without accountId = global-only pool.
+ *   2. Exclude the lastUsedCategory group family (avoid consecutive same-category gens).
+ *      If only one group exists, allow repeating it.
+ *   3. Among candidates, pick the group with the oldest MAX per-account lastUsedAt
+ *      (from MediaAssetUsage when accountId present, from MediaAsset.lastUsedAt otherwise).
+ *   4. Within the chosen group, pick the asset with the oldest per-account lastUsedAt.
+ *
+ * **Override mode** (setSequence non-empty):
+ *   Uses the integer cursor into the explicit ordered list (legacy behaviour).
+ *
+ * pinnedSetTag: if provided (2nd+ block sharing the same library in one generation),
+ *   skip group discovery and pick from that specific group.
+ */
+
+/**
+ * Snapshot of the cursor state BEFORE it was advanced, enabling a conditional revert
+ * if the render subsequently fails.  See revertLibraryCursors() in recordLibraryUsage.ts.
+ */
+export type CursorRevertState = {
+  /** cursor value BEFORE advance (override mode) */
+  prevCursor: number;
+  /** cursor value WE WROTE (override mode) — revert condition: cursor still equals this */
+  claimedCursor: number;
+  /** lastUsedCategory BEFORE we wrote (auto mode) */
+  prevLastUsedCategory: string | null;
+  /** lastUsedCategory WE WROTE (auto mode) — revert condition: lastUsedCategory still equals this */
+  claimedLastUsedCategory: string | null;
+};
+
+export async function selectMediaAssetBySetSequence(
+  libraryId: string,
+  accountId: string | undefined,
+  tagFilter?: string,          // kept for backward compat (ignored when ruleConfig provided)
+  pinnedSetTag?: string,
+  pinnedCategory?: string | null,
+  ruleConfig?: MediaSelectionRuleConfig,
+): Promise<{ id: string; url: string; filename: string; resolvedSetTag: string | null; resolvedCategory: string | null; prevCursorState?: CursorRevertState } | null> {
+  const library = await prisma.mediaLibrary.findUnique({
+    where: { id: libraryId },
+    select: { setSequence: true },
+  });
+  if (!library) return null;
+
+  let sequence: string[] = [];
+  try { sequence = JSON.parse(library.setSequence) as string[]; } catch { sequence = []; }
+
+  // Build tag fragment: prefer structured ruleConfig, fall back to legacy tagFilter string
+  const tagFrag: Prisma.Sql = ruleConfig
+    ? buildTagFragment(ruleConfig)
+    : tagFilter
+      ? Prisma.sql`AND lower(ma.tags) ILIKE ${`%"${tagFilter.toLowerCase()}"%`}`
+      : Prisma.sql``;
+
+  type AssetRow = { id: string; url: string; filename: string };
+
+  // Helper: pick one asset from a specific (setTag, category) group.
+  // Applies access filtering and per-account usage ordering.
+  // setTag=null + category non-null = category-only group (guaranteed by group discovery).
+  async function pickFromGroup(setTag: string | null, category: string | null): Promise<AssetRow | null> {
+    const setTagClause = setTag !== null
+      ? Prisma.sql`AND ma."setTag" = ${setTag}`
+      : Prisma.sql`AND ma."setTag" IS NULL`;
+    const categoryClause = category !== null
+      ? Prisma.sql`AND ma."category" = ${category}`
+      : Prisma.sql`AND ma."category" IS NULL`;
+
+    if (accountId) {
+      const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
+        SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+        LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
+        WHERE ma."libraryId" = ${libraryId}
+          ${setTagClause}
+          ${categoryClause}
+          ${tagFrag}
+          AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
+            OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))
+        ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
+      return rows[0] ?? null;
+    } else {
+      const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
+        SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+        WHERE ma."libraryId" = ${libraryId}
+          ${setTagClause}
+          ${categoryClause}
+          ${tagFrag}
+          AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
+        ORDER BY ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
+      return rows[0] ?? null;
+    }
+  }
+
+  // --- Pinned group (2nd+ block within same library group in one generation) ---
+  if (pinnedSetTag !== undefined) {
+    const row = await pickFromGroup(pinnedSetTag, pinnedCategory ?? null);
+    return row ? { ...row, resolvedSetTag: pinnedSetTag, resolvedCategory: pinnedCategory ?? null } : null;
+  }
+
+  // --- Override mode: setSequence explicitly defined → use cursor ---
+  if (sequence.length > 0) {
+    if (accountId) {
+      // SELECT FOR UPDATE: advance cursor at prefill time so concurrent cron generations
+      // each claim a distinct position in the set list before any render finishes.
+      let selectedSetTag: string | undefined;
+      let prevCursorState: CursorRevertState | undefined;
+      await prisma.$transaction(async (tx) => {
+        // Ensure row exists before locking
+        await tx.accountLibraryCursor.upsert({
+          where: { accountId_libraryId: { accountId, libraryId } },
+          update: {},
+          create: { accountId, libraryId, cursor: 0 },
+        });
+        const locked = await tx.$queryRaw<{ cursor: number; lastUsedCategory: string | null }[]>(
+          Prisma.sql`SELECT cursor, "lastUsedCategory" FROM "AccountLibraryCursor" WHERE "accountId" = ${accountId} AND "libraryId" = ${libraryId} FOR UPDATE`,
+        );
+        const current = locked[0]?.cursor ?? 0;
+        const prevLastUsedCat = locked[0]?.lastUsedCategory ?? null;
+        selectedSetTag = sequence[current % sequence.length];
+        if (!selectedSetTag) return;
+        const nextCursor = (current + 1) % sequence.length;
+        // Snapshot BEFORE writing so we can conditionally revert on render failure.
+        // Override mode never touches lastUsedCategory, so claimedLastUsedCategory = prevLastUsedCat
+        // (the WHERE condition in the revert will still fire only if nothing else changed it).
+        prevCursorState = { prevCursor: current, claimedCursor: nextCursor, prevLastUsedCategory: prevLastUsedCat, claimedLastUsedCategory: prevLastUsedCat };
+        await tx.accountLibraryCursor.update({
+          where: { accountId_libraryId: { accountId, libraryId } },
+          data: { cursor: nextCursor, lastUsedSetTag: selectedSetTag, lastAdvancedAt: new Date() },
+        });
+      });
+      if (!selectedSetTag) return null;
+      // Asset selection outside the transaction — set position is already committed
+      const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
+        SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+        LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
+        WHERE ma."libraryId" = ${libraryId} AND ma."setTag" = ${selectedSetTag}
+          ${tagFrag}
+          AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
+            OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))
+        ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
+      const row = rows[0] ?? null;
+      return row ? { ...row, resolvedSetTag: selectedSetTag, resolvedCategory: null, prevCursorState } : null;
+    } else {
+      // No accountId (admin preview): position 0, no lock needed
+      const selectedSetTag = sequence[0];
+      if (!selectedSetTag) return null;
+      const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
+        SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+        WHERE ma."libraryId" = ${libraryId} AND ma."setTag" = ${selectedSetTag}
+          ${tagFrag}
+          AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
+        ORDER BY ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
+      const row = rows[0] ?? null;
+      return row ? { ...row, resolvedSetTag: selectedSetTag, resolvedCategory: null } : null;
+    }
+  }
+
+  // --- Auto mode: group by (category, setTag), exclude last used category ---
+  type GroupRow = { setTag: string | null; category: string | null };
+
+  if (accountId) {
+    // SELECT FOR UPDATE: write lastUsedCategory at prefill time so concurrent cron
+    // generations block on the lock, then read the updated category and pick a different
+    // family — preventing duplicate content across back-to-back auto generations.
+    let resultRow: AssetRow | null = null;
+    let resultSetTag: string | null = null;
+    let resultCategory: string | null = null;
+    let prevCursorState: CursorRevertState | undefined;
+
+    await prisma.$transaction(async (tx) => {
+      // Ensure cursor row exists before locking
+      await tx.accountLibraryCursor.upsert({
+        where: { accountId_libraryId: { accountId, libraryId } },
+        update: {},
+        create: { accountId, libraryId, cursor: 0 },
+      });
+      // Lock cursor row and read lastUsedCategory atomically
+      const locked = await tx.$queryRaw<{ lastUsedCategory: string | null }[]>(
+        Prisma.sql`SELECT "lastUsedCategory" FROM "AccountLibraryCursor" WHERE "accountId" = ${accountId} AND "libraryId" = ${libraryId} FOR UPDATE`,
+      );
+      const lockedCategory = locked[0]?.lastUsedCategory ?? null;
+
+      // Group discovery inside the transaction
+      const allGroups: GroupRow[] = await tx.$queryRaw`
+          SELECT ma."setTag", ma."category"
+          FROM "MediaAsset" ma
+          LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
+          WHERE ma."libraryId" = ${libraryId} AND (ma."setTag" IS NOT NULL OR ma."category" IS NOT NULL)
+            AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
+              OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))
+          GROUP BY ma."setTag", ma."category"
+          ORDER BY MAX(mau."lastUsedAt") ASC NULLS FIRST, ma."setTag" ASC NULLS LAST, ma."category" ASC NULLS FIRST`;
+
+      if (allGroups.length === 0) return; // handled by fallback below
+
+      const eligible = lockedCategory != null
+        ? allGroups.filter((g) => g.category !== lockedCategory)
+        : allGroups;
+      const candidates = eligible.length > 0 ? eligible : allGroups;
+
+      for (const candidate of candidates) {
+        // Inline pickFromGroup using the transaction client
+        const setTagClause = candidate.setTag !== null
+          ? Prisma.sql`AND ma."setTag" = ${candidate.setTag}`
+          : Prisma.sql`AND ma."setTag" IS NULL`;
+        const categoryClause = candidate.category !== null
+          ? Prisma.sql`AND ma."category" = ${candidate.category}`
+          : Prisma.sql`AND ma."category" IS NULL`;
+        const rows = await tx.$queryRaw<AssetRow[]>(Prisma.sql`
+          SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+          LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
+          WHERE ma."libraryId" = ${libraryId}
+            ${setTagClause}
+            ${categoryClause}
+            ${tagFrag}
+            AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
+              OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))
+          ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
+        if (rows[0]) {
+          resultRow = rows[0];
+          resultSetTag = candidate.setTag;
+          resultCategory = candidate.category;
+          // Snapshot BEFORE writing so we can conditionally revert on render failure
+          prevCursorState = { prevCursor: 0, claimedCursor: 0, prevLastUsedCategory: lockedCategory, claimedLastUsedCategory: candidate.category };
+          // Write lastUsedCategory immediately — the next generator waiting on FOR UPDATE
+          // will see this value and exclude this category family.
+          await tx.accountLibraryCursor.update({
+            where: { accountId_libraryId: { accountId, libraryId } },
+            data: {
+              lastUsedSetTag: candidate.setTag,
+              lastUsedCategory: candidate.category,
+              lastAdvancedAt: new Date(),
+            },
+          });
+          return; // commit
+        }
+      }
+    });
+
+    if (resultRow) {
+      return { ...(resultRow as AssetRow), resolvedSetTag: resultSetTag, resolvedCategory: resultCategory, prevCursorState };
+    }
+    // allGroups was empty — fallback: any asset from eligible pool
+    const fallbackRows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
+      SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+      LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
+      WHERE ma."libraryId" = ${libraryId}
+        ${tagFrag}
+        AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
+          OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))
+      ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
+    return fallbackRows[0] ? { ...fallbackRows[0], resolvedSetTag: null, resolvedCategory: null } : null;
+  }
+
+  // No accountId (admin preview): no lock, no cursor writes, global pool only
+  const allGroups: GroupRow[] = await prisma.$queryRaw`
+      SELECT "setTag", "category"
+      FROM "MediaAsset"
+      WHERE "libraryId" = ${libraryId} AND ("setTag" IS NOT NULL OR "category" IS NOT NULL)
+        AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = id)
+      GROUP BY "setTag", "category"
+      ORDER BY MAX("lastUsedAt") ASC NULLS FIRST, "setTag" ASC NULLS LAST, "category" ASC NULLS FIRST`;
+
+  if (allGroups.length === 0) {
+    const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
+      SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+      WHERE ma."libraryId" = ${libraryId}
+        ${tagFrag}
+        AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
+      ORDER BY ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
+    return rows[0] ? { ...rows[0], resolvedSetTag: null, resolvedCategory: null } : null;
+  }
+
+  // No category exclusion without accountId (no per-account cursor)
+  for (const candidate of allGroups) {
+    const row = await pickFromGroup(candidate.setTag, candidate.category);
+    if (row) {
+      return { ...row, resolvedSetTag: candidate.setTag, resolvedCategory: candidate.category };
+    }
+  }
+  return null;
 }
 
 /**
  * Resolve library pre-fill suggestions for a template.
  *
- * @param template  The parsed TemplateJSON.
- * @param formData  Optional: already-known form values (e.g. from URL params or
- *                  a regenerating listing). Used to resolve tagFilterParam rules.
+ * @param template   The parsed TemplateJSON.
+ * @param formData   Optional: already-known form values. Used to resolve tagFilterParam rules.
+ * @param accountId  Optional: Instagram account ID — required for set_sequence blocks.
  */
 export async function resolveLibraryPrefill(
   template: TemplateJSON,
   formData?: Record<string, unknown>,
+  accountId?: string,
 ): Promise<LibraryPrefill> {
   const result: LibraryPrefill = {
     videoSuggestions: {},
     audioSuggestion: null,
     dataSuggestion: null,
+    setSequencedLibraryIds: [],
+    usedSetTagByLibrary: {},
+    usedCategoryByLibrary: {},
+    prevCursorStateByLibrary: {},
+    prevDataEntryState: undefined,
   };
 
   // --- Video blocks ---
   const videoBlocks = template.blocks.filter(
     (b): b is VideoBlock => b.type === "video" && !!b.libraryId,
   );
+
+  const regularBlocks = videoBlocks.filter(
+    (b) => normalizeRule(b.selectionRule).strategy !== "theme_sequence",
+  );
+  const sequenceBlocks = videoBlocks.filter(
+    (b) => normalizeRule(b.selectionRule).strategy === "theme_sequence",
+  );
+
+  // Regular blocks: group by libraryId and resolve serially within each group so that
+  // multiple blocks bound to the same library receive distinct assets.
+  // Blocks bound to different libraries are still resolved in parallel.
+  const regularByLibrary = new Map<string, VideoBlock[]>();
+  for (const b of regularBlocks) {
+    const key = b.libraryId!;
+    if (!regularByLibrary.has(key)) regularByLibrary.set(key, []);
+    regularByLibrary.get(key)!.push(b);
+  }
   await Promise.all(
-    videoBlocks.map(async (b) => {
-      const suggestion = await selectMediaAsset(b.libraryId!, b.selectionRule, formData);
-      if (suggestion) result.videoSuggestions[b.id] = suggestion;
+    Array.from(regularByLibrary.entries()).map(async ([, blocks]) => {
+      const pickedIds: string[] = [];
+      for (const b of blocks) {
+        const suggestion = await selectMediaAsset(
+          b.libraryId!,
+          b.selectionRule,
+          formData,
+          accountId,
+          pickedIds.length > 0 ? pickedIds : undefined,
+        );
+        if (suggestion) {
+          result.videoSuggestions[b.id] = suggestion;
+          pickedIds.push(suggestion.id);
+        }
+      }
     }),
   );
+
+  // Set_sequence blocks: group by libraryId so paired blocks (intro+outro)
+  // receive the same set. First block in each library discovers the set (via cursor),
+  // subsequent blocks in the same library receive it pinned.
+  // accountId is optional: without it we still return a suggestion using global ordering;
+  // cursor advancement is skipped (recordLibraryUsage requires accountId for that).
+  if (sequenceBlocks.length > 0) {
+    const groups = new Map<string, VideoBlock[]>();
+    for (const b of sequenceBlocks) {
+      const key = b.libraryId!;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(b);
+      if (!result.setSequencedLibraryIds!.includes(key)) {
+        result.setSequencedLibraryIds!.push(key);
+      }
+    }
+
+    await Promise.all(
+      Array.from(groups.entries()).map(async ([libId, blocks]) => {
+        let pinnedSetTag: string | undefined = undefined;
+        let pinnedCategory: string | null | undefined = undefined;
+        for (const b of blocks) {
+          const rule = normalizeRule(b.selectionRule);
+          const suggestion = await selectMediaAssetBySetSequence(
+            libId,
+            accountId,
+            undefined,
+            pinnedSetTag,
+            pinnedCategory,
+            rule,
+          );
+          if (suggestion) {
+            result.videoSuggestions[b.id] = {
+              id: suggestion.id,
+              url: suggestion.url,
+              filename: suggestion.filename,
+            };
+            if (pinnedSetTag === undefined) {
+              if (suggestion.resolvedSetTag) {
+                pinnedSetTag = suggestion.resolvedSetTag;
+                pinnedCategory = suggestion.resolvedCategory;
+                result.usedSetTagByLibrary![libId] = suggestion.resolvedSetTag;
+              }
+              if (suggestion.resolvedCategory != null) {
+                result.usedCategoryByLibrary![libId] = suggestion.resolvedCategory;
+              }
+              // Capture cursor snapshot for failure-recovery revert (only first block per library)
+              if (suggestion.prevCursorState) {
+                result.prevCursorStateByLibrary![libId] = suggestion.prevCursorState;
+              }
+            }
+          }
+        }
+      }),
+    );
+  }
 
   // --- Music blocks (first with a libraryId) ---
   const musicBlock = template.blocks.find(
@@ -147,20 +615,27 @@ export async function resolveLibraryPrefill(
       musicBlock.libraryId,
       musicBlock.audioSelectionRule,
       formData,
+      accountId,
     );
   }
 
   // --- Data library ---
   if (template.contentLibrary?.dataCampaignId) {
-    result.dataSuggestion = await selectDataEntry(
+    const dataSuggestion = await selectDataEntry(
       template.contentLibrary.dataCampaignId,
       template.contentLibrary.dataSelectionRule,
+      accountId,
     );
+    if (dataSuggestion) {
+      result.dataSuggestion = { entryId: dataSuggestion.entryId, fields: dataSuggestion.fields };
+      if (dataSuggestion.claimState) {
+        result.prevDataEntryState = dataSuggestion.claimState;
+      }
+    }
   }
 
   return result;
 }
-
 
 export interface LibraryPrefill {
   /** blockId → suggested asset */
@@ -169,35 +644,281 @@ export interface LibraryPrefill {
   audioSuggestion: { id: string; url: string; filename: string } | null;
   /** Parsed fields from the selected DataEntry */
   dataSuggestion: { entryId: string; fields: Record<string, string> } | null;
+  /**
+   * Libraries that used set_sequence for this prefill.
+   * Passed through usedAssets so recordLibraryUsage can advance cursor += 1.
+   */
+  setSequencedLibraryIds?: string[];
+  /**
+   * libraryId → resolved setTag used in this generation.
+   * Stored in Render.usedAssets so recordLibraryUsage can persist lastUsedSetTag.
+   */
+  usedSetTagByLibrary?: Record<string, string>;
+  /**
+   * libraryId → resolved category used in this generation.
+   * Stored in Render.usedAssets so recordLibraryUsage can persist lastUsedCategory.
+   */
+  usedCategoryByLibrary?: Record<string, string>;
+  /**
+   * libraryId → cursor state snapshot taken at prefill time.
+   * Passed through to Render.usedAssets so revertLibraryCursors() can roll back
+   * the cursor if the render subsequently fails.
+   */
+  prevCursorStateByLibrary?: Record<string, CursorRevertState>;
+  /**
+   * DataEntry claim state taken at prefill time.
+   * Passed through to Render.usedAssets so revertLibraryCursors() can release the
+   * claim if the render subsequently fails.
+   */
+  prevDataEntryState?: DataEntryClaimState;
 }
 
-/** Select the best DataEntry from a campaign according to rule. */
+/**
+ * Snapshot of the DataEntry claim state made at prefill time, enabling a conditional revert
+ * if the render subsequently fails.  See revertLibraryCursors() in recordLibraryUsage.ts.
+ *
+ * claimType:
+ *  "usedInCycle"     — we set DataEntry.usedInCycle=true (for "cycle" and "once_global" policies).
+ *                      Revert: SET usedInCycle=false WHERE id=? AND usageCount=0
+ *  "perAccountUsage" — we inserted DataEntryUsage(usageCount=0) as a claim for this account
+ *                      (for "cycle_per_account" and "once_per_account").
+ *                      Revert: DELETE DataEntryUsage WHERE entryId=? AND accountId=? AND usageCount=0
+ */
+export type DataEntryClaimState = {
+  entryId: string;
+  campaignId: string;
+  usagePolicy: string;
+  claimType: "usedInCycle" | "perAccountUsage";
+  accountId?: string;
+};
+
+/** Select the best DataEntry from a campaign according to rule.
+ * Respects DataEntryAccess: with accountId → global OR accessible; without → global only.
+ * Ordering uses per-account DataEntryUsage when accountId is provided,
+ * falling back to global DataEntry counters otherwise.
+ * The campaign's `usagePolicy` field controls the hard/soft constraint:
+ *   - "cycle"             : global not_used_in_cycle + fallback (default)
+ *   - "cycle_per_account" : per-account not_used + fallback to least_used_by_account
+ *   - "once_per_account"  : per-account hard limit — null when all used
+ *   - "once_global"       : global hard limit — null when all used
+ *   - "unlimited"         : no constraint, always least_used
+ *
+ * When accountId is provided and the policy supports it, the selected entry is
+ * "claimed" atomically using SELECT … FOR UPDATE SKIP LOCKED so that concurrent
+ * cron generations for the same account/campaign pick different entries.
+ */
 async function selectDataEntry(
   campaignId: string,
   rule: "not_used_in_cycle" | "least_used" | "manual" | undefined,
-): Promise<{ entryId: string; fields: Record<string, string> } | null> {
+  accountId?: string,
+): Promise<{ entryId: string; fields: Record<string, string>; claimState?: DataEntryClaimState } | null> {
   if (rule === "manual") return null;
 
-  let entry;
-  if (rule === "not_used_in_cycle" || !rule) {
-    // Prefer entries not yet used in current cycle, fallback to least used
-    entry = await prisma.dataEntry.findFirst({
-      where: { campaignId, usedInCycle: false },
-      orderBy: [{ usageCount: "asc" }, { createdAt: "asc" }],
-    });
-    if (!entry) {
-      // All used in cycle — fallback to least used overall
-      entry = await prisma.dataEntry.findFirst({
-        where: { campaignId },
-        orderBy: [{ usageCount: "asc" }, { createdAt: "asc" }],
-      });
+  // Fetch campaign to read usagePolicy
+  const campaign = await prisma.dataCampaign.findUnique({
+    where: { id: campaignId },
+    select: { usagePolicy: true },
+  });
+  const usagePolicy = (campaign?.usagePolicy ?? "cycle") as
+    | "cycle"
+    | "cycle_per_account"
+    | "once_per_account"
+    | "once_global"
+    | "unlimited";
+
+  // Access filter fragment (built once, used in all queries)
+  const accessFilter = accountId
+    ? Prisma.sql`AND (NOT EXISTS (SELECT 1 FROM "DataEntryAccess" dea WHERE dea."entryId" = de.id)
+        OR EXISTS (SELECT 1 FROM "DataEntryAccess" dea WHERE dea."entryId" = de.id AND dea."accountId" = ${accountId}))`
+    : Prisma.sql`AND NOT EXISTS (SELECT 1 FROM "DataEntryAccess" dea WHERE dea."entryId" = de.id)`;
+
+  type EntryRow = { id: string; fields: string };
+
+  // Helper: fetch one entry without locking (used for fallback paths and for !accountId cases)
+  async function queryOne(extraWhere: Prisma.Sql, orderBy?: Prisma.Sql): Promise<EntryRow | null> {
+    const order = orderBy ?? (accountId
+      ? Prisma.sql`ORDER BY COALESCE(deu."usageCount", 0) ASC, deu."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC`
+      : Prisma.sql`ORDER BY de."usageCount" ASC, de."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC`);
+    if (accountId) {
+      const rows = await prisma.$queryRaw<EntryRow[]>(
+        Prisma.sql`SELECT de.id, de.fields FROM "DataEntry" de
+          LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${accountId}
+          WHERE de."campaignId" = ${campaignId}
+          ${extraWhere}
+          ${accessFilter}
+          ${order}
+          LIMIT 1`
+      );
+      return rows[0] ?? null;
     }
+    const rows = await prisma.$queryRaw<EntryRow[]>(
+      Prisma.sql`SELECT de.id, de.fields FROM "DataEntry" de
+        WHERE de."campaignId" = ${campaignId}
+        ${extraWhere}
+        ${accessFilter}
+        ${order}
+        LIMIT 1`
+    );
+    return rows[0] ?? null;
+  }
+
+  let entry: EntryRow | null = null;
+  let claimState: DataEntryClaimState | undefined;
+
+  // -----------------------------------------------------------------------
+  // "cycle" — global usedInCycle flag.
+  // Claim: SET usedInCycle=true within the tx (FOR UPDATE SKIP LOCKED).
+  // Concurrent crons skip the locked/claimed row and land on the next eligible one.
+  // -----------------------------------------------------------------------
+  if (usagePolicy === "cycle") {
+    if (accountId) {
+      await prisma.$transaction(async (tx) => {
+        const rows = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
+          SELECT de.id, de.fields FROM "DataEntry" de
+          WHERE de."campaignId" = ${campaignId}
+            AND de."usedInCycle" = false
+            ${accessFilter}
+          ORDER BY de."usageCount" ASC, de."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT 1`);
+        if (rows[0]) {
+          entry = rows[0];
+          await tx.dataEntry.update({ where: { id: rows[0].id }, data: { usedInCycle: true } });
+          claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "usedInCycle", accountId };
+        } else {
+          // Fallback: all used in this cycle — pick least used globally (no lock needed)
+          const fallback = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
+            SELECT de.id, de.fields FROM "DataEntry" de
+            WHERE de."campaignId" = ${campaignId}
+              ${accessFilter}
+            ORDER BY de."usageCount" ASC, de."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC
+            LIMIT 1`);
+          entry = fallback[0] ?? null;
+          // No claim for fallback row — it's already been used in this cycle
+        }
+      });
+    } else {
+      // No accountId: unlocked global fallback
+      entry = await queryOne(Prisma.sql`AND de."usedInCycle" = false`);
+      if (!entry) entry = await queryOne(Prisma.sql``);
+    }
+
+  // -----------------------------------------------------------------------
+  // "cycle_per_account" — per-account cycle via DataEntryUsage.
+  // Primary: no usage row for this account.
+  // Claim: INSERT DataEntryUsage(usageCount=0, lastUsedAt=now) — marks entry as claimed.
+  // Fallback: restart cycle — pick from rows with usageCount >= 1 (genuinely used).
+  // -----------------------------------------------------------------------
+  } else if (usagePolicy === "cycle_per_account") {
+    if (accountId) {
+      await prisma.$transaction(async (tx) => {
+        // Primary: entry never touched by this account
+        const rows = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
+          SELECT de.id, de.fields FROM "DataEntry" de
+          WHERE de."campaignId" = ${campaignId}
+            AND NOT EXISTS (
+              SELECT 1 FROM "DataEntryUsage" deu2
+              WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}
+            )
+            ${accessFilter}
+          ORDER BY de."createdAt" ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT 1`);
+        if (rows[0]) {
+          entry = rows[0];
+          await tx.dataEntryUsage.create({
+            data: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
+          });
+          claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId };
+        } else {
+          // Fallback: cycle restart — pick from genuinely used entries (usageCount >= 1), least used first
+          const fallback = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
+            SELECT de.id, de.fields FROM "DataEntry" de
+            LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${accountId}
+            WHERE de."campaignId" = ${campaignId}
+              AND COALESCE(deu."usageCount", 0) >= 1
+              ${accessFilter}
+            ORDER BY deu."usageCount" ASC, deu."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC
+            LIMIT 1`);
+          entry = fallback[0] ?? null;
+          // No claim for fallback — it's a cycle restart, DONE will just increment usageCount
+        }
+      });
+    } else {
+      entry = await queryOne(Prisma.sql``);
+    }
+
+  // -----------------------------------------------------------------------
+  // "once_per_account" — hard per-account limit via DataEntryUsage.
+  // Claim: same INSERT as cycle_per_account.
+  // No fallback — returns null when exhausted for this account.
+  // -----------------------------------------------------------------------
+  } else if (usagePolicy === "once_per_account") {
+    if (accountId) {
+      await prisma.$transaction(async (tx) => {
+        const rows = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
+          SELECT de.id, de.fields FROM "DataEntry" de
+          WHERE de."campaignId" = ${campaignId}
+            AND NOT EXISTS (
+              SELECT 1 FROM "DataEntryUsage" deu2
+              WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}
+                AND deu2."usageCount" > 0
+            )
+            ${accessFilter}
+          ORDER BY de."createdAt" ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT 1`);
+        if (rows[0]) {
+          entry = rows[0];
+          await tx.dataEntryUsage.upsert({
+            where: { entryId_accountId: { entryId: rows[0].id, accountId } },
+            update: { lastUsedAt: new Date() },
+            create: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
+          });
+          claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId };
+        }
+        // No fallback for once_per_account — null means exhausted
+      });
+    } else {
+      entry = await queryOne(
+        Prisma.sql`AND NOT EXISTS (SELECT 1 FROM "DataEntryUsage" deu2 WHERE deu2."entryId" = de.id AND deu2."usageCount" > 0)`
+      );
+    }
+
+  // -----------------------------------------------------------------------
+  // "once_global" — hard global limit via usageCount.
+  // Claim: SET usedInCycle=true so concurrent queries see AND usedInCycle=false.
+  // The filter includes AND usedInCycle=false as the claim sentinel.
+  // Revert: SET usedInCycle=false WHERE usageCount=0.
+  // -----------------------------------------------------------------------
+  } else if (usagePolicy === "once_global") {
+    if (accountId) {
+      await prisma.$transaction(async (tx) => {
+        const rows = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
+          SELECT de.id, de.fields FROM "DataEntry" de
+          WHERE de."campaignId" = ${campaignId}
+            AND de."usageCount" = 0
+            AND de."usedInCycle" = false
+            ${accessFilter}
+          ORDER BY de."createdAt" ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT 1`);
+        if (rows[0]) {
+          entry = rows[0];
+          await tx.dataEntry.update({ where: { id: rows[0].id }, data: { usedInCycle: true } });
+          claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "usedInCycle", accountId };
+        }
+        // No fallback for once_global — null means globally exhausted
+      });
+    } else {
+      entry = await queryOne(Prisma.sql`AND de."usageCount" = 0 AND de."usedInCycle" = false`);
+    }
+
+  // -----------------------------------------------------------------------
+  // "unlimited" — no constraint, always least used. No locking needed.
+  // -----------------------------------------------------------------------
   } else {
-    // least_used
-    entry = await prisma.dataEntry.findFirst({
-      where: { campaignId },
-      orderBy: [{ usageCount: "asc" }, { createdAt: "asc" }],
-    });
+    entry = await queryOne(Prisma.sql``);
   }
 
   if (!entry) return null;
@@ -209,5 +930,5 @@ async function selectDataEntry(
     fields = {};
   }
 
-  return { entryId: entry.id, fields };
+  return { entryId: entry.id, fields, claimState };
 }

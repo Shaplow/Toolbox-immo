@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { Tag, Check, Pencil, X, Clock, Plus } from 'lucide-react'
+import { Tag, Check, Pencil, X, Clock, Plus, Scissors } from 'lucide-react'
 import { Caption } from '@/lib/srt'
 import { getHighlightStateName, getNextHighlightGroup } from '@/lib/captionHighlightCycle'
 import { type CaptionTimingStatus } from '@/lib/captionWordTiming'
@@ -11,6 +11,7 @@ type Props = {
   onChange: (captions: Caption[]) => void
   highlighted: Map<string, number>
   onToggleWord: (key: string) => void
+  onSplitAtWord?: (captionIndex: number, wordIndex: number) => void
   timingStatuses?: CaptionTimingStatus[]
   baseTransform: 'none' | 'upper' | 'lower' | 'title'
   highlightTransform?: 'none' | 'upper' | 'lower' | 'title'
@@ -72,6 +73,7 @@ export default function CaptionEditor({
   onChange,
   highlighted,
   onToggleWord,
+  onSplitAtWord,
   timingStatuses,
   baseTransform,
   highlightTransform,
@@ -380,8 +382,20 @@ export default function CaptionEditor({
                         ? 'Passer en HL2'
                         : 'Revenir au style de base'
                       return (
-                        <span key={i}>
-                          {i > 0 && ' '}
+                        <Fragment key={i}>
+                          {i > 0 && (
+                            onSplitAtWord ? (
+                              <button
+                                type="button"
+                                onClick={() => onSplitAtWord(c.index, i)}
+                                className="cx-editor-split-btn"
+                                title="Séparer la phrase ici"
+                                aria-label={`Séparer avant le mot ${i + 1}`}
+                              >
+                                <Scissors size={9} />
+                              </button>
+                            ) : ' '
+                          )}
                           <span
                             role="button"
                             tabIndex={0}
@@ -398,7 +412,7 @@ export default function CaptionEditor({
                               getWordTransform(hlGroup, baseTransform, highlightTransform, highlight2Transform),
                             )}
                           </span>
-                        </span>
+                        </Fragment>
                       )
                     })}
                   </p>

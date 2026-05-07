@@ -7,11 +7,11 @@ function adminOnly(role?: string) {
 }
 
 // GET /api/admin/libraries/media — liste les MediaLibrary (+ asset count)
-// Supporte ?type=video|audio pour filtrer. Accessible aux admins seulement (retourne [] pour les autres).
+// Supporte ?type=video|audio pour filtrer. Accessible aux admins seulement.
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id || adminOnly(session.user.role)) {
-    return NextResponse.json([]);
+    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
   const url = new URL(req.url);
@@ -37,8 +37,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
-  const body = await req.json() as { name?: string; type?: string; tags?: string[]; description?: string };
-  const { name, type, tags = [], description } = body;
+  const body = await req.json() as { name?: string; type?: string; tags?: string[]; description?: string; setSequence?: string[] };
+  const { name, type, tags = [], description, setSequence = [] } = body;
 
   if (!name?.trim()) {
     return NextResponse.json({ error: "Le nom est requis" }, { status: 400 });
@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
         type,
         tags: JSON.stringify(tags),
         description: description?.trim() ?? null,
+        setSequence: JSON.stringify(setSequence),
       },
     });
     return NextResponse.json(library, { status: 201 });

@@ -17,12 +17,18 @@ const MAX_CSV_SIZE = 5 * 1024 * 1024; // 5 MB
  *
  * Format CSV attendu :
  *   - Première ligne = noms des colonnes (clés du champ `fields`)
+ *   - Colonnes réservées (exclues de `fields`) : `set_tag`, `category`
+ *   - Si `set_tag` absent, un slug est auto-généré depuis la première colonne de données
  *   - Lignes suivantes = valeurs
  *
- * Exemple RPI :
- *   quartier,arrondissement,prix_m2,evo_5ans_pct
- *   Marais,75004,15200,+12.5
- *   Nation,75011,11800,+8.3
+ * Exemple RPI avec set :
+ *   set_tag,category,quartier,prix_m2,evo_5ans_pct
+ *   marais,Paris intra-muros,Marais,15200,+12.5
+ *   nation,Paris intra-muros,Nation,11800,+8.3
+ *
+ * Exemple sans set_tag (slug auto depuis 'quartier') :
+ *   quartier,prix_m2,evo_5ans_pct
+ *   Marais,15200,+12.5
  */
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await auth();
@@ -81,14 +87,38 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Le CSV contient des colonnes en double" }, { status: 400 });
   }
 
+  // Colonnes réservées — extraites de fields et mappées sur les champs Prisma dédiés.
+  // Si set_tag absent mais qu'une autre colonne est désignée comme clé (première colonne non réservée),
+  // un slug est généré automatiquement.
+  const RESERVED = new Set(["set_tag", "category"]);
+  const setTagIdx = sanitizedHeaders.indexOf("set_tag");
+  const categoryIdx = sanitizedHeaders.indexOf("category");
+  // Index de la première colonne "données" (pour le slug auto si pas de set_tag)
+  const firstDataIdx = sanitizedHeaders.findIndex((h) => !RESERVED.has(h));
+
   const entries = dataRows
     .filter((row) => row.some((cell) => cell.trim() !== ""))
     .map((row) => {
       const fields: Record<string, string> = {};
       for (let i = 0; i < sanitizedHeaders.length; i++) {
+        if (RESERVED.has(sanitizedHeaders[i])) continue;
         fields[sanitizedHeaders[i]] = sanitizeValue(row[i] ?? "");
       }
-      return { campaignId, fields: JSON.stringify(fields) };
+
+      // setTag : colonne set_tag si présente, sinon slug de la première colonne de données
+      let setTag: string | null = null;
+      if (setTagIdx !== -1 && (row[setTagIdx] ?? "").trim()) {
+        setTag = sanitizeValue(row[setTagIdx] ?? "").toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 64) || null;
+      } else if (firstDataIdx !== -1 && (row[firstDataIdx] ?? "").trim()) {
+        setTag = slugify(row[firstDataIdx] ?? "");
+      }
+
+      // category : colonne category si présente
+      const category = categoryIdx !== -1 && (row[categoryIdx] ?? "").trim()
+        ? sanitizeValue(row[categoryIdx] ?? "")
+        : null;
+
+      return { campaignId, fields: JSON.stringify(fields), setTag, category };
     });
 
   if (entries.length === 0) {
@@ -155,4 +185,15 @@ function sanitizeKey(key: string): string {
 
 function sanitizeValue(value: string): string {
   return value.trim().slice(0, 2000);
+}
+
+function slugify(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "")
+    .slice(0, 64) || null as unknown as string;
 }

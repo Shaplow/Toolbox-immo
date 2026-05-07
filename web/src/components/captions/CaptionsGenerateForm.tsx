@@ -5,6 +5,7 @@ import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import {
   Film, FileText, Upload, X, ChevronLeft, Download,
   Wand2, ChevronDown, ChevronUp, Clock, CheckCircle2, AlertCircle,
+  Mic, Loader2, Check,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -35,8 +36,23 @@ import { SegmentTrimEditor } from "@/components/captions/SegmentTrimEditor";
 import { buildSubtitlesFromWords, type Segment } from "@/lib/transcriptionProcess";
 
 type TextTransform = "none" | "upper" | "lower" | "title";
-type ExportProfile = "draft" | "balanced" | "final";
 type AIModel = "claude" | "gpt";
+
+type TranscriptionItem = {
+  id: string;
+  inputFilename: string | null;
+  createdAt: string;
+  status: string;
+};
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleString("fr-FR", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 type PresetData = {
   id: string;
@@ -49,7 +65,6 @@ type QueuedJob = {
   id: string;
   status: string;
   videoUrl?: string;
-  quality: string;
   videoName: string;
   createdAt: Date;
 };
@@ -112,9 +127,15 @@ export default function CaptionsGenerateForm({
   );
   const [captions, setCaptions] = useState<Caption[]>([]);
   const [highlighted, setHighlighted] = useState<Map<string, number>>(new Map());
-  const [exportProfile, setExportProfile] = useState<ExportProfile>(
-    (nested(preset.config, "export_profile") as ExportProfile | undefined) ?? "balanced"
-  );
+
+  // Source card state
+  const [sourceTab, setSourceTab] = useState<"transcription" | "upload">("transcription");
+  const [transcriptions, setTranscriptions] = useState<TranscriptionItem[]>([]);
+  const [selectedTranscriptionId, setSelectedTranscriptionId] = useState<string | null>(null);
+  const [loadingTranscriptions, setLoadingTranscriptions] = useState(false);
+  const [loadingSource, setLoadingSource] = useState(false);
+  const [transcriptionLoadError, setTranscriptionLoadError] = useState<string | null>(null);
+
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [renderProgress, setRenderProgress] = useState(-1);
@@ -250,6 +271,52 @@ export default function CaptionsGenerateForm({
     return () => clearInterval(timer);
   }, [jobs]);
 
+  // Load transcription list when source tab = "transcription" and list not yet loaded
+  useEffect(() => {
+    if (sourceTab !== "transcription") return;
+    if (transcriptions.length > 0) return;
+    setLoadingTranscriptions(true);
+    fetch("/api/transcription")
+      .then((r) => r.json())
+      .then((data: unknown) => {
+        const raw = (
+          Array.isArray(data)
+            ? (data as TranscriptionItem[])
+            : ((data as { jobs?: TranscriptionItem[] }).jobs ?? [])
+        );
+        setTranscriptions(raw.filter((j) => j.status === "COMPLETED"));
+      })
+      .catch(() => {})
+      .finally(() => setLoadingTranscriptions(false));
+  }, [sourceTab, transcriptions.length]);
+
+  // Fetch word-level JSON when a transcription is selected
+  useEffect(() => {
+    if (!selectedTranscriptionId) return;
+    setLoadingSource(true);
+    setTranscriptionLoadError(null);
+    fetch(`/api/transcription/${selectedTranscriptionId}/download?format=json`)
+      .then((r) => {
+        if (!r.ok) throw new Error("HTTP error");
+        return r.json() as Promise<Segment[]>;
+      })
+      .then((segs) => {
+        if (!Array.isArray(segs) || segs.length === 0) throw new Error("Données invalides");
+        setPendingSegments(segs);
+        setShowTrimEditor(true);
+        setCaptions([]);
+        setHighlighted(new Map());
+        setTimedSegments(null);
+        setTimingStatuses(null);
+        setSubsFile(null);
+      })
+      .catch(() => {
+        setTranscriptionLoadError("Impossible de charger la transcription");
+        setSelectedTranscriptionId(null);
+      })
+      .finally(() => setLoadingSource(false));
+  }, [selectedTranscriptionId]);
+
   const toggleWord = (key: string) => {
     setHighlighted((prev) => {
       const next = new Map(prev);
@@ -267,6 +334,84 @@ export default function CaptionsGenerateForm({
     setCaptions(timedSegmentsToCaptions(realigned.segments));
     setHighlighted(realigned.highlighted);
     setTimingStatuses(realigned.timingStatuses);
+  };
+
+  const handleSplitCaption = (captionIndex: number, wordIndex: number) => {
+    if (!timedSegments) return;
+    const segIdx = captionIndex - 1;
+    if (segIdx < 0 || segIdx >= timedSegments.length) return;
+    const segment = timedSegments[segIdx];
+    const words = Array.isArray(segment.words) ? segment.words : [];
+    if (wordIndex <= 0 || wordIndex >= words.length) return;
+
+    const part1 = words.slice(0, wordIndex);
+    const part2 = words.slice(wordIndex);
+    const seg1: Segment = {
+      start: part1[0].start,
+      end: part1[part1.length - 1].end,
+      text: part1.map((w) => w.word).join(" "),
+      words: part1,
+      ...(segment.speaker ? { speaker: segment.speaker } : {}),
+    };
+    const seg2: Segment = {
+      start: part2[0].start,
+      end: part2[part2.length - 1].end,
+      text: part2.map((w) => w.word).join(" "),
+      words: part2,
+      ...(segment.speaker ? { speaker: segment.speaker } : {}),
+    };
+
+    const newSegments = [
+      ...timedSegments.slice(0, segIdx),
+      seg1,
+      seg2,
+      ...timedSegments.slice(segIdx + 1),
+    ];
+    const originalStatus = timingStatuses?.[segIdx] ?? "original";
+    const newStatuses: CaptionTimingStatus[] = [
+      ...(timingStatuses?.slice(0, segIdx) ?? []),
+      originalStatus,
+      originalStatus,
+      ...(timingStatuses?.slice(segIdx + 1) ?? []),
+    ];
+
+    setTimedSegments(newSegments);
+    setTimingStatuses(newStatuses);
+    setCaptions(timedSegmentsToCaptions(newSegments));
+    setHighlighted((prev) => {
+      const next = new Map<string, number>();
+      for (const [key, value] of prev.entries()) {
+        const dashIdx = key.indexOf("-");
+        if (dashIdx < 0) continue;
+        const ci = parseInt(key.slice(0, dashIdx), 10);
+        const wi = parseInt(key.slice(dashIdx + 1), 10);
+        if (isNaN(ci) || isNaN(wi)) continue;
+        if (ci < captionIndex) {
+          next.set(key, value);
+        } else if (ci === captionIndex) {
+          if (wi < wordIndex) {
+            next.set(`${ci}-${wi}`, value);
+          } else {
+            next.set(`${captionIndex + 1}-${wi - wordIndex}`, value);
+          }
+        } else {
+          next.set(`${ci + 1}-${wi}`, value);
+        }
+      }
+      return next;
+    });
+  };
+
+  const clearSubsSource = () => {
+    setSubsFile(null);
+    setSelectedTranscriptionId(null);
+    setCaptions([]);
+    setHighlighted(new Map());
+    setPendingSegments(null);
+    setShowTrimEditor(false);
+    setTimedSegments(null);
+    setTimingStatuses(null);
+    setTranscriptionLoadError(null);
   };
 
   const canGenerate = !!videoFile && (!!subsFile || captions.length > 0) && !showTrimEditor;
@@ -294,7 +439,7 @@ export default function CaptionsGenerateForm({
       : await subsFile!.text();
     const srtBlob = new Blob([subsContent], { type: "text/plain" });
     const srtFileName = hasWordData ? "captions.json" : (subsFile?.name ?? "captions.srt");
-    const configWithProfile = { ...preset.config, export_profile: exportProfile };
+    const configWithProfile = { ...preset.config, export_profile: "final" };
 
     let fakeVal = 0.05;
     const fakeTimer = setInterval(() => {
@@ -303,28 +448,74 @@ export default function CaptionsGenerateForm({
     }, 800);
 
     try {
-      const form = new FormData();
-      form.append("video", videoFile);
-      form.append("subtitles", srtBlob, srtFileName);
-      form.append("config", JSON.stringify(configWithProfile));
-      form.append("preview_mode", "false");
-      form.append("preset_id", preset.id);
+      // ── Mode RunPod : URL présignée (upload direct browser → R2) ──────────
+      // Essayer le mode presigned d'abord ; 503 = fallback multipart (local)
+      const prepRes = await fetch("/api/render/captions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename:    videoFile.name,
+          ext:         videoFile.name.split(".").pop()?.toLowerCase() ?? "mp4",
+          srtContent:  subsContent,
+          srtFilename,
+          config:      configWithProfile,
+          previewMode: false,
+          presetId:    preset.id,
+        }),
+      });
 
-      const submitRes = await fetch("/api/render/captions", { method: "POST", body: form });
-      if (!submitRes.ok) {
-        const err = await submitRes.json().catch(() => ({ error: submitRes.statusText })) as { error?: string };
-        throw new Error(err.error ?? submitRes.statusText);
+      let captionJobId: string | undefined;
+      let immediateVideoUrl: string | undefined;
+
+      if (prepRes.ok) {
+        const { captionJobId: jobId, uploadUrl } = await prepRes.json() as { captionJobId: string; uploadUrl: string };
+        captionJobId = jobId;
+
+        // Upload direct vers R2 — contourne le serveur Next.js
+        setMessage("Upload vidéo…");
+        setRenderProgress(0.25);
+        const r2Res = await fetch(uploadUrl, {
+          method: "PUT",
+          body: videoFile,
+          headers: { "Content-Type": videoFile.type || "video/mp4" },
+        });
+        if (!r2Res.ok) throw new Error(`Upload R2 échoué : ${r2Res.status}`);
+
+        // Soumettre à RunPod
+        setMessage("Envoi en cours…");
+        setRenderProgress(0.45);
+        const submitRes = await fetch(`/api/render/captions/${captionJobId}/submit`, { method: "POST" });
+        if (!submitRes.ok) {
+          const err = await submitRes.json().catch(() => ({ error: submitRes.statusText })) as { error?: string };
+          throw new Error(err.error ?? submitRes.statusText);
+        }
+      } else if (prepRes.status === 503) {
+        // ── Mode local (USE_RUNPOD=false) : fallback multipart ──────────────
+        const form = new FormData();
+        form.append("video", videoFile);
+        form.append("subtitles", srtBlob, srtFileName);
+        form.append("config", JSON.stringify(configWithProfile));
+        form.append("preview_mode", "false");
+        form.append("preset_id", preset.id);
+        const fallbackRes = await fetch("/api/render/captions", { method: "POST", body: form });
+        if (!fallbackRes.ok) {
+          const err = await fallbackRes.json().catch(() => ({ error: fallbackRes.statusText })) as { error?: string };
+          throw new Error(err.error ?? fallbackRes.statusText);
+        }
+        const fallbackData = await fallbackRes.json() as { captionJobId?: string; videoUrl?: string };
+        captionJobId = fallbackData.captionJobId;
+        immediateVideoUrl = fallbackData.videoUrl;
+      } else {
+        const err = await prepRes.json().catch(() => ({ error: prepRes.statusText })) as { error?: string };
+        throw new Error(err.error ?? prepRes.statusText);
       }
 
-      const submitData = await submitRes.json() as { captionJobId?: string; videoUrl?: string };
-
-      if (submitData.videoUrl && submitData.captionJobId) {
+      if (immediateVideoUrl && captionJobId) {
         setJobs((prev) => [
           {
-            id: submitData.captionJobId!,
+            id: captionJobId!,
             status: "DONE",
-            videoUrl: submitData.videoUrl,
-            quality: exportProfile,
+            videoUrl: immediateVideoUrl,
             videoName: videoFile?.name ?? "vidéo",
             createdAt: new Date(),
           },
@@ -335,15 +526,15 @@ export default function CaptionsGenerateForm({
         return;
       }
 
-      if (submitData.captionJobId) {
+      if (captionJobId) {
         setJobs((prev) => [
-          { id: submitData.captionJobId!, status: "QUEUED", quality: exportProfile, videoName: videoFile?.name ?? "vidéo", createdAt: new Date() },
+          { id: captionJobId!, status: "QUEUED", videoName: videoFile?.name ?? "vidéo", createdAt: new Date() },
           ...prev,
         ]);
       }
 
       setMessage("Job soumis — en attente…");
-      setRenderProgress(0.15);
+      setRenderProgress(0.5);
     } catch (error) {
       setMessage(`Erreur : ${String(error)}`);
     } finally {
@@ -395,12 +586,6 @@ export default function CaptionsGenerateForm({
     }
   };
 
-  const qualities: { value: ExportProfile; label: string; desc: string }[] = [
-    { value: "draft", label: "Rapide", desc: "8 Mb/s" },
-    { value: "balanced", label: "Équilibré", desc: "15 Mb/s" },
-    { value: "final", label: "Max", desc: "20 Mb/s" },
-  ];
-
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-2xl mx-auto px-6 py-10">
@@ -427,110 +612,217 @@ export default function CaptionsGenerateForm({
           </div>
         </div>
 
-        {/* Upload row */}
-        <div className="grid grid-cols-2 gap-3 mb-3">
-          {/* Video */}
-          <label
-            className={`flex flex-col items-center gap-2.5 p-6 border-2 border-dashed rounded-2xl cursor-pointer transition-all ${
-              videoFile
-                ? "border-violet-300 bg-violet-50"
-                : "border-gray-200 hover:border-gray-300 bg-white"
-            }`}
-          >
-            <div
-              className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                videoFile ? "bg-violet-100" : "bg-gray-100"
-              }`}
+        {/* Video upload — compact horizontal bar */}
+        <label
+          className={`flex items-center gap-3 p-4 border rounded-2xl cursor-pointer transition-all mb-3 ${
+            videoFile
+              ? "border-violet-200 bg-violet-50"
+              : "border-gray-100 bg-white hover:border-gray-200"
+          }`}
+        >
+          <div className={`w-9 h-9 rounded-xl flex shrink-0 items-center justify-center ${videoFile ? "bg-violet-100" : "bg-gray-100"}`}>
+            <Upload size={15} className={videoFile ? "text-violet-500" : "text-gray-400"} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-800">Vidéo</p>
+            {videoFile ? (
+              <p className="text-xs text-violet-600 mt-0.5 truncate">{videoFile.name}</p>
+            ) : (
+              <p className="text-xs text-gray-400 mt-0.5">MP4 · MOV · WEBM</p>
+            )}
+          </div>
+          {videoFile && (
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); setVideoFile(null); }}
+              className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
             >
-              <Upload size={15} className={videoFile ? "text-violet-500" : "text-gray-400"} />
-            </div>
-            <div className="text-center">
-              <p className="text-sm font-medium text-gray-800">Vidéo</p>
-              {videoFile ? (
-                <p className="text-xs text-violet-600 mt-0.5 max-w-[130px] truncate">
-                  {videoFile.name}
-                </p>
-              ) : (
-                <p className="text-xs text-gray-400 mt-0.5">MP4 · MOV · WEBM</p>
-              )}
-            </div>
-            <input
-              type="file"
-              accept="video/*"
-              className="hidden"
-              onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)}
-            />
-          </label>
+              <X size={14} />
+            </button>
+          )}
+          <input
+            type="file"
+            accept="video/*"
+            className="hidden"
+            onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
 
-          {/* SRT / JSON */}
-          <label
-            className={`flex flex-col items-center gap-2.5 p-6 border-2 border-dashed rounded-2xl cursor-pointer transition-all ${
-              subsFile || captions.length > 0 || showTrimEditor
-                ? "border-violet-300 bg-violet-50"
-                : "border-gray-200 hover:border-gray-300 bg-white"
-            }`}
-          >
-            <div
-              className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                subsFile || captions.length > 0 || showTrimEditor ? "bg-violet-100" : "bg-gray-100"
-              }`}
-            >
-              <FileText
-                size={15}
-                className={subsFile || captions.length > 0 || showTrimEditor ? "text-violet-500" : "text-gray-400"}
-              />
-            </div>
-            <div className="text-center">
-              <p className="text-sm font-medium text-gray-800">Sous-titres</p>
-              {subsFile || captions.length > 0 || showTrimEditor ? (
-                <p className="text-xs text-violet-600 mt-0.5 max-w-[130px] truncate">
-                  {subsFile?.name ?? (showTrimEditor ? `${pendingSegments?.length ?? 0} segments` : `${captions.length} lignes`)}
+        {/* Source card — Sous-titres */}
+        <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden mb-3">
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">Sous-titres</h2>
+            {(captions.length > 0 || showTrimEditor || subsFile) && (
+              <button
+                type="button"
+                onClick={clearSubsSource}
+                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X size={12} /> Effacer
+              </button>
+            )}
+          </div>
+
+          {/* Source picker — shown when nothing is loaded */}
+          {!showTrimEditor && captions.length === 0 && !subsFile && (
+            <>
+              {/* Tabs */}
+              <div className="flex items-center gap-1 px-4 pt-3 pb-1">
+                <button
+                  type="button"
+                  onClick={() => setSourceTab("transcription")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    sourceTab === "transcription" ? "bg-gray-100 text-gray-900" : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <Mic size={12} /> Transcriptions
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSourceTab("upload")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    sourceTab === "upload" ? "bg-gray-100 text-gray-900" : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <Upload size={12} /> Uploader un fichier
+                </button>
+              </div>
+
+              <div className="px-4 py-3">
+                {sourceTab === "transcription" ? (
+                  <>
+                    {transcriptionLoadError && (
+                      <p className="mb-2 text-xs text-red-500 flex items-center gap-1">
+                        <AlertCircle size={12} /> {transcriptionLoadError}
+                      </p>
+                    )}
+                    {loadingTranscriptions ? (
+                      <div className="flex items-center gap-2 text-sm text-gray-400 py-3">
+                        <Loader2 size={14} className="animate-spin" /> Chargement…
+                      </div>
+                    ) : transcriptions.length === 0 ? (
+                      <div className="text-sm text-gray-400 text-center py-4">
+                        Aucune transcription terminée.<br />
+                        <Link href="/tools/transcription" className="text-teal-600 hover:underline">
+                          Lancer une transcription →
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
+                        {transcriptions.map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => setSelectedTranscriptionId(t.id)}
+                            disabled={loadingSource}
+                            className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors text-sm border-gray-100 hover:border-violet-200 hover:bg-violet-50/60 text-gray-700 disabled:opacity-50"
+                          >
+                            {loadingSource && selectedTranscriptionId === t.id ? (
+                              <Loader2 size={14} className="text-violet-400 animate-spin shrink-0" />
+                            ) : (
+                              <Mic size={14} className="text-gray-300 shrink-0" />
+                            )}
+                            <span className="flex-1 truncate">{t.inputFilename ?? "Transcription sans nom"}</span>
+                            <span className="text-xs text-gray-400 shrink-0">{formatDate(t.createdAt)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <label className="flex flex-col items-center gap-2 p-6 border-2 border-dashed rounded-xl cursor-pointer transition-all border-gray-200 hover:border-gray-300 bg-white">
+                    <FileText size={24} className="text-gray-300" />
+                    <p className="text-sm font-medium text-gray-600">Glisser un fichier .srt ou .json</p>
+                    <p className="text-xs text-gray-400">ou cliquer pour parcourir</p>
+                    <input
+                      type="file"
+                      accept=".srt,.json"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        setSubsFile(f);
+                        if (f.name.endsWith(".json")) {
+                          void f.text().then((txt) => {
+                            try {
+                              const segs = JSON.parse(txt) as Segment[];
+                              setPendingSegments(segs);
+                              setShowTrimEditor(true);
+                              setCaptions([]);
+                              setHighlighted(new Map());
+                              setTimedSegments(null);
+                              setTimingStatuses(null);
+                            } catch {
+                              // Silently ignore malformed JSON
+                            }
+                          });
+                        } else {
+                          void f.text().then((txt) => {
+                            const parsed = parseSRT(txt);
+                            const segs: Segment[] = parsed.map((c) => ({
+                              start: srtTimeToSeconds(c.start),
+                              end: srtTimeToSeconds(c.end),
+                              text: c.text,
+                            }));
+                            setPendingSegments(segs);
+                            setShowTrimEditor(true);
+                            setCaptions([]);
+                            setHighlighted(new Map());
+                            setTimedSegments(null);
+                            setTimingStatuses(null);
+                          });
+                        }
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Trim editor open — show source name as status */}
+          {showTrimEditor && (
+            <div className="px-4 py-3 flex items-center gap-3">
+              <div className="w-8 h-8 bg-violet-100 rounded-lg flex shrink-0 items-center justify-center">
+                {selectedTranscriptionId ? <Mic size={14} className="text-violet-600" /> : <FileText size={14} className="text-violet-600" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-800">
+                  {selectedTranscriptionId
+                    ? (transcriptions.find((t) => t.id === selectedTranscriptionId)?.inputFilename ?? "Transcription")
+                    : (subsFile?.name ?? "Segments pré-chargés")}
                 </p>
-              ) : (
-                <p className="text-xs text-gray-400 mt-0.5">.srt ou .json</p>
-              )}
+                <p className="text-xs text-gray-400">{pendingSegments?.length ?? 0} segments · édition en cours</p>
+              </div>
             </div>
-            <input
-              type="file"
-              accept=".srt,.json"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (!f) return;
-                setSubsFile(f);
-                if (f.name.endsWith(".json")) {
-                  void f.text().then((txt) => {
-                    try {
-                      const segs = JSON.parse(txt) as Segment[];
-                      setPendingSegments(segs);
-                      setShowTrimEditor(true);
-                      setCaptions([]);
-                      setHighlighted(new Map());
-                      setTimedSegments(null);
-                      setTimingStatuses(null);
-                    } catch {
-                      // Silently ignore malformed JSON
-                    }
-                  });
-                } else {
-                  void f.text().then((txt) => {
-                    const parsed = parseSRT(txt);
-                    const segs: Segment[] = parsed.map((c) => ({
-                      start: srtTimeToSeconds(c.start),
-                      end: srtTimeToSeconds(c.end),
-                      text: c.text,
-                    }));
-                    setPendingSegments(segs);
-                    setShowTrimEditor(true);
-                    setCaptions([]);
-                    setHighlighted(new Map());
-                    setTimedSegments(null);
-                    setTimingStatuses(null);
-                  });
-                }
-              }}
-            />
-          </label>
+          )}
+
+          {/* Captions ready — show summary */}
+          {!showTrimEditor && captions.length > 0 && (
+            <div className="px-4 py-3 flex items-center gap-3">
+              <div className="w-8 h-8 bg-violet-100 rounded-lg flex shrink-0 items-center justify-center">
+                <Check size={14} className="text-violet-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-800">{captions.length} lignes</p>
+                <p className="text-xs text-gray-400">
+                  {selectedTranscriptionId
+                    ? (transcriptions.find((t) => t.id === selectedTranscriptionId)?.inputFilename ?? "Transcription")
+                    : (subsFile?.name ?? "Sous-titres chargés")}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* subsFile loaded but not yet in trim editor (edge case: plain SRT without trim) */}
+          {!showTrimEditor && captions.length === 0 && subsFile && (
+            <div className="px-4 py-3 flex items-center gap-3">
+              <div className="w-8 h-8 bg-violet-100 rounded-lg flex shrink-0 items-center justify-center">
+                <FileText size={14} className="text-violet-600" />
+              </div>
+              <p className="text-sm font-medium text-gray-800 truncate">{subsFile.name}</p>
+            </div>
+          )}
         </div>
 
         {/* Segment trim editor — shown after SRT or JSON import */}
@@ -548,11 +840,7 @@ export default function CaptionsGenerateForm({
               setShowTrimEditor(false);
             }}
             onCancel={() => {
-              setShowTrimEditor(false);
-              setPendingSegments(null);
-              setSubsFile(null);
-              setTimedSegments(null);
-              setTimingStatuses(null);
+              clearSubsSource();
             }}
           />
         )}
@@ -733,6 +1021,7 @@ export default function CaptionsGenerateForm({
               <CaptionEditor
                 captions={captions}
                 onChange={handleCaptionEditorChange}
+                onSplitAtWord={handleSplitCaption}
                 highlighted={highlighted}
                 onToggleWord={toggleWord}
                 timingStatuses={timingStatuses ?? undefined}
@@ -744,27 +1033,6 @@ export default function CaptionsGenerateForm({
             </div>
           </div>
         )}
-
-        {/* Quality selector — only visible when not in trim editor */}
-        {!showTrimEditor && <div className="bg-white border border-gray-100 rounded-2xl p-5 mb-5">
-          <p className="text-sm font-medium text-gray-900 mb-3">Qualité d&apos;export</p>
-          <div className="grid grid-cols-3 gap-2">
-            {qualities.map((q) => (
-              <button
-                key={q.value}
-                onClick={() => setExportProfile(q.value)}
-                className={`flex flex-col items-center gap-0.5 py-3 rounded-xl border transition-all text-sm ${
-                  exportProfile === q.value
-                    ? "border-violet-300 bg-violet-50 text-violet-700"
-                    : "border-gray-100 bg-white text-gray-600 hover:border-gray-200"
-                }`}
-              >
-                <span className="font-medium">{q.label}</span>
-                <span className="text-[10px] opacity-60">{q.desc}</span>
-              </button>
-            ))}
-          </div>
-        </div>}
 
         {/* Generate button — only visible when not in trim editor */}
         {!showTrimEditor && <>
@@ -788,7 +1056,7 @@ export default function CaptionsGenerateForm({
 
         {!canGenerate && !busy && (
           <p className="text-xs text-center text-gray-400 mt-2">
-            {!videoFile ? "Ajoutez une vidéo" : "Ajoutez un fichier .srt ou .json"}
+            {!videoFile ? "Ajoutez une vidéo" : "Sélectionnez une source de sous-titres"}
           </p>
         )}
 
@@ -847,7 +1115,7 @@ export default function CaptionsGenerateForm({
                       {/* Info */}
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-gray-800 truncate">
-                          {job.videoName} · {job.quality} · {job.createdAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                          {job.videoName} · {job.createdAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
                         </p>
                         <p className={`text-[10px] mt-0.5 ${
                           isDone ? "text-green-600" : isFailed ? "text-red-400" : "text-violet-500"

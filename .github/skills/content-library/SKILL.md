@@ -2,15 +2,21 @@
 name: content-library
 description: >
   Work with the Content Library system in Toolbox Immo. Use when a task involves
-  MediaLibrary, MediaAsset, DataLibrary, DataCampaign, DataEntry, library-to-VideoBlock
-  bindings in the builder, generation form pre-fill, selection rules (oldest_used,
-  least_used, not_used_in_cycle, manual), asset editing via RunPod, or usage tracking.
+  MediaLibrary, MediaAsset (setTag, category, tags, setSequence), MediaAssetAccess,
+  MediaAssetUsage, DataLibrary, DataCampaign, DataEntry, library-to-VideoBlock bindings
+  in the builder, generation form pre-fill, asset rotation (auto mode or override mode),
+  selection rules (theme_sequence, oldest_used, least_used, not_used_in_cycle, manual),
+  AccountLibraryCursor, per-account usage isolation, bulk asset operations, asset editing
+  via RunPod, or offer-based automation.
+  For deep rotation algorithm details (auto mode, category exclusion, per-account ordering,
+  how to simulate or debug rotation): load the asset-rotation skill instead.
 ---
 
 # Content Library
 
 The Content Library system is a shared asset and data management layer that sits
-**before** the generation form. Libraries are admin-managed and shared across all users.
+**before** the generation form. Libraries are admin-managed and shared across multiple
+Instagram accounts (négociateurs).
 
 Three distinct library types exist:
 
@@ -27,102 +33,210 @@ Three distinct library types exist:
 ```
 Admin UI
   └── creates/uploads MediaLibrary + MediaAsset (video, audio)
-  └── creates DataLibrary → DataCampaign → DataEntry (CSV import or form)
+  └── tags assets: free-form tags[] + setTag (set) + category (family)
+  └── restricts assets per account: MediaAssetAccess (0 rows = global)
+  └── views rotation per account: account filter on MediaAssetsPanel
+  └── orders MediaLibrary.setSequence: explicit setTag override list (optional)
+  └── creates DataLibrary → DataCampaign → DataEntry (CSV import)
   └── edits/trims MediaAsset via RunPod media-edit job (async, webhook)
 
 Builder
-  └── VideoBlock → libraryId + selectionRule
-  └── Template-level → audioLibraryId + audioSelectionRule
-  └── Template-level → dataLibraryId + dataCampaignId + dataSelectionRule
+  └── VideoBlock → libraryId + selectionRule (theme_sequence | oldest_used | least_used | manual)
+  └── Template-level → first MusicBlock with libraryId + audioSelectionRule
+  └── Template-level → contentLibrary: { dataLibraryId, dataCampaignId, dataSelectionRule }
 
-Generation form
-  └── contentLibraryResolver.ts resolves libraries → pre-fills fields
+Generation form (server component)
+  └── contentLibraryResolver.ts → resolveLibraryPrefill(template, formData, accountId)
+  └── theme_sequence rule: selectMediaAssetBySetSequence() — auto mode or override mode
+  └── other rules: selectMediaAsset() — per-account usage ordering via MediaAssetUsage
   └── user reviews and confirms before launching render
 
-Post-render
-  └── recordLibraryUsage() increments usageCount + sets lastUsedAt + usedInCycle
+Post-render (webhook DONE)
+  └── recordLibraryUsage() increments global MediaAsset.usageCount + lastUsedAt
+  └── recordLibraryUsage() upserts per-account MediaAssetUsage row
+  └── advances AccountLibraryCursor (lastUsedCategory, lastUsedSetTag, cursor) per account
 ```
 
 ---
 
 ## Prisma Models
 
-All five models exist in `web/prisma/schema.prisma`: `MediaLibrary`, `MediaAsset`,
-`DataLibrary`, `DataCampaign`, `DataEntry`.
+All models in `web/prisma/schema.prisma`.
 
 After any schema change: `cd web && npm run db:generate && npm run db:push`
 
-Key fields to know:
+### MediaLibrary (video or audio)
 
-- `MediaAsset.usageCount` / `lastUsedAt` — updated by `recordLibraryUsage()` after each render
-- `DataEntry.usedInCycle` — set to `true` after use; reset to `false` by campaign reset endpoint
-- `DataCampaign.isActive` — only one per `DataLibrary` may be active at a time
-- `Render.usedAssets` — JSON `{ videoAssets: { blockId: assetId }, audioAssetId?, dataEntryId? }`
+Key fields:
+- `setSequence String @default("[]")` — JSON `string[]`, **optional** explicit ordered list of setTags.
+  When empty: auto mode (rotation by least-recently used group + category exclusion).
+  When non-empty: override mode (integer cursor cycles through the list).
+- `tags String @default("[]")` — JSON `string[]`, type labels used for filtering in admin.
 
-## Template JSON Extensions
+### MediaAsset
 
-These fields are in the existing types in `web/src/types/template.ts`:
+Key fields:
+- `setTag String?` — set identifier. Groups assets from the same shoot (e.g. `"tenue1-set1"`).
+  The rotation unit is the `(category, setTag)` pair.
+- `category String?` — family. Groups sets from the same model/location (e.g. `"Tenue 1"`).
+  The category exclusion rule prevents two consecutive sets from the same category.
+- `tags String[] @default([])` — free-form keyword array (e.g. `["lola", "intro"]`). Filtered via ILIKE.
+- `usageCount Int @default(0)` / `lastUsedAt DateTime?` — **global** aggregates updated by `recordLibraryUsage()`.
+- `accesses MediaAssetAccess[]` — access restriction entries (0 rows = accessible to everyone).
+- `usages MediaAssetUsage[]` — per-account usage records for isolated rotation ordering.
 
-```typescript
-// VideoBlock
-libraryId?: string;
-selectionRule?: "oldest_used" | "least_used" | "manual";
+### MediaAssetAccess
 
-// TemplateJSON (top-level)
-audioLibraryId?: string;
-audioSelectionRule?: "oldest_used" | "manual";
-dataLibraryId?: string;
-dataCampaignId?: string;
-dataSelectionRule?: "not_used_in_cycle" | "least_used" | "manual";
+```
+assetId   String
+accountId String
+@@unique([assetId, accountId])
 ```
 
-These fields are **metadata only** — they have no effect on builder preview or HTML render.
+Access semantics: **0 rows for an asset = global (all accounts can use it)**.
+1+ rows = restricted to only the listed accounts.
+When the admin adds a restriction, other accounts lose access immediately.
+
+### MediaAssetUsage
+
+```
+assetId    String
+accountId  String
+lastUsedAt DateTime?
+usageCount Int @default(0)
+@@unique([assetId, accountId])
+```
+
+Tracks each account's individual usage of an asset. Used by the resolver for per-account
+ordering (least-recently used by **this account**, not globally). Created/updated by
+`recordLibraryUsage()` on each DONE render.
+
+### AccountLibraryCursor
+
+```
+accountId        String
+libraryId        String
+cursor           Int       @default(0)   // index in setSequence (override mode only)
+lastUsedSetTag   String?                 // last picked setTag (auto + override)
+lastUsedCategory String?                 // last picked category (auto mode: category exclusion)
+lastAdvancedAt   DateTime?
+@@unique([accountId, libraryId])
+```
+
+One row per (account, library) pair. Created on first use. Advanced by `recordLibraryUsage()`
+only on `DONE` renders.
+
+### Data models
+
+- `DataEntry.usedInCycle Boolean` — set `true` after use; reset by campaign reset endpoint.
+- `DataCampaign.isActive Boolean` — only one per `DataLibrary` may be active at a time.
+
+### Render.usedAssets JSON
+
+```json
+{
+  "videoAssets": { "blockId": "assetId" },
+  "audioAssetId": "...",
+  "dataEntryId": "...",
+  "setSequencedLibraryIds": ["libraryId1"],
+  "usedSetTagByLibrary": { "libraryId1": "tenue1-set1" },
+  "usedCategoryByLibrary": { "libraryId1": "Tenue 1" }
+}
+```
+
+`setSequencedLibraryIds` → libraries whose cursor must be advanced post-render.
+`usedSetTagByLibrary` / `usedCategoryByLibrary` → written to `AccountLibraryCursor` so the
+next generation can apply the category exclusion rule correctly.
+
+---
+
+## Asset Organisation: Set + Category
+
+| Concept | Field | Description |
+|---------|-------|-------------|
+| **Set** | `MediaAsset.setTag` | Assets from the same shoot (intro + outro filmed together). Rotation unit. |
+| **Category** | `MediaAsset.category` | Family of sets (same model, location, or theme). Used for category exclusion in auto mode. |
+| **Access** | `MediaAssetAccess` | Which accounts can use an asset. 0 rows = everyone. |
+| **Usage** | `MediaAssetUsage` | Per-account `lastUsedAt` + `usageCount`. Drives rotation ordering per account. |
+
+The rotation unit is always the `(category, setTag)` pair, not just `setTag`.
+Two sets with the same `setTag` but different `category` are treated as separate groups.
+
+---
 
 ## Selection Rules
 
 | Rule | Applies to | Behaviour |
 |------|-----------|-----------|
-| `oldest_used` | Video, Audio | Pick the asset with the oldest `lastUsedAt` (`null` first) |
-| `least_used` | Video, DataEntry | Pick the one with the lowest `usageCount` |
-| `not_used_in_cycle` | DataEntry | Pick any entry where `usedInCycle = false`; fall back to `least_used` if all used |
-| `manual` | All | No auto-selection — show the library picker for user to choose |
+| `theme_sequence` | Video | Auto mode or override mode — see asset-rotation skill |
+| `oldest_used` | Video, Audio | Per-account: JOIN MediaAssetUsage, ORDER BY mau.lastUsedAt ASC NULLS FIRST. Without accountId: global MediaAsset.lastUsedAt. |
+| `least_used` | Video, Audio | Per-account: JOIN MediaAssetUsage, ORDER BY COALESCE(mau.usageCount,0) ASC. Without accountId: global MediaAsset.usageCount. |
+| `not_used_in_cycle` | DataEntry | Pick entry where `usedInCycle = false`; fall back to `least_used`. |
+| `manual` | All | No auto-selection — user picks manually. |
 
-Resolver: `web/src/lib/contentLibraryResolver.ts` → `resolveLibraryPrefill(templateId)`
+Access filter always applied:
+- With `accountId`: `(NOT EXISTS access) OR (EXISTS access WHERE accountId = ?)`.
+- Without `accountId`: `NOT EXISTS access` (global-only pool).
 
-After a render completes (`RenderStatus.DONE`), `recordLibraryUsage(renderId)` in
-`web/src/lib/recordLibraryUsage.ts` increments counters atomically. A failed render
-must not consume an asset.
+Resolver: `web/src/lib/contentLibraryResolver.ts` → `resolveLibraryPrefill(template, formData?, accountId?)`.
+
+---
 
 ## Admin API Routes
 
 **Base:** `web/src/app/api/admin/libraries/`
 
 ```
-GET    /admin/libraries/media                          — list MediaLibrary
-POST   /admin/libraries/media                          — create MediaLibrary
-DELETE /admin/libraries/media/[id]                     — delete (cascade assets)
+GET    /media                              — list MediaLibrary
+POST   /media                              — create MediaLibrary
+PATCH  /media/[id]                         — update name, description, tags, setSequence
+DELETE /media/[id]                         — delete (cascade assets)
 
-GET    /admin/libraries/media/[id]/assets              — list MediaAsset
-POST   /admin/libraries/media/[id]/upload              — upload + probe → R2 → MediaAsset
-DELETE /admin/libraries/media/assets/[assetId]         — delete asset (+ R2 cleanup)
-POST   /admin/libraries/media/assets/[assetId]/edit    — submit RunPod media-edit job
+GET    /media/[id]/assets                  — list MediaAsset; ?accountId= for per-account stats
+POST   /media/[id]/upload                  — upload + probe → R2 → MediaAsset
+PATCH  /media/assets/[assetId]             — update fields (see body below)
+PATCH  /media/[id]/assets/bulk             — bulk update setTag or tags
+DELETE /media/assets/[assetId]             — delete asset (+ R2 cleanup)
+POST   /media/assets/[assetId]/edit        — submit RunPod media-edit job
 
-GET    /admin/libraries/data                           — list DataLibrary
-POST   /admin/libraries/data                           — create DataLibrary
-DELETE /admin/libraries/data/[id]                      — delete
-
-GET    /admin/libraries/data/[id]/campaigns            — list DataCampaign
-POST   /admin/libraries/data/[id]/campaigns            — create DataCampaign
-POST   /admin/libraries/data/campaigns/[id]/import     — CSV/XLSX import → DataEntry[]
-POST   /admin/libraries/data/campaigns/[id]/reset      — set usedInCycle=false on all entries
-DELETE /admin/libraries/data/campaigns/[id]            — delete campaign
+GET    /data                               — list DataLibrary
+POST   /data                               — create DataLibrary
+DELETE /data/[id]                          — delete
+GET    /data/[id]/campaigns                — list DataCampaign
+POST   /data/[id]/campaigns                — create DataCampaign
+POST   /data/campaigns/[id]/import         — CSV import → DataEntry[]
+POST   /data/campaigns/[id]/reset          — set usedInCycle=false on all entries
+DELETE /data/campaigns/[id]                — delete campaign
 ```
 
-All routes require admin role check via `web/src/lib/userContext.ts`.
+### Asset PATCH body
+
+```typescript
+{
+  setTag?: string | null;           // auto-appends to library.setSequence if new
+  category?: string | null;         // family label
+  tags?: string[];                  // replaces all tags
+  usageCount?: number;              // direct set (global counter, not per-account)
+  lastUsedAt?: string | null;       // ISO date string or null (global)
+  resetUsage?: boolean;             // usageCount=0, lastUsedAt=null + deleteMany MediaAssetUsage
+  resetUsageForAccount?: string;    // deleteMany MediaAssetUsage WHERE accountId = ? only
+  accessAccountIds?: string[];      // replace all MediaAssetAccess entries atomically
+}
+```
+
+`resetUsage: true` → clears global counters AND all per-account MediaAssetUsage rows.
+`resetUsageForAccount: "accountId"` → clears only that account's MediaAssetUsage row.
+`accessAccountIds: []` → makes asset global again (removes all restrictions).
+
+### GET /media/[id]/assets with ?accountId=
+
+Returns each asset with:
+- `accessAccountIds: string[]` — which accounts have explicit access.
+- `lastUsedAt`, `usageCount` — the **per-account** values from `MediaAssetUsage` when `?accountId=` is provided.
+
+---
 
 ## Media-Edit Async Flow (RunPod)
-
-Asset editing (trim/crop) is async via RunPod webhook, not polling:
 
 ```
 POST /admin/libraries/media/assets/[assetId]/edit
@@ -131,13 +245,13 @@ POST /admin/libraries/media/assets/[assetId]/edit
 
 RunPod → POST /api/webhooks/runpod/media-edit
   → verifyRunpodWebhook() checks X-Webhook-Secret
-  → parseRunpodWebhookBody() parses the body
   → updates MediaAsset.url / r2Key / duration on success
-  → sets error state on failure
 ```
 
-Webhook helper: `web/src/lib/webhooks/runpod.ts` (`verifyRunpodWebhook`, `parseRunpodWebhookBody`)
+Webhook helper: `web/src/lib/webhooks/runpod.ts`
 Webhook route: `web/src/app/api/webhooks/runpod/media-edit/route.ts`
+
+---
 
 ## Admin UI
 
@@ -146,62 +260,154 @@ Webhook route: `web/src/app/api/webhooks/runpod/media-edit/route.ts`
 Components: `MediaLibrariesPanel`, `MediaAssetsPanel`, `MediaAssetEditModal`,
 `DataLibrariesPanel`, `DataCampaignsPanel`, `DataEntriesPanel`.
 
-Key UX rules:
-- Show `usageCount` and `lastUsedAt` per asset.
+### MediaAssetsPanel — view modes
+
+- **Grid** (`viewMode = "grid"`): all filtered assets, each card shows access chips + per-account stats when filter active.
+- **Rotation** (`viewMode = "rotation"`): groups listed as rows ordered by simulated rotation rank.
+  - Each group shows rank badge, category badge, setTag badge, rush count (accessible only), last used date.
+  - Inaccessible groups (to the filtered account) are dimmed with a lock badge and pushed to end.
+- **Grouped** (`viewMode = "grouped"`): groups as columns, organised by category sections.
+  - Within each section, columns are sorted by setTag.
+  - Inaccessible columns are dimmed and separated.
+
+### Account filter
+
+- Selector in the filter bar: `?accountId=` passed to GET assets.
+- When active, stats (usageCount, lastUsedAt) show per-account values from `MediaAssetUsage`.
+- Inline editing of usageCount and lastUsedAt is **disabled** when account filter active — those edits would update global counters, which is wrong when viewing per-account data.
+- Reset button sends `{ resetUsageForAccount }` instead of `{ resetUsage: true }` when filter active.
+- `isAccessible` flag per group: computed from `accessAccountIds` on each asset. Used to dim inaccessible groups and exclude them from the simulated rotation rank.
+- Individual asset cards are also dimmed (opacity-50) when the asset is inaccessible to the filtered account.
+
+### Group rush count
+
+Always shows the count of assets accessible to the filtered account (not total).
+Without accountFilter, shows total.
+
+### General UX rules
+
 - In DataCampaign view, show how many entries are `usedInCycle=true` vs not.
 - "Reset cycle" button must require a confirmation dialog.
-- Only one `DataCampaign` can be `isActive=true` per `DataLibrary` — deactivate
-  the previous one in the same transaction when activating another.
+- Only one `DataCampaign` can be `isActive=true` per `DataLibrary`.
+
+---
 
 ## Generation Form Pre-fill
 
-`web/src/lib/contentLibraryResolver.ts` resolves library config to concrete
-pre-filled values. Called when the template has at least one library binding.
+`web/src/lib/contentLibraryResolver.ts` → `resolveLibraryPrefill(template, formData?, accountId?)`:
 
-- Pre-fills video picker per `VideoBlock` with a `libraryId`.
-- Pre-fills audio picker.
-- Pre-fills text fields from `DataEntry.fields` (see field mapping below).
-- Shows a "Selected from library" badge on pre-filled fields.
-- User can override any pre-filled field before launching.
+```typescript
+interface LibraryPrefill {
+  videoSuggestions: Record<string, { id: string; url: string; filename: string }>;
+  audioSuggestion: { id: string; url: string; filename: string } | null;
+  dataSuggestion: { entryId: string; fields: Record<string, string> } | null;
+  setSequencedLibraryIds?: string[];
+  usedSetTagByLibrary?: Record<string, string>;
+  usedCategoryByLibrary?: Record<string, string>;
+}
+```
+
+- Regular video blocks (non theme_sequence): `selectMediaAsset()` — per-account ordering when `accountId` present.
+- theme_sequence blocks: `selectMediaAssetBySetSequence()` — auto or override mode.
+  Without `accountId`: still returns a suggestion (global pool, no cursor advance at post-render).
+- Multiple `VideoBlock`s bound to the same library → first block discovers the set, subsequent blocks receive the same `pinnedSetTag`.
+- `usedSetTagByLibrary` / `usedCategoryByLibrary` flow through `Render.usedAssets` to `recordLibraryUsage()`.
+
+`setSequencedLibraryIds` flows:
+1. `resolveLibraryPrefill()` → `LibraryPrefill`
+2. `generate/[templateId]/page.tsx` → form context
+3. `ListingForm.tsx` → `buildUsedAssets()`
+4. `POST /api/renders` → `Render.usedAssets`
+5. `recordLibraryUsage(renderId)` → advances `AccountLibraryCursor`
+
+---
+
+## recordLibraryUsage (post-render)
+
+`web/src/lib/recordLibraryUsage.ts` — called when `Render.status = DONE`:
+
+1. For each video asset: `MediaAsset.update` (global usageCount++) + `MediaAssetUsage.upsert` (per-account).
+2. For audio asset: same pattern.
+3. For each setSequenced library: upsert `AccountLibraryCursor` with `lastUsedSetTag`, `lastUsedCategory`, advance `cursor` if override mode.
+4. For data entry: `DataEntry.update` (usageCount++, usedInCycle=true).
+
+Never throws — all errors are caught and logged; render already succeeded.
+
+---
 
 ## Field Mapping Convention (Data Library → Form)
 
-Field names in `DataEntry.fields` are stable identifiers. Changing them breaks
-existing entries.
+Field names in `DataEntry.fields` are stable identifiers.
 
 | templateType | DataEntry fields |
 |-------------|-----------------|
-| `RPI` | `quartier`, `arrondissement`, `prix_m2`, `evo_5ans_pct` |
+| `RPI` | `nom`, `prix_m2`, `evo_5ans_pct`, `annotation` |
 | `RTIPS` | `hook`, `theme`, `tip1`, `tip2`, `tip3` |
 
-Add new rows when adding a new template type.
+---
 
-## Batch Generation (V2 — not yet implemented)
+## Planned: DataEntry Rotation Parity
 
-Do not implement until generation form pre-fill is stable in production.
-Design: select template + campaign → preview N pre-fills as table → confirm →
-enqueue N `Render` jobs. Must respect selection rules and not double-pick
-assets across rows of the same batch.
+The following are NOT yet implemented but planned (mirrors the MediaAsset pattern):
+
+- `DataEntry.category` — family grouping (e.g. "IDF", "Paris intra-muros").
+- `DataEntry.setTag` — links a local entry to its reference row (e.g. Paris global).
+- `DataEntry.isReference Boolean` — reference rows (Paris global) never consumed in rotation.
+- `DataEntryAccess` — per-account access restriction (same semantics as MediaAssetAccess).
+- `DataEntryUsage` — per-account usage counters (same semantics as MediaAssetUsage).
+- `selectDataEntry()` updated to apply access filter + per-account usage ordering.
+- CSV import updated to read `setTag`, `category`, `is_reference` columns.
+
+---
+
+## Future: Offer-based Automation
+
+Not yet implemented.
+
+**Goal:** Given a property listing, automatically pick the right library and tags filter.
+
+**Proposed approach:**
+- Add `offerRules` JSON to `MediaLibrary`.
+- Resolver scores libraries against form values → highest score wins.
+- `tagFilter` on `VideoBlock` driven by offer (e.g. `"intro"` for first block).
+
+**Constraints to keep:**
+- `setSequence` cursor and `AccountLibraryCursor` remain the single source of truth for rotation position. Offer-based selection only affects *which* library is chosen, not how rotation advances.
+- Offer-based pre-selection should degrade gracefully to `manual` if no library matches.
+- Do not implement until the current `set_sequence` rule is stable in production.
+
+**Batch generation (V2):** Select template + campaign → preview N pre-fills as table → confirm →
+enqueue N `Render` jobs. Must respect `setSequence` and not double-pick assets across rows.
+Implement after offer-based automation is decided.
+
+---
 
 ## Key Files
 
 | File | Role |
 |------|------|
-| `web/prisma/schema.prisma` | All five content library models |
+| `web/prisma/schema.prisma` | All content library models incl. `AccountLibraryCursor` |
 | `web/src/types/template.ts` | `VideoBlock` and `TemplateJSON` library fields |
-| `web/src/lib/contentLibraryResolver.ts` | Selection rule engine |
-| `web/src/lib/recordLibraryUsage.ts` | Post-render usage tracking |
-| `web/src/app/api/admin/libraries/` | Admin CRUD + upload routes |
+| `web/src/types/libraryPrefill.ts` | `LibraryPrefill` interface with `setSequencedLibraryIds` |
+| `web/src/lib/contentLibraryResolver.ts` | Selection rule engine + `selectMediaAssetBySetSequence` |
+| `web/src/lib/recordLibraryUsage.ts` | Post-render usage + cursor advancement |
+| `web/src/app/api/admin/libraries/` | Admin CRUD + upload + bulk routes |
 | `web/src/app/api/admin/libraries/media/assets/[assetId]/edit/` | Asset-edit RunPod submission |
 | `web/src/app/api/webhooks/runpod/media-edit/` | Asset-edit completion webhook |
 | `web/src/lib/webhooks/runpod.ts` | Shared webhook auth + body parse helpers |
 | `web/src/components/admin/libraries/` | Admin UI panels |
+| `web/src/app/(app)/admin/libraries/media/[id]/page.tsx` | Passes `setSequence` to `MediaAssetsPanel` |
 | `web/src/app/api/renders/` | Post-render hook that calls `recordLibraryUsage` |
+
+---
 
 ## Invariants
 
 - **Resolver nulls on missing IDs.** Deleted library → `resolveLibraryPrefill` returns `null`, no throw.
-- **Usage tracking on DONE only.** Failed renders must not consume assets.
+- **Usage tracking on DONE only.** Failed renders must not consume assets or advance cursors.
+- **Cursor advance uses sequence.length at the time of render.** If sequence shrinks between generation and usage tracking, `% length` still gives a valid index.
+- **setSequence is append-only from the asset PATCH.** Auto-append never removes or reorders. Reordering is always explicit (admin UI or direct PATCH).
+- **Multiple blocks, same library → pinnedSetTag.** All blocks in one generation that share a library must resolve the same set. The resolver pins the setTag after the first resolution.
 - **Cycle reset is destructive.** Always confirm first.
 - **R2 cleanup on asset delete.** Delete R2 object first, then DB row. Abort if R2 delete fails.
 - **One active campaign per DataLibrary.** Enforce in API and UI.

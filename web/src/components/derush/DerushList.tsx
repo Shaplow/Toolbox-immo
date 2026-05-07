@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Scissors, Upload, Clock, CheckCircle, XCircle, Loader2, Film, Plus, X, ChevronDown, Settings } from "lucide-react";
 import type { DerushJobCreatePayload, DerushFormat } from "@/types/derush";
 import { fmtDate, fmtDuration } from "@/lib/jobUtils";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 
 const VIDEO_ACCEPT = ".mp4,.mov,.mkv,.webm,.avi,.mts,.m2ts,.mxf";
 const SRT_ACCEPT   = ".srt,.json,.vtt";
@@ -233,17 +234,13 @@ export function DerushList({ initialJobs }: { initialJobs: Job[] }) {
     : null;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-rose-600 rounded-xl flex items-center justify-center text-white">
-          <Scissors className="w-5 h-5" />
-        </div>
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Dérush</h1>
-          <p className="text-sm text-gray-500">Sélection automatique des meilleurs plans par vision IA ou transcription</p>
-        </div>
-      </div>
+    <div className="p-8 max-w-3xl mx-auto space-y-8">
+      <ToolPageHeader
+        icon={Scissors}
+        iconColor="rose"
+        title="Dérush"
+        subtitle="Sélection automatique des meilleurs plans par vision IA ou transcription"
+      />
 
       {/* Drop zone / file picker */}
       <div

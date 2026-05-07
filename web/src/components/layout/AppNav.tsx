@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState, type ReactNode } from "react";
-import { Home, List, Users, Type, MessageSquare, Library, LogOut } from "lucide-react";
+import { Home, List, Users, Library, LogOut, CalendarDays } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { TOOL_META, TOOL_ORDER } from "@/lib/toolMeta";
 
@@ -12,6 +12,7 @@ type NavItem = {
   href: string;
   label: string;
   icon: ReactNode;
+  disabled?: boolean;
 };
 
 type NavSection = {
@@ -20,9 +21,9 @@ type NavSection = {
 };
 
 /** Build a NavItem from TOOL_META at nav icon size. */
-function toolNavItem(key: keyof typeof TOOL_META): NavItem {
+function toolNavItem(key: keyof typeof TOOL_META, opts?: { disabled?: boolean }): NavItem {
   const { href, navLabel, Icon } = TOOL_META[key];
-  return { href, label: navLabel, icon: <Icon size={16} /> };
+  return { href, label: navLabel, icon: <Icon size={16} />, ...opts };
 }
 
 export function AppNav({
@@ -49,7 +50,6 @@ export function AppNav({
   const hasCovers = userPerms.includes("covers");
   const hasTranscription = userPerms.includes("transcription");
   const hasDescription = userPerms.includes("description");
-  const hasDerush = userPerms.includes("derush");
   const hasTemplates =
     userPerms.includes("templates") ||
     userPerms.includes("templates:view") ||
@@ -69,19 +69,20 @@ export function AppNav({
           items: [{ href: "/home", label: "Accueil", icon: <Home size={16} /> }],
         },
         {
-          items: TOOL_ORDER.map(toolNavItem),
+          title: "Outils",
+          items: TOOL_ORDER.map((key) => toolNavItem(key, key === "derush" ? { disabled: true } : undefined)),
         },
         {
           title: "Suivi",
           items: [{ href: "/listings", label: "Mes générations", icon: <List size={16} /> }],
         },
         {
-          title: "Admin",
+          title: "Gestion",
           items: [
-            { href: "/admin/users", label: "Utilisateurs", icon: <Users size={16} /> },
-            { href: "/admin/fonts", label: "Typographies", icon: <Type size={16} /> },
+            { href: "/calendar", label: "Calendrier", icon: <CalendarDays size={16} /> },
+            { href: "/admin/offer-schedule", label: "Règles d'offres", icon: <Library size={16} /> },
             { href: "/admin/libraries", label: "Bibliothèques", icon: <Library size={16} /> },
-            { href: "/admin/prompts", label: "Prompts IA", icon: <MessageSquare size={16} /> },
+            { href: "/admin/users", label: "Utilisateurs", icon: <Users size={16} /> },
           ],
         },
       ]
@@ -90,13 +91,14 @@ export function AppNav({
           items: [{ href: "/home", label: "Accueil", icon: <Home size={16} /> }],
         },
         {
+          title: "Outils",
           items: [
             ...(hasTemplates ? [toolNavItem("templates")] : []),
-            ...(hasCaptions ? [toolNavItem("captions")] : []),
             ...(hasTranscription ? [toolNavItem("transcription")] : []),
+            ...(hasCaptions ? [toolNavItem("captions")] : []),
             ...(hasDescription ? [toolNavItem("description")] : []),
-            ...(hasDerush ? [toolNavItem("derush")] : []),
             ...(hasCovers ? [toolNavItem("covers")] : []),
+            toolNavItem("derush", { disabled: true }),
           ],
         },
         {
@@ -167,9 +169,21 @@ export function AppNav({
                 </p>
               )}
               <div className="space-y-1">
-                {items.map(({ href, label, icon }) => {
+                {items.map(({ href, label, icon, disabled }) => {
                   const currentPath = pathname ?? "";
-                  const active = currentPath === href || currentPath.startsWith(`${href}/`);
+                  const active = !disabled && (currentPath === href || currentPath.startsWith(`${href}/`));
+                  if (disabled) {
+                    return (
+                      <span
+                        key={href}
+                        title={label}
+                        className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-not-allowed select-none text-gray-300 ${collapsed ? "justify-center px-0" : ""}`}
+                      >
+                        <span className="shrink-0 flex items-center">{icon}</span>
+                        {!collapsed ? <span className="flex items-center gap-1.5">{label}<span className="text-[10px] font-medium bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-md">Bientôt</span></span> : null}
+                      </span>
+                    );
+                  }
                   return (
                     <Link
                       key={href}

@@ -25,13 +25,16 @@ if (!WEBHOOK_SECRET && process.env.NODE_ENV === "production") {
 }
 
 /**
- * Verifies the X-Webhook-Secret header against RUNPOD_WEBHOOK_SECRET.
+ * Verifies the ?secret= query parameter against RUNPOD_WEBHOOK_SECRET.
+ * RunPod does not support custom request headers in webhooks — the secret is
+ * embedded in the webhook URL as a query parameter by getRunpodWebhookUrl and
+ * forwarded verbatim by RunPod when it POSTs the callback.
  * Returns a 401 NextResponse if verification fails, null if OK.
  * If RUNPOD_WEBHOOK_SECRET is not set, the check is skipped (dev / unprotected).
  */
 export function verifyRunpodWebhook(req: NextRequest): NextResponse | null {
   if (WEBHOOK_SECRET) {
-    const provided = req.headers.get("x-webhook-secret");
+    const provided = req.nextUrl.searchParams.get("secret");
     if (provided !== WEBHOOK_SECRET) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -79,16 +82,22 @@ export async function parseRunpodWebhookBody<TOutput = Record<string, unknown>>(
 /**
  * Builds the callback URL that RunPod will POST to when a job completes.
  *
- * Uses NEXTAUTH_URL_INTERNAL first (Docker internal routing) then NEXTAUTH_URL.
- * Returns an empty string if neither env var is set — callers must skip attaching
- * the webhook field in that case (dev without tunnel, local render-engine, etc.).
+ * Uses NEXTAUTH_URL (public-facing URL) so RunPod (an external service) can
+ * reach the endpoint. NEXTAUTH_URL_INTERNAL is intentionally NOT used here —
+ * it is a Docker-internal hostname unreachable from the internet.
+ *
+ * If RUNPOD_WEBHOOK_SECRET is set it is appended as ?secret=<value> so
+ * verifyRunpodWebhook can validate it (RunPod forwards query params verbatim).
+ *
+ * Returns an empty string if NEXTAUTH_URL is not set — callers must skip
+ * attaching the webhook field in that case (dev without tunnel, etc.).
  */
 export function getRunpodWebhookUrl(path: string): string {
-  const base = (
-    process.env.NEXTAUTH_URL_INTERNAL ??
-    process.env.NEXTAUTH_URL ??
-    ""
-  ).replace(/\/$/, "");
+  const base = (process.env.NEXTAUTH_URL ?? "").replace(/\/$/, "");
   if (!base) return "";
-  return `${base}${path}`;
+  const url = new URL(`${base}${path}`);
+  if (WEBHOOK_SECRET) {
+    url.searchParams.set("secret", WEBHOOK_SECRET);
+  }
+  return url.toString();
 }
