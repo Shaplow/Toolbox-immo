@@ -2,6 +2,8 @@
 import { UsersPanel } from "@/components/admin/UsersPanel";
 import { prisma } from "@/lib/prisma";
 import { getUserContext } from "@/lib/userContext";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { Users } from "lucide-react";
 
 export default async function AdminUsersPage() {
   const userContext = await getUserContext();
@@ -19,10 +21,12 @@ export default async function AdminUsersPage() {
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Gestion des utilisateurs</h1>
-        <p className="text-sm text-gray-500 mt-1">Créez des comptes, assignez des outils, des templates et des presets de sous-titres.</p>
-      </div>
+      <ToolPageHeader
+        icon={Users}
+        iconColor="indigo"
+        title="Utilisateurs"
+        subtitle="Créez des comptes, assignez des outils, des templates et des presets de sous-titres."
+      />
       <UsersPanel
         templates={templates}
         presets={presets}

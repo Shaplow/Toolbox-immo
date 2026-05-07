@@ -154,16 +154,24 @@ export default async function GeneratePage({ params, searchParams }: Props) {
   let libraryPrefillContext: LibraryPrefillContext | undefined;
   const hasLibraryBindings =
     json.blocks.some((b) => (b.type === "video" || b.type === "music") && b.libraryId) ||
+    (json.videoSequence ?? []).some((s) => !!s.libraryId) ||
     !!json.contentLibrary?.dataCampaignId;
 
-  // Detect if any video block uses theme_sequence — needs an Instagram account selector
-  const hasThemeSequenceBlocks = json.blocks.some((b) => {
-    if (b.type !== "video" || !b.libraryId) return false;
-    const rule = (b as import("@/types/template").VideoBlock).selectionRule;
-    if (!rule) return false;
-    if (typeof rule === "string") return rule === "theme_sequence";
-    return rule.strategy === "theme_sequence";
-  });
+  // Detect if any video block OR video sequence slot uses theme_sequence —
+  // needs an Instagram account selector at generation time.
+  const hasThemeSequenceBlocks =
+    json.blocks.some((b) => {
+      if (b.type !== "video" || !b.libraryId) return false;
+      const rule = (b as import("@/types/template").VideoBlock).selectionRule;
+      if (!rule) return false;
+      if (typeof rule === "string") return rule === "theme_sequence";
+      return rule.strategy === "theme_sequence";
+    }) ||
+    (json.videoSequence ?? []).some((s) => {
+      if (!s.libraryId || !s.selectionRule) return false;
+      if (typeof s.selectionRule === "string") return s.selectionRule === "theme_sequence";
+      return (s.selectionRule as { strategy?: string }).strategy === "theme_sequence";
+    });
 
   if (hasLibraryBindings) {
     const fieldLibraryMap: Record<string, { libraryId: string; blockId: string; type: "video" | "audio"; tagFilterParam?: string }> = {};
@@ -179,6 +187,20 @@ export default async function GeneratePage({ params, searchParams }: Props) {
           ? (rule as { tagFilterParam?: string }).tagFilterParam
           : undefined;
         fieldLibraryMap[block.binding] = { libraryId: block.libraryId, blockId: block.id, type: "video" as const, tagFilterParam };
+      }
+    }
+    // Also add videoSequence slots that have a libraryId — in sequence mode, the libraryId
+    // lives on the slot, not on the VideoBlock. We need these in fieldLibraryMap so the
+    // generation form shows the LibraryFieldInput + "depuis la bibliothèque" badge.
+    // Note: slots may use `label` instead of `binding` as the form field key.
+    for (const slot of (json.videoSequence ?? [])) {
+      const slotKey = slot.binding ?? slot.label;
+      if (slot.libraryId && slotKey) {
+        const rule = slot.selectionRule;
+        const tagFilterParam = (typeof rule === "object" && rule !== null && "tagFilterParam" in rule)
+          ? (rule as { tagFilterParam?: string }).tagFilterParam
+          : undefined;
+        fieldLibraryMap[slotKey] = { libraryId: slot.libraryId, blockId: slot.id, type: "video" as const, tagFilterParam };
       }
     }
     const musicBlock = json.blocks.find((b): b is MusicBlock => b.type === "music" && !!b.libraryId);
@@ -239,14 +261,39 @@ export default async function GeneratePage({ params, searchParams }: Props) {
           if (suggestion) initialValues = { ...initialValues, [block.binding]: suggestion.url };
         }
       }
+      // Map videoSequence slot suggestions (keyed by slot.id in the resolver)
+      for (const slot of (json.videoSequence ?? [])) {
+        const slotKey = slot.binding ?? slot.label;
+        if (slot.libraryId && slotKey) {
+          const suggestion = prefill.videoSuggestions[slot.id] ?? null;
+          initialSuggestions[slotKey] = suggestion;
+          if (suggestion) initialValues = { ...initialValues, [slotKey]: suggestion.url };
+        }
+      }
       if (musicBlock?.binding && musicBlock.libraryId) {
         initialSuggestions[musicBlock.binding] = prefill.audioSuggestion ?? null;
         if (prefill.audioSuggestion) initialValues = { ...initialValues, [musicBlock.binding]: prefill.audioSuggestion.url };
       }
       if (prefill.dataSuggestion) {
-        for (const [key, value] of Object.entries(prefill.dataSuggestion.fields)) {
-          initialValues = { ...initialValues, [key]: value };
-          prefilledDataKeys.push(key);
+        const rawFields = prefill.dataSuggestion.fields;
+        // Build a lowercase-key → value lookup so that CSV headers lowercased by the
+        // import route (e.g. "c2l1") can still match schema field keys stored in any case
+        // (e.g. "C2L1").
+        const lowerToValue = new Map<string, string>(
+          Object.entries(rawFields).map(([k, v]) => [k.toLowerCase(), v])
+        );
+        for (const schemaField of json.schema) {
+          // Exact match first; fall back to case-insensitive
+          let value: string | undefined = rawFields[schemaField.key] ?? lowerToValue.get(schemaField.key.toLowerCase());
+          if (value === undefined) continue;
+          // For select fields: normalize value to match the canonical option string
+          // (e.g. stored "quartier" → option "Quartier")
+          if (schemaField.type === "select" && Array.isArray(schemaField.options) && schemaField.options.length > 0) {
+            const matched = schemaField.options.find((opt) => opt.toLowerCase() === value!.toLowerCase());
+            if (matched) value = matched;
+          }
+          initialValues = { ...initialValues, [schemaField.key]: value };
+          prefilledDataKeys.push(schemaField.key);
         }
         dataSuggestion = prefill.dataSuggestion;
       }

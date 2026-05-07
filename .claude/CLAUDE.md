@@ -35,6 +35,20 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
 - Web: `cd web && npm run lint -- path/to/file.tsx`
 - Render engine local entry points are documented in `render-engine/README.md`
 
+### Prisma — required subcommands (agents often get this wrong)
+
+| Goal | Command |
+|------|---------|
+| Regenerate Prisma client | `cd web && npm run db:generate` |
+| Create + apply migration (local, interactive) | `cd web && npm run db:migrate` |
+| Apply existing migrations without prompts (CI/agents) | `cd web && npx prisma migrate deploy` |
+| Check pending migrations | `cd web && npx prisma migrate status` |
+| Push schema without migration file (prototyping) | `cd web && npm run db:push` |
+
+- `prisma migrate` alone is **not a valid command** — always add a subcommand.
+- For agent automation, prefer `migrate deploy` (non-interactive) over `migrate dev`.
+- `npm run db:migrate` reads `.env.local` automatically via `dotenv`.
+
 ## Skills Available In Repo
 
 - `.github/skills/template-builder/`

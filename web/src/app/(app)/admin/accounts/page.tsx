@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
 import { InstagramAccountsPanel } from "@/components/admin/InstagramAccountsPanel";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { AtSign } from "lucide-react";
 
 export default async function AdminAccountsPage() {
   const userContext = await getUserContext();
@@ -10,12 +12,12 @@ export default async function AdminAccountsPage() {
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Comptes Instagram</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Gérez les comptes clients Instagram et visualisez leur position dans la séquence de thèmes.
-        </p>
-      </div>
+      <ToolPageHeader
+        icon={AtSign}
+        iconColor="indigo"
+        title="Comptes Instagram"
+        subtitle="Gérez les comptes clients et leur position dans la séquence de thèmes."
+      />
       <InstagramAccountsPanel />
     </div>
   );

@@ -112,7 +112,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   let uploadUrl: string;
   try {
-    uploadUrl = await createPresignedUploadUrl(r2Key, contentType, 3600);
+    uploadUrl = await createPresignedUploadUrl(r2Key, contentType, 3600, size);
   } catch (err) {
     // Clean up the DB row we just created so it doesn't become a phantom asset.
     await prisma.mediaAsset.delete({ where: { id: asset.id } }).catch((e) => {

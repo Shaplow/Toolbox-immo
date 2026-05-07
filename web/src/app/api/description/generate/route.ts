@@ -32,6 +32,9 @@ const MAX_PERSONALIZATION_CHARS = 2_000;
 const MAX_REFERENCE_IMAGE_BYTES = 4 * 1024 * 1024;
 const REFERENCE_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
+const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
+const OPENAI_MODEL  = process.env.OPENAI_MODEL  ?? "gpt-5.4";
+
 type ReferenceImageInput = {
   dataUrl?: string;
   filename?: string;
@@ -147,7 +150,7 @@ async function generateWithClaude(
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-6",
+      model: CLAUDE_MODEL,
       max_tokens: 4096,
       system:
         "Tu es un expert en rédaction. Génère uniquement le texte demandé, sans commentaire, introduction ni balise markdown.",
@@ -197,7 +200,7 @@ async function generateWithGPT(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "gpt-5.4",
+      model: OPENAI_MODEL,
       messages: [
         {
           role: "system",
@@ -279,6 +282,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Prompt introuvable" }, { status: 404 });
   }
 
+  // Validate transcriptionId ownership: the referenced job must belong to the current user.
+  if (transcriptionId) {
+    const txJob = await prisma.transcriptionJob.findUnique({
+      where: { id: transcriptionId },
+      select: { userId: true },
+    });
+    if (!txJob || txJob.userId !== session.user.id) {
+      return NextResponse.json({ error: "Transcription introuvable" }, { status: 404 });
+    }
+  }
+
   let referenceImage: ValidatedReferenceImage | null;
   try {
     referenceImage = validateReferenceImage(referenceImageInput);
@@ -316,7 +330,8 @@ export async function POST(req: NextRequest) {
       ? await generateWithClaude(userMessage, referenceImage)
       : await generateWithGPT(userMessage, referenceImage);
   } catch (err) {
-    errorMsg = err instanceof Error ? err.message : "Erreur inconnue";
+    const rawMsg = err instanceof Error ? err.message : "Erreur inconnue";
+    errorMsg = rawMsg.slice(0, 200);
     console.error("[description/generate] Provider failure", {
       userId: session.user.id,
       promptId,

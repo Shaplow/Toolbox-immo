@@ -369,6 +369,12 @@ model MediaLibrary {
   /// JSON Record<string,string> — setTag → famille : {"tenue1-set1":"tenue1","tenue1-set2":"tenue1","tenue2-set1":"tenue2"}
   /// En mode auto, tous les setTags d'une même famille sont exclus ensemble après utilisation.
   setFamilies String       @default("{}")
+  /// Portée de la rotation :
+  /// - "per_account" (défaut) : curseur et usages séparés par compte. Chaque négociateur avance
+  ///   dans la bibliothèque indépendamment des autres.
+  /// - "shared" : un seul curseur partagé entre tous les comptes. Tous les comptes voient le
+  ///   même contenu à chaque génération (utile pour une bibliothèque commune).
+  rotationScope String     @default("per_account")
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   assets      MediaAsset[]

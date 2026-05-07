@@ -11,6 +11,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+const MAX_SEGMENT_TEXT_LENGTH = 2_000;
+
 type Body =
   | { segmentId: string; action: "accept" | "reject" }
   | { segmentId: string; action: "edit_text"; text: string };
@@ -51,7 +53,11 @@ export async function PATCH(
     if (typeof text !== "string") {
       return NextResponse.json({ error: "text requis pour edit_text" }, { status: 400 });
     }
-    const textOverrides = JSON.parse(job.segmentTextOverrides || "{}") as Record<string, string>;
+    if (text.length > MAX_SEGMENT_TEXT_LENGTH) {
+      return NextResponse.json({ error: `text trop long (max ${MAX_SEGMENT_TEXT_LENGTH} caractères)` }, { status: 400 });
+    }
+    let textOverrides: Record<string, string> = {};
+    try { textOverrides = JSON.parse(job.segmentTextOverrides || "{}") as Record<string, string>; } catch { /* ignore malformed */ }
     if (text.trim() === "") {
       // Empty = remove override (restore original)
       delete textOverrides[segmentId];
@@ -69,7 +75,8 @@ export async function PATCH(
     return NextResponse.json({ error: "action invalide" }, { status: 400 });
   }
 
-  const overrides = JSON.parse(job.segmentOverrides || "{}") as Record<string, "accept" | "reject">;
+  let overrides: Record<string, "accept" | "reject"> = {};
+  try { overrides = JSON.parse(job.segmentOverrides || "{}") as Record<string, "accept" | "reject">; } catch { /* ignore malformed */ }
   overrides[segmentId] = action;
 
   await prisma.derushJob.update({

@@ -6,37 +6,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { resolveRunpodJobPhase } from "@/lib/runpod";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
 
-type RunpodStatus =
-  | "IN_QUEUE" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | "CANCELLED" | "TIMED_OUT";
+/** 2 hours without resolution → stalled */
+const EXPORT_STALL_MS = 2 * 60 * 60 * 1000;
 
-interface RunpodStatusResponse {
-  id: string;
-  status: RunpodStatus;
-  output?: {
-    output_key?: string;
-    exported_count?: number;
-    export_format?: string;
-    encoding_mode?: string;
-    error?: string;
-  };
+type DerushExportOutput = {
+  output_key?: string;
+  exported_count?: number;
+  export_format?: string;
+  encoding_mode?: string;
   error?: string;
-}
-
-async function fetchRunpodStatus(jobId: string): Promise<RunpodStatusResponse> {
-  const res = await fetch(
-    `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/status/${jobId}`,
-    {
-      headers: { Authorization: `Bearer ${RUNPOD_API_KEY}` },
-      cache: "no-store",
-    }
-  );
-  if (!res.ok) throw new Error(`RunPod ${res.status}: ${await res.text()}`);
-  return res.json();
-}
+};
 
 export async function GET(
   _req: NextRequest,
@@ -65,35 +49,34 @@ export async function GET(
     return NextResponse.json(formatExport(exp));
   }
 
-  // Poll RunPod si PROCESSING
+  // Poll RunPod si PROCESSING — uses shared helper (stall detection included)
   if (exp.status === "PROCESSING" && exp.runpodJobId && RUNPOD_API_KEY && RUNPOD_ENDPOINT_ID) {
-    try {
-      const rp = await fetchRunpodStatus(exp.runpodJobId);
+    const phase = await resolveRunpodJobPhase<DerushExportOutput>(
+      RUNPOD_ENDPOINT_ID,
+      RUNPOD_API_KEY,
+      exp.runpodJobId,
+      exp.updatedAt,
+      EXPORT_STALL_MS
+    );
 
-      if (rp.status === "COMPLETED" && rp.output) {
-        exp = await prisma.derushExport.update({
-          where: { id: eid },
-          data: {
-            status: "COMPLETED",
-            outputKey: rp.output.output_key ?? exp.outputKey,
-          },
-        });
-        return NextResponse.json(formatExport(exp));
-      }
-
-      if (["FAILED", "CANCELLED", "TIMED_OUT"].includes(rp.status)) {
-        exp = await prisma.derushExport.update({
-          where: { id: eid },
-          data: {
-            status: "FAILED",
-            errorMsg: rp.error ?? `RunPod job ${rp.status}`,
-          },
-        });
-        return NextResponse.json(formatExport(exp));
-      }
-    } catch (err) {
-      console.error("[derush/export/status] RunPod poll failed:", err);
+    if (phase.phase === "completed" && phase.output) {
+      exp = await prisma.derushExport.update({
+        where: { id: eid },
+        data: {
+          status: "COMPLETED",
+          outputKey: phase.output.output_key ?? exp.outputKey,
+        },
+      });
+    } else if (phase.phase === "failed" || phase.phase === "stalled") {
+      const errorMsg = phase.phase === "stalled"
+        ? "Export RunPod bloqué — aucune réponse après 2h"
+        : (phase as { phase: "failed"; error: string }).error;
+      exp = await prisma.derushExport.update({
+        where: { id: eid },
+        data: { status: "FAILED", errorMsg },
+      });
     }
+    // phase "in_progress" or "unreachable" — return current state
   }
 
   return NextResponse.json(formatExport(exp));

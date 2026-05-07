@@ -49,10 +49,12 @@ Two patterns coexist in this repo:
 - Job record is updated directly, no browser polling needed
 
 ```
-RunPod → POST /api/webhooks/runpod/media-edit    (media-edit)
-RunPod → POST /api/webhooks/runpod/captions       (captions)
-RunPod → POST /api/webhooks/runpod/transcription  (transcription)
-RunPod → POST /api/webhooks/runpod/derush         (derush)
+RunPod → POST /api/webhooks/runpod/media-edit      (media-edit)
+RunPod → POST /api/webhooks/runpod/captions        (captions)
+RunPod → POST /api/webhooks/runpod/transcription   (transcription)
+RunPod → POST /api/webhooks/runpod/derush          (derush analysis)
+RunPod → POST /api/webhooks/runpod/derush-export   (derush export)
+RunPod → POST /api/webhooks/runpod/renders         (template renders)
 ```
 
 Webhook helper: `web/src/lib/webhooks/runpod.ts`

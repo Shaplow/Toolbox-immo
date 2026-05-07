@@ -43,8 +43,10 @@ export async function GET(
   const data = JSON.parse(raw.toString("utf-8")) as { segments?: unknown[] } | unknown[];
 
   // Apply manual overrides (accept/reject toggles from the UI)
-  const overrides = JSON.parse(job.segmentOverrides || "{}") as Record<string, "accept" | "reject">;
-  const textOverrides = JSON.parse(job.segmentTextOverrides || "{}") as Record<string, string>;
+  let overrides: Record<string, "accept" | "reject"> = {};
+  let textOverrides: Record<string, string> = {};
+  try { overrides = JSON.parse(job.segmentOverrides || "{}") as Record<string, "accept" | "reject">; } catch { /* ignore malformed */ }
+  try { textOverrides = JSON.parse(job.segmentTextOverrides || "{}") as Record<string, string>; } catch { /* ignore malformed */ }
   const segments: unknown[] = Array.isArray(data) ? data : ((data as { segments?: unknown[] }).segments ?? []);
   if (Object.keys(overrides).length > 0 || Object.keys(textOverrides).length > 0) {
     for (const seg of segments) {

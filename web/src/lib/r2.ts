@@ -105,7 +105,8 @@ function createClient(): S3Client {
 export async function createPresignedUploadUrl(
   key: string,
   contentType: string,
-  expiresIn = 3600
+  expiresIn = 3600,
+  contentLength?: number
 ): Promise<string> {
   requireR2();
   const { bucket } = getR2Config();
@@ -114,6 +115,11 @@ export async function createPresignedUploadUrl(
     Bucket: bucket!,
     Key: key,
     ContentType: contentType,
+    // When provided, R2/S3 includes ContentLength in the presigned URL signature,
+    // so the PUT request must declare exactly this many bytes.
+    // This ties the presigned URL to the file size declared by the client, preventing
+    // uploads of a different (larger) file after the size check has passed server-side.
+    ...(contentLength !== undefined && { ContentLength: contentLength }),
   });
   return getSignedUrl(client, command, { expiresIn });
 }

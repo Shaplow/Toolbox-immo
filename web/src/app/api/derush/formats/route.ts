@@ -84,26 +84,46 @@ export async function POST(req: NextRequest) {
       ? body.silenceThreshold
       : 1.5;
 
-  // Generate a unique slug
+  // Generate a unique slug — retry with random suffix if there is a collision
   const baseSlug = slugify(body.name.trim());
-  let slug = baseSlug;
-  const existing = await prisma.derushFormat.findUnique({ where: { slug } });
-  if (existing) {
-    slug = `${baseSlug}_${Date.now().toString(36)}`;
+
+  let format: Awaited<ReturnType<typeof prisma.derushFormat.create>> | null = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const slug = attempt === 0
+      ? baseSlug
+      : `${baseSlug}_${Math.random().toString(36).slice(2, 7)}`;
+    try {
+      format = await prisma.derushFormat.create({
+        data: {
+          name: body.name.trim(),
+          slug,
+          description: (body.description ?? "").trim(),
+          contextPrompt: (body.contextPrompt ?? "").trim(),
+          silenceThreshold,
+          exportMode,
+          isBuiltin: false,
+          userId: session.user.id,
+        },
+      });
+      break;
+    } catch (err: unknown) {
+      // P2002 = unique constraint violation — retry with a different suffix
+      if (
+        err &&
+        typeof err === "object" &&
+        "code" in err &&
+        (err as { code: string }).code === "P2002" &&
+        attempt < 4
+      ) {
+        continue;
+      }
+      throw err;
+    }
   }
 
-  const format = await prisma.derushFormat.create({
-    data: {
-      name: body.name.trim(),
-      slug,
-      description: (body.description ?? "").trim(),
-      contextPrompt: (body.contextPrompt ?? "").trim(),
-      silenceThreshold,
-      exportMode,
-      isBuiltin: false,
-      userId: session.user.id,
-    },
-  });
+  if (!format) {
+    return NextResponse.json({ error: "Impossible de générer un slug unique" }, { status: 500 });
+  }
 
   return NextResponse.json(format, { status: 201 });
 }

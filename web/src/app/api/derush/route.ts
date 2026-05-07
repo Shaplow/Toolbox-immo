@@ -177,7 +177,7 @@ export async function GET() {
       presetName: j.preset?.name ?? null,
       formatId: j.formatId,
       formatName: j.format?.name ?? null,
-      fileCount: (JSON.parse(j.inputFiles) as unknown[]).length,
+      fileCount: (() => { try { return (JSON.parse(j.inputFiles) as unknown[]).length; } catch { return 0; } })(),
       createdAt: j.createdAt.toISOString(),
     }))
   );

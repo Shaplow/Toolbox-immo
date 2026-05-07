@@ -1,6 +1,8 @@
 ﻿import { prisma } from "@/lib/prisma";
 import { ListingsClient, type ListingRow, type CaptionJobRow, type TranscriptionJobRow, type DescriptionJobRow, type DerushJobRow } from "@/components/listings/ListingsClient";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { List } from "lucide-react";
 
 export default async function ListingsPage() {
   const userContext = await getUserContext();
@@ -166,26 +168,12 @@ export default async function ListingsPage() {
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">
-            {isAdmin ? "Générations" : "Mes générations"}
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {rows.length} génération{rows.length !== 1 ? "s" : ""} de template
-            {captionRows.length > 0 && ` · ${captionRows.length} export${captionRows.length !== 1 ? "s" : ""} de sous-titres`}
-            {transcriptionRows.length > 0 && ` · ${transcriptionRows.length} transcription${transcriptionRows.length !== 1 ? "s" : ""}`}
-            {descriptionRows.length > 0 && ` · ${descriptionRows.length} description${descriptionRows.length !== 1 ? "s" : ""}`}
-            {derushRows.length > 0 && ` · ${derushRows.length} dérush${derushRows.length !== 1 ? "s" : ""}`}
-            {inProgressCount > 0 && (
-              <span className="ml-2 inline-flex items-center gap-1 text-indigo-700">
-                <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-pulse inline-block" />
-                {inProgressCount} en cours
-              </span>
-            )}
-          </p>
-        </div>
-      </div>
+      <ToolPageHeader
+        icon={List}
+        iconColor="indigo"
+        title={isAdmin ? "Générations" : "Mes générations"}
+        subtitle={`${rows.length} génération${rows.length !== 1 ? "s" : ""}${captionRows.length > 0 ? ` · ${captionRows.length} export${captionRows.length !== 1 ? "s" : ""} captions` : ""}${transcriptionRows.length > 0 ? ` · ${transcriptionRows.length} transcription${transcriptionRows.length !== 1 ? "s" : ""}` : ""}${descriptionRows.length > 0 ? ` · ${descriptionRows.length} description${descriptionRows.length !== 1 ? "s" : ""}` : ""}${derushRows.length > 0 ? ` · ${derushRows.length} dérush${derushRows.length !== 1 ? "s" : ""}` : ""}${inProgressCount > 0 ? ` · ${inProgressCount} en cours` : ""}`}
+      />
 
       <ListingsClient
         initialListings={rows}

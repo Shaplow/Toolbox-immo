@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { CaptionPromptsPanel } from "@/components/admin/CaptionPromptsPanel";
 import { DescriptionPromptsPanel } from "@/components/admin/DescriptionPromptsPanel";
 import { serializeCaptionPrompt } from "@/lib/captionPrompt";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { Sparkles } from "lucide-react";
 
 export default async function AdminPromptsPage() {
   const userContext = await getUserContext();
@@ -30,13 +32,12 @@ export default async function AdminPromptsPage() {
 
   return (
     <div className="p-8 max-w-3xl mx-auto space-y-12">
-      {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Prompts IA</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Gérez les prompts disponibles pour vos utilisateurs. Seuls les admins peuvent créer et modifier des prompts — les utilisateurs les sélectionnent dans les outils.
-        </p>
-      </div>
+      <ToolPageHeader
+        icon={Sparkles}
+        iconColor="amber"
+        title="Prompts IA"
+        subtitle="Gérez les prompts disponibles pour vos utilisateurs."
+      />
 
       {/* Caption prompts */}
       <section>

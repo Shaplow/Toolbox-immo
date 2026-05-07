@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { SelectionRuleEditor } from "@/components/builder/shared/SelectionRuleEditor";
 import { normalizeSelectionRule } from "@/components/builder/shared/SelectionRuleEditor";
 import type { VideoSequenceSlot } from "@/types/template";
@@ -17,6 +18,9 @@ const OVERLAY_OPTIONS: { value: OverlayMode; label: string; desc: string }[] = [
 
 const SEQUENCE_STRATEGIES = [
   { value: "theme_sequence", label: "Auto" },
+  { value: "least_used",     label: "Moins utilisée" },
+  { value: "oldest_used",    label: "La plus ancienne" },
+  { value: "random",         label: "Aléatoire" },
   { value: "manual",         label: "Manuelle (choix à la génération)" },
 ];
 
@@ -46,13 +50,21 @@ export function SlotPropertiesForm({
   const bindingFields = schema.filter((f) => ["video", "text", "url"].includes(f.type));
   const { strategy } = normalizeSelectionRule(slot.selectionRule);
 
-  const sourceMode: SourceMode = slot.libraryId ? "library" : "form";
+  // intendedSource tracks which mode the user clicked, independently of whether
+  // libraryId has been set yet. This ensures the "Bibliothèque" button visually
+  // activates before the user picks a library from the dropdown.
+  const [intendedSource, setIntendedSource] = useState<SourceMode>(
+    slot.libraryId ? "library" : "form",
+  );
+  const sourceMode: SourceMode = slot.libraryId ? "library" : intendedSource;
 
   function switchToForm() {
+    setIntendedSource("form");
     onChange({ libraryId: undefined, selectionRule: undefined });
   }
 
   function switchToLibrary() {
+    setIntendedSource("library");
     onChange({ binding: undefined });
   }
 

@@ -1,5 +1,5 @@
 ﻿import Link from "next/link";
-import { List } from "lucide-react";
+
 import { getUserContext, parsePermissions } from "@/lib/userContext";
 import { TOOL_META, TOOL_ORDER } from "@/lib/toolMeta";
 
@@ -99,15 +99,6 @@ export default async function HomePage() {
         ))}
       </div>
 
-      {/* Quick access to listings */}
-      <div className="mt-8 flex items-center gap-2">
-        <Link
-          href="/listings"
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg hover:border-gray-300 hover:bg-gray-50 transition-all"
-        >
-          <List size={14} /> Mes générations
-        </Link>
-      </div>
     </div>
   );
 }

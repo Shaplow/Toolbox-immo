@@ -21,10 +21,14 @@ Toolbox Immo is a monorepo with two active application layers.
 - Builder UI: `web/src/components/builder/`
 - Template render pipeline: `web/src/lib/renderer/`, `web/src/app/preview/`, `web/src/app/api/renders/`
 - Captions and transcription orchestration: `web/src/app/api/render/captions/`, `web/src/app/api/transcription/`, `web/src/lib/captionsEngine.ts`, `web/src/lib/runpod.ts`
-- RunPod webhook callbacks: `web/src/app/api/webhooks/runpod/`, `web/src/lib/webhooks/runpod.ts`
+- RunPod webhook callbacks: `web/src/app/api/webhooks/runpod/` (captions, transcription, derush, derush-export, media-edit, renders), `web/src/lib/webhooks/runpod.ts`
 - Derush module: `web/src/app/api/derush/`, `web/src/lib/derushProcess.ts`, `web/src/types/derush.ts`, `web/src/components/derush/`, `render-engine/engine/derush/`
 - Description generation: `web/src/app/api/description/`, `web/src/components/description/DescriptionTool.tsx`, `web/src/components/admin/DescriptionPromptsPanel.tsx`
 - Admin and permissions: `web/src/app/api/admin/`, `web/src/lib/userContext.ts`, `web/src/lib/permissions.ts`
+- Content library: `web/src/app/api/admin/libraries/`, `web/src/lib/contentLibraryResolver.ts`, `web/src/lib/recordLibraryUsage.ts`
+- Calendar module: `web/src/app/(app)/calendar/`, `web/src/app/api/calendar/`, `web/src/components/calendar/`, `web/src/lib/calendarEngine.ts`
+- Listings module: `web/src/app/(app)/listings/`, `web/src/app/api/listings/`, `web/src/components/listings/`
+- Covers module: `web/src/components/covers/CoverGenerator.tsx`, `web/src/app/api/cover-frames/`
 - Template normalization and layout: `web/src/lib/templateNormalization.ts`, `web/src/lib/groupLayout.ts`, `web/src/lib/templateConditions.ts`
 - Auth and data model: `web/src/lib/auth.ts`, `web/prisma/schema.prisma`
 - RunPod worker and FFmpeg entry points: `render-engine/runpod_worker.py`, `render-engine/api.py`, `render-engine/engine/render.py`, `render-engine/engine/template_composite.py`, `render-engine/engine/probe.py`
@@ -38,8 +42,12 @@ Toolbox Immo is a monorepo with two active application layers.
   - `cd web && npm run lint -- path/to/file.tsx`
   - run `cd web && npm run build` when changes affect routing, config, production runtime behavior, or API integration boundaries.
 - Prisma changes:
-  - `cd web && npm run db:generate`
-  - `cd web && npm run db:push` or `cd web && npm run db:migrate` as appropriate.
+  - `cd web && npm run db:generate` — regenerate the Prisma client after schema changes
+  - `cd web && npm run db:push` — push schema changes directly without creating a migration file (prototyping only)
+  - `cd web && npm run db:migrate` — runs `prisma migrate dev` via dotenv (local, interactive, creates migration files)
+  - `cd web && npx prisma migrate deploy` — apply existing migrations without prompts (CI / production / agents)
+  - `cd web && npx prisma migrate status` — check pending migrations without applying them
+  - NEVER run `prisma migrate` without a subcommand — it is not a valid command and will fail silently.
 - Render engine validation should follow `render-engine/README.md` and stay targeted to the modified workflow.
 - No obvious automated test suite is currently present. If validation is limited to lint, local commands, or manual checks, say so explicitly.
 

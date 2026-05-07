@@ -12,7 +12,7 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import type {
-  TemplateJSON, VideoBlock, MusicBlock,
+  TemplateJSON, VideoBlock, MusicBlock, VideoSequenceSlot,
   MediaSelectionRule, MediaSelectionRuleConfig,
 } from "@/types/template";
 
@@ -522,6 +522,42 @@ export async function resolveLibraryPrefill(
     (b) => normalizeRule(b.selectionRule).strategy === "theme_sequence",
   );
 
+  // --- VideoSequence slots (template-level sequence mode) ---
+  // In sequence mode the libraryId lives on the slot, not on the VideoBlock.
+  // We resolve these the same way as regular/sequence blocks but keyed by slot.id.
+  const seqSlots: VideoSequenceSlot[] = (template.videoSequence ?? []).filter(
+    (s): s is VideoSequenceSlot & { libraryId: string } => !!s.libraryId,
+  );
+
+  const regularSeqSlots = seqSlots.filter(
+    (s) => normalizeRule(s.selectionRule).strategy !== "theme_sequence",
+  );
+  const themeSeqSlots = seqSlots.filter(
+    (s) => normalizeRule(s.selectionRule).strategy === "theme_sequence",
+  );
+
+  // --- Batch-load rotationScope for all used libraries ---
+  // When rotationScope === "shared", we omit accountId so the resolver uses the
+  // global cursor/ordering (all accounts see the same rotation state).
+  const allLibraryIds = [
+    ...videoBlocks.map((b) => b.libraryId!),
+    ...seqSlots.map((s) => s.libraryId!),
+  ].filter((id, i, a) => a.indexOf(id) === i);
+
+  const libScopeMap = new Map<string, string>();
+  if (allLibraryIds.length > 0) {
+    const libs = await prisma.mediaLibrary.findMany({
+      where: { id: { in: allLibraryIds } },
+      select: { id: true, rotationScope: true },
+    });
+    for (const lib of libs) libScopeMap.set(lib.id, lib.rotationScope ?? "per_account");
+  }
+
+  /** Returns accountId for per-account libraries, undefined for shared ones. */
+  function effectiveAccountId(libId: string): string | undefined {
+    return libScopeMap.get(libId) === "shared" ? undefined : accountId;
+  }
+
   // Regular blocks: group by libraryId and resolve serially within each group so that
   // multiple blocks bound to the same library receive distinct assets.
   // Blocks bound to different libraries are still resolved in parallel.
@@ -539,7 +575,7 @@ export async function resolveLibraryPrefill(
           b.libraryId!,
           b.selectionRule,
           formData,
-          accountId,
+          effectiveAccountId(b.libraryId!),
           pickedIds.length > 0 ? pickedIds : undefined,
         );
         if (suggestion) {
@@ -574,7 +610,7 @@ export async function resolveLibraryPrefill(
           const rule = normalizeRule(b.selectionRule);
           const suggestion = await selectMediaAssetBySetSequence(
             libId,
-            accountId,
+            effectiveAccountId(libId),
             undefined,
             pinnedSetTag,
             pinnedCategory,
@@ -615,7 +651,85 @@ export async function resolveLibraryPrefill(
       musicBlock.libraryId,
       musicBlock.audioSelectionRule,
       formData,
-      accountId,
+      effectiveAccountId(musicBlock.libraryId),
+    );
+  }
+
+  // --- VideoSequence slots: regular strategies ---
+  if (regularSeqSlots.length > 0) {
+    const regularSlotsByLibrary = new Map<string, typeof regularSeqSlots>();
+    for (const s of regularSeqSlots) {
+      const key = s.libraryId!;
+      if (!regularSlotsByLibrary.has(key)) regularSlotsByLibrary.set(key, []);
+      regularSlotsByLibrary.get(key)!.push(s);
+    }
+    await Promise.all(
+      Array.from(regularSlotsByLibrary.entries()).map(async ([, slots]) => {
+        const pickedIds: string[] = [];
+        for (const s of slots) {
+          const suggestion = await selectMediaAsset(
+            s.libraryId!,
+            s.selectionRule,
+            formData,
+            effectiveAccountId(s.libraryId!),
+            pickedIds.length > 0 ? pickedIds : undefined,
+          );
+          if (suggestion) {
+            result.videoSuggestions[s.id] = suggestion;
+            pickedIds.push(suggestion.id);
+          }
+        }
+      }),
+    );
+  }
+
+  // --- VideoSequence slots: theme_sequence strategy ---
+  if (themeSeqSlots.length > 0) {
+    const groups = new Map<string, typeof themeSeqSlots>();
+    for (const s of themeSeqSlots) {
+      const key = s.libraryId!;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(s);
+      if (!result.setSequencedLibraryIds!.includes(key)) {
+        result.setSequencedLibraryIds!.push(key);
+      }
+    }
+    await Promise.all(
+      Array.from(groups.entries()).map(async ([libId, slots]) => {
+        let pinnedSetTag: string | undefined = undefined;
+        let pinnedCategory: string | null | undefined = undefined;
+        for (const s of slots) {
+          const rule = normalizeRule(s.selectionRule);
+          const suggestion = await selectMediaAssetBySetSequence(
+            libId,
+            effectiveAccountId(libId),
+            undefined,
+            pinnedSetTag,
+            pinnedCategory,
+            rule,
+          );
+          if (suggestion) {
+            result.videoSuggestions[s.id] = {
+              id: suggestion.id,
+              url: suggestion.url,
+              filename: suggestion.filename,
+            };
+            if (pinnedSetTag === undefined) {
+              if (suggestion.resolvedSetTag) {
+                pinnedSetTag = suggestion.resolvedSetTag;
+                pinnedCategory = suggestion.resolvedCategory;
+                result.usedSetTagByLibrary![libId] = suggestion.resolvedSetTag;
+              }
+              if (suggestion.resolvedCategory != null) {
+                result.usedCategoryByLibrary![libId] = suggestion.resolvedCategory;
+              }
+              if (suggestion.prevCursorState) {
+                result.prevCursorStateByLibrary![libId] = suggestion.prevCursorState;
+              }
+            }
+          }
+        }
+      }),
     );
   }
 

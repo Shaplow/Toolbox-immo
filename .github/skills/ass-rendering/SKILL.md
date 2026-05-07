@@ -19,7 +19,7 @@ It is **not** the same as the captions orchestration layer (jobs, RunPod, R2). F
 | `render-engine/engine/render.py` | Entry point — calls layout then `write_ass_file()`, then FFmpeg subtitle filter |
 | `render-engine/engine/fonts.py` | Font path resolution for PIL measurement |
 
-> **`render-engine/engine/cairo_renderer.py`** exists in the repo but is dead code — a leftover experiment. It is never called from `runpod_worker.py` or the web app. `_resolve_captions_engine()` in `app.py` always returns `"ass"`. Ignore this file.
+> `_resolve_captions_engine()` in `app.py` always returns `"ass"`. No other captions engine is active or present in the repo.
 
 ## Config Model Quick Reference
 

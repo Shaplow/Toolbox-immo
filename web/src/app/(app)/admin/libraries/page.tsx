@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
 import Link from "next/link";
-import { Video, Database, Instagram, Type, MessageSquare } from "lucide-react";
+import { Video, Database, Instagram, Type, MessageSquare, Library } from "lucide-react";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 
 export default async function LibrariesHubPage() {
   const userContext = await getUserContext();
@@ -11,12 +12,12 @@ export default async function LibrariesHubPage() {
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Bibliothèques</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Gérez les bibliothèques de médias (vidéos, musiques) et de données texte (RPI, RTIPS…) utilisées dans les templates.
-        </p>
-      </div>
+      <ToolPageHeader
+        icon={Library}
+        iconColor="indigo"
+        title="Ressources"
+        subtitle="Bibliothèques médias, données, polices et prompts IA"
+      />
 
       <div className="grid grid-cols-2 gap-4">
         <Link

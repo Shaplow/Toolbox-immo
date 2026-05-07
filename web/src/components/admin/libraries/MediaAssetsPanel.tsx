@@ -1088,7 +1088,7 @@ export function MediaAssetsPanel({ library }: Props) {
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
-          className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
         >
           <Upload size={14} /> {isVideo ? "Ajouter des vidéos" : "Ajouter des musiques"}
         </button>

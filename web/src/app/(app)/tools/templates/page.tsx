@@ -114,7 +114,7 @@ export default async function TemplatesPage() {
                           {isAdmin && (
                             <Link
                               href={`/tools/templates/${template.id}/edit`}
-                              className="flex-1 text-center text-xs bg-gray-900 text-white py-1.5 rounded-lg hover:bg-gray-700 transition-colors"
+                              className="flex-1 text-center text-xs border border-gray-200 text-gray-700 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
                             >
                               Éditer
                             </Link>

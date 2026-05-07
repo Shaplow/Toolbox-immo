@@ -17,7 +17,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const { id } = await params;
-  const body = await req.json() as { name?: string; description?: string; tags?: string[]; setSequence?: string[]; setFamilies?: Record<string, string> };
+  const body = await req.json() as { name?: string; description?: string; tags?: string[]; setSequence?: string[]; setFamilies?: Record<string, string>; rotationScope?: string };
 
   const data: Record<string, unknown> = {};
   if (body.name?.trim()) data.name = body.name.trim();
@@ -26,6 +26,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (Array.isArray(body.setSequence)) data.setSequence = JSON.stringify(body.setSequence);
   if (body.setFamilies && typeof body.setFamilies === "object" && !Array.isArray(body.setFamilies)) {
     data.setFamilies = JSON.stringify(body.setFamilies);
+  }
+  if (body.rotationScope === "per_account" || body.rotationScope === "shared") {
+    data.rotationScope = body.rotationScope;
   }
 
   try {

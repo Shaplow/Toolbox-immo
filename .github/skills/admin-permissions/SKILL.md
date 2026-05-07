@@ -25,9 +25,20 @@ Two roles exist:
 | `web/src/app/api/admin/users/route.ts` | Admin user list and creation |
 | `web/src/app/api/admin/users/[id]/route.ts` | Admin user PATCH/DELETE |
 | `web/src/app/api/admin/users/[id]/accesses/route.ts` | Template access grants |
+| `web/src/app/api/admin/users/[id]/caption-preset-accesses/route.ts` | Caption preset access grants per user |
+| `web/src/app/api/admin/users/[id]/derush-preset-accesses/route.ts` | Derush preset access grants per user |
+| `web/src/app/api/admin/accounts/[id]/route.ts` | Instagram account management |
+| `web/src/app/api/admin/accounts/[id]/cursors/reset/route.ts` | Reset library rotation cursor for an account |
+| `web/src/app/api/admin/libraries/media/` | Media library CRUD, asset upload, access, edit, reset-usage |
+| `web/src/app/api/admin/libraries/data/` | Data library, campaign, entry CRUD + CSV import |
+| `web/src/app/api/admin/offer-schedule/route.ts` | Offer schedule management |
 | `web/src/app/api/admin/impersonation/route.ts` | Set/clear impersonation cookie |
 | `web/src/components/admin/UsersPanel.tsx` | Admin user management UI |
 | `web/src/components/admin/PresetsPanel.tsx` | Caption preset admin UI |
+| `web/src/components/admin/CaptionPromptsPanel.tsx` | Admin caption prompt management |
+| `web/src/components/admin/InstagramAccountsPanel.tsx` | Instagram account management UI |
+| `web/src/components/admin/OfferSchedulePanel.tsx` | Offer schedule UI |
+| `web/src/components/admin/libraries/` | Media + data library management panels |
 
 ## UserContext Pattern
 

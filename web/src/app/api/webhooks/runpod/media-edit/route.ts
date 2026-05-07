@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
         // Cache-bust the URL by appending a version timestamp so browsers and
         // CDN don't serve the old file.
         if (newUrl !== undefined) {
-          assetUpdate.url = `${newUrl.split("?")[0]}?v=${Date.now()}`;
+          assetUpdate.url = `${newUrl.split("?")[0]}?v=${job.id}`;
         } else {
           // Fallback: bump the existing URL's version param
           const asset = await tx.mediaAsset.findUnique({
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
             select: { url: true },
           });
           if (asset) {
-            assetUpdate.url = `${asset.url.split("?")[0]}?v=${Date.now()}`;
+            assetUpdate.url = `${asset.url.split("?")[0]}?v=${job.id}`;
           }
         }
         await tx.mediaAsset.update({

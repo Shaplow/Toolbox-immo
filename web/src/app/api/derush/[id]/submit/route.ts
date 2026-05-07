@@ -35,7 +35,15 @@ export async function POST(
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
   if (job.status !== "QUEUED") {
-    return NextResponse.json({ error: "Job déjà soumis ou terminé" }, { status: 409 });
+    const statusMessages: Record<string, string> = {
+      PROCESSING: "Job déjà en cours de traitement RunPod",
+      COMPLETED: "Job déjà terminé avec succès",
+      FAILED: "Job en état d'erreur — créez un nouveau job",
+    };
+    return NextResponse.json(
+      { error: statusMessages[job.status] ?? `Job dans un état non soumettable : ${job.status}` },
+      { status: 409 }
+    );
   }
   if (!RUNPOD_API_KEY || !RUNPOD_ENDPOINT_ID) {
     return NextResponse.json({ error: "RunPod non configuré" }, { status: 503 });
@@ -88,7 +96,8 @@ export async function POST(
     console.warn("[derush/submit] R2 head-check failed (proceeding):", err);
   }
 
-  const outputPrefix = `derush/${job.userId}/${job.id}`;
+  const safeUserId = job.userId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const outputPrefix = `derush/${safeUserId}/${job.id}`;
   const outputJsonKey = `${outputPrefix}/segments.json`;
 
   // Build video URLs from R2

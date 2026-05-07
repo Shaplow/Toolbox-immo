@@ -161,11 +161,11 @@ export function VideoSequencePanel({
                   updateBlock(singleVideoBlock.id, { selectionRule: r } as Partial<AnyBlock>)
                 }
                 strategies={[
-                  { value: "theme_sequence", label: "Séquence de set" },
-                  { value: "oldest_used", label: "La plus ancienne" },
-                  { value: "least_used", label: "Moins utilisée" },
-                  { value: "random", label: "Aléatoire" },
-                  { value: "manual", label: "Manuelle (choix à la génération)" },
+                  { value: "theme_sequence", label: "Auto" },
+                  { value: "least_used",     label: "Moins utilisée" },
+                  { value: "oldest_used",    label: "La plus ancienne" },
+                  { value: "random",         label: "Aléatoire" },
+                  { value: "manual",         label: "Manuelle (choix à la génération)" },
                 ]}
                 schema={schema}
               />

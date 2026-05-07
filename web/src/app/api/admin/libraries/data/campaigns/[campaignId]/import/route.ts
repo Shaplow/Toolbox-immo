@@ -58,6 +58,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Fichier trop volumineux (max 5 MB)" }, { status: 400 });
   }
 
+  if (!(file as File).name.toLowerCase().endsWith(".csv")) {
+    return NextResponse.json({ error: "Le fichier doit être au format CSV (.csv)" }, { status: 400 });
+  }
+
   // Garde contre la ré-importation accidentelle :
   // si la campaign a déjà des entrées, exiger force=true dans le formData.
   const existingCount = await prisma.dataEntry.count({ where: { campaignId } });
@@ -187,13 +191,15 @@ function sanitizeValue(value: string): string {
   return value.trim().slice(0, 2000);
 }
 
-function slugify(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_]/g, "")
-    .slice(0, 64) || null as unknown as string;
+function slugify(value: string): string | null {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_]/g, "")
+      .slice(0, 64) || null
+  );
 }

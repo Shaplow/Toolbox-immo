@@ -10,12 +10,21 @@ interface MediaLibrary {
   type: "video" | "audio";
   tags: string;
   setSequence: string;
+  setFamilies?: string;
+  rotationScope?: string;
   description: string | null;
   createdAt: string;
   _count: { assets: number };
 }
 
-type EditForm = { name: string; tags: string; description: string };
+type EditForm = {
+  name: string;
+  tags: string;
+  description: string;
+  rotationMode: "auto" | "override";
+  setSequenceDraft: string; // one setTag per line
+  rotationScope: "per_account" | "shared";
+};
 
 export function MediaLibrariesPanel() {
   const [libraries, setLibraries] = useState<MediaLibrary[]>([]);
@@ -25,7 +34,7 @@ export function MediaLibrariesPanel() {
   const [form, setForm] = useState({ name: "", type: "video" as "video" | "audio", tags: "", description: "" });
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<EditForm>({ name: "", tags: "", description: "" });
+  const [editForm, setEditForm] = useState<EditForm>({ name: "", tags: "", description: "", rotationMode: "auto", setSequenceDraft: "", rotationScope: "per_account" });
   const [editError, setEditError] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -97,7 +106,15 @@ export function MediaLibrariesPanel() {
 
   function startEdit(lib: MediaLibrary) {
     const tags = (() => { try { return (JSON.parse(lib.tags) as string[]).join(", "); } catch { return ""; } })();
-    setEditForm({ name: lib.name, tags, description: lib.description ?? "" });
+    const seq = (() => { try { return JSON.parse(lib.setSequence) as string[]; } catch { return []; } })();
+    setEditForm({
+      name: lib.name,
+      tags,
+      description: lib.description ?? "",
+      rotationMode: seq.length > 0 ? "override" : "auto",
+      setSequenceDraft: seq.join("\n"),
+      rotationScope: lib.rotationScope === "shared" ? "shared" : "per_account",
+    });
     setEditError(null);
     setEditingId(lib.id);
   }
@@ -107,10 +124,19 @@ export function MediaLibrariesPanel() {
     setEditSaving(true);
     setEditError(null);
     const tags = editForm.tags.split(",").map((t) => t.trim()).filter(Boolean);
+    const setSequence = editForm.rotationMode === "override"
+      ? editForm.setSequenceDraft.split("\n").map((s) => s.trim()).filter(Boolean)
+      : [];
     const res = await fetch(`/api/admin/libraries/media/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: editForm.name.trim(), tags, description: editForm.description.trim() || null }),
+      body: JSON.stringify({
+        name: editForm.name.trim(),
+        tags,
+        description: editForm.description.trim() || null,
+        setSequence,
+        rotationScope: editForm.rotationScope,
+      }),
     });
     setEditSaving(false);
     if (!res.ok) {
@@ -330,6 +356,76 @@ export function MediaLibrariesPanel() {
                           className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                         />
                       </div>
+
+                      {/* ── Rotation scope ── */}
+                      <div className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50">
+                        <p className="text-xs font-medium text-gray-600">Portée de la rotation</p>
+                        <div className="flex gap-2">
+                          {(["per_account", "shared"] as const).map((scope) => (
+                            <button
+                              key={scope}
+                              type="button"
+                              onClick={() => setEditForm((f) => ({ ...f, rotationScope: scope }))}
+                              className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                                editForm.rotationScope === scope
+                                  ? "bg-indigo-600 text-white border-indigo-600"
+                                  : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"
+                              }`}
+                            >
+                              {scope === "per_account" ? "1 contenu / compte" : "Partagé entre comptes"}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-gray-400 leading-relaxed">
+                          {editForm.rotationScope === "per_account"
+                            ? "Chaque négociateur avance dans la bibliothèque indépendamment des autres. Recommandé pour des contenus personnalisés par compte."
+                            : "Tous les comptes voient le même contenu à chaque génération. Le curseur de rotation est partagé."}
+                        </p>
+                      </div>
+
+                      {/* ── Rotation mode ── */}
+                      <div className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50">
+                        <p className="text-xs font-medium text-gray-600">Mode de rotation</p>
+                        <div className="flex gap-2">
+                          {(["auto", "override"] as const).map((mode) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => setEditForm((f) => ({ ...f, rotationMode: mode }))}
+                              className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                                editForm.rotationMode === mode
+                                  ? "bg-indigo-600 text-white border-indigo-600"
+                                  : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"
+                              }`}
+                            >
+                              {mode === "auto" ? "Automatique" : "Ordre fixe"}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-gray-400 leading-relaxed">
+                          {editForm.rotationMode === "auto"
+                            ? "Toolbox alterne les sets automatiquement selon le compte, en évitant de répéter deux sets de la même catégorie."
+                            : "Vous définissez l'ordre exact de passage des sets. Chaque compte suit cet ordre indépendamment."}
+                        </p>
+                        {editForm.rotationMode === "override" && (
+                          <div>
+                            <label className="block text-[10px] font-medium text-gray-500 mb-1">
+                              Ordre des sets — un setTag par ligne
+                            </label>
+                            <textarea
+                              value={editForm.setSequenceDraft}
+                              onChange={(e) => setEditForm((f) => ({ ...f, setSequenceDraft: e.target.value }))}
+                              rows={4}
+                              placeholder={"set1\nset2\nset3"}
+                              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+                            />
+                            <p className="text-[10px] text-gray-400 mt-0.5">
+                              Les setTags doivent correspondre aux valeurs définies sur vos assets.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
                       {editError && <p className="text-xs text-red-600">{editError}</p>}
                       <div className="flex gap-2 pt-1">
                         <button
