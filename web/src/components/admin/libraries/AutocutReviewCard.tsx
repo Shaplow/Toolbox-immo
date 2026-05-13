@@ -551,10 +551,12 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
 
       <div className="p-4">
         <div className="flex gap-4 items-start">
-          {/* Colonne gauche : vidéo portrait naturelle + scrubber + contrôles */}
+          {/* Colonne gauche : vidéo portrait + scrubber + contrôles */}
           <div className="w-44 shrink-0 flex flex-col gap-2">
-            <div className="rounded-lg overflow-hidden bg-gray-900">
-              <video ref={videoRef} src={asset.url} className="w-full h-auto block" preload="metadata" />
+            {/* aspect-[9/16] réserve la hauteur immédiatement sans attendre les métadonnées
+                → overflow-hidden de la card ne clippe plus TrimPlayer par accident */}
+            <div className="relative rounded-lg overflow-hidden bg-gray-900 aspect-[9/16]">
+              <video ref={videoRef} src={asset.url} className="absolute inset-0 w-full h-full object-contain" preload="metadata" />
             </div>
             <TrimPlayer
               trimStart={trimStart}
