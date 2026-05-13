@@ -90,6 +90,8 @@ export function MediaAssetsPanel({ library }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
   const [accountFilter, setAccountFilter] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [bulkUploadSetTag, setBulkUploadSetTag] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -552,6 +554,77 @@ export function MediaAssetsPanel({ library }: Props) {
     setTimeout(() => setUploadSuccess(null), 3000);
   }
 
+  async function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const isVideoLib = library.type === "video";
+    const files = Array.from(e.dataTransfer.files).filter((f) =>
+      isVideoLib ? f.type.startsWith("video/") : f.type.startsWith("audio/")
+    );
+    if (files.length === 0) return;
+
+    setUploading(true);
+    setUploadError(null);
+    setUploadSuccess(null);
+    setUploadProgress(0);
+
+    const uploadedIds: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]!;
+      const presignRes = await fetch(`/api/admin/libraries/media/${library.id}/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size }),
+      });
+      if (!presignRes.ok) {
+        const d = await presignRes.json() as { error?: string };
+        setUploadError(d.error ?? "Erreur lors de la préparation de l'upload");
+        setUploading(false);
+        return;
+      }
+      const { uploadUrl, assetId } = await presignRes.json() as { uploadUrl: string; assetId: string };
+      uploadedIds.push(assetId);
+
+      const ok = await new Promise<boolean>((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", uploadUrl);
+        xhr.setRequestHeader("Content-Type", file.type);
+        xhr.upload.addEventListener("progress", (ev) => {
+          if (ev.lengthComputable) {
+            const filePercent = ev.loaded / ev.total;
+            const overall = Math.round(((i + filePercent) / files.length) * 100);
+            setUploadProgress(overall);
+          }
+        });
+        xhr.addEventListener("load", () => resolve(xhr.status >= 200 && xhr.status < 300));
+        xhr.addEventListener("error", () => resolve(false));
+        xhr.send(file);
+      });
+
+      if (!ok) {
+        setUploadError(`Échec de l'upload : ${file.name}`);
+        setUploading(false);
+        return;
+      }
+    }
+
+    // Apply pre-configured set tag to all uploaded assets
+    const tag = bulkUploadSetTag.trim();
+    if (tag && uploadedIds.length > 0) {
+      await fetch(`/api/admin/libraries/media/${library.id}/assets/bulk`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetIds: uploadedIds, setTag: tag }),
+      });
+    }
+
+    setUploadSuccess(`${files.length} fichier${files.length > 1 ? "s" : ""} uploadé${files.length > 1 ? "s" : ""}`);
+    setUploadProgress(null);
+    setUploading(false);
+    void load();
+    setTimeout(() => setUploadSuccess(null), 3000);
+  }
+
   async function handleDelete(asset: MediaAsset) {
     if (!confirm(`Supprimer "${asset.filename}" ?`)) return;
     const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, { method: "DELETE" });
@@ -561,6 +634,21 @@ export function MediaAssetsPanel({ library }: Props) {
       return;
     }
     void load();
+  }
+
+  async function handleBulkDelete() {
+    const count = selectedIds.size;
+    if (!confirm(`Supprimer ${count} asset${count > 1 ? "s" : ""} ?`)) return;
+    setBulkApplying(true);
+    setBulkError(null);
+    await Promise.all(
+      Array.from(selectedIds).map((id) =>
+        fetch(`/api/admin/libraries/media/assets/${id}`, { method: "DELETE" })
+      )
+    );
+    setBulkApplying(false);
+    setAssets((prev) => prev.filter((a) => !selectedIds.has(a.id)));
+    exitSelectMode();
   }
 
   const isVideo = library.type === "video";
@@ -1088,7 +1176,22 @@ export function MediaAssetsPanel({ library }: Props) {
   }
 
   return (
-    <div>
+    <div
+      className={`relative${selectMode ? " pb-20" : ""}`}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
+      onDrop={(e) => { void handleDrop(e); }}
+    >
+      {/* Drop overlay */}
+      {dragOver && (
+        <div className="absolute inset-0 z-30 bg-indigo-50/90 border-2 border-dashed border-indigo-400 rounded-2xl flex flex-col items-center justify-center gap-3 pointer-events-none">
+          <Upload size={36} className="text-indigo-400" />
+          <p className="text-sm font-semibold text-indigo-700">Déposer les fichiers ici</p>
+          {bulkUploadSetTag.trim() && (
+            <p className="text-xs text-indigo-500">Set : <span className="font-medium">{bulkUploadSetTag.trim()}</span></p>
+          )}
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
@@ -1103,8 +1206,20 @@ export function MediaAssetsPanel({ library }: Props) {
               onClick={() => setShowAtelier(true)}
               className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700"
             >
-              <Wand2 size={14} /> Atelier
+              <Wand2 size={14} /> Analyse auto
             </button>
+          )}
+          {isVideo && (
+            <div className="flex items-center gap-1 border border-dashed border-pink-200 rounded-lg overflow-hidden" title="Set à appliquer automatiquement aux fichiers uploadés (drag & drop ou parcourir)">
+              <span className="text-[10px] text-pink-400 pl-2 shrink-0 select-none">Set&nbsp;↗</span>
+              <input
+                value={bulkUploadSetTag}
+                onChange={(e) => setBulkUploadSetTag(e.target.value)}
+                list="set-tags-list"
+                placeholder="optionnel…"
+                className="w-24 text-xs bg-transparent px-1.5 py-1.5 focus:outline-none text-gray-600 placeholder-gray-400"
+              />
+            </div>
           )}
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -1204,17 +1319,20 @@ export function MediaAssetsPanel({ library }: Props) {
               </div>
             )}
             {isVideo && (
-              <button
-                onClick={() => { if (selectMode) { exitSelectMode(); } else { setSelectMode(true); } }}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors ${
-                  selectMode
-                    ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                    : "border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"
-                }`}
-              >
-                <CheckSquare size={13} />
-                {selectMode ? (selectedIds.size > 0 ? `${selectedIds.size} sélectionné${selectedIds.size > 1 ? "s" : ""}` : "Sélectionner") : "Sélectionner"}
-              </button>
+              <>
+                <div className="w-px h-5 bg-gray-200 self-center" />
+                <button
+                  onClick={() => { if (selectMode) { exitSelectMode(); } else { setSelectMode(true); } }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors ${
+                    selectMode
+                      ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                      : "border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"
+                  }`}
+                >
+                  <CheckSquare size={13} />
+                  {selectMode ? "Sélection active" : "Sélectionner"}
+                </button>
+              </>
             )}
           </div>
           {isVideo && accounts.length > 0 && (
@@ -1264,76 +1382,86 @@ export function MediaAssetsPanel({ library }: Props) {
         </div>
       )}
 
-      {/* Bulk action bar */}
+      {/* Bulk action bar — sticky bottom, appears when selection active */}
       {selectMode && (
-        <div className="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-xl flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  if (selectedIds.size === filtered.length) {
-                    setSelectedIds(new Set());
-                  } else {
-                    setSelectedIds(new Set(filtered.map((a) => a.id)));
-                  }
-                }}
-                className="flex items-center gap-1.5 text-xs text-indigo-700 hover:underline"
-              >
-                {selectedIds.size === filtered.length ? <CheckSquare size={12} /> : <Square size={12} />}
-                {selectedIds.size === filtered.length ? "Tout désélectionner" : "Tout sélectionner"}
-              </button>
-              {selectedIds.size > 0 && (
-                <span className="text-xs text-indigo-600 font-medium">
-                  {selectedIds.size} asset{selectedIds.size > 1 ? "s" : ""} sélectionné{selectedIds.size > 1 ? "s" : ""}
-                </span>
-              )}
-            </div>
-            <button onClick={exitSelectMode} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-0.5">
-              <X size={12} /> Annuler
+        <div className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200 shadow-lg px-6 py-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          {/* Left: count + select-all */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => {
+                if (selectedIds.size === filtered.length) {
+                  setSelectedIds(new Set());
+                } else {
+                  setSelectedIds(new Set(filtered.map((a) => a.id)));
+                }
+              }}
+              className="flex items-center gap-1.5 text-xs text-indigo-700 hover:underline"
+            >
+              {selectedIds.size === filtered.length ? <CheckSquare size={12} /> : <Square size={12} />}
+              {selectedIds.size === filtered.length ? "Tout désélectionner" : "Tout sélectionner"}
             </button>
+            {selectedIds.size > 0 && (
+              <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                {selectedIds.size} sélectionné{selectedIds.size > 1 ? "s" : ""}
+              </span>
+            )}
           </div>
+          {/* Center: actions (only when items are selected) */}
           {selectedIds.size > 0 && (
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex flex-wrap items-center gap-2 flex-1">
               {/* Bulk set tag */}
-              <div className="flex items-center gap-1.5 flex-1">
-                <span className="text-xs text-gray-500 shrink-0">Groupe :</span>
+              <div className="flex items-center gap-1">
                 <input
                   value={bulkSetTagInput}
                   onChange={(e) => setBulkSetTagInput(e.target.value)}
                   list="bulk-set-tags-list"
-                  placeholder="ex: tenue1, session-paris"
-                  className="flex-1 text-xs border border-pink-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-pink-400"
+                  placeholder="Set…"
+                  className="w-28 text-xs border border-pink-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-pink-400"
                   onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplySetTag(); } }}
                 />
                 <button
                   onClick={() => { void handleBulkApplySetTag(); }}
-                  disabled={bulkApplying}
+                  disabled={bulkApplying || !bulkSetTagInput.trim()}
                   className="px-2.5 py-1 bg-pink-600 text-white text-xs rounded hover:bg-pink-700 disabled:opacity-50"
                 >
-                  Appliquer
+                  Set
                 </button>
               </div>
               {/* Bulk tags */}
-              <div className="flex items-center gap-1.5 flex-1">
-                <span className="text-xs text-gray-500 shrink-0">Tags :</span>
+              <div className="flex items-center gap-1">
                 <input
                   value={bulkTagsInput}
                   onChange={(e) => setBulkTagsInput(e.target.value)}
-                  placeholder="tag1, tag2"
-                  className="flex-1 text-xs border border-indigo-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  placeholder="Tags (virgule)…"
+                  className="w-36 text-xs border border-indigo-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                   onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplyTags(); } }}
                 />
                 <button
                   onClick={() => { void handleBulkApplyTags(); }}
-                  disabled={bulkApplying}
+                  disabled={bulkApplying || !bulkTagsInput.trim()}
                   className="px-2.5 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  Remplacer
+                  Tags
                 </button>
               </div>
+              {/* Bulk delete */}
+              <button
+                onClick={() => { void handleBulkDelete(); }}
+                disabled={bulkApplying}
+                className="flex items-center gap-1 px-2.5 py-1 border border-red-200 text-red-600 text-xs rounded hover:bg-red-50 disabled:opacity-50"
+              >
+                <Trash2 size={11} /> Supprimer
+              </button>
+              {bulkError && <p className="text-xs text-red-500">{bulkError}</p>}
             </div>
           )}
-          {bulkError && <p className="text-xs text-red-500">{bulkError}</p>}
+          {/* Right: cancel */}
+          <button
+            onClick={exitSelectMode}
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 sm:ml-auto"
+          >
+            <X size={12} /> Annuler
+          </button>
         </div>
       )}
 
@@ -1355,7 +1483,14 @@ export function MediaAssetsPanel({ library }: Props) {
         <div className="flex flex-col items-center justify-center py-16 text-center">
           {isVideo ? <Play size={32} className="text-gray-300 mb-3" /> : <Music2 size={32} className="text-gray-300 mb-3" />}
           <p className="text-sm font-medium text-gray-500">Aucun fichier dans cette bibliothèque</p>
-          <p className="text-xs text-gray-400 mt-1">Cliquez sur &laquo;&nbsp;Ajouter&nbsp;&raquo; pour uploader vos premiers fichiers.</p>
+          <p className="text-xs text-gray-400 mt-2 mb-4">Uploadez votre premier fichier ou glissez-déposez directement sur cette page.</p>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+          >
+            <Upload size={14} /> {isVideo ? "Ajouter des vidéos" : "Ajouter des musiques"}
+          </button>
         </div>
       ) : filtered.length === 0 ? (
         <p className="text-sm text-gray-400 py-8 text-center">
