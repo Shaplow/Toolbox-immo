@@ -19,7 +19,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { id: libraryId } = await params;
 
-  const body = await req.json() as { assetIds?: unknown; tags?: unknown; setTag?: unknown };
+  const body = await req.json() as { assetIds?: unknown; tags?: unknown; setTag?: unknown; category?: unknown };
 
   if (!Array.isArray(body.assetIds) || body.assetIds.length === 0) {
     return NextResponse.json({ error: "assetIds est requis et doit être un tableau non vide" }, { status: 400 });
@@ -40,6 +40,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const data: Record<string, unknown> = {};
   if (Array.isArray(body.tags)) data.tags = JSON.stringify(body.tags);
   if ("setTag" in body) data.setTag = (body.setTag as string | null | undefined) ?? null;
+  if ("category" in body) data.category = (body.category as string | null | undefined) ?? null;
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: "Aucun champ à mettre à jour" }, { status: 400 });

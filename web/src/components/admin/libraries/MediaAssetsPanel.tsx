@@ -55,10 +55,16 @@ export function MediaAssetsPanel({ library }: Props) {
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  // ── Upload modal ──
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadCategory, setUploadCategory] = useState("");
+  const [uploadSetTag, setUploadSetTag] = useState("");
+  const [uploadTags, setUploadTags] = useState("");
+  const [modalUploading, setModalUploading] = useState(false);
+  const [modalProgress, setModalProgress] = useState<number | null>(null);
+  const [modalError, setModalError] = useState<string | null>(null);
+  const [modalSuccess, setModalSuccess] = useState<string | null>(null);
+  const [modalDragOver, setModalDragOver] = useState(false);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("date_desc");
   const [tagFilter, setTagFilter] = useState("");
@@ -90,8 +96,8 @@ export function MediaAssetsPanel({ library }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
   const [accountFilter, setAccountFilter] = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState(false);
-  const [bulkUploadSetTag, setBulkUploadSetTag] = useState("");
+  // ── Bulk ──
+  const [bulkCategoryInput, setBulkCategoryInput] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -120,6 +126,14 @@ export function MediaAssetsPanel({ library }: Props) {
   }, [library.id, accountFilter]);
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
+
+  // Close upload modal on Escape (unless uploading)
+  useEffect(() => {
+    if (!showUploadModal) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && !modalUploading) setShowUploadModal(false); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [showUploadModal, modalUploading]);
 
   // Load accounts list for access management and account filter
   useEffect(() => {
@@ -480,6 +494,26 @@ export function MediaAssetsPanel({ library }: Props) {
     exitSelectMode();
   }
 
+  async function handleBulkApplyCategory() {
+    if (selectedIds.size === 0) return;
+    const value = bulkCategoryInput.trim() || null;
+    setBulkApplying(true);
+    setBulkError(null);
+    const res = await fetch(`/api/admin/libraries/media/${library.id}/assets/bulk`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assetIds: Array.from(selectedIds), category: value }),
+    });
+    setBulkApplying(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({})) as { error?: string };
+      setBulkError(d.error ?? "Erreur lors de l'application");
+      return;
+    }
+    setAssets((prev) => prev.map((a) => selectedIds.has(a.id) ? { ...a, category: value } : a));
+    exitSelectMode();
+  }
+
   async function handleSaveLastUsed(asset: MediaAsset, dateStr: string) {
     setEditingLastUsedId(null);
     setLastUsedInput("");
@@ -499,74 +533,12 @@ export function MediaAssetsPanel({ library }: Props) {
     return new Date(iso).toISOString().split("T")[0] ?? "";
   }
 
-  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
+  async function uploadFiles(files: File[]) {
     if (files.length === 0) return;
-    e.target.value = "";
-
-    setUploading(true);
-    setUploadError(null);
-    setUploadSuccess(null);
-    setUploadProgress(0);
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const presignRes = await fetch(`/api/admin/libraries/media/${library.id}/upload`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size }),
-      });
-      if (!presignRes.ok) {
-        const d = await presignRes.json() as { error?: string };
-        setUploadError(d.error ?? "Erreur lors de la préparation de l'upload");
-        setUploading(false);
-        return;
-      }
-      const { uploadUrl } = await presignRes.json() as { uploadUrl: string; assetId: string };
-
-      const ok = await new Promise<boolean>((resolve) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", uploadUrl);
-        xhr.setRequestHeader("Content-Type", file.type);
-        xhr.upload.addEventListener("progress", (ev) => {
-          if (ev.lengthComputable) {
-            const filePercent = ev.loaded / ev.total;
-            const overall = Math.round(((i + filePercent) / files.length) * 100);
-            setUploadProgress(overall);
-          }
-        });
-        xhr.addEventListener("load", () => resolve(xhr.status >= 200 && xhr.status < 300));
-        xhr.addEventListener("error", () => resolve(false));
-        xhr.send(file);
-      });
-
-      if (!ok) {
-        setUploadError(`Échec de l'upload : ${file.name}`);
-        setUploading(false);
-        return;
-      }
-    }
-
-    setUploadSuccess(`${files.length} fichier${files.length > 1 ? "s" : ""} uploadé${files.length > 1 ? "s" : ""}`);
-    setUploadProgress(null);
-    setUploading(false);
-    void load();
-    setTimeout(() => setUploadSuccess(null), 3000);
-  }
-
-  async function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragOver(false);
-    const isVideoLib = library.type === "video";
-    const files = Array.from(e.dataTransfer.files).filter((f) =>
-      isVideoLib ? f.type.startsWith("video/") : f.type.startsWith("audio/")
-    );
-    if (files.length === 0) return;
-
-    setUploading(true);
-    setUploadError(null);
-    setUploadSuccess(null);
-    setUploadProgress(0);
+    setModalUploading(true);
+    setModalError(null);
+    setModalSuccess(null);
+    setModalProgress(0);
 
     const uploadedIds: string[] = [];
     for (let i = 0; i < files.length; i++) {
@@ -578,8 +550,8 @@ export function MediaAssetsPanel({ library }: Props) {
       });
       if (!presignRes.ok) {
         const d = await presignRes.json() as { error?: string };
-        setUploadError(d.error ?? "Erreur lors de la préparation de l'upload");
-        setUploading(false);
+        setModalError(d.error ?? "Erreur lors de la préparation de l'upload");
+        setModalUploading(false);
         return;
       }
       const { uploadUrl, assetId } = await presignRes.json() as { uploadUrl: string; assetId: string };
@@ -593,7 +565,7 @@ export function MediaAssetsPanel({ library }: Props) {
           if (ev.lengthComputable) {
             const filePercent = ev.loaded / ev.total;
             const overall = Math.round(((i + filePercent) / files.length) * 100);
-            setUploadProgress(overall);
+            setModalProgress(overall);
           }
         });
         xhr.addEventListener("load", () => resolve(xhr.status >= 200 && xhr.status < 300));
@@ -602,27 +574,40 @@ export function MediaAssetsPanel({ library }: Props) {
       });
 
       if (!ok) {
-        setUploadError(`Échec de l'upload : ${file.name}`);
-        setUploading(false);
+        setModalError(`Échec de l'upload : ${file.name}`);
+        setModalUploading(false);
         return;
       }
     }
 
-    // Apply pre-configured set tag to all uploaded assets
-    const tag = bulkUploadSetTag.trim();
-    if (tag && uploadedIds.length > 0) {
+    // Apply category / set / tags to all newly uploaded assets
+    const bulkData: Record<string, unknown> = { assetIds: uploadedIds };
+    if (uploadSetTag.trim()) bulkData.setTag = uploadSetTag.trim();
+    if (uploadCategory.trim()) bulkData.category = uploadCategory.trim();
+    const tagsList = uploadTags.split(",").map((t) => t.trim()).filter(Boolean);
+    if (tagsList.length > 0) bulkData.tags = tagsList;
+    if (uploadedIds.length > 0 && Object.keys(bulkData).length > 1) {
       await fetch(`/api/admin/libraries/media/${library.id}/assets/bulk`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assetIds: uploadedIds, setTag: tag }),
+        body: JSON.stringify(bulkData),
       });
     }
 
-    setUploadSuccess(`${files.length} fichier${files.length > 1 ? "s" : ""} uploadé${files.length > 1 ? "s" : ""}`);
-    setUploadProgress(null);
-    setUploading(false);
+    setModalSuccess(`${files.length} fichier${files.length > 1 ? "s" : ""} uploadé${files.length > 1 ? "s" : ""}`);
+    setModalProgress(null);
+    setModalUploading(false);
     void load();
-    setTimeout(() => setUploadSuccess(null), 3000);
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []).filter((f) =>
+      isVideo ? f.type.startsWith("video/") : f.type.startsWith("audio/")
+    );
+    e.target.value = "";
+    if (files.length === 0) return;
+    setShowUploadModal(true);
+    void uploadFiles(files);
   }
 
   async function handleDelete(asset: MediaAsset) {
@@ -1176,22 +1161,7 @@ export function MediaAssetsPanel({ library }: Props) {
   }
 
   return (
-    <div
-      className={`relative${selectMode ? " pb-20" : ""}`}
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
-      onDrop={(e) => { void handleDrop(e); }}
-    >
-      {/* Drop overlay */}
-      {dragOver && (
-        <div className="absolute inset-0 z-30 bg-indigo-50/90 border-2 border-dashed border-indigo-400 rounded-2xl flex flex-col items-center justify-center gap-3 pointer-events-none">
-          <Upload size={36} className="text-indigo-400" />
-          <p className="text-sm font-semibold text-indigo-700">Déposer les fichiers ici</p>
-          {bulkUploadSetTag.trim() && (
-            <p className="text-xs text-indigo-500">Set : <span className="font-medium">{bulkUploadSetTag.trim()}</span></p>
-          )}
-        </div>
-      )}
+    <div className={`relative${selectMode ? " pb-20" : ""}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
@@ -1209,22 +1179,9 @@ export function MediaAssetsPanel({ library }: Props) {
               <Wand2 size={14} /> Analyse auto
             </button>
           )}
-          {isVideo && (
-            <div className="flex items-center gap-1 border border-dashed border-pink-200 rounded-lg overflow-hidden" title="Set à appliquer automatiquement aux fichiers uploadés (drag & drop ou parcourir)">
-              <span className="text-[10px] text-pink-400 pl-2 shrink-0 select-none">Set&nbsp;↗</span>
-              <input
-                value={bulkUploadSetTag}
-                onChange={(e) => setBulkUploadSetTag(e.target.value)}
-                list="set-tags-list"
-                placeholder="optionnel…"
-                className="w-24 text-xs bg-transparent px-1.5 py-1.5 focus:outline-none text-gray-600 placeholder-gray-400"
-              />
-            </div>
-          )}
           <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+            onClick={() => setShowUploadModal(true)}
+            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
           >
             <Upload size={14} /> {isVideo ? "Ajouter des vidéos" : "Ajouter des musiques"}
           </button>
@@ -1234,36 +1191,14 @@ export function MediaAssetsPanel({ library }: Props) {
           type="file"
           multiple
           accept={isVideo ? "video/*" : "audio/*"}
-          onChange={(e) => { void handleFileSelect(e); }}
+          onChange={handleFileSelect}
           className="hidden"
         />
       </div>
 
-      {/* Upload feedback */}
+      {/* Reset error */}
       {resetError && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{resetError}</div>
-      )}
-      {uploadError && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{uploadError}</div>
-      )}
-      {uploadSuccess && (
-        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 flex items-center gap-2">
-          <CheckCircle2 size={14} /> {uploadSuccess}
-        </div>
-      )}
-      {uploading && (
-        <div className="mb-4 space-y-1">
-          <div className="flex justify-between text-xs text-indigo-700">
-            <span>Upload en cours…</span>
-            <span>{uploadProgress ?? 0}%</span>
-          </div>
-          <div className="h-1.5 bg-indigo-100 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-indigo-600 transition-all duration-200"
-              style={{ width: `${uploadProgress ?? 0}%` }}
-            />
-          </div>
-        </div>
       )}
 
       {/* Filters bar */}
@@ -1409,6 +1344,24 @@ export function MediaAssetsPanel({ library }: Props) {
           {/* Center: actions (only when items are selected) */}
           {selectedIds.size > 0 && (
             <div className="flex flex-wrap items-center gap-2 flex-1">
+              {/* Bulk category */}
+              <div className="flex items-center gap-1">
+                <input
+                  value={bulkCategoryInput}
+                  onChange={(e) => setBulkCategoryInput(e.target.value)}
+                  list="group-list"
+                  placeholder="Catégorie…"
+                  className="w-28 text-xs border border-violet-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                  onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplyCategory(); } }}
+                />
+                <button
+                  onClick={() => { void handleBulkApplyCategory(); }}
+                  disabled={bulkApplying || !bulkCategoryInput.trim()}
+                  className="px-2.5 py-1 bg-violet-600 text-white text-xs rounded hover:bg-violet-700 disabled:opacity-50"
+                >
+                  Cat.
+                </button>
+              </div>
               {/* Bulk set tag */}
               <div className="flex items-center gap-1">
                 <input
@@ -1835,6 +1788,121 @@ export function MediaAssetsPanel({ library }: Props) {
           library={library}
           onClose={() => setShowAtelier(false)}
         />
+      )}
+
+      {/* ── Upload modal ── */}
+      {showUploadModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => { if (!modalUploading) setShowUploadModal(false); }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+            onDragOver={(e) => { e.preventDefault(); setModalDragOver(true); }}
+            onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setModalDragOver(false); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setModalDragOver(false);
+              const files = Array.from(e.dataTransfer.files).filter((f) =>
+                isVideo ? f.type.startsWith("video/") : f.type.startsWith("audio/")
+              );
+              void uploadFiles(files);
+            }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+              <h2 className="text-base font-semibold text-gray-900">Uploader des fichiers</h2>
+              <button
+                onClick={() => { if (!modalUploading) setShowUploadModal(false); }}
+                disabled={modalUploading}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 disabled:opacity-40"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            {/* Body */}
+            <div className="p-6 flex flex-col gap-4 overflow-y-auto">
+              {/* Drop zone */}
+              <div
+                className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center gap-3 transition-colors ${
+                  modalDragOver ? "border-indigo-400 bg-indigo-50" : "border-gray-200 bg-gray-50"
+                }`}
+              >
+                <Upload size={28} className={modalDragOver ? "text-indigo-400" : "text-gray-300"} />
+                <p className="text-sm text-gray-500 text-center">Glissez vos fichiers ici</p>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={modalUploading}
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Parcourir…
+                </button>
+              </div>
+              {/* Config fields */}
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-medium text-gray-500 mb-1">
+                    <FolderOpen size={10} /> Catégorie
+                  </label>
+                  <input
+                    value={uploadCategory}
+                    onChange={(e) => setUploadCategory(e.target.value)}
+                    list="group-list"
+                    placeholder="ex: Tenue A, Plan Ext… (optionnel)"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-medium text-gray-500 mb-1">
+                    <Layers size={10} /> Set
+                  </label>
+                  <input
+                    value={uploadSetTag}
+                    onChange={(e) => setUploadSetTag(e.target.value)}
+                    list="set-tags-list"
+                    placeholder="ex: tenue1, session-paris… (optionnel)"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-medium text-gray-500 mb-1">
+                    <Tag size={10} /> Tags
+                  </label>
+                  <input
+                    value={uploadTags}
+                    onChange={(e) => setUploadTags(e.target.value)}
+                    placeholder="intro, outro, plan1… (virgules, optionnel)"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+              </div>
+              {/* Progress */}
+              {modalUploading && (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-indigo-700">
+                    <span>Upload en cours…</span>
+                    <span>{modalProgress ?? 0}%</span>
+                  </div>
+                  <div className="h-1.5 bg-indigo-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-indigo-600 transition-all duration-200"
+                      style={{ width: `${modalProgress ?? 0}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              {modalError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{modalError}</div>
+              )}
+              {modalSuccess && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 flex items-center gap-2">
+                  <CheckCircle2 size={14} /> {modalSuccess} — glissez d&apos;autres fichiers ou fermez.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
