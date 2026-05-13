@@ -327,14 +327,14 @@ function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd, fullRush =
   const progress = trimDuration > 0 ? clamp((currentTime - effectiveStart) / trimDuration, 0, 1) : 0;
 
   return (
-    <div className="flex flex-col gap-1.5 w-72 flex-shrink-0">
-      {/* Video — sans contrôles natifs */}
-      <div className="relative rounded-lg overflow-hidden bg-black">
+    <div className="flex flex-col gap-2 w-full">
+      {/* Vidéo — container centré, pas de largeur fixée pour éviter les barres noires sur vidéos portrait */}
+      <div className="rounded-lg overflow-hidden bg-black flex justify-center">
         <video
           ref={videoRef}
           src={src}
-          className="w-full"
-          style={{ maxHeight: "180px", display: "block" }}
+          className="block"
+          style={{ maxHeight: "280px", maxWidth: "100%", display: "block" }}
           preload="metadata"
         />
       </div>
@@ -560,8 +560,7 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
         </div>
       </div>
 
-      <div className="flex gap-5 p-5">
-        {/* Lecteur contraint */}
+      <div className="flex flex-col p-4 gap-3">
         <TrimPlayer
           src={asset.url}
           trimStart={trimStart}
@@ -574,8 +573,8 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
           cutEnd={trimEnd}
         />
 
-        {/* Transcript + timing */}
-        <div className="flex-1 flex flex-col gap-3 min-w-0">
+        {/* Prises, transcript et réglages */}
+        <div className="flex flex-col gap-3">
           {/* Sélecteur de prises si plusieurs détectées */}
           {takes.length > 1 && (
             <div className="flex flex-col gap-1.5">
@@ -625,7 +624,7 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
           )}
 
           {/* Timing inputs */}
-          <div className="flex items-center gap-2 flex-wrap pt-1">
+          <div className="flex items-end gap-3 pt-1">
             {/* Début */}
             <div className="flex flex-col gap-1">
               <span className="text-xs text-gray-400 font-medium">Début (s)</span>
