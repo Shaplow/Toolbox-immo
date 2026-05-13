@@ -196,6 +196,13 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
     };
   }, [appliedJobs, view, library.id]);
 
+  // ── Escape to close ───────────────────────────────────────────────────────
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
   // ── Actions sélection ────────────────────────────────────────────────────
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -371,8 +378,11 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
   // ── Rendu vue sélection ───────────────────────────────────────────────────
   if (view === "select") {
     return (
-      <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto">
-        <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mt-8 mb-8 flex flex-col">
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
+        <div
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mt-8 mb-8 flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
             <div className="flex items-center gap-2">
@@ -402,9 +412,9 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
 
           {/* Stats bar */}
           {processingCount > 0 && (
-            <div className="px-6 py-2 bg-blue-50 text-xs text-blue-700 flex items-center gap-2">
-              <Loader2 size={12} className="animate-spin" />
-              {processingCount} asset{processingCount > 1 ? "s" : ""} en cours d&apos;analyse…
+            <div className="px-6 py-2 bg-gray-50 border-b border-gray-100 text-xs text-gray-500 flex items-center gap-2">
+              <Loader2 size={11} className="animate-spin text-blue-500" />
+              <span>{processingCount} asset{processingCount > 1 ? "s" : ""} en cours d&apos;analyse…</span>
             </div>
           )}
 
@@ -453,7 +463,7 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
           )}
 
           {/* Asset list */}
-          <div className="overflow-y-auto flex-1" style={{ maxHeight: "60vh" }}>
+          <div className="overflow-y-auto flex-1 max-h-[60vh]">
             {loadingAssets ? (
               <div className="flex items-center justify-center py-16 text-gray-400">
                 <Loader2 size={20} className="animate-spin" />
@@ -510,10 +520,13 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
   const totalPages = Math.max(1, Math.ceil(reviewTotal / pageSize));
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mt-8 mb-8">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mt-8 mb-8 flex flex-col max-h-[calc(100vh-4rem)]"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setView("select")}
@@ -596,7 +609,7 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
         </div>
 
         {/* Review cards */}
-        <div className="p-4 flex flex-col gap-3">
+        <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
           {loadingJobs ? (
             <div className="flex items-center justify-center py-16 text-gray-400">
               <Loader2 size={20} className="animate-spin" />
@@ -677,7 +690,7 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 pb-4 text-sm text-gray-600">
+          <div className="flex items-center justify-center gap-2 py-3 text-sm text-gray-600 border-t border-gray-100 shrink-0">
             <button
               onClick={() => setReviewPage((p) => Math.max(1, p - 1))}
               disabled={reviewPage === 1}

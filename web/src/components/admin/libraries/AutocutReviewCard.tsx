@@ -328,14 +328,14 @@ function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd, fullRush =
   const relTime = clamp(currentTime - effectiveStart, 0, trimDuration);
 
   return (
-    <div className="flex flex-col gap-1.5 w-64 flex-shrink-0">
+    <div className="flex flex-col gap-1.5 w-72 flex-shrink-0">
       {/* Video — sans contrôles natifs */}
       <div className="relative rounded-lg overflow-hidden bg-black">
         <video
           ref={videoRef}
           src={src}
           className="w-full"
-          style={{ maxHeight: "144px", display: "block" }}
+          style={{ maxHeight: "180px", display: "block" }}
           preload="metadata"
         />
       </div>
@@ -563,7 +563,7 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
         </div>
       </div>
 
-      <div className="flex gap-4 p-4">
+      <div className="flex gap-5 p-5">
         {/* Lecteur contraint */}
         <TrimPlayer
           src={asset.url}
