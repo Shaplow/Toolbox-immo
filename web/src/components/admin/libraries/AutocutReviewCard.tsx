@@ -549,11 +549,23 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
         </div>
       </div>
 
-      <div className="p-4 flex flex-col gap-3">
+      <div className="p-4">
         <div className="flex gap-4 items-start">
-          {/* Vidéo portrait naturelle — ratio naturel, pas de crop */}
-          <div className="w-44 shrink-0 rounded-lg overflow-hidden bg-gray-900">
-            <video ref={videoRef} src={asset.url} className="w-full block" preload="metadata" />
+          {/* Colonne gauche : vidéo portrait naturelle + scrubber + contrôles */}
+          <div className="w-44 shrink-0 flex flex-col gap-2">
+            <div className="rounded-lg overflow-hidden bg-gray-900">
+              <video ref={videoRef} src={asset.url} className="w-full h-auto block" preload="metadata" />
+            </div>
+            <TrimPlayer
+              trimStart={trimStart}
+              trimEnd={trimEnd}
+              videoRef={videoRef}
+              lastWordEnd={lastWordEnd}
+              fullRush={showFullRush}
+              fullDuration={duration > 0 ? duration : undefined}
+              cutStart={trimStart}
+              cutEnd={trimEnd}
+            />
           </div>
 
           {/* Colonne droite : prises, transcript, réglages */}
@@ -666,17 +678,6 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
           </div>
           </div>
         </div>
-        {/* TrimPlayer: scrubber + contrôles pleine largeur, sous les deux colonnes */}
-        <TrimPlayer
-          trimStart={trimStart}
-          trimEnd={trimEnd}
-          videoRef={videoRef}
-          lastWordEnd={lastWordEnd}
-          fullRush={showFullRush}
-          fullDuration={duration > 0 ? duration : undefined}
-          cutStart={trimStart}
-          cutEnd={trimEnd}
-        />
       </div>
 
       {/* Actions */}
