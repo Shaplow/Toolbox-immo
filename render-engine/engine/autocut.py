@@ -94,12 +94,24 @@ def analyze_autocut(
     if not segments:
         raise RuntimeError(f"[autocut] Aucun segment Whisper produit pour {audio_path.name}")
 
-    # ── Construire transcript_json (niveau segment, sans les mots) ───────────
+    # ── Construire transcript_json (niveau segment + mots pour la détection frontend) ──
     transcript_json = [
         {
             "text": seg.get("text", "").strip(),
             "start": seg.get("start", 0.0),
             "end": seg.get("end", 0.0),
+            # Inclure les timestamps mot-à-mot pour la détection de prises côté UI.
+            # WhisperX produit ces timestamps via l'alignement forced-alignment.
+            # Sans eux, la détection travaille sur les gaps entre segments (moins fiable).
+            "words": [
+                {
+                    "word": w.get("word", "").strip(),
+                    "start": float(w["start"]),
+                    "end": float(w["end"]),
+                }
+                for w in seg.get("words", [])
+                if w.get("start") is not None and w.get("end") is not None
+            ],
         }
         for seg in segments
         if seg.get("text", "").strip()

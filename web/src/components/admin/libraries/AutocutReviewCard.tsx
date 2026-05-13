@@ -48,7 +48,8 @@ function round2(v: number) {
 }
 
 // ── Détection de prises multiples ─────────────────────────────────────────────
-type TranscriptSegment = { text: string; start: number; end: number };
+interface Word { word: string; start: number; end: number; }
+type TranscriptSegment = { text: string; start: number; end: number; words?: Word[] };
 
 interface Take {
   index: number;
@@ -59,49 +60,86 @@ interface Take {
   text: string;
 }
 
-// Pause ≥ 0.8s entre deux segments Whisper = nouvelle prise.
-// Whisper tend à rogner les silences aux bords des segments, donc un gap de 0.8s
-// dans le transcript correspond généralement à ~1-1.5s de silence réel dans l'audio.
+// Pause ≥ 0.8s entre mots/segments = nouvelle prise.
+// Détection prioritaire sur les mots (WhisperX produit des gaps entre mots plus précis
+// que les gaps entre segments — Whisper peut regrouper fumble+retake dans un seul segment).
+// Fallback sur les segments si les mots ne sont pas disponibles.
 const TAKE_GAP_S = 0.8;
 const TAKE_PAD_S = 0.15;
 const HESITATION_RE = /\b(euh|heu|hm|donc|alors|ben|voil[aà]|enfin|bref|ouais)\b/gi;
 
+function scoreGroup(text: string, wordCount: number, rawStart: number, rawEnd: number): number {
+  const lengthScore = Math.min(100, (wordCount / 25) * 100);
+  const dur = rawEnd - rawStart;
+  const rate = dur > 0 ? wordCount / dur : 0;
+  const rateScore = Math.max(0, 100 - Math.abs(rate - 3) * 25);
+  const hesCount = (text.match(HESITATION_RE) ?? []).length;
+  const hesScore = Math.max(0, 100 - hesCount * 20);
+  const completenessScore = /[.!?»"']$/.test(text) ? 100 : 55;
+  return Math.round(lengthScore * 0.35 + rateScore * 0.25 + hesScore * 0.25 + completenessScore * 0.15);
+}
+
 function detectTakes(segments: TranscriptSegment[], totalDuration: number): Take[] {
   if (!segments.length) return [];
 
-  const groups: TranscriptSegment[][] = [];
-  let current: TranscriptSegment[] = [segments[0]];
+  // ── Tentative mot-à-mot (WhisperX) ────────────────────────────────────────
+  // Les gaps entre mots consécutifs sont beaucoup plus fins que les gaps entre segments.
+  // Whisper fusionne souvent un fumble + la vraie prise dans un seul segment, donc
+  // la détection segment-level rate cette frontière.
+  const allWords = segments.flatMap(s => s.words ?? []).filter(w => w.start != null && w.end != null);
+  if (allWords.length >= 2) {
+    const wordGroups: Word[][] = [];
+    let cur: Word[] = [allWords[0]];
+    for (let i = 1; i < allWords.length; i++) {
+      if (allWords[i].start - allWords[i - 1].end >= TAKE_GAP_S) {
+        wordGroups.push(cur);
+        cur = [allWords[i]];
+      } else {
+        cur.push(allWords[i]);
+      }
+    }
+    wordGroups.push(cur);
 
-  for (let i = 1; i < segments.length; i++) {
-    if (segments[i].start - segments[i - 1].end >= TAKE_GAP_S) {
-      groups.push(current);
-      current = [segments[i]];
-    } else {
-      current.push(segments[i]);
+    if (wordGroups.length > 1) {
+      return wordGroups.map((group, idx) => {
+        const rawStart = group[0].start;
+        const rawEnd = group[group.length - 1].end;
+        const start = Math.max(0, rawStart - TAKE_PAD_S);
+        const end = Math.min(totalDuration > 0 ? totalDuration : rawEnd + 1, rawEnd + TAKE_PAD_S);
+        const text = group.map(w => w.word).join(" ").trim();
+        const score = scoreGroup(text, group.length, rawStart, rawEnd);
+        const matchedSegs = segments.filter(s => s.end >= rawStart && s.start <= rawEnd);
+        return {
+          index: idx + 1,
+          segments: matchedSegs.length ? matchedSegs : [{ text, start: rawStart, end: rawEnd }],
+          start, end, score, text,
+        };
+      });
     }
   }
-  groups.push(current);
 
-  return groups.map((group, idx) => {
+  // ── Fallback : gaps entre segments ────────────────────────────────────────
+  const segGroups: TranscriptSegment[][] = [];
+  let curSeg: TranscriptSegment[] = [segments[0]];
+  for (let i = 1; i < segments.length; i++) {
+    if (segments[i].start - segments[i - 1].end >= TAKE_GAP_S) {
+      segGroups.push(curSeg);
+      curSeg = [segments[i]];
+    } else {
+      curSeg.push(segments[i]);
+    }
+  }
+  segGroups.push(curSeg);
+  if (segGroups.length <= 1) return [];
+
+  return segGroups.map((group, idx) => {
     const rawStart = group[0].start;
     const rawEnd = group[group.length - 1].end;
     const start = Math.max(0, rawStart - TAKE_PAD_S);
     const end = Math.min(totalDuration > 0 ? totalDuration : rawEnd + 1, rawEnd + TAKE_PAD_S);
-    const text = group.map((s) => s.text).join(" ").trim();
+    const text = group.map(s => s.text).join(" ").trim();
     const words = text.split(/\s+/).filter(Boolean);
-
-    // Score 0–100 : longueur + débit + hésitations + complétude
-    const lengthScore = Math.min(100, (words.length / 25) * 100);
-    const dur = rawEnd - rawStart;
-    const rate = dur > 0 ? words.length / dur : 0;
-    const rateScore = Math.max(0, 100 - Math.abs(rate - 3) * 25);
-    const hesCount = (text.match(HESITATION_RE) ?? []).length;
-    const hesScore = Math.max(0, 100 - hesCount * 20);
-    const completenessScore = /[.!?»"']$/.test(text) ? 100 : 55;
-    const score = Math.round(
-      lengthScore * 0.35 + rateScore * 0.25 + hesScore * 0.25 + completenessScore * 0.15
-    );
-
+    const score = scoreGroup(text, words.length, rawStart, rawEnd);
     return { index: idx + 1, segments: group, start, end, score, text };
   });
 }
@@ -112,9 +150,11 @@ interface TrimPlayerProps {
   trimStart: number;
   trimEnd: number;
   videoRef: React.RefObject<HTMLVideoElement | null>;
+  /** Timestamp (absolu) de fin du dernier mot Whisper — affiché comme marqueur sur le scrubber. */
+  lastWordEnd?: number | null;
 }
 
-function TrimPlayer({ src, trimStart, trimEnd, videoRef }: TrimPlayerProps) {
+function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd }: TrimPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(trimStart);
   const scrubBarRef = useRef<HTMLDivElement>(null);
@@ -257,6 +297,15 @@ function TrimPlayer({ src, trimStart, trimEnd, videoRef }: TrimPlayerProps) {
           className="absolute inset-y-0 left-0 bg-indigo-500 rounded-full"
           style={{ width: `${progress * 100}%` }}
         />
+        {/* Marqueur "dernier mot" — la zone après ce trait est le padding Whisper (~0.2s).
+             Ne pas couper avant ce marqueur pour éviter de tronquer la parole. */}
+        {lastWordEnd != null && lastWordEnd > trimStart && lastWordEnd < trimEnd && (
+          <div
+            className="absolute inset-y-0 w-0.5 bg-amber-400 rounded-full opacity-90 pointer-events-none"
+            style={{ left: `${((lastWordEnd - trimStart) / (trimEnd - trimStart)) * 100}%` }}
+            title={`Dernier mot : +${fmt(lastWordEnd - trimStart)} (${fmt(lastWordEnd)})`}
+          />
+        )}
         {/* Curseur */}
         <div
           className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white border-2 border-indigo-500 rounded-full shadow"
@@ -290,6 +339,15 @@ function TrimPlayer({ src, trimStart, trimEnd, videoRef }: TrimPlayerProps) {
           +{fmt(relTime)} / {fmt(trimDuration)}
         </span>
       </div>
+      {/* Annotation dernier mot — aide l'utilisateur à ne pas sur-couper la fin */}
+      {lastWordEnd != null && lastWordEnd > trimStart && lastWordEnd < trimEnd && (
+        <div
+          className="text-xs text-amber-500 tabular-nums"
+          style={{ paddingLeft: `${clamp(((lastWordEnd - trimStart) / (trimEnd - trimStart)) * 100 - 5, 0, 75)}%` }}
+        >
+          ↑ dernier mot
+        </div>
+      )}
     </div>
   );
 }
@@ -300,12 +358,14 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
   const duration = asset.duration ?? 0;
 
   // Analyser le transcript pour détecter les prises avant les useState
-  const { takes, transcript } = useMemo(() => {
-    if (!job.transcriptJson) return { takes: [] as Take[], transcript: null };
+  const { takes, transcript, lastWordEnd } = useMemo(() => {
+    if (!job.transcriptJson) return { takes: [] as Take[], transcript: null, lastWordEnd: null as number | null };
     try {
       const segs = JSON.parse(job.transcriptJson) as TranscriptSegment[];
-      return { takes: detectTakes(segs, duration), transcript: segs };
-    } catch { return { takes: [] as Take[], transcript: null }; }
+      const wordEnds = segs.flatMap(s => s.words ?? []).map(w => w.end);
+      const lastWordEnd: number | null = wordEnds.length ? Math.max(...wordEnds) : null;
+      return { takes: detectTakes(segs, duration), transcript: segs, lastWordEnd };
+    } catch { return { takes: [] as Take[], transcript: null, lastWordEnd: null as number | null }; }
   }, [job.transcriptJson, duration]);
   // Meilleure prise = score le plus élevé
   const bestIdx = takes.length > 1
@@ -417,6 +477,7 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
           trimStart={trimStart}
           trimEnd={trimEnd}
           videoRef={videoRef}
+          lastWordEnd={lastWordEnd}
         />
 
         {/* Transcript + timing */}
