@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { Check, X, ChevronLeft, ChevronRight, Loader2, AlertTriangle, Play, Pause, RotateCcw, Expand, Shrink } from "lucide-react";
+import { Check, X, Loader2, AlertTriangle, Play, Pause, SkipBack, SkipForward, Expand, Shrink } from "lucide-react";
 
 export interface AutocutJob {
   id: string;
@@ -325,7 +325,6 @@ function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd, fullRush =
 
   const trimDuration = effectiveEnd - effectiveStart;
   const progress = trimDuration > 0 ? clamp((currentTime - effectiveStart) / trimDuration, 0, 1) : 0;
-  const relTime = clamp(currentTime - effectiveStart, 0, trimDuration);
 
   return (
     <div className="flex flex-col gap-1.5 w-72 flex-shrink-0">
@@ -340,16 +339,13 @@ function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd, fullRush =
         />
       </div>
 
-      {/* Barre de progression custom — clampée sur [trimStart, trimEnd] */}
-      <div
-        ref={scrubBarRef}
-        onClick={handleScrubClick}
-        className="relative h-2 bg-gray-200 rounded-full cursor-pointer group"
-      >
-        <div
-          className="absolute inset-y-0 left-0 bg-indigo-500 rounded-full"
-          style={{ width: `${progress * 100}%` }}
-        />
+      {/* Barre de progression — zone de clic élargie pour faciliter le scrub */}
+      <div className="py-1.5 cursor-pointer" onClick={handleScrubClick}>
+        <div ref={scrubBarRef} className="relative h-3 bg-gray-100 rounded-full">
+          <div
+            className="absolute inset-y-0 left-0 bg-indigo-400 rounded-full"
+            style={{ width: `${progress * 100}%` }}
+          />
         {/* Zone du cut en mode rush complet */}
         {fullRush && cutStart != null && cutEnd != null && trimDuration > 0 && (
           <div
@@ -383,46 +379,47 @@ function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd, fullRush =
             title={`Dernier mot : +${fmt(lastWordEnd - effectiveStart)} (${fmt(lastWordEnd)})`}
           />
         )}
-        {/* Curseur */}
-        <div
-          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white border-2 border-indigo-500 rounded-full shadow"
-          style={{ left: `calc(${progress * 100}% - 6px)` }}
-        />
+          {/* Curseur */}
+          <div
+            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white border-2 border-indigo-500 rounded-full shadow-sm"
+            style={{ left: `calc(${progress * 100}% - 7px)` }}
+          />
+        </div>
       </div>
 
       {/* Contrôles */}
       <div className="flex items-center gap-1.5">
         <button
           onClick={togglePlay}
-          className="flex items-center justify-center w-7 h-7 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 flex-shrink-0"
+          className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 flex-shrink-0 transition-colors"
         >
-          {isPlaying ? <Pause size={12} /> : <Play size={12} />}
+          {isPlaying ? <Pause size={13} /> : <Play size={13} />}
         </button>
+        <span className="text-xs text-gray-500 tabular-nums flex-1 pl-0.5">
+          {fmt(currentTime)}
+          <span className="text-gray-300 mx-1">/</span>
+          {fmt(trimDuration)}
+        </span>
         <button
           onClick={seekToStart}
-          className="flex items-center gap-1 text-xs text-gray-500 border border-gray-200 rounded px-1.5 py-0.5 hover:bg-gray-50"
-          title="Aller au début du timecode"
+          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+          title="Aller au début du cut"
         >
-          <RotateCcw size={9} /> Début
+          <SkipBack size={14} />
         </button>
         <button
           onClick={seekToEnd}
-          className="flex items-center gap-1 text-xs text-gray-500 border border-gray-200 rounded px-1.5 py-0.5 hover:bg-gray-50"
-          title="Aller à la fin du timecode"
+          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+          title="Aller à la fin du cut"
         >
-          Fin
+          <SkipForward size={14} />
         </button>
-        <span className="ml-auto text-xs text-gray-500 tabular-nums">
-          {fullRush ? fmt(currentTime) : `+${fmt(relTime)}`} / {fmt(trimDuration)}
-        </span>
       </div>
-      {/* Annotation dernier mot — aide l'utilisateur à ne pas sur-couper la fin */}
+      {/* Légende: fin de parole détectée par Whisper */}
       {!fullRush && lastWordEnd != null && lastWordEnd > effectiveStart && lastWordEnd < effectiveEnd && (
-        <div
-          className="text-xs text-amber-500 tabular-nums"
-          style={{ paddingLeft: `${clamp(((lastWordEnd - effectiveStart) / trimDuration - 0.05) * 100, 0, 75)}%` }}
-        >
-          ↑ dernier mot
+        <div className="flex items-center gap-1.5 text-xs text-amber-500">
+          <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+          Fin de parole détectée
         </div>
       )}
     </div>
@@ -628,46 +625,61 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
           )}
 
           {/* Timing inputs */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs text-gray-400 font-medium">Début</span>
-              <div className="flex items-center gap-1">
-                <button className="p-0.5 rounded hover:bg-gray-100" onClick={() => applyStart(trimStart - 0.04)}>
-                  <ChevronLeft size={14} />
-                </button>
+          <div className="flex items-center gap-2 flex-wrap pt-1">
+            {/* Début */}
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-gray-400 font-medium">Début (s)</span>
+              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+                <button
+                  className="px-2.5 py-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 border-r border-gray-200 transition-colors text-base font-semibold leading-none"
+                  onClick={() => applyStart(trimStart - 0.04)}
+                  title="− 1 image (0.04 s)"
+                >−</button>
                 <input
                   type="number" step="0.01" value={startInput}
                   onChange={(e) => setStartInput(e.target.value)}
                   onBlur={() => { const v = parseFloat(startInput); if (!isNaN(v)) applyStart(v); else setStartInput(trimStart.toFixed(2)); }}
-                  className="w-20 text-center text-sm border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="w-16 text-center text-sm py-1.5 focus:outline-none focus:bg-indigo-50 transition-colors"
                 />
-                <button className="p-0.5 rounded hover:bg-gray-100" onClick={() => applyStart(trimStart + 0.04)}>
-                  <ChevronRight size={14} />
-                </button>
+                <button
+                  className="px-2.5 py-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 border-l border-gray-200 transition-colors text-base font-semibold leading-none"
+                  onClick={() => applyStart(trimStart + 0.04)}
+                  title="+ 1 image (0.04 s)"
+                >+</button>
               </div>
             </div>
 
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs text-gray-400 font-medium">Fin</span>
-              <div className="flex items-center gap-1">
-                <button className="p-0.5 rounded hover:bg-gray-100" onClick={() => applyEnd(trimEnd - 0.04)}>
-                  <ChevronLeft size={14} />
-                </button>
+            <span className="text-gray-300 mt-4 text-sm">→</span>
+
+            {/* Fin */}
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-gray-400 font-medium">Fin (s)</span>
+              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+                <button
+                  className="px-2.5 py-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 border-r border-gray-200 transition-colors text-base font-semibold leading-none"
+                  onClick={() => applyEnd(trimEnd - 0.04)}
+                  title="− 1 image (0.04 s)"
+                >−</button>
                 <input
                   type="number" step="0.01" value={endInput}
                   onChange={(e) => setEndInput(e.target.value)}
                   onBlur={() => { const v = parseFloat(endInput); if (!isNaN(v)) applyEnd(v); else setEndInput(trimEnd.toFixed(2)); }}
-                  className="w-20 text-center text-sm border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="w-16 text-center text-sm py-1.5 focus:outline-none focus:bg-indigo-50 transition-colors"
                 />
-                <button className="p-0.5 rounded hover:bg-gray-100" onClick={() => applyEnd(trimEnd + 0.04)}>
-                  <ChevronRight size={14} />
-                </button>
+                <button
+                  className="px-2.5 py-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 border-l border-gray-200 transition-colors text-base font-semibold leading-none"
+                  onClick={() => applyEnd(trimEnd + 0.04)}
+                  title="+ 1 image (0.04 s)"
+                >+</button>
               </div>
             </div>
 
-            <div className="flex flex-col gap-0.5">
+            {/* Durée */}
+            <div className="flex flex-col gap-1 ml-auto">
               <span className="text-xs text-gray-400 font-medium">Durée</span>
-              <span className="text-sm text-gray-700 px-2 py-0.5">{fmt(Math.max(0, trimEnd - trimStart))}</span>
+              <div className="flex items-center h-[38px] px-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                <span className="text-sm font-semibold text-indigo-600 tabular-nums">{fmt(Math.max(0, trimEnd - trimStart))}</span>
+              </div>
             </div>
           </div>
         </div>
