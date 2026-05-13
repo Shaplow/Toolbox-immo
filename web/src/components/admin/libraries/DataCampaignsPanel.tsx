@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Trash2, ChevronRight, RotateCcw } from "lucide-react";
+import { Plus, Trash2, ChevronRight, RotateCcw, Pencil, X, Check } from "lucide-react";
 import Link from "next/link";
 
 const USAGE_POLICIES = [
@@ -55,6 +55,10 @@ export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: "", isActive: false, usagePolicy: "cycle" });
   const [error, setError] = useState<string | null>(null);
+  const [pendingToggleId, setPendingToggleId] = useState<string | null>(null);
+  const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
+  const [editingPolicyValue, setEditingPolicyValue] = useState("cycle");
+  const [policySaving, setPolicySaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -104,17 +108,36 @@ export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
   }
 
   async function handleToggleActive(campaign: DataCampaign) {
+    setPendingToggleId(campaign.id);
     const newActive = !campaign.isActive;
     const res = await fetch(`/api/admin/libraries/data/campaigns/${campaign.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isActive: newActive }),
     });
+    setPendingToggleId(null);
     if (!res.ok) {
       const d = await res.json() as { error?: string };
       alert(d.error ?? "Erreur lors de la mise à jour");
       return;
     }
+    void load();
+  }
+
+  async function handleSavePolicy(campaign: DataCampaign) {
+    setPolicySaving(true);
+    const res = await fetch(`/api/admin/libraries/data/campaigns/${campaign.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usagePolicy: editingPolicyValue }),
+    });
+    setPolicySaving(false);
+    if (!res.ok) {
+      const d = await res.json() as { error?: string };
+      alert(d.error ?? "Erreur lors de la mise à jour");
+      return;
+    }
+    setEditingPolicyId(null);
     void load();
   }
 
@@ -222,14 +245,21 @@ export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
                   {/* Active toggle */}
                   <button
                     onClick={() => { void handleToggleActive(c); }}
+                    disabled={pendingToggleId === c.id}
                     title={c.isActive ? "Désactiver" : "Activer"}
-                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${
                       c.isActive ? "bg-green-500" : "bg-gray-200 hover:bg-gray-300"
                     }`}
                   >
-                    <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
-                      c.isActive ? "translate-x-4" : "translate-x-0.5"
-                    }`} />
+                    {pendingToggleId === c.id ? (
+                      <span className="absolute inset-0 flex items-center justify-center">
+                        <span className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      </span>
+                    ) : (
+                      <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+                        c.isActive ? "translate-x-4" : "translate-x-0.5"
+                      }`} />
+                    )}
                   </button>
 
                   {/* Info */}
@@ -246,9 +276,49 @@ export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
                       {c._count.entries} entrée{c._count.entries !== 1 ? "s" : ""} · {c.usedInCycleCount} utilisée{c.usedInCycleCount !== 1 ? "s" : ""} ce cycle
                       {c.cycleResetAt && ` · Reset : ${new Date(c.cycleResetAt).toLocaleDateString("fr-FR")}`}
                     </p>
-                    <p className="text-[10px] text-indigo-500 mt-0.5">
-                      {USAGE_POLICIES.find((p) => p.value === (c.usagePolicy ?? "cycle"))?.label ?? c.usagePolicy}
-                    </p>
+                    {editingPolicyId === c.id ? (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <select
+                          autoFocus
+                          value={editingPolicyValue}
+                          onChange={(e) => setEditingPolicyValue(e.target.value)}
+                          className="text-xs border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                        >
+                          {USAGE_POLICIES.map((p) => (
+                            <option key={p.value} value={p.value}>{p.label}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => { void handleSavePolicy(c); }}
+                          disabled={policySaving}
+                          className="flex items-center gap-0.5 px-1.5 py-0.5 bg-indigo-600 text-white text-[10px] rounded hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                          <Check size={10} />{policySaving ? "…" : "OK"}
+                        </button>
+                        <button
+                          onClick={() => setEditingPolicyId(null)}
+                          className="p-0.5 text-gray-400 hover:text-gray-700"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <p
+                          className="text-[10px] text-indigo-500"
+                          title={USAGE_POLICIES.find((p) => p.value === (c.usagePolicy ?? "cycle"))?.description}
+                        >
+                          {USAGE_POLICIES.find((p) => p.value === (c.usagePolicy ?? "cycle"))?.label ?? c.usagePolicy}
+                        </p>
+                        <button
+                          onClick={() => { setEditingPolicyId(c.id); setEditingPolicyValue(c.usagePolicy ?? "cycle"); }}
+                          className="p-0.5 text-gray-300 hover:text-gray-600 transition-colors"
+                          title="Modifier la politique d’utilisation"
+                        >
+                          <Pencil size={10} />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions */}

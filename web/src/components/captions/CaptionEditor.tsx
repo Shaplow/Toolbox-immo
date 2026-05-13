@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { Tag, Check, Pencil, X, Clock, Plus, Scissors } from 'lucide-react'
+import { Tag, Check, Pencil, X, Clock, Plus, Scissors, Combine, Trash2 } from 'lucide-react'
 import { Caption } from '@/lib/srt'
 import { getHighlightStateName, getNextHighlightGroup } from '@/lib/captionHighlightCycle'
 import { type CaptionTimingStatus } from '@/lib/captionWordTiming'
@@ -12,6 +12,8 @@ type Props = {
   highlighted: Map<string, number>
   onToggleWord: (key: string) => void
   onSplitAtWord?: (captionIndex: number, wordIndex: number) => void
+  onMergeWithNext?: (captionIndex: number) => void
+  onDeleteCaption?: (captionIndex: number) => void
   timingStatuses?: CaptionTimingStatus[]
   baseTransform: 'none' | 'upper' | 'lower' | 'title'
   highlightTransform?: 'none' | 'upper' | 'lower' | 'title'
@@ -74,6 +76,8 @@ export default function CaptionEditor({
   highlighted,
   onToggleWord,
   onSplitAtWord,
+  onMergeWithNext,
+  onDeleteCaption,
   timingStatuses,
   baseTransform,
   highlightTransform,
@@ -196,7 +200,7 @@ export default function CaptionEditor({
 
   return (
     <div className="cx-editor-list">
-      {captions.map(c => {
+      {captions.map((c, arrayIndex) => {
         const isEditing = editingId === c.index
         const words = splitWords(c.text)
         const canSaveEdit = normalizeEditedWords(editWords).length > 0
@@ -212,7 +216,8 @@ export default function CaptionEditor({
           : null
 
         return (
-          <article key={c.index} className={`cx-editor-item${isEditing ? ' is-editing' : ''}`}>
+          <Fragment key={c.index}>
+          <article className={`cx-editor-item${isEditing ? ' is-editing' : ''}`}>
             <div className="cx-editor-meta">
               <span className="cx-editor-index">
                 #{c.index}
@@ -360,6 +365,15 @@ export default function CaptionEditor({
                       >
                         <Check size={12} /> OK
                       </button>
+                      {!canSaveEdit && onDeleteCaption && (
+                        <button
+                          type="button"
+                          onClick={() => { stopEditing(); onDeleteCaption(c.index) }}
+                          className="cx-editor-action-btn cx-editor-action-btn-danger"
+                        >
+                          <Trash2 size={12} /> Supprimer la phrase
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={stopEditing}
@@ -420,6 +434,20 @@ export default function CaptionEditor({
               </div>
             </div>
           </article>
+          {onMergeWithNext && arrayIndex < captions.length - 1 && (
+            <div className="cx-editor-merge-row">
+              <button
+                type="button"
+                onClick={() => onMergeWithNext(c.index)}
+                className="cx-editor-merge-btn"
+                title="Fusionner avec la phrase suivante"
+                aria-label={`Fusionner la phrase ${c.index} avec la suivante`}
+              >
+                <Combine size={10} />
+              </button>
+            </div>
+          )}
+          </Fragment>
         )
       })}
     </div>

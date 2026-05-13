@@ -312,6 +312,24 @@ export function buildSubtitlesFromWords(segments: Segment[]): Segment[] {
 
   if (allWords.length === 0) return segments;
 
+  // Normalize word ends: Whisper assigns end = segment.end to the last word of
+  // each segment, which can include long silences (e.g. 14 s for one word).
+  // This causes realignSegment to produce heavily compressed timing windows
+  // when the user recalés a timecode.  Cap each word's end to:
+  //   - the next word's start (cross-segment), when the next word starts before
+  //     the current word ends (handles overlap / inflated last-word ends)
+  //   - word.start + 5 s absolute maximum (last word guard)
+  const MAX_WORD_END_GAP = 5.0;
+  for (let i = 0; i < allWords.length; i++) {
+    const next = allWords[i + 1] ?? null;
+    if (next && allWords[i].end > next.start) {
+      allWords[i] = { ...allWords[i], end: next.start };
+    }
+    if (allWords[i].end > allWords[i].start + MAX_WORD_END_GAP) {
+      allWords[i] = { ...allWords[i], end: allWords[i].start + MAX_WORD_END_GAP };
+    }
+  }
+
   const cleaned = cleanWords(allWords);
   const subtitles: Segment[] = [];
   let buffer: WorkWord[] = [];

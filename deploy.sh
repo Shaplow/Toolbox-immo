@@ -87,12 +87,15 @@ deploy_docker() {
   # Cache local (type=local,mode=max) : stocke tous les layers intermédiaires sur le Mac.
   # Beaucoup plus fiable que le cache registry (Docker Hub rejette les blobs mode=max >2 GB).
   # Sur un simple changement de code (.py), seul le dernier COPY . . est reconstruit.
+  # On pousse AUSSI :latest pour que les pods créés depuis la template RunPod
+  # tirent toujours la dernière image sans avoir à mettre à jour la template manuellement.
   header "Build + Push linux/amd64"
   mkdir -p "${DOCKER_LOCAL_CACHE}"
   run "docker buildx build \
     --platform linux/amd64 \
     -f \"${SCRIPT_DIR}/render-engine/Dockerfile.runpod\" \
     -t \"${NEW_TAG}\" \
+    -t \"${DOCKER_IMAGE}:latest\" \
     --cache-from type=local,src=\"${DOCKER_LOCAL_CACHE}\" \
     --cache-to type=local,dest=\"${DOCKER_LOCAL_CACHE}\",mode=max \
     --provenance=false \
@@ -107,7 +110,7 @@ deploy_docker() {
   DOCKER_DEPLOYED=true
   DOCKER_TAG="v${NEW_VERSION}"
   DOCKER_FULL_TAG="$NEW_TAG"
-  ok "Image poussée : ${DOCKER_FULL_TAG}"
+  ok "Image poussée : ${DOCKER_FULL_TAG} + :latest"
 }
 
 # ── Résumé final ──────────────────────────────────────────────────────────────
@@ -126,12 +129,15 @@ print_summary() {
   if ${DOCKER_DEPLOYED:-false}; then
     echo -e ""
     echo -e "${GREEN}${BOLD}Docker (RunPod)${RESET}"
-    echo -e "  Image    : ${BOLD}${DOCKER_FULL_TAG}${RESET}"
+    echo -e "  Image    : ${BOLD}${DOCKER_FULL_TAG}${RESET} (+ :latest)"
     echo -e "  Statut   : ${GREEN}poussée${RESET}"
     echo -e ""
-    echo -e "${YELLOW}${BOLD}→ Pense à mettre à jour l'endpoint RunPod :${RESET}"
+    echo -e "${YELLOW}${BOLD}→ Mettre à jour l'endpoint Serverless RunPod :${RESET}"
     echo -e "   runpod.io → Serverless → ton endpoint"
     echo -e "   Container image : ${BOLD}${DOCKER_FULL_TAG}${RESET}"
+    echo -e ""
+    echo -e "${GREEN}${BOLD}→ Template pod (kodexfr/toolbox-render:latest) : mise à jour automatique ✓${RESET}"
+    echo -e "   Les prochains pods créés tireront automatiquement la nouvelle image."
   fi
 
   echo -e ""

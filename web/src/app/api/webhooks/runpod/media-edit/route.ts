@@ -14,6 +14,10 @@ type MediaEditOutput = {
   r2_key?: string;
   video_url?: string;
   error?: string;
+  /** Echoed back by the worker so the webhook can resolve the job even if runpodId
+   * was not yet written to the DB (race: RunPod callback arrived before our
+   * mediaEditJob.update({ runpodId }) completed). */
+  job_id?: string;
 };
 
 export async function POST(req: NextRequest) {
@@ -25,9 +29,20 @@ export async function POST(req: NextRequest) {
 
   const { id: runpodId, status, output, error } = parsed.body;
 
-  const job = await prisma.mediaEditJob.findUnique({ where: { runpodId } });
+  let job = await prisma.mediaEditJob.findUnique({ where: { runpodId } });
+
+  if (!job && output?.job_id) {
+    // Race condition fallback: RunPod called back before we finished writing runpodId to DB.
+    // The worker echoes job_id in its output — use it to find the row and backfill runpodId.
+    job = await prisma.mediaEditJob.findUnique({ where: { id: output.job_id } });
+    if (job && !job.runpodId) {
+      await prisma.mediaEditJob.update({ where: { id: job.id }, data: { runpodId } });
+      job = { ...job, runpodId };
+    }
+  }
+
   if (!job) {
-    // Job inconnu — peut arriver si un webhook est rejoué après suppression. On répond 200.
+    // Truly unknown — webhook replayed after row was deleted. Respond 200 to stop retries.
     console.warn(`[webhook/media-edit] Unknown runpodId=${runpodId}`);
     return NextResponse.json({ ok: true });
   }

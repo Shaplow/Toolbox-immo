@@ -87,7 +87,7 @@ export function SelectionRuleEditor({
   }
 
   function handleStrategyChange(s: string) {
-    setStrategy(s);
+    setStrategy(s as MediaSelectionRuleConfig["strategy"]);
     emit(s);
   }
 

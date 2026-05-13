@@ -338,7 +338,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Upload vidéo vers R2 ──────────────────────────────────────────────────
+  // ── Préparer les clés et créer le job AVANT l'upload R2 ─────────────────
+  // Créer d'abord le record DB évite les fichiers R2 orphelins si prisma.create()
+  // échoue après que l'upload ait réussi.
   const srtContent    = await subtitlesFile.text();
   if (Buffer.byteLength(srtContent) > MAX_SRT_BYTES) {
     return NextResponse.json({ error: `Sous-titres trop volumineux (${Math.round(MAX_SRT_BYTES / 1024)} Ko max)` }, { status: 400 });
@@ -346,16 +348,6 @@ export async function POST(req: NextRequest) {
   const jobTimestamp  = Date.now();
   const videoExt      = (videoFile.name.split(".").pop() ?? "mp4").toLowerCase();
   const inputVideoKey = `inputs/captions/${session.user.id}/${jobTimestamp}/video.${videoExt}`;
-
-  let inputVideoUrl: string;
-  try {
-    const videoBuffer  = Buffer.from(await videoFile.arrayBuffer());
-    const uploadResult = await uploadToR2(inputVideoKey, videoBuffer, videoFile.type || "video/mp4");
-    inputVideoUrl = uploadResult.url;
-  } catch (err) {
-    console.error("[render/captions] Upload vidéo R2 failed:", err);
-    return NextResponse.json({ error: "Échec upload vidéo vers R2" }, { status: 500 });
-  }
 
   const outputSuffix = previewMode ? "preview" : "full";
   const outputKey    = `outputs/captions/${session.user.id}/${jobTimestamp}/${outputSuffix}.mp4`;
@@ -374,6 +366,22 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // ── Upload vidéo vers R2 ──────────────────────────────────────────────────
+  let inputVideoUrl: string;
+  try {
+    const videoBuffer  = Buffer.from(await videoFile.arrayBuffer());
+    const uploadResult = await uploadToR2(inputVideoKey, videoBuffer, videoFile.type || "video/mp4");
+    inputVideoUrl = uploadResult.url;
+  } catch (err) {
+    console.error("[render/captions] Upload vidéo R2 failed:", err);
+    await prisma.captionJob.update({
+      where: { id: captionJob.id },
+      data:  { status: "FAILED", errorMsg: `Échec upload vidéo vers R2 : ${String(err)}` },
+    });
+    return NextResponse.json({ error: "Échec upload vidéo vers R2" }, { status: 500 });
+  }
+
+  const webhookUrl = getRunpodWebhookUrl("/api/webhooks/runpod/captions");
   const runpodPayload = {
     input: {
       video_url:      inputVideoUrl,
@@ -383,7 +391,7 @@ export async function POST(req: NextRequest) {
       output_key:     outputKey,
       caption_job_id: captionJob.id,
     },
-    ...(() => { const u = getRunpodWebhookUrl("/api/webhooks/runpod/captions"); return u ? { webhook: u } : {}; })(),
+    ...(webhookUrl ? { webhook: webhookUrl } : {}),
   };
 
   let runpodJobId: string;

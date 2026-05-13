@@ -287,7 +287,7 @@ export default function CaptionsApp({
           filename:    videoFile.name,
           ext:         videoFile.name.split('.').pop()?.toLowerCase() ?? 'mp4',
           srtContent,
-          srtFilename,
+          srtFilename: srtFileName,
           config,
           previewMode: mode === 'render-preview',
         }),

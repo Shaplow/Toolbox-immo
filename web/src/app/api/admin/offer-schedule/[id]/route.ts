@@ -20,7 +20,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { id } = await params;
   const body = await req.json();
-  const { offre, dayOfWeek, publishTime, contentType, isActive } = body;
+  const { offre, dayOfWeek, publishTime, templateId, isActive } = body;
 
   const rule = await prisma.offerScheduleRule.findUnique({ where: { id } });
   if (!rule) {
@@ -34,6 +34,21 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (publishTime !== undefined && !/^\d{2}:\d{2}$/.test(publishTime)) {
     return NextResponse.json({ error: "publishTime doit être au format HH:MM" }, { status: 400 });
   }
+  if (publishTime !== undefined) {
+    const [phh, pmm] = publishTime.split(":").map(Number);
+    if (phh! > 23 || pmm! > 59) {
+      return NextResponse.json({ error: "publishTime invalide (heures 0–23, minutes 0–59)" }, { status: 400 });
+    }
+  }
+
+  // If templateId is being updated, derive contentType from the new template
+  let resolvedContentType: string | undefined;
+  if (templateId !== undefined) {
+    const tmpl = await prisma.template.findUnique({ where: { id: templateId }, select: { contentType: true } });
+    if (!tmpl) return NextResponse.json({ error: "Template introuvable" }, { status: 400 });
+    if (!tmpl.contentType) return NextResponse.json({ error: "Ce template n'a pas de type de contenu défini" }, { status: 400 });
+    resolvedContentType = tmpl.contentType;
+  }
 
   const updated = await prisma.offerScheduleRule.update({
     where: { id },
@@ -41,9 +56,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(offre !== undefined ? { offre } : {}),
       ...(dayOfWeek !== undefined ? { dayOfWeek } : {}),
       ...(publishTime !== undefined ? { publishTime } : {}),
-      ...(contentType !== undefined ? { contentType } : {}),
+      ...(resolvedContentType !== undefined ? { contentType: resolvedContentType } : {}),
+      ...(templateId !== undefined ? { templateId } : {}),
       ...(isActive !== undefined ? { isActive } : {}),
     },
+    include: { template: { select: { id: true, name: true, contentType: true } } },
   });
 
   return NextResponse.json(updated);

@@ -42,9 +42,12 @@ export async function POST(req: NextRequest) {
 
   if (!name?.trim()) return NextResponse.json({ error: "Le nom est requis" }, { status: 400 });
   if (!handle?.trim()) return NextResponse.json({ error: "Le handle Instagram est requis" }, { status: 400 });
-  const validOffres = ["ESSENTIEL", "CONFIRME", "CEO"];
-  if (!offre || !validOffres.includes(offre)) {
-    return NextResponse.json({ error: "L'offre doit être ESSENTIEL, CONFIRME ou CEO" }, { status: 400 });
+  if (!offre?.trim()) {
+    return NextResponse.json({ error: "L'offre est requise" }, { status: 400 });
+  }
+  const existingOffer = await prisma.offer.findUnique({ where: { name: offre } });
+  if (!existingOffer) {
+    return NextResponse.json({ error: `Offre inconnue : ${offre}` }, { status: 400 });
   }
 
   try {

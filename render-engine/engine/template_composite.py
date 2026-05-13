@@ -356,12 +356,14 @@ def build_template_ffmpeg_cmd_video_only(
     audio_codec_args: list[str] | None = None,
     max_duration: float | None = None,
     source_has_audio: bool = True,
+    mute_source: bool = False,
+    source_volume: float = 1.0,
 ) -> list[str]:
     """
     Scale/crop the source video to the canvas without any overlay PNG.
 
     Used for sequence slots where overlay_url is null (raw clip, no graphic).
-    Audio is kept from the source (passthrough).
+    Audio is kept from the source (passthrough) unless mute_source is True.
     """
     audio_codec_args = audio_codec_args or ["-b:a", "192k"]
     video_filter = _build_video_scale_filter(block)
@@ -369,7 +371,15 @@ def build_template_ffmpeg_cmd_video_only(
     filter_complex = f"{video_filter};[base]scale=trunc(iw/2)*2:trunc(ih/2)*2[out]"
 
     duration_args = ["-t", str(max_duration)] if max_duration is not None else []
-    audio_args: list[str] = ["-map", "0:a?", "-c:a", audio_codec, *audio_codec_args] if source_has_audio else []
+    if not source_has_audio:
+        audio_args: list[str] = []
+    elif mute_source:
+        # Encode a silent audio track so the clip stream is consistent for concat
+        audio_args = ["-map", "0:a?", "-af", "volume=0", "-c:a", audio_codec, *audio_codec_args]
+    elif source_volume != 1.0:
+        audio_args = ["-map", "0:a?", "-af", f"volume={source_volume}", "-c:a", audio_codec, *audio_codec_args]
+    else:
+        audio_args = ["-map", "0:a?", "-c:a", audio_codec, *audio_codec_args]
 
     return [
         "ffmpeg", "-y",

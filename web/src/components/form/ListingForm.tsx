@@ -501,6 +501,7 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
                           ? String(values[libraryPrefillContext.fieldLibraryMap[field.key].tagFilterParam!] ?? "")
                           : undefined
                       }
+                      accountId={libraryPrefillContext.selectedAccountId ?? undefined}
                     />
                   ) : (
                     <FieldInput

@@ -974,6 +974,50 @@
   border-color: var(--cx-accent-h);
 }
 
+.cx .cx-editor-action-btn-danger {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+.cx .cx-editor-action-btn-danger:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+
+.cx .cx-editor-merge-row {
+  display: flex;
+  justify-content: center;
+  margin: -4px 0;
+  position: relative;
+  z-index: 1;
+}
+
+.cx .cx-editor-merge-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: transparent;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 10px;
+  gap: 4px;
+  transition: color 0.1s, background 0.1s, border-color 0.1s;
+}
+
+.cx .cx-editor-merge-btn:hover {
+  color: #7c3aed;
+  background: #ede9fe;
+  border-color: #c4b5fd;
+}
+
+.cx .cx-editor-list:hover .cx-editor-merge-btn {
+  color: #c4b5fd;
+}
+
 .cx .cx-editor-split-btn {
   display: inline-flex;
   align-items: center;

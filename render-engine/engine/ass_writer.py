@@ -474,6 +474,13 @@ def _write_word_pop_events(
 # times are compressed proportionally so the last step gains enough reading room.
 _MIN_LAST_WORD_CS = 30  # 0.3 s
 
+# Minimum centiseconds between consecutive word onsets for a perceptible step.
+# When the per-word average falls below this (e.g. because timecode realignment
+# heavily compressed a window that Whisper had inflated with a trailing silence),
+# all onsets are redistributed evenly over the full block duration so the
+# word-by-word animation remains visible at a natural reading pace.
+_MIN_STEP_CS = 10  # 100 ms per word minimum
+
 
 def _compute_step_pairs(
     all_words: list,   # list of (li, wi, word) tuples
@@ -481,12 +488,17 @@ def _compute_step_pairs(
 ) -> list[tuple[int, int]]:
     """Return (start_cs, end_cs) for each word step.
 
-    If the last step's natural duration is less than _MIN_LAST_WORD_CS the
-    intermediate onset times are scaled down proportionally so the last word
-    always gets at least _MIN_LAST_WORD_CS centiseconds of screen time.
+    Normal path: respect natural onset timestamps, with a compression pass when
+    the last word's screen time would be less than _MIN_LAST_WORD_CS.
+
+    Compressed / degenerate path: when the average onset gap per word is less
+    than _MIN_STEP_CS (e.g. Whisper inflated the last word's end with trailing
+    silence and timecode realignment squashed all onsets into a tiny window),
+    redistribute evenly over the full available block duration so each word
+    gets at least _MIN_STEP_CS of screen time.
 
     Pairs where start_cs == end_cs are zero-duration and should be skipped
-    by the caller (same handling as before compression was added)."""
+    by the caller."""
     n = len(all_words)
     if n == 0:
         return []
@@ -494,10 +506,22 @@ def _compute_step_pairs(
     onsets = [_to_cs_floor(all_words[i][2].start) for i in range(n)]
     first_cs = onsets[0]
     last_cs  = onsets[-1]
+    natural_range = last_cs - first_cs
+    avg_step = natural_range // n if n > 1 else natural_range
+
+    # Compressed or degenerate timestamps: redistribute evenly so each word
+    # gets at least _MIN_STEP_CS centiseconds before the next one appears,
+    # using the full available block duration (minus reading tail).
+    if n > 1 and avg_step < _MIN_STEP_CS and block_end_cs > first_cs:
+        available = max(0, block_end_cs - first_cs - _MIN_LAST_WORD_CS)
+        step = max(_MIN_STEP_CS, available // (n - 1))
+        onsets = [first_cs + i * step for i in range(n)]
+        last_cs = onsets[-1]
+        natural_range = last_cs - first_cs
+
     natural_last_dur = block_end_cs - last_cs
 
     if natural_last_dur < _MIN_LAST_WORD_CS and n > 1:
-        natural_range = last_cs - first_cs
         target_last = block_end_cs - _MIN_LAST_WORD_CS
         if natural_range > 0 and target_last > first_cs:
             scale = (target_last - first_cs) / natural_range
@@ -697,9 +721,10 @@ def write_ass_file(
     use_two_layers = any(_needs_two_layers(s) for s in _styles_in_use)
     layers_to_emit = [0, 1] if use_two_layers else [0]
 
-    # Queue de lecture : durée supplémentaire après le dernier mot pour laisser
-    # le temps de lire le caption. Clamped au gap disponible avant le bloc suivant.
-    READING_QUEUE_CS = 20   # 0.2 s de queue de lecture maximum
+    # Fin de bloc : on respecte le timecode déclaré par l'utilisateur (block.end
+    # = fin du dernier mot après realignSegment). Pas de queue de lecture ajoutée
+    # — l'utilisateur a posé les timecodes, on ne déborde pas.
+    # Le MIN_BLOCK_DUR_CS reste comme filet anti-flash uniquement.
     MIN_BLOCK_DUR_CS = 30   # durée minimale anti-flash d'un bloc (0.3 s)
     INTER_BLOCK_GAP_CS = 5  # gap minimal à laisser entre deux blocs (50 ms)
 
@@ -707,9 +732,9 @@ def write_ass_file(
         block_start_cs = _to_cs_floor(block.start)
         natural_end_cs = _to_cs_ceil(block.end)
 
-        # Étendre la fin : max(fin naturelle + queue, durée minimale)
+        # Fin = timecode déclaré, avec juste le filet anti-flash
         target_end_cs = max(
-            natural_end_cs + READING_QUEUE_CS,
+            natural_end_cs,
             block_start_cs + MIN_BLOCK_DUR_CS,
         )
 

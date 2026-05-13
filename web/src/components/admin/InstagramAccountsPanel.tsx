@@ -20,14 +20,18 @@ interface InstagramAccount {
   cursors: Cursor[];
 }
 
-const OFFRES = ["ESSENTIEL", "CONFIRME", "CEO"] as const;
+interface Offer {
+  id: string;
+  name: string;
+}
 
 export function InstagramAccountsPanel() {
   const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
+  const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ name: "", handle: "", offre: "ESSENTIEL" });
+  const [form, setForm] = useState({ name: "", handle: "", offre: "" });
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -35,9 +39,17 @@ export function InstagramAccountsPanel() {
     setLoading(true);
     setLoadError(null);
     try {
-      const res = await fetch("/api/admin/accounts");
-      if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status})`);
-      setAccounts(await res.json() as InstagramAccount[]);
+      const [accountsRes, offersRes] = await Promise.all([
+        fetch("/api/admin/accounts"),
+        fetch("/api/admin/offers"),
+      ]);
+      if (!accountsRes.ok) throw new Error(`Erreur serveur (HTTP ${accountsRes.status})`);
+      if (!offersRes.ok) throw new Error(`Erreur chargement offres (HTTP ${offersRes.status})`);
+      const offersData = await offersRes.json() as Offer[];
+      setAccounts(await accountsRes.json() as InstagramAccount[]);
+      setOffers(offersData);
+      // Initialise l'offre par défaut sur la première disponible
+      setForm((f) => (f.offre ? f : { ...f, offre: offersData[0]?.name ?? "" }));
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Erreur de chargement");
     } finally {
@@ -61,7 +73,7 @@ export function InstagramAccountsPanel() {
       return;
     }
     setCreating(false);
-    setForm({ name: "", handle: "", offre: "ESSENTIEL" });
+    setForm({ name: "", handle: "", offre: offers[0]?.name ?? "" });
     void load();
   }
 
@@ -74,6 +86,20 @@ export function InstagramAccountsPanel() {
       return;
     }
     void load();
+  }
+
+  async function handleChangeOffre(id: string, offre: string) {
+    const res = await fetch(`/api/admin/accounts/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ offre }),
+    });
+    if (!res.ok) {
+      const d = await res.json() as { error?: string };
+      alert(d.error ?? "Erreur lors de la mise à jour de l'offre");
+      return;
+    }
+    setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, offre } : a)));
   }
 
   async function handleResetCursors(id: string, name: string) {
@@ -133,7 +159,7 @@ export function InstagramAccountsPanel() {
                 onChange={(e) => setForm((f) => ({ ...f, offre: e.target.value }))}
                 className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
               >
-                {OFFRES.map((o) => <option key={o} value={o}>{o}</option>)}
+                {offers.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}
               </select>
             </div>
           </div>
@@ -161,8 +187,20 @@ export function InstagramAccountsPanel() {
                   <Instagram className="h-4 w-4 shrink-0 text-pink-500" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{account.name}</p>
-                    <p className="text-xs text-gray-500">@{account.handle} · {account.offre} · {account._count.renders} render{account._count.renders !== 1 ? "s" : ""}</p>
+                    <p className="text-xs text-gray-500">@{account.handle} · {account._count.renders} render{account._count.renders !== 1 ? "s" : ""}</p>
                   </div>
+                  <select
+                    value={account.offre}
+                    onChange={(e) => { void handleChangeOffre(account.id, e.target.value); }}
+                    className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    title="Changer l'offre"
+                  >
+                    {offers.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}
+                    {/* Affiche l'offre actuelle même si elle n'est plus dans la liste */}
+                    {!offers.some((o) => o.name === account.offre) && (
+                      <option value={account.offre}>{account.offre}</option>
+                    )}
+                  </select>
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : account.id)}
                     className="rounded p-1 text-gray-400 hover:text-gray-600"

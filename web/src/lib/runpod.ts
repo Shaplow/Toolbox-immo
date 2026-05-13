@@ -36,13 +36,26 @@ export async function fetchRunpodStatus<TOutput = unknown>(
   return res.json() as Promise<RunpodStatusResponse<TOutput>>;
 }
 
+// ─── Pod On-Demand helpers ────────────────────────────────────────────────────
+
+/**
+ * Prefix used to identify pod-dispatched job IDs in DB.
+ * These IDs must NOT be polled via RunPod Serverless status API.
+ */
+export const POD_JOB_ID_PREFIX = "pod-";
+
+/** Returns true when the given runpodJobId originated from a pod dispatch. */
+export function isPodJobId(runpodJobId: string): boolean {
+  return runpodJobId.startsWith(POD_JOB_ID_PREFIX);
+}
+
 // ─── Job phase resolver ───────────────────────────────────────────────────────
 
 /**
  * Resolved phase returned by resolveRunpodJobPhase.
  *
- *   completed   — RunPod job finished successfully; `output` is populated.
- *   failed      — RunPod job finished with an error; `error` is populated.
+ *   completed   — RunPod job finished successfully; output is populated.
+ *   failed      — RunPod job finished with an error; error is populated.
  *   in_progress — job is still IN_QUEUE or IN_PROGRESS; no action needed.
  *   stalled     — job exceeded the stall window; caller should mark it FAILED.
  *   unreachable — RunPod API threw; job age is within stall window; caller may
@@ -58,9 +71,9 @@ export type RunpodJobPhase<TOutput> =
 /**
  * Central RunPod poll + stall detection helper used by all status routes.
  *
- * Callers pass the already-loaded job fields; this function calls RunPod,
- * applies stall detection, and returns a discriminated union so each route
- * can update its own DB model without duplicating the decision logic.
+ * Pod-dispatched jobs (isPodJobId=true) are never polled via RunPod API —
+ * their result arrives via webhook. This function handles them gracefully
+ * by returning in_progress until the stall window expires.
  *
  * @param endpointId       RUNPOD_ENDPOINT_ID
  * @param apiKey           RUNPOD_API_KEY
@@ -75,6 +88,15 @@ export async function resolveRunpodJobPhase<TOutput = unknown>(
   jobUpdatedAt: Date,
   stallMs: number
 ): Promise<RunpodJobPhase<TOutput>> {
+  // Pod-dispatched jobs are handled by webhooks — never poll RunPod Serverless API.
+  if (isPodJobId(runpodJobId)) {
+    const ageMs = Date.now() - jobUpdatedAt.getTime();
+    if (ageMs > stallMs) {
+      return { phase: "stalled" };
+    }
+    return { phase: "in_progress" };
+  }
+
   try {
     const rp = await fetchRunpodStatus<TOutput>(endpointId, apiKey, runpodJobId);
 
@@ -104,11 +126,12 @@ export async function resolveRunpodJobPhase<TOutput = unknown>(
     if (ageMs > stallMs) {
       return { phase: "stalled" };
     }
-    // Log here so every caller gets the error without duplicating the log line.
     console.error("[runpod/resolveRunpodJobPhase] RunPod status fetch failed:", err);
     return { phase: "unreachable" };
   }
 }
+
+// ─── Submit helpers ───────────────────────────────────────────────────────────
 
 const TRANSIENT_RUNPOD_STATUS = new Set([429, 502, 503, 504]);
 
@@ -121,7 +144,34 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function submitRunpodJob<TResponse>(
+/**
+ * Dispatch a job directly to the pod FastAPI /api/run.
+ * Returns immediately with { id: "pod-xxx" }; result arrives via webhook.
+ * Internal — callers use submitRunpodJob which includes pod-first logic.
+ */
+async function _dispatchJobToPod<TResponse>(
+  podUrl: string,
+  payload: unknown,
+  timeoutMs = 15_000
+): Promise<TResponse> {
+  const res = await fetch(`${podUrl}/api/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) {
+    throw new Error(`Pod /api/run ${res.status}: ${await res.text()}`);
+  }
+  return res.json() as Promise<TResponse>;
+}
+
+/**
+ * Send a job directly to RunPod Serverless (no pod logic).
+ * Internal — callers use submitRunpodJob which includes pod-first logic.
+ */
+async function _submitToServerless<TResponse>(
   endpointId: string,
   apiKey: string,
   payload: unknown,
@@ -178,4 +228,111 @@ export async function submitRunpodJob<TResponse>(
 
   // lastError is always set when we reach here — the loop only continues after catching
   throw lastError!;
+}
+
+// ─── Serverless health check ─────────────────────────────────────────────────
+
+interface ServerlessHealth {
+  workers: { idle: number; running: number };
+  jobs: { inQueue: number; inProgress: number; completed: number; failed: number };
+}
+
+// Short-lived cache: avoids a 5s HTTP round-trip on every job submission.
+let _serverlessHealthCache: { value: boolean; expiresAt: number } | null = null;
+
+/**
+ * Check whether the Serverless endpoint has idle workers ready to pick up a job.
+ * Returns true when at least one idle worker is available (expect <5s cold start).
+ * Returns false on network error or if no workers are idle.
+ * Result is cached for 15s to avoid blocking every job on a health call.
+ */
+async function serverlessHasIdleWorkers(endpointId: string, apiKey: string): Promise<boolean> {
+  if (_serverlessHealthCache && Date.now() < _serverlessHealthCache.expiresAt) {
+    return _serverlessHealthCache.value;
+  }
+  try {
+    const res = await fetch(`https://api.runpod.ai/v2/${endpointId}/health`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) {
+      _serverlessHealthCache = { value: false, expiresAt: Date.now() + 5_000 };
+      return false;
+    }
+    const data = await res.json() as ServerlessHealth;
+    const idle = data?.workers?.idle ?? 0;
+    console.log(`[runpod] Serverless health: ${idle} workers idle, ${data?.jobs?.inQueue ?? 0} en queue`);
+    const result = idle > 0;
+    _serverlessHealthCache = { value: result, expiresAt: Date.now() + 15_000 };
+    return result;
+  } catch {
+    _serverlessHealthCache = { value: false, expiresAt: Date.now() + 5_000 };
+    return false;
+  }
+}
+
+// ─── Public submit API ────────────────────────────────────────────────────────
+
+/**
+ * Submit a job to RunPod — Serverless-first when workers are idle, Pod as fallback.
+ *
+ * Strategy:
+ *   1. If Serverless has idle workers → dispatch to Serverless immediately (<5s cold start).
+ *   2. Otherwise, if pod mode is configured → start/reuse Pod On-Demand and dispatch there.
+ *      The pod is cheaper per-minute and avoids Serverless queue when workers are saturated.
+ *   3. If pod is unavailable (cold start timeout, GPU unavailable) → fall back to Serverless
+ *      and wait in queue rather than failing the job entirely.
+ *
+ * Drop-in replacement: zero changes required in existing route files.
+ */
+export async function submitRunpodJob<TResponse>(
+  endpointId: string,
+  apiKey: string,
+  payload: unknown,
+  options: SubmitRunpodJobOptions = {}
+): Promise<TResponse> {
+  // Lazy import — avoids circular deps and keeps pod logic tree-shakeable
+  const { podModeConfigured, ensurePodReady, recordPodActivity, onPodJobComplete, PodUnavailableError } =
+    await import("@/lib/podOrchestrator");
+
+  // Step 1 — check Serverless availability first (only when pod mode is configured;
+  // if pod mode is off, always use Serverless directly).
+  if (podModeConfigured()) {
+    const hasIdleWorkers = await serverlessHasIdleWorkers(endpointId, apiKey);
+
+    if (hasIdleWorkers) {
+      // Serverless has idle capacity — use it immediately, no cold start.
+      console.log("[runpod] Worker Serverless idle disponible → Serverless direct");
+      return _submitToServerless<TResponse>(endpointId, apiKey, payload, options);
+    }
+
+    // Step 2 — no idle Serverless workers, use Pod On-Demand.
+    console.log("[runpod] Aucun worker Serverless idle → dispatch Pod On-Demand");
+    try {
+      const podUrl = await ensurePodReady();
+      // Increment BEFORE dispatching so the counter is in DB if the process crashes
+      // between dispatch and the following await. On dispatch failure, roll back.
+      await recordPodActivity();
+      let result: TResponse;
+      try {
+        result = await _dispatchJobToPod<TResponse>(podUrl, payload);
+      } catch (dispatchErr) {
+        // Dispatch failed — undo the increment (no webhook will arrive to decrement it)
+        void onPodJobComplete();
+        throw dispatchErr;
+      }
+      console.log("[runpod] Job dispatché via pod On-Demand ✓");
+      return result;
+    } catch (err) {
+      if (err instanceof PodUnavailableError) {
+        console.warn("[runpod] Pod indisponible → fallback Serverless (attente queue):", err.message);
+      } else {
+        console.warn("[runpod] Erreur dispatch pod → fallback Serverless (attente queue):", err);
+      }
+    }
+  }
+
+  // Step 3 — Serverless fallback (pod unavailable or pod mode not configured).
+  return _submitToServerless<TResponse>(endpointId, apiKey, payload, options);
 }

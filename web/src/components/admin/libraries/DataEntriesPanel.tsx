@@ -33,6 +33,7 @@ interface DataCampaign {
   id: string;
   name: string;
   isActive: boolean;
+  usagePolicy: string;
   _count: { entries: number };
 }
 
@@ -73,6 +74,7 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
   const [resetting, setResetting] = useState(false);
   const [resetSuccess, setResetSuccess] = useState<string | null>(null);
   const [resetError, setResetError] = useState<string | null>(null);
+  const [resettingAccount, setResettingAccount] = useState(false);
   const [viewMode, setViewMode] = useState<"flat" | "grouped">("flat");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -210,7 +212,29 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
     setResetting(false);
     void load();
   }
-
+  async function handleResetForAccount() {
+    if (!accountFilter) return;
+    const accountName = accounts.find((a) => a.id === accountFilter)?.handle ?? accountFilter;
+    if (!confirm(`Réinitialiser le cycle pour @${accountName} ? Les usages de ce compte seront effacés.`)) return;
+    setResettingAccount(true);
+    setResetSuccess(null);
+    setResetError(null);
+    const res = await fetch(`/api/admin/libraries/data/campaigns/${campaignId}/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountId: accountFilter }),
+    });
+    setResettingAccount(false);
+    if (!res.ok) {
+      const d = await res.json() as { error?: string };
+      setResetError(d.error ?? "Erreur lors du reset");
+    } else {
+      const d = await res.json() as { reset: number };
+      setResetSuccess(`${d.reset} entrée${d.reset !== 1 ? "s" : ""} réinitialisée${d.reset !== 1 ? "s" : ""} pour @${accountName}`);
+      setTimeout(() => setResetSuccess(null), 4000);
+      void load();
+    }
+  }
   async function handleToggleAccess(entry: DataEntry, accountId: string, addAccess: boolean) {
     const next = addAccess
       ? [...entry.accessAccountIds, accountId]
@@ -251,6 +275,7 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
   }
 
   const usedCount = entries.filter((e) => e.usedInCycle).length;
+  const isPerAccountPolicy = campaign?.usagePolicy === "cycle_per_account" || campaign?.usagePolicy === "once_per_account";
 
   return (
     <div>
@@ -263,9 +288,14 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
           </h2>
           <p className="text-xs text-gray-500 mt-0.5">
             {entries.length} entrée{entries.length !== 1 ? "s" : ""} · {usedCount} utilisée{usedCount !== 1 ? "s" : ""} ce cycle
+            {accountFilter && isPerAccountPolicy && (
+              <span className="ml-1 text-indigo-500">
+                · {entries.filter((e) => e.usageCount > 0).length} utilisée{entries.filter((e) => e.usageCount > 0).length !== 1 ? "s" : ""} par ce compte
+              </span>
+            )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={importing}
@@ -282,13 +312,24 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
               <Download size={14} /> Modèle CSV
             </button>
           )}
-          <button
-            onClick={() => { void handleReset(); }}
-            disabled={resetting || entries.length === 0}
-            className="flex items-center gap-2 px-3 py-1.5 border border-red-200 text-red-600 text-sm rounded-md hover:bg-red-50 disabled:opacity-50"
-          >
-            <RotateCcw size={14} /> Reset cycle
-          </button>
+          {accountFilter && isPerAccountPolicy ? (
+            <button
+              onClick={() => { void handleResetForAccount(); }}
+              disabled={resettingAccount || entries.length === 0}
+              className="flex items-center gap-2 px-3 py-1.5 border border-orange-200 text-orange-600 text-sm rounded-md hover:bg-orange-50 disabled:opacity-50"
+              title="Réinitialiser le cycle uniquement pour ce compte"
+            >
+              <RotateCcw size={14} /> Reset ce compte
+            </button>
+          ) : (
+            <button
+              onClick={() => { void handleReset(); }}
+              disabled={resetting || entries.length === 0}
+              className="flex items-center gap-2 px-3 py-1.5 border border-red-200 text-red-600 text-sm rounded-md hover:bg-red-50 disabled:opacity-50"
+            >
+              <RotateCcw size={14} /> Reset cycle
+            </button>
+          )}
         </div>
         <input ref={fileInputRef} type="file" accept=".csv,.txt" onChange={(e) => { void handleImport(e); }} className="hidden" />
       </div>
@@ -352,6 +393,7 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
           groups={groups}
           columns={columns}
           accountFilter={accountFilter}
+          usagePolicy={campaign?.usagePolicy ?? "cycle"}
           expandedGroups={expandedGroups}
           onToggleGroup={toggleGroup}
           isAccessible={isAccessible}
@@ -360,10 +402,31 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
           onToggleAccessForGroup={handleToggleAccessForGroup}
         />
       ) : (
-        <FlatTable entries={entries} columns={columns} accountFilter={accountFilter} isAccessible={isAccessible} accounts={accounts} onToggleAccess={handleToggleAccess} />
+        <FlatTable entries={entries} columns={columns} accountFilter={accountFilter} usagePolicy={campaign?.usagePolicy ?? "cycle"} isAccessible={isAccessible} accounts={accounts} onToggleAccess={handleToggleAccess} />
       )}
     </div>
   );
+}
+
+// ─── Shared: cycle badge ─────────────────────────────────────────────────────
+
+function CycleBadge({ entry, usagePolicy, accountFilter }: { entry: DataEntry; usagePolicy: string; accountFilter: string | null }) {
+  if (usagePolicy === "unlimited") {
+    return <span className="text-xs text-gray-300">—</span>;
+  }
+  if (usagePolicy === "cycle_per_account" || usagePolicy === "once_per_account") {
+    if (!accountFilter) {
+      return <span className="text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5">Par compte</span>;
+    }
+    // accountFilter active → usageCount comes from DataEntryUsage for this account
+    return entry.usageCount > 0
+      ? <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Utilisée</span>
+      : <span className="text-xs text-green-600 bg-green-50 border border-green-200 rounded px-1.5 py-0.5">Disponible</span>;
+  }
+  // "cycle" | "once_global" → global usedInCycle flag
+  return entry.usedInCycle
+    ? <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Utilisée</span>
+    : <span className="text-xs text-green-600 bg-green-50 border border-green-200 rounded px-1.5 py-0.5">Disponible</span>;
 }
 
 // ─── Flat table ───────────────────────────────────────────────────────────────
@@ -372,6 +435,7 @@ function FlatTable({
   entries,
   columns,
   accountFilter,
+  usagePolicy,
   isAccessible,
   accounts,
   onToggleAccess,
@@ -379,6 +443,7 @@ function FlatTable({
   entries: DataEntry[];
   columns: string[];
   accountFilter: string | null;
+  usagePolicy: string;
   isAccessible: (e: DataEntry) => boolean;
   accounts: InstagramAccount[];
   onToggleAccess: (entry: DataEntry, accountId: string, addAccess: boolean) => Promise<void>;
@@ -403,8 +468,13 @@ function FlatTable({
           {entries.map((entry) => {
             const fields = JSON.parse(entry.fields) as Record<string, string>;
             const accessible = isAccessible(entry);
+            const isUsed = usagePolicy === "cycle" || usagePolicy === "once_global"
+              ? entry.usedInCycle
+              : (usagePolicy === "cycle_per_account" || usagePolicy === "once_per_account") && !!accountFilter
+                ? entry.usageCount > 0
+                : false;
             return (
-              <tr key={entry.id} className={`hover:bg-gray-50 ${entry.usedInCycle ? "opacity-60" : ""} ${accountFilter && !accessible ? "opacity-40" : ""}`}>
+              <tr key={entry.id} className={`hover:bg-gray-50 ${isUsed ? "opacity-60" : ""} ${accountFilter && !accessible ? "opacity-40" : ""}`}>
                 {columns.map((col) => (
                   <td key={col} className="py-2 pr-4 text-gray-700 max-w-[200px] truncate">{fields[col] ?? "—"}</td>
                 ))}
@@ -413,10 +483,7 @@ function FlatTable({
                 <td className="py-2 pr-4 text-gray-500">{entry.usageCount}</td>
                 <td className="py-2 pr-4 text-gray-500">{formatDate(entry.lastUsedAt)}</td>
                 <td className="py-2">
-                  {entry.usedInCycle
-                    ? <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Utilisée</span>
-                    : <span className="text-xs text-green-600 bg-green-50 border border-green-200 rounded px-1.5 py-0.5">Disponible</span>
-                  }
+                  <CycleBadge entry={entry} usagePolicy={usagePolicy} accountFilter={accountFilter} />
                 </td>
                 <td className="py-2 max-w-[160px]">
                   <div className="flex items-center gap-1 flex-wrap">
@@ -467,6 +534,7 @@ function GroupedView({
   groups,
   columns,
   accountFilter,
+  usagePolicy,
   expandedGroups,
   onToggleGroup,
   isAccessible,
@@ -477,6 +545,7 @@ function GroupedView({
   groups: SetGroup[];
   columns: string[];
   accountFilter: string | null;
+  usagePolicy: string;
   expandedGroups: Set<string>;
   onToggleGroup: (key: string) => void;
   isAccessible: (e: DataEntry) => boolean;
@@ -585,18 +654,20 @@ function GroupedView({
                     {g.entries.map((entry) => {
                       const fields = JSON.parse(entry.fields) as Record<string, string>;
                       const accessible = isAccessible(entry);
+                      const isUsed = usagePolicy === "cycle" || usagePolicy === "once_global"
+                        ? entry.usedInCycle
+                        : (usagePolicy === "cycle_per_account" || usagePolicy === "once_per_account") && !!accountFilter
+                          ? entry.usageCount > 0
+                          : false;
                       return (
-                        <tr key={entry.id} className={`hover:bg-gray-50 ${entry.usedInCycle ? "opacity-60" : ""} ${accountFilter && !accessible ? "opacity-40" : ""}`}>
+                        <tr key={entry.id} className={`hover:bg-gray-50 ${isUsed ? "opacity-60" : ""} ${accountFilter && !accessible ? "opacity-40" : ""}`}>
                           {columns.map((col) => (
                             <td key={col} className="py-2 px-4 text-gray-700 max-w-[200px] truncate">{fields[col] ?? "—"}</td>
                           ))}
                           <td className="py-2 px-4 text-gray-500">{entry.usageCount}</td>
                           <td className="py-2 px-4 text-gray-500">{formatDate(entry.lastUsedAt)}</td>
                           <td className="py-2 px-4">
-                            {entry.usedInCycle
-                              ? <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Utilisée</span>
-                              : <span className="text-xs text-green-600 bg-green-50 border border-green-200 rounded px-1.5 py-0.5">Disponible</span>
-                            }
+                            <CycleBadge entry={entry} usagePolicy={usagePolicy} accountFilter={accountFilter} />
                           </td>
                           <td className="py-2 px-4 max-w-[160px]">
                             <div className="flex items-center gap-1 flex-wrap">

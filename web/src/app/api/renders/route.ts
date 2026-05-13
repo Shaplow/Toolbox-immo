@@ -163,10 +163,8 @@ export async function POST(req: NextRequest) {
     // Validate accountId if provided
     let validatedAccountId: string | undefined;
     if (typeof accountId === "string" && accountId) {
-      const account = await prisma.instagramAccount.findFirst({
-        where: isAdmin
-          ? { id: accountId }
-          : { id: accountId, userId: userContext.effectiveUser.id },
+      const account = await prisma.instagramAccount.findUnique({
+        where: { id: accountId },
         select: { id: true },
       });
       if (account) validatedAccountId = account.id;

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState, type ReactNode } from "react";
-import { Home, List, Users, Library, LogOut, CalendarDays } from "lucide-react";
+import { Home, List, Users, Library, LogOut, CalendarDays, Zap } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { TOOL_META, TOOL_ORDER } from "@/lib/toolMeta";
 
@@ -74,13 +74,15 @@ export function AppNav({
         },
         {
           title: "Suivi",
-          items: [{ href: "/listings", label: "Mes générations", icon: <List size={16} /> }],
+          items: [
+            { href: "/listings", label: "Mes générations", icon: <List size={16} /> },
+            { href: "/calendar", label: "Calendrier", icon: <CalendarDays size={16} /> },
+          ],
         },
         {
           title: "Gestion",
           items: [
-            { href: "/calendar", label: "Calendrier", icon: <CalendarDays size={16} /> },
-            { href: "/admin/offer-schedule", label: "Règles d'offres", icon: <Library size={16} /> },
+            { href: "/admin/offer-schedule", label: "Automatisation", icon: <Zap size={16} /> },
             { href: "/admin/libraries", label: "Bibliothèques", icon: <Library size={16} /> },
             { href: "/admin/users", label: "Utilisateurs", icon: <Users size={16} /> },
           ],
@@ -157,7 +159,7 @@ export function AppNav({
       )}
 
       {/* Navigation */}
-      <nav className={`flex-1 ${collapsed ? "px-2 py-3" : "px-3 py-4"}`}>
+      <nav className={`flex-1 min-h-0 overflow-y-auto ${collapsed ? "px-2 py-3" : "px-3 py-4"}`}>
         {navSections.map(({ title, items }, index) => {
           if (items.length === 0) return null;
 
@@ -177,7 +179,7 @@ export function AppNav({
                       <span
                         key={href}
                         title={label}
-                        className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-not-allowed select-none text-gray-300 ${collapsed ? "justify-center px-0" : ""}`}
+                        className={`flex items-center gap-2.5 py-2 rounded-lg text-sm cursor-not-allowed select-none text-gray-300 ${collapsed ? "justify-center px-0" : "px-3"}`}
                       >
                         <span className="shrink-0 flex items-center">{icon}</span>
                         {!collapsed ? <span className="flex items-center gap-1.5">{label}<span className="text-[10px] font-medium bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-md">Bientôt</span></span> : null}
@@ -189,11 +191,11 @@ export function AppNav({
                       key={href}
                       href={href}
                       title={label}
-                      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                      className={`flex items-center gap-2.5 py-2 rounded-lg text-sm transition-colors ${
                         active
                           ? "bg-indigo-50 text-indigo-700 font-medium"
                           : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                      } ${collapsed ? "justify-center px-0" : ""}`}
+                      } ${collapsed ? "justify-center px-0" : "px-3"}`}
                     >
                       <span className="shrink-0 flex items-center">{icon}</span>
                       {!collapsed ? label : null}

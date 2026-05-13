@@ -174,7 +174,10 @@ export async function selectMediaAsset(
     return rows[0] ?? null;
   }
 
-  // least_used (default)
+  // least_used (default) — also handles not_used_in_cycle (same ordering: never/least-used first)
+  if (strategy !== "least_used" && strategy !== "not_used_in_cycle") {
+    console.warn(`[selectMediaAsset] stratégie inconnue "${strategy}" — fallback sur least_used`);
+  }
   if (accountId) {
     const rows = await prisma.$queryRaw<AssetRow[]>(
       Prisma.sql`SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
@@ -250,7 +253,7 @@ export async function selectMediaAssetBySetSequence(
   if (!library) return null;
 
   let sequence: string[] = [];
-  try { sequence = JSON.parse(library.setSequence) as string[]; } catch { sequence = []; }
+  try { sequence = (JSON.parse(library.setSequence) as string[]).filter((s) => !!s); } catch { sequence = []; }
 
   // Build tag fragment: prefer structured ruleConfig, fall back to legacy tagFilter string
   const tagFrag: Prisma.Sql = ruleConfig
@@ -345,6 +348,21 @@ export async function selectMediaAssetBySetSequence(
             OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))
         ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
       const row = rows[0] ?? null;
+      if (!row && prevCursorState) {
+        // No assets are eligible for selectedSetTag — immediately revert the cursor advance
+        // so this set position is not permanently skipped in future generations.
+        await prisma.$executeRaw(Prisma.sql`
+          UPDATE "AccountLibraryCursor"
+          SET cursor = ${prevCursorState.prevCursor}
+          WHERE "accountId" = ${accountId}
+            AND "libraryId" = ${libraryId}
+            AND cursor IS NOT DISTINCT FROM ${prevCursorState.claimedCursor}
+            AND "lastUsedCategory" IS NOT DISTINCT FROM ${prevCursorState.claimedLastUsedCategory}
+        `).catch((e) => {
+          console.warn(`[selectMediaAssetBySetSequence] cursor revert failed account=${accountId} library=${libraryId}:`, e);
+        });
+        console.warn(`[selectMediaAssetBySetSequence] No eligible assets for setTag=${selectedSetTag} library=${libraryId} — cursor reverted to ${prevCursorState.prevCursor}`);
+      }
       return row ? { ...row, resolvedSetTag: selectedSetTag, resolvedCategory: null, prevCursorState } : null;
     } else {
       // No accountId (admin preview): position 0, no lock needed
@@ -387,15 +405,23 @@ export async function selectMediaAssetBySetSequence(
       const lockedCategory = locked[0]?.lastUsedCategory ?? null;
 
       // Group discovery inside the transaction
+      // Tiebreaker: when lastUsedAt is equal (e.g. both never used), prefer the category
+      // with more groups (cat_count DESC) so the majority family interleaves first and we
+      // never exhaust a small category before a large one — preventing consecutive same-category picks.
       const allGroups: GroupRow[] = await tx.$queryRaw`
-          SELECT ma."setTag", ma."category"
-          FROM "MediaAsset" ma
-          LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
-          WHERE ma."libraryId" = ${libraryId} AND (ma."setTag" IS NOT NULL OR ma."category" IS NOT NULL)
-            AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
-              OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))
-          GROUP BY ma."setTag", ma."category"
-          ORDER BY MAX(mau."lastUsedAt") ASC NULLS FIRST, ma."setTag" ASC NULLS LAST, ma."category" ASC NULLS FIRST`;
+          SELECT sub."setTag", sub."category"
+          FROM (
+            SELECT ma."setTag", ma."category",
+                   MAX(mau."lastUsedAt") AS last_used,
+                   COUNT(*) OVER (PARTITION BY ma."category") AS cat_count
+            FROM "MediaAsset" ma
+            LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
+            WHERE ma."libraryId" = ${libraryId} AND (ma."setTag" IS NOT NULL OR ma."category" IS NOT NULL)
+              AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
+                OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))
+            GROUP BY ma."setTag", ma."category"
+          ) sub
+          ORDER BY sub.last_used ASC NULLS FIRST, sub.cat_count DESC, sub."setTag" ASC NULLS LAST, sub."category" ASC NULLS FIRST`;
 
       if (allGroups.length === 0) return; // handled by fallback below
 
@@ -460,12 +486,17 @@ export async function selectMediaAssetBySetSequence(
 
   // No accountId (admin preview): no lock, no cursor writes, global pool only
   const allGroups: GroupRow[] = await prisma.$queryRaw`
-      SELECT "setTag", "category"
-      FROM "MediaAsset"
-      WHERE "libraryId" = ${libraryId} AND ("setTag" IS NOT NULL OR "category" IS NOT NULL)
-        AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = id)
-      GROUP BY "setTag", "category"
-      ORDER BY MAX("lastUsedAt") ASC NULLS FIRST, "setTag" ASC NULLS LAST, "category" ASC NULLS FIRST`;
+      SELECT sub."setTag", sub."category"
+      FROM (
+        SELECT "setTag", "category",
+               MAX("lastUsedAt") AS last_used,
+               COUNT(*) OVER (PARTITION BY "category") AS cat_count
+        FROM "MediaAsset"
+        WHERE "libraryId" = ${libraryId} AND ("setTag" IS NOT NULL OR "category" IS NOT NULL)
+          AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = id)
+        GROUP BY "setTag", "category"
+      ) sub
+      ORDER BY sub.last_used ASC NULLS FIRST, sub.cat_count DESC, sub."setTag" ASC NULLS LAST, sub."category" ASC NULLS FIRST`;
 
   if (allGroups.length === 0) {
     const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`

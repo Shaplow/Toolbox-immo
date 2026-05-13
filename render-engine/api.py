@@ -332,17 +332,26 @@ async def render_template_local(
         except (json.JSONDecodeError, KeyError, TypeError) as exc:
             raise HTTPException(status_code=400, detail=f"overlays_metadata JSON invalide : {exc}")
 
-        for i, seg in enumerate(segments):
-            upload = overlay_file_inputs[seg["index"]]
+        # Build one file per unique state index (segments can reference the same
+        # state multiple times; reading the same UploadFile twice returns b'').
+        unique_indices = sorted(set(seg["index"] for seg in segments))
+        for idx in unique_indices:
+            upload = overlay_file_inputs[idx]
             if upload is None:
-                raise HTTPException(status_code=400, detail=f"overlay_{seg['index']} manquant pour le segment {i}")
-            p = work_dir / f"overlay_{stamp}_{seg['index']}.png"
-            p.write_bytes(await upload.read())
+                raise HTTPException(status_code=400, detail=f"overlay_{idx} manquant pour l'état {idx}")
+            p = work_dir / f"overlay_{stamp}_{idx}.png"
+            content = await upload.read()
+            if len(content) == 0:
+                raise HTTPException(status_code=400, detail=f"overlay_{idx} reçu vide (0 octets) — rendu Puppeteer probablement échoué")
+            p.write_bytes(content)
             tmp_overlay_paths.append(p)
     else:
         # Legacy single-overlay
         overlay_path = work_dir / f"overlay_{stamp}.png"
-        overlay_path.write_bytes(await overlay.read())  # type: ignore[union-attr]
+        overlay_content = await overlay.read()  # type: ignore[union-attr]
+        if len(overlay_content) == 0:
+            raise HTTPException(status_code=400, detail="overlay reçu vide (0 octets) — rendu Puppeteer probablement échoué")
+        overlay_path.write_bytes(overlay_content)
         tmp_overlay_paths.append(overlay_path)
 
     # Vidéo source : fichier uploadé ou téléchargement URL
@@ -610,6 +619,7 @@ async def render_sequence_local(request: Request):
                             block=normalized_block, video_codec=_codec, video_codec_args=_codec_args,
                             audio_codec=_audio_codec, audio_codec_args=_audio_args,
                             max_duration=None, source_has_audio=video_info.has_audio,
+                            mute_source=slot_mute_source, source_volume=slot_source_volume,
                         )
                     else:
                         seg_cmd = build_template_ffmpeg_cmd_video_only(
@@ -617,6 +627,7 @@ async def render_sequence_local(request: Request):
                             block=normalized_block, video_codec=_codec, video_codec_args=_codec_args,
                             audio_codec=_audio_codec, audio_codec_args=_audio_args,
                             max_duration=None, source_has_audio=video_info.has_audio,
+                            mute_source=slot_mute_source, source_volume=slot_source_volume,
                         )
                     proc = await asyncio.to_thread(_sp.run, seg_cmd, capture_output=True, text=True, timeout=10 * 60)
                     if proc.returncode != 0:
@@ -642,6 +653,7 @@ async def render_sequence_local(request: Request):
                         block=normalized_block, video_codec=_codec, video_codec_args=_codec_args,
                         audio_codec=_audio_codec, audio_codec_args=_audio_args,
                         max_duration=max_dur, source_has_audio=video_info.has_audio,
+                        mute_source=slot_mute_source, source_volume=slot_source_volume,
                     )
                 else:
                     cmd = build_template_ffmpeg_cmd_video_only(
@@ -649,6 +661,7 @@ async def render_sequence_local(request: Request):
                         block=normalized_block, video_codec=_codec, video_codec_args=_codec_args,
                         audio_codec=_audio_codec, audio_codec_args=_audio_args,
                         max_duration=max_dur, source_has_audio=video_info.has_audio,
+                        mute_source=slot_mute_source, source_volume=slot_source_volume,
                     )
 
                 logger.info("[render_sequence] slot=%s FFmpeg start", slot_id)
@@ -661,18 +674,16 @@ async def render_sequence_local(request: Request):
 
             clip_paths.append(clip_path)
             logger.info("[render_sequence] slot=%s clip ready: %s", slot_id, clip_path.name)
-            _ = (slot_source_volume, slot_mute_source)  # used in music mix below
 
         # ── Aggregate per-slot audio params ──────────────────────────────────
-        effective_mute_source: bool = any(
+        # Per-slot muting and volume are already applied at clip encoding time.
+        # At the concat+music mix stage, source audio is already correct per-clip.
+        # Only suppress source entirely if ALL slots are muted (music-only sequence).
+        effective_mute_source: bool = all(
             bool(s.get("music_mute_source", _global_music_mute_source))
             for s in slots
         )
-        per_slot_volumes = [float(s.get("music_source_volume", _global_music_source_volume)) for s in slots]
-        effective_source_volume: float = (
-            0.0 if effective_mute_source
-            else (sum(per_slot_volumes) / len(per_slot_volumes) if per_slot_volumes else _global_music_source_volume)
-        )
+        effective_source_volume: float = 1.0  # already handled per-clip above
 
         # ── Concat ────────────────────────────────────────────────────────────
         combined_path = work_dir / f"seq_{stamp}_combined.mp4"

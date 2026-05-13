@@ -80,14 +80,14 @@ def _line_height_design(font) -> int:
 
 
 def _should_split_block(prev_word: WordTimestamp, next_word: WordTimestamp, max_duration: float, pause_threshold: float, current_start: float) -> bool:
-    # Note: SRT caption boundaries are intentionally NOT used as hard split points.
-    # Whisper-generated SRTs often break lines mid-sentence, which would create tiny
-    # orphan blocks.  Natural signals (pauses, sentence-ending punctuation, max
-    # duration) produce better phrase-level grouping.
+    # caption_index boundaries are hard split points: each caption corresponds to
+    # a complete phrase as segmented by the web editor.  Natural signals (pauses,
+    # sentence-ending punctuation, max duration) are kept as additional triggers.
     gap = next_word.start - prev_word.end
     duration = next_word.end - current_start
     return (
-        gap > pause_threshold
+        prev_word.caption_index != next_word.caption_index
+        or gap > pause_threshold
         or _ENDING_PUNCTUATION.search(prev_word.word) is not None
         or duration > max_duration
     )
@@ -304,12 +304,22 @@ def build_layout(
             line_texts = [" ".join(_word_render_info(item)[1](item.word) for item in line_words) for line_words in line_word_groups]
             n = len(line_word_groups)
 
-            # Fixed pitch: always use base font's ink descent for all lines.
-            # This makes inter-line spacing fully predictable and controlled by
-            # line_gap_ratio regardless of whether a highlight style with a larger
-            # font appears on a given line. Highlight descenders may clip slightly
-            # below the line boundary — accepted trade-off for consistent spacing.
-            line_max_ink_desc = [base_ink_descent] * n
+            # Per-line max ink descent below the shared baseline.
+            # All fonts align to baseline = line_y + base_ascent (via _word_y_offset).
+            # Visual bottom of a line = line_y + base_ascent + max_ink_desc.
+            # y_cursor += base_ascent + max_ink_desc + line_gap
+            # → visual gap (ink bottom ↔ next ink top) = line_gap exactly, always.
+            line_max_ink_desc: list[int] = []
+            for _lw in line_word_groups:
+                mid = base_ink_descent
+                for _w in _lw:
+                    _g = _highlight_group(_w)
+                    if _g is not None:
+                        if _g >= 1 and hl2_font is not None:
+                            mid = max(mid, hl2_ink_descent)
+                        else:
+                            mid = max(mid, hl_ink_descent)
+                line_max_ink_desc.append(mid)
 
             total_h = n * base_ascent + sum(line_max_ink_desc) + max(0, n - 1) * line_gap
             vertical_shift = int(video_info.height * config.layout.vertical_offset)

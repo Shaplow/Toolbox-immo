@@ -46,21 +46,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   try {
-    // Vérifier que tous les assets appartiennent bien à cette bibliothèque
-    const count = await prisma.mediaAsset.count({
-      where: { id: { in: assetIds }, libraryId },
-    });
-    if (count !== assetIds.length) {
-      return NextResponse.json(
-        { error: "Certains assets n'appartiennent pas à cette bibliothèque" },
-        { status: 400 }
-      );
-    }
-
     const result = await prisma.mediaAsset.updateMany({
       where: { id: { in: assetIds }, libraryId },
       data,
     });
+    if (result.count !== assetIds.length) {
+      return NextResponse.json(
+        {
+          error: `${assetIds.length - result.count} asset(s) non mis à jour — ils n'appartiennent peut-être pas à cette bibliothèque`,
+          updated: result.count,
+        },
+        { status: 400 }
+      );
+    }
     return NextResponse.json({ updated: result.count });
   } catch (err) {
     console.error(`[admin/libraries/media/${libraryId}/assets/bulk] PATCH error:`, err);

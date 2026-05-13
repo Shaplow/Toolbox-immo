@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
     if (job) {
       notifyUser(job.userId, {
         jobType: "derush_export",
+        jobId: exp.id,
         exportId: exp.id,
         status: "COMPLETED",
       });
@@ -74,6 +75,7 @@ export async function POST(req: NextRequest) {
     if (job) {
       notifyUser(job.userId, {
         jobType: "derush_export",
+        jobId: exp.id,
         exportId: exp.id,
         status: "FAILED",
         errorMsg,

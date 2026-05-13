@@ -43,14 +43,22 @@ class MediaEditParams:
     trim_end: float | None = None
     mix_to_mono: bool = False
     normalize: bool = False
+    gain_db: float | None = None  # volume adjustment in dB, ex: +3.0 or -6.0 (-24..+24)
 
     @classmethod
     def from_dict(cls, d: dict) -> "MediaEditParams":
+        gain_raw = d.get("gainDb")
+        gain_db: float | None = None
+        if gain_raw is not None:
+            g = float(gain_raw)
+            # Clamp to safe range
+            gain_db = max(-24.0, min(24.0, g))
         return cls(
             trim_start=float(d["trimStart"]) if d.get("trimStart") is not None else None,
             trim_end=float(d["trimEnd"]) if d.get("trimEnd") is not None else None,
             mix_to_mono=bool(d.get("mixToMono", False)),
             normalize=bool(d.get("normalize", False)),
+            gain_db=gain_db,
         )
 
 
@@ -82,12 +90,17 @@ def build_media_edit_cmd(
 
     # ── Audio filter chain ────────────────────────────────────────────────────
     audio_filters: list[str] = []
-    needs_audio_filter = params.mix_to_mono or params.normalize
+    needs_audio_filter = params.mix_to_mono or params.normalize or params.gain_db is not None
 
     if params.mix_to_mono:
         # Average L + R into a single centered mono channel then upmix back to stereo
         # so the output is always a standard stereo track.
         audio_filters.append("pan=stereo|c0=0.5*c0+0.5*c1|c1=0.5*c0+0.5*c1")
+
+    if params.gain_db is not None and params.gain_db != 0.0:
+        # Apply volume gain before loudnorm so loudnorm sees the adjusted level.
+        sign = "+" if params.gain_db > 0 else ""
+        audio_filters.append(f"volume={sign}{params.gain_db}dB")
 
     if params.normalize:
         audio_filters.append("loudnorm=I=-16:TP=-1.5:LRA=11")

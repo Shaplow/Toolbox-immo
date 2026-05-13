@@ -402,6 +402,103 @@ export default function CaptionsGenerateForm({
     });
   };
 
+  const handleMergeCaption = (captionIndex: number) => {
+    if (!timedSegments) return;
+    const segIdx = captionIndex - 1;
+    if (segIdx < 0 || segIdx >= timedSegments.length - 1) return;
+
+    const seg1 = timedSegments[segIdx];
+    const seg2 = timedSegments[segIdx + 1];
+    const words1 = Array.isArray(seg1.words) ? seg1.words : [];
+    const words2 = Array.isArray(seg2.words) ? seg2.words : [];
+    const wordCount1 = words1.length;
+
+    const merged: Segment = {
+      start: seg1.start,
+      end: seg2.end,
+      text: [seg1.text, seg2.text].filter(Boolean).join(" "),
+      words: [...words1, ...words2],
+      ...(seg1.speaker ? { speaker: seg1.speaker } : {}),
+    };
+
+    const newSegments = [
+      ...timedSegments.slice(0, segIdx),
+      merged,
+      ...timedSegments.slice(segIdx + 2),
+    ];
+
+    const statusOrder = { original: 0, realigned: 1, estimated: 2 } as const;
+    const s1 = timingStatuses?.[segIdx] ?? "original";
+    const s2 = timingStatuses?.[segIdx + 1] ?? "original";
+    const mergedStatus = statusOrder[s1] >= statusOrder[s2] ? s1 : s2;
+    const newStatuses: CaptionTimingStatus[] = [
+      ...(timingStatuses?.slice(0, segIdx) ?? []),
+      mergedStatus,
+      ...(timingStatuses?.slice(segIdx + 2) ?? []),
+    ];
+
+    setTimedSegments(newSegments);
+    setTimingStatuses(newStatuses);
+    setCaptions(timedSegmentsToCaptions(newSegments));
+    setHighlighted((prev) => {
+      const next = new Map<string, number>();
+      for (const [key, value] of prev.entries()) {
+        const dashIdx = key.indexOf("-");
+        if (dashIdx < 0) continue;
+        const ci = parseInt(key.slice(0, dashIdx), 10);
+        const wi = parseInt(key.slice(dashIdx + 1), 10);
+        if (isNaN(ci) || isNaN(wi)) continue;
+        if (ci < captionIndex) {
+          next.set(key, value);
+        } else if (ci === captionIndex) {
+          next.set(key, value);
+        } else if (ci === captionIndex + 1) {
+          next.set(`${captionIndex}-${wi + wordCount1}`, value);
+        } else {
+          next.set(`${ci - 1}-${wi}`, value);
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteCaption = (captionIndex: number) => {
+    if (!timedSegments) return;
+    const segIdx = captionIndex - 1;
+    if (segIdx < 0 || segIdx >= timedSegments.length) return;
+
+    const newSegments = [
+      ...timedSegments.slice(0, segIdx),
+      ...timedSegments.slice(segIdx + 1),
+    ];
+    const newStatuses: CaptionTimingStatus[] = [
+      ...(timingStatuses?.slice(0, segIdx) ?? []),
+      ...(timingStatuses?.slice(segIdx + 1) ?? []),
+    ];
+
+    setTimedSegments(newSegments);
+    setTimingStatuses(newStatuses);
+    setCaptions(timedSegmentsToCaptions(newSegments));
+    setHighlighted((prev) => {
+      const next = new Map<string, number>();
+      for (const [key, value] of prev.entries()) {
+        const dashIdx = key.indexOf("-");
+        if (dashIdx < 0) continue;
+        const ci = parseInt(key.slice(0, dashIdx), 10);
+        const wi = parseInt(key.slice(dashIdx + 1), 10);
+        if (isNaN(ci) || isNaN(wi)) continue;
+        if (ci < captionIndex) {
+          next.set(key, value);
+        } else if (ci === captionIndex) {
+          // deleted — drop
+        } else {
+          next.set(`${ci - 1}-${wi}`, value);
+        }
+      }
+      return next;
+    });
+  };
+
   const clearSubsSource = () => {
     setSubsFile(null);
     setSelectedTranscriptionId(null);
@@ -457,7 +554,7 @@ export default function CaptionsGenerateForm({
           filename:    videoFile.name,
           ext:         videoFile.name.split(".").pop()?.toLowerCase() ?? "mp4",
           srtContent:  subsContent,
-          srtFilename,
+          srtFilename: srtFileName,
           config:      configWithProfile,
           previewMode: false,
           presetId:    preset.id,
@@ -1022,6 +1119,8 @@ export default function CaptionsGenerateForm({
                 captions={captions}
                 onChange={handleCaptionEditorChange}
                 onSplitAtWord={handleSplitCaption}
+                onMergeWithNext={handleMergeCaption}
+                onDeleteCaption={handleDeleteCaption}
                 highlighted={highlighted}
                 onToggleWord={toggleWord}
                 timingStatuses={timingStatuses ?? undefined}

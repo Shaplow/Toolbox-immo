@@ -40,6 +40,7 @@ from app import _parse_srt_content, _parse_text_auto, _render_captions_video
 from engine.encoding_profiles import build_caption_encoding_settings
 from engine.models import RenderConfig, WordTimestamp
 from engine.probe import probe_video
+from engine.autocut import analyze_autocut
 from engine.media_edit import process_media_edit
 from engine.runtime_fonts import prepare_runtime_fonts
 from engine.template_composite import (
@@ -453,6 +454,8 @@ def handler(job: dict) -> dict[str, Any]:
         return _handle_derush_export(inp)
     if job_type == "media_edit":
         return _handle_media_edit(inp)
+    if job_type == "media_autocut_batch":
+        return _handle_media_autocut_batch(inp)
     return _handle_captions(inp)
 
 
@@ -978,6 +981,7 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
 
         clip_paths: list[Path] = []
         any_audio = False
+        has_effective_audio = False  # True if any slot contributes real (non-muted) audio
 
         for i, slot in enumerate(slots):
             slot_id = slot.get("slot_id", str(i))
@@ -1008,6 +1012,8 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
             video_info = probe_video(video_path)
             if video_info.has_audio:
                 any_audio = True
+                if not slot_mute_source:
+                    has_effective_audio = True
 
             normalized_block = normalize_video_block(block, canvas_w, canvas_h)
             clip_path = tmp_path / f"clip_{i}_{stamp}.mp4"
@@ -1032,6 +1038,8 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                 resolved_overlay_url: str | None = None if timed_slot else overlay_url,  # type: ignore[possibly-undefined]
                 m_dur: float | None = max_dur,
                 _i: int = i,
+                _s_mute: bool = slot_mute_source,
+                _s_vol: float = slot_source_volume,
             ) -> subprocess.CompletedProcess:
                 if resolved_overlay_url:
                     overlay_path = tmp_path / f"slot_{_i}_overlay_{stamp}.png"
@@ -1048,6 +1056,8 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                         audio_codec_args=a_args,
                         max_duration=m_dur,
                         source_has_audio=v_info.has_audio,
+                        mute_source=_s_mute,
+                        source_volume=_s_vol,
                     )
                 else:
                     cmd = build_template_ffmpeg_cmd_video_only(
@@ -1060,6 +1070,8 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                         audio_codec_args=a_args,
                         max_duration=m_dur,
                         source_has_audio=v_info.has_audio,
+                        mute_source=_s_mute,
+                        source_volume=_s_vol,
                     )
                 print(f"[worker/render_sequence] slot={slot_id} FFmpeg cmd: {_format_command(cmd)}", flush=True)
                 return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10 * 60)
@@ -1100,6 +1112,8 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                             audio_codec_args=audio_args,
                             max_duration=None,
                             source_has_audio=video_info.has_audio,
+                            mute_source=slot_mute_source,
+                            source_volume=slot_source_volume,
                         )
                     else:
                         seg_cmd = build_template_ffmpeg_cmd_video_only(
@@ -1112,6 +1126,8 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                             audio_codec_args=audio_args,
                             max_duration=None,
                             source_has_audio=video_info.has_audio,
+                            mute_source=slot_mute_source,
+                            source_volume=slot_source_volume,
                         )
                     subprocess.run(seg_cmd, capture_output=True, check=True, timeout=10 * 60)
                     seg_clip_paths.append(seg_out)
@@ -1158,28 +1174,38 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
 
             clip_paths.append(clip_path)
             print(f"[worker/render_sequence] slot={slot_id} clip ready: {clip_path.name}")
-            # Store per-slot audio params for the music mix phase
-            # We'll pass them when building the final mix — for now accumulate them
-            # (the music mix is applied globally after concat, so we use the first
-            #  non-muted slot's params as a representative; per-slot music would need
-            #  a more complex per-clip approach)
-            _ = (slot_source_volume, slot_mute_source)  # used below in Phase 3
 
-        # ── Aggregate per-slot audio params for the music mix ─────────────────
-        # The concat produces a single stream, so we derive an effective source
-        # volume.  Strategy: if any slot mutes, all source audio is muted; otherwise
-        # average the per-slot volumes (most setups use the same value for all slots).
-        effective_mute_source: bool = any(
-            _to_bool(s.get("music_mute_source", _global_music_mute_source), _global_music_mute_source)
-            for s in slots
-        )
-        per_slot_volumes = [
-            float(s.get("music_source_volume", _global_music_source_volume))
-            for s in slots
-        ]
-        effective_source_volume: float = (
-            0.0 if effective_mute_source else (sum(per_slot_volumes) / len(per_slot_volumes) if per_slot_volumes else _global_music_source_volume)
-        )
+        # ── Audio normalization: ensure all clips have audio when any clip does ─
+        # FFmpeg concat demuxer (-c copy) requires identical stream layouts across
+        # all input files.  If a source video has no audio track, that clip is
+        # rendered without one, which causes the concat to lose audio for subsequent
+        # clips (e.g. outro loses sound when a middle clip is silent).
+        if any_audio:
+            for ci, c_path in enumerate(clip_paths):
+                c_info = probe_video(c_path)
+                if not c_info.has_audio:
+                    norm_path = tmp_path / f"clip_{ci}_anorm_{stamp}.mp4"
+                    anorm_cmd = [
+                        "ffmpeg", "-y",
+                        "-i", str(c_path),
+                        "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+                        "-map", "0:v",
+                        "-map", "1:a",
+                        "-ar", "48000", "-ac", "2",
+                        "-c:v", "copy",
+                        "-c:a", "aac", "-b:a", "192k",
+                        "-shortest",
+                        str(norm_path),
+                    ]
+                    print(f"[worker/render_sequence] clip {ci} has no audio — adding silent track for stream consistency")
+                    anorm_result = subprocess.run(
+                        anorm_cmd, capture_output=True, text=True,
+                        encoding="utf-8", errors="replace", timeout=5 * 60,
+                    )
+                    if anorm_result.returncode == 0:
+                        clip_paths[ci] = norm_path
+                    else:
+                        print(f"[worker/render_sequence] audio norm failed for clip {ci} (continuing): {_trim_output(anorm_result.stderr)}")
 
         # ── Phase 2: Concatenate all clips ────────────────────────────────────
         combined_path = tmp_path / f"combined_{stamp}.mp4"
@@ -1232,9 +1258,9 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                     st = max(0, effective_dur - _music_fade_out)
                     music_vol_filter += f",afade=t=out:st={st}:d={_music_fade_out}"
 
-                if any_audio and not effective_mute_source:
-                    source_filter = f"[0:a]volume={effective_source_volume}"
-                    audio_filter = f"{source_filter}[va];{music_vol_filter}[msc];[va][msc]amix=inputs=2:duration=first[aout]"
+                if has_effective_audio:
+                    # Per-slot volumes are already baked into the clips — mix source at 1.0
+                    audio_filter = f"[0:a]volume=1[va];{music_vol_filter}[msc];[va][msc]amix=inputs=2:duration=first[aout]"
                 else:
                     audio_filter = f"{music_vol_filter}[aout]"
 
@@ -1601,6 +1627,104 @@ def _content_type_for_format(export_format: str) -> str:
     }.get(export_format, "application/octet-stream")
 
 
+# ─── Media autocut batch handler ─────────────────────────────────────────────
+
+def _handle_media_autocut_batch(inp: dict) -> dict:
+    """
+    Analyse en lot N assets avec Whisper pour proposer des timings de coupe.
+    Whisper est chargé une seule fois (cache worker) pour tout le pack.
+
+    Input:
+      batch_id   : MediaAutocutBatch.id (pour logs + webhook)
+      language   : code langue (ex: "fr")
+      model_size : modèle Whisper (défaut: "large-v3-turbo")
+      assets     : [{ job_id, asset_url }, ...]  — max 20 items
+
+    Output:
+      {
+        batch_id: str,
+        results: [
+          { job_id, proposed_start, proposed_end, transcript_json, language, fallback? }
+          | { job_id, error: str }
+        ]
+      }
+    """
+    _require_fields(inp, ("assets",), "media_autocut_batch")
+    batch_id: str = inp.get("batch_id", "unknown")
+    language: str = inp.get("language", "fr")
+    model_size: str = inp.get("model_size", "large-v3-turbo")
+    assets: list[dict] = inp["assets"]
+
+    print(
+        f"[worker/media_autocut_batch] batch={batch_id} "
+        f"assets={len(assets)} lang={language} model={model_size}",
+        flush=True,
+    )
+
+    results: list[dict] = []
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        import time as _time
+
+        for idx, asset in enumerate(assets):
+            job_id: str = asset.get("job_id", f"unknown_{idx}")
+            asset_url: str = asset.get("asset_url", "")
+
+            if not asset_url:
+                results.append({"job_id": job_id, "error": "asset_url manquant"})
+                continue
+
+            print(
+                f"[worker/media_autocut_batch] [{idx+1}/{len(assets)}] job={job_id}",
+                flush=True,
+            )
+
+            try:
+                stamp = int(_time.time() * 1000)
+                src_ext = Path(asset_url.split("?")[0]).suffix or ".mp4"
+                src_path = tmp_path / f"asset_{stamp}_{idx}{src_ext}"
+
+                _download_file(asset_url, src_path)
+
+                result = analyze_autocut(
+                    audio_path=src_path,
+                    model_size=model_size,
+                    language=language,
+                )
+
+                import json as _json
+                results.append({
+                    "job_id": job_id,
+                    "proposed_start": result["proposed_start"],
+                    "proposed_end": result["proposed_end"],
+                    "transcript_json": _json.dumps(result["transcript_json"], ensure_ascii=False),
+                    "language": result["language"],
+                    "fallback": result["fallback"],
+                })
+
+            except Exception as e:
+                err_msg = str(e)[:500]
+                print(
+                    f"[worker/media_autocut_batch] job={job_id} ERREUR: {err_msg}",
+                    flush=True,
+                )
+                results.append({"job_id": job_id, "error": err_msg})
+
+    success = sum(1 for r in results if "error" not in r)
+    fail = len(results) - success
+    print(
+        f"[worker/media_autocut_batch] batch={batch_id} terminé — "
+        f"{success} ok, {fail} erreur(s)",
+        flush=True,
+    )
+
+    return {
+        "batch_id": batch_id,
+        "results": results,
+    }
+
+
 # ─── Media edit handler ───────────────────────────────────────────────────────
 
 def _handle_media_edit(inp: dict) -> dict:
@@ -1651,6 +1775,7 @@ def _handle_media_edit(inp: dict) -> dict:
         "duration": duration,
         "r2_key": r2_key,
         "video_url": public_url,
+        "job_id": job_id,
     }
 
 

@@ -251,7 +251,7 @@ export interface TagCondition {
  */
 export interface MediaSelectionRuleConfig {
   /** Stratégie de sélection. */
-  strategy: "least_used" | "oldest_used" | "random" | "manual" | "theme_sequence";
+  strategy: "least_used" | "oldest_used" | "random" | "manual" | "theme_sequence" | "not_used_in_cycle";
   /**
    * Tag littéral — restreint la sélection aux assets ayant ce tag.
    * Rétrocompatibilité : préférer `tagConditions` pour les nouvelles règles.
@@ -293,8 +293,10 @@ export interface MediaSelectionRuleConfig {
 export type MediaSelectionRule =
   | "oldest_used"
   | "least_used"
+  | "random"
   | "manual"
   | "theme_sequence"
+  | "not_used_in_cycle"
   | MediaSelectionRuleConfig;
 
 /**

@@ -94,10 +94,13 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
   // ── Video metadata ────────────────────────────────────────────────────────
   const handleLoadedMetadata = useCallback(() => {
     const vid = videoRef.current;
-    if (!vid || !isFinite(vid.duration)) return;
+    if (!vid || !isFinite(vid.duration) || vid.duration === 0) return;
     const d = vid.duration;
     setDuration(d);
-    if (trimEndRef.current === 0) applyEnd(d, false);
+    // Always sync trimEnd to the actual video duration. The DB value may be stale
+    // (probe failed on upload, or file was trimmed externally). Only skip if the
+    // user has already dragged the scrubber below the real duration.
+    if (trimEndRef.current === 0 || trimEndRef.current >= d) applyEnd(d, false);
   }, [applyEnd]);
 
   // ── Playback clamping — only active during preview ────────────────────────
@@ -169,6 +172,12 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
       });
       const data = await res.json() as { jobId?: string; error?: string };
 
+      if (res.status === 409) {
+        // Another job is already running for this asset — switch to monitoring it.
+        setJobStatus("processing");
+        pollRef.current = setTimeout(() => { void pollJobStatusRef.current?.(); }, POLL_INTERVAL_MS);
+        return;
+      }
       if (!res.ok) {
         setJobStatus("failed");
         setJobError(data.error ?? `Erreur ${res.status}`);
@@ -252,7 +261,7 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
   const busy        = jobStatus === "submitting" || jobStatus === "processing";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={busy ? undefined : onClose}>
       <div
         className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}

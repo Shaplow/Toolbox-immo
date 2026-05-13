@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Film, RefreshCw, Download, LayoutTemplate, Mic, AlignLeft, Copy, Check, Scissors, X } from "lucide-react";
-import { DeleteListingButton } from "./DeleteListingButton";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -24,8 +23,15 @@ export type ListingRow = {
   jsonData: string;
   createdAt: string;
   ownerName: string | null;
-  template: { id: string; name: string; client: string | null } | null;
+  template: { id: string; name: string; client: string | null; formats: string } | null;
   renders: RenderRow[];
+};
+
+export type GridItem = {
+  id: string;
+  createdAt: string;
+  listing: ListingRow;
+  render: RenderRow | null;
 };
 
 export type CaptionJobRow = {
@@ -115,7 +121,6 @@ function groupByDate<T extends { createdAt: string }>(items: T[]): Record<string
 }
 
 const GROUP_ORDER = ["Aujourd'hui", "Cette semaine", "Plus tôt"];
-const MAX_VISIBLE = 4;
 
 function isStale(createdAt: string, thresholdMs = 60 * 60 * 1000): boolean {
   return Date.now() - new Date(createdAt).getTime() > thresholdMs;
@@ -307,14 +312,32 @@ export function ListingsClient({
     [initialDerushJobs, userFilter, deletedDerushJobIds]
   );
 
-  const listingGroups = useMemo(() => groupByDate(filteredListings), [filteredListings]);
+  // Flatten listings into per-render grid items for the media grid
+  const listingGridItems = useMemo((): GridItem[] => {
+    const items: GridItem[] = [];
+    for (const listing of filteredListings) {
+      const renders = listing.renders
+        .map((r) => renderStates[r.id] ?? r)
+        .filter((r) => !deletedRenderIds.has(r.id));
+      if (renders.length === 0) {
+        items.push({ id: `listing-${listing.id}`, createdAt: listing.createdAt, listing, render: null });
+      } else {
+        for (const render of renders) {
+          items.push({ id: render.id, createdAt: render.createdAt, listing, render });
+        }
+      }
+    }
+    return items;
+  }, [filteredListings, renderStates, deletedRenderIds]);
+
+  const listingGridGroups = useMemo(() => groupByDate(listingGridItems), [listingGridItems]);
   const captionGroups = useMemo(() => groupByDate(filteredCaptions), [filteredCaptions]);
   const transcriptionGroups = useMemo(() => groupByDate(filteredTranscriptions), [filteredTranscriptions]);
   const descriptionGroups = useMemo(() => groupByDate(filteredDescriptions), [filteredDescriptions]);
   const derushGroups = useMemo(() => groupByDate(filteredDerush), [filteredDerush]);
 
   const activeGroups =
-    tab === "templates" ? listingGroups :
+    tab === "templates" ? listingGridGroups :
     tab === "captions" ? captionGroups :
     tab === "transcription" ? transcriptionGroups :
     tab === "derush" ? derushGroups :
@@ -484,50 +507,51 @@ export function ListingsClient({
       )}
 
       {/* Date groups */}
-      <div className="space-y-8">
+      <div className="space-y-10">
         {GROUP_ORDER.filter((g) => activeGroups[g]?.length).map((group) => (
           <section key={group}>
-            <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center gap-3 mb-4">
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide shrink-0">
                 {group}
               </h2>
               <div className="flex-1 border-t border-gray-100" />
             </div>
-            <div className="space-y-3">
-              {tab === "templates"
-                ? (activeGroups[group] as ListingRow[]).map((listing) => {
-                    const renders = listing.renders
-                      .map((r) => renderStates[r.id] ?? r)
-                      .filter((r) => !deletedRenderIds.has(r.id));
-                    return (
-                      <ListingCard
-                        key={listing.id}
-                        listing={listing}
-                        renders={renders}
-                        isAdmin={isAdmin}
-                        onDeleteRender={handleDeleteRender}
-                      />
-                    );
-                  })
-                : tab === "captions"
-                ? (activeGroups[group] as CaptionJobRow[]).map((job) => (
-                    <CaptionCard
-                      key={job.id}
-                      job={captionStates[job.id] ?? job}
-                      isAdmin={isAdmin}
-                      onDelete={() => handleDeleteCaptionJob(job.id)}
-                    />
-                  ))
-                : tab === "transcription"
-                ? (activeGroups[group] as TranscriptionJobRow[]).map((job) => (
+
+            {tab === "templates" ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                {(activeGroups[group] as GridItem[]).map((item) => (
+                  <RenderGridCard
+                    key={item.id}
+                    item={item}
+                    isAdmin={isAdmin}
+                    onDeleteRender={item.render ? () => handleDeleteRender(item.render!.id) : undefined}
+                  />
+                ))}
+              </div>
+            ) : tab === "captions" ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {(activeGroups[group] as CaptionJobRow[]).map((job) => (
+                  <CaptionGridCard
+                    key={job.id}
+                    job={captionStates[job.id] ?? job}
+                    isAdmin={isAdmin}
+                    onDelete={() => handleDeleteCaptionJob(job.id)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {tab === "transcription" &&
+                  (activeGroups[group] as TranscriptionJobRow[]).map((job) => (
                     <TranscriptionCard
                       key={job.id}
                       job={transcriptionStates[job.id] ?? job}
                       isAdmin={isAdmin}
                       onDelete={() => handleDeleteTranscriptionJob(job.id)}
                     />
-                  ))
-                : (activeGroups[group] as DescriptionJobRow[]).map((job) => (
+                  ))}
+                {tab === "description" &&
+                  (activeGroups[group] as DescriptionJobRow[]).map((job) => (
                     <DescriptionCard
                       key={job.id}
                       job={job}
@@ -535,16 +559,17 @@ export function ListingsClient({
                       onDelete={() => handleDeleteDescriptionJob(job.id)}
                     />
                   ))}
-              {tab === "derush" &&
-                (activeGroups[group] as DerushJobRow[]).map((job) => (
-                  <DerushCard
-                    key={job.id}
-                    job={job}
-                    isAdmin={isAdmin}
-                    onDelete={() => handleDeleteDerushJob(job.id)}
-                  />
-                ))}
-            </div>
+                {tab === "derush" &&
+                  (activeGroups[group] as DerushJobRow[]).map((job) => (
+                    <DerushCard
+                      key={job.id}
+                      job={job}
+                      isAdmin={isAdmin}
+                      onDelete={() => handleDeleteDerushJob(job.id)}
+                    />
+                  ))}
+              </div>
+            )}
           </section>
         ))}
       </div>
@@ -552,206 +577,192 @@ export function ListingsClient({
   );
 }
 
-// ── ListingCard ───────────────────────────────────────────────────────────────
+// ── RenderGridCard ────────────────────────────────────────────────────────────
 
-function ListingCard({
-  listing,
-  renders,
+const FORMAT_ASPECT: Record<string, string> = {
+  A3_LANDSCAPE:  "1587/1123",
+  A4_PORTRAIT:   "794/1123",
+  IG_1080x1350:  "4/5",
+  IG_1080x1920:  "9/16",
+  CUSTOM:        "16/9",
+};
+
+function getAspectFromFormats(formatsJson: string | undefined | null): string {
+  if (!formatsJson) return "16/9";
+  try {
+    const arr = JSON.parse(formatsJson) as string[];
+    const first = arr[0];
+    if (first && first in FORMAT_ASPECT) return FORMAT_ASPECT[first]!;
+  } catch { /* ignore */ }
+  return "16/9";
+}
+
+function RenderGridCard({
+  item,
   isAdmin,
   onDeleteRender,
 }: {
-  listing: ListingRow;
-  renders: RenderRow[];
+  item: GridItem;
   isAdmin: boolean;
-  onDeleteRender: (id: string) => Promise<void>;
+  onDeleteRender?: () => Promise<void>;
 }) {
-  const inProgress = renders.some((r) => r.status === "PROCESSING" || r.status === "PENDING");
-  const visible = renders.slice(0, MAX_VISIBLE);
-  const extra = renders.length - MAX_VISIBLE;
+  const { listing, render } = item;
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const isPending = render?.status === "PROCESSING" || render?.status === "PENDING";
+  const isError   = render?.status === "ERROR";
+  const isDone    = render?.status === "DONE";
+
+  const aspectRatio = getAspectFromFormats(listing.template?.formats);
+
+  const handleDeleteConfirm = async () => {
+    setDeleting(true);
+    await onDeleteRender?.();
+  };
 
   return (
-    <div className="bg-white border border-gray-100 rounded-xl flex overflow-hidden">
-      {/* Left accent */}
-      <div className="w-0.5 bg-indigo-400 shrink-0" />
-
-      <div className="flex-1 min-w-0 px-4 py-3">
-        {/* Row 1: meta + actions */}
-        <div className="flex items-center justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
-            <h3 className="text-sm font-medium text-gray-900 truncate">
-              {listing.template?.name ?? "Sans template"}
-            </h3>
-            {listing.template?.client && (
-              <span className="text-[10px] text-indigo-500 font-semibold uppercase tracking-wide shrink-0">
-                {listing.template.client}
-              </span>
-            )}
-            {inProgress && (
-              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse shrink-0" />
-            )}
-            {isAdmin && listing.ownerName && (
-              <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium shrink-0">
-                {listing.ownerName}
-              </span>
-            )}
+    <div className="group relative bg-white rounded-xl overflow-hidden border border-gray-100 hover:border-indigo-200 hover:shadow-md transition-all duration-150">
+      {/* ── Media area ── */}
+      <div className="relative bg-gray-50 overflow-hidden" style={{ aspectRatio }}>
+        {isDone && render?.pngUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={render.pngUrl}
+            alt={listing.template?.name ?? ""}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        )}
+        {isDone && !render?.pngUrl && render?.videoUrl && (
+          <video
+            src={render.videoUrl}
+            className="absolute inset-0 w-full h-full object-cover"
+            muted
+            playsInline
+          />
+        )}
+        {isPending && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+            <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+            <span className="text-[10px] text-gray-400">En cours…</span>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[11px] text-gray-400">{formatDate(listing.createdAt)}</span>
+        )}
+        {isError && (
+          <div className="absolute inset-0 flex items-center justify-center text-red-300 text-2xl">⚠</div>
+        )}
+        {!render && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+            <LayoutTemplate size={28} className="text-gray-200" />
             {listing.templateId && (
               <Link
                 href={`/generate/${listing.templateId}?listingId=${listing.id}`}
-                className="inline-flex items-center gap-1 text-[11px] text-indigo-500 hover:text-indigo-700 font-medium transition-colors"
+                className="text-[11px] px-3 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
               >
-                <RefreshCw size={10} /> Régénérer
+                Générer
               </Link>
             )}
-            {isAdmin && <DeleteListingButton id={listing.id} />}
-          </div>
-        </div>
-
-        {/* Row 2: renders */}
-        {renders.length === 0 ? (
-          <p className="text-xs text-gray-400">
-            Aucun rendu
-            {listing.templateId && (
-              <> — <Link href={`/generate/${listing.templateId}?listingId=${listing.id}`} className="text-indigo-500 hover:underline">Générer →</Link></>
-            )}
-          </p>
-        ) : (
-          <div className="flex gap-2">
-            {visible.map((render, idx) => (
-              <RenderThumb
-                key={render.id}
-                render={render}
-                index={idx + 1}
-                isAdmin={isAdmin}
-                extraCount={idx === MAX_VISIBLE - 1 && extra > 0 ? extra : 0}
-                onDelete={() => onDeleteRender(render.id)}
-              />
-            ))}
           </div>
         )}
+
+        {/* Hover overlay — dark tint */}
+        {isDone && (
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+        )}
+
+        {/* Download badges */}
+        {isDone && (render?.videoUrl ?? render?.pngUrl) && (
+          <div className="absolute bottom-2 left-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {render?.videoUrl && (
+              <a
+                href={render.videoUrl}
+                download
+                onClick={(e) => e.stopPropagation()}
+                className="text-[10px] px-2 py-1 bg-white/90 text-gray-900 rounded font-semibold hover:bg-white transition"
+              >
+                MP4
+              </a>
+            )}
+            {render?.pngUrl && (
+              <a
+                href={render.pngUrl}
+                download
+                onClick={(e) => e.stopPropagation()}
+                className="text-[10px] px-2 py-1 bg-white/90 text-gray-900 rounded font-semibold hover:bg-white transition"
+              >
+                PNG
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* Admin delete render */}
+        {isAdmin && onDeleteRender && !confirmDelete && (
+          <button
+            onClick={(e) => { e.preventDefault(); setConfirmDelete(true); }}
+            aria-label="Supprimer le rendu"
+            className="absolute top-2 right-2 w-6 h-6 bg-white/80 backdrop-blur-sm rounded-full text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center"
+          >
+            <X size={12} />
+          </button>
+        )}
+        {isAdmin && confirmDelete && (
+          <div className="absolute top-2 right-2 flex gap-1">
+            <button
+              onClick={() => void handleDeleteConfirm()}
+              disabled={deleting}
+              className="text-[10px] px-2 py-1 bg-red-500 text-white rounded font-medium hover:bg-red-600 disabled:opacity-50"
+            >
+              {deleting ? "…" : "✓"}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="text-[10px] px-2 py-1 bg-white/80 text-gray-600 rounded"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Footer ── */}
+      <div className="px-3 py-2.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-gray-900 truncate leading-tight">
+              {listing.template?.name ?? "Sans template"}
+            </p>
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              {listing.template?.client && (
+                <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-wide">
+                  {listing.template.client}
+                </span>
+              )}
+              {isAdmin && listing.ownerName && (
+                <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 rounded-full">
+                  {listing.ownerName}
+                </span>
+              )}
+              <span className="text-[10px] text-gray-400">{formatDate(item.createdAt)}</span>
+            </div>
+          </div>
+          {listing.templateId && (
+            <Link
+              href={`/generate/${listing.templateId}?listingId=${listing.id}`}
+              title="Régénérer"
+              className="shrink-0 w-6 h-6 flex items-center justify-center rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-500 transition-colors mt-0.5"
+            >
+              <RefreshCw size={11} />
+            </Link>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// ── RenderThumb ───────────────────────────────────────────────────────────────
+// ── CaptionGridCard ───────────────────────────────────────────────────────────
 
-function RenderThumb({
-  render,
-  index,
-  isAdmin,
-  extraCount,
-  onDelete,
-}: {
-  render: RenderRow;
-  index: number;
-  isAdmin: boolean;
-  extraCount: number;
-  onDelete: () => Promise<void>;
-}) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  const isPending = render.status === "PROCESSING" || render.status === "PENDING";
-  const isError   = render.status === "ERROR";
-  const isDone    = render.status === "DONE";
-  const assetUrl  = render.pngUrl ?? render.videoUrl ?? null;
-
-  const handleDelete = async () => {
-    setDeleting(true);
-    await onDelete();
-  };
-
-  const thumb = (
-    <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-gray-100 border border-gray-100 transition-all group-hover:ring-2 group-hover:ring-indigo-400 group-hover:ring-offset-1">
-      {isPending && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
-      {isError && (
-        <div className="absolute inset-0 flex items-center justify-center text-red-400">⚠</div>
-      )}
-      {isDone && (
-        render.pngUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={render.pngUrl} alt={`Variante ${index}`} className="absolute inset-0 w-full h-full object-cover" />
-        ) : render.videoUrl ? (
-          <video src={render.videoUrl} className="absolute inset-0 w-full h-full object-cover" muted playsInline />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-300">▦</div>
-        )
-      )}
-
-      {/* "+N" extras overlay */}
-      {extraCount > 0 && (
-        <div className="absolute inset-0 bg-gray-900/55 flex items-center justify-center pointer-events-none">
-          <span className="text-white text-sm font-bold">+{extraCount}</span>
-        </div>
-      )}
-
-      {/* Download badges on hover */}
-      {isDone && (
-        <div className="absolute bottom-1 left-0 right-0 flex justify-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          {render.videoUrl && (
-            <a href={render.videoUrl} download title="MP4" onClick={(e) => e.stopPropagation()}
-              className="text-[8px] px-1.5 py-0.5 bg-indigo-600/90 text-white rounded font-medium">
-              MP4
-            </a>
-          )}
-          {render.pngUrl && (
-            <a href={render.pngUrl} download title="PNG" onClick={(e) => e.stopPropagation()}
-              className="text-[8px] px-1.5 py-0.5 bg-gray-700/80 text-white rounded font-medium">
-              PNG
-            </a>
-          )}
-
-        </div>
-      )}
-
-      {/* Admin delete */}
-      {isAdmin && !confirmDelete && (
-        <button
-          onClick={(e) => { e.preventDefault(); setConfirmDelete(true); }}
-          aria-label="Supprimer"
-          className="absolute top-1 right-1 w-5 h-5 bg-white/80 backdrop-blur-sm rounded-full text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center"
-        >
-          <X size={12} />
-        </button>
-      )}
-      {isAdmin && confirmDelete && (
-        <div className="absolute top-1 right-1 flex gap-0.5">
-          <button onClick={(e) => { e.preventDefault(); void handleDelete(); }} disabled={deleting}
-            className="text-[9px] px-1.5 py-0.5 bg-red-500 text-white rounded font-medium hover:bg-red-600 disabled:opacity-50">
-            {deleting ? "…" : "✓"}
-          </button>
-          <button onClick={(e) => { e.preventDefault(); setConfirmDelete(false); }}
-            className="text-[9px] px-1.5 py-0.5 bg-white/80 text-gray-600 rounded">
-            ✕
-          </button>
-        </div>
-      )}
-    </div>
-  );
-
-  return (
-    <div className="flex-1 min-w-0 max-w-[200px] relative group">
-      {isDone && assetUrl ? (
-        <a href={assetUrl} target="_blank" rel="noopener noreferrer" className="block">
-          {thumb}
-        </a>
-      ) : (
-        thumb
-      )}
-    </div>
-  );
-}
-
-// ── CaptionCard ───────────────────────────────────────────────────────────────
-
-function CaptionCard({
+function CaptionGridCard({
   job,
   isAdmin,
   onDelete,
@@ -764,69 +775,93 @@ function CaptionCard({
   const isDone       = job.status === "DONE" || job.status === "COMPLETED";
   const isFailed     = job.status === "FAILED";
   const stale        = isInProgress && isStale(job.createdAt);
-  const name = job.inputName ?? "Vidéo";
+  const name         = job.inputName ?? "Vidéo";
 
   return (
-    <div className={`bg-white border rounded-xl flex overflow-hidden ${stale ? "border-amber-200" : "border-gray-100"}`}>
-      {/* Left accent */}
-      <div className={`w-0.5 shrink-0 ${stale ? "bg-amber-400" : "bg-violet-400"}`} />
-
-      <div className="flex-1 min-w-0 px-4 py-3">
-        {/* Row 1: meta + actions */}
-        <div className="flex items-center justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
-            <h3 className="text-sm font-medium text-gray-900 truncate">{name}</h3>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
-              isDone  ? "bg-green-50 text-green-600"   :
-              isFailed? "bg-red-50 text-red-500"        :
-              stale   ? "bg-amber-50 text-amber-600"   :
-              isInProgress ? "bg-violet-50 text-violet-600" :
-                             "bg-gray-100 text-gray-500"
-            }`}>
-              {isDone ? "Terminé" : isFailed ? "Erreur" : stale ? `Bloqué · ${staleDuration(job.createdAt)}` : "En cours…"}
-            </span>
-            {isAdmin && job.ownerName && (
-              <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium shrink-0">
-                {job.ownerName}
-              </span>
-            )}
+    <div className={`group bg-white rounded-xl overflow-hidden border transition-all ${
+      stale ? "border-amber-200 bg-amber-50/30" : "border-gray-100 hover:border-violet-200 hover:shadow-md"
+    }`}>
+      {/* ── Media area ── */}
+      <div className="relative aspect-video bg-gray-50">
+        {isDone && job.outputUrl && (
+          <video
+            src={job.outputUrl}
+            className="absolute inset-0 w-full h-full object-cover"
+            muted
+            playsInline
+          />
+        )}
+        {isInProgress && !stale && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+            <div className="w-5 h-5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+            <span className="text-[10px] text-gray-400">Génération en cours…</span>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {isDone && job.outputUrl && (
+        )}
+        {stale && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
+            <span className="text-amber-400 text-xl">⚠</span>
+            <span className="text-[10px] text-amber-600">Bloqué · {staleDuration(job.createdAt)}</span>
+          </div>
+        )}
+        {isFailed && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
+            <span className="text-red-300 text-xl">⚠</span>
+            <span className="text-[10px] text-red-400">Génération échouée</span>
+          </div>
+        )}
+
+        {/* Hover overlay + download */}
+        {isDone && job.outputUrl && (
+          <>
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+            <div className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
               <a
                 href={job.outputUrl}
                 download
-                className="inline-flex items-center gap-1 text-[11px] text-violet-500 hover:text-violet-700 font-medium transition-colors"
+                className="text-[10px] px-2 py-1 bg-white/90 text-gray-900 rounded font-semibold hover:bg-white transition"
               >
-                <Download size={10} /> MP4
+                MP4
               </a>
-            )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Footer ── */}
+      <div className="px-3 py-2.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-gray-900 truncate leading-tight">{name}</p>
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                isDone   ? "bg-green-50 text-green-600"   :
+                isFailed ? "bg-red-50 text-red-500"        :
+                stale    ? "bg-amber-50 text-amber-600"   :
+                           "bg-violet-50 text-violet-600"
+              }`}>
+                {isDone ? "Terminé" : isFailed ? "Erreur" : stale ? "Bloqué" : "En cours…"}
+              </span>
+              {isAdmin && job.ownerName && (
+                <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">
+                  {job.ownerName}
+                </span>
+              )}
+              <span className="text-[10px] text-gray-400">{formatDate(job.createdAt)}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
             {job.presetId && (
               <Link
                 href={`/tools/captions/${job.presetId}/generate?captionJobId=${job.id}`}
-                className="inline-flex items-center gap-1 text-[11px] text-violet-500 hover:text-violet-700 font-medium transition-colors"
+                title="Régénérer"
+                className="w-6 h-6 flex items-center justify-center rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-500 transition-colors"
               >
-                <RefreshCw size={10} /> Régénérer
+                <RefreshCw size={11} />
               </Link>
             )}
-            <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
             <DeleteCaptionJobButton jobId={job.id} onDelete={onDelete} />
           </div>
         </div>
-
-        {/* Row 2: video thumb or status */}
-        {isDone && job.outputUrl ? (
-          <div className="max-w-[200px]">
-            <video src={job.outputUrl} className="w-full h-auto rounded-lg" muted playsInline />
-          </div>
-        ) : isInProgress ? (
-          <div className="flex items-center gap-1.5 text-xs text-violet-500">
-            <div className="w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
-            Génération en cours…
-          </div>
-        ) : isFailed ? (
-          <p className="text-xs text-red-400">La génération a échoué.</p>
-        ) : null}
       </div>
     </div>
   );
@@ -886,78 +921,84 @@ function TranscriptionCard({
     : null;
 
   return (
-    <div className={`bg-white border rounded-xl flex overflow-hidden ${stale ? "border-amber-200" : "border-gray-100"}`}>
-      {/* Left accent */}
-      <div className={`w-0.5 shrink-0 ${stale ? "bg-amber-400" : "bg-teal-400"}`} />
+    <div className={`bg-white border rounded-xl px-4 py-3.5 transition-colors ${
+      stale ? "border-amber-200 bg-amber-50/20" : "border-gray-100 hover:border-gray-200"
+    }`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+          <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${
+            stale ? "bg-amber-400" :
+            isDone ? "bg-green-400" :
+            isFailed ? "bg-red-400" :
+            "bg-teal-400 animate-pulse"
+          }`} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium text-gray-900 truncate">{name}</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
+                isDone  ? "bg-green-50 text-green-600"  :
+                isFailed? "bg-red-50 text-red-500"       :
+                stale   ? "bg-amber-50 text-amber-600"  :
+                isInProgress ? "bg-teal-50 text-teal-600" :
+                               "bg-gray-100 text-gray-500"
+              }`}>
+                {isDone ? "Terminé" : isFailed ? "Erreur" : stale ? `Bloqué · ${staleDuration(job.createdAt)}` : "En cours…"}
+              </span>
+              {isDone && job.segmentCount != null && (
+                <span className="text-[10px] text-gray-400 shrink-0">{job.segmentCount} segments</span>
+              )}
+              {isDone && durationLabel && (
+                <span className="text-[10px] text-gray-400 shrink-0">{durationLabel}</span>
+              )}
+              {isDone && job.hasDiarization && (
+                <span className="text-[10px] bg-teal-50 text-teal-600 px-1.5 py-0.5 rounded-full font-medium shrink-0">
+                  Diarisation
+                </span>
+              )}
+              {isAdmin && job.ownerName && (
+                <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium shrink-0">
+                  {job.ownerName}
+                </span>
+              )}
+            </div>
 
-      <div className="flex-1 min-w-0 px-4 py-3">
-        {/* Row 1: meta + actions */}
-        <div className="flex items-center justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
-            <h3 className="text-sm font-medium text-gray-900 truncate">{name}</h3>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
-              isDone  ? "bg-green-50 text-green-600"  :
-              isFailed? "bg-red-50 text-red-500"       :
-              stale   ? "bg-amber-50 text-amber-600"  :
-              isInProgress ? "bg-teal-50 text-teal-600" :
-                             "bg-gray-100 text-gray-500"
-            }`}>
-              {isDone ? "Terminé" : isFailed ? "Erreur" : stale ? `Bloqué · ${staleDuration(job.createdAt)}` : "En cours…"}
-            </span>
-            {isDone && job.segmentCount != null && (
-              <span className="text-[10px] text-gray-400 shrink-0">{job.segmentCount} segments</span>
-            )}
-            {isDone && durationLabel && (
-              <span className="text-[10px] text-gray-400 shrink-0">{durationLabel}</span>
-            )}
-            {isDone && job.hasDiarization && (
-              <span className="text-[10px] bg-teal-50 text-teal-600 px-1.5 py-0.5 rounded-full font-medium shrink-0">
-                Diarisation
-              </span>
-            )}
-            {isAdmin && job.ownerName && (
-              <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium shrink-0">
-                {job.ownerName}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {isDone && (
-              <a
-                href={`/api/transcription/${job.id}/download?format=srt`}
-                download
-                className="inline-flex items-center gap-1 text-[11px] text-teal-500 hover:text-teal-700 font-medium transition-colors"
-              >
-                <Download size={10} /> SRT
-              </a>
-            )}
-            <Link
-              href={`/tools/transcription/${job.id}`}
-              className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 font-medium transition-colors"
-            >
-              Détails →
-            </Link>
-            <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
-            <DeleteTranscriptionJobButton jobId={job.id} onDelete={onDelete} />
+            {stale ? (
+              <p className="text-xs text-amber-600 mt-1">Job bloqué depuis {staleDuration(job.createdAt)} — supprimer pour relancer.</p>
+            ) : isInProgress ? (
+              <div className="flex items-center gap-1.5 text-xs text-teal-500 mt-1">
+                <div className="w-3 h-3 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
+                Transcription en cours…
+              </div>
+            ) : isFailed ? (
+              <p className="text-xs text-red-400 mt-1">La transcription a échoué.</p>
+            ) : isDone ? (
+              <div className="flex items-center gap-3 text-xs text-gray-400 mt-1">
+                <span>Modèle : {job.model}</span>
+                {job.language && <span>Langue : {job.language}</span>}
+              </div>
+            ) : null}
           </div>
         </div>
 
-        {/* Row 2: status details */}
-        {stale ? (
-          <p className="text-xs text-amber-600">Job bloqué depuis {staleDuration(job.createdAt)} — supprimer pour relancer.</p>
-        ) : isInProgress ? (
-          <div className="flex items-center gap-1.5 text-xs text-teal-500">
-            <div className="w-3 h-3 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
-            Transcription en cours…
-          </div>
-        ) : isFailed ? (
-          <p className="text-xs text-red-400">La transcription a échoué.</p>
-        ) : isDone ? (
-          <div className="flex items-center gap-3 text-xs text-gray-400">
-            <span>Modèle : {job.model}</span>
-            {job.language && <span>Langue : {job.language}</span>}
-          </div>
-        ) : null}
+        <div className="flex items-center gap-2 shrink-0">
+          {isDone && (
+            <a
+              href={`/api/transcription/${job.id}/download?format=srt`}
+              download
+              className="inline-flex items-center gap-1 text-[11px] text-teal-500 hover:text-teal-700 font-medium transition-colors"
+            >
+              <Download size={10} /> SRT
+            </a>
+          )}
+          <Link
+            href={`/tools/transcription/${job.id}`}
+            className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 font-medium transition-colors"
+          >
+            Détails →
+          </Link>
+          <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
+          <DeleteTranscriptionJobButton jobId={job.id} onDelete={onDelete} />
+        </div>
       </div>
     </div>
   );
@@ -1008,6 +1049,7 @@ function DescriptionCard({
   const [copied, setCopied] = useState(false);
   const isDone = job.status === "COMPLETED";
   const isFailed = job.status === "FAILED";
+  const isInProgress = !isDone && !isFailed;
   const name = job.inputFilename ?? (job.inputType === "transcription" ? "Transcription" : "Sans nom");
 
   const handleCopy = () => {
@@ -1018,86 +1060,93 @@ function DescriptionCard({
   };
 
   return (
-    <div className="bg-white border border-gray-100 rounded-xl flex overflow-hidden">
-      {/* Left accent */}
-      <div className="w-0.5 bg-sky-400 shrink-0" />
-
-      <div className="flex-1 min-w-0 px-4 py-3">
-        {/* Row 1: meta + actions */}
-        <div className="flex items-center justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
-            <h3 className="text-sm font-medium text-gray-900 truncate">{name}</h3>
-            {job.prompt && (
-              <span className="text-[10px] text-gray-400 shrink-0">— {job.prompt.name}</span>
-            )}
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
-              isDone   ? "bg-green-50 text-green-600" :
-              isFailed ? "bg-red-50 text-red-500"    :
-                         "bg-gray-100 text-gray-500"
-            }`}>
-              {isDone ? "Terminé" : isFailed ? "Erreur" : job.status}
-            </span>
-            {isAdmin && job.ownerName && (
-              <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium shrink-0">
-                {job.ownerName}
+    <div className="bg-white border border-gray-100 rounded-xl px-4 py-3.5 hover:border-gray-200 transition-colors">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+          <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${
+            isDone ? "bg-green-400" :
+            isFailed ? "bg-red-400" :
+            "bg-sky-400 animate-pulse"
+          }`} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium text-gray-900 truncate">{name}</span>
+              {job.prompt && (
+                <span className="text-[10px] text-gray-400 shrink-0">— {job.prompt.name}</span>
+              )}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
+                isDone   ? "bg-green-50 text-green-600" :
+                isFailed ? "bg-red-50 text-red-500"    :
+                           "bg-sky-50 text-sky-600"
+              }`}>
+                {isDone ? "Terminé" : isFailed ? "Erreur" : "En cours…"}
               </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {isDone && job.result && (
-              <button
-                onClick={handleCopy}
-                className="inline-flex items-center gap-1 text-[11px] text-sky-500 hover:text-sky-700 font-medium transition-colors"
-                title="Copier la description"
-              >
-                {copied ? <Check size={10} /> : <Copy size={10} />}
-                {copied ? "Copié" : "Copier"}
-              </button>
-            )}
-            <Link
-              href="/tools/description"
-              className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 font-medium transition-colors"
-            >
-              Nouveau →
-            </Link>
-            <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
-            {isAdmin && (
-              <button
-                onClick={() => void onDelete()}
-                className="shrink-0 text-gray-300 hover:text-red-400 transition-colors"
-                title="Supprimer"
-                aria-label="Supprimer"
-              >
-                <X size={14} />
-              </button>
-            )}
+              {isAdmin && job.ownerName && (
+                <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium shrink-0">
+                  {job.ownerName}
+                </span>
+              )}
+            </div>
+
+            {isDone && job.result ? (
+              <div className="mt-2">
+                <p className={`text-xs text-gray-600 leading-relaxed whitespace-pre-wrap ${expanded ? "" : "line-clamp-2"}`}>
+                  {job.result}
+                </p>
+                {job.result.length > 120 && (
+                  <button
+                    onClick={() => setExpanded((v) => !v)}
+                    className="text-[11px] text-sky-500 hover:text-sky-700 mt-1"
+                  >
+                    {expanded ? "Réduire ↑" : "Voir tout ↓"}
+                  </button>
+                )}
+              </div>
+            ) : isFailed ? (
+              <p className="text-xs text-red-400 mt-1">La génération a échoué.</p>
+            ) : isInProgress ? (
+              <div className="flex items-center gap-1.5 text-xs text-sky-500 mt-1">
+                <div className="w-3 h-3 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+                Génération en cours…
+              </div>
+            ) : null}
           </div>
         </div>
 
-        {/* Row 2: result preview */}
-        {isDone && job.result ? (
-          <div>
-            <p
-              className={`text-xs text-gray-600 leading-relaxed whitespace-pre-wrap ${expanded ? "" : "line-clamp-2"}`}
+        <div className="flex items-center gap-2 shrink-0">
+          {isDone && job.result && (
+            <button
+              onClick={handleCopy}
+              className="inline-flex items-center gap-1 text-[11px] text-sky-500 hover:text-sky-700 font-medium transition-colors"
+              title="Copier la description"
             >
-              {job.result}
-            </p>
-            {job.result.length > 120 && (
-              <button
-                onClick={() => setExpanded((v) => !v)}
-                className="text-[11px] text-sky-500 hover:text-sky-700 mt-1"
-              >
-                {expanded ? "Réduire ↑" : "Voir tout ↓"}
-              </button>
-            )}
-          </div>
-        ) : isFailed ? (
-          <p className="text-xs text-red-400">La génération a échoué.</p>
-        ) : null}
+              {copied ? <Check size={10} /> : <Copy size={10} />}
+              {copied ? "Copié" : "Copier"}
+            </button>
+          )}
+          <Link
+            href="/tools/description"
+            className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 font-medium transition-colors"
+          >
+            Nouveau →
+          </Link>
+          <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
+          {isAdmin && (
+            <button
+              onClick={() => void onDelete()}
+              className="shrink-0 text-gray-300 hover:text-red-400 transition-colors"
+              title="Supprimer"
+              aria-label="Supprimer"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
 }
+
 
 // ── DerushCard ────────────────────────────────────────────────────────────────
 
@@ -1125,81 +1174,87 @@ function DerushCard({
   const modeColor = job.analysisMode === "transcription" ? "text-teal-600 bg-teal-50" : "text-orange-600 bg-orange-50";
 
   return (
-    <div className={`bg-white border rounded-xl flex overflow-hidden ${stale ? "border-amber-200" : "border-gray-100"}`}>
-      {/* Left accent */}
-      <div className={`w-0.5 shrink-0 ${stale ? "bg-amber-400" : "bg-orange-400"}`} />
+    <div className={`bg-white border rounded-xl px-4 py-3.5 transition-colors ${
+      stale ? "border-amber-200 bg-amber-50/20" : "border-gray-100 hover:border-gray-200"
+    }`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+          <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${
+            stale ? "bg-amber-400" :
+            isDone ? "bg-green-400" :
+            isFailed ? "bg-red-400" :
+            "bg-orange-400 animate-pulse"
+          }`} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold shrink-0 ${modeColor}`}>
+                {modeLabel}
+              </span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
+                isDone  ? "bg-green-50 text-green-600"   :
+                isFailed? "bg-red-50 text-red-500"       :
+                stale   ? "bg-amber-50 text-amber-600"   :
+                isInProgress ? "bg-orange-50 text-orange-600" :
+                               "bg-gray-100 text-gray-500"
+              }`}>
+                {isDone ? "Terminé" : isFailed ? "Erreur" : stale ? `Bloqué · ${staleDuration(job.createdAt)}` : "En cours…"}
+              </span>
+              {job.fileCount > 0 && (
+                <span className="text-[10px] text-gray-400 shrink-0">
+                  {job.fileCount} fichier{job.fileCount !== 1 ? "s" : ""}
+                </span>
+              )}
+              {isDone && job.segmentCount != null && (
+                <span className="text-[10px] text-gray-400 shrink-0">{job.segmentCount} segments</span>
+              )}
+              {isDone && durationLabel && (
+                <span className="text-[10px] text-gray-400 shrink-0">{durationLabel}</span>
+              )}
+              {isDone && job.exportCount > 0 && (
+                <span className="text-[10px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded-full font-medium shrink-0">
+                  {job.exportCount} export{job.exportCount !== 1 ? "s" : ""}
+                </span>
+              )}
+              {job.presetName && (
+                <span className="text-[10px] text-gray-400 shrink-0">— {job.presetName}</span>
+              )}
+              {isAdmin && job.ownerName && (
+                <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium shrink-0">
+                  {job.ownerName}
+                </span>
+              )}
+            </div>
 
-      <div className="flex-1 min-w-0 px-4 py-3">
-        {/* Row 1: meta + actions */}
-        <div className="flex items-center justify-between gap-2 mb-1">
-          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold shrink-0 ${modeColor}`}>
-              {modeLabel}
-            </span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
-              isDone  ? "bg-green-50 text-green-600"   :
-              isFailed? "bg-red-50 text-red-500"       :
-              stale   ? "bg-amber-50 text-amber-600"   :
-              isInProgress ? "bg-orange-50 text-orange-600" :
-                             "bg-gray-100 text-gray-500"
-            }`}>
-              {isDone ? "Terminé" : isFailed ? "Erreur" : stale ? `Bloqué · ${staleDuration(job.createdAt)}` : "En cours…"}
-            </span>
-            {job.fileCount > 0 && (
-              <span className="text-[10px] text-gray-400 shrink-0">
-                {job.fileCount} fichier{job.fileCount !== 1 ? "s" : ""}
-              </span>
-            )}
-            {isDone && job.segmentCount != null && (
-              <span className="text-[10px] text-gray-400 shrink-0">{job.segmentCount} segments</span>
-            )}
-            {isDone && durationLabel && (
-              <span className="text-[10px] text-gray-400 shrink-0">{durationLabel}</span>
-            )}
-            {isDone && job.exportCount > 0 && (
-              <span className="text-[10px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded-full font-medium shrink-0">
-                {job.exportCount} export{job.exportCount !== 1 ? "s" : ""}
-              </span>
-            )}
-            {job.presetName && (
-              <span className="text-[10px] text-gray-400 shrink-0">— {job.presetName}</span>
-            )}
-            {isAdmin && job.ownerName && (
-              <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium shrink-0">
-                {job.ownerName}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Link
-              href={`/tools/derush/${job.id}`}
-              className="inline-flex items-center gap-1 text-[11px] text-orange-500 hover:text-orange-700 font-medium transition-colors"
-            >
-              Détails →
-            </Link>
-            <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
-            <button
-              onClick={() => void onDelete()}
-              className="shrink-0 text-gray-300 hover:text-red-400 transition-colors"
-              title="Supprimer"
-              aria-label="Supprimer"
-            >
-              <X size={14} />
-            </button>
+            {stale ? (
+              <p className="text-xs text-amber-600 mt-1">Job bloqué depuis {staleDuration(job.createdAt)} — supprimer pour relancer.</p>
+            ) : isInProgress ? (
+              <div className="flex items-center gap-1.5 text-xs text-orange-500 mt-1">
+                <div className="w-3 h-3 border-2 border-orange-400 border-t-transparent rounded-full animate-spin" />
+                Analyse en cours…
+              </div>
+            ) : isFailed ? (
+              <p className="text-xs text-red-400 mt-1 truncate">{job.errorMsg ?? "L'analyse a échoué."}</p>
+            ) : null}
           </div>
         </div>
 
-        {/* Row 2: status hint */}
-        {stale ? (
-          <p className="text-xs text-amber-600">Job bloqué depuis {staleDuration(job.createdAt)} — supprimer pour relancer.</p>
-        ) : isInProgress ? (
-          <div className="flex items-center gap-1.5 text-xs text-orange-500">
-            <div className="w-3 h-3 border-2 border-orange-400 border-t-transparent rounded-full animate-spin" />
-            Analyse en cours…
-          </div>
-        ) : isFailed ? (
-          <p className="text-xs text-red-400 truncate">{job.errorMsg ?? "L'analyse a échoué."}</p>
-        ) : null}
+        <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href={`/tools/derush/${job.id}`}
+            className="inline-flex items-center gap-1 text-[11px] text-orange-500 hover:text-orange-700 font-medium transition-colors"
+          >
+            Détails →
+          </Link>
+          <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
+          <button
+            onClick={() => void onDelete()}
+            className="shrink-0 text-gray-300 hover:text-red-400 transition-colors"
+            title="Supprimer"
+            aria-label="Supprimer"
+          >
+            <X size={14} />
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -63,8 +63,15 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (trimStart !== null && trimEnd !== null && trimEnd <= trimStart) {
     return NextResponse.json({ error: "trimEnd doit être supérieur à trimStart" }, { status: 400 });
   }
-  if (asset.duration && trimEnd !== null && trimEnd > asset.duration + 1) {
-    return NextResponse.json({ error: "trimEnd dépasse la durée de l'asset" }, { status: 400 });
+  // Validate trim bounds against known asset duration (skip if duration is null/0 — probe may have failed on upload).
+  const knownDuration = typeof asset.duration === "number" && asset.duration > 0 ? asset.duration : null;
+  if (knownDuration !== null) {
+    if (trimStart !== null && trimStart >= knownDuration) {
+      return NextResponse.json({ error: "trimStart dépasse la durée de l'asset" }, { status: 400 });
+    }
+    if (trimEnd !== null && trimEnd > knownDuration + 1) {
+      return NextResponse.json({ error: "trimEnd dépasse la durée de l'asset" }, { status: 400 });
+    }
   }
 
   const editParams = {
@@ -73,6 +80,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     mixToMono,
     normalize,
   };
+
+  // Reject no-op jobs (nothing to do — saves RunPod credit and avoids blocking concurrent edits).
+  if (trimStart === null && trimEnd === null && !mixToMono && !normalize) {
+    return NextResponse.json({ error: "Aucune opération à effectuer" }, { status: 400 });
+  }
 
   // ── Check no active job and create atomically ────────────────────────────
   // The check + create are wrapped in a transaction so two concurrent requests

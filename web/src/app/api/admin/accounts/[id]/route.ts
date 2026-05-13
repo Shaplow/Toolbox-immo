@@ -21,9 +21,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (name?.trim()) data.name = name.trim();
   if (handle?.trim()) data.handle = handle.trim().replace(/^@/, "");
   if (offre) {
-    const validOffres = ["ESSENTIEL", "CONFIRME", "CEO"];
-    if (!validOffres.includes(offre)) {
-      return NextResponse.json({ error: "Offre invalide" }, { status: 400 });
+    const existingOffer = await prisma.offer.findUnique({ where: { name: offre } });
+    if (!existingOffer) {
+      return NextResponse.json({ error: `Offre inconnue : ${offre}` }, { status: 400 });
     }
     data.offre = offre;
   }

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Plus, Trash2, Video, Music2, ChevronRight, Search, Pencil, Check, X } from "lucide-react";
 import Link from "next/link";
+import { LibraryExportButton } from "./LibraryExportButton";
 
 interface MediaLibrary {
   id: string;
@@ -314,15 +315,15 @@ export function MediaLibrariesPanel() {
             return (
               <div
                 key={lib.id}
-                className="relative group flex flex-col bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-indigo-300 hover:shadow-sm transition-all"
+                className="relative group flex flex-col bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-indigo-300 hover:shadow-md transition-all"
               >
                 {/* Visual header */}
-                <div className={`h-20 flex items-center justify-center ${
+                <div className={`h-24 flex items-center justify-center ${
                   lib.type === "video" ? "bg-gradient-to-br from-indigo-50 to-purple-50" : "bg-gradient-to-br from-emerald-50 to-teal-50"
                 }`}>
                   {lib.type === "video"
-                    ? <Video size={32} className="text-indigo-300" />
-                    : <Music2 size={32} className="text-emerald-300" />}
+                    ? <Video size={36} className="text-indigo-300" />
+                    : <Music2 size={36} className="text-emerald-300" />}
                 </div>
 
                 {/* Content */}
@@ -484,9 +485,16 @@ export function MediaLibrariesPanel() {
                         );
                       })()}
 
-                      <p className="text-xs text-gray-400 mt-3">
-                        {lib._count.assets} fichier{lib._count.assets !== 1 ? "s" : ""}
-                      </p>
+                      <div className="flex items-center justify-between mt-3">
+                        <p className="text-xs text-gray-400">
+                          {lib._count.assets} fichier{lib._count.assets !== 1 ? "s" : ""}
+                        </p>
+                        {lib.rotationScope === "shared" ? (
+                          <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">Partagé</span>
+                        ) : (
+                          <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">Par compte</span>
+                        )}
+                      </div>
                     </>
                   )}
                 </div>
@@ -509,6 +517,8 @@ export function MediaLibrariesPanel() {
                     <Pencil size={14} />
                   </button>
                   <div className="w-px h-5 bg-gray-100" />
+                  <LibraryExportButton libraryId={lib.id} libraryName={lib.name} libraryType="media" />
+                  <div className="w-px h-5 bg-gray-100" />
                   <button
                     onClick={() => { void handleDelete(lib.id, lib.name); }}
                     className="px-3.5 py-2.5 text-gray-300 hover:text-red-500 transition-colors"
@@ -521,9 +531,10 @@ export function MediaLibrariesPanel() {
             );
           })}
           {filtered.length === 0 && (
-            <p className="col-span-full text-center text-sm text-gray-400 py-8">
-              Aucune bibliothèque correspondant aux filtres.
-            </p>
+            <div className="col-span-full flex flex-col items-center justify-center py-10 text-center text-gray-400">
+              <p className="text-sm font-medium">Aucun résultat</p>
+              <p className="text-xs mt-1">Modifiez les filtres pour voir plus de bibliothèques.</p>
+            </div>
           )}
         </div>
       )}

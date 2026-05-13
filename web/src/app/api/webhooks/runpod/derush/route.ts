@@ -28,8 +28,8 @@ export async function POST(req: NextRequest) {
 
   const { id: runpodJobId, status, output, error } = parsed.body;
 
-  // DerushJob.runpodJobId has a @unique constraint
-  const job = await prisma.derushJob.findUnique({ where: { runpodJobId } });
+  // DerushJob.runpodJobId is not @unique — use findFirst
+  const job = await prisma.derushJob.findFirst({ where: { runpodJobId } });
   if (!job) {
     console.warn(`[webhook/derush] Unknown runpodJobId=${runpodJobId}`);
     return NextResponse.json({ ok: true });

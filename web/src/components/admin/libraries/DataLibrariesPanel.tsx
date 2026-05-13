@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Trash2, Database, ChevronRight, Search } from "lucide-react";
+import { Plus, Trash2, Database, ChevronRight, Search, Pencil, X, Check } from "lucide-react";
 import Link from "next/link";
+import { LibraryExportButton } from "./LibraryExportButton";
 
 interface DataLibrary {
   id: string;
@@ -21,6 +22,10 @@ export function DataLibrariesPanel() {
   const [form, setForm] = useState({ name: "", templateType: "", description: "" });
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", description: "" });
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,6 +64,32 @@ export function DataLibrariesPanel() {
     }
     setCreating(false);
     setForm({ name: "", templateType: "", description: "" });
+    void load();
+  }
+
+  function startEdit(lib: DataLibrary) {
+    setEditingId(lib.id);
+    setEditForm({ name: lib.name, description: lib.description ?? "" });
+    setEditError(null);
+  }
+
+  async function handleSaveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editForm.name.trim()) return;
+    setEditSaving(true);
+    setEditError(null);
+    const res = await fetch(`/api/admin/libraries/data/${editingId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editForm.name, description: editForm.description }),
+    });
+    setEditSaving(false);
+    if (!res.ok) {
+      const d = await res.json() as { error?: string };
+      setEditError(d.error ?? "Erreur");
+      return;
+    }
+    setEditingId(null);
     void load();
   }
 
@@ -179,20 +210,67 @@ export function DataLibrariesPanel() {
 
               {/* Content */}
               <div className="flex-1 p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-semibold text-gray-900 leading-snug">{lib.name}</p>
-                  <span className="shrink-0 text-[10px] font-mono font-medium px-1.5 py-0.5 rounded border text-violet-600 bg-violet-50 border-violet-200">
-                    {lib.templateType}
-                  </span>
-                </div>
+                {editingId === lib.id ? (
+                  <form onSubmit={(e) => { void handleSaveEdit(e); }} className="space-y-2">
+                    <input
+                      required
+                      autoFocus
+                      value={editForm.name}
+                      onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                      className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                      placeholder="Nom"
+                    />
+                    <input
+                      value={editForm.description}
+                      onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                      placeholder="Description (optionnel)"
+                    />
+                    {editError && <p className="text-red-600 text-[10px]">{editError}</p>}
+                    <div className="flex items-center gap-1 pt-0.5">
+                      <button
+                        type="submit"
+                        disabled={editSaving || !editForm.name.trim()}
+                        className="flex items-center gap-1 px-2.5 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700 disabled:opacity-50"
+                      >
+                        <Check size={11} />{editSaving ? "…" : "Enregistrer"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingId(null)}
+                        className="flex items-center gap-1 px-2 py-1 border border-gray-200 text-xs rounded hover:bg-gray-50"
+                      >
+                        <X size={11} /> Annuler
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-semibold text-gray-900 leading-snug">{lib.name}</p>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded border text-violet-600 bg-violet-50 border-violet-200">
+                          {lib.templateType}
+                        </span>
+                        <button
+                          onClick={() => startEdit(lib)}
+                          className="p-0.5 text-gray-300 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100"
+                          title="Modifier"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                      </div>
+                    </div>
 
-                {lib.description && (
-                  <p className="text-xs text-gray-500 mt-1 line-clamp-2">{lib.description}</p>
+                    {lib.description && (
+                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{lib.description}</p>
+                    )}
+
+                    <p className="text-xs text-gray-400 mt-3">
+                      {lib._count.campaigns} campagne{lib._count.campaigns !== 1 ? "s" : ""}
+                    </p>
+                  </>
                 )}
-
-                <p className="text-xs text-gray-400 mt-3">
-                  {lib._count.campaigns} campagne{lib._count.campaigns !== 1 ? "s" : ""}
-                </p>
               </div>
 
               {/* Footer */}
@@ -203,6 +281,8 @@ export function DataLibrariesPanel() {
                 >
                   Voir les campagnes <ChevronRight size={13} />
                 </Link>
+                <div className="w-px h-5 bg-gray-100" />
+                <LibraryExportButton libraryId={lib.id} libraryName={lib.name} libraryType="data" />
                 <div className="w-px h-5 bg-gray-100" />
                 <button
                   onClick={() => { void handleDelete(lib.id, lib.name); }}

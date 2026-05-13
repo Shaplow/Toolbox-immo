@@ -32,6 +32,8 @@ interface PickerModalProps {
   onSelect: (asset: LibraryAssetOption) => void;
   /** Tag de filtre dynamique (ex: valeur du champ "agent" dans le formulaire). */
   tagFilter?: string;
+  /** Instagram account ID — when set, filters to accessible assets and shows per-account usage counts. */
+  accountId?: string;
 }
 
 export function LibraryPickerModal({
@@ -42,6 +44,7 @@ export function LibraryPickerModal({
   onClose,
   onSelect,
   tagFilter,
+  accountId,
 }: PickerModalProps) {
   // null = not yet loaded; Asset[] = fetched (may be empty)
   const [assets, setAssets] = useState<Asset[] | null>(null);
@@ -52,9 +55,10 @@ export function LibraryPickerModal({
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
-    const url = tagFilter?.trim()
-      ? `/api/libraries/${libraryId}/assets?tag=${encodeURIComponent(tagFilter.trim())}`
-      : `/api/libraries/${libraryId}/assets`;
+    const params = new URLSearchParams();
+    if (tagFilter?.trim()) params.set("tag", tagFilter.trim());
+    if (accountId?.trim()) params.set("accountId", accountId.trim());
+    const url = `/api/libraries/${libraryId}/assets${params.size > 0 ? `?${params.toString()}` : ""}`;
     fetch(url)
       .then((r) => (r.ok ? (r.json() as Promise<Asset[]>) : Promise.resolve([])))
       .then((data) => {
@@ -63,12 +67,12 @@ export function LibraryPickerModal({
       .catch(() => {
         if (!cancelled) setAssets([]);
       });
-    // Reset when isOpen flips back to false or libraryId changes
+    // Reset when isOpen flips back to false or libraryId/accountId changes
     return () => {
       cancelled = true;
       setAssets(null);
     };
-  }, [isOpen, libraryId, tagFilter]);
+  }, [isOpen, libraryId, tagFilter, accountId]);
 
   if (!isOpen) return null;
 
@@ -231,6 +235,8 @@ interface LibraryFieldInputProps {
   error?: string;
   /** Tag dynamique à passer au picker (valeur courante du champ tagFilterParam). */
   tagFilter?: string;
+  /** Instagram account ID — filters to accessible assets and shows per-account usage counts. */
+  accountId?: string;
 }
 
 export function LibraryFieldInput({
@@ -240,6 +246,7 @@ export function LibraryFieldInput({
   onSelect,
   error,
   tagFilter,
+  accountId,
 }: LibraryFieldInputProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -325,6 +332,7 @@ export function LibraryFieldInput({
         onClose={() => setPickerOpen(false)}
         onSelect={onSelect}
         tagFilter={tagFilter}
+        accountId={accountId}
       />
     </div>
   );

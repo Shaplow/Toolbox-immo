@@ -1,0 +1,655 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ArrowLeft, CheckCircle2, Loader2, Play, RefreshCw,
+  Square, CheckSquare, AlertTriangle, Wand2, ChevronRight,
+  X,
+} from "lucide-react";
+import { AutocutReviewCard, type AutocutJob } from "./AutocutReviewCard";
+
+interface MediaAsset {
+  id: string;
+  filename: string;
+  url: string;
+  duration: number | null;
+}
+
+interface MediaLibrary {
+  id: string;
+  name: string;
+  type: "video" | "audio";
+}
+
+interface Props {
+  library: MediaLibrary;
+  onClose: () => void;
+}
+
+type AssetWithJobStatus = MediaAsset & {
+  autocutStatus: "none" | "pending" | "processing" | "done" | "failed";
+  autocutJobId: string | null;
+};
+
+function fmt(s: number | null): string {
+  if (s === null) return "";
+  const m = Math.floor(s / 60);
+  const sec = Math.round(s % 60);
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+}
+
+const POLL_INTERVAL_MS = 5000;
+
+export function MediaBatchAutocutPanel({ library, onClose }: Props) {
+  const [view, setView] = useState<"select" | "review">("select");
+
+  // ── Vue 1 : sélection ─────────────────────────────────────────────────────
+  const [assets, setAssets] = useState<AssetWithJobStatus[]>([]);
+  const [loadingAssets, setLoadingAssets] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitResult, setSubmitResult] = useState<{ batches: number; skipped: number } | null>(null);
+
+  // ── Vue 2 : review ────────────────────────────────────────────────────────
+  const [jobs, setJobs] = useState<AutocutJob[]>([]);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+  const [reviewPage, setReviewPage] = useState(1);
+  const [reviewTotal, setReviewTotal] = useState(0);
+  const [applying, setApplying] = useState(false);
+  const [applyResult, setApplyResult] = useState<{ submitted: number; failed: number } | null>(null);
+  // Jobs qui viennent d'être appliqués — section de tracking live
+  const [appliedJobs, setAppliedJobs] = useState<AutocutJob[]>([]);
+
+  // ── Audio options (appliquées à tous au moment du batch-apply) ────────────────
+  const [mixToMono, setMixToMono] = useState(false);
+  const [normalize, setNormalize] = useState(true);
+  const [gainDb, setGainDb] = useState(0);
+
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const applyPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Charger les assets + statuts autocut ─────────────────────────────────
+  const loadAssets = useCallback(async () => {
+    try {
+      const [assetsRes, queueRes] = await Promise.all([
+        fetch(`/api/admin/libraries/media/${library.id}/assets`),
+        fetch(`/api/admin/libraries/media/${library.id}/autocut-queue?pageSize=500`),
+      ]);
+
+      if (!assetsRes.ok) throw new Error("Impossible de charger les assets");
+
+      const assetsData = await assetsRes.json() as MediaAsset[];
+      const queueData = queueRes.ok
+        ? (await queueRes.json() as { jobs: AutocutJob[] }).jobs
+        : [];
+
+      // Construire un map jobId par assetId (dernier job connu)
+      const jobByAsset = new Map<string, AutocutJob>();
+      for (const job of queueData) {
+        const existing = jobByAsset.get(job.assetId);
+        if (!existing || new Date(job.createdAt as string) > new Date(existing.createdAt as string)) {
+          jobByAsset.set(job.assetId, job);
+        }
+      }
+
+      const enriched: AssetWithJobStatus[] = assetsData.map((a) => {
+        const job = jobByAsset.get(a.id);
+        // Un job "applied" ne doit plus apparaître comme "done" dans le compteur
+        const autocutStatus = job
+          ? (job.reviewStatus === "applied" ? "none" : (job.status as AssetWithJobStatus["autocutStatus"]))
+          : "none";
+        return {
+          ...a,
+          autocutStatus,
+          autocutJobId: job?.id ?? null,
+        };
+      });
+
+      setAssets(enriched);
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Erreur de chargement");
+    } finally {
+      setLoadingAssets(false);
+    }
+  }, [library.id]);
+
+  useEffect(() => {
+    void loadAssets();
+  }, [loadAssets]);
+
+  // Polling pour mise à jour des statuts pendant l'analyse
+  useEffect(() => {
+    const hasProcessing = assets.some(
+      (a) => a.autocutStatus === "pending" || a.autocutStatus === "processing"
+    );
+    if (hasProcessing) {
+      pollRef.current = setTimeout(() => void loadAssets(), POLL_INTERVAL_MS);
+    }
+    return () => {
+      if (pollRef.current) clearTimeout(pollRef.current);
+    };
+  }, [assets, loadAssets]);
+
+  // ── Charger la queue de review ────────────────────────────────────────────
+  const loadReviewQueue = useCallback(async (page = 1) => {
+    setLoadingJobs(true);
+    try {
+      const res = await fetch(
+        `/api/admin/libraries/media/${library.id}/autocut-queue?reviewStatus=pending_review&pageSize=20&page=${page}`
+      );
+      if (!res.ok) throw new Error("Erreur chargement queue");
+      const data = await res.json() as { jobs: AutocutJob[]; total: number; page: number };
+      setJobs(data.jobs);
+      setReviewTotal(data.total);
+      setReviewPage(data.page);
+    } catch {
+      // silencieux, queue vide
+    } finally {
+      setLoadingJobs(false);
+    }
+  }, [library.id]);
+
+  useEffect(() => {
+    if (view === "review") {
+      void loadReviewQueue(reviewPage);
+    }
+  }, [view, reviewPage, loadReviewQueue]);
+
+  // ── Polling pour le suivi live des jobs appliqués ───────────────────────
+  useEffect(() => {
+    if (applyPollRef.current) clearTimeout(applyPollRef.current);
+    const hasPending =
+      view === "review" &&
+      appliedJobs.some(
+        (j) => !j.editJob?.status || j.editJob.status === "pending" || j.editJob.status === "processing"
+      );
+    if (!hasPending) return;
+    applyPollRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/libraries/media/${library.id}/autocut-queue?reviewStatus=applied&pageSize=50`
+        );
+        if (!res.ok) return;
+        const data = await res.json() as { jobs: AutocutJob[] };
+        setAppliedJobs((prev) =>
+          prev.map((pj) => {
+            const fresh = data.jobs.find((fj) => fj.id === pj.id);
+            return fresh ?? pj;
+          })
+        );
+      } catch {
+        // silencieux
+      }
+    }, POLL_INTERVAL_MS);
+    return () => {
+      if (applyPollRef.current) clearTimeout(applyPollRef.current);
+    };
+  }, [appliedJobs, view, library.id]);
+
+  // ── Actions sélection ────────────────────────────────────────────────────
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    const selectable = assets.filter(
+      (a) => a.autocutStatus === "none" || a.autocutStatus === "failed"
+    );
+    if (selectedIds.size === selectable.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(selectable.map((a) => a.id)));
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (selectedIds.size === 0) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    setSubmitResult(null);
+    try {
+      const res = await fetch(`/api/admin/libraries/media/${library.id}/autocut-packs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetIds: Array.from(selectedIds) }),
+      });
+      const data = await res.json() as {
+        batches: Array<{ batchId: string; assetCount: number; status: string }>;
+        skipped: string[];
+        error?: string;
+      };
+      if (!res.ok) {
+        setSubmitError(data.error ?? "Erreur lors de la soumission");
+        return;
+      }
+      setSubmitResult({
+        batches: data.batches.length,
+        skipped: data.skipped.length,
+      });
+      setSelectedIds(new Set());
+      void loadAssets();
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Erreur réseau");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ── Actions review ────────────────────────────────────────────────────────
+  const handleAccept = async (jobId: string, confirmedStart: number, confirmedEnd: number) => {
+    // Retrouver les données du job pour la section de tracking
+    const jobData = jobs.find((j) => j.id === jobId);
+
+    // 1. Marquer comme accepted + enregistrer les timings confirmés
+    const patchRes = await fetch(`/api/admin/libraries/media/autocut/${jobId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewStatus: "accepted", confirmedStart, confirmedEnd }),
+    });
+    if (!patchRes.ok) throw new Error("Erreur lors de la validation");
+
+    // 2. Lancer immédiatement le MediaEditJob pour ce job spécifique
+    const applyRes = await fetch(`/api/admin/libraries/media/${library.id}/batch-apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jobIds: [jobId],
+        mixToMono,
+        normalize,
+        gainDb: gainDb !== 0 ? gainDb : undefined,
+      }),
+    });
+
+    // Ajouter à la section de tracking, même si l'apply échoue
+    if (jobData) {
+      let editJobId: string | undefined;
+      if (applyRes.ok) {
+        try {
+          const applyData = await applyRes.json() as {
+            submitted: number;
+            failed: Array<{ jobId: string; error: string }>;
+            editJobs?: Array<{ autocutJobId: string; editJobId: string }>;
+          };
+          editJobId = applyData.editJobs?.find((e) => e.autocutJobId === jobId)?.editJobId;
+        } catch { /* ok */ }
+      } else {
+        console.error("[handleAccept] batch-apply failed", await applyRes.text().catch(() => ""));
+      }
+      const appliedEntry: AutocutJob = {
+        ...jobData,
+        reviewStatus: "applied",
+        confirmedStart,
+        confirmedEnd,
+        editJob: editJobId ? { id: editJobId, status: "pending" } : null,
+      };
+      setAppliedJobs((prev) => [appliedEntry, ...prev]);
+    }
+
+    setJobs((prev) => prev.filter((j) => j.id !== jobId));
+    setReviewTotal((t) => Math.max(0, t - 1));
+  };
+
+  const handleSkip = async (jobId: string) => {
+    const res = await fetch(`/api/admin/libraries/media/autocut/${jobId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewStatus: "skipped" }),
+    });
+    if (!res.ok) throw new Error("Erreur lors du skip");
+    setJobs((prev) => prev.filter((j) => j.id !== jobId));
+    setReviewTotal((t) => Math.max(0, t - 1));
+  };
+
+  const handleBatchApply = async () => {
+    setApplying(true);
+    setApplyResult(null);
+    try {
+      // Appel direct sans pré-fetch des IDs : batch-apply trouve lui-même tous les jobs "accepted"
+      const applyRes = await fetch(`/api/admin/libraries/media/${library.id}/batch-apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mixToMono,
+          normalize,
+          gainDb: gainDb !== 0 ? gainDb : undefined,
+        }),
+      });
+      if (!applyRes.ok) {
+        const errData = await applyRes.json().catch(() => ({})) as { error?: string };
+        throw new Error(errData.error ?? `Erreur serveur (${applyRes.status})`);
+      }
+      const applyData = await applyRes.json() as { submitted: number; failed: Array<{ jobId: string; error: string }> };
+      setApplyResult({ submitted: applyData.submitted, failed: applyData.failed.length });
+    } catch (err) {
+      console.error("[handleBatchApply]", err);
+      setApplyResult({ submitted: 0, failed: -1 });
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  // ── Stats ─────────────────────────────────────────────────────────────────
+  const selectableCount = assets.filter(
+    (a) => a.autocutStatus === "none" || a.autocutStatus === "failed"
+  ).length;
+  const processingCount = assets.filter(
+    (a) => a.autocutStatus === "pending" || a.autocutStatus === "processing"
+  ).length;
+  const doneCount = assets.filter((a) => a.autocutStatus === "done").length;
+
+  const statusLabel = (s: AssetWithJobStatus["autocutStatus"]) => {
+    switch (s) {
+      case "none": return null;
+      case "pending": return <span className="text-xs text-yellow-600 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> En attente</span>;
+      case "processing": return <span className="text-xs text-blue-600 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Analyse…</span>;
+      case "done": return <span className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 size={10} /> Analysé</span>;
+      case "failed": return <span className="text-xs text-red-600 flex items-center gap-1"><AlertTriangle size={10} /> Erreur</span>;
+    }
+  };
+
+  // ── Rendu vue sélection ───────────────────────────────────────────────────
+  if (view === "select") {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mt-8 mb-8 flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <Wand2 size={18} className="text-purple-600" />
+              <h2 className="text-base font-semibold text-gray-900">Atelier Autocut</h2>
+              <span className="text-xs text-gray-400">— {library.name}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {doneCount > 0 && (
+                <button
+                  onClick={() => setView("review")}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                >
+                  Valider les analyses ({doneCount}) <ChevronRight size={13} />
+                </button>
+              )}
+              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+
+          {/* Stats bar */}
+          {processingCount > 0 && (
+            <div className="px-6 py-2 bg-blue-50 text-xs text-blue-700 flex items-center gap-2">
+              <Loader2 size={12} className="animate-spin" />
+              {processingCount} asset{processingCount > 1 ? "s" : ""} en cours d&apos;analyse…
+            </div>
+          )}
+
+          {/* Toolbar */}
+          <div className="px-6 py-3 flex items-center gap-3 border-b border-gray-50">
+            <button
+              onClick={toggleAll}
+              className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900"
+            >
+              {selectedIds.size === selectableCount && selectableCount > 0
+                ? <CheckSquare size={14} className="text-indigo-600" />
+                : <Square size={14} />}
+              Tout sélectionner
+            </button>
+            <span className="text-xs text-gray-400">{selectedIds.size} sélectionné{selectedIds.size > 1 ? "s" : ""}</span>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                onClick={() => void loadAssets()}
+                className="p-1.5 rounded hover:bg-gray-100 text-gray-400"
+                title="Rafraîchir"
+              >
+                <RefreshCw size={13} />
+              </button>
+              <button
+                onClick={() => void handleAnalyze()}
+                disabled={submitting || selectedIds.size === 0}
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              >
+                {submitting ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+                Analyser ({selectedIds.size})
+              </button>
+            </div>
+          </div>
+
+          {/* Feedback */}
+          {submitError && (
+            <div className="mx-6 mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+              {submitError}
+            </div>
+          )}
+          {submitResult && (
+            <div className="mx-6 mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700">
+              {submitResult.batches} pack{submitResult.batches > 1 ? "s" : ""} soumis à RunPod
+              {submitResult.skipped > 0 && ` — ${submitResult.skipped} ignoré${submitResult.skipped > 1 ? "s" : ""} (déjà en cours)`}
+            </div>
+          )}
+
+          {/* Asset list */}
+          <div className="overflow-y-auto flex-1" style={{ maxHeight: "60vh" }}>
+            {loadingAssets ? (
+              <div className="flex items-center justify-center py-16 text-gray-400">
+                <Loader2 size={20} className="animate-spin" />
+              </div>
+            ) : loadError ? (
+              <div className="p-6 text-sm text-red-600">{loadError}</div>
+            ) : assets.length === 0 ? (
+              <div className="p-6 text-sm text-gray-400 text-center">Aucun asset dans cette bibliothèque</div>
+            ) : (
+              <ul className="divide-y divide-gray-50">
+                {assets.map((asset) => {
+                  const isSelectable = asset.autocutStatus === "none" || asset.autocutStatus === "failed";
+                  const isSelected = selectedIds.has(asset.id);
+                  return (
+                    <li
+                      key={asset.id}
+                      className={`flex items-center gap-3 px-6 py-2.5 transition-colors ${isSelectable ? "cursor-pointer hover:bg-gray-50" : "opacity-60"}`}
+                      onClick={() => isSelectable && toggleSelect(asset.id)}
+                    >
+                      {isSelectable ? (
+                        isSelected
+                          ? <CheckSquare size={15} className="text-indigo-600 flex-shrink-0" />
+                          : <Square size={15} className="text-gray-300 flex-shrink-0" />
+                      ) : (
+                        <span className="w-[15px] flex-shrink-0" />
+                      )}
+                      <span className="text-sm text-gray-800 flex-1 truncate">{asset.filename}</span>
+                      {asset.duration !== null && (
+                        <span className="text-xs text-gray-400 flex-shrink-0">{fmt(asset.duration)}</span>
+                      )}
+                      <span className="flex-shrink-0 w-28 text-right">
+                        {statusLabel(asset.autocutStatus)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Rendu vue review ──────────────────────────────────────────────────────
+  const pageSize = 20;
+  const totalPages = Math.max(1, Math.ceil(reviewTotal / pageSize));
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mt-8 mb-8">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setView("select")}
+              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
+            >
+              <ArrowLeft size={16} />
+            </button>
+            <h2 className="text-base font-semibold text-gray-900">
+              Review — {reviewTotal} à valider
+            </h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => void handleBatchApply()}
+              disabled={applying}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+            >
+              {applying ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+              Appliquer les validés
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* Apply result feedback */}
+        {applyResult && (
+          <div className={`mx-6 mt-3 p-3 rounded-lg text-xs border ${applyResult.failed < 0 ? "bg-red-50 border-red-200 text-red-700" : "bg-green-50 border-green-200 text-green-700"}`}>
+            {applyResult.failed < 0
+              ? "Erreur lors de l'application. Réessayez."
+              : `${applyResult.submitted} job${applyResult.submitted > 1 ? "s" : ""} soumis${applyResult.failed > 0 ? ` — ${applyResult.failed} erreur${applyResult.failed > 1 ? "s" : ""}` : ""}`}
+          </div>
+        )}
+
+        {/* Audio options */}
+        <div className="mx-6 mt-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl flex items-center gap-5 flex-wrap">
+          <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Audio</span>
+          <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={mixToMono}
+              onChange={(e) => setMixToMono(e.target.checked)}
+              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-400"
+            />
+            Mix mono
+          </label>
+          <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={normalize}
+              onChange={(e) => setNormalize(e.target.checked)}
+              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-400"
+            />
+            Normaliser
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600 w-16">Volume</span>
+            <input
+              type="range"
+              min={-12}
+              max={12}
+              step={0.5}
+              value={gainDb}
+              onChange={(e) => setGainDb(parseFloat(e.target.value))}
+              className="w-24 accent-indigo-600"
+            />
+            <span className="text-sm text-gray-700 w-14 text-right">
+              {gainDb > 0 ? `+${gainDb}` : gainDb} dB
+            </span>
+            {gainDb !== 0 && (
+              <button
+                onClick={() => setGainDb(0)}
+                className="text-xs text-gray-400 hover:text-gray-600"
+              >
+                reset
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Review cards */}
+        <div className="p-4 flex flex-col gap-3">
+          {loadingJobs ? (
+            <div className="flex items-center justify-center py-16 text-gray-400">
+              <Loader2 size={20} className="animate-spin" />
+            </div>
+          ) : jobs.length === 0 ? (
+            <div className="py-12 text-center">
+              <CheckCircle2 size={32} className="text-green-400 mx-auto mb-3" />
+              <p className="text-sm text-gray-500">
+                {reviewTotal === 0
+                  ? "Aucune analyse à valider pour le moment."
+                  : "Tous les assets de cette page ont été traités."}
+              </p>
+              {reviewTotal === 0 && (
+                <button
+                  onClick={() => setView("select")}
+                  className="mt-4 text-sm text-indigo-600 hover:underline"
+                >
+                  ← Retour à la sélection
+                </button>
+              )}
+            </div>
+          ) : (
+            jobs.map((job) => (
+              <AutocutReviewCard
+                key={job.id}
+                job={job}
+                onAccept={handleAccept}
+                onSkip={handleSkip}
+              />
+            ))
+          )}
+
+          {/* Section de suivi des jobs appliqués */}
+          {appliedJobs.length > 0 && (
+            <div className="mt-2 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-px bg-gray-100" />
+                <span className="text-xs text-gray-400 font-medium uppercase tracking-wide px-1 flex items-center gap-1.5">
+                  {appliedJobs.some((j) => !j.editJob?.status || j.editJob.status === "pending" || j.editJob.status === "processing") && (
+                    <Loader2 size={9} className="animate-spin" />
+                  )}
+                  En traitement ({appliedJobs.filter((j) => j.editJob?.status === "done").length}/{appliedJobs.length} terminés)
+                </span>
+                <div className="flex-1 h-px bg-gray-100" />
+              </div>
+              {appliedJobs.map((job) => (
+                <AutocutReviewCard
+                  key={job.id}
+                  job={job}
+                  onAccept={handleAccept}
+                  onSkip={handleSkip}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 pb-4 text-sm text-gray-600">
+            <button
+              onClick={() => setReviewPage((p) => Math.max(1, p - 1))}
+              disabled={reviewPage === 1}
+              className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
+            >
+              ←
+            </button>
+            <span className="text-xs text-gray-500">Page {reviewPage} / {totalPages}</span>
+            <button
+              onClick={() => setReviewPage((p) => Math.min(totalPages, p + 1))}
+              disabled={reviewPage === totalPages}
+              className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
+            >
+              →
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

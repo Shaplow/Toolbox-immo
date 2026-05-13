@@ -31,6 +31,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "dateFrom doit être antérieure à dateTo" }, { status: 400 });
   }
 
+  const MAX_RANGE_DAYS = 90;
+  const diffDays = Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays > MAX_RANGE_DAYS) {
+    return NextResponse.json(
+      { error: `La plage ne peut pas dépasser ${MAX_RANGE_DAYS} jours` },
+      { status: 400 }
+    );
+  }
+
   const result = await generateCalendarSlots({
     accountIds: Array.isArray(accountIds) ? accountIds : undefined,
     dateFrom: from,

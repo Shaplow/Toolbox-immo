@@ -63,6 +63,17 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Asset introuvable" }, { status: 404 });
   }
 
+  // Refuse deletion while an edit job is running — avoids FK violations and zombie RunPod jobs.
+  const activeEditJob = await prisma.mediaEditJob.findFirst({
+    where: { assetId, status: { in: ["pending", "processing"] } },
+  });
+  if (activeEditJob) {
+    return NextResponse.json(
+      { error: "Un job d'édition est en cours sur cet asset. Attendez la fin du traitement avant de supprimer." },
+      { status: 409 }
+    );
+  }
+
   // R2 en premier — ne pas supprimer la row si R2 échoue (ignoré en dev sans config R2)
   if (r2Configured()) {
     try {

@@ -19,7 +19,7 @@ export default async function ListingsPage() {
     where: isAdmin ? {} : { userId },
     orderBy: { createdAt: "desc" },
     include: {
-      template: { select: { id: true, name: true, client: true } },
+      template: { select: { id: true, name: true, client: true, formats: true } },
       user: { select: { name: true, email: true } },
       renders: {
         orderBy: { createdAt: "asc" },
@@ -82,7 +82,7 @@ export default async function ListingsPage() {
     createdAt: l.createdAt.toISOString(),
     ownerName: isAdmin ? (l.user.name ?? l.user.email ?? "?") : null,
     template: l.template
-      ? { id: l.template.id, name: l.template.name, client: l.template.client }
+      ? { id: l.template.id, name: l.template.name, client: l.template.client, formats: l.template.formats }
       : null,
     renders: l.renders.map((r) => ({
       id: r.id,

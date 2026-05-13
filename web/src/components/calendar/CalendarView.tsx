@@ -17,6 +17,8 @@ interface Account {
 
 interface CalendarViewProps {
   accounts: Account[];
+  /** ISO string of Monday for the initial week, computed server-side to avoid hydration mismatches. */
+  initialWeekStart: string;
 }
 
 /** Returns Monday of the week containing `date`. */
@@ -43,8 +45,8 @@ function isSameDay(a: Date, b: Date) {
   );
 }
 
-export function CalendarView({ accounts }: CalendarViewProps) {
-  const [weekStart, setWeekStart] = useState<Date>(() => getMondayOf(new Date()));
+export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) {
+  const [weekStart, setWeekStart] = useState<Date>(() => new Date(initialWeekStart));
   const [slots, setSlots] = useState<PublicationSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -77,7 +79,11 @@ export function CalendarView({ accounts }: CalendarViewProps) {
       });
       const res = await fetch(`/api/calendar/slots?${params.toString()}`);
       if (!res.ok) throw new Error(`Erreur ${res.status}`);
-      setSlots(await res.json() as PublicationSlot[]);
+      const data = await res.json() as { slots: PublicationSlot[]; hasMore: boolean };
+      setSlots(Array.isArray(data.slots) ? data.slots : []);
+      if (data.hasMore) {
+        console.warn("[CalendarView] Le résultat est tronqué à 500 slots — affinez les filtres ou la plage de dates.");
+      }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Erreur de chargement");
     } finally {

@@ -44,13 +44,14 @@ export async function PUT(req: NextRequest, { params }: Params) {
   }
 
   const body = await req.json();
-  const { name, client, formats, jsonData } = body;
+  const { name, client, formats, jsonData, contentType } = body;
 
   const updated = await prisma.template.update({
     where: { id },
     data: {
       ...(name !== undefined && { name }),
       ...(client !== undefined && { client }),
+      ...(contentType !== undefined && { contentType }),
       ...(formats !== undefined && { formats: JSON.stringify(formats) }),
       ...(jsonData !== undefined && {
         jsonData: typeof jsonData === "string"

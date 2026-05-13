@@ -24,6 +24,16 @@ if (!WEBHOOK_SECRET && process.env.NODE_ENV === "production") {
   );
 }
 
+if (!process.env.NEXTAUTH_URL && process.env.NODE_ENV === "production") {
+  console.error(
+    "[config] NEXTAUTH_URL is not set in production. " +
+    "RunPod jobs will be submitted without a webhook callback URL — " +
+    "their status will never be updated automatically in the database, " +
+    "and all jobs will appear stuck in PROCESSING indefinitely. " +
+    "Set NEXTAUTH_URL to the public-facing URL of this server."
+  );
+}
+
 /**
  * Verifies the ?secret= query parameter against RUNPOD_WEBHOOK_SECRET.
  * RunPod does not support custom request headers in webhooks — the secret is
@@ -52,6 +62,9 @@ export interface RunpodWebhookBody<TOutput = Record<string, unknown>> {
 /**
  * Parses and validates the JSON body sent by RunPod on job completion.
  * Returns { ok: true, body } on success, or { ok: false, response } on parse error.
+ *
+ * Also triggers a non-blocking idle-stop check on the pod after each completed
+ * job — this is the single call site for maybeStopIdlePod() across all webhooks.
  */
 export async function parseRunpodWebhookBody<TOutput = Record<string, unknown>>(
   req: NextRequest
@@ -76,6 +89,15 @@ export async function parseRunpodWebhookBody<TOutput = Record<string, unknown>>(
     };
   }
 
+  // Non-blocking: decrement active job count and maybe stop the pod.
+  // Only for pod-dispatched jobs (id "pod-*") — Serverless jobs never call
+  // recordPodActivity(), so must not decrement activeJobCount.
+  if (body.id.startsWith("pod-")) {
+    void import("@/lib/podOrchestrator").then(({ onPodJobComplete }) => {
+      void onPodJobComplete();
+    });
+  }
+
   return { ok: true, body };
 }
 
@@ -94,7 +116,14 @@ export async function parseRunpodWebhookBody<TOutput = Record<string, unknown>>(
  */
 export function getRunpodWebhookUrl(path: string): string {
   const base = (process.env.NEXTAUTH_URL ?? "").replace(/\/$/, "");
-  if (!base) return "";
+  if (!base) {
+    console.warn(
+      `[runpod/webhook] getRunpodWebhookUrl("${path}") called but NEXTAUTH_URL is not set. ` +
+      "The RunPod job will be submitted without a callback URL — its status will never be " +
+      "updated automatically. Set NEXTAUTH_URL to fix this."
+    );
+    return "";
+  }
   const url = new URL(`${base}${path}`);
   if (WEBHOOK_SECRET) {
     url.searchParams.set("secret", WEBHOOK_SECRET);

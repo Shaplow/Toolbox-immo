@@ -1,0 +1,105 @@
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+
+function adminOnly(role?: string) {
+  return role !== "ADMIN";
+}
+
+type Params = { params: Promise<{ jobId: string }> };
+
+/**
+ * PATCH /api/admin/libraries/media/autocut/[jobId]
+ *
+ * Valide, ajuste ou passe un MediaAutocutJob individuel.
+ *
+ * Body : {
+ *   reviewStatus  : "accepted" | "skipped"
+ *   confirmedStart?: number
+ *   confirmedEnd?  : number
+ * }
+ */
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const session = await auth();
+  if (!session?.user?.id || adminOnly(session.user.role)) {
+    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
+  }
+
+  const { jobId } = await params;
+
+  const job = await prisma.mediaAutocutJob.findUnique({
+    where: { id: jobId },
+  });
+  if (!job) {
+    return NextResponse.json({ error: "Job introuvable" }, { status: 404 });
+  }
+
+  // Empêcher de toucher un job déjà appliqué
+  if (job.reviewStatus === "applied") {
+    return NextResponse.json(
+      { error: "Ce job a déjà été appliqué, impossible de le modifier" },
+      { status: 409 }
+    );
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await req.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Corps JSON invalide" }, { status: 400 });
+  }
+
+  const reviewStatus = body.reviewStatus as string | undefined;
+  if (!reviewStatus || !["accepted", "skipped"].includes(reviewStatus)) {
+    return NextResponse.json(
+      { error: "reviewStatus doit être 'accepted' ou 'skipped'" },
+      { status: 400 }
+    );
+  }
+
+  const confirmedStart = body.confirmedStart != null ? Number(body.confirmedStart) : undefined;
+  const confirmedEnd = body.confirmedEnd != null ? Number(body.confirmedEnd) : undefined;
+
+  if (confirmedStart !== undefined && (isNaN(confirmedStart) || confirmedStart < 0)) {
+    return NextResponse.json({ error: "confirmedStart invalide" }, { status: 400 });
+  }
+  if (confirmedEnd !== undefined && (isNaN(confirmedEnd) || confirmedEnd <= 0)) {
+    return NextResponse.json({ error: "confirmedEnd invalide" }, { status: 400 });
+  }
+  if (
+    confirmedStart !== undefined &&
+    confirmedEnd !== undefined &&
+    confirmedEnd <= confirmedStart
+  ) {
+    return NextResponse.json(
+      { error: "confirmedEnd doit être supérieur à confirmedStart" },
+      { status: 400 }
+    );
+  }
+
+  // Skip = suppression du job pour que l'asset redevienne sélectionnable
+  if (reviewStatus === "skipped") {
+    await prisma.mediaAutocutJob.delete({ where: { id: jobId } });
+    return NextResponse.json({ deleted: true });
+  }
+
+  // Accepted : mettre à jour les timings confirmés
+  const updateData: Record<string, unknown> = { reviewStatus };
+  if (confirmedStart !== undefined) updateData.confirmedStart = confirmedStart;
+  if (confirmedEnd !== undefined) updateData.confirmedEnd = confirmedEnd;
+
+  // Fallback sur les valeurs proposées si non fournies
+  if (updateData.confirmedStart === undefined) {
+    updateData.confirmedStart = job.confirmedStart ?? job.proposedStart;
+  }
+  if (updateData.confirmedEnd === undefined) {
+    updateData.confirmedEnd = job.confirmedEnd ?? job.proposedEnd;
+  }
+
+  const updated = await prisma.mediaAutocutJob.update({
+    where: { id: jobId },
+    data: updateData,
+  });
+
+  return NextResponse.json(updated);
+}

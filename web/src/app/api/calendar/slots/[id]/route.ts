@@ -6,6 +6,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+/** Safely parse a JSON string. Returns `fallback` if the string is falsy or invalid. */
+function safeJSON<T>(str: string | null | undefined, fallback: T): T {
+  if (!str) return fallback;
+  try {
+    return JSON.parse(str) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 type Params = { params: Promise<{ id: string }> };
 
 const VALID_STATUSES = ["TO_DO", "IN_PROGRESS", "READY", "CHECKING", "DONE"];
@@ -33,6 +43,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     );
   }
 
+  if (scheduledAt !== undefined && isNaN(new Date(scheduledAt).getTime())) {
+    return NextResponse.json({ error: "scheduledAt invalide" }, { status: 400 });
+  }
+
   const updated = await prisma.publicationSlot.update({
     where: { id },
     data: {
@@ -55,8 +69,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   return NextResponse.json({
     ...updated,
-    fields: JSON.parse(updated.fields),
-    fieldSchema: JSON.parse(updated.fieldSchema),
+    fields: safeJSON<Record<string, string>>(updated.fields, {}),
+    fieldSchema: safeJSON<string[]>(updated.fieldSchema, []),
   });
 }
 

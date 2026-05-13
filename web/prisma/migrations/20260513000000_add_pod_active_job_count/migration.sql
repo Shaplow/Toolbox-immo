@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "PodState" ADD COLUMN "activeJobCount" INTEGER NOT NULL DEFAULT 0;

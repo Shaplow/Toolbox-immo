@@ -10,10 +10,20 @@ function adminOnly(role?: string) {
   return role !== "ADMIN";
 }
 
+/** Safely parse a JSON string. Returns `fallback` if the string is falsy or invalid. */
+function safeJSON<T>(str: string | null | undefined, fallback: T): T {
+  if (!str) return fallback;
+  try {
+    return JSON.parse(str) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  if (!session?.user?.id || adminOnly(session.user.role)) {
+    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);
@@ -46,13 +56,14 @@ export async function GET(req: NextRequest) {
     },
   });
 
-  return NextResponse.json(
-    slots.map((s) => ({
+  return NextResponse.json({
+    slots: slots.map((s) => ({
       ...s,
-      fields: JSON.parse(s.fields),
-      fieldSchema: JSON.parse(s.fieldSchema),
-    }))
-  );
+      fields: safeJSON<Record<string, string>>(s.fields, {}),
+      fieldSchema: safeJSON<string[]>(s.fieldSchema, []),
+    })),
+    hasMore: slots.length === 500,
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -76,10 +87,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Compte introuvable" }, { status: 404 });
   }
 
+  const parsedScheduledAt = new Date(scheduledAt);
+  if (isNaN(parsedScheduledAt.getTime())) {
+    return NextResponse.json({ error: "scheduledAt invalide" }, { status: 400 });
+  }
+
   const slot = await prisma.publicationSlot.create({
     data: {
       accountId,
-      scheduledAt: new Date(scheduledAt),
+      scheduledAt: parsedScheduledAt,
       contentType,
       title: title ?? null,
       caption: caption ?? null,
@@ -96,7 +112,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ...slot,
-    fields: JSON.parse(slot.fields),
-    fieldSchema: JSON.parse(slot.fieldSchema),
+    fields: safeJSON<Record<string, string>>(slot.fields, {}),
+    fieldSchema: safeJSON<string[]>(slot.fieldSchema, []),
   });
 }

@@ -48,6 +48,7 @@ export async function generateCalendarSlots(
     accountId: string;
     scheduledAt: Date;
     contentType: string;
+    templateId?: string;
     isAuto: boolean;
   }> = [];
 
@@ -69,6 +70,10 @@ export async function generateCalendarSlots(
 
       for (const rule of dayRules) {
         const [hours, minutes] = rule.publishTime.split(":").map(Number);
+        if (isNaN(hours!) || isNaN(minutes!)) {
+          console.warn(`[calendarEngine] publishTime invalide pour la règle ${rule.id}: "${rule.publishTime}" — ignorée`);
+          continue;
+        }
         const scheduledAt = new Date(current);
         scheduledAt.setUTCHours(hours!, minutes!, 0, 0);
 
@@ -76,6 +81,7 @@ export async function generateCalendarSlots(
           accountId: account.id,
           scheduledAt: new Date(scheduledAt),
           contentType: rule.contentType,
+          templateId: rule.templateId ?? undefined,
           isAuto: true,
         });
       }

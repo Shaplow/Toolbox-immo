@@ -14,7 +14,7 @@ import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import { isBlockVisibleForListing, resolveBlockForListing } from "@/lib/templateConditions";
 import { getVisibleFieldKeys } from "@/lib/formSections";
 import { RENDER_PIPELINE, RENDER_STAGE } from "./renderWorkflow";
-import { recordLibraryUsage } from "@/lib/recordLibraryUsage";
+import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsage";
 import { selectMediaAsset, selectMediaAssetBySetSequence, normalizeRule } from "@/lib/contentLibraryResolver";
 
 const OUTPUT_DIR = path.join(process.cwd(), "public", "renders");
@@ -119,6 +119,11 @@ async function failRender(renderId: string, message: string, pipeline?: string, 
     errorMsg: message,
     progress: 1,
     finishedAt: new Date(),
+  });
+  // Revert library cursors advanced at prefill time so the rotation slot is not
+  // permanently consumed by a failed render. Best-effort, non-blocking.
+  revertLibraryCursors(renderId).catch((err) => {
+    console.error(`[failRender] revertLibraryCursors failed for render=${renderId}:`, err);
   });
 }
 
@@ -413,6 +418,13 @@ async function resolveMusicConfig(
   }
 
   if (!rawMusicUrl) return null;
+
+  // Resolve relative paths (local uploads) to absolute URL so the render-engine
+  // container can reach the file — same pattern as resolveVideoUrl.
+  if (rawMusicUrl.startsWith("/")) {
+    const base = (process.env.FONT_BASE_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
+    rawMusicUrl = `${base}${rawMusicUrl}`;
+  }
 
   // Validate that the URL is a reachable http/https URL before including it in
   // the RunPod payload. An unvalidated arbitrary string from listing data would
@@ -1222,19 +1234,28 @@ async function generateSequenceRender(
       { timeoutMs: RUNPOD_SUBMIT_TIMEOUT_MS }
     );
 
-    // 7. Persist usedAssets so recordLibraryUsage can advance cursors on DONE
-    await prisma.render.update({
-      where: { id: renderId },
-      data: {
-        usedAssets: JSON.stringify({
-          videoAssets: sequenceSlotAssets,
-          ...(music?.assetId ? { audioAssetId: music.assetId } : {}),
-          setSequencedLibraryIds,
-          usedSetTagByLibrary,
-          usedCategoryByLibrary,
-        }),
-      },
-    });
+    // 7. Persist usedAssets so recordLibraryUsage can advance cursors on DONE.
+    // Merge into the existing row rather than replacing it — audioAssetId and
+    // prevCursorStateByLibrary were written at render creation (POST /api/renders)
+    // and must not be lost.
+    {
+      const existingRender = await prisma.render.findUnique({ where: { id: renderId }, select: { usedAssets: true } });
+      let existingUsedAssets: Record<string, unknown> = {};
+      try { existingUsedAssets = JSON.parse(existingRender?.usedAssets ?? "{}") as Record<string, unknown>; } catch { /* ignore */ }
+      await prisma.render.update({
+        where: { id: renderId },
+        data: {
+          usedAssets: JSON.stringify({
+            ...existingUsedAssets,
+            videoAssets: sequenceSlotAssets,
+            ...(music?.assetId ? { audioAssetId: music.assetId } : {}),
+            setSequencedLibraryIds,
+            usedSetTagByLibrary,
+            usedCategoryByLibrary,
+          }),
+        },
+      });
+    }
 
     await updateRenderTracking(renderId, {
       status: "PROCESSING",
@@ -1301,10 +1322,12 @@ async function generateSequenceRenderLocal(
     // Resolve music
     const music = await resolveMusicConfig(templateJson, listingData, accountId);
 
-    // For local path, convert local /uploads/ paths to absolute URLs using NEXTAUTH_URL
+    // For local path, convert local /uploads/ paths to absolute URLs.
+    // FONT_BASE_URL must be set in Docker (e.g. http://web:3000) so the render-engine
+    // container can reach the web container — same pattern as resolveMusicConfig.
     const resolveVideoUrl = (rawUrl: string): string => {
       if (rawUrl.startsWith("http")) return rawUrl;
-      const base = (process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
+      const base = (process.env.FONT_BASE_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
       return `${base}${rawUrl}`;
     };
 
@@ -1372,19 +1395,28 @@ async function generateSequenceRenderLocal(
       ? data.videoUrl
       : `/api/captions${data.videoUrl.startsWith("/") ? data.videoUrl : `/${data.videoUrl}`}`;
 
-    // Persist usedAssets before marking DONE so recordLibraryUsage can advance cursors
-    await prisma.render.update({
-      where: { id: renderId },
-      data: {
-        usedAssets: JSON.stringify({
-          videoAssets: sequenceSlotAssets,
-          ...(music?.assetId ? { audioAssetId: music.assetId } : {}),
-          setSequencedLibraryIds,
-          usedSetTagByLibrary,
-          usedCategoryByLibrary,
-        }),
-      },
-    });
+    // Persist usedAssets before marking DONE so recordLibraryUsage can advance cursors.
+    // Merge into the existing row rather than replacing it — audioAssetId and
+    // prevCursorStateByLibrary were written at render creation (POST /api/renders)
+    // and must not be lost.
+    {
+      const existingRender = await prisma.render.findUnique({ where: { id: renderId }, select: { usedAssets: true } });
+      let existingUsedAssets: Record<string, unknown> = {};
+      try { existingUsedAssets = JSON.parse(existingRender?.usedAssets ?? "{}") as Record<string, unknown>; } catch { /* ignore */ }
+      await prisma.render.update({
+        where: { id: renderId },
+        data: {
+          usedAssets: JSON.stringify({
+            ...existingUsedAssets,
+            videoAssets: sequenceSlotAssets,
+            ...(music?.assetId ? { audioAssetId: music.assetId } : {}),
+            setSequencedLibraryIds,
+            usedSetTagByLibrary,
+            usedCategoryByLibrary,
+          }),
+        },
+      });
+    }
 
     await updateRenderTracking(renderId, {
       status: "DONE",

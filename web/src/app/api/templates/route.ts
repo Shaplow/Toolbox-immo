@@ -26,7 +26,7 @@ export async function GET() {
       where: { userId: session.user.id },
       include: {
         template: {
-          select: { id: true, name: true, client: true, formats: true, createdAt: true, updatedAt: true },
+          select: { id: true, name: true, client: true, formats: true, contentType: true, createdAt: true, updatedAt: true },
         },
       },
       orderBy: { createdAt: "desc" },

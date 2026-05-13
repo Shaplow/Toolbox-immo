@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { Trash2, Upload, Clock, BarChart2, Search, Play, Music2, ArrowUpDown, CheckCircle2, Tag, X, RotateCcw, Scissors, LayoutGrid, Layers, Square, CheckSquare, ChevronUp, ChevronDown, ListOrdered, PlusCircle, MinusCircle, FolderOpen, Film, Globe, Lock, Users } from "lucide-react";
+import { Trash2, Upload, Clock, BarChart2, Search, Play, Music2, ArrowUpDown, CheckCircle2, Tag, X, RotateCcw, Scissors, LayoutGrid, Layers, Square, CheckSquare, ChevronUp, ChevronDown, ListOrdered, PlusCircle, MinusCircle, FolderOpen, Film, Globe, Lock, Users, Wand2 } from "lucide-react";
 import { MediaAssetEditModal } from "./MediaAssetEditModal";
+import { MediaBatchAutocutPanel } from "./MediaBatchAutocutPanel";
 
 interface MediaAsset {
   id: string;
@@ -68,6 +69,7 @@ export function MediaAssetsPanel({ library }: Props) {
   const [editingUsageId, setEditingUsageId] = useState<string | null>(null);
   const [usageInput, setUsageInput] = useState("");
   const [editingAsset, setEditingAsset] = useState<MediaAsset | null>(null);
+  const [showAtelier, setShowAtelier] = useState(false);
   const [editingSetTagId, setEditingSetTagId] = useState<string | null>(null);
   const [setTagValue, setSetTagValue] = useState("");
   const [setTagError, setSetTagError] = useState<string | null>(null);
@@ -211,11 +213,21 @@ export function MediaAssetsPanel({ library }: Props) {
       // Simulate rotation: only accessible groups participate in ranking
       const accessibleNamed = accountFilter ? named.filter((g) => g.isAccessible) : named;
       const inaccessibleNamed = accountFilter ? named.filter((g) => !g.isAccessible) : [];
+      // Count groups per category to break ties: the majority category should start first
+      // so that interleaving is optimal when category counts are unequal.
+      const categoryCounts = new Map<string | null, number>();
+      for (const g of accessibleNamed) {
+        categoryCounts.set(g.category, (categoryCounts.get(g.category) ?? 0) + 1);
+      }
       const byAge = [...accessibleNamed].sort((a, b) => {
         if (!a.lastUsed && b.lastUsed) return -1;
         if (a.lastUsed && !b.lastUsed) return 1;
         if (a.lastUsed && b.lastUsed && a.lastUsed !== b.lastUsed)
           return a.lastUsed < b.lastUsed ? -1 : 1;
+        // Tiebreak: prefer category with more groups first to enable better alternation
+        const countA = categoryCounts.get(a.category) ?? 0;
+        const countB = categoryCounts.get(b.category) ?? 0;
+        if (countA !== countB) return countB - countA;
         return (a.setTag ?? "").localeCompare(b.setTag ?? "");
       });
       const ordered: GroupItem[] = [];
@@ -1085,13 +1097,23 @@ export function MediaAssetsPanel({ library }: Props) {
             {assets.length} fichier{assets.length !== 1 ? "s" : ""} · {isVideo ? "Vidéos" : "Musiques"}
           </p>
         </div>
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-        >
-          <Upload size={14} /> {isVideo ? "Ajouter des vidéos" : "Ajouter des musiques"}
-        </button>
+        <div className="flex items-center gap-2">
+          {isVideo && (
+            <button
+              onClick={() => setShowAtelier(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700"
+            >
+              <Wand2 size={14} /> Atelier
+            </button>
+          )}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+          >
+            <Upload size={14} /> {isVideo ? "Ajouter des vidéos" : "Ajouter des musiques"}
+          </button>
+        </div>
         <input
           ref={fileInputRef}
           type="file"
@@ -1671,6 +1693,12 @@ export function MediaAssetsPanel({ library }: Props) {
             setEditingAsset(null);
             void load();
           }}
+        />
+      )}
+      {showAtelier && (
+        <MediaBatchAutocutPanel
+          library={library}
+          onClose={() => setShowAtelier(false)}
         />
       )}
     </div>

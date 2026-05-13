@@ -28,6 +28,8 @@ export interface OfferScheduleRule {
   dayOfWeek: number;
   publishTime: string;
   contentType: string;
+  templateId: string | null;
+  template: { id: string; name: string; contentType: string } | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

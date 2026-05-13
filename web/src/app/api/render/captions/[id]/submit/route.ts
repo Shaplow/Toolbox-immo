@@ -69,8 +69,18 @@ export async function POST(
         );
       }
     } catch (err) {
-      // R2 head-check failure is non-fatal — proceed optimistically and let the worker report
-      console.warn("[render/captions/submit] R2 head-check failed (proceeding):", err);
+      // R2 head-check threw (credentials broken, network failure). Revert to QUEUED so the
+      // user can retry once R2 is back. Do NOT proceed optimistically — the worker would
+      // receive a 403/404 download error that is much harder to diagnose.
+      await prisma.captionJob.update({
+        where: { id: job.id },
+        data: { status: "QUEUED" },
+      });
+      console.error("[render/captions/submit] R2 head-check threw — reverting to QUEUED:", err);
+      return NextResponse.json(
+        { error: "Impossible de vérifier le fichier source (R2 indisponible). Réessayez dans quelques instants." },
+        { status: 503 }
+      );
     }
   }
 
