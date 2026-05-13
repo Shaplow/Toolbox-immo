@@ -1438,9 +1438,8 @@ export function MediaAssetsPanel({ library }: Props) {
           <p className="text-sm font-medium text-gray-500">Aucun fichier dans cette bibliothèque</p>
           <p className="text-xs text-gray-400 mt-2 mb-4">Uploadez votre premier fichier ou glissez-déposez directement sur cette page.</p>
           <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+            onClick={() => setShowUploadModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
           >
             <Upload size={14} /> {isVideo ? "Ajouter des vidéos" : "Ajouter des musiques"}
           </button>
