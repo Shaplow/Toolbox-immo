@@ -59,8 +59,10 @@ interface Take {
   text: string;
 }
 
-// Pause ≥ 1.5s entre deux segments = nouvelle prise
-const TAKE_GAP_S = 1.5;
+// Pause ≥ 0.8s entre deux segments Whisper = nouvelle prise.
+// Whisper tend à rogner les silences aux bords des segments, donc un gap de 0.8s
+// dans le transcript correspond généralement à ~1-1.5s de silence réel dans l'audio.
+const TAKE_GAP_S = 0.8;
 const TAKE_PAD_S = 0.15;
 const HESITATION_RE = /\b(euh|heu|hm|donc|alors|ben|voil[aà]|enfin|bref|ouais)\b/gi;
 
@@ -310,13 +312,17 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
     ? takes.reduce((b, t, i) => t.score > takes[b].score ? i : b, 0)
     : 0;
 
-  // Si plusieurs prises et pas encore confirmé manuellement → pré-sélectionner la meilleure
-  const initStart = job.confirmedStart != null
-    ? job.confirmedStart
-    : takes.length > 1 ? takes[bestIdx].start : (job.proposedStart ?? 0);
-  const initEnd = job.confirmedEnd != null
-    ? job.confirmedEnd
-    : takes.length > 1 ? takes[bestIdx].end : (job.proposedEnd ?? duration);
+  // Quand plusieurs prises sont détectées : toujours pré-sélectionner les bornes de la
+  // meilleure prise, même si confirmedStart/End sont non-null.
+  // Raison : le webhook pré-remplit systématiquement confirmedStart/End depuis proposedStart/End
+  // (= première/dernière syllabe de toute la vidéo, fumbles inclus). Utiliser ces valeurs
+  // quand des prises existent donnerait un état incohérent : chip sélectionnée ≠ timecodes.
+  const initStart = takes.length > 1
+    ? takes[bestIdx].start
+    : (job.confirmedStart ?? job.proposedStart ?? 0);
+  const initEnd = takes.length > 1
+    ? takes[bestIdx].end
+    : (job.confirmedEnd ?? job.proposedEnd ?? duration);
 
   const [trimStart, setTrimStart] = useState(initStart);
   const [trimEnd, setTrimEnd] = useState(initEnd);
