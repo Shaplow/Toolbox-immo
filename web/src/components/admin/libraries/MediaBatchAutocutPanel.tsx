@@ -27,8 +27,10 @@ interface Props {
 }
 
 type AssetWithJobStatus = MediaAsset & {
-  autocutStatus: "none" | "pending" | "processing" | "done" | "failed";
+  autocutStatus: "none" | "pending" | "processing" | "done" | "failed" | "cut";
   autocutJobId: string | null;
+  /** Durée conservée après le cut (confirmedEnd - confirmedStart), null si non appliqué */
+  cutDuration: number | null;
 };
 
 function fmt(s: number | null): string {
@@ -96,15 +98,20 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
 
       const enriched: AssetWithJobStatus[] = assetsData.map((a) => {
         const job = jobByAsset.get(a.id);
-        // Un job "applied" ne doit plus apparaître comme "done" dans le compteur
-        const autocutStatus = job
-          ? (job.reviewStatus === "applied" ? "none" : (job.status as AssetWithJobStatus["autocutStatus"]))
-          : "none";
-        return {
-          ...a,
-          autocutStatus,
-          autocutJobId: job?.id ?? null,
-        };
+        let autocutStatus: AssetWithJobStatus["autocutStatus"] = "none";
+        let cutDuration: number | null = null;
+        if (job) {
+          if (job.reviewStatus === "applied") {
+            autocutStatus = "cut";
+            cutDuration =
+              job.confirmedStart != null && job.confirmedEnd != null
+                ? Math.round((job.confirmedEnd - job.confirmedStart) * 10) / 10
+                : null;
+          } else {
+            autocutStatus = job.status as AssetWithJobStatus["autocutStatus"];
+          }
+        }
+        return { ...a, autocutStatus, cutDuration, autocutJobId: job?.id ?? null };
       });
 
       setAssets(enriched);
@@ -340,18 +347,24 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
   const selectableCount = assets.filter(
     (a) => a.autocutStatus === "none" || a.autocutStatus === "failed"
   ).length;
+  const cutCount = assets.filter((a) => a.autocutStatus === "cut").length;
   const processingCount = assets.filter(
     (a) => a.autocutStatus === "pending" || a.autocutStatus === "processing"
   ).length;
   const doneCount = assets.filter((a) => a.autocutStatus === "done").length;
 
-  const statusLabel = (s: AssetWithJobStatus["autocutStatus"]) => {
-    switch (s) {
+  const statusLabel = (asset: AssetWithJobStatus) => {
+    switch (asset.autocutStatus) {
       case "none": return null;
       case "pending": return <span className="text-xs text-yellow-600 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> En attente</span>;
       case "processing": return <span className="text-xs text-blue-600 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Analyse…</span>;
       case "done": return <span className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 size={10} /> Analysé</span>;
       case "failed": return <span className="text-xs text-red-600 flex items-center gap-1"><AlertTriangle size={10} /> Erreur</span>;
+      case "cut": return (
+        <span className="text-xs text-gray-500 flex items-center gap-1">
+          ✂ Coupé{asset.cutDuration != null ? <span className="text-gray-400">· {asset.cutDuration}s</span> : null}
+        </span>
+      );
     }
   };
 
@@ -375,6 +388,11 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
                 >
                   Valider les analyses ({doneCount}) <ChevronRight size={13} />
                 </button>
+              )}
+              {cutCount > 0 && (
+                <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">
+                  ✂ {cutCount} coupé{cutCount > 1 ? "s" : ""}
+                </span>
               )}
               <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
                 <X size={16} />
@@ -448,11 +466,16 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
               <ul className="divide-y divide-gray-50">
                 {assets.map((asset) => {
                   const isSelectable = asset.autocutStatus === "none" || asset.autocutStatus === "failed";
+                  const isCut = asset.autocutStatus === "cut";
                   const isSelected = selectedIds.has(asset.id);
                   return (
                     <li
                       key={asset.id}
-                      className={`flex items-center gap-3 px-6 py-2.5 transition-colors ${isSelectable ? "cursor-pointer hover:bg-gray-50" : "opacity-60"}`}
+                      className={`flex items-center gap-3 px-6 py-2.5 transition-colors ${
+                        isSelectable ? "cursor-pointer hover:bg-gray-50"
+                        : isCut ? "bg-gray-50/50"
+                        : "opacity-60"
+                      }`}
                       onClick={() => isSelectable && toggleSelect(asset.id)}
                     >
                       {isSelectable ? (
@@ -462,12 +485,14 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
                       ) : (
                         <span className="w-[15px] flex-shrink-0" />
                       )}
-                      <span className="text-sm text-gray-800 flex-1 truncate">{asset.filename}</span>
+                      <span className={`text-sm flex-1 truncate ${isCut ? "text-gray-400" : "text-gray-800"}`}>
+                        {asset.filename}
+                      </span>
                       {asset.duration !== null && (
                         <span className="text-xs text-gray-400 flex-shrink-0">{fmt(asset.duration)}</span>
                       )}
-                      <span className="flex-shrink-0 w-28 text-right">
-                        {statusLabel(asset.autocutStatus)}
+                      <span className="flex-shrink-0 w-32 text-right">
+                        {statusLabel(asset)}
                       </span>
                     </li>
                   );
@@ -604,27 +629,48 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
             ))
           )}
 
-          {/* Section de suivi des jobs appliqués */}
+          {/* Section de suivi des jobs appliqués — lignes compactes */}
           {appliedJobs.length > 0 && (
-            <div className="mt-2 flex flex-col gap-2">
-              <div className="flex items-center gap-2">
+            <div className="mt-2">
+              <div className="flex items-center gap-2 mb-1.5">
                 <div className="flex-1 h-px bg-gray-100" />
                 <span className="text-xs text-gray-400 font-medium uppercase tracking-wide px-1 flex items-center gap-1.5">
                   {appliedJobs.some((j) => !j.editJob?.status || j.editJob.status === "pending" || j.editJob.status === "processing") && (
                     <Loader2 size={9} className="animate-spin" />
                   )}
-                  En traitement ({appliedJobs.filter((j) => j.editJob?.status === "done").length}/{appliedJobs.length} terminés)
+                  En traitement ({appliedJobs.filter((j) => j.editJob?.status === "done").length}/{appliedJobs.length})
                 </span>
                 <div className="flex-1 h-px bg-gray-100" />
               </div>
-              {appliedJobs.map((job) => (
-                <AutocutReviewCard
-                  key={job.id}
-                  job={job}
-                  onAccept={handleAccept}
-                  onSkip={handleSkip}
-                />
-              ))}
+              <ul className="flex flex-col gap-0.5">
+                {appliedJobs.map((job) => {
+                  const editStatus = job.editJob?.status ?? "pending";
+                  const isDone = editStatus === "done";
+                  const isFailed = editStatus === "failed";
+                  const dur =
+                    job.confirmedStart != null && job.confirmedEnd != null
+                      ? Math.round((job.confirmedEnd - job.confirmedStart) * 10) / 10
+                      : null;
+                  return (
+                    <li key={job.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 text-xs">
+                      {isDone ? (
+                        <CheckCircle2 size={11} className="text-green-500 flex-shrink-0" />
+                      ) : isFailed ? (
+                        <AlertTriangle size={11} className="text-red-500 flex-shrink-0" />
+                      ) : (
+                        <Loader2 size={11} className="animate-spin text-gray-400 flex-shrink-0" />
+                      )}
+                      <span className="flex-1 truncate text-gray-600">{job.asset.filename}</span>
+                      {dur != null && isDone && (
+                        <span className="text-gray-400 flex-shrink-0">{dur}s conservés</span>
+                      )}
+                      {isFailed && job.errorMsg && (
+                        <span className="text-red-400 truncate max-w-[160px]">{job.errorMsg}</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           )}
         </div>

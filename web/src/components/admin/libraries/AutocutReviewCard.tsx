@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { Check, X, ChevronLeft, ChevronRight, Loader2, AlertTriangle, Play, Pause, RotateCcw } from "lucide-react";
+import { Check, X, ChevronLeft, ChevronRight, Loader2, AlertTriangle, Play, Pause, RotateCcw, Expand, Shrink } from "lucide-react";
 
 export interface AutocutJob {
   id: string;
@@ -48,7 +48,7 @@ function round2(v: number) {
 }
 
 // ── Détection de prises multiples ─────────────────────────────────────────────
-interface Word { word: string; start: number; end: number; }
+interface Word { word: string; start: number; end: number; score?: number; }
 type TranscriptSegment = { text: string; start: number; end: number; words?: Word[] };
 
 interface Take {
@@ -66,9 +66,25 @@ interface Take {
 // Fallback sur les segments si les mots ne sont pas disponibles.
 const TAKE_GAP_S = 0.8;
 const TAKE_PAD_S = 0.15;
+// Plafond de durée par mot : Whisper gonfle le `end` du dernier mot d'un groupe
+// pour couvrir toute la pause qui suit. Ex : "Paris." start=3.256 end=11.367 alors que
+// la parole s'arrête à ~3.5s. Sans ce plafond le gap avec le mot suivant = 0.06s au lieu de ~8s.
+const MAX_WORD_DURATION_S = 1.0;
 const HESITATION_RE = /\b(euh|heu|hm|donc|alors|ben|voil[aà]|enfin|bref|ouais)\b/gi;
 
-function scoreGroup(text: string, wordCount: number, rawStart: number, rawEnd: number): number {
+function scoreGroup(
+  text: string,
+  wordCount: number,
+  rawStart: number,
+  rawEnd: number,
+  avgWordConfidence: number = 0.8,
+  takeIndex: number = 0,
+  totalTakes: number = 1,
+): number {
+  // Prise tronquée (fumble interrompu) → score plancher, ne peut jamais être choisie
+  const isTruncated = /\.\.\.|…/.test(text);
+  if (isTruncated) return Math.min(15, wordCount * 2);
+
   const lengthScore = Math.min(100, (wordCount / 25) * 100);
   const dur = rawEnd - rawStart;
   const rate = dur > 0 ? wordCount / dur : 0;
@@ -76,7 +92,18 @@ function scoreGroup(text: string, wordCount: number, rawStart: number, rawEnd: n
   const hesCount = (text.match(HESITATION_RE) ?? []).length;
   const hesScore = Math.max(0, 100 - hesCount * 20);
   const completenessScore = /[.!?»"']$/.test(text) ? 100 : 55;
-  return Math.round(lengthScore * 0.35 + rateScore * 0.25 + hesScore * 0.25 + completenessScore * 0.15);
+  // Confiance Whisper : signal le plus fiable — 0.9+ = diction nette, 0.3- = bredouillage
+  const confidenceScore = avgWordConfidence * 100;
+  // Bonus dernière prise : un locuteur recommence toujours en s'améliorant
+  const positionBonus = totalTakes > 1 && takeIndex === totalTakes - 1 ? 8 : 0;
+
+  return Math.round(
+    lengthScore       * 0.20 +
+    rateScore         * 0.15 +
+    hesScore          * 0.20 +
+    completenessScore * 0.15 +
+    confidenceScore   * 0.30
+  ) + positionBonus;
 }
 
 function detectTakes(segments: TranscriptSegment[], totalDuration: number): Take[] {
@@ -91,7 +118,9 @@ function detectTakes(segments: TranscriptSegment[], totalDuration: number): Take
     const wordGroups: Word[][] = [];
     let cur: Word[] = [allWords[0]];
     for (let i = 1; i < allWords.length; i++) {
-      if (allWords[i].start - allWords[i - 1].end >= TAKE_GAP_S) {
+      // effectiveEnd plafonne la durée du mot précédent pour neutraliser l'inflation Whisper
+      const prevEffectiveEnd = Math.min(allWords[i - 1].end, allWords[i - 1].start + MAX_WORD_DURATION_S);
+      if (allWords[i].start - prevEffectiveEnd >= TAKE_GAP_S) {
         wordGroups.push(cur);
         cur = [allWords[i]];
       } else {
@@ -103,11 +132,13 @@ function detectTakes(segments: TranscriptSegment[], totalDuration: number): Take
     if (wordGroups.length > 1) {
       return wordGroups.map((group, idx) => {
         const rawStart = group[0].start;
-        const rawEnd = group[group.length - 1].end;
+        // Cap du dernier mot pour que le groupe ne déborde pas sur la pause suivante
+        const rawEnd = Math.min(group[group.length - 1].end, group[group.length - 1].start + MAX_WORD_DURATION_S);
         const start = Math.max(0, rawStart - TAKE_PAD_S);
         const end = Math.min(totalDuration > 0 ? totalDuration : rawEnd + 1, rawEnd + TAKE_PAD_S);
         const text = group.map(w => w.word).join(" ").trim();
-        const score = scoreGroup(text, group.length, rawStart, rawEnd);
+        const avgConfidence = group.reduce((s, w) => s + (w.score ?? 0.8), 0) / group.length;
+        const score = scoreGroup(text, group.length, rawStart, rawEnd, avgConfidence, idx, wordGroups.length);
         const matchedSegs = segments.filter(s => s.end >= rawStart && s.start <= rawEnd);
         return {
           index: idx + 1,
@@ -139,7 +170,11 @@ function detectTakes(segments: TranscriptSegment[], totalDuration: number): Take
     const end = Math.min(totalDuration > 0 ? totalDuration : rawEnd + 1, rawEnd + TAKE_PAD_S);
     const text = group.map(s => s.text).join(" ").trim();
     const words = text.split(/\s+/).filter(Boolean);
-    const score = scoreGroup(text, words.length, rawStart, rawEnd);
+    const segWords = group.flatMap(s => s.words ?? []);
+    const avgConfidence = segWords.length
+      ? segWords.reduce((s, w) => s + (w.score ?? 0.8), 0) / segWords.length
+      : 0.8;
+    const score = scoreGroup(text, words.length, rawStart, rawEnd, avgConfidence, idx, segGroups.length);
     return { index: idx + 1, segments: group, start, end, score, text };
   });
 }
@@ -152,33 +187,46 @@ interface TrimPlayerProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   /** Timestamp (absolu) de fin du dernier mot Whisper — affiché comme marqueur sur le scrubber. */
   lastWordEnd?: number | null;
+  /** Mode rush complet : joue sur [0, fullDuration], affiche zone cut en overlay */
+  fullRush?: boolean;
+  /** Durée totale du fichier (utilisée en mode fullRush) */
+  fullDuration?: number;
+  /** Timecodes du cut — affichés comme zone indigo + traits sur le scrubber en mode fullRush */
+  cutStart?: number;
+  cutEnd?: number;
 }
 
-function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd }: TrimPlayerProps) {
+function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd, fullRush = false, fullDuration, cutStart, cutEnd }: TrimPlayerProps) {
+  // En mode fullRush, le player joue sur [0, fullDuration] sans contrainte
+  const effectiveStart = fullRush ? 0 : trimStart;
+  const effectiveEnd = fullRush ? (fullDuration ?? trimEnd) : trimEnd;
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(trimStart);
   const scrubBarRef = useRef<HTMLDivElement>(null);
+  const rafIdRef = useRef<number>(0);
 
   // Refs pour accéder aux valeurs courantes dans les event listeners sans stale closure
   const trimStartRef = useRef(trimStart);
   const trimEndRef = useRef(trimEnd);
-  useEffect(() => { trimStartRef.current = trimStart; }, [trimStart]);
-  useEffect(() => { trimEndRef.current = trimEnd; }, [trimEnd]);
+  useEffect(() => { trimStartRef.current = fullRush ? 0 : trimStart; }, [trimStart, fullRush]);
+  useEffect(() => { trimEndRef.current = fullRush ? (fullDuration ?? trimEnd) : trimEnd; }, [trimEnd, fullRush, fullDuration]);
 
-  // Seek au nouveau trimStart quand il change
+  // Seek au nouveau trimStart quand il change (sauf en mode fullRush)
   useEffect(() => {
     const v = videoRef.current;
-    if (!v) return;
+    if (!v || fullRush) return;
     if (!isPlaying) {
       try { v.currentTime = trimStart; } catch { /* ok */ }
       setCurrentTime(trimStart);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trimStart]);
+  }, [trimStart, fullRush]);
 
   // Quand trimEnd change en cours de lecture, la contrainte sera appliquée par timeupdate
 
-  // Montage : seek initial + attacher timeupdate
+  // Montage : seek initial + RAF loop pendant la lecture.
+  // requestAnimationFrame (~16ms) remplace timeupdate (~250ms) pour stopper
+  // précisément à trimEnd sans laisser la vidéo déborder.
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -188,39 +236,48 @@ function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd }: TrimPlay
       setCurrentTime(trimStartRef.current);
     };
 
-    const handleTimeUpdate = () => {
+    const tick = () => {
       const ct = v.currentTime;
       const end = trimEndRef.current;
       const start = trimStartRef.current;
-
       if (ct >= end) {
         v.pause();
         try { v.currentTime = end; } catch { /* ok */ }
         setIsPlaying(false);
         setCurrentTime(end);
-        return;
+        return; // pas de RAF suivant → boucle stoppée
       }
       if (ct < start) {
         try { v.currentTime = start; } catch { /* ok */ }
-        return;
       }
       setCurrentTime(ct);
+      rafIdRef.current = requestAnimationFrame(tick);
     };
 
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
-    const handleEnded = () => { setIsPlaying(false); setCurrentTime(trimStartRef.current); };
+    const handlePlay = () => {
+      setIsPlaying(true);
+      rafIdRef.current = requestAnimationFrame(tick);
+    };
+    const handlePause = () => {
+      setIsPlaying(false);
+      cancelAnimationFrame(rafIdRef.current);
+      setCurrentTime(v.currentTime);
+    };
+    const handleEnded = () => {
+      setIsPlaying(false);
+      cancelAnimationFrame(rafIdRef.current);
+      setCurrentTime(trimStartRef.current);
+    };
 
     if (v.readyState >= 1) handleLoaded();
     else v.addEventListener("loadedmetadata", handleLoaded, { once: true });
 
-    v.addEventListener("timeupdate", handleTimeUpdate);
     v.addEventListener("play", handlePlay);
     v.addEventListener("pause", handlePause);
     v.addEventListener("ended", handleEnded);
 
     return () => {
-      v.removeEventListener("timeupdate", handleTimeUpdate);
+      cancelAnimationFrame(rafIdRef.current);
       v.removeEventListener("play", handlePlay);
       v.removeEventListener("pause", handlePause);
       v.removeEventListener("ended", handleEnded);
@@ -231,32 +288,28 @@ function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd }: TrimPlay
   const togglePlay = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
-    if (isPlaying) {
-      v.pause();
-      return;
-    }
-    // Si hors plage, remettre au début
+    if (isPlaying) { v.pause(); return; }
     const ct = v.currentTime;
-    if (ct < trimStart || ct >= trimEnd) {
-      try { v.currentTime = trimStart; } catch { /* ok */ }
+    if (ct < effectiveStart || ct >= effectiveEnd) {
+      try { v.currentTime = effectiveStart; } catch { /* ok */ }
     }
     void v.play();
-  }, [isPlaying, trimStart, trimEnd, videoRef]);
+  }, [isPlaying, effectiveStart, effectiveEnd, videoRef]);
 
   const seekToStart = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
-    try { v.currentTime = trimStart; } catch { /* ok */ }
-    setCurrentTime(trimStart);
-  }, [trimStart, videoRef]);
+    try { v.currentTime = effectiveStart; } catch { /* ok */ }
+    setCurrentTime(effectiveStart);
+  }, [effectiveStart, videoRef]);
 
   const seekToEnd = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
-    const t = Math.max(trimStart, trimEnd - 0.04);
+    const t = Math.max(effectiveStart, effectiveEnd - 0.04);
     try { v.currentTime = t; } catch { /* ok */ }
     setCurrentTime(t);
-  }, [trimStart, trimEnd, videoRef]);
+  }, [effectiveStart, effectiveEnd, videoRef]);
 
   // Scrubber : clic ou drag pour seeker dans [trimStart, trimEnd]
   const handleScrubClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -265,14 +318,14 @@ function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd }: TrimPlay
     if (!bar || !v) return;
     const rect = bar.getBoundingClientRect();
     const ratio = clamp((e.clientX - rect.left) / rect.width, 0, 1);
-    const target = trimStart + ratio * (trimEnd - trimStart);
+    const target = effectiveStart + ratio * (effectiveEnd - effectiveStart);
     try { v.currentTime = target; } catch { /* ok */ }
     setCurrentTime(target);
-  }, [trimStart, trimEnd, videoRef]);
+  }, [effectiveStart, effectiveEnd, videoRef]);
 
-  const trimDuration = trimEnd - trimStart;
-  const progress = trimDuration > 0 ? clamp((currentTime - trimStart) / trimDuration, 0, 1) : 0;
-  const relTime = clamp(currentTime - trimStart, 0, trimDuration);
+  const trimDuration = effectiveEnd - effectiveStart;
+  const progress = trimDuration > 0 ? clamp((currentTime - effectiveStart) / trimDuration, 0, 1) : 0;
+  const relTime = clamp(currentTime - effectiveStart, 0, trimDuration);
 
   return (
     <div className="flex flex-col gap-1.5 w-64 flex-shrink-0">
@@ -297,13 +350,37 @@ function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd }: TrimPlay
           className="absolute inset-y-0 left-0 bg-indigo-500 rounded-full"
           style={{ width: `${progress * 100}%` }}
         />
+        {/* Zone du cut en mode rush complet */}
+        {fullRush && cutStart != null && cutEnd != null && trimDuration > 0 && (
+          <div
+            className="absolute inset-y-0 bg-indigo-200/50 pointer-events-none rounded-sm"
+            style={{
+              left: `${((cutStart - effectiveStart) / trimDuration) * 100}%`,
+              width: `${((cutEnd - cutStart) / trimDuration) * 100}%`,
+            }}
+          />
+        )}
+        {fullRush && cutStart != null && trimDuration > 0 && (
+          <div
+            className="absolute inset-y-0 w-0.5 bg-green-500 pointer-events-none"
+            style={{ left: `${((cutStart - effectiveStart) / trimDuration) * 100}%` }}
+            title={`Début cut : ${fmt(cutStart)}`}
+          />
+        )}
+        {fullRush && cutEnd != null && trimDuration > 0 && (
+          <div
+            className="absolute inset-y-0 w-0.5 bg-red-400 pointer-events-none"
+            style={{ left: `${((cutEnd - effectiveStart) / trimDuration) * 100}%` }}
+            title={`Fin cut : ${fmt(cutEnd)}`}
+          />
+        )}
         {/* Marqueur "dernier mot" — la zone après ce trait est le padding Whisper (~0.2s).
              Ne pas couper avant ce marqueur pour éviter de tronquer la parole. */}
-        {lastWordEnd != null && lastWordEnd > trimStart && lastWordEnd < trimEnd && (
+        {lastWordEnd != null && lastWordEnd > effectiveStart && lastWordEnd < effectiveEnd && (
           <div
             className="absolute inset-y-0 w-0.5 bg-amber-400 rounded-full opacity-90 pointer-events-none"
-            style={{ left: `${((lastWordEnd - trimStart) / (trimEnd - trimStart)) * 100}%` }}
-            title={`Dernier mot : +${fmt(lastWordEnd - trimStart)} (${fmt(lastWordEnd)})`}
+            style={{ left: `${((lastWordEnd - effectiveStart) / trimDuration) * 100}%` }}
+            title={`Dernier mot : +${fmt(lastWordEnd - effectiveStart)} (${fmt(lastWordEnd)})`}
           />
         )}
         {/* Curseur */}
@@ -336,14 +413,14 @@ function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd }: TrimPlay
           Fin
         </button>
         <span className="ml-auto text-xs text-gray-500 tabular-nums">
-          +{fmt(relTime)} / {fmt(trimDuration)}
+          {fullRush ? fmt(currentTime) : `+${fmt(relTime)}`} / {fmt(trimDuration)}
         </span>
       </div>
       {/* Annotation dernier mot — aide l'utilisateur à ne pas sur-couper la fin */}
-      {lastWordEnd != null && lastWordEnd > trimStart && lastWordEnd < trimEnd && (
+      {!fullRush && lastWordEnd != null && lastWordEnd > effectiveStart && lastWordEnd < effectiveEnd && (
         <div
           className="text-xs text-amber-500 tabular-nums"
-          style={{ paddingLeft: `${clamp(((lastWordEnd - trimStart) / (trimEnd - trimStart)) * 100 - 5, 0, 75)}%` }}
+          style={{ paddingLeft: `${clamp(((lastWordEnd - effectiveStart) / trimDuration - 0.05) * 100, 0, 75)}%` }}
         >
           ↑ dernier mot
         </div>
@@ -362,7 +439,8 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
     if (!job.transcriptJson) return { takes: [] as Take[], transcript: null, lastWordEnd: null as number | null };
     try {
       const segs = JSON.parse(job.transcriptJson) as TranscriptSegment[];
-      const wordEnds = segs.flatMap(s => s.words ?? []).map(w => w.end);
+      // Même plafond que detectTakes : évite que le marker pointe sur le silence post-dernier-mot
+      const wordEnds = segs.flatMap(s => s.words ?? []).map(w => Math.min(w.end, w.start + MAX_WORD_DURATION_S));
       const lastWordEnd: number | null = wordEnds.length ? Math.max(...wordEnds) : null;
       return { takes: detectTakes(segs, duration), transcript: segs, lastWordEnd };
     } catch { return { takes: [] as Take[], transcript: null, lastWordEnd: null as number | null }; }
@@ -390,6 +468,7 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
   const [endInput, setEndInput] = useState(initEnd.toFixed(2));
   const [saving, setSaving] = useState(false);
   const [selectedTakeIndex, setSelectedTakeIndex] = useState(takes.length > 1 ? bestIdx : 0);
+  const [showFullRush, setShowFullRush] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -464,10 +543,24 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
 
   return (
     <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
-      {/* Filename */}
+      {/* Filename + toggle rush */}
       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
         <span className="text-sm font-medium text-gray-900 truncate max-w-sm">{asset.filename}</span>
-        {duration > 0 && <span className="text-xs text-gray-400">{fmt(duration)}</span>}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {duration > 0 && <span className="text-xs text-gray-400">{fmt(duration)}</span>}
+          <button
+            onClick={() => setShowFullRush(v => !v)}
+            className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded border transition-colors ${
+              showFullRush
+                ? "bg-indigo-50 text-indigo-600 border-indigo-200"
+                : "text-gray-400 border-gray-200 hover:text-gray-600 hover:border-gray-300"
+            }`}
+            title={showFullRush ? "Revenir au mode coupé" : "Voir le rush complet"}
+          >
+            {showFullRush ? <Shrink size={11} /> : <Expand size={11} />}
+            {showFullRush ? "Rush coupé" : "Rush complet"}
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-4 p-4">
@@ -478,6 +571,10 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
           trimEnd={trimEnd}
           videoRef={videoRef}
           lastWordEnd={lastWordEnd}
+          fullRush={showFullRush}
+          fullDuration={duration > 0 ? duration : undefined}
+          cutStart={trimStart}
+          cutEnd={trimEnd}
         />
 
         {/* Transcript + timing */}
