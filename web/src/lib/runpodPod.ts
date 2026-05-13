@@ -114,20 +114,18 @@ export function buildPodFastapiUrl(podId: string, internalPort = 8080): string {
  * Consumer cards (GeForce) are listed last — cheaper but less stable drivers.
  */
 export const PREFERRED_GPU_TYPES: string[] = [
-  "NVIDIA RTX A4000",               // 16 GB pro, meilleur rapport prix/dispo
-  "NVIDIA RTX A4500",               // 20 GB pro
-  "NVIDIA RTX 4000 Ada Generation", // 20 GB Ada, bon dispo community
-  "NVIDIA RTX 2000 Ada Generation", // 16 GB Ada, souvent dispo
-  "NVIDIA RTX A5000",               // 24 GB pro
-  "NVIDIA A40",                     // 48 GB datacenter
-  "NVIDIA L4",                      // 24 GB datacenter dernière gen
-  "NVIDIA RTX 6000 Ada Generation", // 48 GB Ada pro
-  "NVIDIA RTX A6000",               // 48 GB pro
-  "NVIDIA L40S",                    // 48 GB datacenter
-  "NVIDIA RTX PRO 6000 Blackwell Server Edition", // nouveau, bonne dispo
-  "NVIDIA GeForce RTX 4080",        // consumer fallback, CUDA OK
-  "NVIDIA GeForce RTX 3080",        // consumer fallback, CUDA OK
-  "NVIDIA A100 80GB PCIe",          // fallback ultime
+  "NVIDIA GeForce RTX 3080",        // ~$0.20-0.28/hr consumer, CUDA OK
+  "NVIDIA RTX 2000 Ada Generation", // ~$0.22-0.30/hr 16 GB Ada
+  "NVIDIA RTX A4000",               // ~$0.24-0.34/hr 16 GB pro
+  "NVIDIA GeForce RTX 4080",        // ~$0.35-0.44/hr consumer, CUDA OK
+  "NVIDIA RTX A4500",               // ~$0.34-0.44/hr 20 GB pro
+  "NVIDIA RTX 4000 Ada Generation", // ~$0.35-0.45/hr 20 GB Ada
+  "NVIDIA RTX A5000",               // ~$0.40-0.50/hr 24 GB pro
+  "NVIDIA A40",                     // ~$0.40-0.54/hr 48 GB datacenter
+  "NVIDIA L4",                      // ~$0.45-0.59/hr 24 GB datacenter
+  "NVIDIA RTX A6000",               // ~$0.55-0.79/hr 48 GB pro
+  "NVIDIA RTX 6000 Ada Generation", // ~$0.70-0.90/hr 48 GB Ada pro
+  "NVIDIA L40S",                    // ~$0.70-0.99/hr 48 GB datacenter
 ];
 
 // ─── Pod lifecycle — create / terminate ──────────────────────────────────────

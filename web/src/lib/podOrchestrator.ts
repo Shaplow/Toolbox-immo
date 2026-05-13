@@ -196,17 +196,19 @@ async function _ensurePodReadyImpl(): Promise<string> {
   try {
     await waitForFastapiReady(podUrl, POD_CREATE_TIMEOUT_MS, newPodId, API_KEY);
   } catch (err) {
-    // FastAPI never came up within the full budget — terminate the pod immediately.
-    // Leaving it alive would bill indefinitely since maybeStopIdlePod only acts on
-    // status="running" pods, and this pod stays in "starting".
-    console.warn(`[pod] FastAPI timeout sur nouveau pod ${newPodId} — terminaison pour éviter facturation orphelin`);
+    // FastAPI never came up — stop the pod (don't terminate).
+    // The Docker image stays cached on the GPU node so the next request can
+    // restart this pod in ~30s instead of pulling the full image again.
+    // Next ensurePodReady will find it EXITED and take the restart path.
+    console.warn(`[pod] FastAPI timeout sur nouveau pod ${newPodId} — arrêt du pod (image conservée pour restart rapide)`);
     try {
-      await terminateRunpodPod(newPodId, API_KEY);
-      console.log(`[pod] Pod orphelin ${newPodId} terminé`);
-    } catch (termErr) {
-      console.warn(`[pod] Impossible de terminer le pod orphelin ${newPodId} (à nettoyer manuellement):`, termErr);
+      await stopRunpodPod(newPodId, API_KEY);
+      console.log(`[pod] Pod ${newPodId} arrêté ✓ (image conservée)`);
+    } catch (stopErr) {
+      console.warn(`[pod] Impossible d'arrêter le pod ${newPodId}:`, stopErr);
     }
-    await setPodState("stopped", null, null);
+    // Preserve podId so next request restarts this pod instead of creating a new one
+    await setPodState("stopped", null, newPodId);
     throw new PodUnavailableError(`FastAPI non joignable après création du pod ${newPodId}: ${err}`);
   }
 
@@ -245,18 +247,27 @@ export async function recordPodActivity(): Promise<void> {
  */
 export async function onPodJobComplete(): Promise<void> {
   try {
-    // Atomic decrement — GREATEST(0, count - 1) is safe under concurrent webhook
-    // delivery: no read-then-write race, counter never goes below 0.
+    // Atomic decrement + update lastJobAt to completion time.
+    // lastJobAt tracks "when was the last job completed" (not started), so that
+    // the idle timer counts from the moment the pod became free, not from dispatch.
     await prisma.$executeRaw`
       UPDATE "PodState"
-      SET "activeJobCount" = GREATEST(0, "activeJobCount" - 1)
+      SET "activeJobCount" = GREATEST(0, "activeJobCount" - 1),
+          "lastJobAt" = NOW()
       WHERE id = 'singleton'
     `;
   } catch {
     // Non-fatal
   }
-  // Now check if the pod can be stopped
+  // Immediate check: handles the case where the pod was already past the idle
+  // threshold (e.g. a very long-running job, or stale counter recovery).
   await maybeStopIdlePod();
+
+  // Deferred check: fires after IDLE_MINUTES so the pod actually stops when
+  // no new jobs arrive. Without this, the only other trigger is the cron endpoint,
+  // which requires CRON_SECRET to be configured.
+  const idleMs = IDLE_MINUTES * 60_000;
+  setTimeout(() => { void maybeStopIdlePod(); }, idleMs + 5_000);
 }
 
 /**
