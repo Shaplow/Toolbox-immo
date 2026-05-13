@@ -181,7 +181,6 @@ function detectTakes(segments: TranscriptSegment[], totalDuration: number): Take
 
 // ── Lecteur vidéo contraint entre trimStart et trimEnd ────────────────────────
 interface TrimPlayerProps {
-  src: string;
   trimStart: number;
   trimEnd: number;
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -196,7 +195,7 @@ interface TrimPlayerProps {
   cutEnd?: number;
 }
 
-function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd, fullRush = false, fullDuration, cutStart, cutEnd }: TrimPlayerProps) {
+function TrimPlayer({ trimStart, trimEnd, videoRef, lastWordEnd, fullRush = false, fullDuration, cutStart, cutEnd }: TrimPlayerProps) {
   // En mode fullRush, le player joue sur [0, fullDuration] sans contrainte
   const effectiveStart = fullRush ? 0 : trimStart;
   const effectiveEnd = fullRush ? (fullDuration ?? trimEnd) : trimEnd;
@@ -328,17 +327,6 @@ function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd, fullRush =
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Vidéo — ratio 16:9 forcé, object-cover centre le contenu.
-          Portrait 9:16 iPhone : le visage reste centré, pas de barres noires.
-          176×99 px au lieu de 176×313 px — la carte reste compacte. */}
-      <div className="relative rounded-lg overflow-hidden bg-black aspect-video">
-        <video
-          ref={videoRef}
-          src={src}
-          className="absolute inset-0 w-full h-full object-cover"
-          preload="metadata"
-        />
-      </div>
 
       {/* Barre de progression — zone de clic élargie pour faciliter le scrub */}
       <div className="py-1.5 cursor-pointer" onClick={handleScrubClick}>
@@ -561,22 +549,11 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
         </div>
       </div>
 
-      <div className="p-4">
+      <div className="p-4 flex flex-col gap-3">
         <div className="flex gap-4 items-start">
-          {/* Colonne gauche : player compact (w-44 = 176px)
-              vidéo aspect-video 176×99px + scrubber + controles */}
-          <div className="w-44 shrink-0">
-            <TrimPlayer
-              src={asset.url}
-              trimStart={trimStart}
-              trimEnd={trimEnd}
-              videoRef={videoRef}
-              lastWordEnd={lastWordEnd}
-              fullRush={showFullRush}
-              fullDuration={duration > 0 ? duration : undefined}
-              cutStart={trimStart}
-              cutEnd={trimEnd}
-            />
+          {/* Vidéo portrait naturelle — ratio naturel, pas de crop */}
+          <div className="w-44 shrink-0 rounded-lg overflow-hidden bg-gray-900">
+            <video ref={videoRef} src={asset.url} className="w-full block" preload="metadata" />
           </div>
 
           {/* Colonne droite : prises, transcript, réglages */}
@@ -689,6 +666,17 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
           </div>
           </div>
         </div>
+        {/* TrimPlayer: scrubber + contrôles pleine largeur, sous les deux colonnes */}
+        <TrimPlayer
+          trimStart={trimStart}
+          trimEnd={trimEnd}
+          videoRef={videoRef}
+          lastWordEnd={lastWordEnd}
+          fullRush={showFullRush}
+          fullDuration={duration > 0 ? duration : undefined}
+          cutStart={trimStart}
+          cutEnd={trimEnd}
+        />
       </div>
 
       {/* Actions */}
