@@ -528,7 +528,7 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
   }
 
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+    <div className="border border-gray-200 rounded-xl bg-white">
       {/* Filename + toggle rush */}
       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
         <span className="text-sm font-medium text-gray-900 truncate max-w-sm">{asset.filename}</span>
