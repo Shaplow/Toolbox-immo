@@ -328,13 +328,12 @@ function TrimPlayer({ src, trimStart, trimEnd, videoRef, lastWordEnd, fullRush =
 
   return (
     <div className="flex flex-col gap-2 w-full">
-      {/* Vidéo — container centré, pas de largeur fixée pour éviter les barres noires sur vidéos portrait */}
-      <div className="rounded-lg overflow-hidden bg-black flex justify-center">
+      {/* Vidéo — w-full dans la colonne parente fixée, pas de container large */}
+      <div className="rounded-lg overflow-hidden bg-black">
         <video
           ref={videoRef}
           src={src}
-          className="block"
-          style={{ maxHeight: "280px", maxWidth: "100%", display: "block" }}
+          className="w-full block"
           preload="metadata"
         />
       </div>
@@ -560,8 +559,11 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
         </div>
       </div>
 
-      <div className="flex flex-col p-4 gap-3">
-        <TrimPlayer
+      <div className="flex gap-4 p-4 items-start">
+        {/* Colonne gauche : lecteur vidéo en largeur fixe.
+            w-44 = 176 px → portrait 9:16 : 176×313 px, paysage 16:9 : 176×99 px — aucune barre noire. */}
+        <div className="w-44 shrink-0">
+          <TrimPlayer
           src={asset.url}
           trimStart={trimStart}
           trimEnd={trimEnd}
@@ -572,9 +574,10 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
           cutStart={trimStart}
           cutEnd={trimEnd}
         />
+        </div>
 
-        {/* Prises, transcript et réglages */}
-        <div className="flex flex-col gap-3">
+        {/* Colonne droite : prises, transcript, réglages */}
+        <div className="flex-1 flex flex-col gap-3 min-w-0">
           {/* Sélecteur de prises si plusieurs détectées */}
           {takes.length > 1 && (
             <div className="flex flex-col gap-1.5">
