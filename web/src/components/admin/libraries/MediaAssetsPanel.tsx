@@ -86,6 +86,7 @@ export function MediaAssetsPanel({ library }: Props) {
   const [bulkTagsInput, setBulkTagsInput] = useState("");
   const [bulkApplying, setBulkApplying] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkSuccess, setBulkSuccess] = useState<string | null>(null);
   const [editingLastUsedId, setEditingLastUsedId] = useState<string | null>(null);
   const [lastUsedInput, setLastUsedInput] = useState("");
   const [seqState, setSeqState] = useState<string[]>(() => {
@@ -458,6 +459,7 @@ export function MediaAssetsPanel({ library }: Props) {
     const value = bulkSetTagInput.trim() || null;
     setBulkApplying(true);
     setBulkError(null);
+    setBulkSuccess(null);
     const res = await fetch(`/api/admin/libraries/media/${library.id}/assets/bulk`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -470,15 +472,16 @@ export function MediaAssetsPanel({ library }: Props) {
       return;
     }
     setAssets((prev) => prev.map((a) => selectedIds.has(a.id) ? { ...a, setTag: value } : a));
-    exitSelectMode();
+    setBulkSuccess(value ? `Set « ${value} » appliqué` : "Set retiré");
+    setTimeout(() => setBulkSuccess(null), 2500);
   }
 
   async function handleBulkApplyTags() {
     if (selectedIds.size === 0) return;
     const newTags = bulkTagsInput.split(",").map((t) => t.trim()).filter(Boolean);
-    if (newTags.length === 0) { setBulkError("Entrez au moins un tag"); return; }
     setBulkApplying(true);
     setBulkError(null);
+    setBulkSuccess(null);
     const res = await fetch(`/api/admin/libraries/media/${library.id}/assets/bulk`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -491,7 +494,8 @@ export function MediaAssetsPanel({ library }: Props) {
       return;
     }
     setAssets((prev) => prev.map((a) => selectedIds.has(a.id) ? { ...a, tags: newTags } : a));
-    exitSelectMode();
+    setBulkSuccess(newTags.length > 0 ? `Tags appliqués` : "Tags retirés");
+    setTimeout(() => setBulkSuccess(null), 2500);
   }
 
   async function handleBulkApplyCategory() {
@@ -499,6 +503,7 @@ export function MediaAssetsPanel({ library }: Props) {
     const value = bulkCategoryInput.trim() || null;
     setBulkApplying(true);
     setBulkError(null);
+    setBulkSuccess(null);
     const res = await fetch(`/api/admin/libraries/media/${library.id}/assets/bulk`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -511,7 +516,8 @@ export function MediaAssetsPanel({ library }: Props) {
       return;
     }
     setAssets((prev) => prev.map((a) => selectedIds.has(a.id) ? { ...a, category: value } : a));
-    exitSelectMode();
+    setBulkSuccess(value ? `Catégorie « ${value} » appliquée` : "Catégorie retirée");
+    setTimeout(() => setBulkSuccess(null), 2500);
   }
 
   async function handleSaveLastUsed(asset: MediaAsset, dateStr: string) {
@@ -1356,10 +1362,13 @@ export function MediaAssetsPanel({ library }: Props) {
                 />
                 <button
                   onClick={() => { void handleBulkApplyCategory(); }}
-                  disabled={bulkApplying || !bulkCategoryInput.trim()}
-                  className="px-2.5 py-1 bg-violet-600 text-white text-xs rounded hover:bg-violet-700 disabled:opacity-50"
+                  disabled={bulkApplying}
+                  className={`px-2.5 py-1 text-white text-xs rounded disabled:opacity-50 ${
+                    bulkCategoryInput.trim() ? "bg-violet-600 hover:bg-violet-700" : "bg-gray-400 hover:bg-gray-500"
+                  }`}
+                  title={bulkCategoryInput.trim() ? "Appliquer la catégorie" : "Retirer la catégorie"}
                 >
-                  Cat.
+                  {bulkCategoryInput.trim() ? "Cat." : <X size={10} />}
                 </button>
               </div>
               {/* Bulk set tag */}
@@ -1374,10 +1383,13 @@ export function MediaAssetsPanel({ library }: Props) {
                 />
                 <button
                   onClick={() => { void handleBulkApplySetTag(); }}
-                  disabled={bulkApplying || !bulkSetTagInput.trim()}
-                  className="px-2.5 py-1 bg-pink-600 text-white text-xs rounded hover:bg-pink-700 disabled:opacity-50"
+                  disabled={bulkApplying}
+                  className={`px-2.5 py-1 text-white text-xs rounded disabled:opacity-50 ${
+                    bulkSetTagInput.trim() ? "bg-pink-600 hover:bg-pink-700" : "bg-gray-400 hover:bg-gray-500"
+                  }`}
+                  title={bulkSetTagInput.trim() ? "Appliquer le set" : "Retirer le set"}
                 >
-                  Set
+                  {bulkSetTagInput.trim() ? "Set" : <X size={10} />}
                 </button>
               </div>
               {/* Bulk tags */}
@@ -1391,10 +1403,13 @@ export function MediaAssetsPanel({ library }: Props) {
                 />
                 <button
                   onClick={() => { void handleBulkApplyTags(); }}
-                  disabled={bulkApplying || !bulkTagsInput.trim()}
-                  className="px-2.5 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700 disabled:opacity-50"
+                  disabled={bulkApplying}
+                  className={`px-2.5 py-1 text-white text-xs rounded disabled:opacity-50 ${
+                    bulkTagsInput.trim() ? "bg-indigo-600 hover:bg-indigo-700" : "bg-gray-400 hover:bg-gray-500"
+                  }`}
+                  title={bulkTagsInput.trim() ? "Appliquer les tags" : "Retirer les tags"}
                 >
-                  Tags
+                  {bulkTagsInput.trim() ? "Tags" : <X size={10} />}
                 </button>
               </div>
               {/* Bulk delete */}
@@ -1406,6 +1421,7 @@ export function MediaAssetsPanel({ library }: Props) {
                 <Trash2 size={11} /> Supprimer
               </button>
               {bulkError && <p className="text-xs text-red-500">{bulkError}</p>}
+              {bulkSuccess && <p className="text-xs text-green-600">{bulkSuccess}</p>}
             </div>
           )}
           {/* Right: cancel */}
