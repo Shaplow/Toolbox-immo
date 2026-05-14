@@ -34,7 +34,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
       prisma.mediaAsset.findMany({
         where: { libraryId: id },
         orderBy: { createdAt: "desc" },
-        include: { accesses: { select: { accountId: true } } },
+        include: {
+          accesses: { select: { accountId: true } },
+          editJobs: {
+            where: { status: { in: ["pending", "processing"] } },
+            select: { id: true, status: true },
+            take: 1,
+          },
+        },
       }),
       accountId
         ? prisma.mediaAssetUsage.findMany({
@@ -47,13 +54,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const usageMap = new Map(accountUsages.map((u) => [u.assetId, u]));
 
     const result = assets.map((a) => {
-      const { accesses, ...rest } = a;
+      const { accesses, editJobs, ...rest } = a;
       const accountUsage = accountId ? (usageMap.get(a.id) ?? null) : undefined;
       return {
         ...rest,
         accessAccountIds: accesses.map((acc) => acc.accountId),
         lastUsedAt: accountId ? (accountUsage?.lastUsedAt ?? null) : a.lastUsedAt,
         usageCount: accountId ? (accountUsage?.usageCount ?? 0) : a.usageCount,
+        pendingEditJob: editJobs[0] ?? null,
       };
     });
 

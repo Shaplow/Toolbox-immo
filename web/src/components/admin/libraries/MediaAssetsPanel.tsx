@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { Trash2, Upload, Clock, BarChart2, Search, Play, Music2, ArrowUpDown, CheckCircle2, Tag, X, RotateCcw, Scissors, LayoutGrid, Layers, Square, CheckSquare, ChevronUp, ChevronDown, ListOrdered, PlusCircle, MinusCircle, FolderOpen, Film, Globe, Lock, Users, Wand2 } from "lucide-react";
+import { Trash2, Upload, Clock, BarChart2, Search, Play, Music2, ArrowUpDown, CheckCircle2, Tag, X, RotateCcw, Scissors, LayoutGrid, Layers, Square, CheckSquare, ChevronUp, ChevronDown, ListOrdered, PlusCircle, MinusCircle, FolderOpen, Film, Globe, Lock, Users, Wand2, Loader2 } from "lucide-react";
 import { MediaAssetEditModal } from "./MediaAssetEditModal";
 import { MediaBatchAutocutPanel } from "./MediaBatchAutocutPanel";
 
@@ -18,6 +18,7 @@ interface MediaAsset {
   lastUsedAt: string | null;
   createdAt: string;
   accessAccountIds: string[];
+  pendingEditJob: { id: string; status: string } | null;
 }
 
 interface InstagramAccount {
@@ -116,6 +117,7 @@ export function MediaAssetsPanel({ library }: Props) {
         category: (a as unknown as { category?: string | null }).category ?? null,
         tags: (() => { try { return JSON.parse(a.tags) as string[]; } catch { return []; } })(),
         accessAccountIds: a.accessAccountIds ?? [],
+        pendingEditJob: (a as unknown as { pendingEditJob?: { id: string; status: string } | null }).pendingEditJob ?? null,
       }));
       setAssets(data);
     } catch (err) {
@@ -127,6 +129,14 @@ export function MediaAssetsPanel({ library }: Props) {
   }, [library.id, accountFilter]);
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
+
+  // Poll every 5 s while at least one asset has a pending/processing edit job
+  useEffect(() => {
+    const hasPending = assets.some((a) => a.pendingEditJob !== null);
+    if (!hasPending) return;
+    const timer = setInterval(() => { void load(); }, 5000);
+    return () => clearInterval(timer);
+  }, [assets, load]);
 
   // Close upload modal on Escape (unless uploading)
   useEffect(() => {
@@ -664,6 +674,11 @@ export function MediaAssetsPanel({ library }: Props) {
         {/* Tiny thumbnail */}
         <div className="relative w-8 h-12 rounded overflow-hidden shrink-0 bg-gray-100">
           <video src={`${asset.url}#t=0.5`} muted preload="metadata" className="w-full h-full object-cover" />
+          {asset.pendingEditJob && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10 pointer-events-none">
+              <Loader2 size={10} className="text-white animate-spin" />
+            </div>
+          )}
           {selectMode && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/30">
               {isSelected ? <CheckSquare size={12} className="text-white" /> : <Square size={12} className="text-white/70" />}
@@ -780,6 +795,13 @@ export function MediaAssetsPanel({ library }: Props) {
             <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1 rounded">
               {formatDuration(asset.duration)}
             </span>
+          )}
+          {/* Replacement in-progress overlay */}
+          {asset.pendingEditJob && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 gap-1.5 pointer-events-none">
+              <Loader2 size={20} className="text-white animate-spin" />
+              <span className="text-[10px] text-white font-medium text-center px-2 leading-tight">Remplacement<br />en cours…</span>
+            </div>
           )}
           {/* Select checkbox overlay */}
           {selectMode && (
