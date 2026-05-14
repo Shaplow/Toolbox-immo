@@ -52,6 +52,23 @@ function formatDate(d: string | null): string {
 
 type SortKey = "date_desc" | "date_asc" | "usage_desc" | "usage_asc" | "name_asc";
 
+/** Miniature vidéo chargée uniquement quand elle entre dans le viewport */
+function LazyVideoThumb({ url, className }: { url: string; className: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [src, setSrc] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setSrc(`${url}#t=0.5`); observer.disconnect(); } },
+      { rootMargin: "200px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [url]);
+  return <video ref={ref} src={src} muted preload="metadata" className={className} />;
+}
+
 export function MediaAssetsPanel({ library }: Props) {
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,6 +116,9 @@ export function MediaAssetsPanel({ library }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
   const [accountFilter, setAccountFilter] = useState<string | null>(null);
+  // ── Infinite scroll ──
+  const [visibleCount, setVisibleCount] = useState(48);
+  const gridSentinelRef = useRef<HTMLDivElement>(null);
   // ── Bulk ──
   const [bulkCategoryInput, setBulkCategoryInput] = useState("");
 
@@ -130,6 +150,21 @@ export function MediaAssetsPanel({ library }: Props) {
   }, [library.id, accountFilter]);
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
+
+  // Reset visible count when filters/sort change
+  useEffect(() => { setVisibleCount(48); }, [filtered]);
+
+  // Infinite scroll sentinel
+  useEffect(() => {
+    const el = gridSentinelRef.current;
+    if (!el || visibleCount >= filtered.length) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setVisibleCount((n) => n + 48); },
+      { rootMargin: "300px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [visibleCount, filtered.length]);
 
   // Poll every 5 s while at least one asset has a pending/processing edit job
   useEffect(() => {
@@ -710,7 +745,7 @@ export function MediaAssetsPanel({ library }: Props) {
       >
         {/* Tiny thumbnail */}
         <div className="relative w-8 h-12 rounded overflow-hidden shrink-0 bg-gray-100">
-          <video src={`${asset.url}#t=0.5`} muted preload="metadata" className="w-full h-full object-cover" />
+          <LazyVideoThumb url={asset.url} className="w-full h-full object-cover" />
           {asset.pendingEditJob && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10 pointer-events-none">
               <Loader2 size={10} className="text-white animate-spin" />
@@ -809,7 +844,7 @@ export function MediaAssetsPanel({ library }: Props) {
             <video src={asset.url} controls autoPlay className="absolute inset-0 w-full h-full object-cover" />
           ) : (
             <>
-              <video src={`${asset.url}#t=0.5`} muted preload="metadata" className="w-full h-full object-cover" />
+              <LazyVideoThumb url={asset.url} className="w-full h-full object-cover" />
               {!selectMode && (
                 <button
                   onClick={() => setPreviewId(asset.id)}
@@ -1781,15 +1816,18 @@ export function MediaAssetsPanel({ library }: Props) {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
-              {filtered.map((asset) => renderVideoCard(asset))}
-            </div>
+            <>
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
+                {visibleFiltered.map((asset) => renderVideoCard(asset))}
+              </div>
+              <div ref={gridSentinelRef} />
+            </>
           )}
         </>
       ) : (
         /* ─── Audio list ─── */
         <div className="space-y-1.5">
-          {filtered.map((asset) => (
+          {visibleFiltered.map((asset) => (
             <div key={asset.id} className="group flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl hover:border-indigo-300 transition-colors">
               <div className="w-9 h-9 bg-indigo-50 rounded-lg flex items-center justify-center shrink-0">
                 <Music2 size={16} className="text-indigo-400" />
