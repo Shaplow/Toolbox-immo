@@ -151,21 +151,6 @@ export function MediaAssetsPanel({ library }: Props) {
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 
-  // Reset visible count when filters/sort change
-  useEffect(() => { setVisibleCount(48); }, [filtered]);
-
-  // Infinite scroll sentinel
-  useEffect(() => {
-    const el = gridSentinelRef.current;
-    if (!el || visibleCount >= filtered.length) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setVisibleCount((n) => n + 48); },
-      { rootMargin: "300px" }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [visibleCount, filtered.length]);
-
   // Poll every 5 s while at least one asset has a pending/processing edit job
   useEffect(() => {
     const hasPending = assets.some((a) => a.pendingEditJob !== null);
@@ -222,6 +207,23 @@ export function MediaAssetsPanel({ library }: Props) {
       }
     });
   }, [assets, search, sort, tagFilter]);
+
+  const visibleFiltered = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+
+  // Reset visible count when filters/sort change
+  useEffect(() => { setVisibleCount(48); }, [search, sort, tagFilter, assets]);
+
+  // Infinite scroll sentinel
+  useEffect(() => {
+    const el = gridSentinelRef.current;
+    if (!el || visibleCount >= filtered.length) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setVisibleCount((n) => n + 48); },
+      { rootMargin: "300px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [visibleCount, filtered.length]);
 
   // Composite key helpers
   const toGroupKey = (category: string | null, setTag: string | null) =>
