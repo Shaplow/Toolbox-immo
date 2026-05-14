@@ -545,6 +545,7 @@ export function MediaAssetsPanel({ library }: Props) {
 
   async function handleBulkApplyCategory() {
     if (selectedIds.size === 0) return;
+    const value = bulkCategoryInput.trim() || null;
     setBulkApplying(true);
     setBulkError(null);
     setBulkSuccess(null);
