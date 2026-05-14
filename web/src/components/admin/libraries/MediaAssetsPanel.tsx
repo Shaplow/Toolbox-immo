@@ -508,9 +508,43 @@ export function MediaAssetsPanel({ library }: Props) {
     setTimeout(() => setBulkSuccess(null), 2500);
   }
 
+  async function handleBulkApplyAccess(action: "add" | "remove_all", accountId?: string) {
+    if (selectedIds.size === 0) return;
+    setBulkApplying(true);
+    setBulkError(null);
+    setBulkSuccess(null);
+    const body: Record<string, unknown> = { assetIds: Array.from(selectedIds), accessAction: action };
+    if (accountId) body.accountId = accountId;
+    const res = await fetch(`/api/admin/libraries/media/${library.id}/assets/bulk`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    setBulkApplying(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({})) as { error?: string };
+      setBulkError(d.error ?? "Erreur lors de l'application");
+      return;
+    }
+    if (action === "add" && accountId) {
+      setAssets((prev) => prev.map((a) =>
+        selectedIds.has(a.id)
+          ? { ...a, accessAccountIds: Array.from(new Set([...a.accessAccountIds, accountId])) }
+          : a
+      ));
+      const acc = accounts.find((a) => a.id === accountId);
+      setBulkSuccess(`Accès ajouté : @${acc?.handle ?? accountId}`);
+    } else {
+      setAssets((prev) => prev.map((a) =>
+        selectedIds.has(a.id) ? { ...a, accessAccountIds: [] } : a
+      ));
+      setBulkSuccess("Accès réinitialisé (global)");
+    }
+    setTimeout(() => setBulkSuccess(null), 2500);
+  }
+
   async function handleBulkApplyCategory() {
     if (selectedIds.size === 0) return;
-    const value = bulkCategoryInput.trim() || null;
     setBulkApplying(true);
     setBulkError(null);
     setBulkSuccess(null);
@@ -1434,6 +1468,29 @@ export function MediaAssetsPanel({ library }: Props) {
                   {bulkTagsInput.trim() ? "Tags" : <X size={10} />}
                 </button>
               </div>
+              {/* Bulk access */}
+              {accounts.length > 0 && (
+                <div className="flex items-center gap-1">
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      e.target.value = "";
+                      if (!val) return;
+                      if (val === "__global__") { void handleBulkApplyAccess("remove_all"); }
+                      else { void handleBulkApplyAccess("add", val); }
+                    }}
+                    disabled={bulkApplying}
+                    className="text-xs border border-blue-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 text-gray-600 disabled:opacity-50 max-w-[130px]"
+                  >
+                    <option value="">Compte IG…</option>
+                    <option value="__global__">🌍 Global (tous)</option>
+                    {accounts.map((a) => (
+                      <option key={a.id} value={a.id}>@{a.handle}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {/* Bulk delete */}
               <button
                 onClick={() => { void handleBulkDelete(); }}
