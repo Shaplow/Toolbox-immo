@@ -60,6 +60,7 @@ export function MediaAssetsPanel({ library }: Props) {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadCategory, setUploadCategory] = useState("");
   const [uploadSetTag, setUploadSetTag] = useState("");
+  const [uploadAccountId, setUploadAccountId] = useState<string>("");
   const [uploadTags, setUploadTags] = useState("");
   const [modalUploading, setModalUploading] = useState(false);
   const [modalProgress, setModalProgress] = useState<number | null>(null);
@@ -637,6 +638,7 @@ export function MediaAssetsPanel({ library }: Props) {
     if (uploadCategory.trim()) bulkData.category = uploadCategory.trim();
     const tagsList = uploadTags.split(",").map((t) => t.trim()).filter(Boolean);
     if (tagsList.length > 0) bulkData.tags = tagsList;
+    if (uploadAccountId) { bulkData.accessAction = "add"; bulkData.accountId = uploadAccountId; }
     if (uploadedIds.length > 0 && Object.keys(bulkData).length > 1) {
       await fetch(`/api/admin/libraries/media/${library.id}/assets/bulk`, {
         method: "PATCH",
@@ -1971,6 +1973,24 @@ export function MediaAssetsPanel({ library }: Props) {
                     className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
+                {accounts.length > 0 && (
+                  <div>
+                    <label className="flex items-center gap-1 text-xs font-medium text-gray-500 mb-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                      Compte IG (optionnel)
+                    </label>
+                    <select
+                      value={uploadAccountId}
+                      onChange={(e) => setUploadAccountId(e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                      <option value="">🌍 Global (tous les comptes)</option>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>@{a.handle}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
               {/* Progress */}
               {modalUploading && (
