@@ -1,7 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { uploadToR2, r2Configured } from "@/lib/r2";
-import { upsertFontAsset } from "@/lib/fontAssets";
+import { upsertFontAsset, inferWeightFromFilename, inferStyleFromFilename } from "@/lib/fontAssets";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 
@@ -70,6 +70,8 @@ export async function POST(req: NextRequest) {
 
     const asset = await upsertFontAsset({
       family,
+      weight: inferWeightFromFilename(filename),
+      fontStyle: inferStyleFromFilename(filename),
       url,
       storageKey,
       originalName: filename,

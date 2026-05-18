@@ -18,6 +18,7 @@ type RenderOutput = {
   video_url?: string;
   output_key?: string;
   error?: string;
+  render_id?: string;
 };
 
 export async function POST(req: NextRequest) {
@@ -29,10 +30,20 @@ export async function POST(req: NextRequest) {
 
   const { id: runpodJobId, status, output, error } = parsed.body;
 
-  const render = await prisma.render.findFirst({
+  let render = await prisma.render.findFirst({
     where: { runpodJobId },
     include: { listing: { select: { userId: true } } },
   });
+  if (!render && output?.render_id) {
+    render = await prisma.render.findFirst({
+      where: { id: output.render_id },
+      include: { listing: { select: { userId: true } } },
+    });
+    if (render && !render.runpodJobId) {
+      await prisma.render.update({ where: { id: render.id }, data: { runpodJobId } });
+      render = { ...render, runpodJobId };
+    }
+  }
   if (!render) {
     console.warn(`[webhook/renders] Unknown runpodJobId=${runpodJobId}`);
     return NextResponse.json({ ok: true });

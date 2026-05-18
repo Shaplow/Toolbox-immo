@@ -66,7 +66,7 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
   const videoAssetIds = Object.values(usedAssets.videoAssets ?? {});
   if (videoAssetIds.length > 0) {
     const accountId = render.accountId;
-    await Promise.allSettled(
+    const videoResults = await Promise.allSettled(
       videoAssetIds.map(async (assetId) => {
         // Always update global aggregate
         await prisma.mediaAsset.update({
@@ -83,6 +83,14 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
         }
       }),
     );
+    for (const [i, result] of videoResults.entries()) {
+      if (result.status === "rejected") {
+        console.error(
+          `[recordLibraryUsage] video asset usage update failed for assetId=${videoAssetIds[i]} render=${renderId}:`,
+          result.reason,
+        );
+      }
+    }
   }
 
   // --- Audio asset ---
@@ -157,6 +165,222 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
       }),
     );
   }
+}
+
+// ─── Admin revert ─────────────────────────────────────────────────────────────
+
+export interface RevertAssetResult {
+  assetId: string;
+  type: "video" | "audio" | "dataEntry";
+  usageCountBefore: number;
+  usageCountAfter: number;
+  lastUsedAtNulled: boolean;
+}
+
+export interface RevertCursorResult {
+  libraryId: string;
+  reverted: boolean;
+  /** Set when the cursor could not be reverted (another generation already advanced it). */
+  skippedReason?: string;
+}
+
+export interface RevertSummary {
+  renderId: string;
+  assets: RevertAssetResult[];
+  cursors: RevertCursorResult[];
+  warnings: string[];
+}
+
+/**
+ * revertRenderUsage — admin-initiated full rollback of a DONE render's library consumption.
+ *
+ * Decrements usageCount on every asset/entry used by this render, clears lastUsedAt when
+ * the count reaches zero, and attempts a conditional cursor revert using the prevCursorState
+ * snapshot stored in Render.usedAssets at prefill time.
+ *
+ * Limitations:
+ * - lastUsedAt is only cleared when usageCount reaches 0; prior values are not recoverable.
+ * - AccountLibraryCursor.lastUsedSetTag is not included in the snapshot and is not reverted.
+ * - Cursor revert is conditional: if a later generation has already advanced the cursor, the
+ *   revert is a no-op and `reverted=false` is returned so the admin UI can surface a warning.
+ */
+export async function revertRenderUsage(renderId: string): Promise<RevertSummary> {
+  const summary: RevertSummary = { renderId, assets: [], cursors: [], warnings: [] };
+
+  const render = await prisma.render.findUnique({
+    where: { id: renderId },
+    select: { usedAssets: true, status: true, accountId: true },
+  });
+
+  if (!render) throw new Error(`Render ${renderId} introuvable`);
+  if (render.status !== "DONE") throw new Error(`Le render ${renderId} n'est pas DONE (status=${render.status})`);
+  if (!render.accountId) {
+    summary.warnings.push("Pas d'accountId sur ce render — les curseurs et usages per-account ne seront pas revertés.");
+  }
+
+  let usedAssets: UsedAssets = {};
+  try {
+    usedAssets = JSON.parse(render.usedAssets as string) as UsedAssets;
+  } catch {
+    throw new Error(`usedAssets JSON invalide pour le render ${renderId}`);
+  }
+
+  const accountId = render.accountId ?? null;
+
+  // Helper: decrement a MediaAsset + its per-account MediaAssetUsage row
+  async function revertMediaAsset(assetId: string, type: "video" | "audio"): Promise<void> {
+    try {
+      const asset = await prisma.mediaAsset.findUnique({
+        where: { id: assetId },
+        select: { usageCount: true, lastUsedAt: true },
+      });
+      if (!asset) {
+        summary.warnings.push(`Asset ${assetId} introuvable — ignoré.`);
+        return;
+      }
+      const newCount = Math.max(0, asset.usageCount - 1);
+      const nullLastUsed = newCount === 0 && asset.lastUsedAt !== null;
+      await prisma.mediaAsset.update({
+        where: { id: assetId },
+        data: {
+          usageCount: newCount,
+          ...(nullLastUsed ? { lastUsedAt: null } : {}),
+        },
+      });
+      summary.assets.push({
+        assetId,
+        type,
+        usageCountBefore: asset.usageCount,
+        usageCountAfter: newCount,
+        lastUsedAtNulled: nullLastUsed,
+      });
+      if (accountId) {
+        const usage = await prisma.mediaAssetUsage.findUnique({
+          where: { assetId_accountId: { assetId, accountId } },
+          select: { usageCount: true },
+        });
+        if (usage) {
+          const newUsageCount = Math.max(0, usage.usageCount - 1);
+          await prisma.mediaAssetUsage.update({
+            where: { assetId_accountId: { assetId, accountId } },
+            data: {
+              usageCount: newUsageCount,
+              ...(newUsageCount === 0 ? { lastUsedAt: null } : {}),
+            },
+          });
+        }
+      }
+    } catch (err) {
+      summary.warnings.push(`Échec du revert pour l'asset ${assetId}: ${String(err)}`);
+    }
+  }
+
+  // --- Video assets ---
+  for (const assetId of Object.values(usedAssets.videoAssets ?? {})) {
+    await revertMediaAsset(assetId, "video");
+  }
+
+  // --- Audio asset ---
+  if (usedAssets.audioAssetId) {
+    await revertMediaAsset(usedAssets.audioAssetId, "audio");
+  }
+
+  // --- Data entry ---
+  if (usedAssets.dataEntryId) {
+    const entryId = usedAssets.dataEntryId;
+    try {
+      const entry = await prisma.dataEntry.findUnique({
+        where: { id: entryId },
+        select: { usageCount: true, lastUsedAt: true },
+      });
+      if (!entry) {
+        summary.warnings.push(`DataEntry ${entryId} introuvable — ignoré.`);
+      } else {
+        const newCount = Math.max(0, entry.usageCount - 1);
+        const nullLastUsed = newCount === 0 && entry.lastUsedAt !== null;
+        await prisma.dataEntry.update({
+          where: { id: entryId },
+          data: {
+            usageCount: newCount,
+            ...(nullLastUsed ? { lastUsedAt: null } : {}),
+            ...(newCount === 0 ? { usedInCycle: false } : {}),
+          },
+        });
+        summary.assets.push({
+          assetId: entryId,
+          type: "dataEntry",
+          usageCountBefore: entry.usageCount,
+          usageCountAfter: newCount,
+          lastUsedAtNulled: nullLastUsed,
+        });
+        if (accountId) {
+          const entryUsage = await prisma.dataEntryUsage.findUnique({
+            where: { entryId_accountId: { entryId, accountId } },
+            select: { usageCount: true },
+          });
+          if (entryUsage) {
+            const newUsageCount = Math.max(0, entryUsage.usageCount - 1);
+            await prisma.dataEntryUsage.update({
+              where: { entryId_accountId: { entryId, accountId } },
+              data: {
+                usageCount: newUsageCount,
+                ...(newUsageCount === 0 ? { lastUsedAt: null } : {}),
+              },
+            });
+          }
+        }
+      }
+    } catch (err) {
+      summary.warnings.push(`Échec du revert pour la DataEntry ${entryId}: ${String(err)}`);
+    }
+  }
+
+  // --- AccountLibraryCursor revert ---
+  const prevStateMap = usedAssets.prevCursorStateByLibrary;
+  if (!prevStateMap || Object.keys(prevStateMap).length === 0) {
+    if ((usedAssets.setSequencedLibraryIds ?? []).length > 0) {
+      summary.warnings.push(
+        "Ce render utilise des bibliothèques set-sequence mais ne contient pas de snapshot de curseur (render ancien). Les curseurs ne peuvent pas être revertés.",
+      );
+    }
+  } else if (accountId) {
+    for (const [libraryId, state] of Object.entries(prevStateMap)) {
+      try {
+        const updated = await prisma.$executeRaw(Prisma.sql`
+          UPDATE "AccountLibraryCursor"
+          SET
+            cursor               = ${state.prevCursor},
+            "lastUsedCategory"   = ${state.prevLastUsedCategory},
+            "lastAdvancedAt"     = NULL
+          WHERE "accountId"  = ${accountId}
+            AND "libraryId"  = ${libraryId}
+            AND cursor IS NOT DISTINCT FROM ${state.claimedCursor}
+            AND "lastUsedCategory" IS NOT DISTINCT FROM ${state.claimedLastUsedCategory}
+        `);
+        if (updated > 0) {
+          summary.cursors.push({ libraryId, reverted: true });
+          console.info(
+            `[revertRenderUsage] render=${renderId} library=${libraryId} cursor reverted ${state.claimedCursor}→${state.prevCursor}`,
+          );
+        } else {
+          summary.cursors.push({
+            libraryId,
+            reverted: false,
+            skippedReason:
+              "Le curseur a déjà été avancé par une génération suivante — revert non appliqué pour éviter de perturber la rotation.",
+          });
+          console.warn(
+            `[revertRenderUsage] render=${renderId} library=${libraryId} cursor NOT reverted (already advanced by a later generation)`,
+          );
+        }
+      } catch (err) {
+        summary.cursors.push({ libraryId, reverted: false, skippedReason: String(err) });
+        summary.warnings.push(`Échec du revert de curseur pour la bibliothèque ${libraryId}: ${String(err)}`);
+      }
+    }
+  }
+
+  return summary;
 }
 
 /**

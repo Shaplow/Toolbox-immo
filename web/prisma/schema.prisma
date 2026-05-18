@@ -25,10 +25,6 @@ model User {
   captionPresetAccesses CaptionPresetAccess[]
   transcriptionJobs TranscriptionJob[]
   descriptionJobs   DescriptionJob[]
-  derushJobs        DerushJob[]
-  derushPresets     DerushPreset[]
-  derushPresetAccesses DerushPresetAccess[]
-  derushFormats     DerushFormat[]
 }
 
 model CaptionJob {
@@ -110,12 +106,16 @@ model Template {
 
 model FontAsset {
   id           String   @id @default(cuid())
-  family       String   @unique
+  family       String
+  weight       Int      @default(400)
+  fontStyle    String   @default("normal")
   url          String
   storageKey   String?
   originalName String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@unique([family, weight, fontStyle])
 }
 
 model TemplateAccess {
@@ -239,123 +239,6 @@ model DescriptionJob {
   updatedAt        DateTime           @updatedAt
 }
 
-// ─── Dérush module ────────────────────────────────────────────────────────────
-
-/// Preset de scoring dérush (profils par type de projet)
-model DerushPreset {
-  id           String   @id @default(cuid())
-  name         String
-  /// null = builtin visible par tous, sinon appartient à l'user
-  userId       String?
-  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  isBuiltin    Boolean  @default(false)
-  /// analysisMode auquel ce preset s'applique
-  analysisMode String   @default("vision") // "vision" | "transcription"
-  /// DerushPresetConfig JSON (scoringWeights, rejectThresholds, exportDefaults)
-  config       String   @default("{}")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  accesses     DerushPresetAccess[]
-  derushJobs   DerushJob[]
-}
-
-model DerushPresetAccess {
-  id        String        @id @default(cuid())
-  userId    String
-  presetId  String
-  createdAt DateTime      @default(now())
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  preset    DerushPreset  @relation(fields: [presetId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, presetId])
-}
-
-/// Job d'analyse / dérush d'une ou plusieurs vidéos
-model DerushJob {
-  id             String   @id @default(cuid())
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status         String   @default("QUEUED") // QUEUED | PROCESSING | COMPLETED | FAILED
-  /// Pipeline d'analyse choisi explicitement par l'utilisateur
-  analysisMode   String   @default("vision") // "transcription" | "vision"
-  /// JSON array [{key, filename}] — N fichiers vidéo source sur R2
-  inputFiles     String   @default("[]")
-  /// ID d'un TranscriptionJob existant (mode transcription, réutilisation)
-  transcriptionJobId       String?
-  /// Clé R2 d'un SRT ou JSON uploadé directement (mode transcription, import manuel)
-  transcriptionInputKey    String?
-  /// Preset de scoring appliqué
-  presetId       String?
-  preset         DerushPreset? @relation(fields: [presetId], references: [id], onDelete: SetNull)
-  /// Provider IA vision utilisé
-  visionProvider String   @default("heuristic") // "heuristic" | "gemini" | "openai" | "claude"
-  runpodJobId    String?
-  /// Clé R2 du JSON segments résultat (DerushSegment[])
-  outputJsonKey  String?
-  segmentCount   Int?
-  totalDuration  Float?
-  errorMsg       String?
-  /// Overrides manuels : {"seg_id": "accepted" | "rejected"} — appliqués par-dessus l'analyse IA
-  segmentOverrides String  @default("{}")
-  /// Corrections de texte manuelles : {"seg_id": "texte corrigé"} — pour ajuster la transcription IA
-  segmentTextOverrides String  @default("{}")
-  /// Format de segmentation (RQR, talking_head, etc.)
-  formatId       String?
-  format         DerushFormat? @relation(fields: [formatId], references: [id], onDelete: SetNull)
-  /// Demande de segmentation par speaker
-  enableDiarization Boolean @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  derushExports  DerushExport[]
-}
-
-/// Format de segmentation configurable (RQR, talking_head, podcast, etc.)
-model DerushFormat {
-  id                String   @id @default(cuid())
-  name              String
-  slug              String   @unique
-  description       String   @default("")
-  /// Prompt de contexte envoyé à Gemini (instructions spécifiques au format)
-  contextPrompt     String   @default("")
-  /// Seuil de silence en secondes entre deux phrases pour les regrouper (0 = désactivé)
-  silenceThreshold  Float    @default(1.5)
-  /// Mode d'export : "individual" = un clip par segment, "qa_pair" = Q+R groupés ensemble
-  exportMode        String   @default("individual") // "individual" | "qa_pair"
-  /// true = builtin, non modifiable par les users
-  isBuiltin         Boolean  @default(false)
-  /// null = builtin visible par tous, sinon appartient à l'user
-  userId            String?
-  user              User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  derushJobs        DerushJob[]
-}
-
-/// Export d'un DerushJob dans un format spécifique
-model DerushExport {
-  id           String    @id @default(cuid())
-  derushJobId  String
-  derushJob    DerushJob @relation(fields: [derushJobId], references: [id], onDelete: Cascade)
-  status       String    @default("QUEUED") // QUEUED | PROCESSING | COMPLETED | FAILED
-  /// Format d'export
-  exportFormat String    // "clips_trimmed" | "xml_timeline" | "stringout_video" | "structured_folder" | "manifest_only" | "combo_export"
-  /// Workflow cible (optionnel, influence le naming et format XML)
-  workflow     String?   // "capcut" | "premiere" | "resolve" | "generic"
-  /// Formats à inclure (pour combo_export) — JSON array de strings
-  comboFormats String    @default("[]")
-  /// Recode avec précision frame (plus lent, pour timeline pro) vs stream copy (défaut)
-  accurateTrim Boolean   @default(false)
-  /// Format XML cible pour xml_timeline et combo_export
-  xmlFormat    String    @default("fcpxml") // "fcpxml" | "premiere_xml"
-  /// Clé R2 du ZIP ou manifest JSON généré
-  outputKey    String?
-  outputFilename String?
-  runpodJobId  String?
-  errorMsg     String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-}
-
 // ─── Content Library ─────────────────────────────────────────────────────────
 
 /// Bibliothèque de médias (vidéos rush ou musiques). Gérée par les admins.
@@ -378,6 +261,9 @@ model MediaLibrary {
   /// - "shared" : un seul curseur partagé entre tous les comptes. Tous les comptes voient le
   ///   même contenu à chaque génération (utile pour une bibliothèque commune).
   rotationScope String     @default("per_account")
+  /// JSON { key: string; label: string; type: "text" | "number" | "url" }[] — champs de
+  /// métadonnées structurées pouvant être remplis sur chaque asset de cette bibliothèque.
+  metadataSchema String    @default("[]")
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   assets      MediaAsset[]
@@ -410,6 +296,11 @@ model MediaAsset {
   usageCount Int          @default(0)
   /// Dernier timestamp d'utilisation global (agrégat de tous comptes)
   lastUsedAt DateTime?
+  /// Désactivé de la rotation : reste dans la bibliothèque mais jamais suggéré
+  disabled   Boolean      @default(false)
+  /// JSON Record<string, string | number | null> — valeurs de métadonnées structurées
+  /// définies par le MediaLibrary.metadataSchema de la bibliothèque parente.
+  metadata   String       @default("{}")
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
   editJobs   MediaEditJob[]
@@ -434,6 +325,9 @@ model MediaEditJob {
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
   autocutJob MediaAutocutJob?
+
+  /// Accélère le filtre status actif sur les includes (/assets et /assets/active-jobs)
+  @@index([assetId, status])
 }
 
 /// Pack RunPod d'analyse autocut : un job RunPod traite N assets en série (Whisper chargé une seule fois).
@@ -481,6 +375,11 @@ model MediaAutocutJob {
   errorMsg       String?
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
+
+  /// Accélère le filtre actif dans autocut-packs (status in [pending, processing])
+  @@index([assetId, status])
+  /// Accélère autocut-queue (where libraryId + orderBy reviewStatus)
+  @@index([libraryId, reviewStatus])
 }
 
 /// Bibliothèque de données texte, rattachée à un type de template (RPI, RTIPS…).

@@ -84,56 +84,73 @@ export async function POST(req: NextRequest) {
 
   // ── Traiter les résultats individuels ────────────────────────────────────
   const results = output.results;
-  let doneCount = 0;
-  let failCount = 0;
 
-  await prisma.$transaction(async (tx) => {
-    for (const result of results) {
-      if (!result.job_id) continue;
+  // Utiliser updateMany au lieu de update pour éviter P2025 si un job a été supprimé
+  // (ex. asset supprimé en cascade pendant le processing).
+  // Les compteurs sont déclarés dans la callback pour être retry-safe.
+  try {
+    await prisma.$transaction(async (tx) => {
+      let doneCount = 0;
+      let failCount = 0;
 
-      if (result.error) {
-        await tx.mediaAutocutJob.update({
-          where: { id: result.job_id },
-          data: {
-            status: "failed",
-            errorMsg: result.error.slice(0, 500),
-          },
-        });
-        failCount++;
-      } else {
-        await tx.mediaAutocutJob.update({
-          where: { id: result.job_id },
-          data: {
-            status: "done",
-            reviewStatus: "pending_review",
-            proposedStart: result.proposed_start ?? null,
-            proposedEnd: result.proposed_end ?? null,
-            transcriptJson: result.transcript_json ?? null,
-            language: result.language ?? null,
-            // Pré-remplir les confirmed avec les proposed pour simplifier la review
-            confirmedStart: result.proposed_start ?? null,
-            confirmedEnd: result.proposed_end ?? null,
-          },
-        });
-        doneCount++;
+      for (const result of results) {
+        if (!result.job_id) continue;
+
+        if (result.error) {
+          const r = await tx.mediaAutocutJob.updateMany({
+            where: { id: result.job_id },
+            data: {
+              status: "failed",
+              errorMsg: result.error.slice(0, 500),
+            },
+          });
+          if (r.count > 0) failCount++;
+        } else {
+          const r = await tx.mediaAutocutJob.updateMany({
+            where: { id: result.job_id },
+            data: {
+              status: "done",
+              reviewStatus: "pending_review",
+              proposedStart: result.proposed_start ?? null,
+              proposedEnd: result.proposed_end ?? null,
+              transcriptJson: result.transcript_json ?? null,
+              language: result.language ?? null,
+              // Pré-remplir les confirmed avec les proposed pour simplifier la review
+              confirmedStart: result.proposed_start ?? null,
+              confirmedEnd: result.proposed_end ?? null,
+            },
+          });
+          if (r.count > 0) doneCount++;
+        }
       }
-    }
 
-    // Mettre à jour le batch
-    const batchStatus =
-      failCount === 0 ? "done" :
-      doneCount === 0 ? "failed" :
-      "partial";
+      // Mettre à jour le batch
+      const batchStatus =
+        failCount === 0 ? "done" :
+        doneCount === 0 ? "failed" :
+        "partial";
 
-    await tx.mediaAutocutBatch.update({
-      where: { id: batch!.id },
-      data: { status: batchStatus, doneCount, failCount },
+      await tx.mediaAutocutBatch.update({
+        where: { id: batch!.id },
+        data: { status: batchStatus, doneCount, failCount },
+      });
+
+      console.info(
+        `[webhook/media-autocut] batch=${batch!.id} done=${doneCount} failed=${failCount}`
+      );
     });
-  });
-
-  console.info(
-    `[webhook/media-autocut] batch=${batch.id} done=${doneCount} failed=${failCount}`
-  );
+  } catch (txErr) {
+    console.error(`[webhook/media-autocut] transaction failed for batch=${batch.id}:`, txErr);
+    // Libérer les jobs bloqués en "processing" pour permettre une re-soumission
+    await prisma.mediaAutocutBatch.update({
+      where: { id: batch.id },
+      data: { status: "failed", errorMsg: String(txErr).slice(0, 500) },
+    }).catch(() => {});
+    await prisma.mediaAutocutJob.updateMany({
+      where: { batchId: batch.id, status: "processing" },
+      data: { status: "failed", errorMsg: "Erreur lors du traitement des résultats" },
+    }).catch(() => {});
+  }
 
   return NextResponse.json({ ok: true });
 }

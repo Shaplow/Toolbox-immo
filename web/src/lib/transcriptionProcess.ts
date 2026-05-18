@@ -318,8 +318,8 @@ export function buildSubtitlesFromWords(segments: Segment[]): Segment[] {
   // when the user recalés a timecode.  Cap each word's end to:
   //   - the next word's start (cross-segment), when the next word starts before
   //     the current word ends (handles overlap / inflated last-word ends)
-  //   - word.start + 5 s absolute maximum (last word guard)
-  const MAX_WORD_END_GAP = 5.0;
+  //   - word.start + 1 s absolute maximum (last word guard)
+  const MAX_WORD_END_GAP = 1.0;
   for (let i = 0; i < allWords.length; i++) {
     const next = allWords[i + 1] ?? null;
     if (next && allWords[i].end > next.start) {

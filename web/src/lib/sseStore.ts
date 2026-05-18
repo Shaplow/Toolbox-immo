@@ -6,7 +6,7 @@
  */
 
 export type JobEventPayload = {
-  jobType: "captions" | "transcription" | "derush" | "derush_export" | "render" | "media-edit" | "media-autocut";
+  jobType: "captions" | "transcription" | "render" | "media-edit" | "media-autocut";
   jobId: string;
   status: string;
   [key: string]: unknown;

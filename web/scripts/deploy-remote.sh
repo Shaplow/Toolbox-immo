@@ -61,6 +61,7 @@ tar czf "${TMP_ARCHIVE}" \
   --exclude='./web/.env.local' \
   --exclude='./web/public/uploads' \
   --exclude='./web/public/renders' \
+  --exclude='./web/public/transcription' \
   --exclude='./render-engine' \
   .
 
@@ -80,7 +81,9 @@ scp $SSH_OPTS "${ENV_PROD}" "${SSH_TARGET}:/tmp/toolbox-env-prod"
 
 echo "▶ Extraction sur le serveur..."
 ssh $SSH_OPTS "${SSH_TARGET}" "
-  cd /var/www/toolbox && tar xzf /tmp/toolbox-deploy.tar.gz && rm /tmp/toolbox-deploy.tar.gz
+  cd /var/www/toolbox
+  rm -rf web/src web/scripts web/prisma/migrations
+  tar xzf /tmp/toolbox-deploy.tar.gz && rm /tmp/toolbox-deploy.tar.gz
   mv /tmp/toolbox-env-prod /var/www/toolbox/web/.env.local
 "
 

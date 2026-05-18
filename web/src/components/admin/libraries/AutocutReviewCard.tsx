@@ -27,7 +27,8 @@ export interface AutocutJob {
 
 interface Props {
   job: AutocutJob;
-  onAccept: (jobId: string, confirmedStart: number, confirmedEnd: number) => Promise<void>;
+  knownTags?: string[];
+  onAccept: (jobId: string, confirmedStart: number, confirmedEnd: number, tags: string[]) => Promise<void>;
   onSkip: (jobId: string) => Promise<void>;
 }
 
@@ -196,9 +197,13 @@ interface TrimPlayerProps {
 }
 
 function TrimPlayer({ trimStart, trimEnd, videoRef, lastWordEnd, fullRush = false, fullDuration, cutStart, cutEnd }: TrimPlayerProps) {
+  // Durée native lue depuis l'élément vidéo — fallback quand fullDuration non fourni
+  const [videoNativeDuration, setVideoNativeDuration] = useState<number>(0);
+
   // En mode fullRush, le player joue sur [0, fullDuration] sans contrainte
   const effectiveStart = fullRush ? 0 : trimStart;
-  const effectiveEnd = fullRush ? (fullDuration ?? trimEnd) : trimEnd;
+  const resolvedEnd = fullDuration ?? (videoNativeDuration > 0 ? videoNativeDuration : trimEnd);
+  const effectiveEnd = fullRush ? resolvedEnd : trimEnd;
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(trimStart);
   const scrubBarRef = useRef<HTMLDivElement>(null);
@@ -208,7 +213,7 @@ function TrimPlayer({ trimStart, trimEnd, videoRef, lastWordEnd, fullRush = fals
   const trimStartRef = useRef(trimStart);
   const trimEndRef = useRef(trimEnd);
   useEffect(() => { trimStartRef.current = fullRush ? 0 : trimStart; }, [trimStart, fullRush]);
-  useEffect(() => { trimEndRef.current = fullRush ? (fullDuration ?? trimEnd) : trimEnd; }, [trimEnd, fullRush, fullDuration]);
+  useEffect(() => { trimEndRef.current = fullRush ? resolvedEnd : trimEnd; }, [trimEnd, fullRush, resolvedEnd]);
 
   // Seek au nouveau trimStart quand il change (sauf en mode fullRush)
   useEffect(() => {
@@ -268,8 +273,12 @@ function TrimPlayer({ trimStart, trimEnd, videoRef, lastWordEnd, fullRush = fals
       setCurrentTime(trimStartRef.current);
     };
 
-    if (v.readyState >= 1) handleLoaded();
-    else v.addEventListener("loadedmetadata", handleLoaded, { once: true });
+    // Capture la durée native pour le mode fullRush sans fullDuration fourni
+    const captureDuration = () => {
+      if (v.duration && isFinite(v.duration)) setVideoNativeDuration(v.duration);
+    };
+    if (v.readyState >= 1) { handleLoaded(); captureDuration(); }
+    else v.addEventListener("loadedmetadata", () => { handleLoaded(); captureDuration(); }, { once: true });
 
     v.addEventListener("play", handlePlay);
     v.addEventListener("pause", handlePause);
@@ -416,7 +425,7 @@ function TrimPlayer({ trimStart, trimEnd, videoRef, lastWordEnd, fullRush = fals
 }
 
 // ── Carte principale ──────────────────────────────────────────────────────────
-export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
+export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
   const { asset } = job;
   const duration = asset.duration ?? 0;
 
@@ -455,6 +464,8 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
   const [saving, setSaving] = useState(false);
   const [selectedTakeIndex, setSelectedTakeIndex] = useState(takes.length > 1 ? bestIdx : 0);
   const [showFullRush, setShowFullRush] = useState(false);
+  const [pendingTags, setPendingTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -490,8 +501,13 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
   }, [takes, duration, videoRef]);
 
   const handleAccept = async () => {
+    // Commettre le texte libre non validé avant d'envoyer
+    const finalTags = [...pendingTags];
+    if (tagInput.trim() && !finalTags.includes(tagInput.trim())) {
+      finalTags.push(tagInput.trim());
+    }
     setSaving(true);
-    try { await onAccept(job.id, trimStart, trimEnd); }
+    try { await onAccept(job.id, trimStart, trimEnd, finalTags); }
     finally { setSaving(false); }
   };
 
@@ -676,6 +692,71 @@ export function AutocutReviewCard({ job, onAccept, onSkip }: Props) {
               <div className="flex items-center h-[38px] px-3 bg-indigo-50 rounded-lg border border-indigo-100">
                 <span className="text-sm font-semibold text-indigo-600 tabular-nums">{fmt(Math.max(0, trimEnd - trimStart))}</span>
               </div>
+            </div>
+          </div>
+
+          {/* Tags */}
+          <div className="flex flex-col gap-1.5 pt-0.5">
+            <span className="text-xs text-gray-400 font-medium">Tags</span>
+            {(knownTags ?? []).length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {(knownTags ?? []).map((t) => {
+                  const active = pendingTags.includes(t);
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() =>
+                        setPendingTags((prev) =>
+                          active ? prev.filter((x) => x !== t) : [...prev, t]
+                        )
+                      }
+                      className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                        active
+                          ? "bg-indigo-600 text-white border-indigo-600"
+                          : "bg-white text-gray-500 border-gray-200 hover:border-indigo-300 hover:bg-indigo-50"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 min-h-[32px]">
+              {pendingTags
+                .filter((t) => !(knownTags ?? []).includes(t))
+                .map((t) => (
+                  <span
+                    key={t}
+                    className="flex items-center gap-0.5 px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs"
+                  >
+                    {t}
+                    <button
+                      type="button"
+                      onClick={() => setPendingTags((prev) => prev.filter((x) => x !== t))}
+                      className="ml-0.5 hover:text-indigo-900 font-medium"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              <input
+                type="text"
+                placeholder={pendingTags.length === 0 ? "Tag personnalisé…" : ""}
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === ",") && tagInput.trim()) {
+                    e.preventDefault();
+                    const val = tagInput.trim().replace(/,\s*$/, "");
+                    if (val && !pendingTags.includes(val))
+                      setPendingTags((prev) => [...prev, val]);
+                    setTagInput("");
+                  }
+                }}
+                className="flex-1 min-w-[80px] text-xs focus:outline-none bg-transparent placeholder-gray-300"
+              />
             </div>
           </div>
           </div>

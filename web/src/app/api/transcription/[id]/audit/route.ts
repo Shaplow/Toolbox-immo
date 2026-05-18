@@ -11,6 +11,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getFromR2 } from "@/lib/r2";
+import path from "path";
+import { readFile } from "fs/promises";
 import {
   buildSubtitlesFromWords,
   auditSRT,
@@ -40,15 +42,21 @@ export async function GET(
     return NextResponse.json({ error: "Transcription non terminée" }, { status: 409 });
   }
   if (!job.outputJsonKey) {
-    return NextResponse.json({ error: "Fichier de sortie introuvable en R2" }, { status: 404 });
+    return NextResponse.json({ error: "Fichier de sortie introuvable" }, { status: 404 });
   }
 
   let segments: Segment[];
   try {
-    const buf = await getFromR2(job.outputJsonKey);
+    let buf: Buffer;
+    if (job.outputJsonKey.startsWith("local/")) {
+      const localPath = path.join(process.cwd(), "public", job.outputJsonKey.replace(/^local\//, ""));
+      buf = await readFile(localPath);
+    } else {
+      buf = await getFromR2(job.outputJsonKey);
+    }
     segments = JSON.parse(buf.toString("utf-8")) as Segment[];
   } catch (err) {
-    console.error("[transcription/audit] Erreur lecture R2:", err);
+    console.error("[transcription/audit] Erreur lecture segments:", err);
     return NextResponse.json({ error: "Impossible de lire les données de transcription" }, { status: 500 });
   }
 

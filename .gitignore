@@ -23,6 +23,7 @@ captions-api/.env
 # ─── Outputs / uploads (fichiers générés) ───────────────
 web/public/uploads/
 web/public/renders/
+web/public/transcription/
 captions-api/outputs/
 render-engine/outputs/
 

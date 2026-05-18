@@ -16,6 +16,7 @@ type CaptionOutput = {
   video_url?: string;
   output_key?: string;
   error?: string;
+  caption_job_id?: string;
 };
 
 export async function POST(req: NextRequest) {
@@ -27,7 +28,14 @@ export async function POST(req: NextRequest) {
 
   const { id: runpodJobId, status, output, error } = parsed.body;
 
-  const job = await prisma.captionJob.findUnique({ where: { runpodJobId } });
+  let job = await prisma.captionJob.findUnique({ where: { runpodJobId } });
+  if (!job && output?.caption_job_id) {
+    job = await prisma.captionJob.findUnique({ where: { id: output.caption_job_id } });
+    if (job && !job.runpodJobId) {
+      await prisma.captionJob.update({ where: { id: job.id }, data: { runpodJobId } });
+      job = { ...job, runpodJobId };
+    }
+  }
   if (!job) {
     console.warn(`[webhook/captions] Unknown runpodJobId=${runpodJobId}`);
     return NextResponse.json({ ok: true });

@@ -10,6 +10,8 @@ export interface MediaEditParams {
   mixToMono?: boolean;
   /** Normaliser le volume avec loudnorm (EBU R128, I=-16 LUFS). */
   normalize?: boolean;
+  /** Ajustement de volume en dB. Plage : -24 à +24. 0 = aucun changement. */
+  gainDb?: number;
 }
 
 export type MediaEditJobStatus = "pending" | "processing" | "done" | "failed";

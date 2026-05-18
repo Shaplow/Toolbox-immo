@@ -14,10 +14,36 @@ Variables d'environnement requises : identiques au worker RunPod
 
 from __future__ import annotations
 
+import os as _os
 import threading
 import time
 import uuid
 from typing import Any
+
+# ─── HF_HOME fallback ─────────────────────────────────────────────────────────
+# Must run BEFORE any whisper/torch import to take effect.
+#
+# The RunPod template sets HF_HOME=/workspace/models so models are persisted
+# on the network volume. But when the pod is created without a volume (fallback),
+# /workspace/models is empty and Python re-downloads 2-3 GB of models → 5 min
+# cold start.
+#
+# Fix: if HF_HOME points to an empty/missing hub dir, use the models baked into
+# the image at /app/hf_cache (downloaded during `docker build`).
+def _fix_hf_home() -> None:
+    hf_home = _os.environ.get("HF_HOME", "")
+    if not hf_home:
+        return
+    hub_dir = _os.path.join(hf_home, "hub")
+    baked = "/app/hf_cache"
+    if not _os.path.isdir(hub_dir) or not any(_os.scandir(hub_dir)):
+        if _os.path.isdir(baked):
+            print(f"[pod_server] HF_HOME={hf_home} vide → fallback modèles baked {baked}", flush=True)
+            _os.environ["HF_HOME"] = baked
+        else:
+            print(f"[pod_server] HF_HOME={hf_home} vide et {baked} absent → téléchargement au runtime", flush=True)
+
+_fix_hf_home()
 
 import httpx
 from fastapi import Request

@@ -109,11 +109,11 @@ def _base_profile(export_profile: str) -> CaptionEncodingProfile:
         )
     if quality == "template":
         # Profil dédié aux templates vidéo : pas de contrainte réseau/Instagram,
-        # on privilégie la qualité maximale. 30 Mbps / slow / NVENC p6.
+        # on privilégie la qualité maximale. 20 Mbps / slow / NVENC p6.
         return CaptionEncodingProfile(
-            video_bitrate=30_000_000,
-            maxrate=35_000_000,
-            bufsize=60_000_000,
+            video_bitrate=20_000_000,
+            maxrate=24_000_000,
+            bufsize=40_000_000,
             audio_bitrate=192_000,
             cpu_preset="slow",
             nvenc_preset="p6",
@@ -173,8 +173,15 @@ def build_caption_encoding_settings(
             "-b:v", str(effective_bitrate),
             "-maxrate", str(maxrate),
             "-bufsize", str(bufsize),
-            "-movflags", "+faststart",
         ]
+        if for_composite:
+            # Disable B-frames and lookahead to eliminate NVENC encoder delay.
+            # NVENC B-frames produce a negative initial DTS that FFmpeg compensates
+            # via an MP4 edit list.  Even with -bf 0, NVENC's rate-control lookahead
+            # keeps a 1-frame pipeline delay (DTS = -1001/60000 ≈ -16 ms for 59.94fps),
+            # which also triggers an edit list.  Setting rc_lookahead=0 removes that
+            # residual delay so the first DTS is 0 and no edit list is created.
+            video_args += ["-bf", "0", "-rc_lookahead", "0"]
     else:
         video_codec = "libx264"
         video_args = [
@@ -182,11 +189,15 @@ def build_caption_encoding_settings(
             "-b:v", str(effective_bitrate),
             "-maxrate", str(maxrate),
             "-bufsize", str(bufsize),
-            "-movflags", "+faststart",
         ]
 
     audio_codec = "aac"
     audio_args = ["-b:a", str(audio_bitrate)]
+    if for_composite:
+        # Force uniform sample rate across all sequence clips so concat -c copy
+        # produces consistent audio streams (avoids desync when source clips have
+        # different native sample rates, e.g. iPhone 44100 Hz vs library 48000 Hz).
+        audio_args += ["-ar", "48000"]
 
     debug = {
         "effective_video_bitrate": effective_bitrate,

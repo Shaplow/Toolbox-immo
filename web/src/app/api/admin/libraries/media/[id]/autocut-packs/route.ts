@@ -55,23 +55,28 @@ export async function POST(req: NextRequest, { params }: Params) {
   const language = typeof body.language === "string" ? body.language : "fr";
   const modelSize = typeof body.modelSize === "string" ? body.modelSize : "large-v3-turbo";
 
-  // ── Sécurité : vérifier que tous les assetIds appartiennent à cette lib ──
+  // ── Sécurité : vérifier que tous les assetIds appartiennent à cette lib et ne sont pas désactivés ──
   const validAssets = await prisma.mediaAsset.findMany({
-    where: { id: { in: assetIds }, libraryId },
+    where: { id: { in: assetIds }, libraryId, disabled: false },
     select: { id: true, url: true },
   });
   if (validAssets.length !== assetIds.length) {
     return NextResponse.json(
-      { error: "Certains assets n'appartiennent pas à cette bibliothèque" },
+      { error: "Certains assets n'appartiennent pas à cette bibliothèque ou sont désactivés" },
       { status: 403 }
     );
   }
 
   // ── Filtrer les assets ayant déjà un job actif ────────────────────────────
+  // Un job est considéré actif seulement s'il a été mis à jour dans les 2 dernières heures.
+  // Au-delà, on considère que le webhook a été perdu et on autorise la re-soumission.
+  const STALE_THRESHOLD_MS = 2 * 60 * 60 * 1000;
+  const staleThreshold = new Date(Date.now() - STALE_THRESHOLD_MS);
   const activeJobs = await prisma.mediaAutocutJob.findMany({
     where: {
       assetId: { in: assetIds },
       status: { in: ["pending", "processing"] },
+      updatedAt: { gt: staleThreshold },
     },
     select: { assetId: true },
   });
@@ -127,6 +132,12 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     try {
       const webhookUrl = getRunpodWebhookUrl("/api/webhooks/runpod/media-autocut");
+      if (!webhookUrl) {
+        console.error(
+          `[autocut-packs] NEXTAUTH_URL non défini — batch ${batch.id} soumis sans webhook. ` +
+          "Les jobs resteront bloqués en processing. Configurer NEXTAUTH_URL."
+        );
+      }
       const runpodResp = await submitRunpodJob<{ id: string }>(
         RUNPOD_ENDPOINT_ID,
         RUNPOD_API_KEY,
@@ -141,7 +152,7 @@ export async function POST(req: NextRequest, { params }: Params) {
               asset_url: asset.url,
             })),
           },
-          webhook: webhookUrl,
+          ...(webhookUrl ? { webhook: webhookUrl } : {}),
         }
       );
 

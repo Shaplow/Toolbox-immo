@@ -17,7 +17,7 @@ import {
 } from "@/lib/schemaFields";
 import { DPE_AUTO_FIELDS } from "@/lib/renderer/blocks/renderDPEBlock";
 import type { DecimalSeparator } from "@/lib/numberFormatting";
-import type { SchemaField, SchemaFieldType, TemplateFormSection } from "@/types/template";
+import type { SchemaField, SchemaFieldType, TemplateFormSection, VideoBlock } from "@/types/template";
 
 type SchemaFieldDraft = Omit<SchemaField, "key"> & { key: string };
 
@@ -66,6 +66,39 @@ export function SchemaPanel() {
     }
   });
   const [hasLoadedCollapsedState, setHasLoadedCollapsedState] = useState(false);
+
+  // Video libraries for metadata source picker
+  const [videoLibraries, setVideoLibraries] = useState<{ id: string; name: string; metadataSchema: string }[]>([]);
+  const [videoLibrariesLoading, setVideoLibrariesLoading] = useState(false);
+  const videoSequenceLibraryIds = useMemo(
+    () => [
+      ...template.blocks
+        .filter((b) => b.type === "video" && !!(b as { libraryId?: string }).libraryId)
+        .map((b) => (b as { libraryId?: string }).libraryId!),
+      ...(template.videoSequence ?? []).filter((s) => !!s.libraryId).map((s) => s.libraryId!),
+    ].filter((id, idx, arr) => arr.indexOf(id) === idx),
+    [template.blocks, template.videoSequence]
+  );
+  useEffect(() => {
+    setVideoLibrariesLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch("/api/admin/libraries/media?type=video");
+        if (!res.ok) { setVideoLibrariesLoading(false); return; }
+        const libs = await res.json() as { id: string; name: string; metadataSchema: string }[];
+        setVideoLibraries(libs.filter((l) => videoSequenceLibraryIds.includes(l.id)));
+      } catch { /* non-critical */ }
+      finally { setVideoLibrariesLoading(false); }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoSequenceLibraryIds.join(",")]);
+
+  const videoBlockOptions = useMemo(
+    () => template.blocks
+      .filter((b): b is VideoBlock => b.type === "video")
+      .map((b) => ({ id: b.id, name: b.name, libraryId: b.libraryId })),
+    [template.blocks]
+  );
 
   const [adding, setAdding] = useState(false);
   const [newField, setNewField] = useState<SchemaFieldDraft>({ key: "", ...EMPTY_SCHEMA_FIELD });
@@ -425,6 +458,9 @@ export function SchemaPanel() {
               }}
               onTypeChange={(nextType) => setNewField((current) => adaptDraftForType(current, nextType))}
               onOptionsDraftChange={setNewOptionsDraft}
+              videoLibraries={videoLibraries}
+              videoLibrariesLoading={videoLibrariesLoading}
+              videoBlockOptions={videoBlockOptions}
             />
             <div className="flex gap-2">
               <button
@@ -517,6 +553,7 @@ export function SchemaPanel() {
                             </span>
                             {isAutoDpe ? <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] text-emerald-700">auto DPE</span> : null}
                             {field.showIf ? <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] text-blue-600">cond</span> : null}
+                            {field.metadataSource?.metadataKey ? <span className="rounded-full bg-teal-50 border border-teal-100 px-1.5 py-0.5 text-[9px] text-teal-700">auto</span> : null}
                           </div>
                           <p className="text-[10px] font-mono text-gray-400 truncate mt-0.5">{field.key}</p>
                         </div>
@@ -566,6 +603,9 @@ export function SchemaPanel() {
                           onFieldChange={(changes) => setEditingDraft((current) => current ? { ...current, ...changes } : current)}
                           onTypeChange={(nextType) => setEditingDraft((current) => current ? adaptDraftForType(current, nextType) : current)}
                           onOptionsDraftChange={setEditingOptionsDraft}
+                          videoLibraries={videoLibraries}
+                          videoLibrariesLoading={videoLibrariesLoading}
+                          videoBlockOptions={videoBlockOptions}
                         />
                       </div>
                     ) : null}
@@ -586,22 +626,45 @@ function SelectOptionsEditor({
   optionsDraft,
   onOptionsDraftChange,
   onFieldChange,
+  videoBlockOptions = [],
 }: {
   field: SchemaFieldDraft;
   optionsDraft: string;
   onOptionsDraftChange: (v: string) => void;
   onFieldChange: (changes: Partial<SchemaFieldDraft>) => void;
+  videoBlockOptions?: { id: string; name?: string; libraryId?: string }[];
 }) {
-  const isDynamic = field.optionsSource?.type === "ig-accounts-from-library";
-  const [videoLibraries, setVideoLibraries] = useState<{ id: string; name: string }[]>([]);
+  const isIgAccounts = field.optionsSource?.type === "ig-accounts-from-library";
+  const isMetaValues = field.optionsSource?.type === "metadata-values-from-library";
+  const isDynamic = isIgAccounts || isMetaValues;
+  const [videoLibraries, setVideoLibraries] = useState<{ id: string; name: string; metadataSchema?: string }[]>([]);
 
   useEffect(() => {
     if (!isDynamic && field.optionsSource === undefined) return;
     fetch("/api/admin/libraries/media?type=video")
       .then((r) => r.ok ? r.json() : [])
-      .then((data: { id: string; name: string }[]) => setVideoLibraries(data))
+      .then((data: { id: string; name: string; metadataSchema?: string }[]) => setVideoLibraries(data))
       .catch(() => {});
   }, [isDynamic, field.optionsSource]);
+
+  /** Metadata fields for the currently selected library (metadata-values mode). */
+  const metaLibrary = isMetaValues ? videoLibraries.find((l) => l.id === field.optionsSource?.libraryId) : undefined;
+  const metaFields: { key: string; label: string }[] = (() => {
+    if (!metaLibrary?.metadataSchema) return [];
+    try { return JSON.parse(metaLibrary.metadataSchema) as { key: string; label: string }[]; }
+    catch { return []; }
+  })();
+
+  /** All video blocks in the template — the link is explicit via blockId, library comes from optionsSource. */
+  const eligibleBlocks = videoBlockOptions;
+
+  function fetchLibraries() {
+    setVideoLibraries([]);
+    fetch("/api/admin/libraries/media?type=video")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: { id: string; name: string; metadataSchema?: string }[]) => setVideoLibraries(data))
+      .catch(() => {});
+  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -611,23 +674,35 @@ function SelectOptionsEditor({
         <button
           type="button"
           onClick={() => onFieldChange({ optionsSource: undefined })}
-          className={`flex-1 px-2 py-1.5 transition-colors ${!isDynamic ? "bg-indigo-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+          className={`flex-1 px-2 py-1.5 transition-colors ${
+            !isDynamic ? "bg-indigo-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"
+          }`}
         >
           Manuelle
         </button>
         <button
           type="button"
           onClick={() => {
-            setVideoLibraries([]);
-            fetch("/api/admin/libraries/media?type=video")
-              .then((r) => r.ok ? r.json() : [])
-              .then((data: { id: string; name: string }[]) => setVideoLibraries(data))
-              .catch(() => {});
+            fetchLibraries();
             onFieldChange({ optionsSource: { type: "ig-accounts-from-library", libraryId: "" }, options: undefined });
           }}
-          className={`flex-1 px-2 py-1.5 transition-colors ${isDynamic ? "bg-indigo-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+          className={`flex-1 px-2 py-1.5 transition-colors border-l border-gray-200 ${
+            isIgAccounts ? "bg-indigo-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"
+          }`}
         >
           Comptes IG d&apos;une lib
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            fetchLibraries();
+            onFieldChange({ optionsSource: { type: "metadata-values-from-library", libraryId: "", metadataKey: "", blockId: "" }, options: undefined });
+          }}
+          className={`flex-1 px-2 py-1.5 transition-colors border-l border-gray-200 ${
+            isMetaValues ? "bg-indigo-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          Valeurs métadonnées
         </button>
       </div>
 
@@ -649,7 +724,7 @@ function SelectOptionsEditor({
           />
           <span className="text-[10px] text-gray-400">Une option par ligne.</span>
         </label>
-      ) : (
+      ) : isIgAccounts ? (
         <div className="flex flex-col gap-1.5">
           <label className="flex flex-col gap-1">
             <span className="text-gray-500">Bibliothèque vidéo</span>
@@ -668,6 +743,80 @@ function SelectOptionsEditor({
             Les options du select seront auto-remplies avec les comptes Instagram qui ont du contenu dans cette bibliothèque.
           </p>
         </div>
+      ) : (
+        /* metadata-values-from-library */
+        <div className="flex flex-col gap-1.5">
+          <label className="flex flex-col gap-1">
+            <span className="text-gray-500">Bibliothèque</span>
+            <select
+              value={field.optionsSource?.libraryId ?? ""}
+              onChange={(e) => onFieldChange({
+                optionsSource: { type: "metadata-values-from-library", libraryId: e.target.value, metadataKey: "", blockId: "" },
+              })}
+              className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            >
+              <option value="">Choisir une bibliothèque…</option>
+              {videoLibraries.map((lib) => (
+                <option key={lib.id} value={lib.id}>{lib.name}</option>
+              ))}
+            </select>
+          </label>
+
+          {field.optionsSource?.libraryId && (
+            <label className="flex flex-col gap-1">
+              <span className="text-gray-500">Champ métadonnée</span>
+              {metaFields.length === 0 ? (
+                <p className="text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1">
+                  Cette bibliothèque n&apos;a pas de champs de métadonnées définis.
+                </p>
+              ) : (
+                <select
+                  value={field.optionsSource?.metadataKey ?? ""}
+                  onChange={(e) => onFieldChange({
+                    optionsSource: { ...field.optionsSource!, metadataKey: e.target.value },
+                  })}
+                  className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                >
+                  <option value="">Choisir un champ…</option>
+                  {metaFields.map((f) => (
+                    <option key={f.key} value={f.key}>{f.label} ({f.key})</option>
+                  ))}
+                </select>
+              )}
+            </label>
+          )}
+
+          {field.optionsSource?.libraryId && field.optionsSource?.metadataKey && (
+            <label className="flex flex-col gap-1">
+              <span className="text-gray-500">Bloc vidéo piloté</span>
+              {eligibleBlocks.length === 0 ? (
+                <p className="text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1">
+                  Aucun bloc vidéo dans ce template.
+                </p>
+              ) : (
+                <select
+                  value={field.optionsSource?.blockId ?? ""}
+                  onChange={(e) => onFieldChange({
+                    optionsSource: { ...field.optionsSource!, blockId: e.target.value },
+                  })}
+                  className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                >
+                  <option value="">Choisir un bloc…</option>
+                  {eligibleBlocks.map((b) => (
+                    <option key={b.id} value={b.id}>{b.name ?? `Bloc vidéo (${b.id.slice(0, 6)})`}</option>
+                  ))}
+                </select>
+              )}
+            </label>
+          )}
+
+          {field.optionsSource?.blockId && field.optionsSource?.metadataKey && (
+            <p className="text-[10px] text-emerald-700 bg-emerald-50 rounded px-2 py-1 leading-relaxed">
+              Les options seront les valeurs distinctes du champ <span className="font-mono">{field.optionsSource.metadataKey}</span> dans la bibliothèque.
+              La valeur choisie sélectionnera automatiquement l&apos;asset correspondant au rendu.
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -683,6 +832,9 @@ function SchemaFieldEditor({
   onFieldChange,
   onTypeChange,
   onOptionsDraftChange,
+  videoLibraries = [],
+  videoLibrariesLoading = false,
+  videoBlockOptions = [],
 }: {
   mode: "create" | "edit";
   field: SchemaFieldDraft;
@@ -693,7 +845,18 @@ function SchemaFieldEditor({
   onFieldChange: (changes: Partial<SchemaFieldDraft>) => void;
   onTypeChange: (nextType: SchemaFieldType) => void;
   onOptionsDraftChange: (value: string) => void;
+  videoLibraries?: { id: string; name: string; metadataSchema: string }[];
+  videoLibrariesLoading?: boolean;
+  videoBlockOptions?: { id: string; name?: string; libraryId?: string }[];
 }) {
+  // Parsed metadata schemas per library
+  const parsedLibrarySchemas = useMemo(
+    () => videoLibraries.map((lib) => ({
+      ...lib,
+      fields: (() => { try { return JSON.parse(lib.metadataSchema ?? "[]") as { key: string; label: string; type: string }[]; } catch { return []; } })()
+    })),
+    [videoLibraries]
+  );
   const conditionFields = getConditionSourceFields(schema, mode === "edit" ? field.key : field.key || undefined);
   const selectedConditionField = schema.find((item) => item.key === field.showIf?.field);
   const conditionValueOptions = getConditionValueOptions(selectedConditionField);
@@ -776,6 +939,7 @@ function SchemaFieldEditor({
             optionsDraft={optionsDraft}
             onOptionsDraftChange={onOptionsDraftChange}
             onFieldChange={onFieldChange}
+            videoBlockOptions={videoBlockOptions}
           />
         )}
 
@@ -814,6 +978,83 @@ function SchemaFieldEditor({
           <span className="text-gray-600">Champ requis si visible</span>
         </label>
       </FieldGroup>
+
+      {(field.type === "text" || field.type === "number") && (
+        <FieldGroup label="Source automatique (asset)">
+          {videoLibrariesLoading ? (
+            <p className="text-[10px] text-gray-400">Chargement des bibliothèques…</p>
+          ) : parsedLibrarySchemas.length === 0 ? (
+            <p className="text-[10px] text-gray-400 leading-relaxed">
+              Liez un bloc vidéo à une bibliothèque avec un schéma de métadonnées pour activer la source automatique.
+            </p>
+          ) : (
+            <>
+              <p className="text-[10px] text-gray-400 leading-relaxed">
+                Remplit automatiquement ce champ depuis les métadonnées de l&apos;asset vidéo résolu à la génération.
+                Utilisez {`{{${field.key || "…"}}}`} dans vos blocs texte pour afficher cette valeur.
+              </p>
+              {field.metadataSource ? (
+                <div className="space-y-1.5">
+                  <select
+                    value={field.metadataSource.libraryId}
+                    onChange={(e) => {
+                      const libId = e.target.value;
+                      if (!libId) {
+                        onFieldChange({ metadataSource: undefined });
+                      } else {
+                        onFieldChange({ metadataSource: { libraryId: libId, metadataKey: "" } });
+                      }
+                    }}
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  >
+                    <option value="">— Aucune source —</option>
+                    {parsedLibrarySchemas.map((lib) => (
+                      <option key={lib.id} value={lib.id}>{lib.name}</option>
+                    ))}
+                  </select>
+                  {field.metadataSource.libraryId && (() => {
+                    const lib = parsedLibrarySchemas.find((l) => l.id === field.metadataSource!.libraryId);
+                    if (!lib || lib.fields.length === 0) return (
+                      <p className="text-[10px] text-amber-600">Cette bibliothèque n&apos;a pas de champs de métadonnées définis.</p>
+                    );
+                    return (
+                      <select
+                        value={field.metadataSource.metadataKey}
+                        onChange={(e) => onFieldChange({ metadataSource: { ...field.metadataSource!, metadataKey: e.target.value } })}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                      >
+                        <option value="">— Choisir un champ —</option>
+                        {lib.fields.map((f) => (
+                          <option key={f.key} value={f.key}>{f.label} ({f.key})</option>
+                        ))}
+                      </select>
+                    );
+                  })()}
+                  {field.metadataSource.metadataKey && (() => {
+                    const lib = parsedLibrarySchemas.find((l) => l.id === field.metadataSource!.libraryId);
+                    const metaFieldDef = lib?.fields.find((f) => f.key === field.metadataSource!.metadataKey);
+                    return (
+                      <div className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[10px] text-emerald-700">
+                        <span className="font-medium">Lié : </span>
+                        {lib?.name ?? field.metadataSource!.libraryId}
+                        {" · "}{metaFieldDef?.label ?? <code className="font-mono">{field.metadataSource!.metadataKey}</code>}
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onFieldChange({ metadataSource: { libraryId: "", metadataKey: "" } })}
+                  className="w-full text-left px-2.5 py-2 rounded-lg border border-dashed border-indigo-300 text-indigo-600 text-[10px] hover:bg-indigo-50 transition-colors"
+                >
+                  + Lier à une métadonnée d&apos;asset
+                </button>
+              )}
+            </>
+          )}
+        </FieldGroup>
+      )}
 
       <FieldGroup label="Valeur initiale">
         <DefaultValueInput field={field} onChange={(value) => onFieldChange({ default: value })} />

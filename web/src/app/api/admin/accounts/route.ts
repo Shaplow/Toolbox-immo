@@ -10,7 +10,7 @@ function adminOnly(role?: string) {
 export async function GET() {
   const session = await auth();
   if (!session?.user?.id || adminOnly(session.user.role)) {
-    return NextResponse.json([]);
+    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
   try {

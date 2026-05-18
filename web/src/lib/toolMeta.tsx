@@ -10,10 +10,10 @@
  * - badge      : optional badge text (e.g. "Bêta"), null if none
  */
 
-import { LayoutTemplate, AlignLeft, Image as ImageIcon, Mic, FileText, Scissors } from "lucide-react";
+import { LayoutTemplate, AlignLeft, Image as ImageIcon, Mic, FileText } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type ToolKey = "templates" | "captions" | "covers" | "transcription" | "description" | "derush";
+export type ToolKey = "templates" | "captions" | "covers" | "transcription" | "description";
 
 export type ToolMeta = {
   href: string;
@@ -76,16 +76,6 @@ export const TOOL_META: Record<ToolKey, ToolMeta> = {
     color: "amber",
     badge: null,
   },
-  derush: {
-    href: "/tools/derush",
-    navLabel: "Dérush",
-    cardLabel: "Dérush",
-    description:
-      "Sélection automatique des meilleurs plans par vision IA ou transcription. Export XML pour la post-production.",
-    Icon: Scissors,
-    color: "rose",
-    badge: null,
-  },
 };
 
 /** Ordered list of tool keys as they should appear in the UI. */
@@ -95,5 +85,4 @@ export const TOOL_ORDER: ToolKey[] = [
   "captions",
   "description",
   "covers",
-  "derush",
 ];

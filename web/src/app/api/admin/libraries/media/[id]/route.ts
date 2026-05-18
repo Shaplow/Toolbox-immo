@@ -17,7 +17,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const { id } = await params;
-  const body = await req.json() as { name?: string; description?: string; tags?: string[]; setSequence?: string[]; setFamilies?: Record<string, string>; rotationScope?: string };
+  const body = await req.json() as { name?: string; description?: string; tags?: string[]; setSequence?: string[]; setFamilies?: Record<string, string>; rotationScope?: string; metadataSchema?: { key: string; label: string; type: string }[] };
 
   const data: Record<string, unknown> = {};
   if (body.name?.trim()) data.name = body.name.trim();
@@ -29,6 +29,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
   if (body.rotationScope === "per_account" || body.rotationScope === "shared") {
     data.rotationScope = body.rotationScope;
+  }
+  if (Array.isArray(body.metadataSchema)) {
+    const metaKeys = body.metadataSchema.map((f) => (f.key ?? "").trim());
+    if (metaKeys.some((k) => !k)) {
+      return NextResponse.json({ error: "Toutes les clés de champs de métadonnées doivent être non vides" }, { status: 400 });
+    }
+    if (new Set(metaKeys).size !== metaKeys.length) {
+      return NextResponse.json({ error: "Les clés de champs de métadonnées doivent être uniques" }, { status: 400 });
+    }
+    data.metadataSchema = JSON.stringify(body.metadataSchema);
   }
 
   try {

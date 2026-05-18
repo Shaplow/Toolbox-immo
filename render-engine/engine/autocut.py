@@ -108,6 +108,9 @@ def analyze_autocut(
                     "word": w.get("word", "").strip(),
                     "start": float(w["start"]),
                     "end": float(w["end"]),
+                    # score = confiance Whisper par mot (0.0–1.0).
+                    # Utilisé côté UI pour scorer les prises : mots nets → score élevé.
+                    "score": float(w.get("score") or 0.8),
                 }
                 for w in seg.get("words", [])
                 if w.get("start") is not None and w.get("end") is not None

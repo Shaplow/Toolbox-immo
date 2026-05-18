@@ -21,6 +21,7 @@ from app import FONTS_DIR, OUTPUTS_DIR, _parse_srt_content, _render_captions_pre
 from engine.fonts import list_font_names, scan_fonts
 from engine.template_composite import (
     OverlaySegment,
+    build_music_track_filter,
     build_template_ffmpeg_cmd,
     build_template_ffmpeg_cmd_timed,
     build_template_ffmpeg_cmd_video_only,
@@ -28,7 +29,7 @@ from engine.template_composite import (
 )
 from engine.encoding_profiles import build_caption_encoding_settings
 from engine.models import RenderConfig, WordTimestamp, default_premium_config
-from engine.probe import probe_video
+from engine.probe import probe_duration, probe_video
 from engine.runtime_fonts import prepare_runtime_fonts
 
 logger = logging.getLogger("render-engine")
@@ -147,7 +148,7 @@ def _build_config(cfg: dict[str, Any]) -> RenderConfig:
     if animation_preset not in ("none", "appear", "reveal", "word_pop"):
         animation_preset = "appear"
 
-    keywords = _parse_keywords(cfg.get("highlight_keywords"))
+    keywords = _parse_keywords(cfg.get("highlight_keywords")) if _to_bool(cfg.get("highlight_enabled"), False) else []
 
     highlight2_enabled = _to_bool(highlight2.get("enabled"), False)
     highlight_style2 = {
@@ -168,7 +169,7 @@ def _build_config(cfg: dict[str, Any]) -> RenderConfig:
         "shadow_blur": hl2_shadow_blur,
             "glow_color": _auto_glow_color(highlight2.get("color", "#3AB8C8")) if glow_color_auto else glow_color_fixed,
         "glow_intensity": hl2_glow,
-    }
+    } if highlight2_enabled else None
 
     return RenderConfig(
         layout={
@@ -229,6 +230,20 @@ def _build_config(cfg: dict[str, Any]) -> RenderConfig:
         block_rules={"pause_threshold": 0.5, "max_duration": 4.5},
         engine=_resolve_captions_engine(cfg.get("engine")),
     )
+
+
+@app.post("/api/probe-duration")
+async def api_probe_duration(request: Request):
+    """Return the duration (seconds) of any media file reachable by ffprobe.
+
+    Body JSON: { "url": "<http(s) or local path>" }
+    Response:  { "duration": float } or { "duration": null } on failure.
+    """
+    body = await request.json()
+    url = body.get("url", "")
+    if not url:
+        raise HTTPException(status_code=400, detail="url required")
+    return {"duration": probe_duration(url)}
 
 
 @app.get("/api/render-progress/{job_id}")
@@ -547,6 +562,8 @@ async def render_sequence_local(request: Request):
     clip_paths: list[Path] = []
     any_audio = False
     final_path: Path | None = None
+    # Per-slot music track params for time-varying volume expression.
+    slot_audio_specs: list[dict] = []
 
     try:
         for i, slot in enumerate(slots):
@@ -584,6 +601,17 @@ async def render_sequence_local(request: Request):
             video_info = probe_video(video_path)
             if video_info.has_audio:
                 any_audio = True
+
+            # Collect per-slot music track params for time-varying volume.
+            _clip_effective_dur = float(video_info.duration or 0.0)
+            if max_dur is not None:
+                _clip_effective_dur = min(_clip_effective_dur, max_dur)
+            slot_audio_specs.append({
+                "volume_db": slot.get("music_track_volume_db"),
+                "fade_in": float(slot.get("music_track_fade_in", 0) or 0),
+                "fade_out": float(slot.get("music_track_fade_out", 0) or 0),
+                "dur": _clip_effective_dur,
+            })
 
             normalized_block = normalize_video_block(block, canvas_w, canvas_h)
             clip_path = work_dir / f"seq_{stamp}_clip{i}.mp4"
@@ -732,12 +760,14 @@ async def render_sequence_local(request: Request):
                     else (_global_max_duration or total_dur)
                 )
 
-                music_vol_filter = f"[1:a]volume={_music_volume}"
-                if _music_fade_in > 0:
-                    music_vol_filter += f",afade=t=in:d={_music_fade_in}"
-                if _music_fade_out > 0 and effective_dur is not None:
-                    st = max(0, effective_dur - _music_fade_out)
-                    music_vol_filter += f",afade=t=out:st={st}:d={_music_fade_out}"
+                music_vol_filter = build_music_track_filter(
+                    music_input_index=1,
+                    global_volume=_music_volume,
+                    global_fade_in=_music_fade_in,
+                    global_fade_out=_music_fade_out,
+                    effective_dur=effective_dur,
+                    slot_specs=slot_audio_specs,
+                )
                 if any_audio and not effective_mute_source:
                     source_filter = f"[0:a]volume={effective_source_volume}"
                     audio_filter = f"{source_filter}[va];{music_vol_filter}[msc];[va][msc]amix=inputs=2:duration=first[aout]"

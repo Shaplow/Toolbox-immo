@@ -97,7 +97,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 }
 
 // PATCH /api/admin/libraries/media/assets/[assetId]
-// Champs acceptés : duration, tags, setTag, category, incrementUsage, usageCount, resetUsage, lastUsedAt
+// Champs acceptés : duration, tags, setTag, category, incrementUsage, usageCount, resetUsage, lastUsedAt, disabled
 export async function PATCH(req: NextRequest, { params }: Params) {
   const session = await auth();
   if (!session?.user?.id || adminOnly(session.user.role)) {
@@ -116,6 +116,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     lastUsedAt?: string | null;
     accessAccountIds?: string[];
     resetUsageForAccount?: string;
+    disabled?: boolean;
+    metadata?: Record<string, string | number | null>;
   };
 
   const data: Record<string, unknown> = {};
@@ -123,6 +125,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (Array.isArray(body.tags)) data.tags = JSON.stringify(body.tags);
   if ("setTag" in body) data.setTag = body.setTag ?? null;
   if ("category" in body) data.category = body.category ?? null;
+  if (typeof body.disabled === "boolean") data.disabled = body.disabled;
+  if (body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)) {
+    data.metadata = JSON.stringify(body.metadata);
+  }
   if (body.incrementUsage === true) {
     data.usageCount = { increment: 1 };
     data.lastUsedAt = new Date();
@@ -138,7 +144,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     data.lastUsedAt = body.lastUsedAt ? new Date(body.lastUsedAt) : null;
   }
 
-  // Handle access account IDs separately (replace all access entries)
   const hasAccessUpdate = Array.isArray(body.accessAccountIds);
   const hasDataUpdate = Object.keys(data).length > 0;
   const hasReset = body.resetUsage === true;

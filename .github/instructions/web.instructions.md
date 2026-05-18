@@ -30,12 +30,6 @@ applyTo: "web/**/*.ts,web/**/*.tsx,web/**/*.js,web/**/*.jsx,web/**/*.mjs,web/**/
   - `web/src/lib/runpod.ts`
   - `web/src/lib/renderer/generateRender.ts`
   - `web/src/lib/renderer/renderWorkflow.ts`
-- For derush work, inspect these files early:
-  - `web/src/app/api/derush/` (routes: route, [id]/route, [id]/submit, [id]/result, [id]/segments, [id]/export, formats)
-  - `web/src/lib/derushProcess.ts`
-  - `web/src/types/derush.ts`
-  - `web/src/components/derush/`
-  - `render-engine/engine/derush/orchestrator.py`
 - For description generation, inspect these files early:
   - `web/src/app/api/description/` (routes: jobs, generate, prompts)
   - `web/src/components/description/DescriptionTool.tsx`
@@ -43,7 +37,7 @@ applyTo: "web/**/*.ts,web/**/*.tsx,web/**/*.js,web/**/*.jsx,web/**/*.mjs,web/**/
   - `web/src/lib/userContext.ts` (resolveUserContext, getUserContext, IMPERSONATION_COOKIE_NAME)
   - `web/src/lib/permissions.ts` (TOOLS, hasTool, getUserTools)
   - `web/src/app/api/admin/` (users, impersonation, accesses routes)
-- If the request also touches derush or description generation, check whether they reuse transcription artifacts before inventing a parallel workflow.
+- If the request also touches description generation, check whether it reuses transcription artifacts before inventing a parallel workflow.
 - For Prisma changes, keep schema, migrations, and any API expectations aligned. Do not change persisted data shape casually to work around a UI issue.
 - For UI and UX work, prefer clearer hierarchy, spacing, copy, and state handling over decorative redesign. Reuse existing UI primitives when possible, but do not preserve obviously broken interaction patterns just for consistency.
 - Minimum validation for web changes is targeted ESLint on touched files. Run a build when runtime boundaries or framework configuration changed.

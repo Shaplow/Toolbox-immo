@@ -21,8 +21,7 @@ Toolbox Immo is a monorepo with two active application layers.
 - Builder UI: `web/src/components/builder/`
 - Template render pipeline: `web/src/lib/renderer/`, `web/src/app/preview/`, `web/src/app/api/renders/`
 - Captions and transcription orchestration: `web/src/app/api/render/captions/`, `web/src/app/api/transcription/`, `web/src/lib/captionsEngine.ts`, `web/src/lib/runpod.ts`
-- RunPod webhook callbacks: `web/src/app/api/webhooks/runpod/` (captions, transcription, derush, derush-export, media-edit, renders), `web/src/lib/webhooks/runpod.ts`
-- Derush module: `web/src/app/api/derush/`, `web/src/lib/derushProcess.ts`, `web/src/types/derush.ts`, `web/src/components/derush/`, `render-engine/engine/derush/`
+- RunPod webhook callbacks: `web/src/app/api/webhooks/runpod/` (captions, transcription, derush-export, media-autocut, media-edit, renders), `web/src/lib/webhooks/runpod.ts`
 - Description generation: `web/src/app/api/description/`, `web/src/components/description/DescriptionTool.tsx`, `web/src/components/admin/DescriptionPromptsPanel.tsx`
 - Admin and permissions: `web/src/app/api/admin/`, `web/src/lib/userContext.ts`, `web/src/lib/permissions.ts`
 - Content library: `web/src/app/api/admin/libraries/`, `web/src/lib/contentLibraryResolver.ts`, `web/src/lib/recordLibraryUsage.ts`
@@ -62,7 +61,7 @@ Toolbox Immo is a monorepo with two active application layers.
 
 - Apply the repo-wide guidance here first.
 - Then read the matching path-specific instructions in `.github/instructions/` before editing files in `web/` or `render-engine/`.
-- Load the skills in `.github/skills/` when the task is clearly about builder work or preview parity, render-engine or RunPod triage, captions/transcription pipelines, ASS subtitle rendering, UI design or layout patterns, app hardening, security review, admin/permissions changes, derush workflow, the Content Library system (MediaLibrary, MediaAsset, setTag, category, setSequence, MediaAssetAccess, MediaAssetUsage, AccountLibraryCursor, DataLibrary, DataCampaign, DataEntry, library bindings, selection rules, generation pre-fill, offer-based automation), asset rotation engine (auto mode, override mode, category exclusion, per-account isolation, pickFromGroup, rotation simulation, debugging rotation order), or description generation (DescriptionJob, DescriptionPrompt, Claude/GPT generation).
+- Load the skills in `.github/skills/` when the task is clearly about builder work or preview parity, render-engine or RunPod triage, captions/transcription pipelines, ASS subtitle rendering, UI design or layout patterns, app hardening, security review, admin/permissions changes, the Content Library system (MediaLibrary, MediaAsset, setTag, category, setSequence, MediaAssetAccess, MediaAssetUsage, AccountLibraryCursor, DataLibrary, DataCampaign, DataEntry, library bindings, selection rules, generation pre-fill, offer-based automation, MediaAutocutJob batch autocut), asset rotation engine (auto mode, override mode, category exclusion, per-account isolation, pickFromGroup, rotation simulation, debugging rotation order), or description generation (DescriptionJob, DescriptionPrompt, Claude/GPT generation).
 - For code review, security audits, targeted bug hunts, and full-module UX audits, use the dedicated agents: `code-reviewer`, `security-auditor`, `bug-hunter`, `ux-auditor`. These produce reports only and do not implement fixes.
 - For planning a new feature before implementation, use `feature-planner`. It interviews, produces a phased plan with commit boundaries, and hands off to the right agent.
 - Reusable prompts are in `.github/prompts/`: `implement-feature`, `review-feature`, `hunt-bugs`, `security-audit`. Invoke them with `/` in Copilot chat.

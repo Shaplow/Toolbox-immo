@@ -7,6 +7,8 @@ import { prisma } from "@/lib/prisma";
 export type FontAssetRecord = {
   id: string;
   family: string;
+  weight: number;
+  fontStyle: string;
   url: string;
   storageKey: string | null;
   originalName: string | null;
@@ -16,10 +18,32 @@ export type FontAssetRecord = {
 
 type UpsertFontAssetInput = {
   family: string;
+  weight?: number;
+  fontStyle?: string;
   url: string;
   storageKey?: string | null;
   originalName?: string | null;
 };
+
+/** Infer font weight (CSS numeric) from a filename stem. */
+export function inferWeightFromFilename(filename: string): number {
+  const stem = path.basename(filename, path.extname(filename)).toLowerCase();
+  if (/black/.test(stem)) return 900;
+  if (/extrabold|extra.?bold/.test(stem)) return 800;
+  if (/bold/.test(stem)) return 700;
+  if (/semibold|semi.?bold|demibold/.test(stem)) return 600;
+  if (/medium/.test(stem)) return 500;
+  if (/extralight|extra.?light/.test(stem)) return 200;
+  if (/light/.test(stem)) return 300;
+  if (/thin/.test(stem)) return 100;
+  return 400;
+}
+
+/** Infer font style from a filename stem. */
+export function inferStyleFromFilename(filename: string): "normal" | "italic" {
+  const stem = path.basename(filename, path.extname(filename)).toLowerCase();
+  return /italic|oblique/.test(stem) ? "italic" : "normal";
+}
 
 type RemoteFontFile = {
   family?: string;
@@ -80,9 +104,9 @@ async function deleteFontAssetsByIds(ids: string[]): Promise<void> {
 
 export async function listFontAssets(): Promise<FontAssetRecord[]> {
   return prisma.$queryRaw<FontAssetRecord[]>(Prisma.sql`
-    SELECT "id", "family", "url", "storageKey", "originalName", "createdAt", "updatedAt"
+    SELECT "id", "family", "weight", "fontStyle", "url", "storageKey", "originalName", "createdAt", "updatedAt"
     FROM "FontAsset"
-    ORDER BY LOWER("family") ASC
+    ORDER BY LOWER("family") ASC, "weight" ASC
   `);
 }
 
@@ -92,23 +116,26 @@ export async function listFontAssetsByFamilies(families: string[]): Promise<Font
   const normalizedFamilies = uniqueFamilies.map((family) => family.toLowerCase());
 
   return prisma.$queryRaw<FontAssetRecord[]>(Prisma.sql`
-    SELECT "id", "family", "url", "storageKey", "originalName", "createdAt", "updatedAt"
+    SELECT "id", "family", "weight", "fontStyle", "url", "storageKey", "originalName", "createdAt", "updatedAt"
     FROM "FontAsset"
     WHERE LOWER("family") IN (${Prisma.join(normalizedFamilies)})
+    ORDER BY "weight" ASC
   `);
 }
 
 export async function upsertFontAsset(input: UpsertFontAssetInput): Promise<FontAssetRecord> {
+  const weight = input.weight ?? 400;
+  const fontStyle = input.fontStyle ?? "normal";
   const rows = await prisma.$queryRaw<FontAssetRecord[]>(Prisma.sql`
-    INSERT INTO "FontAsset" ("id", "family", "url", "storageKey", "originalName", "createdAt", "updatedAt")
-    VALUES (${randomUUID()}, ${input.family.trim()}, ${input.url}, ${input.storageKey ?? null}, ${input.originalName ?? null}, NOW(), NOW())
-    ON CONFLICT ("family")
+    INSERT INTO "FontAsset" ("id", "family", "weight", "fontStyle", "url", "storageKey", "originalName", "createdAt", "updatedAt")
+    VALUES (${randomUUID()}, ${input.family.trim()}, ${weight}, ${fontStyle}, ${input.url}, ${input.storageKey ?? null}, ${input.originalName ?? null}, NOW(), NOW())
+    ON CONFLICT ("family", "weight", "fontStyle")
     DO UPDATE SET
       "url" = EXCLUDED."url",
       "storageKey" = EXCLUDED."storageKey",
       "originalName" = EXCLUDED."originalName",
       "updatedAt" = NOW()
-    RETURNING "id", "family", "url", "storageKey", "originalName", "createdAt", "updatedAt"
+    RETURNING "id", "family", "weight", "fontStyle", "url", "storageKey", "originalName", "createdAt", "updatedAt"
   `);
 
   return rows[0];
@@ -116,7 +143,7 @@ export async function upsertFontAsset(input: UpsertFontAssetInput): Promise<Font
 
 export async function getFontAssetById(id: string): Promise<FontAssetRecord | null> {
   const rows = await prisma.$queryRaw<FontAssetRecord[]>(Prisma.sql`
-    SELECT "id", "family", "url", "storageKey", "originalName", "createdAt", "updatedAt"
+    SELECT "id", "family", "weight", "url", "storageKey", "originalName", "createdAt", "updatedAt"
     FROM "FontAsset"
     WHERE "id" = ${id}
     LIMIT 1
@@ -182,6 +209,8 @@ export async function syncLegacyPublicFonts(): Promise<FontAssetRecord[]> {
     const family = remoteFont?.family?.trim() || inferFontFamilyFromFilename(filename);
     const asset = await upsertFontAsset({
       family,
+      weight: inferWeightFromFilename(filename),
+      fontStyle: inferStyleFromFilename(filename),
       url: `/fonts/${filename}`,
       storageKey: `fonts/${filename}`,
       originalName: filename,
@@ -223,6 +252,8 @@ export async function syncLegacyPublicFonts(): Promise<FontAssetRecord[]> {
 
     const asset = await upsertFontAsset({
       family,
+      weight: inferWeightFromFilename(filename),
+      fontStyle: inferStyleFromFilename(filename),
       url: `/fonts/${filename}`,
       storageKey: `fonts/${filename}`,
       originalName: filename,

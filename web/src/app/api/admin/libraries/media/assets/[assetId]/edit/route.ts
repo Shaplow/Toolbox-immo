@@ -53,6 +53,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   const trimEnd = body.trimEnd != null ? Number(body.trimEnd) : null;
   const mixToMono = Boolean(body.mixToMono ?? false);
   const normalize = Boolean(body.normalize ?? false);
+  const gainDbRaw = body.gainDb != null ? Number(body.gainDb) : null;
+  const gainDb = gainDbRaw !== null && !isNaN(gainDbRaw) && gainDbRaw !== 0
+    ? Math.max(-24, Math.min(24, gainDbRaw))
+    : null;
 
   if (trimStart !== null && (isNaN(trimStart) || trimStart < 0)) {
     return NextResponse.json({ error: "trimStart invalide" }, { status: 400 });
@@ -79,10 +83,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     ...(trimEnd !== null && { trimEnd }),
     mixToMono,
     normalize,
+    ...(gainDb !== null && { gainDb }),
   };
 
   // Reject no-op jobs (nothing to do — saves RunPod credit and avoids blocking concurrent edits).
-  if (trimStart === null && trimEnd === null && !mixToMono && !normalize) {
+  if (trimStart === null && trimEnd === null && !mixToMono && !normalize && gainDb === null) {
     return NextResponse.json({ error: "Aucune opération à effectuer" }, { status: 400 });
   }
 

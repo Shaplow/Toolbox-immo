@@ -1,7 +1,8 @@
 /**
  * GET  /api/admin/pod        — état actuel du pod (status, podId, activeJobCount, …)
  * POST /api/admin/pod        — actions de maintenance
- *   { action: "stop" }           → force-stop le pod sur RunPod + reset DB
+ *   { action: "stop" }           → force-stop le pod sur RunPod + reset DB (image conservée)
+ *   { action: "terminate" }      → supprime le pod sur RunPod + efface podId (force re-pull :latest)
  *   { action: "reset-counter" }  → remet activeJobCount à 0 sans toucher RunPod
  *
  * Accès : ADMIN uniquement.
@@ -13,7 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { forceStopPod, resetPodJobCounter } from "@/lib/podOrchestrator";
+import { forceStopPod, forceTerminatePod, resetPodJobCounter } from "@/lib/podOrchestrator";
 
 // ─── GET — pod status ─────────────────────────────────────────────────────────
 
@@ -58,13 +59,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, action: "stop", podId: result.podId });
   }
 
+  if (action === "terminate") {
+    const result = await forceTerminatePod();
+    return NextResponse.json({ ok: true, action: "terminate", podId: result.podId });
+  }
+
   if (action === "reset-counter") {
     await resetPodJobCounter();
     return NextResponse.json({ ok: true, action: "reset-counter" });
   }
 
   return NextResponse.json(
-    { error: `Action inconnue: "${action}". Valeurs acceptées: "stop", "reset-counter"` },
+    { error: `Action inconnue: "${action}". Valeurs acceptées: "stop", "terminate", "reset-counter"` },
     { status: 400 }
   );
 }

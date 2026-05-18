@@ -330,6 +330,21 @@ export function VideoSequencePanel({
                         );
                         updateVideoSequence(next);
                       }}
+                      hasMusicBlock={!!musicBlock}
+                      slotAudioOverride={musicBlock?.slotAudio?.[slot.id]}
+                      onAudioChange={(audioChanges) => {
+                        if (!musicBlock) return;
+                        const prevSlotAudio = musicBlock.slotAudio ?? {};
+                        const prevEntry = prevSlotAudio[slot.id] ?? {};
+                        const nextEntry = { ...prevEntry, ...audioChanges };
+                        // Remove keys that are explicitly set to undefined
+                        if (nextEntry.musicTrackVolumeDb === undefined) delete nextEntry.musicTrackVolumeDb;
+                        if (nextEntry.musicTrackFadeIn === undefined) delete nextEntry.musicTrackFadeIn;
+                        const nextSlotAudio = { ...prevSlotAudio, [slot.id]: nextEntry };
+                        // Clean up empty entries
+                        if (Object.keys(nextEntry).length === 0) delete nextSlotAudio[slot.id];
+                        updateBlock(musicBlock.id, { slotAudio: nextSlotAudio } as Partial<AnyBlock>);
+                      }}
                     />
                   </div>
                 )}

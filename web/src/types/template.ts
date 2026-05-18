@@ -169,6 +169,7 @@ export interface BlockStyle {
   fontFamily?: string;
   fontSize?: number;
   fontWeight?: number;
+  fontStyle?: "normal" | "italic";
   color?: string;
   letterSpacing?: number;
   textShadowEnabled?: boolean;
@@ -218,6 +219,9 @@ export interface TextBlock extends BaseBlock {
    *  Supports any mix of static text and {{variable}} tokens. */
   content?: string;
   staticText?: string; // @deprecated: utiliser content à la place
+  /** Résout le contenu depuis les métadonnées d'un asset vidéo au moment de la génération.
+   *  Remplace le contenu du bloc par la valeur de `key` dans l'asset résolu pour `libraryId`. */
+  libraryMetadataRef?: { libraryId: string; key: string };
 }
 
 export interface ImageBlock extends BaseBlock {
@@ -387,6 +391,23 @@ export interface MusicBlock extends BaseBlock {
     startAt?: number;
     /** S'arrête à cette position en secondes dans ce clip. */
     stopAt?: number;
+    /**
+     * Volume cible de la piste musicale pour ce slot, en dB (ex: -18, -3).
+     * La piste musicale sera au niveau global (MusicBlock.volume) par défaut,
+     * et atteindra ce niveau via un fondu de `musicTrackFadeIn` secondes.
+     */
+    musicTrackVolumeDb?: number;
+    /**
+     * Durée du fondu (en secondes) appliqué à la piste musicale au début de ce slot
+     * pour atteindre `musicTrackVolumeDb`. Défaut 0 (changement instantané).
+     */
+    musicTrackFadeIn?: number;
+    /**
+     * Durée du fondu (en secondes) appliqué à la piste musicale à la FIN de ce slot,
+     * en commençant `musicTrackFadeOut` secondes avant la coupe suivante.
+     * Défaut 0 (changement instantané à la coupe).
+     */
+    musicTrackFadeOut?: number;
   }>;
 }
 
@@ -415,10 +436,22 @@ export type SchemaFieldType =
  * bibliothèque média au moment de l'affichage du formulaire.
  */
 export interface SchemaFieldOptionsSource {
-  /** Seul type supporté actuellement : comptes IG ayant du contenu dans la bibliothèque. */
-  type: "ig-accounts-from-library";
+  /** Type de source dynamique. */
+  type: "ig-accounts-from-library" | "metadata-values-from-library";
   /** ID de la MediaLibrary à interroger. */
   libraryId: string;
+  /**
+   * Clé de métadonnée dont les valeurs distinctes remplissent les options du select.
+   * Requis pour `type === "metadata-values-from-library"`.
+   */
+  metadataKey?: string;
+  /**
+   * ID du VideoBlock du template que ce champ pilote.
+   * Quand l'utilisateur choisit une valeur, le render cherche l'asset dont
+   * `metadata[metadataKey] === valeur` dans la bibliothèque `libraryId`.
+   * Requis pour `type === "metadata-values-from-library"`.
+   */
+  blockId?: string;
 }
 
 export interface SchemaField {
@@ -441,6 +474,18 @@ export interface SchemaField {
     min?: number;
     max?: number;
     pattern?: string;
+  };
+  /**
+   * Source automatique depuis les métadonnées d'un asset de bibliothèque.
+   * Quand défini, la valeur du champ est injectée dans listingData avant le rendu,
+   * à partir des métadonnées de l'asset vidéo résolu pour cette bibliothèque.
+   * Fonctionne avec {{key}} dans les blocs texte, formatThousands, decimalSeparator inclus.
+   */
+  metadataSource?: {
+    /** ID de la MediaLibrary dont l'asset est résolu à la génération. */
+    libraryId: string;
+    /** Clé dans MediaAsset.metadata (ex: "prix", "surface"). */
+    metadataKey: string;
   };
 }
 

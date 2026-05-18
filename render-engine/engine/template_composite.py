@@ -11,6 +11,107 @@ class OverlaySegment(TypedDict):
     end: float | None     # seconds, exclusive; None = until end of video
 
 
+def build_music_track_filter(
+    music_input_index: int,
+    global_volume: float,
+    global_fade_in: float,
+    global_fade_out: float,
+    effective_dur: float | None,
+    slot_specs: list[dict],
+) -> str:
+    """
+    Returns the FFmpeg audio filter chain for the music input track WITHOUT the
+    output label (caller appends ``[msc]``, ``[aout]``, etc.).
+
+    When no slot defines ``volume_db``, returns the legacy flat-volume form with
+    optional ``afade`` filters — fully backward compatible.
+
+    When ≥1 slot defines ``volume_db``, builds a time-varying volume expression
+    evaluated per-frame (``eval=frame``), with optional linear ramps at each
+    slot boundary.
+
+    ``slot_specs`` is a list of dicts (one per sequence slot, in order):
+      - ``volume_db`` (float | None): target dB level for this slot; ``None``
+        means use ``global_volume`` (linear scale).
+      - ``fade_in`` (float): ramp duration in seconds at the START of this slot
+        (begins at the slot boundary, inside the new slot). 0 = step change.
+      - ``fade_out`` (float): ramp duration in seconds at the END of this slot
+        (begins ``fade_out`` seconds before the next slot boundary, inside the
+        current slot). Takes precedence over the next slot's ``fade_in`` when
+        both are set. 0 = step change.
+      - ``dur`` (float): effective clip duration (seconds), used to compute
+        cumulative timestamps for transitions.
+    """
+    has_per_slot = any(s.get("volume_db") is not None for s in slot_specs)
+
+    if not has_per_slot:
+        # Legacy path — flat volume + optional global afade filters.
+        chain = f"[{music_input_index}:a]volume={global_volume}"
+        if global_fade_in > 0:
+            chain += f",afade=t=in:d={global_fade_in}"
+        if global_fade_out > 0 and effective_dur is not None:
+            st = max(0.0, effective_dur - global_fade_out)
+            chain += f",afade=t=out:st={st:.4f}:d={global_fade_out}"
+        return chain
+
+    def _db_to_linear(db: float) -> float:
+        return 10.0 ** (db / 20.0)
+
+    n = len(slot_specs)
+    if n == 0:
+        return f"[{music_input_index}:a]volume={global_volume}"
+
+    # Resolve per-slot linear levels; fall back to global_volume if unset.
+    levels = [
+        _db_to_linear(float(s["volume_db"])) if s.get("volume_db") is not None else global_volume
+        for s in slot_specs
+    ]
+
+    # Cumulative start times for each slot boundary.
+    starts: list[float] = [0.0]
+    for s in slot_specs[:-1]:
+        starts.append(starts[-1] + max(0.0, float(s.get("dur", 0))))
+
+    # Build nested if-expression from last slot (rightmost) to first.
+    # At each boundary T_i (start of slot i, i > 0) we pick ONE ramp:
+    #   • fade_out of slot i-1: ramp starts T_i - F_out (before boundary, inside prev slot)
+    #   • fade_in  of slot i:   ramp starts T_i         (after boundary, inside new slot)
+    # fade_out takes precedence when both are set.
+    expr = f"{levels[-1]:.6f}"
+    for i in range(n - 1, 0, -1):
+        T = starts[i]
+        F_out = max(0.0, float(slot_specs[i - 1].get("fade_out", 0) or 0))
+        F_in  = max(0.0, float(slot_specs[i].get("fade_in", 0) or 0))
+        V_prev = levels[i - 1]
+        V_curr = levels[i]
+        if F_out > 0:
+            # Ramp starts F_out seconds BEFORE the boundary (inside the previous slot).
+            T_start = T - F_out
+            ramp = f"({V_prev:.6f}+({V_curr:.6f}-{V_prev:.6f})*(t-{T_start:.4f})/{F_out:.4f})"
+            expr = (
+                f"if(lt(t,{T_start:.4f}),{V_prev:.6f},"
+                f"if(lt(t,{T:.4f}),{ramp},{expr}))"
+            )
+        elif F_in > 0:
+            # Ramp starts AT the boundary (inside the new slot).
+            T_end = T + F_in
+            ramp = f"({V_prev:.6f}+({V_curr:.6f}-{V_prev:.6f})*(t-{T:.4f})/{F_in:.4f})"
+            expr = (
+                f"if(lt(t,{T:.4f}),{V_prev:.6f},"
+                f"if(lt(t,{T_end:.4f}),{ramp},{expr}))"
+            )
+        else:
+            expr = f"if(lt(t,{T:.4f}),{V_prev:.6f},{expr})"
+
+    chain = f"[{music_input_index}:a]volume='{expr}':eval=frame"
+    # Apply global fade-out on top (separate afade filter).
+    if global_fade_out > 0 and effective_dur is not None:
+        st = max(0.0, effective_dur - global_fade_out)
+        chain += f",afade=t=out:st={st:.4f}:d={global_fade_out}"
+    return chain
+
+
+
 def normalize_video_block(block: dict, canvas_w: int, canvas_h: int) -> dict[str, float | int | str]:
     x = int(block["x"])
     y = int(block["y"])
@@ -271,6 +372,13 @@ def build_template_ffmpeg_cmd(
         "-c:v", video_codec, *video_codec_args,
         "-movflags", "+faststart",
         "-pix_fmt", "yuv420p",
+        # Normalise the MP4 video track timescale across all per-slot clips.
+        # Without this, a 60fps Apple source encodes to ts=15360 while a
+        # 59.94fps source uses ts=60000.  When the concat demuxer reads clips
+        # with mixed timescales under -c copy, FFmpeg mis-computes the total
+        # duration in the output edit list (stores 20.76s*15360=318840 ticks
+        # in a ts=60000 container → players see 5.3s instead of 20.8s).
+        "-video_track_timescale", "60000",
         *audio_codec_flags,
         str(out_path),
     ]
@@ -341,6 +449,7 @@ def build_template_ffmpeg_cmd_timed(
         "-c:v", video_codec, *video_codec_args,
         "-movflags", "+faststart",
         "-pix_fmt", "yuv420p",
+        "-video_track_timescale", "60000",
         *audio_codec_flags,
         str(out_path),
     ]
@@ -392,5 +501,6 @@ def build_template_ffmpeg_cmd_video_only(
         "-c:v", video_codec, *video_codec_args,
         "-movflags", "+faststart",
         "-pix_fmt", "yuv420p",
+        "-video_track_timescale", "60000",
         str(out_path),
     ]

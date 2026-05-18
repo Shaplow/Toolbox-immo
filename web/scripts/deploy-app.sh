@@ -61,6 +61,7 @@ fi
 # ── 4. Build Next.js + PM2 ─────────────────────────────────────────────────
 echo ""
 echo "▶ 4/4  Build Next.js..."
+rm -rf .next
 npm run build
 
 echo ""

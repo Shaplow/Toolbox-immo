@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from "react";
  */
 
 export type JobEventPayload = {
-  jobType: "captions" | "transcription" | "derush" | "derush_export" | "render" | "media-edit";
+  jobType: "captions" | "transcription" | "render" | "media-edit";
   jobId: string;
   status: string;
   [key: string]: unknown;

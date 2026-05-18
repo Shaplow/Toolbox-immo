@@ -26,6 +26,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasTool } from "@/lib/permissions";
+import { IMPERSONATION_COOKIE_NAME, resolveUserContext } from "@/lib/userContext";
 
 const MAX_TRANSCRIPT_CHARS = 50_000;
 const MAX_PERSONALIZATION_CHARS = 2_000;
@@ -231,7 +232,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
-  const hasAccess = await hasTool(session.user.id, "description");
+  const userContext = await resolveUserContext(session, req.cookies.get(IMPERSONATION_COOKIE_NAME)?.value ?? null);
+  const effectiveUserId = userContext.effectiveUser.id;
+
+  const hasAccess = userContext.canAdminBypass || await hasTool(effectiveUserId, "description");
   if (!hasAccess) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
@@ -288,7 +292,7 @@ export async function POST(req: NextRequest) {
       where: { id: transcriptionId },
       select: { userId: true },
     });
-    if (!txJob || txJob.userId !== session.user.id) {
+    if (!txJob || txJob.userId !== effectiveUserId) {
       return NextResponse.json({ error: "Transcription introuvable" }, { status: 404 });
     }
   }
@@ -311,7 +315,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const clampedPersonalization = personalization?.slice(0, MAX_PERSONALIZATION_CHARS);
+  if (personalization && personalization.length > MAX_PERSONALIZATION_CHARS) {
+    return NextResponse.json(
+      { error: `Texte personnalisé trop long (${personalization.length} / ${MAX_PERSONALIZATION_CHARS} caractères max)` },
+      { status: 400 }
+    );
+  }
+  const clampedPersonalization = personalization;
   const userMessage = buildUserMessage(
     prompt.prompt,
     normalizedTranscriptText,
@@ -333,7 +343,7 @@ export async function POST(req: NextRequest) {
     const rawMsg = err instanceof Error ? err.message : "Erreur inconnue";
     errorMsg = rawMsg.slice(0, 200);
     console.error("[description/generate] Provider failure", {
-      userId: session.user.id,
+      userId: effectiveUserId,
       promptId,
       model,
       transcriptionId: transcriptionId ?? null,
@@ -343,7 +353,7 @@ export async function POST(req: NextRequest) {
 
     const failedJob = await prisma.descriptionJob.create({
       data: {
-        userId: session.user.id,
+        userId: effectiveUserId,
         status: "FAILED",
         inputType: transcriptionId ? "transcription" : "upload",
         inputFilename: normalizedInputFilename,
@@ -361,7 +371,7 @@ export async function POST(req: NextRequest) {
 
   const job = await prisma.descriptionJob.create({
     data: {
-      userId: session.user.id,
+      userId: effectiveUserId,
       status: "COMPLETED",
       inputType: transcriptionId ? "transcription" : "upload",
       inputFilename: normalizedInputFilename,

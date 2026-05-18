@@ -70,7 +70,7 @@ export function AppNav({
         },
         {
           title: "Outils",
-          items: TOOL_ORDER.map((key) => toolNavItem(key, key === "derush" ? { disabled: true } : undefined)),
+          items: TOOL_ORDER.map((key) => toolNavItem(key)),
         },
         {
           title: "Suivi",
@@ -100,7 +100,6 @@ export function AppNav({
             ...(hasCaptions ? [toolNavItem("captions")] : []),
             ...(hasDescription ? [toolNavItem("description")] : []),
             ...(hasCovers ? [toolNavItem("covers")] : []),
-            toolNavItem("derush", { disabled: true }),
           ],
         },
         {

@@ -63,6 +63,7 @@ export function renderTextBlock(
   if (style.fontFamily)  innerParts.push(`font-family:'${style.fontFamily}',sans-serif`);
   if (style.fontSize)    innerParts.push(`font-size:${style.fontSize}pt`);
   if (style.fontWeight)  innerParts.push(`font-weight:${style.fontWeight}`);
+  if (style.fontStyle)   innerParts.push(`font-style:${style.fontStyle}`);
   if (style.color)       innerParts.push(`color:${style.color}`);
   if (style.letterSpacing !== undefined) innerParts.push(`letter-spacing:${style.letterSpacing}px`);
   const textShadow = buildTextShadowValue(style);
@@ -121,6 +122,7 @@ export function renderTextBlock(
     if (style.fontFamily) spanParts.push(`font-family:'${style.fontFamily}',sans-serif`);
     if (style.fontSize) spanParts.push(`font-size:${style.fontSize}pt`);
     if (style.fontWeight) spanParts.push(`font-weight:${style.fontWeight}`);
+    if (style.fontStyle)  spanParts.push(`font-style:${style.fontStyle}`);
     if (style.color) spanParts.push(`color:${style.color}`);
     if (style.letterSpacing !== undefined) spanParts.push(`letter-spacing:${style.letterSpacing}px`);
     const textShadowPL = buildTextShadowValue(style);

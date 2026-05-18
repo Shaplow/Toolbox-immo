@@ -51,7 +51,6 @@ You are the default implementation agent for Toolbox Immo.
 - Hardening skill: [.github/skills/app-hardening/SKILL.md](../skills/app-hardening/SKILL.md)
 - Security skill: [.github/skills/security-review/SKILL.md](../skills/security-review/SKILL.md)
 - Admin skill: [.github/skills/admin-permissions/SKILL.md](../skills/admin-permissions/SKILL.md)
-- Derush skill: [.github/skills/derush/SKILL.md](../skills/derush/SKILL.md)
 - ASS rendering skill: [.github/skills/ass-rendering/SKILL.md](../skills/ass-rendering/SKILL.md)
 - Content library skill: [.github/skills/content-library/SKILL.md](../skills/content-library/SKILL.md)
 - Description generation skill: [.github/skills/description-generation/SKILL.md](../skills/description-generation/SKILL.md)

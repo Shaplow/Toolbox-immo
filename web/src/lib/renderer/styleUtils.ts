@@ -10,6 +10,7 @@ export function blockStyleToCSS(style: BlockStyle): string {
   if (style.fontFamily)     parts.push(`font-family:'${style.fontFamily}',sans-serif`);
   if (style.fontSize)       parts.push(`font-size:${style.fontSize}pt`);
   if (style.fontWeight)     parts.push(`font-weight:${style.fontWeight}`);
+  if (style.fontStyle)      parts.push(`font-style:${style.fontStyle}`);
   if (style.color)          parts.push(`color:${style.color}`);
   if (style.letterSpacing !== undefined) parts.push(`letter-spacing:${style.letterSpacing}px`);
   const textShadow = buildTextShadowValue(style);

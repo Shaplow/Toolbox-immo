@@ -1,5 +1,5 @@
 ﻿import { prisma } from "@/lib/prisma";
-import { ListingsClient, type ListingRow, type CaptionJobRow, type TranscriptionJobRow, type DescriptionJobRow, type DerushJobRow } from "@/components/listings/ListingsClient";
+import { ListingsClient, type ListingRow, type CaptionJobRow, type TranscriptionJobRow, type DescriptionJobRow } from "@/components/listings/ListingsClient";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { List } from "lucide-react";
@@ -13,7 +13,6 @@ export default async function ListingsPage() {
   const hasCaptions = isAdmin || userPerms.includes("captions");
   const hasTranscription = isAdmin || userPerms.includes("transcription");
   const hasDescription = isAdmin || userPerms.includes("description");
-  const hasDerush = isAdmin || userPerms.includes("derush");
 
   const listings = await prisma.listing.findMany({
     where: isAdmin ? {} : { userId },
@@ -141,30 +140,10 @@ export default async function ListingsPage() {
     prompt: j.prompt ?? null,
   }));
 
-  const derushRows: DerushJobRow[] = derushJobs.map((j) => {
-    let fileCount = 0;
-    try { fileCount = (JSON.parse(j.inputFiles) as unknown[]).length; } catch { /* ignore */ }
-    return {
-      id: j.id,
-      status: j.status,
-      analysisMode: j.analysisMode,
-      visionProvider: j.visionProvider,
-      presetName: j.preset?.name ?? null,
-      fileCount,
-      segmentCount: j.segmentCount ?? null,
-      totalDuration: j.totalDuration ?? null,
-      exportCount: j.derushExports.length,
-      errorMsg: j.errorMsg ?? null,
-      createdAt: j.createdAt.toISOString(),
-      ownerName: isAdmin ? (j.user.name ?? j.user.email ?? "?") : null,
-    };
-  });
-
   const inProgressCount =
     rows.reduce((n, l) => n + l.renders.filter((r) => r.status === "PROCESSING" || r.status === "PENDING").length, 0) +
     captionRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length +
-    transcriptionRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length +
-    derushRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length;
+    transcriptionRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length;
 
   return (
     <div className="p-8">
@@ -172,7 +151,7 @@ export default async function ListingsPage() {
         icon={List}
         iconColor="indigo"
         title={isAdmin ? "Générations" : "Mes générations"}
-        subtitle={`${rows.length} génération${rows.length !== 1 ? "s" : ""}${captionRows.length > 0 ? ` · ${captionRows.length} export${captionRows.length !== 1 ? "s" : ""} captions` : ""}${transcriptionRows.length > 0 ? ` · ${transcriptionRows.length} transcription${transcriptionRows.length !== 1 ? "s" : ""}` : ""}${descriptionRows.length > 0 ? ` · ${descriptionRows.length} description${descriptionRows.length !== 1 ? "s" : ""}` : ""}${derushRows.length > 0 ? ` · ${derushRows.length} dérush${derushRows.length !== 1 ? "s" : ""}` : ""}${inProgressCount > 0 ? ` · ${inProgressCount} en cours` : ""}`}
+        subtitle={`${rows.length} génération${rows.length !== 1 ? "s" : ""}${captionRows.length > 0 ? ` · ${captionRows.length} export${captionRows.length !== 1 ? "s" : ""} captions` : ""}${transcriptionRows.length > 0 ? ` · ${transcriptionRows.length} transcription${transcriptionRows.length !== 1 ? "s" : ""}` : ""}${descriptionRows.length > 0 ? ` · ${descriptionRows.length} description${descriptionRows.length !== 1 ? "s" : ""}` : ""}${inProgressCount > 0 ? ` · ${inProgressCount} en cours` : ""}`}
       />
 
       <ListingsClient
@@ -180,12 +159,10 @@ export default async function ListingsPage() {
         initialCaptionJobs={captionRows}
         initialTranscriptionJobs={transcriptionRows}
         initialDescriptionJobs={descriptionRows}
-        initialDerushJobs={derushRows}
         isAdmin={isAdmin}
         hasCaptions={hasCaptions}
         hasTranscription={hasTranscription}
         hasDescription={hasDescription}
-        hasDerush={hasDerush}
       />
     </div>
   );

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Film, RefreshCw, Download, LayoutTemplate, Mic, AlignLeft, Copy, Check, Scissors, X } from "lucide-react";
+import { Film, RefreshCw, Download, LayoutTemplate, Mic, AlignLeft, Copy, Check, X, RotateCcw } from "lucide-react";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -73,21 +73,6 @@ export type DescriptionJobRow = {
   prompt: { name: string } | null;
 };
 
-export type DerushJobRow = {
-  id: string;
-  status: string;
-  analysisMode: string;
-  visionProvider: string;
-  presetName: string | null;
-  fileCount: number;
-  segmentCount: number | null;
-  totalDuration: number | null;
-  exportCount: number;
-  errorMsg: string | null;
-  createdAt: string;
-  ownerName: string | null;
-};
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string) {
@@ -142,25 +127,21 @@ export function ListingsClient({
   initialCaptionJobs,
   initialTranscriptionJobs,
   initialDescriptionJobs,
-  initialDerushJobs,
   isAdmin,
   hasCaptions = false,
   hasTranscription = false,
   hasDescription = false,
-  hasDerush = false,
 }: {
   initialListings: ListingRow[];
   initialCaptionJobs: CaptionJobRow[];
   initialTranscriptionJobs: TranscriptionJobRow[];
   initialDescriptionJobs: DescriptionJobRow[];
-  initialDerushJobs: DerushJobRow[];
   isAdmin: boolean;
   hasCaptions?: boolean;
   hasTranscription?: boolean;
   hasDescription?: boolean;
-  hasDerush?: boolean;
 }) {
-  const [tab, setTab] = useState<"templates" | "captions" | "transcription" | "description" | "derush">("templates");
+  const [tab, setTab] = useState<"templates" | "captions" | "transcription" | "description">("templates");
   const [userFilter, setUserFilter] = useState<string | null>(null);
   const router = useRouter();
   // Flat map of render states keyed by renderId
@@ -178,12 +159,18 @@ export function ListingsClient({
   const [deletedCaptionJobIds, setDeletedCaptionJobIds] = useState<Set<string>>(new Set());
   const [deletedTranscriptionJobIds, setDeletedTranscriptionJobIds] = useState<Set<string>>(new Set());
   const [deletedDescriptionJobIds, setDeletedDescriptionJobIds] = useState<Set<string>>(new Set());
-  const [deletedDerushJobIds, setDeletedDerushJobIds] = useState<Set<string>>(new Set());
 
   const handleDeleteRender = async (renderId: string) => {
     await fetch(`/api/renders/${renderId}`, { method: "DELETE" });
     setDeletedRenderIds((prev) => new Set([...prev, renderId]));
     router.refresh();
+  };
+
+  const handleRevertRenderUsage = async (renderId: string): Promise<{ warnings: string[]; cursors: { libraryId: string; reverted: boolean; skippedReason?: string }[] }> => {
+    const res = await fetch(`/api/admin/renders/${renderId}/revert-usage`, { method: "POST" });
+    const data = await res.json() as { assets?: unknown[]; cursors?: { libraryId: string; reverted: boolean; skippedReason?: string }[]; warnings?: string[]; error?: string };
+    if (!res.ok) throw new Error((data as { error?: string }).error ?? "Erreur inconnue");
+    return { warnings: data.warnings ?? [], cursors: data.cursors ?? [] };
   };
 
   const handleDeleteCaptionJob = async (jobId: string) => {
@@ -200,12 +187,6 @@ export function ListingsClient({
 
   const handleDeleteDescriptionJob = async (jobId: string) => {
     setDeletedDescriptionJobIds((prev) => new Set([...prev, jobId]));
-    router.refresh();
-  };
-
-  const handleDeleteDerushJob = async (jobId: string) => {
-    await fetch(`/api/derush/${jobId}`, { method: "DELETE" });
-    setDeletedDerushJobIds((prev) => new Set([...prev, jobId]));
     router.refresh();
   };
 
@@ -271,9 +252,8 @@ export function ListingsClient({
     for (const j of initialCaptionJobs) if (j.ownerName) names.add(j.ownerName);
     for (const j of initialTranscriptionJobs) if (j.ownerName) names.add(j.ownerName);
     for (const j of initialDescriptionJobs) if (j.ownerName) names.add(j.ownerName);
-    for (const j of initialDerushJobs) if (j.ownerName) names.add(j.ownerName);
     return Array.from(names).sort();
-  }, [initialListings, initialCaptionJobs, initialTranscriptionJobs, initialDescriptionJobs, initialDerushJobs]);
+  }, [initialListings, initialCaptionJobs, initialTranscriptionJobs, initialDescriptionJobs]);
 
   const filteredListings = useMemo(
     () => (userFilter ? initialListings.filter((l) => l.ownerName === userFilter) : initialListings),
@@ -304,15 +284,9 @@ export function ListingsClient({
     [initialDescriptionJobs, userFilter, deletedDescriptionJobIds]
   );
 
-  const filteredDerush = useMemo(
-    () =>
-      (userFilter ? initialDerushJobs.filter((j) => j.ownerName === userFilter) : initialDerushJobs).filter(
-        (j) => !deletedDerushJobIds.has(j.id)
-      ),
-    [initialDerushJobs, userFilter, deletedDerushJobIds]
-  );
+  const descriptionGroups = useMemo(() => groupByDate(filteredDescriptions), [filteredDescriptions]);
 
-  // Flatten listings into per-render grid items for the media grid
+  const activeGroups =
   const listingGridItems = useMemo((): GridItem[] => {
     const items: GridItem[] = [];
     for (const listing of filteredListings) {
@@ -333,14 +307,11 @@ export function ListingsClient({
   const listingGridGroups = useMemo(() => groupByDate(listingGridItems), [listingGridItems]);
   const captionGroups = useMemo(() => groupByDate(filteredCaptions), [filteredCaptions]);
   const transcriptionGroups = useMemo(() => groupByDate(filteredTranscriptions), [filteredTranscriptions]);
-  const descriptionGroups = useMemo(() => groupByDate(filteredDescriptions), [filteredDescriptions]);
-  const derushGroups = useMemo(() => groupByDate(filteredDerush), [filteredDerush]);
 
   const activeGroups =
     tab === "templates" ? listingGridGroups :
     tab === "captions" ? captionGroups :
     tab === "transcription" ? transcriptionGroups :
-    tab === "derush" ? derushGroups :
     descriptionGroups;
   const isEmpty = GROUP_ORDER.every((g) => !activeGroups[g]?.length);
 
@@ -406,21 +377,6 @@ export function ListingsClient({
             </span>
           </button>
         )}
-        {hasDerush && (
-          <button
-            onClick={() => setTab("derush")}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              tab === "derush" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            Dérush
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-              tab === "derush" ? "bg-orange-100 text-orange-600" : "bg-gray-200 text-gray-500"
-            }`}>
-              {filteredDerush.length}
-            </span>
-          </button>
-        )}
       </div>
 
       {/* Admin user filter pills */}
@@ -453,7 +409,7 @@ export function ListingsClient({
       )}
 
       {/* Empty state */}
-      {isEmpty && tab !== "derush" && (
+      {isEmpty && (
         <div className="text-center py-24 text-gray-400">
           {tab === "templates" ? (
             <>
@@ -495,17 +451,6 @@ export function ListingsClient({
         </div>
       )}
 
-      {isEmpty && tab === "derush" && (
-        <div className="text-center py-24 text-gray-400">
-          <Scissors size={40} className="mx-auto mb-4 opacity-30" />
-          <p className="font-medium">Aucun dérush pour l&apos;instant</p>
-          <p className="text-sm mt-1">
-            Rendez-vous dans{" "}
-            <Link href="/tools/derush" className="text-orange-600 hover:underline">Dérush</Link>
-          </p>
-        </div>
-      )}
-
       {/* Date groups */}
       <div className="space-y-10">
         {GROUP_ORDER.filter((g) => activeGroups[g]?.length).map((group) => (
@@ -525,6 +470,7 @@ export function ListingsClient({
                     item={item}
                     isAdmin={isAdmin}
                     onDeleteRender={item.render ? () => handleDeleteRender(item.render!.id) : undefined}
+                    onRevertUsage={item.render?.status === "DONE" ? () => handleRevertRenderUsage(item.render!.id) : undefined}
                   />
                 ))}
               </div>
@@ -559,15 +505,6 @@ export function ListingsClient({
                       onDelete={() => handleDeleteDescriptionJob(job.id)}
                     />
                   ))}
-                {tab === "derush" &&
-                  (activeGroups[group] as DerushJobRow[]).map((job) => (
-                    <DerushCard
-                      key={job.id}
-                      job={job}
-                      isAdmin={isAdmin}
-                      onDelete={() => handleDeleteDerushJob(job.id)}
-                    />
-                  ))}
               </div>
             )}
           </section>
@@ -597,18 +534,29 @@ function getAspectFromFormats(formatsJson: string | undefined | null): string {
   return "16/9";
 }
 
+type RevertResult = {
+  warnings: string[];
+  cursors: { libraryId: string; reverted: boolean; skippedReason?: string }[];
+};
+
 function RenderGridCard({
   item,
   isAdmin,
   onDeleteRender,
+  onRevertUsage,
 }: {
   item: GridItem;
   isAdmin: boolean;
   onDeleteRender?: () => Promise<void>;
+  onRevertUsage?: () => Promise<RevertResult>;
 }) {
   const { listing, render } = item;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmRevert, setConfirmRevert] = useState(false);
+  const [reverting, setReverting] = useState(false);
+  const [revertDone, setRevertDone] = useState(false);
+  const [revertWarnings, setRevertWarnings] = useState<string[]>([]);
 
   const isPending = render?.status === "PROCESSING" || render?.status === "PENDING";
   const isError   = render?.status === "ERROR";
@@ -619,6 +567,28 @@ function RenderGridCard({
   const handleDeleteConfirm = async () => {
     setDeleting(true);
     await onDeleteRender?.();
+  };
+
+  const handleRevertConfirm = async () => {
+    if (!onRevertUsage) return;
+    setReverting(true);
+    try {
+      const result = await onRevertUsage();
+      const warnings: string[] = [
+        ...result.warnings,
+        ...result.cursors
+          .filter((c) => !c.reverted)
+          .map((c) => `Curseur bibliothèque non revert : ${c.skippedReason ?? "déjà avancé"}`),
+      ];
+      setRevertWarnings(warnings);
+      setRevertDone(true);
+    } catch (err) {
+      setRevertWarnings([err instanceof Error ? err.message : "Erreur inconnue"]);
+      setRevertDone(true);
+    } finally {
+      setReverting(false);
+      setConfirmRevert(false);
+    }
   };
 
   return (
@@ -696,7 +666,7 @@ function RenderGridCard({
         )}
 
         {/* Admin delete render */}
-        {isAdmin && onDeleteRender && !confirmDelete && (
+        {isAdmin && onDeleteRender && !confirmDelete && !confirmRevert && (
           <button
             onClick={(e) => { e.preventDefault(); setConfirmDelete(true); }}
             aria-label="Supprimer le rendu"
@@ -720,6 +690,54 @@ function RenderGridCard({
             >
               ✕
             </button>
+          </div>
+        )}
+
+        {/* Admin revert usage */}
+        {isAdmin && onRevertUsage && !revertDone && !confirmRevert && !confirmDelete && (
+          <button
+            onClick={(e) => { e.preventDefault(); setConfirmRevert(true); }}
+            aria-label="Réinitialiser l'usage bibliothèque"
+            title="Réinitialiser l'usage bibliothèque"
+            className="absolute top-2 left-2 w-6 h-6 bg-white/80 backdrop-blur-sm rounded-full text-gray-400 hover:text-amber-500 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center"
+          >
+            <RotateCcw size={11} />
+          </button>
+        )}
+        {isAdmin && confirmRevert && (
+          <div className="absolute top-2 left-2 flex gap-1 items-center">
+            <span className="text-[9px] text-white bg-black/60 rounded px-1.5 py-0.5 whitespace-nowrap">Réinitialiser ?</span>
+            <button
+              onClick={() => void handleRevertConfirm()}
+              disabled={reverting}
+              className="text-[10px] px-2 py-1 bg-amber-500 text-white rounded font-medium hover:bg-amber-600 disabled:opacity-50"
+            >
+              {reverting ? "…" : "✓"}
+            </button>
+            <button
+              onClick={() => setConfirmRevert(false)}
+              className="text-[10px] px-2 py-1 bg-white/80 text-gray-600 rounded"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        {isAdmin && revertDone && (
+          <div
+            className="absolute top-2 left-2 flex items-center gap-1 cursor-pointer"
+            onClick={() => { setRevertDone(false); setRevertWarnings([]); }}
+            title="Cliquer pour fermer"
+          >
+            {revertWarnings.length === 0 ? (
+              <span className="text-[9px] text-white bg-green-600/90 rounded px-1.5 py-0.5">Revert OK</span>
+            ) : (
+              <span
+                className="text-[9px] text-white bg-amber-600/90 rounded px-1.5 py-0.5 max-w-[120px] truncate"
+                title={revertWarnings.join(" | ")}
+              >
+                ⚠ {revertWarnings[0]}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -1147,115 +1165,3 @@ function DescriptionCard({
   );
 }
 
-
-// ── DerushCard ────────────────────────────────────────────────────────────────
-
-function DerushCard({
-  job,
-  isAdmin,
-  onDelete,
-}: {
-  job: DerushJobRow;
-  isAdmin: boolean;
-  onDelete: () => Promise<void>;
-}) {
-  const isInProgress = job.status === "PROCESSING" || job.status === "QUEUED";
-  const isDone       = job.status === "COMPLETED";
-  const isFailed     = job.status === "FAILED";
-  const stale        = isInProgress && isStale(job.createdAt);
-
-  const durationLabel = job.totalDuration
-    ? job.totalDuration >= 60
-      ? `${Math.floor(job.totalDuration / 60)}min${Math.round(job.totalDuration % 60)}s`
-      : `${Math.round(job.totalDuration)}s`
-    : null;
-
-  const modeLabel = job.analysisMode === "transcription" ? "Transcription" : "Vision";
-  const modeColor = job.analysisMode === "transcription" ? "text-teal-600 bg-teal-50" : "text-orange-600 bg-orange-50";
-
-  return (
-    <div className={`bg-white border rounded-xl px-4 py-3.5 transition-colors ${
-      stale ? "border-amber-200 bg-amber-50/20" : "border-gray-100 hover:border-gray-200"
-    }`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-2.5 min-w-0 flex-1">
-          <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${
-            stale ? "bg-amber-400" :
-            isDone ? "bg-green-400" :
-            isFailed ? "bg-red-400" :
-            "bg-orange-400 animate-pulse"
-          }`} />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold shrink-0 ${modeColor}`}>
-                {modeLabel}
-              </span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
-                isDone  ? "bg-green-50 text-green-600"   :
-                isFailed? "bg-red-50 text-red-500"       :
-                stale   ? "bg-amber-50 text-amber-600"   :
-                isInProgress ? "bg-orange-50 text-orange-600" :
-                               "bg-gray-100 text-gray-500"
-              }`}>
-                {isDone ? "Terminé" : isFailed ? "Erreur" : stale ? `Bloqué · ${staleDuration(job.createdAt)}` : "En cours…"}
-              </span>
-              {job.fileCount > 0 && (
-                <span className="text-[10px] text-gray-400 shrink-0">
-                  {job.fileCount} fichier{job.fileCount !== 1 ? "s" : ""}
-                </span>
-              )}
-              {isDone && job.segmentCount != null && (
-                <span className="text-[10px] text-gray-400 shrink-0">{job.segmentCount} segments</span>
-              )}
-              {isDone && durationLabel && (
-                <span className="text-[10px] text-gray-400 shrink-0">{durationLabel}</span>
-              )}
-              {isDone && job.exportCount > 0 && (
-                <span className="text-[10px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded-full font-medium shrink-0">
-                  {job.exportCount} export{job.exportCount !== 1 ? "s" : ""}
-                </span>
-              )}
-              {job.presetName && (
-                <span className="text-[10px] text-gray-400 shrink-0">— {job.presetName}</span>
-              )}
-              {isAdmin && job.ownerName && (
-                <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium shrink-0">
-                  {job.ownerName}
-                </span>
-              )}
-            </div>
-
-            {stale ? (
-              <p className="text-xs text-amber-600 mt-1">Job bloqué depuis {staleDuration(job.createdAt)} — supprimer pour relancer.</p>
-            ) : isInProgress ? (
-              <div className="flex items-center gap-1.5 text-xs text-orange-500 mt-1">
-                <div className="w-3 h-3 border-2 border-orange-400 border-t-transparent rounded-full animate-spin" />
-                Analyse en cours…
-              </div>
-            ) : isFailed ? (
-              <p className="text-xs text-red-400 mt-1 truncate">{job.errorMsg ?? "L'analyse a échoué."}</p>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <Link
-            href={`/tools/derush/${job.id}`}
-            className="inline-flex items-center gap-1 text-[11px] text-orange-500 hover:text-orange-700 font-medium transition-colors"
-          >
-            Détails →
-          </Link>
-          <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
-          <button
-            onClick={() => void onDelete()}
-            className="shrink-0 text-gray-300 hover:text-red-400 transition-colors"
-            title="Supprimer"
-            aria-label="Supprimer"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}

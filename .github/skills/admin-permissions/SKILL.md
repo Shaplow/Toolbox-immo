@@ -9,7 +9,7 @@ Use this skill when the task touches access control, user management, tool gatin
 
 ## Core Model
 
-Permissions are stored as a JSON array string in `User.permissions`, e.g. `["captions","derush"]`.
+Permissions are stored as a JSON array string in `User.permissions`, e.g. `["captions","description"]`.
 
 Two roles exist:
 - `ADMIN` — gets all tools automatically, can impersonate any non-admin user
@@ -26,7 +26,6 @@ Two roles exist:
 | `web/src/app/api/admin/users/[id]/route.ts` | Admin user PATCH/DELETE |
 | `web/src/app/api/admin/users/[id]/accesses/route.ts` | Template access grants |
 | `web/src/app/api/admin/users/[id]/caption-preset-accesses/route.ts` | Caption preset access grants per user |
-| `web/src/app/api/admin/users/[id]/derush-preset-accesses/route.ts` | Derush preset access grants per user |
 | `web/src/app/api/admin/accounts/[id]/route.ts` | Instagram account management |
 | `web/src/app/api/admin/accounts/[id]/cursors/reset/route.ts` | Reset library rotation cursor for an account |
 | `web/src/app/api/admin/libraries/media/` | Media library CRUD, asset upload, access, edit, reset-usage |

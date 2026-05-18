@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { Trash2, Upload, Clock, BarChart2, Search, Play, Music2, ArrowUpDown, CheckCircle2, Tag, X, RotateCcw, Scissors, LayoutGrid, Layers, Square, CheckSquare, ChevronUp, ChevronDown, ListOrdered, PlusCircle, MinusCircle, FolderOpen, Film, Globe, Lock, Users, Wand2, Loader2 } from "lucide-react";
+import { Trash2, Upload, Clock, BarChart2, Search, Play, Music2, ArrowUpDown, CheckCircle2, Tag, X, RotateCcw, Scissors, LayoutGrid, Layers, Square, CheckSquare, ChevronUp, ChevronDown, ListOrdered, PlusCircle, MinusCircle, FolderOpen, Film, Globe, Lock, Users, Wand2, Loader2, EyeOff } from "lucide-react";
 import { MediaAssetEditModal } from "./MediaAssetEditModal";
 import { MediaBatchAutocutPanel } from "./MediaBatchAutocutPanel";
 
@@ -19,6 +19,8 @@ interface MediaAsset {
   createdAt: string;
   accessAccountIds: string[];
   pendingEditJob: { id: string; status: string } | null;
+  disabled: boolean;
+  metadata?: Record<string, string | number | null>;
 }
 
 interface InstagramAccount {
@@ -27,11 +29,14 @@ interface InstagramAccount {
   handle: string;
 }
 
+type MetadataField = { key: string; label: string; type: "text" | "number" | "url" | "textarea" };
+
 interface MediaLibrary {
   id: string;
   name: string;
   type: "video" | "audio";
   setSequence: string; // JSON string[]
+  metadataSchema?: string; // JSON MetadataField[]
 }
 
 interface Props {
@@ -118,9 +123,26 @@ export function MediaAssetsPanel({ library }: Props) {
   const [accountFilter, setAccountFilter] = useState<string | null>(null);
   // ── Infinite scroll ──
   const [visibleCount, setVisibleCount] = useState(48);
+  const [visibleGroupCount, setVisibleGroupCount] = useState(20);
   const gridSentinelRef = useRef<HTMLDivElement>(null);
+  const groupSentinelRef = useRef<HTMLDivElement>(null);
+  // Refs stables pour les sentinels (mise à jour inline pendant le rendu — pas des hooks)
+  const hasPendingRef = useRef(false);
+  const visibleCountRef = useRef(0);
+  const filteredLengthRef = useRef(0);
+  const visibleGroupCountRef = useRef(0);
+  const groupedLengthRef = useRef(0);
   // ── Bulk ──
   const [bulkCategoryInput, setBulkCategoryInput] = useState("");
+  // ── Metadata editing ──
+  const [editingMetaKey, setEditingMetaKey] = useState<{ assetId: string; key: string } | null>(null);
+  const [metaInput, setMetaInput] = useState("");
+  const [savedMetaFlash, setSavedMetaFlash] = useState<{ assetId: string; key: string } | null>(null);
+  const [metaSaveError, setMetaSaveError] = useState<{ assetId: string; key: string } | null>(null);
+
+  const metadataSchema = useMemo<MetadataField[]>(() => {
+    try { return JSON.parse(library.metadataSchema ?? "[]") as MetadataField[]; } catch { return []; }
+  }, [library.metadataSchema]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -137,6 +159,7 @@ export function MediaAssetsPanel({ library }: Props) {
         setTag: (a as unknown as { setTag?: string | null }).setTag ?? null,
         category: (a as unknown as { category?: string | null }).category ?? null,
         tags: (() => { try { return JSON.parse(a.tags) as string[]; } catch { return []; } })(),
+        metadata: (() => { try { const m = (a as unknown as { metadata?: string }).metadata; return m ? JSON.parse(m) as Record<string, string | number | null> : {}; } catch { return {}; } })(),
         accessAccountIds: a.accessAccountIds ?? [],
         pendingEditJob: (a as unknown as { pendingEditJob?: { id: string; status: string } | null }).pendingEditJob ?? null,
       }));
@@ -151,13 +174,68 @@ export function MediaAssetsPanel({ library }: Props) {
 
   useEffect(() => { (async () => { await load(); })(); }, [load]);
 
-  // Poll every 5 s while at least one asset has a pending/processing edit job
+  /**
+   * Met à jour silencieusement les champs qui changent en arrière-plan
+   * (pendingEditJob, url, duration) sans toucher loading ni réinitialiser le scroll.
+   *
+   * L'endpoint retourne deux groupes :
+   * - Jobs actifs (pending/processing) : mise à jour du statut/url/duration
+   * - Jobs récemment terminés (done/failed < 120s) : vidage du pendingEditJob + url/duration frais
+   * Aucun rechargement complet n'est déclenché.
+   */
+  const silentPoll = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/libraries/media/${library.id}/assets/active-jobs`);
+      if (!res.ok) return;
+      type ActiveJobEntry = {
+        id: string;
+        url: string;
+        duration: number | null;
+        pendingEditJob: { id: string; status: string } | null;
+        recentlyCompleted: boolean;
+      };
+      const entries = await res.json() as ActiveJobEntry[];
+      const activeMap = new Map(entries.filter((e) => !e.recentlyCompleted).map((e) => [e.id, e]));
+      const completedMap = new Map(entries.filter((e) => e.recentlyCompleted).map((e) => [e.id, e]));
+
+      setAssets((prev) => {
+        let changed = false;
+        const next = prev.map((a) => {
+          if (!a.pendingEditJob) return a; // pas de job connu — rien à faire
+          const active = activeMap.get(a.id);
+          const completed = completedMap.get(a.id);
+          if (active) {
+            // Job toujours en cours — mettre à jour si quelque chose a changé
+            if (
+              active.pendingEditJob?.id === a.pendingEditJob?.id &&
+              active.pendingEditJob?.status === a.pendingEditJob?.status &&
+              active.url === a.url &&
+              active.duration === a.duration
+            ) return a;
+            changed = true;
+            return { ...a, pendingEditJob: active.pendingEditJob, url: active.url, duration: active.duration };
+          } else if (completed) {
+            // Job venant de se terminer — url/duration déjà mis à jour par le worker
+            changed = true;
+            return { ...a, pendingEditJob: null, url: completed.url, duration: completed.duration };
+          } else {
+            // Job terminé il y a > 120s (cas limite) — vider le spinner, garder l'url courante
+            changed = true;
+            return { ...a, pendingEditJob: null };
+          }
+        });
+        return changed ? next : prev;
+      });
+    } catch {
+      // silencieux — le poll ne doit pas perturber l'UI
+    }
+  }, [library.id]); // plus de dépendance sur load()
+
+  // Poll toutes les 5s — tourne en continu, ne fait rien si aucun job actif (hasPendingRef)
   useEffect(() => {
-    const hasPending = assets.some((a) => a.pendingEditJob !== null);
-    if (!hasPending) return;
-    const timer = setInterval(() => { void load(); }, 5000);
+    const timer = setInterval(() => { if (hasPendingRef.current) void silentPoll(); }, 5000);
     return () => clearInterval(timer);
-  }, [assets, load]);
+  }, [silentPoll]);
 
   // Close upload modal on Escape (unless uploading)
   useEffect(() => {
@@ -175,28 +253,39 @@ export function MediaAssetsPanel({ library }: Props) {
       .catch(() => {});
   }, []);
 
+  // filteredPreTag = recherche texte uniquement, sans le filtre tag.
+  // Utilisé pour allTags/allSetTags afin que les chips de tags restent
+  // visibles même quand un tag est actif.
+  const filteredPreTag = useMemo(() => {
+    if (!search.trim()) return assets;
+    const q = search.toLowerCase();
+    return assets.filter((a) => a.filename.toLowerCase().includes(q));
+  }, [assets, search]);
+
   const allTags = useMemo(() => {
     const set = new Set<string>();
-    assets.forEach((a) => a.tags.forEach((t) => set.add(t)));
+    filteredPreTag.forEach((a) => a.tags.forEach((t) => set.add(t)));
     return Array.from(set).sort();
-  }, [assets]);
+  }, [filteredPreTag]);
 
   const allSetTags = useMemo(() => {
     const s = new Set<string>();
-    assets.forEach((a) => { if (a.setTag) s.add(a.setTag); });
+    filteredPreTag.forEach((a) => { if (a.setTag) s.add(a.setTag); });
     return Array.from(s).sort();
-  }, [assets]);
+  }, [filteredPreTag]);
 
   const filtered = useMemo(() => {
-    let list = assets;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter((a) => a.filename.toLowerCase().includes(q));
-    }
-    if (tagFilter) {
-      list = list.filter((a) => a.tags.includes(tagFilter));
-    }
+    const list: MediaAsset[] = tagFilter
+      ? filteredPreTag.filter((a) => a.tags.includes(tagFilter))
+      : filteredPreTag;
     return [...list].sort((a, b) => {
+      // En vue grille avec filtre compte actif : assets accessibles remontés en premier
+      if (accountFilter) {
+        const aOk = a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter);
+        const bOk = b.accessAccountIds.length === 0 || b.accessAccountIds.includes(accountFilter);
+        if (aOk && !bOk) return -1;
+        if (!aOk && bOk) return 1;
+      }
       switch (sort) {
         case "date_asc":    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
         case "usage_desc":  return b.usageCount - a.usageCount;
@@ -206,24 +295,49 @@ export function MediaAssetsPanel({ library }: Props) {
         default:            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       }
     });
-  }, [assets, search, sort, tagFilter]);
+  }, [filteredPreTag, sort, tagFilter, accountFilter]);
 
   const visibleFiltered = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
 
-  // Reset visible count when filters/sort change
-  useEffect(() => { setVisibleCount(48); }, [search, sort, tagFilter, assets]);
+  // Mise à jour inline des refs stables (pendant le rendu, avant tout effet)
+  visibleCountRef.current = visibleCount;
+  filteredLengthRef.current = filtered.length;
+  hasPendingRef.current = assets.some((a) => a.pendingEditJob !== null);
 
-  // Infinite scroll sentinel
+  // Reset visible counts quand les filtres/tri/bibliothèque/compte changent
+  useEffect(() => { setVisibleCount(48); setVisibleGroupCount(20); }, [search, sort, tagFilter, accountFilter, library.id]);
+
+  // Sentinel grille — recréé seulement quand viewMode change (le sentinel peut être démonté/remonnté)
   useEffect(() => {
     const el = gridSentinelRef.current;
-    if (!el || visibleCount >= filtered.length) return;
+    if (!el) return;
     const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setVisibleCount((n) => n + 48); },
+      ([entry]) => {
+        if (entry.isIntersecting && visibleCountRef.current < filteredLengthRef.current) {
+          setVisibleCount((n) => n + 48);
+        }
+      },
       { rootMargin: "300px" }
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [visibleCount, filtered.length]);
+  }, [viewMode]);
+
+  // Sentinel groupes (vue rotation) — même logique
+  useEffect(() => {
+    const el = groupSentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && visibleGroupCountRef.current < groupedLengthRef.current) {
+          setVisibleGroupCount((n) => n + 20);
+        }
+      },
+      { rootMargin: "400px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [viewMode]);
 
   // Composite key helpers
   const toGroupKey = (category: string | null, setTag: string | null) =>
@@ -247,8 +361,8 @@ export function MediaAssetsPanel({ library }: Props) {
     // Without this, inaccessible assets (restricted to other accounts) can skew group ordering.
     const getLastUsed = (groupAssets: MediaAsset[]) => {
       const pool = accountFilter
-        ? groupAssets.filter((a) => a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))
-        : groupAssets;
+        ? groupAssets.filter((a) => !a.disabled && (a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter)))
+        : groupAssets.filter((a) => !a.disabled);
       return pool.reduce<string | null>((max, a) => {
         if (!a.lastUsedAt) return max;
         if (!max) return a.lastUsedAt;
@@ -256,57 +370,77 @@ export function MediaAssetsPanel({ library }: Props) {
       }, null);
     };
 
-    type GroupItem = { key: string; setTag: string | null; category: string | null; groupAssets: MediaAsset[]; accessibleCount: number; lastUsed: string | null; autoRank: number | null; isAccessible: boolean };
+    type GroupItem = { key: string; setTag: string | null; category: string | null; groupAssets: MediaAsset[]; accessibleCount: number; lastUsed: string | null; autoRank: number | null; cycleSize: number | null; isAccessible: boolean };
     const isAutoMode = seqState.length === 0;
 
     const allEntries: GroupItem[] = Array.from(groups.entries()).map(([key, groupAssets]) => {
       const { category, setTag } = fromGroupKey(key);
-      // Accessible when no accountFilter, or at least one asset is global / allows this account
+      // Accessible when no accountFilter, or at least one non-disabled asset is global / allows this account
       const isAccessible = !accountFilter || groupAssets.some(
-        (a) => a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter)
+        (a) => !a.disabled && (a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))
       );
       const accessibleCount = accountFilter
-        ? groupAssets.filter((a) => a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter)).length
-        : groupAssets.length;
-      return { key, setTag, category, groupAssets, accessibleCount, lastUsed: getLastUsed(groupAssets), autoRank: null, isAccessible };
+        ? groupAssets.filter((a) => !a.disabled && (a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))).length
+        : groupAssets.filter((a) => !a.disabled).length;
+      return { key, setTag, category, groupAssets, accessibleCount, lastUsed: getLastUsed(groupAssets), autoRank: null, cycleSize: null, isAccessible };
     });
 
     const named = allEntries.filter((g) => g.setTag || g.category);
     const unnamed = allEntries.filter((g) => !g.setTag && !g.category);
 
     if (isAutoMode) {
-      // Simulate rotation: only accessible groups participate in ranking
-      const accessibleNamed = accountFilter ? named.filter((g) => g.isAccessible) : named;
-      const inaccessibleNamed = accountFilter ? named.filter((g) => !g.isAccessible) : [];
-      // Count groups per category to break ties: the majority category should start first
-      // so that interleaving is optimal when category counts are unequal.
-      const categoryCounts = new Map<string | null, number>();
+      // Simulate rotation: only groups with at least one non-disabled accessible asset participate.
+      const accessibleNamed = named.filter((g) => g.accessibleCount > 0 && (!accountFilter || g.isAccessible));
+      const inaccessibleNamed = named.filter((g) => g.accessibleCount === 0 || (accountFilter && !g.isAccessible));
+      // Category-level staleness: MAX(lastUsed) across all sets in the category.
+      // This is the primary sort key — mirrors the SQL ORDER BY cat_last_used in the resolver.
+      const catLastUsed = new Map<string | null, string | null>();
       for (const g of accessibleNamed) {
-        categoryCounts.set(g.category, (categoryCounts.get(g.category) ?? 0) + 1);
+        const prev = catLastUsed.get(g.category) ?? null;
+        if (!prev || (g.lastUsed && g.lastUsed > prev)) {
+          catLastUsed.set(g.category, g.lastUsed);
+        }
       }
-      const byAge = [...accessibleNamed].sort((a, b) => {
-        if (!a.lastUsed && b.lastUsed) return -1;
-        if (a.lastUsed && !b.lastUsed) return 1;
-        if (a.lastUsed && b.lastUsed && a.lastUsed !== b.lastUsed)
-          return a.lastUsed < b.lastUsed ? -1 : 1;
-        // Tiebreak: prefer category with more groups first to enable better alternation
-        const countA = categoryCounts.get(a.category) ?? 0;
-        const countB = categoryCounts.get(b.category) ?? 0;
-        if (countA !== countB) return countB - countA;
-        return (a.setTag ?? "").localeCompare(b.setTag ?? "");
-      });
       const ordered: GroupItem[] = [];
-      let remaining = [...byAge];
+      // virtualCatLastUsed tracks simulated "time" per category as the loop advances.
+      // Each pick updates the picked category to a virtual counter so that subsequent
+      // iterations re-rank categories correctly — mirroring what the real resolver does
+      // because it re-reads catLastUsed from DB on every generation.
+      const virtualCatLastUsed = new Map<string | null, string | null>(catLastUsed);
+      let virtualTick = 0;
+      let remaining = [...accessibleNamed]; // re-sort dynamically each iteration
       let lastCategory: string | null = null;
       while (remaining.length > 0) {
+        // Re-sort remaining using the current virtual catLastUsed
+        remaining.sort((a, b) => {
+          const catA = virtualCatLastUsed.get(a.category) ?? null;
+          const catB = virtualCatLastUsed.get(b.category) ?? null;
+          if (!catA && catB) return -1;
+          if (catA && !catB) return 1;
+          if (catA && catB && catA !== catB) return catA < catB ? -1 : 1;
+          if (!a.lastUsed && b.lastUsed) return -1;
+          if (a.lastUsed && !b.lastUsed) return 1;
+          if (a.lastUsed && b.lastUsed && a.lastUsed !== b.lastUsed)
+            return a.lastUsed < b.lastUsed ? -1 : 1;
+          // Numeric-aware setTag tiebreaker
+          const na = parseInt(a.setTag ?? "", 10);
+          const nb = parseInt(b.setTag ?? "", 10);
+          if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+          return (a.setTag ?? "").localeCompare(b.setTag ?? "");
+        });
         let eligible: GroupItem[] = lastCategory ? remaining.filter((g) => g.category !== lastCategory) : remaining;
         if (eligible.length === 0) eligible = remaining;
         const pick: GroupItem = eligible[0]!;
-        ordered.push({ ...pick, autoRank: ordered.length + 1 });
+        ordered.push({ ...pick, autoRank: ordered.length + 1, cycleSize: -1 }); // cycleSize filled after loop
         lastCategory = pick.category;
         remaining = remaining.filter((g) => g.key !== pick.key);
+        // Advance virtual catLastUsed for the picked category so it sorts to the back
+        virtualTick += 1;
+        virtualCatLastUsed.set(pick.category, `__sim_${String(virtualTick).padStart(10, "0")}`);
       }
-      return [...ordered, ...inaccessibleNamed, ...unnamed];
+      const cycleSize = ordered.length;
+      const orderedWithCycle = ordered.map((g) => ({ ...g, cycleSize }));
+      return [...orderedWithCycle, ...inaccessibleNamed.map((g) => ({ ...g, cycleSize: null })), ...unnamed.map((g) => ({ ...g, cycleSize: null }))];
     } else {
       // Override mode: accessible groups first (in seqState order), inaccessible at end
       const sortFn = ({ setTag: ka }: GroupItem, { setTag: kb }: GroupItem): number => {
@@ -328,6 +462,10 @@ export function MediaAssetsPanel({ library }: Props) {
       return [...named.sort(sortFn), ...unnamed];
     }
   }, [filtered, seqState, accountFilter]);
+
+  // Mise à jour inline des refs groupes (pendant le rendu, avant tout effet)
+  groupedLengthRef.current = groupedBySetTag.length;
+  visibleGroupCountRef.current = visibleGroupCount;
 
   const sectionsByGroup = useMemo(() => {
     const order: string[] = [];
@@ -377,6 +515,42 @@ export function MediaAssetsPanel({ library }: Props) {
     });
     if (!res.ok) return;
     setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, accessAccountIds: next } : a));
+  }
+
+  async function handleToggleDisabled(asset: MediaAsset) {
+    const next = !asset.disabled;
+    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ disabled: next }),
+    });
+    if (!res.ok) return;
+    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, disabled: next } : a));
+  }
+
+  async function handleSaveMetadata(asset: MediaAsset, key: string, value: string) {
+    setEditingMetaKey(null);
+    const currentMeta = asset.metadata ?? {};
+    const schemaField = metadataSchema.find((f) => f.key === key);
+    const parsed: string | number | null = value.trim() === ""
+      ? null
+      : schemaField?.type === "number" ? (Number.isFinite(Number(value)) ? Number(value) : null) : value.trim();
+    const nextMeta = { ...currentMeta, [key]: parsed };
+    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, metadata: nextMeta } : a));
+    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ metadata: nextMeta }),
+    });
+    if (res.ok) {
+      setSavedMetaFlash({ assetId: asset.id, key });
+      setTimeout(() => setSavedMetaFlash(null), 1200);
+    } else {
+      setMetaSaveError({ assetId: asset.id, key });
+      setTimeout(() => setMetaSaveError(null), 3000);
+      // Rollback optimistic update
+      setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, metadata: currentMeta } : a));
+    }
   }
 
   async function handleSaveCategoryForGroup(groupAssets: MediaAsset[], categoryValue: string) {
@@ -708,7 +882,7 @@ export function MediaAssetsPanel({ library }: Props) {
       alert(d.error ?? "Erreur lors de la suppression");
       return;
     }
-    void load();
+    setAssets((prev) => prev.filter((a) => a.id !== asset.id));
   }
 
   async function handleBulkDelete() {
@@ -716,12 +890,17 @@ export function MediaAssetsPanel({ library }: Props) {
     if (!confirm(`Supprimer ${count} asset${count > 1 ? "s" : ""} ?`)) return;
     setBulkApplying(true);
     setBulkError(null);
-    await Promise.all(
-      Array.from(selectedIds).map((id) =>
-        fetch(`/api/admin/libraries/media/assets/${id}`, { method: "DELETE" })
-      )
-    );
+    const res = await fetch(`/api/admin/libraries/media/${library.id}/assets/bulk`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assetIds: Array.from(selectedIds) }),
+    });
     setBulkApplying(false);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({})) as { error?: string };
+      setBulkError(d.error ?? "Erreur lors de la suppression");
+      return;
+    }
     setAssets((prev) => prev.filter((a) => !selectedIds.has(a.id)));
     exitSelectMode();
   }
@@ -802,6 +981,20 @@ export function MediaAssetsPanel({ library }: Props) {
             </div>
           )}
         </div>
+        {/* Metadata fields — compact read-only display */}
+        {metadataSchema.length > 0 && Object.keys(asset.metadata ?? {}).length > 0 && (
+          <div className="flex flex-col gap-0.5 shrink-0 text-[9px] text-gray-500 max-w-[80px]" onClick={(e) => e.stopPropagation()}>
+            {metadataSchema.map((field) => {
+              const value = asset.metadata?.[field.key];
+              if (value === null || value === undefined || value === "") return null;
+              return (
+                <span key={field.key} className="truncate" title={`${field.label} : ${String(value)}`}>
+                  <span className="text-gray-300">{field.label.slice(0, 6)}·</span>{String(value)}
+                </span>
+              );
+            })}
+          </div>
+        )}
         {/* Stats + access indicator */}
         <div className="flex flex-col items-end gap-0.5 shrink-0 text-[9px] text-gray-400">
           <span className="flex items-center gap-0.5"><BarChart2 size={8} />{asset.usageCount}</span>
@@ -875,6 +1068,13 @@ export function MediaAssetsPanel({ library }: Props) {
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 gap-1.5 pointer-events-none">
               <Loader2 size={20} className="text-white animate-spin" />
               <span className="text-[10px] text-white font-medium text-center px-2 leading-tight">Remplacement<br />en cours…</span>
+            </div>
+          )}
+          {/* Disabled overlay */}
+          {asset.disabled && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-amber-900/50 gap-1 pointer-events-none">
+              <EyeOff size={18} className="text-amber-200" />
+              <span className="text-[10px] text-amber-100 font-medium">Désactivé</span>
             </div>
           )}
           {/* Select checkbox overlay */}
@@ -992,6 +1192,72 @@ export function MediaAssetsPanel({ library }: Props) {
               )) : (
                 <span className="text-[10px] text-gray-300 flex items-center gap-0.5"><Tag size={9} /> ajouter tags…</span>
               )}
+            </div>
+          )}
+
+          {/* ── Métadonnées du bien ── */}
+          {metadataSchema.length > 0 && (
+            <div className="mt-1.5 mb-1 space-y-1" onClick={(e) => e.stopPropagation()}>
+              {metadataSchema.map((field) => {
+                const isEditing = editingMetaKey?.assetId === asset.id && editingMetaKey.key === field.key;
+                const value = asset.metadata?.[field.key];
+                const displayValue = value !== null && value !== undefined ? String(value) : "";
+                const isTextarea = field.type === "textarea";
+                const justSaved = savedMetaFlash?.assetId === asset.id && savedMetaFlash.key === field.key;
+                const hasError = metaSaveError?.assetId === asset.id && metaSaveError.key === field.key;
+                return (
+                  <div key={field.key} className={isTextarea ? "flex flex-col gap-0.5" : "flex items-center gap-1.5"}>
+                    <span className="text-[9px] text-gray-400 shrink-0 truncate" style={isTextarea ? undefined : { width: 68 }} title={field.label}>{field.label}</span>
+                    {isEditing ? (
+                      isTextarea ? (
+                        <textarea
+                          autoFocus
+                          rows={4}
+                          value={metaInput}
+                          onChange={(e) => setMetaInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === "Escape") void handleSaveMetadata(asset, field.key, metaInput);
+                          }}
+                          onBlur={() => void handleSaveMetadata(asset, field.key, metaInput)}
+                          className="w-full min-w-0 text-[10px] border border-indigo-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white resize-y"
+                        />
+                      ) : (
+                        <input
+                          autoFocus
+                          type={field.type === "number" ? "number" : "text"}
+                          value={metaInput}
+                          onChange={(e) => setMetaInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") void handleSaveMetadata(asset, field.key, metaInput);
+                            if (e.key === "Escape") setEditingMetaKey(null);
+                          }}
+                          onBlur={() => void handleSaveMetadata(asset, field.key, metaInput)}
+                          className="flex-1 min-w-0 text-[10px] border border-indigo-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+                        />
+                      )
+                    ) : (
+                      <button
+                        onClick={() => { setEditingMetaKey({ assetId: asset.id, key: field.key }); setMetaInput(displayValue); }}
+                        className={`${isTextarea ? "w-full text-left" : "flex-1 min-w-0 truncate text-left"} text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                          hasError
+                            ? "bg-red-50 text-red-600 border-red-300"
+                            : justSaved && displayValue
+                            ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                            : displayValue
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                            : "bg-gray-50 text-gray-300 border-dashed border-gray-200 hover:text-emerald-500 hover:border-emerald-200"
+                        }`}
+                        title={displayValue || `Saisir ${field.label}`}
+                      >
+                        {isTextarea && displayValue
+                          ? <span className="whitespace-pre-wrap break-words line-clamp-3">{displayValue}</span>
+                          : (displayValue || "—")}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -1115,6 +1381,17 @@ export function MediaAssetsPanel({ library }: Props) {
               <Scissors size={11} />
             </button>
             <button
+              onClick={(e) => { e.stopPropagation(); void handleToggleDisabled(asset); }}
+              className={`absolute top-14.5 left-1.5 w-6 h-6 bg-white/80 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow ${
+                asset.disabled
+                  ? "text-amber-500 hover:text-amber-700 hover:bg-amber-50"
+                  : "text-gray-500 hover:text-amber-500 hover:bg-amber-50"
+              }`}
+              title={asset.disabled ? "Réactiver dans la rotation" : "Désactiver de la rotation (garder dans la bibliothèque)"}
+            >
+              <EyeOff size={11} />
+            </button>
+            <button
               onClick={(e) => { e.stopPropagation(); void handleResetAssetUsage(asset); }}
               className="absolute top-1.5 right-1.5 w-6 h-6 bg-white/80 hover:bg-orange-50 text-gray-500 hover:text-orange-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
               title={accountFilter ? "Réinitialiser les stats de ce compte" : "Réinitialiser les compteurs"}
@@ -1127,7 +1404,7 @@ export function MediaAssetsPanel({ library }: Props) {
     );
   }
 
-  function renderColumn({ key, setTag, category, groupAssets, accessibleCount, lastUsed, autoRank, isAccessible = true, inSection = false }: { key: string; setTag: string | null; category: string | null; groupAssets: MediaAsset[]; accessibleCount?: number; lastUsed: string | null; autoRank: number | null; isAccessible?: boolean; inSection?: boolean }): React.ReactNode {
+  function renderColumn({ key, setTag, category, groupAssets, accessibleCount, lastUsed, autoRank, cycleSize, isAccessible = true, inSection = false }: { key: string; setTag: string | null; category: string | null; groupAssets: MediaAsset[]; accessibleCount?: number; lastUsed: string | null; autoRank: number | null; cycleSize?: number | null; isAccessible?: boolean; inSection?: boolean }): React.ReactNode {
     const isAutoMode = seqState.length === 0;
     const seqIdx = setTag ? seqState.indexOf(setTag) : -1;
     const isSequenced = seqIdx !== -1;
@@ -1214,8 +1491,8 @@ export function MediaAssetsPanel({ library }: Props) {
                     <RotateCcw size={9} /> Prochain
                   </span>
                 ) : (
-                  <span className="text-[10px] text-gray-400 font-mono bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-1">
-                    <RotateCcw size={9} /> #{autoRank}
+                  <span className="text-[10px] text-gray-400 font-mono bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-1" title={cycleSize != null ? `Position ${autoRank} dans un cycle de ${cycleSize} générations` : undefined}>
+                    <RotateCcw size={9} /> {autoRank}{cycleSize != null ? `/${cycleSize}` : ""}
                   </span>
                 )
               ) : (
@@ -1595,24 +1872,36 @@ export function MediaAssetsPanel({ library }: Props) {
           {viewMode === "rotation" ? (
             /* ─── Rotation view ─── ordered flat list by autoRank, colored by category */
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between px-3 py-2 rounded-lg border bg-gray-50 border-gray-200 mb-3">
-                {seqState.length === 0 ? (
-                  <span className="text-xs text-gray-600 flex items-center gap-1.5">
-                    <RotateCcw size={12} className="text-emerald-500" />
-                    <span className="font-medium text-emerald-700">Rotation auto</span>
-                    <span className="text-gray-400">— ordre simulé, le set le moins récemment utilisé passe en premier, jamais deux sets de la même catégorie à la suite</span>
-                  </span>
-                ) : (
-                  <span className="text-xs flex items-center gap-1.5">
-                    <ListOrdered size={12} className="text-indigo-500" />
-                    <span className="font-medium text-indigo-700">Ordre personnalisé</span>
-                    <span className="text-gray-400">{seqState.length} set{seqState.length !== 1 ? "s" : ""} fixés</span>
-                  </span>
-                )}
-                {seqState.length > 0 && (
-                  <button onClick={() => { void saveSequence([]); }} className="text-[11px] text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-200 rounded px-2 py-0.5">Passer en auto</button>
-                )}
-              </div>
+              {(() => {
+                const cycleSize = seqState.length === 0
+                  ? (groupedBySetTag.find((g) => g.cycleSize != null)?.cycleSize ?? null)
+                  : null;
+                return (
+                  <div className="flex items-center justify-between px-3 py-2 rounded-lg border bg-gray-50 border-gray-200 mb-3">
+                    {seqState.length === 0 ? (
+                      <span className="text-xs text-gray-600 flex items-center gap-1.5 flex-wrap">
+                        <RotateCcw size={12} className="text-emerald-500" />
+                        <span className="font-medium text-emerald-700">Rotation auto</span>
+                        {cycleSize != null && cycleSize > 0 && (
+                          <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded px-1.5 py-0.5 text-[10px] font-semibold">
+                            Cycle de {cycleSize} générations
+                          </span>
+                        )}
+                        <span className="text-gray-400">— chaque groupe revient 1 fois par cycle, jamais deux fois la même catégorie d&apos;affilée</span>
+                      </span>
+                    ) : (
+                      <span className="text-xs flex items-center gap-1.5">
+                        <ListOrdered size={12} className="text-indigo-500" />
+                        <span className="font-medium text-indigo-700">Ordre personnalisé</span>
+                        <span className="text-gray-400">{seqState.length} set{seqState.length !== 1 ? "s" : ""} fixés</span>
+                      </span>
+                    )}
+                    {seqState.length > 0 && (
+                      <button onClick={() => { void saveSequence([]); }} className="text-[11px] text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-200 rounded px-2 py-0.5">Passer en auto</button>
+                    )}
+                  </div>
+                );
+              })()}
               {(() => {
                 // Build palette: one distinct color per category
                 const categories = Array.from(new Set(groupedBySetTag.map((g) => g.category).filter(Boolean))) as string[];
@@ -1633,10 +1922,11 @@ export function MediaAssetsPanel({ library }: Props) {
                 const unnamedGroups = groupedBySetTag.filter((g) => !g.setTag && !g.category);
                 return (
                   <>
-                    {namedGroups.map((g) => {
+                    {namedGroups.slice(0, visibleGroupCount).map((g) => {
                       const color = g.category ? (catColor[g.category] ?? "violet") : "";
                       const cls = color ? colorClasses[color] : null;
                       const dimmed = !g.isAccessible && !!accountFilter;
+                      const cs = g.cycleSize;
                       return (
                         <div key={g.key} className={`flex items-start gap-3 p-2.5 rounded-xl border transition-opacity ${
                           dimmed
@@ -1644,14 +1934,19 @@ export function MediaAssetsPanel({ library }: Props) {
                             : cls ? `${cls.bg} ${cls.border}` : "bg-gray-50 border-gray-200"
                         }`}>
                           {/* Rank badge */}
-                          <div className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 ${
-                            dimmed
-                              ? "bg-gray-100 text-gray-400 border-gray-300"
-                              : g.autoRank === 1
-                              ? "bg-emerald-500 text-white border-emerald-600"
-                              : cls ? `bg-white ${cls.text} ${cls.border}` : "bg-white text-gray-500 border-gray-300"
-                          }`}>
-                            {dimmed ? <Lock size={10} /> : (g.autoRank ?? "–")}
+                          <div className="shrink-0 flex flex-col items-center gap-0.5">
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 ${
+                              dimmed
+                                ? "bg-gray-100 text-gray-400 border-gray-300"
+                                : g.autoRank === 1
+                                ? "bg-emerald-500 text-white border-emerald-600"
+                                : cls ? `bg-white ${cls.text} ${cls.border}` : "bg-white text-gray-500 border-gray-300"
+                            }`}>
+                              {dimmed ? <Lock size={10} /> : (g.autoRank ?? "–")}
+                            </div>
+                            {cs != null && cs > 0 && g.autoRank != null && !dimmed && (
+                              <span className="text-[9px] text-gray-400 font-mono leading-none" title={`Revient toutes les ${cs} générations`}>/{cs}</span>
+                            )}
                           </div>
                           {/* Set + category info */}
                           <div className="flex-1 min-w-0">
@@ -1710,6 +2005,9 @@ export function MediaAssetsPanel({ library }: Props) {
                         <span>— {g.accessibleCount} rush{g.accessibleCount !== 1 ? "es" : ""}</span>
                       </div>
                     ))}
+                    {visibleGroupCount < namedGroups.length && (
+                      <div ref={groupSentinelRef} className="h-4" />
+                    )}
                   </>
                 );
               })()}
@@ -1744,7 +2042,7 @@ export function MediaAssetsPanel({ library }: Props) {
               {groupedBySetTag.length === 0 ? (
                 <p className="text-sm text-gray-400 py-8 text-center">Aucun résultat.</p>
               ) : (
-                <div className="overflow-x-auto pb-2 -mx-1 px-1">
+                <div className="overflow-x-auto pb-2 -mx-1 px-1 overscroll-x-contain">
                   <datalist id="group-list">
                     {Array.from(new Set(assets.map((a) => a.category).filter(Boolean))).map((t) => <option key={t!} value={t!} />)}
                   </datalist>
@@ -1778,8 +2076,8 @@ export function MediaAssetsPanel({ library }: Props) {
                                           <RotateCcw size={8} /> Prochain
                                         </span>
                                       ) : g.autoRank ? (
-                                        <span className="text-[9px] text-gray-400 font-mono bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                                          <RotateCcw size={8} /> #{g.autoRank}
+                                        <span className="text-[9px] text-gray-400 font-mono bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-0.5" title={g.cycleSize != null ? `Position ${g.autoRank} dans un cycle de ${g.cycleSize} générations` : undefined}>
+                                          <RotateCcw size={8} /> {g.autoRank}{g.cycleSize != null ? `/${g.cycleSize}` : ""}
                                         </span>
                                       ) : null
                                     ) : null}
@@ -1923,6 +2221,7 @@ export function MediaAssetsPanel({ library }: Props) {
       {showAtelier && (
         <MediaBatchAutocutPanel
           library={library}
+          knownTags={allTags}
           onClose={() => setShowAtelier(false)}
         />
       )}

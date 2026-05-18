@@ -19,6 +19,7 @@ type TranscriptionOutput = {
   language?: string;
   has_diarization?: boolean;
   error?: string;
+  job_id?: string;
 };
 
 export async function POST(req: NextRequest) {
@@ -30,7 +31,14 @@ export async function POST(req: NextRequest) {
 
   const { id: runpodJobId, status, output, error } = parsed.body;
 
-  const job = await prisma.transcriptionJob.findUnique({ where: { runpodJobId } });
+  let job = await prisma.transcriptionJob.findUnique({ where: { runpodJobId } });
+  if (!job && output?.job_id) {
+    job = await prisma.transcriptionJob.findUnique({ where: { id: output.job_id } });
+    if (job && !job.runpodJobId) {
+      await prisma.transcriptionJob.update({ where: { id: job.id }, data: { runpodJobId } });
+      job = { ...job, runpodJobId };
+    }
+  }
   if (!job) {
     console.warn(`[webhook/transcription] Unknown runpodJobId=${runpodJobId}`);
     return NextResponse.json({ ok: true });

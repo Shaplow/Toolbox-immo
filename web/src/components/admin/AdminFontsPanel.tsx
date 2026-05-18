@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 type FontAsset = {
   id: string;
   family: string;
+  weight: number;
+  fontStyle: string;
   url: string;
   storageKey: string | null;
   originalName: string | null;
@@ -186,7 +188,10 @@ export function AdminFontsPanel() {
           </div>
         </div>
         <p className="text-xs text-gray-400 mt-4">
-          woff et woff2 restent reserves au web. Pour captions, seules les polices ttf et otf sont utilisables par le moteur Python.
+          Le poids (100–900) est inféré automatiquement depuis le nom du fichier (ex : <em>Oswald-Bold.ttf</em> → 700). Pour les variantes d&apos;une même famille, uploadez un fichier par poids avec le mot-clé correspondant dans le nom.
+        </p>
+        <p className="text-xs text-gray-400 mt-1">
+          woff et woff2 restent reservés au web. Pour captions, seules les polices ttf et otf sont utilisables par le moteur Python.
         </p>
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </div>
@@ -213,6 +218,14 @@ export function AdminFontsPanel() {
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 uppercase tracking-wide">
                         {getExtension(font).replace(".", "") || "n/a"}
                       </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">
+                        {font.weight}w
+                      </span>
+                      {font.fontStyle === "italic" && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 italic font-medium">
+                          italic
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-gray-500 mt-1">{font.originalName ?? font.storageKey ?? font.url}</p>
                     <p className="text-[11px] text-gray-400 mt-1">Mise à jour le {new Date(font.updatedAt).toLocaleDateString("fr-FR")}</p>

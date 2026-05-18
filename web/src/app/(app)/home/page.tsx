@@ -55,7 +55,6 @@ export default async function HomePage() {
     if (href === "/tools/cover") return userPerms.includes("covers");
     if (href === "/tools/transcription") return userPerms.includes("transcription");
     if (href === "/tools/description") return userPerms.includes("description");
-    if (href === "/tools/derush") return userPerms.includes("derush");
     return true;
   });
 

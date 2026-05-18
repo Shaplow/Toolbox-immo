@@ -45,6 +45,7 @@ from engine.media_edit import process_media_edit
 from engine.runtime_fonts import prepare_runtime_fonts
 from engine.template_composite import (
     OverlaySegment,
+    build_music_track_filter,
     build_template_ffmpeg_cmd,
     build_template_ffmpeg_cmd_timed,
     build_template_ffmpeg_cmd_video_only,
@@ -448,10 +449,6 @@ def handler(job: dict) -> dict[str, Any]:
         return _handle_render_sequence(inp)
     if job_type == "transcribe":
         return _handle_transcribe(inp)
-    if job_type == "derush_vision":
-        return _handle_derush_vision(inp)
-    if job_type == "derush_export":
-        return _handle_derush_export(inp)
     if job_type == "media_edit":
         return _handle_media_edit(inp)
     if job_type == "media_autocut_batch":
@@ -695,6 +692,7 @@ def _handle_captions(inp: dict) -> dict[str, Any]:
     return {
         "video_url": public_url,
         "output_key": output_key,
+        "caption_job_id": caption_job_id,
     }
 
 
@@ -775,6 +773,7 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
 
         # 3. Télécharger la musique (optionnel)
         _music_path: Path | None = None
+        _music_warning: str | None = None
         if music_url:
             _music_path = tmp_path / f"music_{stamp}.mp3"
             print(f"[worker/render_template] Download music: {music_url}")
@@ -782,6 +781,7 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
                 _download_file(music_url, _music_path)
             except Exception as exc:
                 print(f"[worker/render_template] Failed to download music: {exc}")
+                _music_warning = f"Musique non disponible : {exc}"
                 _music_path = None
 
         music_opts = dict(
@@ -919,10 +919,15 @@ def _handle_render_template(inp: dict) -> dict[str, Any]:
         public_url = _upload_to_r2(output_key, out_video, "video/mp4")
 
     print(f"[worker/render_template] Done — {public_url}")
-    return {
+    render_id: str = inp.get("render_id", "")
+    result: dict[str, Any] = {
         "video_url": public_url,
         "output_key": output_key,
+        "render_id": render_id,
     }
+    if _music_warning:
+        result["warnings"] = [_music_warning]
+    return result
 
 
 def _handle_render_sequence(inp: dict) -> dict[str, Any]:
@@ -982,6 +987,8 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
         clip_paths: list[Path] = []
         any_audio = False
         has_effective_audio = False  # True if any slot contributes real (non-muted) audio
+        # Per-slot music track params for time-varying volume expression.
+        slot_audio_specs: list[dict] = []
 
         for i, slot in enumerate(slots):
             slot_id = slot.get("slot_id", str(i))
@@ -1014,6 +1021,16 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                 any_audio = True
                 if not slot_mute_source:
                     has_effective_audio = True
+
+            # Collect per-slot music track params for time-varying volume.
+            _clip_effective_dur = float(video_info.duration or 0.0)
+            if max_dur is not None:
+                _clip_effective_dur = min(_clip_effective_dur, max_dur)
+            slot_audio_specs.append({
+                "volume_db": slot.get("music_track_volume_db"),
+                "fade_in": float(slot.get("music_track_fade_in", 0) or 0),
+                "dur": _clip_effective_dur,
+            })
 
             normalized_block = normalize_video_block(block, canvas_w, canvas_h)
             clip_path = tmp_path / f"clip_{i}_{stamp}.mp4"
@@ -1232,6 +1249,7 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
 
         # ── Phase 3: Mix music (optional) ─────────────────────────────────────
         final_path = tmp_path / f"final_{stamp}.mp4"
+        _music_warning: str | None = None
         if music_url:
             music_path = tmp_path / f"music_{stamp}.mp3"
             print(f"[worker/render_sequence] Download music: {music_url}")
@@ -1239,6 +1257,7 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                 _download_file(music_url, music_path)
             except Exception as exc:
                 print(f"[worker/render_sequence] Failed to download music, skipping: {exc}")
+                _music_warning = f"Musique non disponible : {exc}"
                 music_path = None  # type: ignore[assignment]
 
             if music_path and music_path.exists():
@@ -1251,15 +1270,17 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                     else (_global_max_duration or total_dur)
                 )
 
-                music_vol_filter = f"[1:a]volume={_music_volume}"
-                if _music_fade_in > 0:
-                    music_vol_filter += f",afade=t=in:d={_music_fade_in}"
-                if _music_fade_out > 0 and effective_dur is not None:
-                    st = max(0, effective_dur - _music_fade_out)
-                    music_vol_filter += f",afade=t=out:st={st}:d={_music_fade_out}"
+                music_vol_filter = build_music_track_filter(
+                    music_input_index=1,
+                    global_volume=_music_volume,
+                    global_fade_in=_music_fade_in,
+                    global_fade_out=_music_fade_out,
+                    effective_dur=effective_dur,
+                    slot_specs=slot_audio_specs,
+                )
 
                 if has_effective_audio:
-                    # Per-slot volumes are already baked into the clips — mix source at 1.0
+                    # Per-slot source volumes are baked into clips — mix source at 1.0
                     audio_filter = f"[0:a]volume=1[va];{music_vol_filter}[msc];[va][msc]amix=inputs=2:duration=first[aout]"
                 else:
                     audio_filter = f"{music_vol_filter}[aout]"
@@ -1311,10 +1332,15 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
         public_url = _upload_to_r2(output_key, final_path, "video/mp4")
 
     print(f"[worker/render_sequence] Done — {public_url}")
-    return {
+    render_id: str = inp.get("render_id", "")
+    seq_result: dict[str, Any] = {
         "video_url": public_url,
         "output_key": output_key,
+        "render_id": render_id,
     }
+    if _music_warning:
+        seq_result["warnings"] = [_music_warning]
+    return seq_result
 
 
 def _handle_transcribe(inp: dict) -> dict[str, Any]:
@@ -1383,248 +1409,8 @@ def _handle_transcribe(inp: dict) -> dict[str, Any]:
         "duration": duration,
         "language": language,
         "has_diarization": has_diarization,
+        "job_id": job_id,
     }
-
-
-# ─── Derush vision handler ────────────────────────────────────────────────────
-
-def _handle_derush_vision(inp: dict) -> dict[str, Any]:
-    """
-    Analyse video(s) and returns DerushSegment JSON uploaded to R2.
-
-    Input:
-      job_id                   : DerushJob.id
-      analysis_mode            : "vision" | "transcription"
-      video_urls               : list[str]  — presigned or public R2 URLs
-      video_r2_keys            : list[str]  — R2 keys (for source_file meta)
-      video_filenames          : list[str]  — original filenames
-      output_prefix            : R2 prefix for outputs
-      vision_provider          : "heuristic" (default) | "gemini" | "openai" | "claude"
-      vision_provider_config   : dict  — provider-specific options
-      preset_config            : dict  — DerushPresetConfig (optional)
-      transcription_output_url : str   — existing segments.json URL (transcription mode)
-      transcription_language   : str   — default "fr"
-      transcription_model      : str   — default "turbo"
-    """
-    import json as _json
-    from engine.derush.models import DerushJobInput
-    from engine.derush.orchestrator import DerushOrchestrator
-
-    job_id: str = inp["job_id"]
-    output_prefix: str = inp.get("output_prefix", f"derush/{job_id}")
-    print(f"[worker/derush_vision] job={job_id} mode={inp.get('analysis_mode', 'vision')}")
-
-    job_input = DerushJobInput.from_dict(inp)
-    orchestrator = DerushOrchestrator()
-    result = orchestrator.run(job_input)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        output_key = f"{output_prefix}/segments.json"
-        json_path = tmp_path / "segments.json"
-        json_path.write_text(_json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"[worker/derush_vision] Uploading segments to R2: {output_key}")
-        _upload_to_r2(output_key, json_path, "application/json")
-
-    print(
-        f"[worker/derush_vision] Done — {result['segment_count']} segments "
-        f"({result['selected_count']} selected), "
-        f"duration={result['total_duration']:.1f}s"
-    )
-    return {
-        "output_key": output_key,
-        "segment_count": result["segment_count"],
-        "selected_count": result["selected_count"],
-        "total_duration": result["total_duration"],
-        "analysis_mode": result["analysis_mode"],
-    }
-
-
-# ─── Derush export handler ────────────────────────────────────────────────────
-
-def _handle_derush_export(inp: dict) -> dict[str, Any]:
-    """
-    Export selected segments in the requested format.
-
-    Input:
-      job_id           : DerushJob.id
-      export_id        : DerushExport.id
-      video_urls       : list[str]   — source video URLs (same order as source_files_meta)
-      segments_url     : str         — URL to segments.json from derush_vision
-      source_files_meta: list[dict]  — [{id, filename, r2_key, r2_public_url, ...}]
-      export_format    : str         — "clips_trimmed" | "xml_timeline" | ...
-      output_prefix    : str
-      workflow         : str         — "capcut" | "premiere" | "resolve" | "generic"
-      accurate_trim    : bool
-      combo_formats    : list[str]
-      xml_format       : str         — "fcpxml" | "premiere_xml"
-      segment_ids      : list[str] | null
-    """
-    import json as _json
-    from engine.derush.models import DerushExportInput, SourceFileInfo
-    from engine.derush.export import get_exporter
-    from engine.probe import probe_video
-
-    job_id: str = inp["job_id"]
-    export_id: str = inp["export_id"]
-    export_format: str = inp["export_format"]
-    output_prefix: str = inp.get("output_prefix", f"derush/{job_id}/export/{export_id}")
-    print(f"[worker/derush_export] job={job_id} export={export_id} format={export_format}")
-
-    export_input = DerushExportInput.from_dict(inp)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-
-        # 1. Download segments.json first (lightweight) — bail early before fetching source videos
-        print(f"[worker/derush_export] Download segments: {export_input.segments_url}")
-        resp = httpx.get(export_input.segments_url, timeout=30)
-        resp.raise_for_status()
-        segments_data: dict = resp.json()
-        from engine.derush.models import DerushSegment, ScoreBreakdown
-        segments = _deserialize_segments(segments_data.get("segments", segments_data))
-
-        selected = [s for s in segments if not s.is_rejected]
-        if export_input.segment_ids:
-            _id_set = set(export_input.segment_ids)
-            selected = [s for s in selected if s.id in _id_set]
-        if not selected:
-            return {
-                "error": "no_segments_selected",
-                "message": (
-                    "Vision analysis rejected all segments — no footage to export. "
-                    "Try re-running the analysis or adjusting the rejection thresholds."
-                ),
-            }
-
-        # 2. Prepare source files.
-        #    We always download source files to /tmp, even for stream-copy mode.
-        #    Passing a remote CDN URL directly to FFmpeg causes it to stall: most
-        #    recordings are uploaded without -movflags faststart, so the moov atom
-        #    sits at the end of the file — FFmpeg must fetch the full file over HTTP
-        #    before it can parse timestamps, reliably hitting the 300 s timeout.
-        #    A single sequential download to /tmp is faster and fully reliable.
-        from concurrent.futures import ThreadPoolExecutor as _TPE, as_completed as _ac
-
-        def _dl_source(idx: int, url: str, meta: dict) -> SourceFileInfo:
-            ext = Path(meta["filename"]).suffix or ".mp4"
-            local_path = str(tmp_path / f"src_{idx:02d}{ext}")
-            print(f"[worker/derush_export] Download {meta['filename']} → {local_path}")
-            _download_file(url, Path(local_path))
-            info = probe_video(local_path)
-            return SourceFileInfo(
-                id=meta["id"],
-                filename=meta["filename"],
-                local_path=local_path,
-                r2_key=meta["r2_key"],
-                r2_public_url=meta.get("r2_public_url", url),
-                duration=info.duration,
-                width=info.width,
-                height=info.height,
-                fps=info.fps or 25.0,
-                video_bitrate=info.video_bitrate,
-            )
-
-        pairs = list(enumerate(zip(export_input.video_urls, export_input.source_files_meta)))
-        n_src = len(pairs)
-        src_results: dict[int, SourceFileInfo] = {}
-        if n_src == 1:
-            i, (url, meta) = pairs[0]
-            src_results[i] = _dl_source(i, url, meta)
-        else:
-            with _TPE(max_workers=n_src) as _ex:
-                _futs = {_ex.submit(_dl_source, i, url, meta): i for i, (url, meta) in pairs}
-                for _fut in _ac(_futs):
-                    src_results[_futs[_fut]] = _fut.result()
-        source_files: list[SourceFileInfo] = [src_results[i] for i in range(n_src)]
-
-        # 3. Run exporter
-        output_dir = str(tmp_path / "output")
-        os.makedirs(output_dir, exist_ok=True)
-        exporter = get_exporter(export_format)
-        result = exporter.export(export_input, segments, source_files, output_dir)
-
-        # 4. Upload output to R2
-        output_file = _find_output_file(output_dir, export_format, export_id)
-        if output_file:
-            content_type = _content_type_for_format(export_format)
-            print(f"[worker/derush_export] Uploading to R2: {result.output_key}")
-            _upload_to_r2(result.output_key, Path(output_file), content_type)
-
-    print(f"[worker/derush_export] Done — {result.to_dict()}")
-    return result.to_dict()
-
-
-def _deserialize_segments(data: list[dict]) -> list:
-    """Reconstruct DerushSegment list from JSON."""
-    from engine.derush.models import DerushSegment, ScoreBreakdown
-    segments = []
-    for d in data:
-        seg = DerushSegment(
-            id=d["id"],
-            source_file_id=d["source_file_id"],
-            source_in=d["source_in"],
-            source_out=d["source_out"],
-            duration=d["duration"],
-            analysis_mode=d["analysis_mode"],
-            order=d.get("order", 0),
-            score=d.get("score", 0.0),
-            shot_type=d.get("shot_type", "unknown"),
-            text=d.get("text"),
-            speaker=d.get("speaker"),
-            speech_tag=d.get("speech_tag"),
-            keyframe_r2_keys=d.get("keyframe_r2_keys", []),
-            keyframe_urls=d.get("keyframe_urls", []),
-            tags=d.get("tags", []),
-            is_rejected=d.get("is_rejected", False),
-            reject_reason=d.get("reject_reason"),
-            exported_filename=d.get("exported_filename"),
-            parent_id=d.get("parent_id"),
-            is_sub_segment=d.get("is_sub_segment", False),
-        )
-        bd = d.get("score_breakdown")
-        if bd:
-            seg.score_breakdown = ScoreBreakdown(**{
-                k: bd.get(k, 0.0) for k in [
-                    "sharpness", "stability", "exposure", "composition",
-                    "duration_score", "visual_interest", "diversity", "speech_relevance"
-                ]
-            })
-        segments.append(seg)
-    return segments
-
-
-def _find_output_file(output_dir: str, export_format: str, export_id: str) -> str | None:
-    """Find the primary output file for upload."""
-    ext_map = {
-        "clips_trimmed": f"clips_{export_id}.zip",
-        "xml_timeline": None,  # multiple possible ext
-        "stringout_video": f"stringout_{export_id}.mp4",
-        "structured_folder": f"derush_{export_id}.zip",
-        "manifest_only": f"manifest_{export_id}.json",
-        "combo_export": f"combo_{export_id}.zip",
-    }
-    filename = ext_map.get(export_format)
-    if filename:
-        full = os.path.join(output_dir, filename)
-        return full if os.path.exists(full) else None
-    # xml_timeline: find .fcpxml or .xml
-    for ext in (".fcpxml", ".xml"):
-        candidate = os.path.join(output_dir, f"timeline_{export_id}{ext}")
-        if os.path.exists(candidate):
-            return candidate
-    return None
-
-
-def _content_type_for_format(export_format: str) -> str:
-    return {
-        "clips_trimmed": "application/zip",
-        "xml_timeline": "application/xml",
-        "stringout_video": "video/mp4",
-        "structured_folder": "application/zip",
-        "manifest_only": "application/json",
-        "combo_export": "application/zip",
-    }.get(export_format, "application/octet-stream")
 
 
 # ─── Media autocut batch handler ─────────────────────────────────────────────

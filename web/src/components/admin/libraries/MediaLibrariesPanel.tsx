@@ -13,10 +13,13 @@ interface MediaLibrary {
   setSequence: string;
   setFamilies?: string;
   rotationScope?: string;
+  metadataSchema?: string;
   description: string | null;
   createdAt: string;
   _count: { assets: number };
 }
+
+type MetadataField = { key: string; label: string; type: "text" | "number" | "url" | "textarea" };
 
 type EditForm = {
   name: string;
@@ -25,6 +28,7 @@ type EditForm = {
   rotationMode: "auto" | "override";
   setSequenceDraft: string; // one setTag per line
   rotationScope: "per_account" | "shared";
+  metadataFields: MetadataField[];
 };
 
 export function MediaLibrariesPanel() {
@@ -35,7 +39,7 @@ export function MediaLibrariesPanel() {
   const [form, setForm] = useState({ name: "", type: "video" as "video" | "audio", tags: "", description: "" });
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<EditForm>({ name: "", tags: "", description: "", rotationMode: "auto", setSequenceDraft: "", rotationScope: "per_account" });
+  const [editForm, setEditForm] = useState<EditForm>({ name: "", tags: "", description: "", rotationMode: "auto", setSequenceDraft: "", rotationScope: "per_account", metadataFields: [] });
   const [editError, setEditError] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -115,6 +119,7 @@ export function MediaLibrariesPanel() {
       rotationMode: seq.length > 0 ? "override" : "auto",
       setSequenceDraft: seq.join("\n"),
       rotationScope: lib.rotationScope === "shared" ? "shared" : "per_account",
+      metadataFields: (() => { try { return JSON.parse(lib.metadataSchema ?? "[]") as MetadataField[]; } catch { return []; } })(),
     });
     setEditError(null);
     setEditingId(lib.id);
@@ -122,6 +127,9 @@ export function MediaLibrariesPanel() {
 
   async function handleSaveEdit(id: string) {
     if (!editForm.name.trim()) { setEditError("Le nom est requis"); return; }
+    const metaKeys = editForm.metadataFields.map((f) => f.key.trim());
+    if (metaKeys.some((k) => !k)) { setEditError("Tous les champs de métadonnées doivent avoir une clé non vide."); return; }
+    if (new Set(metaKeys).size !== metaKeys.length) { setEditError("Deux champs ont la même clé. Corrigez-la avant de sauvegarder."); return; }
     setEditSaving(true);
     setEditError(null);
     const tags = editForm.tags.split(",").map((t) => t.trim()).filter(Boolean);
@@ -137,6 +145,7 @@ export function MediaLibrariesPanel() {
         description: editForm.description.trim() || null,
         setSequence,
         rotationScope: editForm.rotationScope,
+        metadataSchema: editForm.metadataFields,
       }),
     });
     setEditSaving(false);
@@ -212,7 +221,7 @@ export function MediaLibrariesPanel() {
               </div>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Types (séparés par virgule)</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Tags (séparés par virgule)</label>
               <input
                 value={form.tags}
                 onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))}
@@ -428,6 +437,98 @@ export function MediaLibrariesPanel() {
                       </div>
 
                       {editError && <p className="text-xs text-red-600">{editError}</p>}
+
+                      {/* ── Metadata schema ── */}
+                      <div className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-gray-600">Champs de métadonnées</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              let n = editForm.metadataFields.length + 1;
+                              while (editForm.metadataFields.some((mf) => mf.key === `champ${n}`)) n++;
+                              setEditForm((f) => ({ ...f, metadataFields: [...f.metadataFields, { key: `champ${n}`, label: "", type: "text" }] }));
+                            }}
+                            className="flex items-center gap-1 text-[10px] text-indigo-600 hover:text-indigo-700"
+                          >
+                            <Plus size={11} /> Ajouter un champ
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-gray-400 leading-relaxed">
+                          Définissez les champs à relier à chaque asset (ex : prix, surface). Liez-les à des variables de formulaire dans le builder via « Source automatique (asset) ».
+                        </p>
+                        {editForm.metadataFields.length === 0 && (
+                          <p className="text-[10px] text-gray-300 italic">Aucun champ défini.</p>
+                        )}
+                        {editForm.metadataFields.map((field, idx) => (
+                          <div key={idx} className="space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                value={field.label}
+                                onChange={(e) => {
+                                  const label = e.target.value;
+                                  const toKey = (lbl: string) =>
+                                    lbl.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+                                  let key: string;
+                                  if (/^champ\d+$/.test(field.key)) {
+                                    // Placeholder — auto-generate from label (accent-normalized)
+                                    key = label.trim() ? (toKey(label) || field.key) : field.key;
+                                  } else if (!label.trim()) {
+                                    // Frozen key but label cleared → reset to a fresh placeholder
+                                    let n = editForm.metadataFields.length + 1;
+                                    while (editForm.metadataFields.some((mf, i2) => i2 !== idx && mf.key === `champ${n}`)) n++;
+                                    key = `champ${n}`;
+                                  } else {
+                                    // Frozen key, label non-empty — keep key unchanged
+                                    key = field.key;
+                                  }
+                                  setEditForm((f) => ({ ...f, metadataFields: f.metadataFields.map((mf, i) => i === idx ? { ...mf, label, key } : mf) }));
+                                }}
+                                placeholder="Libellé (ex: Prix de vente)"
+                                className="flex-1 min-w-0 border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                              />
+                              <select
+                                value={field.type}
+                                onChange={(e) => setEditForm((f) => ({ ...f, metadataFields: f.metadataFields.map((mf, i) => i === idx ? { ...mf, type: e.target.value as MetadataField["type"] } : mf) }))}
+                                className="w-[110px] shrink-0 border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                              >
+                                <option value="text">Texte</option>
+                                <option value="number">Nombre</option>
+                                <option value="url">URL</option>
+                                <option value="textarea">Textarea</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => setEditForm((f) => ({ ...f, metadataFields: f.metadataFields.filter((_, i) => i !== idx) }))}
+                                className="text-gray-300 hover:text-red-400 transition-colors p-0.5"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-1 pl-0.5">
+                              <span className="text-[9px] font-mono text-gray-400 shrink-0">clé :</span>
+                              <input
+                                value={field.key}
+                                onChange={(e) => {
+                                  const rawKey = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "");
+                                  setEditForm((f) => ({ ...f, metadataFields: f.metadataFields.map((mf, i) => i === idx ? { ...mf, key: rawKey } : mf) }));
+                                }}
+                                className={`flex-1 min-w-0 text-[9px] font-mono rounded px-1 py-0.5 border focus:outline-none focus:ring-1 focus:ring-indigo-200 ${
+                                  editForm.metadataFields.filter((mf) => mf.key && mf.key === field.key).length > 1
+                                    ? "border-red-300 bg-red-50 text-red-600"
+                                    : "border-gray-200 bg-white text-gray-600"
+                                }`}
+                                placeholder={`champ${idx + 1}`}
+                                spellCheck={false}
+                              />
+                              {editForm.metadataFields.filter((mf) => mf.key && mf.key === field.key).length > 1 && (
+                                <span className="text-[9px] text-red-500 shrink-0">doublon !</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
                       <div className="flex gap-2 pt-1">
                         <button
                           onClick={() => { void handleSaveEdit(lib.id); }}

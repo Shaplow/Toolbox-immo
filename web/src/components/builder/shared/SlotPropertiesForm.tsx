@@ -26,6 +26,12 @@ const SEQUENCE_STRATEGIES = [
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+export interface SlotAudioOverride {
+  musicTrackVolumeDb?: number;
+  musicTrackFadeIn?: number;
+  musicTrackFadeOut?: number;
+}
+
 export interface SlotPropertiesFormProps {
   slot: VideoSequenceSlot;
   index: number;
@@ -35,6 +41,12 @@ export interface SlotPropertiesFormProps {
   /** All VideoBlocks in the template, used for the positioning picker. */
   videoBlocks?: { id: string; label?: string }[];
   onChange: (changes: Partial<VideoSequenceSlot>) => void;
+  /** Current per-slot music track overrides (from MusicBlock.slotAudio[slot.id]). */
+  slotAudioOverride?: SlotAudioOverride;
+  /** Called when the user changes per-slot music track volume or fade. */
+  onAudioChange?: (changes: SlotAudioOverride) => void;
+  /** Whether the template has a MusicBlock (controls whether the music section is shown). */
+  hasMusicBlock?: boolean;
 }
 
 export function SlotPropertiesForm({
@@ -45,6 +57,9 @@ export function SlotPropertiesForm({
   videoLibraries,
   videoBlocks = [],
   onChange,
+  slotAudioOverride,
+  onAudioChange,
+  hasMusicBlock = false,
 }: SlotPropertiesFormProps) {
   const overlayMode = getOverlayMode(slot);
   const bindingFields = schema.filter((f) => ["video", "text", "url"].includes(f.type));
@@ -305,6 +320,93 @@ export function SlotPropertiesForm({
       {sourceMode === "library" && slot.libraryId && (
         <div className="text-[9px] text-indigo-500 bg-indigo-50 rounded px-2 py-1">
           Mode : <strong>{strategy === "theme_sequence" ? "Auto" : "Manuelle"}</strong>
+        </div>
+      )}
+
+      {/* ── Volume musique sur ce clip ───────────────────────────────────── */}
+      {hasMusicBlock && onAudioChange && (
+        <div className="flex flex-col gap-1.5 pt-1 border-t border-gray-100">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">🎵 Volume musique</span>
+            {(slotAudioOverride?.musicTrackVolumeDb !== undefined || slotAudioOverride?.musicTrackFadeIn !== undefined || slotAudioOverride?.musicTrackFadeOut !== undefined) && (
+              <button
+                type="button"
+                onClick={() => onAudioChange({ musicTrackVolumeDb: undefined, musicTrackFadeIn: undefined, musicTrackFadeOut: undefined })}
+                className="text-[9px] text-gray-400 hover:text-red-500 transition-colors"
+                title="Revenir au volume global"
+              >
+                réinitialiser
+              </button>
+            )}
+          </div>
+          <p className="text-[10px] text-gray-400 leading-relaxed -mt-0.5">
+            Niveau cible de la musique pendant ce clip. Laissez vide pour utiliser le volume global.
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[9px] text-gray-400 uppercase">Volume (dB)</span>
+              <input
+                type="number"
+                min={-60}
+                max={0}
+                step={1}
+                placeholder="global"
+                value={slotAudioOverride?.musicTrackVolumeDb ?? ""}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  onAudioChange({
+                    ...slotAudioOverride,
+                    musicTrackVolumeDb: raw === "" ? undefined : Math.min(0, Number(raw)),
+                  });
+                }}
+                className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
+              />
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[9px] text-gray-400 uppercase">Fade ↑ (s)</span>
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                placeholder="0"
+                value={slotAudioOverride?.musicTrackFadeIn ?? ""}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  onAudioChange({
+                    ...slotAudioOverride,
+                    musicTrackFadeIn: raw === "" ? undefined : Math.max(0, Number(raw)),
+                  });
+                }}
+                className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
+              />
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[9px] text-gray-400 uppercase">Fade ↓ (s)</span>
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                placeholder="0"
+                value={slotAudioOverride?.musicTrackFadeOut ?? ""}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  onAudioChange({
+                    ...slotAudioOverride,
+                    musicTrackFadeOut: raw === "" ? undefined : Math.max(0, Number(raw)),
+                  });
+                }}
+                className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
+              />
+            </label>
+          </div>
+          {slotAudioOverride?.musicTrackVolumeDb !== undefined && (
+            <p className="text-[9px] text-indigo-500 bg-indigo-50 rounded px-2 py-1">
+              {slotAudioOverride.musicTrackVolumeDb} dB
+              {slotAudioOverride.musicTrackFadeIn ? ` · ↑${slotAudioOverride.musicTrackFadeIn}s` : ""}
+              {slotAudioOverride.musicTrackFadeOut ? ` · ↓${slotAudioOverride.musicTrackFadeOut}s` : ""}
+              {!slotAudioOverride.musicTrackFadeIn && !slotAudioOverride.musicTrackFadeOut ? " · instantané" : ""}
+            </p>
+          )}
         </div>
       )}
     </div>

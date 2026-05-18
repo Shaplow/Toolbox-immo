@@ -65,7 +65,7 @@ function buildTagFragment(
   for (const c of config.tagConditions ?? []) {
     const rawTag = c.fromParam && formData
       ? (typeof formData[c.tag] === "string" ? (formData[c.tag] as string).trim() : "")
-      : c.tag.trim();
+      : (c.tag ?? "").trim();
     if (!rawTag) continue;
     const likeVal = `%"${rawTag.toLowerCase()}"%`;
     if (c.negate) {
@@ -116,7 +116,8 @@ export async function selectMediaAsset(
   formData?: Record<string, unknown>,
   accountId?: string,
   excludeAssetIds?: string[],
-): Promise<{ id: string; url: string; filename: string } | null> {
+  minDuration?: number,
+): Promise<{ id: string; url: string; filename: string; metadata: Record<string, string | number | null> } | null> {
   const config = normalizeRule(rule);
   const { strategy } = config;
 
@@ -126,9 +127,11 @@ export async function selectMediaAsset(
 
   // Access filter: with accountId → global OR restricted-to-me; without → global only
   const accessFilter = accountId
-    ? Prisma.sql`AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
+    ? Prisma.sql`AND ma."disabled" = false
+        AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
         OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))`
-    : Prisma.sql`AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)`;
+    : Prisma.sql`AND ma."disabled" = false
+        AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)`;
 
   // Exclusion filter: skip already-picked assets from sibling blocks in the same generation
   const excludeFrag =
@@ -136,42 +139,58 @@ export async function selectMediaAsset(
       ? Prisma.sql`AND ma.id NOT IN (${Prisma.join(excludeAssetIds.map((id) => Prisma.sql`${id}`), ", ")})`
       : Prisma.sql``;
 
-  type AssetRow = { id: string; url: string; filename: string };
+  // Duration filter: skip tracks shorter than the expected total video duration.
+  // Assets with no duration stored are excluded when the filter is active — use the
+  // backfill script (scripts/backfill-audio-durations.ts) to populate missing durations.
+  const durationFrag =
+    minDuration != null && minDuration > 0
+      ? Prisma.sql`AND ma.duration >= ${minDuration}`
+      : Prisma.sql``;
+
+  type AssetRow = { id: string; url: string; filename: string; metadata: string };
+  function parseAssetRow(row: AssetRow) {
+    let metadata: Record<string, string | number | null> = {};
+    try { metadata = JSON.parse(row.metadata ?? "{}") as Record<string, string | number | null>; } catch { /* keep empty */ }
+    return { ...row, metadata };
+  }
 
   if (strategy === "random") {
     const rows = await prisma.$queryRaw<AssetRow[]>(
-      Prisma.sql`SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+      Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
         WHERE ma."libraryId" = ${libraryId}
         ${accessFilter}
         ${tagFrag}
         ${excludeFrag}
+        ${durationFrag}
         ORDER BY RANDOM() LIMIT 1`
     );
-    return rows[0] ?? null;
+    return rows[0] ? parseAssetRow(rows[0]) : null;
   }
 
   if (strategy === "oldest_used") {
     if (accountId) {
       const rows = await prisma.$queryRaw<AssetRow[]>(
-        Prisma.sql`SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+        Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
           LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
           WHERE ma."libraryId" = ${libraryId}
           ${accessFilter}
           ${tagFrag}
           ${excludeFrag}
+          ${durationFrag}
           ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`
       );
-      return rows[0] ?? null;
+      return rows[0] ? parseAssetRow(rows[0]) : null;
     }
     const rows = await prisma.$queryRaw<AssetRow[]>(
-      Prisma.sql`SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+      Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
         WHERE ma."libraryId" = ${libraryId}
         ${accessFilter}
         ${tagFrag}
         ${excludeFrag}
+        ${durationFrag}
         ORDER BY ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`
     );
-    return rows[0] ?? null;
+    return rows[0] ? parseAssetRow(rows[0]) : null;
   }
 
   // least_used (default) — also handles not_used_in_cycle (same ordering: never/least-used first)
@@ -180,25 +199,64 @@ export async function selectMediaAsset(
   }
   if (accountId) {
     const rows = await prisma.$queryRaw<AssetRow[]>(
-      Prisma.sql`SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+      Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
         LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
         WHERE ma."libraryId" = ${libraryId}
         ${accessFilter}
         ${tagFrag}
         ${excludeFrag}
+        ${durationFrag}
         ORDER BY COALESCE(mau."usageCount", 0) ASC, mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`
     );
-    return rows[0] ?? null;
+    return rows[0] ? parseAssetRow(rows[0]) : null;
   }
   const rows = await prisma.$queryRaw<AssetRow[]>(
-    Prisma.sql`SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
+    Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
       WHERE ma."libraryId" = ${libraryId}
       ${accessFilter}
       ${tagFrag}
       ${excludeFrag}
+      ${durationFrag}
       ORDER BY ma."usageCount" ASC, ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`
   );
-  return rows[0] ?? null;
+  return rows[0] ? parseAssetRow(rows[0]) : null;
+}
+
+/**
+ * Select an asset from a library by matching a metadata field value.
+ *
+ * Used when a SchemaField of type "select" has optionsSource.type === "metadata-values-from-library":
+ * the user chose a value (e.g., "Dupont") from the dropdown, and this function finds the
+ * corresponding asset in the library where metadata[metadataKey] === metadataValue.
+ *
+ * @returns The first matching active asset, or null if none found.
+ */
+export async function selectMediaAssetByMetadataValue(
+  libraryId: string,
+  metadataKey: string,
+  metadataValue: string,
+  accountId?: string,
+): Promise<{ id: string; url: string; filename: string; setTag: string | null; category: string | null; metadata: Record<string, string | number | null> } | null> {
+  const accessFilter = accountId
+    ? Prisma.sql`AND ma."disabled" = false
+        AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
+        OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))`
+    : Prisma.sql`AND ma."disabled" = false
+        AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)`;
+
+  // Filter in PostgreSQL on the JSON metadata field: cast to text and use jsonb operator
+  const rows = await prisma.$queryRaw<{ id: string; url: string; filename: string; setTag: string | null; category: string | null; metadata: string }[]>(
+    Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma."setTag", ma.category, ma.metadata FROM "MediaAsset" ma
+      WHERE ma."libraryId" = ${libraryId}
+      ${accessFilter}
+      AND (ma.metadata::jsonb ->> ${metadataKey}) = ${metadataValue}
+      ORDER BY ma."createdAt" ASC LIMIT 1`
+  );
+
+  if (!rows[0]) return null;
+  let metadata: Record<string, string | number | null> = {};
+  try { metadata = JSON.parse(rows[0].metadata ?? "{}") as Record<string, string | number | null>; } catch { /* keep empty */ }
+  return { ...rows[0], metadata };
 }
 
 /**
@@ -280,6 +338,7 @@ export async function selectMediaAssetBySetSequence(
         SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
         LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
         WHERE ma."libraryId" = ${libraryId}
+          AND ma."disabled" = false
           ${setTagClause}
           ${categoryClause}
           ${tagFrag}
@@ -291,6 +350,7 @@ export async function selectMediaAssetBySetSequence(
       const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
         SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
         WHERE ma."libraryId" = ${libraryId}
+          AND ma."disabled" = false
           ${setTagClause}
           ${categoryClause}
           ${tagFrag}
@@ -343,6 +403,7 @@ export async function selectMediaAssetBySetSequence(
         SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
         LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
         WHERE ma."libraryId" = ${libraryId} AND ma."setTag" = ${selectedSetTag}
+          AND ma."disabled" = false
           ${tagFrag}
           AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
             OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))
@@ -371,6 +432,7 @@ export async function selectMediaAssetBySetSequence(
       const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
         SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
         WHERE ma."libraryId" = ${libraryId} AND ma."setTag" = ${selectedSetTag}
+          AND ma."disabled" = false
           ${tagFrag}
           AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
         ORDER BY ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
@@ -404,24 +466,32 @@ export async function selectMediaAssetBySetSequence(
       );
       const lockedCategory = locked[0]?.lastUsedCategory ?? null;
 
-      // Group discovery inside the transaction
-      // Tiebreaker: when lastUsedAt is equal (e.g. both never used), prefer the category
-      // with more groups (cat_count DESC) so the majority family interleaves first and we
-      // never exhaust a small category before a large one — preventing consecutive same-category picks.
+      // Group discovery inside the transaction.
+      // Primary sort: category-level staleness (MAX last_used across all sets in the category)
+      // → ensures categories rotate round-robin before cycling within a category.
+      // Secondary sort: set-level staleness (last_used of this specific group)
+      // → within a category, oldest set comes first.
+      // Tertiary: stable alphabetical tiebreaker.
       const allGroups: GroupRow[] = await tx.$queryRaw`
-          SELECT sub."setTag", sub."category"
+          SELECT sub2."setTag", sub2."category"
           FROM (
-            SELECT ma."setTag", ma."category",
-                   MAX(mau."lastUsedAt") AS last_used,
-                   COUNT(*) OVER (PARTITION BY ma."category") AS cat_count
-            FROM "MediaAsset" ma
-            LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
-            WHERE ma."libraryId" = ${libraryId} AND (ma."setTag" IS NOT NULL OR ma."category" IS NOT NULL)
-              AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
-                OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))
-            GROUP BY ma."setTag", ma."category"
-          ) sub
-          ORDER BY sub.last_used ASC NULLS FIRST, sub.cat_count DESC, sub."setTag" ASC NULLS LAST, sub."category" ASC NULLS FIRST`;
+            SELECT sub1."setTag", sub1."category", sub1.last_used,
+                   MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
+            FROM (
+              SELECT ma."setTag", ma."category",
+                     MAX(mau."lastUsedAt") AS last_used
+              FROM "MediaAsset" ma
+              LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
+              WHERE ma."libraryId" = ${libraryId} AND (ma."setTag" IS NOT NULL OR ma."category" IS NOT NULL)
+                AND ma."disabled" = false
+                AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
+                  OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))
+              GROUP BY ma."setTag", ma."category"
+            ) sub1
+          ) sub2
+          ORDER BY sub2.cat_last_used ASC NULLS FIRST, sub2.last_used ASC NULLS FIRST,
+                   CASE WHEN sub2."setTag" ~ '^[0-9]+$' THEN LPAD(sub2."setTag", 20, '0') ELSE sub2."setTag" END ASC NULLS LAST,
+                   sub2."category" ASC NULLS FIRST`;
 
       if (allGroups.length === 0) return; // handled by fallback below
 
@@ -442,6 +512,7 @@ export async function selectMediaAssetBySetSequence(
           SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
           LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
           WHERE ma."libraryId" = ${libraryId}
+            AND ma."disabled" = false
             ${setTagClause}
             ${categoryClause}
             ${tagFrag}
@@ -477,6 +548,7 @@ export async function selectMediaAssetBySetSequence(
       SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
       LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
       WHERE ma."libraryId" = ${libraryId}
+        AND ma."disabled" = false
         ${tagFrag}
         AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
           OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))
@@ -484,24 +556,32 @@ export async function selectMediaAssetBySetSequence(
     return fallbackRows[0] ? { ...fallbackRows[0], resolvedSetTag: null, resolvedCategory: null } : null;
   }
 
-  // No accountId (admin preview): no lock, no cursor writes, global pool only
+  // No accountId (admin preview): no lock, no cursor writes, global pool only.
+  // Same two-level sort as the accountId path: category-level staleness first, set-level second.
   const allGroups: GroupRow[] = await prisma.$queryRaw`
-      SELECT sub."setTag", sub."category"
+      SELECT sub2."setTag", sub2."category"
       FROM (
-        SELECT "setTag", "category",
-               MAX("lastUsedAt") AS last_used,
-               COUNT(*) OVER (PARTITION BY "category") AS cat_count
-        FROM "MediaAsset"
-        WHERE "libraryId" = ${libraryId} AND ("setTag" IS NOT NULL OR "category" IS NOT NULL)
-          AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = id)
-        GROUP BY "setTag", "category"
-      ) sub
-      ORDER BY sub.last_used ASC NULLS FIRST, sub.cat_count DESC, sub."setTag" ASC NULLS LAST, sub."category" ASC NULLS FIRST`;
+        SELECT sub1."setTag", sub1."category", sub1.last_used,
+               MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
+        FROM (
+          SELECT "setTag", "category",
+                 MAX("lastUsedAt") AS last_used
+          FROM "MediaAsset"
+          WHERE "libraryId" = ${libraryId} AND ("setTag" IS NOT NULL OR "category" IS NOT NULL)
+            AND "disabled" = false
+            AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = id)
+          GROUP BY "setTag", "category"
+        ) sub1
+      ) sub2
+      ORDER BY sub2.cat_last_used ASC NULLS FIRST, sub2.last_used ASC NULLS FIRST,
+               CASE WHEN sub2."setTag" ~ '^[0-9]+$' THEN LPAD(sub2."setTag", 20, '0') ELSE sub2."setTag" END ASC NULLS LAST,
+               sub2."category" ASC NULLS FIRST`;
 
   if (allGroups.length === 0) {
     const rows = await prisma.$queryRaw<AssetRow[]>(Prisma.sql`
       SELECT ma.id, ma.url, ma.filename FROM "MediaAsset" ma
       WHERE ma."libraryId" = ${libraryId}
+        AND ma."disabled" = false
         ${tagFrag}
         AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
       ORDER BY ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
@@ -673,19 +753,6 @@ export async function resolveLibraryPrefill(
     );
   }
 
-  // --- Music blocks (first with a libraryId) ---
-  const musicBlock = template.blocks.find(
-    (b): b is MusicBlock => b.type === "music" && !!b.libraryId,
-  );
-  if (musicBlock?.libraryId) {
-    result.audioSuggestion = await selectMediaAsset(
-      musicBlock.libraryId,
-      musicBlock.audioSelectionRule,
-      formData,
-      effectiveAccountId(musicBlock.libraryId),
-    );
-  }
-
   // --- VideoSequence slots: regular strategies ---
   if (regularSeqSlots.length > 0) {
     const regularSlotsByLibrary = new Map<string, typeof regularSeqSlots>();
@@ -761,6 +828,36 @@ export async function resolveLibraryPrefill(
           }
         }
       }),
+    );
+  }
+
+  // --- Music blocks (first with a libraryId) ---
+  // Resolved after all video slots so we can estimate total video duration and skip
+  // tracks that are too short.
+  const musicBlock = template.blocks.find(
+    (b): b is MusicBlock => b.type === "music" && !!b.libraryId,
+  );
+  if (musicBlock?.libraryId) {
+    // Estimate total video duration from all picked video assets (library-sourced only).
+    // Assets with no stored duration are treated as 0 for the estimate — safe to be
+    // conservative. If all durations are unknown the filter is skipped (minDuration = 0).
+    let estimatedVideoDuration = 0;
+    const pickedVideoIds = Object.values(result.videoSuggestions).map((s) => s.id);
+    if (pickedVideoIds.length > 0) {
+      const durations = await prisma.mediaAsset.findMany({
+        where: { id: { in: pickedVideoIds } },
+        select: { duration: true },
+      });
+      estimatedVideoDuration = durations.reduce((sum, a) => sum + (a.duration ?? 0), 0);
+    }
+
+    result.audioSuggestion = await selectMediaAsset(
+      musicBlock.libraryId,
+      musicBlock.audioSelectionRule,
+      formData,
+      effectiveAccountId(musicBlock.libraryId),
+      undefined,
+      estimatedVideoDuration > 0 ? estimatedVideoDuration : undefined,
     );
   }
 
@@ -864,6 +961,9 @@ async function selectDataEntry(
     where: { id: campaignId },
     select: { usagePolicy: true },
   });
+  if (!campaign) {
+    console.warn(`[contentLibraryResolver] DataCampaign ${campaignId} introuvable — fallback usagePolicy="cycle"`);
+  }
   const usagePolicy = (campaign?.usagePolicy ?? "cycle") as
     | "cycle"
     | "cycle_per_account"

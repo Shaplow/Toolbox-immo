@@ -16,7 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { deleteFromR2, r2Configured } from "@/lib/r2";
-import { resolveRunpodJobPhase } from "@/lib/runpod";
+import { resolveRunpodJobPhase, isPodJobId } from "@/lib/runpod";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -148,6 +148,11 @@ export async function GET(
     if (resolved.phase === "unreachable") {
       return NextResponse.json({ ...formatJob(job), runpodUnreachable: true });
     }
+    return NextResponse.json({
+      ...formatJob(job),
+      runpodQueueStatus: resolved.runpodStatus ?? null,
+      isOnPod: isPodJobId(job.runpodJobId),
+    });
     // in_progress — fall through
   }
 

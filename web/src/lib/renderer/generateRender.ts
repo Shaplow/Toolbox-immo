@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { buildHTML } from "./buildHTML";
 import { renderPNG } from "./renderPNG";
 import { validateConformite } from "@/lib/validation/conformite";
-import type { TemplateJSON, ImageBlock, VideoBlock, MusicBlock, AnyBlock, VideoSequenceSlot } from "@/types/template";
+import type { TemplateJSON, ImageBlock, VideoBlock, MusicBlock, AnyBlock, VideoSequenceSlot, TextBlock, SchemaField } from "@/types/template";
 import type { ListingData } from "@/types/listing";
 import { writeFile, mkdir, stat, readFile } from "fs/promises";
 import path from "path";
@@ -15,7 +15,7 @@ import { isBlockVisibleForListing, resolveBlockForListing } from "@/lib/template
 import { getVisibleFieldKeys } from "@/lib/formSections";
 import { RENDER_PIPELINE, RENDER_STAGE } from "./renderWorkflow";
 import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsage";
-import { selectMediaAsset, selectMediaAssetBySetSequence, normalizeRule } from "@/lib/contentLibraryResolver";
+import { selectMediaAsset, selectMediaAssetBySetSequence, selectMediaAssetByMetadataValue, normalizeRule } from "@/lib/contentLibraryResolver";
 
 const OUTPUT_DIR = path.join(process.cwd(), "public", "renders");
 const LOCAL_VIDEO_RENDER_TIMEOUT_MS = 10 * 60 * 1000;
@@ -276,7 +276,9 @@ export async function generateRender(renderId: string): Promise<void> {
   });
 
   // Enregistrer l'usage des assets de bibliothèque (best-effort)
-  void recordLibraryUsage(renderId);
+  recordLibraryUsage(renderId).catch((err) =>
+    console.error("[generateRender] recordLibraryUsage failed:", err)
+  );
 }
 
 // ─── Pipeline vidéo (RunPod ou local) ────────────────────────────────────────
@@ -463,6 +465,72 @@ async function mergeAudioAssetId(renderId: string, assetId: string): Promise<voi
 }
 
 /**
+ * Enriches listingData with values from asset metadata, for each SchemaField
+ * that declares a `metadataSource` (libraryId + metadataKey).
+ * Returns a shallow copy of listingData; original is not mutated.
+ * Allows {{key}} variables in text blocks to resolve from asset metadata,
+ * with full support for formatThousands / decimalSeparator via resolveTextTemplate.
+ */
+function enrichListingWithAssetMetadata(
+  listingData: ListingData,
+  schema: SchemaField[],
+  assetMetadataByLibrary: Map<string, Record<string, string | number | null>>,
+): ListingData {
+  if (assetMetadataByLibrary.size === 0) return listingData;
+  const fieldsWithSource = schema.filter((f) => f.metadataSource);
+  if (fieldsWithSource.length === 0) return listingData;
+
+  const patch: Record<string, unknown> = {};
+  for (const field of fieldsWithSource) {
+    const { libraryId, metadataKey } = field.metadataSource!;
+    const meta = assetMetadataByLibrary.get(libraryId);
+    if (!meta) continue;
+    const value = meta[metadataKey];
+    if (value === null || value === undefined) continue;
+    // Only inject when the listingData doesn't already carry a value for this key
+    // (form-supplied values take precedence over auto-resolved metadata).
+    const existing = (listingData as Record<string, unknown>)[field.key];
+    if (existing !== undefined && existing !== null && existing !== "") continue;
+    patch[field.key] = value;
+  }
+  if (Object.keys(patch).length === 0) return listingData;
+  return { ...listingData, ...patch } as ListingData;
+}
+
+/**
+ * Patches TextBlocks that have `libraryMetadataRef` set, replacing their content with
+ * the resolved metadata value from the asset library used in this render.
+ * Returns a shallow-patched TemplateJSON; original is not mutated.
+ * @deprecated Prefer metadataSource on SchemaField + enrichListingWithAssetMetadata.
+ *             Kept for backward compat with templates created before this feature.
+ */
+function applyAssetMetadata(
+  templateJson: TemplateJSON,
+  assetMetadataByLibrary: Map<string, Record<string, string | number | null>>,
+): TemplateJSON {
+  if (assetMetadataByLibrary.size === 0) return templateJson;
+  const hasRef = templateJson.blocks.some(
+    (b) => b.type === "text" && !!(b as TextBlock).libraryMetadataRef,
+  );
+  if (!hasRef) return templateJson;
+  return {
+    ...templateJson,
+    blocks: templateJson.blocks.map((block) => {
+      if (block.type !== "text") return block;
+      const tb = block as TextBlock;
+      if (!tb.libraryMetadataRef) return block;
+      const { libraryId, key } = tb.libraryMetadataRef;
+      const meta = assetMetadataByLibrary.get(libraryId);
+      if (!meta) return block;
+      const value = meta[key];
+      if (value === null || value === undefined) return block;
+      const strValue = String(value);
+      return { ...tb, content: strValue, contentSegments: [{ type: "text" as const, value: strValue }] };
+    }),
+  };
+}
+
+/**
  * Best-effort: add a video assetId to the render's usedAssets videoAssets map.
  * Called when a single VideoBlock.libraryId was used instead of a form binding.
  */
@@ -481,6 +549,44 @@ async function mergeVideoAsset(renderId: string, blockId: string, assetId: strin
   } catch (err) {
     console.warn(`[mergeVideoAsset] failed for render ${renderId}:`, err);
   }
+}
+
+/**
+ * Resolve a VideoBlock's asset, preferring metadata-driven selection when a SchemaField
+ * of type "select" with optionsSource.type === "metadata-values-from-library" targets this block.
+ *
+ * Falls back to the standard selectMediaAsset rotation if no metadata-select is configured
+ * or if the selected value is empty.
+ */
+async function resolveVideoBlockAsset(
+  videoBlock: VideoBlock,
+  schema: SchemaField[],
+  listingData: ListingData,
+  accountId: string | null,
+): Promise<{ id: string; url: string; filename: string; metadata: Record<string, string | number | null> } | null> {
+  // Check for a metadata-driven select field targeting this block
+  const metaSelectField = schema.find(
+    (f) =>
+      f.type === "select" &&
+      f.optionsSource?.type === "metadata-values-from-library" &&
+      f.optionsSource.blockId === videoBlock.id &&
+      f.optionsSource.libraryId &&
+      f.optionsSource.metadataKey,
+  );
+
+  if (metaSelectField?.optionsSource?.type === "metadata-values-from-library") {
+    const { libraryId, metadataKey } = metaSelectField.optionsSource;
+    const selectedValue = (listingData as Record<string, unknown>)[metaSelectField.key];
+    if (selectedValue && typeof selectedValue === "string" && selectedValue.trim() !== "" && libraryId && metadataKey) {
+      const asset = await selectMediaAssetByMetadataValue(libraryId, metadataKey, selectedValue, accountId ?? undefined);
+      if (asset) return asset;
+      console.warn(`[resolveVideoBlockAsset] No asset found in library "${libraryId}" where ${metadataKey} = "${selectedValue}" — falling back to rotation`);
+    }
+  }
+
+  // Standard rotation fallback
+  if (!videoBlock.libraryId) return null;
+  return selectMediaAsset(videoBlock.libraryId, videoBlock.selectionRule, undefined, accountId ?? undefined);
 }
 
 async function generateVideoRender(
@@ -517,6 +623,38 @@ async function generateVideoRender(
   try {
     const { width, height } = templateJson.canvas;
 
+    // 0. Résoudre l'URL vidéo en premier — nécessaire pour injecter les métadonnées dans l'overlay
+    const videoBlock = videoBlocks[0];
+    let videoUrl: string | undefined = videoBlock.binding
+      ? (listingData as Record<string, unknown>)[videoBlock.binding] as string | undefined
+      : undefined;
+    let singleVideoAssetId: string | null = null;
+    let singleVideoMetadata: Record<string, string | number | null> = {};
+
+    if (!videoUrl) {
+      const asset = await resolveVideoBlockAsset(videoBlock, templateJson.schema ?? [], listingData, accountId);
+      if (asset) {
+        videoUrl = asset.url;
+        singleVideoAssetId = asset.id;
+        singleVideoMetadata = asset.metadata;
+      }
+    }
+
+    if (!videoUrl) {
+      throw new Error(
+        `Bloc vidéo sans URL : renseigne la variable "${videoBlock.binding ?? "(pas de binding)"}" dans le formulaire, ou configure une bibliothèque dans l'onglet Vidéo & Musique`
+      );
+    }
+
+    // Build patched template (backward compat: libraryMetadataRef on TextBlocks)
+    // and enrich listingData with asset metadata values for {{variable}} substitution.
+    const assetMetadataByLibrary = new Map<string, Record<string, string | number | null>>();
+    if (videoBlock.libraryId && Object.keys(singleVideoMetadata).length > 0) {
+      assetMetadataByLibrary.set(videoBlock.libraryId, singleVideoMetadata);
+    }
+    const patchedTemplate = applyAssetMetadata(templateJson, assetMetadataByLibrary);
+    const enrichedListingData = enrichListingWithAssetMetadata(listingData, templateJson.schema, assetMetadataByLibrary);
+
     // 1. Rendre les overlay PNG(s)
     await updateRenderTracking(renderId, {
       pipeline: RENDER_PIPELINE.VIDEO_RUNPOD,
@@ -525,16 +663,16 @@ async function generateVideoRender(
       progress: 0.12,
     });
 
-    const overlayPlan = computeOverlayPlan(templateJson.blocks);
+    const overlayPlan = computeOverlayPlan(patchedTemplate.blocks);
 
     let overlayBuffers: Buffer[];
     if (overlayPlan === null) {
-      const html = await buildHTML(templateJson, listingData, { overlayMode: true });
+      const html = await buildHTML(patchedTemplate, enrichedListingData, { overlayMode: true });
       overlayBuffers = [await renderPNG(html, width, height, 1, true)];
     } else {
       overlayBuffers = await Promise.all(
         overlayPlan.states.map(async (state) => {
-          const html = await buildHTML(templateJson, listingData, {
+          const html = await buildHTML(patchedTemplate, enrichedListingData, {
             overlayMode: true,
             hiddenBlockIds: state.hiddenBlockIds,
           });
@@ -558,38 +696,13 @@ async function generateVideoRender(
       )
     );
 
-    // 3. Récupérer l'URL vidéo depuis le listing (premier bloc vidéo avec binding)
+    // 3. Récupérer les paramètres complémentaires de la vidéo source
     await updateRenderTracking(renderId, {
       pipeline: RENDER_PIPELINE.VIDEO_RUNPOD,
       stage: RENDER_STAGE.VIDEO_RESOLVE_SOURCE,
       statusDetail: "Préparation de la vidéo source",
       progress: 0.38,
     });
-    const videoBlock = videoBlocks[0];
-    let videoUrl: string | undefined = videoBlock.binding
-      ? (listingData as Record<string, unknown>)[videoBlock.binding] as string | undefined
-      : undefined;
-    let singleVideoAssetId: string | null = null;
-
-    // Fallback: library resolution when the form provided no URL
-    if (!videoUrl && videoBlock.libraryId) {
-      const asset = await selectMediaAsset(
-        videoBlock.libraryId,
-        videoBlock.selectionRule,
-        undefined,
-        accountId ?? undefined,
-      );
-      if (asset) {
-        videoUrl = asset.url;
-        singleVideoAssetId = asset.id;
-      }
-    }
-
-    if (!videoUrl) {
-      throw new Error(
-        `Bloc vidéo sans URL : renseigne la variable "${videoBlock.binding ?? "(pas de binding)"}" dans le formulaire, ou configure une bibliothèque dans l'onglet Vidéo & Musique`
-      );
-    }
 
     // Cadrage personnalisé (focal point défini par l'user dans le formulaire)
     const focalPoint = videoBlock.binding
@@ -694,8 +807,44 @@ async function generateVideoRenderLocal(
 ): Promise<void> {
   try {
     const { width, height } = templateJson.canvas;
-    const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
+    const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? (() => {
+      console.warn("[generateRender] CAPTIONS_API_URL non configuré — fallback localhost:8000 (ne pas utiliser en production)");
+      return "http://localhost:8000";
+    })();
     console.log(`[videoLocal] ${renderId} — START canvas=${width}x${height} CAPTIONS_API=${CAPTIONS_API}`);
+
+    // 0. Résoudre l'URL vidéo en premier — nécessaire pour injecter les métadonnées dans l'overlay
+    const videoBlock = videoBlocks[0];
+    let rawVideoUrl: string | undefined = videoBlock.binding
+      ? (listingData as Record<string, unknown>)[videoBlock.binding] as string | undefined
+      : undefined;
+    let singleVideoAssetId: string | null = null;
+    let singleVideoMetadata: Record<string, string | number | null> = {};
+
+    if (!rawVideoUrl) {
+      const asset = await resolveVideoBlockAsset(videoBlock, templateJson.schema ?? [], listingData, accountId);
+      if (asset) {
+        rawVideoUrl = asset.url;
+        singleVideoAssetId = asset.id;
+        singleVideoMetadata = asset.metadata;
+      }
+    }
+
+    if (!rawVideoUrl) {
+      throw new Error(
+        `Bloc vidéo sans URL : renseigne la variable "${videoBlock.binding ?? "(pas de binding)"}" dans le formulaire, ou configure une bibliothèque dans l'onglet Vidéo & Musique`
+      );
+    }
+    console.log(`[generateRender] rawVideoUrl = "${rawVideoUrl}"`);
+
+    // Build patched template (backward compat: libraryMetadataRef on TextBlocks)
+    // and enrich listingData with asset metadata values for {{variable}} substitution.
+    const assetMetadataByLibrary = new Map<string, Record<string, string | number | null>>();
+    if (videoBlock.libraryId && Object.keys(singleVideoMetadata).length > 0) {
+      assetMetadataByLibrary.set(videoBlock.libraryId, singleVideoMetadata);
+    }
+    const patchedTemplate = applyAssetMetadata(templateJson, assetMetadataByLibrary);
+    const enrichedListingData = enrichListingWithAssetMetadata(listingData, templateJson.schema, assetMetadataByLibrary);
 
     // 1. Overlay PNG(s) transparent(s) — single ou multi selon les timings des blocs
     await updateRenderTracking(renderId, {
@@ -706,12 +855,12 @@ async function generateVideoRenderLocal(
     });
     console.log(`[videoLocal] ${renderId} — step 1: buildHTML overlayMode`);
 
-    const overlayPlan = computeOverlayPlan(templateJson.blocks);
+    const overlayPlan = computeOverlayPlan(patchedTemplate.blocks);
 
     let overlayBuffers: Buffer[];
     if (overlayPlan === null) {
       // Fast path: single overlay (all blocks visible, identical to pre-timing behaviour)
-      const html = await buildHTML(templateJson, listingData, { overlayMode: true });
+      const html = await buildHTML(patchedTemplate, enrichedListingData, { overlayMode: true });
       overlayBuffers = [await renderPNG(html, width, height, 1, true)];
       console.log(`[videoLocal] ${renderId} — single overlay PNG ready: ${overlayBuffers[0].length} bytes`);
     } else {
@@ -719,7 +868,7 @@ async function generateVideoRenderLocal(
       console.log(`[videoLocal] ${renderId} — timed overlay plan: ${overlayPlan.states.length} states, ${overlayPlan.segments.length} segments`);
       overlayBuffers = await Promise.all(
         overlayPlan.states.map(async (state, i) => {
-          const html = await buildHTML(templateJson, listingData, {
+          const html = await buildHTML(patchedTemplate, enrichedListingData, {
             overlayMode: true,
             hiddenBlockIds: state.hiddenBlockIds,
           });
@@ -730,39 +879,13 @@ async function generateVideoRenderLocal(
       );
     }
 
-    // 2. Résoudre l'URL de la vidéo source
+    // 2. Paramètres de cadrage
     await updateRenderTracking(renderId, {
       pipeline: RENDER_PIPELINE.VIDEO_LOCAL,
       stage: RENDER_STAGE.VIDEO_RESOLVE_SOURCE,
       statusDetail: "Préparation de la vidéo source",
       progress: 0.28,
     });
-    const videoBlock = videoBlocks[0];
-    let rawVideoUrl: string | undefined = videoBlock.binding
-      ? (listingData as Record<string, unknown>)[videoBlock.binding] as string | undefined
-      : undefined;
-    let singleVideoAssetId: string | null = null;
-
-    // Fallback: library resolution when the form provided no URL
-    if (!rawVideoUrl && videoBlock.libraryId) {
-      const asset = await selectMediaAsset(
-        videoBlock.libraryId,
-        videoBlock.selectionRule,
-        undefined,
-        accountId ?? undefined,
-      );
-      if (asset) {
-        rawVideoUrl = asset.url;
-        singleVideoAssetId = asset.id;
-      }
-    }
-
-    if (!rawVideoUrl) {
-      throw new Error(
-        `Bloc vidéo sans URL : renseigne la variable "${videoBlock.binding ?? "(pas de binding)"}" dans le formulaire, ou configure une bibliothèque dans l'onglet Vidéo & Musique`
-      );
-    }
-    console.log(`[generateRender] rawVideoUrl = "${rawVideoUrl}"`);
 
     // Cadrage personnalisé (focal point défini par l'user dans le formulaire)
     const focalPoint = videoBlock.binding
@@ -887,7 +1010,9 @@ async function generateVideoRenderLocal(
     });
 
     // Enregistrer l'usage des assets de bibliothèque (best-effort)
-    void recordLibraryUsage(renderId);
+    recordLibraryUsage(renderId).catch((err) =>
+      console.error("[generateRender] recordLibraryUsage failed:", err)
+    );
   } catch (err) {
     console.error(`[videoLocal] ${renderId} — ERROR:`, err);
     await failRender(
@@ -902,22 +1027,64 @@ async function generateVideoRenderLocal(
 
 /**
  * Résout l'URL vidéo pour un slot de séquence.
- * Priorité : listingData[binding] → résolution serveur via library → erreur.
+ * Priorité :
+ *  1. listingData[binding] — override manuel dans le formulaire
+ *  2. Sélection metadata-driven via slot.videoBlockId + optionsSource select field
+ *  3. Résolution standard depuis la bibliothèque (theme_sequence ou rotation)
+ *
+ * pinnedSetTag / pinnedCategory : si plusieurs slots partagent la même bibliothèque
+ * en mode theme_sequence, le 2ème slot (et suivants) reçoit le setTag/category déjà
+ * sélectionné par le 1er slot afin de rester dans le même groupe (intro/outro).
  */
 async function resolveSlotVideoUrl(
   slot: VideoSequenceSlot,
   listingData: ListingData,
   accountId: string | null,
-): Promise<{ url: string; assetId: string | null; resolvedSetTag: string | null; resolvedCategory: string | null }> {
+  schema: SchemaField[],
+  pinnedSetTag?: string,
+  pinnedCategory?: string,
+): Promise<{ url: string; assetId: string | null; resolvedSetTag: string | null; resolvedCategory: string | null; metadata: Record<string, string | number | null> }> {
   // 1. Binding explicite dans les données du formulaire
   if (slot.binding) {
     const raw = (listingData as Record<string, unknown>)[slot.binding] as string | undefined;
     if (raw && (raw.startsWith("http") || raw.startsWith("/"))) {
-      return { url: raw, assetId: null, resolvedSetTag: null, resolvedCategory: null };
+      return { url: raw, assetId: null, resolvedSetTag: null, resolvedCategory: null, metadata: {} };
     }
   }
 
-  // 2. Résolution serveur depuis la bibliothèque
+  // 2. Sélection metadata-driven : slot.videoBlockId lié à un select field optionsSource
+  if (slot.videoBlockId && slot.libraryId) {
+    const metaSelectField = schema.find(
+      (f) =>
+        f.type === "select" &&
+        f.optionsSource?.type === "metadata-values-from-library" &&
+        f.optionsSource.blockId === slot.videoBlockId &&
+        f.optionsSource.libraryId &&
+        f.optionsSource.metadataKey,
+    );
+    if (metaSelectField?.optionsSource?.type === "metadata-values-from-library") {
+      const { libraryId: metaLibId, metadataKey } = metaSelectField.optionsSource;
+      const selectedValue = (listingData as Record<string, unknown>)[metaSelectField.key];
+      if (selectedValue && typeof selectedValue === "string" && selectedValue.trim()) {
+        const asset = await selectMediaAssetByMetadataValue(metaLibId!, metadataKey!, selectedValue.trim(), accountId ?? undefined);
+        if (asset) {
+          return {
+            url: asset.url,
+            assetId: asset.id,
+            resolvedSetTag: asset.setTag ?? null,
+            resolvedCategory: asset.category ?? null,
+            metadata: asset.metadata as Record<string, string | number | null>,
+          };
+        }
+        console.warn(
+          `[resolveSlotVideoUrl] slot="${slot.id}" metadata lookup found no match ` +
+          `(field="${metaSelectField.key}", value="${selectedValue}") — falling back to library selection`,
+        );
+      }
+    }
+  }
+
+  // 3. Résolution serveur depuis la bibliothèque
   if (slot.libraryId) {
     const rule = slot.selectionRule;
     const ruleConfig = normalizeRule(rule);
@@ -928,22 +1095,29 @@ async function resolveSlotVideoUrl(
         slot.libraryId,
         accountId ?? undefined,
         undefined,
-        undefined,
-        undefined,
+        pinnedSetTag,
+        pinnedCategory,
         ruleConfig,
       );
       if (asset) {
+        // selectMediaAssetBySetSequence doesn't yet return metadata — fetch it separately
+        let metadata: Record<string, string | number | null> = {};
+        try {
+          const assetRow = await prisma.mediaAsset.findUnique({ where: { id: asset.id }, select: { metadata: true } });
+          if (assetRow?.metadata) metadata = JSON.parse(assetRow.metadata) as Record<string, string | number | null>;
+        } catch { /* non-critical */ }
         return {
           url: asset.url,
           assetId: asset.id,
           resolvedSetTag: asset.resolvedSetTag,
           resolvedCategory: asset.resolvedCategory,
+          metadata,
         };
       }
     } else {
       const asset = await selectMediaAsset(slot.libraryId, rule, undefined, accountId ?? undefined);
       if (asset) {
-        return { url: asset.url, assetId: asset.id, resolvedSetTag: null, resolvedCategory: null };
+        return { url: asset.url, assetId: asset.id, resolvedSetTag: null, resolvedCategory: null, metadata: asset.metadata };
       }
     }
   }
@@ -1123,13 +1297,37 @@ async function generateSequenceRender(
       progress: 0.08,
     });
 
-    const resolvedSlots = await Promise.all(
-      slots.map(async (slot) => {
-        const resolved = await resolveSlotVideoUrl(slot, listingData, accountId);
-        accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, usedCategoryByLibrary, sequenceSlotAssets);
-        return { slot, videoUrl: resolved.url };
-      })
-    );
+    // Résolution séquentielle pour propager le pinnedSetTag entre slots d'une même bibliothèque
+    // (ex : intro → outro dans la même prise doivent rester dans le même set).
+    const localPinnedSetTagByLibrary: Record<string, string> = {};
+    const localPinnedCategoryByLibrary: Record<string, string> = {};
+    const resolvedSlots: { slot: VideoSequenceSlot; videoUrl: string; metadata: Record<string, string | number | null> }[] = [];
+    for (const slot of slots) {
+      const pinnedSetTag = slot.libraryId ? localPinnedSetTagByLibrary[slot.libraryId] : undefined;
+      const pinnedCategory = slot.libraryId ? localPinnedCategoryByLibrary[slot.libraryId] : undefined;
+      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, pinnedCategory);
+      accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, usedCategoryByLibrary, sequenceSlotAssets);
+      // Track pinned set for subsequent slots sharing the same library
+      if (slot.libraryId && normalizeRule(slot.selectionRule).strategy === "theme_sequence") {
+        if (resolved.resolvedSetTag && !localPinnedSetTagByLibrary[slot.libraryId]) {
+          localPinnedSetTagByLibrary[slot.libraryId] = resolved.resolvedSetTag;
+        }
+        if (resolved.resolvedCategory && !localPinnedCategoryByLibrary[slot.libraryId]) {
+          localPinnedCategoryByLibrary[slot.libraryId] = resolved.resolvedCategory;
+        }
+      }
+      resolvedSlots.push({ slot, videoUrl: resolved.url, metadata: resolved.metadata });
+    }
+
+    // Collect metadata by library for libraryMetadataRef substitution + variable injection
+    const seqMetadataByLibrary = new Map<string, Record<string, string | number | null>>();
+    for (const { slot, metadata } of resolvedSlots) {
+      if (slot.libraryId && Object.keys(metadata).length > 0) {
+        seqMetadataByLibrary.set(slot.libraryId, metadata);
+      }
+    }
+    const patchedTemplateForSeq = applyAssetMetadata(templateJson, seqMetadataByLibrary);
+    const enrichedListingData = enrichListingWithAssetMetadata(listingData, templateJson.schema, seqMetadataByLibrary);
 
     // 2. Rendre les overlays PNG par slot (avec support timed overlays)
     await updateRenderTracking(renderId, {
@@ -1140,7 +1338,7 @@ async function generateSequenceRender(
     });
 
     const slotOverlays = await Promise.all(
-      resolvedSlots.map(({ slot }) => renderSlotOverlay(templateJson, listingData, slot, width, height))
+      resolvedSlots.map(({ slot }) => renderSlotOverlay(patchedTemplateForSeq, enrichedListingData, slot, width, height))
     );
 
     // 3. Uploader les overlays vers R2
@@ -1192,6 +1390,9 @@ async function generateSequenceRender(
         music_mute_source: slotAudioOverride?.mute !== undefined ? slotAudioOverride.mute : audioParams.music_mute_source,
         ...(slotAudioOverride?.startAt !== undefined ? { music_start_at: slotAudioOverride.startAt } : {}),
         ...(slotAudioOverride?.stopAt !== undefined ? { music_stop_at: slotAudioOverride.stopAt } : {}),
+        ...(slotAudioOverride?.musicTrackVolumeDb !== undefined ? { music_track_volume_db: slotAudioOverride.musicTrackVolumeDb } : {}),
+        ...(slotAudioOverride?.musicTrackFadeIn !== undefined ? { music_track_fade_in: slotAudioOverride.musicTrackFadeIn } : {}),
+        ...(slotAudioOverride?.musicTrackFadeOut !== undefined ? { music_track_fade_out: slotAudioOverride.musicTrackFadeOut } : {}),
       };
     });
 
@@ -1287,7 +1488,10 @@ async function generateSequenceRenderLocal(
   listingData: ListingData,
   accountId: string | null,
 ): Promise<void> {
-  const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
+  const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? (() => {
+    console.warn("[generateRender] CAPTIONS_API_URL non configuré — fallback localhost:8000 (ne pas utiliser en production)");
+    return "http://localhost:8000";
+  })();
   const slots = templateJson.videoSequence!;
   const { width, height } = templateJson.canvas;
 
@@ -1306,17 +1510,39 @@ async function generateSequenceRenderLocal(
       progress: 0.08,
     });
 
-    const resolvedSlots = await Promise.all(
-      slots.map(async (slot) => {
-        const resolved = await resolveSlotVideoUrl(slot, listingData, accountId);
-        accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, usedCategoryByLibrary, sequenceSlotAssets);
-        return { slot, videoUrl: resolved.url };
-      })
-    );
+    // Résolution séquentielle pour propager le pinnedSetTag entre slots d'une même bibliothèque
+    const localPinnedSetTagByLibrary: Record<string, string> = {};
+    const localPinnedCategoryByLibrary: Record<string, string> = {};
+    const resolvedSlots: { slot: VideoSequenceSlot; videoUrl: string; metadata: Record<string, string | number | null> }[] = [];
+    for (const slot of slots) {
+      const pinnedSetTag = slot.libraryId ? localPinnedSetTagByLibrary[slot.libraryId] : undefined;
+      const pinnedCategory = slot.libraryId ? localPinnedCategoryByLibrary[slot.libraryId] : undefined;
+      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, pinnedCategory);
+      accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, usedCategoryByLibrary, sequenceSlotAssets);
+      if (slot.libraryId && normalizeRule(slot.selectionRule).strategy === "theme_sequence") {
+        if (resolved.resolvedSetTag && !localPinnedSetTagByLibrary[slot.libraryId]) {
+          localPinnedSetTagByLibrary[slot.libraryId] = resolved.resolvedSetTag;
+        }
+        if (resolved.resolvedCategory && !localPinnedCategoryByLibrary[slot.libraryId]) {
+          localPinnedCategoryByLibrary[slot.libraryId] = resolved.resolvedCategory;
+        }
+      }
+      resolvedSlots.push({ slot, videoUrl: resolved.url, metadata: resolved.metadata });
+    }
+
+    // Collect metadata by library for libraryMetadataRef substitution + variable injection
+    const seqMetadataByLibrary = new Map<string, Record<string, string | number | null>>();
+    for (const { slot, metadata } of resolvedSlots) {
+      if (slot.libraryId && Object.keys(metadata).length > 0) {
+        seqMetadataByLibrary.set(slot.libraryId, metadata);
+      }
+    }
+    const patchedTemplateForSeq = applyAssetMetadata(templateJson, seqMetadataByLibrary);
+    const enrichedListingData = enrichListingWithAssetMetadata(listingData, templateJson.schema, seqMetadataByLibrary);
 
     // Render overlays (with timed overlay support)
     const slotOverlays = await Promise.all(
-      resolvedSlots.map(({ slot }) => renderSlotOverlay(templateJson, listingData, slot, width, height))
+      resolvedSlots.map(({ slot }) => renderSlotOverlay(patchedTemplateForSeq, enrichedListingData, slot, width, height))
     );
 
     // Resolve music
@@ -1353,6 +1579,9 @@ async function generateSequenceRenderLocal(
         music_mute_source: slotAudioOverride?.mute !== undefined ? slotAudioOverride.mute : audioParams.music_mute_source,
         ...(slotAudioOverride?.startAt !== undefined ? { music_start_at: slotAudioOverride.startAt } : {}),
         ...(slotAudioOverride?.stopAt !== undefined ? { music_stop_at: slotAudioOverride.stopAt } : {}),
+        ...(slotAudioOverride?.musicTrackVolumeDb !== undefined ? { music_track_volume_db: slotAudioOverride.musicTrackVolumeDb } : {}),
+        ...(slotAudioOverride?.musicTrackFadeIn !== undefined ? { music_track_fade_in: slotAudioOverride.musicTrackFadeIn } : {}),
+        ...(slotAudioOverride?.musicTrackFadeOut !== undefined ? { music_track_fade_out: slotAudioOverride.musicTrackFadeOut } : {}),
       };
     });
 
@@ -1428,7 +1657,9 @@ async function generateSequenceRenderLocal(
       finishedAt: new Date(),
     });
 
-    void recordLibraryUsage(renderId);
+    recordLibraryUsage(renderId).catch((err) =>
+      console.error("[generateRender] recordLibraryUsage failed:", err)
+    );
   } catch (err) {
     console.error(`[sequenceLocal] ${renderId} — ERROR:`, err);
     await failRender(

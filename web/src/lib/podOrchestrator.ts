@@ -67,6 +67,10 @@ const STALE_JOB_HOURS = 4;
 // Works within a single Node.js process (PM2 single instance).
 let _ensurePodReadyInFlight: Promise<string> | null = null;
 
+// Single pending idle-stop timer. Only one at a time — replaced on each job
+// completion, cancelled when a new job starts.
+let _idleStopTimer: ReturnType<typeof setTimeout> | null = null;
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -109,6 +113,23 @@ async function _ensurePodReadyImpl(): Promise<string> {
 
   const state = await getPodState();
   const currentPodId = state?.podId ?? null;
+
+  // ── Handle "stopping" transitional state ────────────────────────────────────
+  // "stopping" is set by maybeStopIdlePod CAS before calling RunPod stop API.
+  // - If recently set (< 2min): the stop is in progress — dispatching to this
+  //   pod would race the stop and lose the job. Throw so the caller falls back
+  //   to Serverless instead.
+  // - If stuck > 2min: the process crashed between CAS and setPodState("stopped").
+  //   Recover by resetting to "stopped" and falling through to the restart path.
+  if (state?.status === "stopping") {
+    const stuckMs = Date.now() - state.updatedAt.getTime();
+    if (stuckMs < 2 * 60_000) {
+      throw new PodUnavailableError("Pod en cours d'arrêt — fallback Serverless");
+    }
+    console.warn(`[pod] Status "stopping" bloqué depuis ${Math.round(stuckMs / 60_000)}min — recovery`);
+    await setPodState("stopped", null, currentPodId);
+    // Fall through — currentPodId is still valid, the EXITED/create paths handle restart
+  }
 
   // ── Fast path: DB says running and health check OK ──────────────────────────
   if (state?.status === "running" && state.podUrl && currentPodId) {
@@ -222,6 +243,12 @@ async function _ensurePodReadyImpl(): Promise<string> {
  * Increments activeJobCount and resets the idle timer.
  */
 export async function recordPodActivity(): Promise<void> {
+  // A new job is starting — cancel any pending idle-stop timer so the pod
+  // isn't stopped while a job is about to be dispatched.
+  if (_idleStopTimer !== null) {
+    clearTimeout(_idleStopTimer);
+    _idleStopTimer = null;
+  }
   try {
     await prisma.podState.upsert({
       where: { id: "singleton" },
@@ -263,11 +290,14 @@ export async function onPodJobComplete(): Promise<void> {
   // threshold (e.g. a very long-running job, or stale counter recovery).
   await maybeStopIdlePod();
 
-  // Deferred check: fires after IDLE_MINUTES so the pod actually stops when
-  // no new jobs arrive. Without this, the only other trigger is the cron endpoint,
-  // which requires CRON_SECRET to be configured.
+  // Single deferred timer — replaces any previous pending check so only one
+  // timer is ever active at a time (avoids N timers accumulating over the day).
+  if (_idleStopTimer !== null) clearTimeout(_idleStopTimer);
   const idleMs = IDLE_MINUTES * 60_000;
-  setTimeout(() => { void maybeStopIdlePod(); }, idleMs + 5_000);
+  _idleStopTimer = setTimeout(() => {
+    _idleStopTimer = null;
+    void maybeStopIdlePod();
+  }, idleMs + 5_000);
 }
 
 /**
@@ -344,9 +374,7 @@ export async function maybeStopIdlePod(): Promise<void> {
 /**
  * Force-stop the pod on RunPod and reset DB state + activeJobCount.
  * Use from the admin panel when a webhook was lost and the pod is stuck running.
- *
- * Does a best-effort RunPod API stop — even if the API call fails, the DB
- * state is reset so the next dispatch creates a fresh pod.
+ * Preserves podId in DB so the next request restarts the same pod (fast restart).
  *
  * @returns The pod ID that was stopped (or null if no pod was configured).
  */
@@ -367,6 +395,32 @@ export async function forceStopPod(): Promise<{ podId: string | null }> {
   // setPodState("stopped") resets activeJobCount to 0 via the resetCount guard.
   await setPodState("stopped", null, podId);
   console.log("[pod] PodState réinitialisé (force-stop admin)");
+  return { podId };
+}
+
+/**
+ * Permanently terminate the pod on RunPod and wipe podId from DB.
+ * Use when the pod has a stale Docker image and needs a full re-pull on next dispatch.
+ * The next ensurePodReady will create a fresh pod from the template (pulling :latest).
+ *
+ * @returns The pod ID that was terminated (or null if no pod was configured).
+ */
+export async function forceTerminatePod(): Promise<{ podId: string | null }> {
+  const state = await getPodState();
+  const podId = state?.podId ?? null;
+
+  if (podId && API_KEY) {
+    try {
+      await terminateRunpodPod(podId, API_KEY);
+      console.log(`[pod] Force-terminate ✓ — pod ${podId} supprimé`);
+    } catch (err) {
+      console.warn(`[pod] Force-terminate RunPod API error (DB reset quand même):`, err);
+    }
+  }
+
+  // Clear podId so next request creates a brand new pod (re-pulls :latest).
+  await setPodState("stopped", null, null);
+  console.log("[pod] PodState réinitialisé (force-terminate admin)");
   return { podId };
 }
 

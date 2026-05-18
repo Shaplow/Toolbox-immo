@@ -38,7 +38,7 @@ Determine whether the problem is caused by:
 
 Two patterns coexist in this repo:
 
-**Polling (template renders, captions, transcription, derush):**
+**Polling (template renders, captions, transcription):**
 - Browser polls `GET /api/<module>/[id]` which calls `fetchRunpodStatus()` from `web/src/lib/runpod.ts`
 - Status is updated in the Prisma job record on each poll
 
@@ -50,10 +50,10 @@ Two patterns coexist in this repo:
 
 ```
 RunPod → POST /api/webhooks/runpod/media-edit      (media-edit)
+RunPod → POST /api/webhooks/runpod/media-autocut   (batch autocut)
 RunPod → POST /api/webhooks/runpod/captions        (captions)
 RunPod → POST /api/webhooks/runpod/transcription   (transcription)
-RunPod → POST /api/webhooks/runpod/derush          (derush analysis)
-RunPod → POST /api/webhooks/runpod/derush-export   (derush export)
+RunPod → POST /api/webhooks/runpod/derush-export   (derush export — legacy, kept for data continuity)
 RunPod → POST /api/webhooks/runpod/renders         (template renders)
 ```
 

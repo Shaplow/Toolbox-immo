@@ -17,7 +17,7 @@ You do NOT implement fixes. You produce a ranked friction report.
 3. Use the `Explore` subagent to map the module's entry points, screens, steps, and state transitions.
 4. Read `.github/instructions/web.instructions.md`.
 5. Load `.github/skills/ui-design/SKILL.md` to understand the design system baseline.
-6. Load the domain skill for the target module if one exists (e.g., `derush`, `captions-transcription`, `description-generation`, `content-library`).
+6. Load the domain skill for the target module if one exists (e.g., `captions-transcription`, `description-generation`, `content-library`).
 
 ## Audit Protocol
 

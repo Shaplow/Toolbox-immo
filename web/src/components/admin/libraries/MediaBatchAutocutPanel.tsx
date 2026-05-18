@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, CheckCircle2, Loader2, Play, RefreshCw,
   Square, CheckSquare, AlertTriangle, Wand2, ChevronRight,
-  X,
+  X, Trash2,
 } from "lucide-react";
 import { AutocutReviewCard, type AutocutJob } from "./AutocutReviewCard";
 
@@ -13,6 +13,7 @@ interface MediaAsset {
   filename: string;
   url: string;
   duration: number | null;
+  disabled: boolean;
 }
 
 interface MediaLibrary {
@@ -23,6 +24,7 @@ interface MediaLibrary {
 
 interface Props {
   library: MediaLibrary;
+  knownTags?: string[];
   onClose: () => void;
 }
 
@@ -42,7 +44,7 @@ function fmt(s: number | null): string {
 
 const POLL_INTERVAL_MS = 5000;
 
-export function MediaBatchAutocutPanel({ library, onClose }: Props) {
+export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
   const [view, setView] = useState<"select" | "review">("select");
 
   // ── Vue 1 : sélection ─────────────────────────────────────────────────────
@@ -53,14 +55,14 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitResult, setSubmitResult] = useState<{ batches: number; skipped: number } | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [resetResult, setResetResult] = useState<{ deleted: number } | null>(null);
 
   // ── Vue 2 : review ────────────────────────────────────────────────────────
   const [jobs, setJobs] = useState<AutocutJob[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [reviewPage, setReviewPage] = useState(1);
   const [reviewTotal, setReviewTotal] = useState(0);
-  const [applying, setApplying] = useState(false);
-  const [applyResult, setApplyResult] = useState<{ submitted: number; failed: number } | null>(null);
   // Jobs qui viennent d'être appliqués — section de tracking live
   const [appliedJobs, setAppliedJobs] = useState<AutocutJob[]>([]);
 
@@ -77,7 +79,8 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
     try {
       const [assetsRes, queueRes] = await Promise.all([
         fetch(`/api/admin/libraries/media/${library.id}/assets`),
-        fetch(`/api/admin/libraries/media/${library.id}/autocut-queue?pageSize=500`),
+        // lean=1 : skip les includes asset/editJob — on n'a besoin que des statuts ici
+        fetch(`/api/admin/libraries/media/${library.id}/autocut-queue?pageSize=500&lean=1`),
       ]);
 
       if (!assetsRes.ok) throw new Error("Impossible de charger les assets");
@@ -96,7 +99,7 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
         }
       }
 
-      const enriched: AssetWithJobStatus[] = assetsData.map((a) => {
+      const enriched: AssetWithJobStatus[] = assetsData.filter((a) => !a.disabled).map((a) => {
         const job = jobByAsset.get(a.id);
         let autocutStatus: AssetWithJobStatus["autocutStatus"] = "none";
         let cutDuration: number | null = null;
@@ -224,6 +227,25 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
     }
   };
 
+  const handleReset = async () => {
+    if (!confirm(`Supprimer toutes les analyses non-appliquées de cette bibliothèque ? Les fichiers déjà coupés ne seront pas affectés.`)) return;
+    setResetting(true);
+    setResetResult(null);
+    try {
+      const res = await fetch(`/api/admin/libraries/media/${library.id}/autocut-jobs`, {
+        method: "DELETE",
+      });
+      const data = await res.json() as { deleted: number; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Erreur lors de la réinitialisation");
+      setResetResult({ deleted: data.deleted });
+      void loadAssets();
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Erreur réseau");
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const handleAnalyze = async () => {
     if (selectedIds.size === 0) return;
     setSubmitting(true);
@@ -258,7 +280,7 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
   };
 
   // ── Actions review ────────────────────────────────────────────────────────
-  const handleAccept = async (jobId: string, confirmedStart: number, confirmedEnd: number) => {
+  const handleAccept = async (jobId: string, confirmedStart: number, confirmedEnd: number, tags: string[]) => {
     // Retrouver les données du job pour la section de tracking
     const jobData = jobs.find((j) => j.id === jobId);
 
@@ -269,6 +291,18 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
       body: JSON.stringify({ reviewStatus: "accepted", confirmedStart, confirmedEnd }),
     });
     if (!patchRes.ok) throw new Error("Erreur lors de la validation");
+
+    // Appliquer les tags sur l’asset si l’utilisateur en a sélectionné
+    if (tags.length > 0 && jobData?.assetId) {
+      const tagsRes = await fetch(`/api/admin/libraries/media/${library.id}/assets/bulk`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetIds: [jobData.assetId], tags }),
+      });
+      if (!tagsRes.ok) {
+        console.error("[handleAccept] tags PATCH failed", await tagsRes.text().catch(() => ""));
+      }
+    }
 
     // 2. Lancer immédiatement le MediaEditJob pour ce job spécifique
     const applyRes = await fetch(`/api/admin/libraries/media/${library.id}/batch-apply`, {
@@ -320,34 +354,6 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
     if (!res.ok) throw new Error("Erreur lors du skip");
     setJobs((prev) => prev.filter((j) => j.id !== jobId));
     setReviewTotal((t) => Math.max(0, t - 1));
-  };
-
-  const handleBatchApply = async () => {
-    setApplying(true);
-    setApplyResult(null);
-    try {
-      // Appel direct sans pré-fetch des IDs : batch-apply trouve lui-même tous les jobs "accepted"
-      const applyRes = await fetch(`/api/admin/libraries/media/${library.id}/batch-apply`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mixToMono,
-          normalize,
-          gainDb: gainDb !== 0 ? gainDb : undefined,
-        }),
-      });
-      if (!applyRes.ok) {
-        const errData = await applyRes.json().catch(() => ({})) as { error?: string };
-        throw new Error(errData.error ?? `Erreur serveur (${applyRes.status})`);
-      }
-      const applyData = await applyRes.json() as { submitted: number; failed: Array<{ jobId: string; error: string }> };
-      setApplyResult({ submitted: applyData.submitted, failed: applyData.failed.length });
-    } catch (err) {
-      console.error("[handleBatchApply]", err);
-      setApplyResult({ submitted: 0, failed: -1 });
-    } finally {
-      setApplying(false);
-    }
   };
 
   // ── Stats ─────────────────────────────────────────────────────────────────
@@ -439,6 +445,15 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
                 <RefreshCw size={13} />
               </button>
               <button
+                onClick={() => void handleReset()}
+                disabled={resetting}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                title="Supprimer toutes les analyses non-appliquées"
+              >
+                {resetting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                Réinitialiser
+              </button>
+              <button
                 onClick={() => void handleAnalyze()}
                 disabled={submitting || selectedIds.size === 0}
                 className="flex items-center gap-1.5 px-4 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:opacity-50"
@@ -453,6 +468,12 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
           {submitError && (
             <div className="mx-6 mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
               {submitError}
+            </div>
+          )}
+          {resetResult && (
+            <div className="mx-6 mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-700">
+              {resetResult.deleted} analyse{resetResult.deleted > 1 ? "s" : ""} supprimée{resetResult.deleted > 1 ? "s" : ""}.
+              Les fichiers déjà coupés sont préservés.
             </div>
           )}
           {submitResult && (
@@ -539,28 +560,11 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
             </h2>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => void handleBatchApply()}
-              disabled={applying}
-              className="flex items-center gap-1.5 px-4 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-            >
-              {applying ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
-              Appliquer les validés
-            </button>
             <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
               <X size={16} />
             </button>
           </div>
         </div>
-
-        {/* Apply result feedback */}
-        {applyResult && (
-          <div className={`mx-6 mt-3 p-3 rounded-lg text-xs border ${applyResult.failed < 0 ? "bg-red-50 border-red-200 text-red-700" : "bg-green-50 border-green-200 text-green-700"}`}>
-            {applyResult.failed < 0
-              ? "Erreur lors de l'application. Réessayez."
-              : `${applyResult.submitted} job${applyResult.submitted > 1 ? "s" : ""} soumis${applyResult.failed > 0 ? ` — ${applyResult.failed} erreur${applyResult.failed > 1 ? "s" : ""}` : ""}`}
-          </div>
-        )}
 
         {/* Audio options */}
         <div className="mx-6 mt-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl flex items-center gap-5 flex-wrap">
@@ -620,14 +624,21 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
               <p className="text-sm text-gray-500">
                 {reviewTotal === 0
                   ? "Aucune analyse à valider pour le moment."
-                  : "Tous les assets de cette page ont été traités."}
+                  : `${reviewTotal} analyse${reviewTotal > 1 ? "s" : ""} restante${reviewTotal > 1 ? "s" : ""} à valider.`}
               </p>
-              {reviewTotal === 0 && (
+              {reviewTotal === 0 ? (
                 <button
                   onClick={() => setView("select")}
                   className="mt-4 text-sm text-indigo-600 hover:underline"
                 >
                   ← Retour à la sélection
+                </button>
+              ) : (
+                <button
+                  onClick={() => { setReviewPage(1); void loadReviewQueue(1); }}
+                  className="mt-4 flex items-center gap-1.5 mx-auto text-sm text-indigo-600 hover:underline"
+                >
+                  Charger la suite <ChevronRight size={13} />
                 </button>
               )}
             </div>
@@ -636,6 +647,7 @@ export function MediaBatchAutocutPanel({ library, onClose }: Props) {
               <AutocutReviewCard
                 key={job.id}
                 job={job}
+                knownTags={knownTags}
                 onAccept={handleAccept}
                 onSkip={handleSkip}
               />

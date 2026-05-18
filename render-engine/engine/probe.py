@@ -82,3 +82,32 @@ def probe_video(video_path: str | Path) -> VideoInfo:
         fps=fps,
         has_audio=_probe_has_audio(video_path),
     )
+
+
+def probe_duration(url: str) -> float | None:
+    """Return the duration in seconds of any media file (audio or video) at *url*.
+
+    Works with local paths and remote HTTPS URLs.
+    Returns None if ffprobe fails or the duration cannot be read.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "json",
+                url,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return None
+        raw = json.loads(result.stdout).get("format", {}).get("duration")
+        if raw is None:
+            return None
+        d = float(raw)
+        return d if d > 0 else None
+    except Exception:
+        return None

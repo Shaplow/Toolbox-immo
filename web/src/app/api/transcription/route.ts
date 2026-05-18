@@ -76,13 +76,6 @@ export async function POST(req: NextRequest) {
   // ─── Mode RunPod via JSON (presigned URL — pas de fichier dans Next.js) ──
   const contentType = req.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
-    if (!USE_RUNPOD || !runpodConfigured() || !r2Configured()) {
-      return NextResponse.json(
-        { error: "Mode presigned URL non disponible (RunPod ou R2 non configuré)." },
-        { status: 503 }
-      );
-    }
-
     let body: { filename?: unknown; ext?: unknown; model?: unknown; language?: unknown; enable_diarization?: unknown };
     try {
       body = await req.json();
@@ -104,12 +97,41 @@ export async function POST(req: NextRequest) {
     const enableDiarization = String(body.enable_diarization ?? "false").toLowerCase() === "true";
     if (enableDiarization && !HF_TOKEN) {
       return NextResponse.json(
-        { error: "La diarisation n’est pas disponible sur ce serveur (HF_TOKEN non configuré)." },
+        { error: "La diarisation n'est pas disponible sur ce serveur (HF_TOKEN non configuré)." },
         { status: 503 }
       );
     }
     const userId = session.user.id;
     const jobTimestamp = Date.now();
+
+    // ── Mode local dev : R2 non configuré → stockage local ─────────────────
+    if (!r2Configured()) {
+      const inputKey      = `local/transcription/${userId}/${jobTimestamp}/source.${ext}`;
+      const outputJsonKey = `local/transcription/${userId}/${jobTimestamp}/segments.json`;
+      const job = await prisma.transcriptionJob.create({
+        data: {
+          userId,
+          status: "QUEUED",
+          inputKey,
+          inputFilename: filename,
+          model,
+          language,
+          enableDiarization,
+          outputJsonKey,
+        },
+      });
+      return NextResponse.json(
+        { jobId: job.id, uploadUrl: `/api/transcription/${job.id}/upload-local` },
+        { status: 202 }
+      );
+    }
+
+    if (!USE_RUNPOD || !runpodConfigured()) {
+      return NextResponse.json(
+        { error: "Mode presigned URL non disponible (RunPod non configuré)." },
+        { status: 503 }
+      );
+    }
 
     const inputKey     = `transcription/${userId}/${jobTimestamp}/source.${ext}`;
     const outputJsonKey = `transcription/${userId}/${jobTimestamp}/segments.json`;

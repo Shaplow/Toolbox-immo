@@ -89,3 +89,36 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }
+
+// DELETE /api/admin/libraries/media/[id]/assets/bulk
+// Supprime plusieurs assets en une seule transaction
+// Body : { assetIds: string[] }
+export async function DELETE(req: NextRequest, { params }: Params) {
+  const session = await auth();
+  if (!session?.user?.id || adminOnly(session.user.role)) {
+    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
+  }
+
+  const { id: libraryId } = await params;
+
+  const body = await req.json() as { assetIds?: unknown };
+
+  if (!Array.isArray(body.assetIds) || body.assetIds.length === 0) {
+    return NextResponse.json({ error: "assetIds est requis et doit être un tableau non vide" }, { status: 400 });
+  }
+
+  const assetIds = (body.assetIds as unknown[]).filter((id): id is string => typeof id === "string");
+  if (assetIds.length === 0) {
+    return NextResponse.json({ error: "assetIds invalides" }, { status: 400 });
+  }
+
+  try {
+    await prisma.mediaAsset.deleteMany({
+      where: { id: { in: assetIds }, libraryId },
+    });
+    return NextResponse.json({ deleted: assetIds.length });
+  } catch (err) {
+    console.error(`[admin/libraries/media/${libraryId}/assets/bulk] DELETE error:`, err);
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  }
+}

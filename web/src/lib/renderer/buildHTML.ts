@@ -597,48 +597,53 @@ async function buildFontHtml(template: TemplateJSON, publicBase?: string): Promi
   );
 
   const globalFonts = await listFontAssetsByFamilies([...requestedFamilies]);
-  const collected = new Map<string, string | undefined>();
+  // Map<family, FontEntry[]> for local files; null means Google Font (no local file)
+  type FontEntry = { url: string; weight: number; fontStyle: string };
+  const collected = new Map<string, FontEntry[] | null>();
 
   for (const font of globalFonts) {
     const requestedFamily = requestedFamilyMap.get(font.family.trim().toLowerCase()) ?? font.family;
-    collected.set(requestedFamily, font.url);
+    const entries = collected.get(requestedFamily) ?? [];
+    entries.push({ url: font.url, weight: font.weight, fontStyle: font.fontStyle ?? "normal" });
+    collected.set(requestedFamily, entries);
   }
   for (const cf of template.theme.customFonts ?? []) {
-    if (!collected.has(cf.family) || !collected.get(cf.family)) {
-      collected.set(cf.family, cf.url);
+    if (!collected.has(cf.family)) {
+      collected.set(cf.family, cf.url ? [{ url: cf.url, weight: 400, fontStyle: "normal" }] : null);
     }
   }
-  if (!collected.has(hf.family)) collected.set(hf.family, hf.url);
-  if (!collected.has(bf.family)) collected.set(bf.family, bf.url);
+  if (!collected.has(hf.family)) collected.set(hf.family, hf.url ? [{ url: hf.url, weight: 400, fontStyle: "normal" }] : null);
+  if (!collected.has(bf.family)) collected.set(bf.family, bf.url ? [{ url: bf.url, weight: 400, fontStyle: "normal" }] : null);
   for (const family of requestedFamilies) {
-    if (!collected.has(family)) collected.set(family, undefined);
+    if (!collected.has(family)) collected.set(family, null);
   }
 
   const styleParts: string[] = [];
-  console.log(`[buildFontHtml] Collected fonts:`, [...collected.entries()].map(([f, u]) => `${f} → ${u ?? "(google)"}`));
+  console.log(`[buildFontHtml] Collected fonts:`, [...collected.entries()].map(([f, e]) => `${f} → ${e ? e.map((x) => `${x.weight}w`).join(",") : "(google)"}`));
 
-  for (const [family, url] of collected) {
-    if (url) {
-      try {
-        const buf = await loadFontBuffer(url, publicBase);
-        const b64 = buf.toString("base64");
-        const ext = url.split(".").pop()?.toLowerCase() ?? "woff2";
-        const mimeMap: Record<string, string> = {
-          woff2: "font/woff2", woff: "font/woff", ttf: "font/ttf", otf: "font/otf",
-        };
-        // Correct format names for @font-face src
-        const formatMap: Record<string, string> = {
-          woff2: "woff2", woff: "woff", ttf: "truetype", otf: "opentype",
-        };
-        const mime = mimeMap[ext] ?? "font/woff2";
-        const fmt = formatMap[ext] ?? "woff2";
-        // font-weight: 100 900 covers all weights from a single font file
-        styleParts.push(
-          `@font-face{font-family:'${family}';src:url('data:${mime};base64,${b64}') format('${fmt}');font-weight:100 900;font-style:normal;}`
-        );
-        console.log(`[buildFontHtml] Embedded font "${family}" from ${url} (${Math.round(buf.length / 1024)} KB)`);
-      } catch (e) {
-        console.warn(`[buildFontHtml] Could not embed font "${family}" (${url}):`, e);
+  const mimeMap: Record<string, string> = {
+    woff2: "font/woff2", woff: "font/woff", ttf: "font/ttf", otf: "font/otf",
+  };
+  const formatMap: Record<string, string> = {
+    woff2: "woff2", woff: "woff", ttf: "truetype", otf: "opentype",
+  };
+
+  for (const [family, entries] of collected) {
+    if (entries && entries.length > 0) {
+      for (const { url, weight, fontStyle } of entries) {
+        try {
+          const buf = await loadFontBuffer(url, publicBase);
+          const b64 = buf.toString("base64");
+          const ext = url.split(".").pop()?.toLowerCase() ?? "woff2";
+          const mime = mimeMap[ext] ?? "font/woff2";
+          const fmt = formatMap[ext] ?? "woff2";
+          styleParts.push(
+            `@font-face{font-family:'${family}';src:url('data:${mime};base64,${b64}') format('${fmt}');font-weight:${weight};font-style:${fontStyle};}`
+          );
+          console.log(`[buildFontHtml] Embedded font "${family}" weight ${weight} style ${fontStyle} from ${url} (${Math.round(buf.length / 1024)} KB)`);
+        } catch (e) {
+          console.warn(`[buildFontHtml] Could not embed font "${family}" weight ${weight} style ${fontStyle} (${url}):`, e);
+        }
       }
     } else {
       // Google Font — fetch CSS then embed each woff2 as base64

@@ -2,11 +2,43 @@
 import { notFound } from "next/navigation";
 import { ListingForm } from "@/components/form/ListingForm";
 import { collectTemplateConditionValues, normalizeTemplateJSON } from "@/lib/templateNormalization";
-import type { TemplateJSON, MusicBlock } from "@/types/template";
+import type { TemplateJSON, MusicBlock, VideoBlock } from "@/types/template";
 import { DPE_AUTO_FIELDS } from "@/lib/renderer/blocks/renderDPEBlock";
 import { getUserContext } from "@/lib/userContext";
-import { resolveLibraryPrefill } from "@/lib/contentLibraryResolver";
-import type { LibraryPrefillContext } from "@/types/libraryPrefill";
+import { resolveLibraryPrefill, selectMediaAssetByMetadataValue } from "@/lib/contentLibraryResolver";
+import type { LibraryPrefillContext, MetadataDrivenLink } from "@/types/libraryPrefill";
+
+/**
+ * Computes the list of metadata-driven links between select fields and video fields.
+ * Each link describes: when the user selects a value in the source select field,
+ * the form should auto-resolve the matching video from the library and populate
+ * the target video field.
+ */
+function buildMetadataDrivenLinks(json: TemplateJSON): MetadataDrivenLink[] {
+  const links: MetadataDrivenLink[] = [];
+  for (const slot of (json.videoSequence ?? [])) {
+    if (!slot.videoBlockId) continue;
+    const linkedBlock = json.blocks.find((b) => b.type === "video" && b.id === slot.videoBlockId) as VideoBlock | undefined;
+    if (!linkedBlock?.binding) continue;
+    const metaSelectField = json.schema.find(
+      (f) =>
+        f.type === "select" &&
+        f.optionsSource?.type === "metadata-values-from-library" &&
+        f.optionsSource.blockId === slot.videoBlockId &&
+        f.optionsSource.libraryId &&
+        f.optionsSource.metadataKey,
+    );
+    if (metaSelectField?.optionsSource?.type === "metadata-values-from-library") {
+      links.push({
+        sourceFieldKey: metaSelectField.key,
+        targetFieldKey: linkedBlock.binding,
+        libraryId: metaSelectField.optionsSource.libraryId!,
+        metadataKey: metaSelectField.optionsSource.metadataKey!,
+      });
+    }
+  }
+  return links;
+}
 
 function buildMediaFieldAspectRatios(json: TemplateJSON): Record<string, number> {
   const ratios = new Map<string, { ratio: number; area: number }>();
@@ -133,6 +165,26 @@ export default async function GeneratePage({ params, searchParams }: Props) {
   }
 
   const mergedSchema = [...schemaMap.values()];
+
+  // For video fields that will be auto-resolved from a metadata-values-from-library
+  // select field at render time, remove the required constraint.
+  // The video is always resolved server-side from the linked select field value;
+  // blocking the form when the field is empty would be incorrect.
+  for (const slot of (json.videoSequence ?? [])) {
+    if (!slot.videoBlockId) continue;
+    const isMetadataDriven = json.schema.some(
+      (f) =>
+        f.type === "select" &&
+        f.optionsSource?.type === "metadata-values-from-library" &&
+        f.optionsSource.blockId === slot.videoBlockId,
+    );
+    if (!isMetadataDriven) continue;
+    const linkedBlock = json.blocks.find((b) => b.type === "video" && b.id === slot.videoBlockId) as VideoBlock | undefined;
+    if (!linkedBlock?.binding) continue;
+    const field = mergedSchema.find((f) => f.key === linkedBlock.binding);
+    if (field) field.required = false;
+  }
+
   const mediaFieldAspectRatios = buildMediaFieldAspectRatios(json);
 
   // ─── Resolve ig_account handle BEFORE library prefill ────────────────────
@@ -194,13 +246,26 @@ export default async function GeneratePage({ params, searchParams }: Props) {
     // generation form shows the LibraryFieldInput + "depuis la bibliothèque" badge.
     // Note: slots may use `label` instead of `binding` as the form field key.
     for (const slot of (json.videoSequence ?? [])) {
-      const slotKey = slot.binding ?? slot.label;
-      if (slot.libraryId && slotKey) {
-        const rule = slot.selectionRule;
-        const tagFilterParam = (typeof rule === "object" && rule !== null && "tagFilterParam" in rule)
-          ? (rule as { tagFilterParam?: string }).tagFilterParam
-          : undefined;
-        fieldLibraryMap[slotKey] = { libraryId: slot.libraryId, blockId: slot.id, type: "video" as const, tagFilterParam };
+      if (!slot.libraryId) continue;
+      const rule = slot.selectionRule;
+      const tagFilterParam = (typeof rule === "object" && rule !== null && "tagFilterParam" in rule)
+        ? (rule as { tagFilterParam?: string }).tagFilterParam
+        : undefined;
+      const slotLibMeta = { libraryId: slot.libraryId, blockId: slot.id, type: "video" as const, tagFilterParam };
+
+      // Priority 1: explicit binding (exact match)
+      // Priority 2: label lowercased (handles labels like "OUTRO" when field key is "outro")
+      const primaryKey = slot.binding ?? slot.label?.toLowerCase();
+      if (primaryKey) fieldLibraryMap[primaryKey] = slotLibMeta;
+
+      // Priority 3: videoBlockId → VideoBlock.binding
+      // Handles cases where the slot label doesn't match the schema field key at all
+      // (e.g. slot label "CONTENT" but field key "rva3raw", linked via VideoBlock "RVA3")
+      if (slot.videoBlockId) {
+        const linkedBlock = json.blocks.find((b) => b.type === "video" && b.id === slot.videoBlockId) as VideoBlock | undefined;
+        if (linkedBlock?.binding && !fieldLibraryMap[linkedBlock.binding]) {
+          fieldLibraryMap[linkedBlock.binding] = slotLibMeta;
+        }
       }
     }
     const musicBlock = json.blocks.find((b): b is MusicBlock => b.type === "music" && !!b.libraryId);
@@ -222,6 +287,7 @@ export default async function GeneratePage({ params, searchParams }: Props) {
     let usedCategoryByLibrary: Record<string, string> | undefined;
     let prevCursorStateByLibrary: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null }> | undefined;
     let prevDataEntryState: { entryId: string; campaignId: string; usagePolicy: string; claimType: "usedInCycle" | "perAccountUsage"; accountId?: string } | undefined;
+    let prevAudioUsageState: { assetId: string; accountId: string; prevLastUsedAt: string | null; claimedLastUsedAt: string } | undefined;
 
     if (listingId) {
       // Regenerating from an existing listing: try to match stored URLs back to library assets
@@ -253,6 +319,7 @@ export default async function GeneratePage({ params, searchParams }: Props) {
         ? prefill.prevCursorStateByLibrary
         : undefined;
       prevDataEntryState = prefill.prevDataEntryState ?? undefined;
+      prevAudioUsageState = prefill.prevAudioUsageState ?? undefined;
 
       for (const block of json.blocks) {
         if (block.type === "video" && block.binding && block.libraryId) {
@@ -263,11 +330,60 @@ export default async function GeneratePage({ params, searchParams }: Props) {
       }
       // Map videoSequence slot suggestions (keyed by slot.id in the resolver)
       for (const slot of (json.videoSequence ?? [])) {
-        const slotKey = slot.binding ?? slot.label;
-        if (slot.libraryId && slotKey) {
-          const suggestion = prefill.videoSuggestions[slot.id] ?? null;
-          initialSuggestions[slotKey] = suggestion;
-          if (suggestion) initialValues = { ...initialValues, [slotKey]: suggestion.url };
+        if (!slot.libraryId) continue;
+
+        const primaryKey = slot.binding ?? slot.label?.toLowerCase();
+        const linkedBlock = slot.videoBlockId
+          ? (json.blocks.find((b) => b.type === "video" && b.id === slot.videoBlockId) as VideoBlock | undefined)
+          : undefined;
+        const blockBinding = linkedBlock?.binding;
+
+        // Detect metadata-driven slots (videoBlockId linked to a metadata-values-from-library select field).
+        // For these slots, skip rotation-based suggestion and instead resolve the correct asset
+        // from the metadata field value already present in initialValues (e.g. client name).
+        let effectiveSuggestion: { id: string; url: string; filename: string } | null = null;
+        let isMetadataDriven = false;
+
+        if (slot.videoBlockId) {
+          const metaSelectField = mergedSchema.find(
+            (f) =>
+              f.type === "select" &&
+              f.optionsSource?.type === "metadata-values-from-library" &&
+              f.optionsSource.blockId === slot.videoBlockId &&
+              f.optionsSource.libraryId &&
+              f.optionsSource.metadataKey,
+          );
+          if (metaSelectField?.optionsSource?.type === "metadata-values-from-library") {
+            isMetadataDriven = true;
+            const { libraryId: metaLibId, metadataKey } = metaSelectField.optionsSource;
+            const selectedValue = initialValues?.[metaSelectField.key];
+            if (selectedValue && typeof selectedValue === "string" && selectedValue.trim()) {
+              const metaAsset = await selectMediaAssetByMetadataValue(
+                metaLibId!,
+                metadataKey!,
+                selectedValue.trim(),
+                accountId ?? undefined,
+              );
+              if (metaAsset) {
+                effectiveSuggestion = { id: metaAsset.id, url: metaAsset.url, filename: metaAsset.filename };
+              }
+            }
+            // If no client selected yet or no matching asset: effectiveSuggestion stays null
+            // (do not fall back to rotation — that would show a misleading video)
+          }
+        }
+
+        if (!isMetadataDriven) {
+          effectiveSuggestion = prefill.videoSuggestions[slot.id] ?? null;
+        }
+
+        if (primaryKey) {
+          initialSuggestions[primaryKey] = effectiveSuggestion;
+          if (effectiveSuggestion) initialValues = { ...initialValues, [primaryKey]: effectiveSuggestion.url };
+        }
+        if (blockBinding && !initialSuggestions[blockBinding]) {
+          initialSuggestions[blockBinding] = effectiveSuggestion;
+          if (effectiveSuggestion) initialValues = { ...initialValues, [blockBinding]: effectiveSuggestion.url };
         }
       }
       if (musicBlock?.binding && musicBlock.libraryId) {
@@ -309,9 +425,11 @@ export default async function GeneratePage({ params, searchParams }: Props) {
       usedCategoryByLibrary,
       prevCursorStateByLibrary,
       prevDataEntryState,
+      prevAudioUsageState,
       instagramAccounts,
       selectedAccountId: accountId,
       slotId,
+      metadataDrivenLinks: buildMetadataDrivenLinks(json),
     };
   }
 

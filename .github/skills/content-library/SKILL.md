@@ -7,7 +7,8 @@ description: >
   in the builder, generation form pre-fill, asset rotation (auto mode or override mode),
   selection rules (theme_sequence, oldest_used, least_used, not_used_in_cycle, manual),
   AccountLibraryCursor, per-account usage isolation, bulk asset operations, asset editing
-  via RunPod, or offer-based automation.
+  via RunPod, offer-based automation, or MediaAutocutJob batch autocut (Whisper-based
+  cut-point detection, review queue, and apply flow).
   For deep rotation algorithm details (auto mode, category exclusion, per-account ordering,
   how to simulate or debug rotation): load the asset-rotation skill instead.
 ---
@@ -250,6 +251,120 @@ RunPod → POST /api/webhooks/runpod/media-edit
 
 Webhook helper: `web/src/lib/webhooks/runpod.ts`
 Webhook route: `web/src/app/api/webhooks/runpod/media-edit/route.ts`
+
+---
+
+## Media Autocut (Batch Whisper Cut Detection)
+
+Autocut is an admin-only feature that uses Whisper (via RunPod) to detect the real
+start/end of speech in rush videos, then proposes trim points that an admin reviews
+before applying.
+
+### Prisma Model
+
+```prisma
+model MediaAutocutJob {
+  id              String   @id @default(cuid())
+  libraryId       String
+  assetId         String?  @unique   // null during batch pending state
+  batchId         String?            // groups jobs from the same batch submission
+  runpodJobId     String?
+  status          String   @default("pending")  // pending | processing | done | failed | cut
+  proposedStart   Float?
+  proposedEnd     Float?
+  confirmedStart  Float?
+  confirmedEnd    Float?
+  transcriptJson  String?  // JSON word-timestamps array
+  language        String?
+  fallback        Boolean  @default(false)
+  error           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+```
+
+Status flow: `pending → processing → done | failed → cut` (after admin applies).
+
+### Batch Submission Flow
+
+```
+Admin UI (MediaBatchAutocutPanel) — step 1: select assets
+  → POST /api/admin/libraries/media/[id]/autocut-packs
+      body: { assetIds: string[] }
+      → groups assets into batches (e.g. 20 per RunPod job)
+      → creates MediaAutocutJob rows (status: pending, assetId null, batchId set)
+      → submits RunPod job_type: "media_autocut_batch"
+          input: { batch_id, assets: [{ job_id, url, language? }] }
+      → returns { batches, skipped }
+
+RunPod worker (_handle_media_autocut_batch)
+  → calls analyze_autocut() (engine/autocut.py) per asset
+  → analyze_autocut() uses transcribe_with_word_timestamps() (Whisper)
+  → returns proposed start/end from first/last detected word + padding
+  → responds with { batch_id, results: [{ job_id, proposed_start, proposed_end,
+      transcript_json, language, fallback?, error? }] }
+
+RunPod → POST /api/webhooks/runpod/media-autocut
+  → verifyRunpodWebhook()
+  → resolves each result by job_id
+  → on success: updates MediaAutocutJob (status: done, proposedStart/End, transcriptJson)
+  → on error per job: status failed, error message
+  → on global webhook failure: marks all pending jobs in batch as failed
+```
+
+Webhook route: `web/src/app/api/webhooks/runpod/media-autocut/route.ts`
+Engine: `render-engine/engine/autocut.py` → `analyze_autocut()`
+Worker handler: `render-engine/runpod_worker.py` → `_handle_media_autocut_batch()`
+
+### Review & Apply Flow
+
+```
+Admin UI (MediaBatchAutocutPanel) — step 2: review
+  → GET /api/admin/libraries/media/[id]/autocut-queue
+      → returns paginated MediaAutocutJob[] with status=done (not yet cut)
+      → includes proposedStart/End, transcriptJson, assetId
+
+Admin reviews each job (AutocutReviewCard):
+  → previews video segment with proposed cut points
+  → adjusts confirmedStart / confirmedEnd if needed
+  → PATCH /api/admin/libraries/media/autocut/[jobId]
+      body: { action: "skip" } | { action: "apply", confirmedStart, confirmedEnd }
+      → "skip": deletes the MediaAutocutJob
+      → "apply": validates, calls MediaAsset update (trimStart/trimEnd or re-upload),
+                  sets job status to "cut"
+
+Batch apply (optional):
+  → POST /api/admin/libraries/media/[id]/batch-apply
+      → applies all done jobs with proposedStart/End as confirmed values
+      → marks each as "cut"
+```
+
+### Reset
+
+```
+DELETE /api/admin/libraries/media/[id]/autocut-jobs
+  → deletes all MediaAutocutJob for the library where status != "cut"
+  → used to clean up a stale batch before resubmitting
+```
+
+### Admin UI Components
+
+- `web/src/components/admin/libraries/MediaBatchAutocutPanel.tsx`
+  Two-step panel: "select" view (asset multi-select + submit) → "review" view.
+  Polls `autocut-queue` every 5 seconds while jobs are processing.
+- `web/src/components/admin/libraries/AutocutReviewCard.tsx`
+  Individual review card: video player, timeline scrubber, confirm/skip actions.
+
+### Key Pitfalls
+
+- Autocut only applies to **video** MediaLibraries. Audio libraries have no autocut trigger.
+- `assetId` on `MediaAutocutJob` is null until the RunPod batch resolves individual job IDs.
+- `fallback: true` means Whisper produced segments but no word-level timestamps → start/end
+  are less precise (segment-level bounds used instead of word-level bounds).
+- If a batch RunPod webhook arrives with a global error (no `results`), all pending jobs in
+  the batch are marked `failed`. Check `batchId` to correlate them.
+- `analyze_autocut` raises `RuntimeError` if Whisper returns no segments at all (silent video).
+  The worker catches this and returns an error result for that job_id.
 
 ---
 

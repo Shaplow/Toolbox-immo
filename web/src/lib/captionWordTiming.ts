@@ -301,8 +301,30 @@ export function buildTimedSegmentsFromCaptions(captions: Caption[]): Segment[] {
   });
 }
 
+// Maximum display duration for the last word of a segment (seconds).
+// Whisper assigns word.end = segment.end to the last word of each segment,
+// which can include long silences (e.g. 11 s for "Paris."). Cap it to avoid
+// the last word being frozen on screen for the entire remaining video.
+const MAX_LAST_WORD_DURATION = 1.0;
+
 export function buildTimedSegmentsFromSegments(segments: Segment[]): Segment[] {
-  return segments.map((segment) => ensureTimedSegment(segment));
+  return segments.map((segment, index) => {
+    const timed = ensureTimedSegment(segment);
+    const words = getSegmentWords(timed);
+    if (words.length === 0) return timed;
+
+    const lastWord = words[words.length - 1];
+    const nextSegmentStart = segments[index + 1]?.start ?? Infinity;
+    // Cap to whichever is smaller: word.start + 2 s, or next segment - 50 ms
+    const maxEnd = Math.min(lastWord.start + MAX_LAST_WORD_DURATION, nextSegmentStart - 0.05);
+
+    if (maxEnd > lastWord.start && lastWord.end > maxEnd) {
+      const cappedWords = [...words];
+      cappedWords[cappedWords.length - 1] = { ...lastWord, end: maxEnd };
+      return { ...timed, end: maxEnd, words: cappedWords };
+    }
+    return timed;
+  });
 }
 
 export function timedSegmentsToCaptions(segments: Segment[]): Caption[] {

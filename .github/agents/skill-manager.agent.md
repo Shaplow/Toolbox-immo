@@ -42,7 +42,7 @@ When you verify docs or skills, anchor them to the actual repo surfaces:
 - Data and auth layer: `web/prisma/schema.prisma`, `web/src/lib/auth.ts`, `web/src/lib/permissions.ts`
 - Builder and preview parity: `web/src/components/builder/`, `web/src/lib/renderer/`, `web/src/lib/groupLayout.ts`, `web/src/lib/templateNormalization.ts`
 - Captions and transcription flows: `web/src/app/api/render/captions/`, `web/src/app/api/transcription/`, `web/src/lib/captionsEngine.ts`, `web/src/lib/runpod.ts`
-- Description and derush features: `web/src/components/description/`, `web/src/components/derush/`, related routes and helpers in `web/src/app/` and `web/src/lib/`
+- Description generation features: `web/src/components/description/`, related routes and helpers in `web/src/app/` and `web/src/lib/`
 - Render-engine and worker layer: `render-engine/api.py`, `render-engine/runpod_worker.py`, `render-engine/engine/`
 
 Do not reference fictional `apps/` or `packages/` paths from another project.
@@ -56,7 +56,7 @@ Check whether `.claude/CLAUDE.md` still matches the repository on factual points
 - active application layers (`web/`, `render-engine/`)
 - frameworks and infrastructure actually present in the repo
 - important invariants around builder preview, HTML preview, and final render separation
-- captions, transcription, RunPod, derush, and description workflow coverage
+- captions, transcription, RunPod, and description workflow coverage
 - validation commands that still exist
 
 You may update `.claude/CLAUDE.md` only for factual, verifiable drift.
@@ -119,9 +119,8 @@ Look for complex or fragile areas that may need a dedicated skill or agent, espe
 - template builder parity debugging
 - captions and transcription operations
 - RunPod and render-engine troubleshooting
-- derush workflow
 - description generation workflow
-- content library system (MediaLibrary, DataLibrary, selection rules, generation pre-fill)
+- content library system (MediaLibrary, DataLibrary, selection rules, generation pre-fill, MediaAutocutJob batch autocut)
 - security-sensitive flows
 - UI and UX remediation in dense product surfaces
 

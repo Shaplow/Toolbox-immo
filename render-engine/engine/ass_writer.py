@@ -102,14 +102,15 @@ def _hl_style_for_group(group: int, config: RenderConfig) -> tuple[str, StyleCon
 
 
 def _hl_style_with_shadow(hl_style: StyleConfig, base_style: StyleConfig) -> StyleConfig:
-    """Return hl_style, inheriting shadow settings from base_style when the
-    highlight style has no shadow of its own (both shadow=0 and shadow_blur=0).
-    This ensures diffuse/directional shadows configured on the base always
-    appear on highlight words too, without the user needing to duplicate them."""
+    """Return hl_style, inheriting directional shadow settings from base_style
+    when the highlight style has no shadow of its own (both shadow=0 and
+    shadow_blur=0).  Only the directional shadow (distance + angle + colour) is
+    inherited — NOT shadow_blur — so highlights with glow_intensity > 0 stay
+    single-layer and remain sharp instead of getting a blurry ambient halo from
+    the base style."""
     if hl_style.shadow == 0 and hl_style.shadow_blur == 0:
         return hl_style.model_copy(update={
             "shadow":       base_style.shadow,
-            "shadow_blur":  base_style.shadow_blur,
             "shadow_color": base_style.shadow_color,
             "shadow_alpha": base_style.shadow_alpha,
             "shadow_angle": base_style.shadow_angle,
@@ -154,7 +155,7 @@ def _base_words_text(words, config: RenderConfig, layer: int | None = None) -> s
     return " ".join(parts)
 
 
-def _base_words_text_appear(words, visible_up_to: int, config: RenderConfig, fade_in: bool = False) -> str:
+def _base_words_text_appear(words, visible_up_to: int, config: RenderConfig, fade_in: bool = False, layer: int | None = None) -> str:
     """Like _base_words_text but future words are fully transparent.
     Invisible words keep their real style so the line-box height is stable on
     every frame — otherwise a highlight word (different font size) would make
@@ -163,8 +164,14 @@ def _base_words_text_appear(words, visible_up_to: int, config: RenderConfig, fad
     over 60 ms relative to t=0 of the Dialogue event (which starts at word.start).
     Shadow (\\4a) is NOT masked so it appears immediately, avoiding the
     unreliable \\t(\\4a) animation in libass.
+    `layer` mirrors the two-layer rendering used by _base_words_text:
+    None = single-layer, 0 = shadow-blur halo, 1 = glow/outline.
     No \\an inside \\r resets — see _base_words_text."""
-    base_effects = _style_effect_tags(config.base_style)
+    def _eff(style):
+        s = _style_for_layer(style, layer) if layer is not None else style
+        return _style_effect_tags(s)
+
+    base_effects = _eff(config.base_style)
     parts = []
     for i, w in enumerate(words):
         hl_group = _should_highlight(w, config)
@@ -173,7 +180,7 @@ def _base_words_text_appear(words, visible_up_to: int, config: RenderConfig, fad
             if hl_group is not None:
                 style_name, hl_style = _hl_style_for_group(hl_group, config)
                 hl_style = _hl_style_with_shadow(hl_style, config.base_style)
-                hl_effects = _style_effect_tags(hl_style)
+                hl_effects = _eff(hl_style)
                 text = _apply_transform(w.word, hl_style.text_transform)
                 parts.append(
                     rf"{{\r{style_name}{hl_effects}\1a&HFF&\3a&HFF&\4a&HFF&}}" + _escape_ass_text(text)
@@ -192,8 +199,9 @@ def _base_words_text_appear(words, visible_up_to: int, config: RenderConfig, fad
             if hl_group is not None:
                 style_name, hl_style = _hl_style_for_group(hl_group, config)
                 hl_style = _hl_style_with_shadow(hl_style, config.base_style)
-                hl_effects = _style_effect_tags(hl_style)
-                a3 = _style_3a(hl_style)
+                eff_hl_s = _style_for_layer(hl_style, layer) if layer is not None else hl_style
+                hl_effects = _style_effect_tags(eff_hl_s)
+                a3 = _style_3a(eff_hl_s)
                 fade_tag = rf"\1a&HFF&\3a&HFF&\t(0,60,\1a&H00&\3a{a3})"
                 text = _apply_transform(w.word, hl_style.text_transform)
                 parts.append(
@@ -201,7 +209,8 @@ def _base_words_text_appear(words, visible_up_to: int, config: RenderConfig, fad
                     + rf"{{\r{base_effects}}}"
                 )
             else:
-                a3 = _style_3a(config.base_style)
+                eff_base_s = _style_for_layer(config.base_style, layer) if layer is not None else config.base_style
+                a3 = _style_3a(eff_base_s)
                 fade_tag = rf"\1a&HFF&\3a&HFF&\t(0,60,\1a&H00&\3a{a3})"
                 text = _apply_transform(w.word, config.base_style.text_transform)
                 parts.append(rf"{{{base_effects}{fade_tag}}}" + _escape_ass_text(text))
@@ -210,7 +219,7 @@ def _base_words_text_appear(words, visible_up_to: int, config: RenderConfig, fad
             if hl_group is not None:
                 style_name, hl_style = _hl_style_for_group(hl_group, config)
                 hl_style = _hl_style_with_shadow(hl_style, config.base_style)
-                hl_effects = _style_effect_tags(hl_style)
+                hl_effects = _eff(hl_style)
                 text = _apply_transform(w.word, hl_style.text_transform)
                 parts.append(
                     rf"{{\r{style_name}{hl_effects}}}" + _escape_ass_text(text)
@@ -271,7 +280,7 @@ def _style_effect_tags(style) -> str:
         tags += rf"\bord{style.glow_intensity:.2f}"
         tags += rf"\3c{_hex_to_ass_tag_color(style.glow_color)}"
         tags += r"\3a&H00&"  # glow fully opaque
-        tags += rf"\blur{max(0.8, style.glow_intensity * 0.85):.2f}"
+        tags += rf"\blur{max(0.4, style.glow_intensity * 0.6):.2f}"
     elif has_blur:
         # Ambient shadow halo (works for distance=0 AND distance>0)
         tags += rf"\bord{style.shadow_blur:.2f}"
@@ -309,8 +318,9 @@ def _style_effect_tags(style) -> str:
         tags += rf"\xshad{xshad:.2f}\yshad{yshad:.2f}"
         tags += rf"\4c{_hex_to_ass_tag_color(style.shadow_color)}"
         tags += rf"\4a&H{_alpha_to_ass(style.shadow_alpha)}&"
-        if has_blur:
-            tags += rf"\be{style.shadow_blur:.2f}"
+        # Note: the ambient halo for shadow_blur is already handled by
+        # \bord{shadow_blur}\blur{shadow_blur} in the border section above.
+        # Do NOT add \be here — it would blur the entire text fill as well.
     else:
         tags += r"\xshad0\yshad0"
 
@@ -477,9 +487,14 @@ _MIN_LAST_WORD_CS = 30  # 0.3 s
 # Minimum centiseconds between consecutive word onsets for a perceptible step.
 # When the per-word average falls below this (e.g. because timecode realignment
 # heavily compressed a window that Whisper had inflated with a trailing silence),
-# all onsets are redistributed evenly over the full block duration so the
-# word-by-word animation remains visible at a natural reading pace.
+# all onsets are redistributed evenly, capped by _MAX_REDISTRIB_STEP_CS.
 _MIN_STEP_CS = 10  # 100 ms per word minimum
+
+# Maximum centiseconds per step during redistribution.
+# Prevents inflated block_end (caused by the +1 s last-word cap applied by the
+# web app on trailing-silence words) from spreading onsets over the full silence
+# window — which would delay words by 0.5-1 s relative to actual speech timing.
+_MAX_REDISTRIB_STEP_CS = 50  # 500 ms per word maximum
 
 
 def _compute_step_pairs(
@@ -510,11 +525,13 @@ def _compute_step_pairs(
     avg_step = natural_range // n if n > 1 else natural_range
 
     # Compressed or degenerate timestamps: redistribute evenly so each word
-    # gets at least _MIN_STEP_CS centiseconds before the next one appears,
-    # using the full available block duration (minus reading tail).
+    # gets at least _MIN_STEP_CS centiseconds before the next one appears.
+    # Step is capped at _MAX_REDISTRIB_STEP_CS to avoid spreading onsets over
+    # the block's trailing silence (the web app inflates block_end by up to +2 s
+    # for the last word of each Whisper segment).
     if n > 1 and avg_step < _MIN_STEP_CS and block_end_cs > first_cs:
         available = max(0, block_end_cs - first_cs - _MIN_LAST_WORD_CS)
-        step = max(_MIN_STEP_CS, available // (n - 1))
+        step = max(_MIN_STEP_CS, min(_MAX_REDISTRIB_STEP_CS, available // (n - 1)))
         onsets = [first_cs + i * step for i in range(n)]
         last_cs = onsets[-1]
         natural_range = last_cs - first_cs
@@ -535,66 +552,42 @@ def _compute_step_pairs(
     return pairs
 
 
-def _write_reveal_base_events(content: list[str], block: SubtitleBlock, config: RenderConfig, block_end_cs: int):
-    """Typewriter reveal — one Dialogue event per LINE per word step.
-    All lines are emitted on every step (future lines as invisible placeholders)
-    so the overall block height is stable and never jumps."""
+def _write_appear_base_events(content: list[str], block: SubtitleBlock, config: RenderConfig, block_end_cs: int, use_two_layers: bool = False, layers_to_emit: list[int] | None = None):
+    """Word-pop appear — same multi-line structure as reveal mode.
+    Supports two-layer rendering (layers_to_emit=[0,1]) so that shadow-blur
+    halo (Layer 0) and glow (Layer 1) are emitted as separate Dialogue events,
+    matching the behavior of the reveal and static presets."""
     if not block.lines:
         return
+    if layers_to_emit is None:
+        layers_to_emit = [0]
     all_words = [
         (li, wi, word)
         for li, line in enumerate(block.lines)
         for wi, word in enumerate(line.words)
     ]
     step_pairs = _compute_step_pairs(all_words, block_end_cs)
-    for step, ((start_cs, end_cs), (cur_li, cur_wi, _cur_word)) in enumerate(zip(step_pairs, all_words)):
-        # Skip zero-duration steps — libass ignores them; the next valid step
-        # will show all accumulated words up to cur_wi correctly.
-        if end_cs <= start_cs:
-            continue
-        ev_start = _ass_time_cs(start_cs)
-        ev_end = _ass_time_cs(end_cs)
-        for li, line in enumerate(block.lines):
-            if not line.words:
+    for lyr in layers_to_emit:
+        lyr_key = lyr if use_two_layers else None
+        eff_base = _style_for_layer(config.base_style, lyr) if use_two_layers else config.base_style
+        for step, ((start_cs, end_cs), (cur_li, cur_wi, _cur_word)) in enumerate(zip(step_pairs, all_words)):
+            # Skip zero-duration steps — libass ignores them; the next valid step
+            # shows all accumulated words, preserving the appear effect.
+            if end_cs <= start_cs:
                 continue
-            if li < cur_li:
-                text = _base_words_text(line.words, config)
-            elif li == cur_li:
-                text = _base_words_text_appear(line.words, cur_wi, config)
-            else:
-                text = _base_words_text_appear(line.words, -1, config)
-            tag = _animation_tag("none", line.center_x, line.y, config.base_style, align=8)
-            content.append(f"Dialogue: 0,{ev_start},{ev_end},Base,,0,0,0,,{{{tag}}}{text}")
-
-
-def _write_appear_base_events(content: list[str], block: SubtitleBlock, config: RenderConfig, block_end_cs: int):
-    """Word-pop appear — same multi-line structure as reveal mode."""
-    if not block.lines:
-        return
-    all_words = [
-        (li, wi, word)
-        for li, line in enumerate(block.lines)
-        for wi, word in enumerate(line.words)
-    ]
-    step_pairs = _compute_step_pairs(all_words, block_end_cs)
-    for step, ((start_cs, end_cs), (cur_li, cur_wi, _cur_word)) in enumerate(zip(step_pairs, all_words)):
-        # Skip zero-duration steps — libass ignores them; the next valid step
-        # shows all accumulated words, preserving the appear effect.
-        if end_cs <= start_cs:
-            continue
-        ev_start = _ass_time_cs(start_cs)
-        ev_end = _ass_time_cs(end_cs)
-        for li, line in enumerate(block.lines):
-            if not line.words:
-                continue
-            if li < cur_li:
-                text = _base_words_text(line.words, config)
-            elif li == cur_li:
-                text = _base_words_text_appear(line.words, cur_wi, config, fade_in=True)
-            else:
-                text = _base_words_text_appear(line.words, -1, config)
-            tag = _animation_tag("appear", line.center_x, line.y, config.base_style, align=8)
-            content.append(f"Dialogue: 0,{ev_start},{ev_end},Base,,0,0,0,,{{{tag}}}{text}")
+            ev_start = _ass_time_cs(start_cs)
+            ev_end = _ass_time_cs(end_cs)
+            for li, line in enumerate(block.lines):
+                if not line.words:
+                    continue
+                if li < cur_li:
+                    text = _base_words_text(line.words, config, layer=lyr_key)
+                elif li == cur_li:
+                    text = _base_words_text_appear(line.words, cur_wi, config, fade_in=True, layer=lyr_key)
+                else:
+                    text = _base_words_text_appear(line.words, -1, config, layer=lyr_key)
+                tag = _animation_tag("appear", line.center_x, line.y, eff_base, align=8)
+                content.append(f"Dialogue: {lyr},{ev_start},{ev_end},Base,,0,0,0,,{{{tag}}}{text}")
 
 
 def _style_line(
@@ -715,9 +708,14 @@ def write_ass_file(
     # emitting two Dialogue events per line — Layer 0 carries the shadow-blur
     # border and Layer 1 carries the glow border.  libass composites them in
     # order so the glow sits on top of the shadow halo, exactly as intended.
-    _styles_in_use = [config.base_style, config.highlight_style]
+    # We also check post-inheritance styles: _hl_style_with_shadow can give a
+    # highlight glow_intensity>0 AND an inherited shadow_blur>0, which requires
+    # two-layer rendering even if the original highlight_style had shadow_blur=0.
+    _hl_eff = _hl_style_with_shadow(config.highlight_style, config.base_style)
+    _styles_in_use = [config.base_style, config.highlight_style, _hl_eff]
     if config.highlight_style2 is not None:
-        _styles_in_use.append(config.highlight_style2)
+        _hl2_eff = _hl_style_with_shadow(config.highlight_style2, config.base_style)
+        _styles_in_use.extend([config.highlight_style2, _hl2_eff])
     use_two_layers = any(_needs_two_layers(s) for s in _styles_in_use)
     layers_to_emit = [0, 1] if use_two_layers else [0]
 
@@ -758,7 +756,7 @@ def write_ass_file(
                 # ── Appear: one Dialogue per line per word-step ───────────────
                 # Per-step events allow static \4a masking for future words so
                 # libass \t(\4a) issues are bypassed entirely.
-                _write_appear_base_events(content, effective_block, config, block_end_cs)
+                _write_appear_base_events(content, effective_block, config, block_end_cs, use_two_layers, layers_to_emit)
             else:
                 # ── Reveal: letter-by-letter via \t() in one Dialogue per line ─
                 center_x = video_info.width // 2

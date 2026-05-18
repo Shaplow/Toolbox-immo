@@ -57,18 +57,6 @@ export async function POST() {
     }),
   ]);
 
-  // ── DerushJob ─────────────────────────────────────────────────────────────
-  const [derushProcessing, derushQueued] = await Promise.all([
-    prisma.derushJob.updateMany({
-      where: { status: "PROCESSING", updatedAt: { lt: processingCutoff } },
-      data:  { status: "FAILED", errorMsg: "Job bloqué en PROCESSING — webhook RunPod jamais reçu (sweep automatique)" },
-    }),
-    prisma.derushJob.updateMany({
-      where: { status: "QUEUED", updatedAt: { lt: queuedCutoff } },
-      data:  { status: "FAILED", errorMsg: "Job bloqué en QUEUED — sweep automatique" },
-    }),
-  ]);
-
   const summary = {
     captions: {
       processing: captionProcessing.count,
@@ -78,14 +66,9 @@ export async function POST() {
       processing: transcriptionProcessing.count,
       queued:     transcriptionQueued.count,
     },
-    derush: {
-      processing: derushProcessing.count,
-      queued:     derushQueued.count,
-    },
     total:
       captionProcessing.count + captionQueued.count +
-      transcriptionProcessing.count + transcriptionQueued.count +
-      derushProcessing.count + derushQueued.count,
+      transcriptionProcessing.count + transcriptionQueued.count,
   };
 
   console.info("[admin/jobs/sweep] Sweep terminé par", session.user.email, "—", JSON.stringify(summary));

@@ -35,7 +35,9 @@ export async function GET(req: NextRequest, { params }: Params) {
   const reviewStatusFilter = searchParams.get("reviewStatus");
   const statusFilter = searchParams.get("status");
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
-  const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") ?? "20", 10)));
+  const pageSize = Math.min(500, Math.max(1, parseInt(searchParams.get("pageSize") ?? "20", 10)));
+  // Mode lean : skip les includes asset/editJob — utile quand on ne veut que les statuts
+  const lean = searchParams.get("lean") === "1";
 
   const where: Record<string, unknown> = { libraryId };
   if (reviewStatusFilter) where.reviewStatus = reviewStatusFilter;
@@ -43,24 +45,45 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const [total, jobs] = await Promise.all([
     prisma.mediaAutocutJob.count({ where }),
-    prisma.mediaAutocutJob.findMany({
-      where,
-      orderBy: [
-        // pending_review d'abord, puis les autres
-        { reviewStatus: "asc" },
-        { createdAt: "asc" },
-      ],
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      include: {
-        asset: {
-          select: { id: true, filename: true, url: true, duration: true },
-        },
-        editJob: {
-          select: { id: true, status: true },
-        },
-      },
-    }),
+    lean
+      ? prisma.mediaAutocutJob.findMany({
+          where,
+          orderBy: [{ reviewStatus: "asc" }, { createdAt: "asc" }],
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+          select: {
+            id: true,
+            assetId: true,
+            status: true,
+            reviewStatus: true,
+            proposedStart: true,
+            proposedEnd: true,
+            confirmedStart: true,
+            confirmedEnd: true,
+            errorMsg: true,
+            transcriptJson: true,
+            language: true,
+            createdAt: true,
+          },
+        })
+      : prisma.mediaAutocutJob.findMany({
+          where,
+          orderBy: [
+            // pending_review d'abord, puis les autres
+            { reviewStatus: "asc" },
+            { createdAt: "asc" },
+          ],
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+          include: {
+            asset: {
+              select: { id: true, filename: true, url: true, duration: true },
+            },
+            editJob: {
+              select: { id: true, status: true },
+            },
+          },
+        }),
   ]);
 
   return NextResponse.json({ jobs, total, page, pageSize });

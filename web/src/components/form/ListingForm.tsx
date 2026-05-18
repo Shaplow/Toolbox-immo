@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { UNSECTIONED_FORM_SECTION_ID, computeSectionFieldStyles, getFieldPlacementClass, getFieldSpanClass, getFormSectionGridClass, getFormSectionSpanClass, getSectionFieldsInVisualOrder, buildVisibleFormSections } from "@/lib/formSections";
 import type { SchemaField, TemplateFormSection } from "@/types/template";
-import type { LibraryPrefillContext, LibraryAssetOption } from "@/types/libraryPrefill";
+import type { LibraryPrefillContext, LibraryAssetOption, MetadataDrivenLink } from "@/types/libraryPrefill";
 import { LibraryFieldInput } from "@/components/form/LibraryPicker";
 import type { JobEventPayload } from "@/lib/sseStore";
 
@@ -47,7 +47,7 @@ function resolveInitialFieldValue(field: SchemaField, initialValue: unknown): un
 function buildUsedAssets(
   ctx: LibraryPrefillContext,
   selections: Record<string, LibraryAssetOption | null>,
-): { videoAssets?: Record<string, string>; audioAssetId?: string; dataEntryId?: string; setSequencedLibraryIds?: string[]; usedSetTagByLibrary?: Record<string, string>; usedCategoryByLibrary?: Record<string, string>; prevCursorStateByLibrary?: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null }>; prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: "usedInCycle" | "perAccountUsage"; accountId?: string } } | undefined {
+): { videoAssets?: Record<string, string>; audioAssetId?: string; dataEntryId?: string; setSequencedLibraryIds?: string[]; usedSetTagByLibrary?: Record<string, string>; usedCategoryByLibrary?: Record<string, string>; prevCursorStateByLibrary?: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null }>; prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: "usedInCycle" | "perAccountUsage"; accountId?: string }; prevAudioUsageState?: { assetId: string; accountId: string; prevLastUsedAt: string | null; claimedLastUsedAt: string } } | undefined {
   const fieldMap = ctx.fieldLibraryMap ?? {};
   const videoAssets: Record<string, string> = {};
   let audioAssetId: string | undefined;
@@ -72,6 +72,7 @@ function buildUsedAssets(
     usedCategoryByLibrary: ctx.usedCategoryByLibrary && Object.keys(ctx.usedCategoryByLibrary).length > 0 ? ctx.usedCategoryByLibrary : undefined,
     prevCursorStateByLibrary: ctx.prevCursorStateByLibrary && Object.keys(ctx.prevCursorStateByLibrary).length > 0 ? ctx.prevCursorStateByLibrary : undefined,
     prevDataEntryState: ctx.prevDataEntryState ?? undefined,
+    prevAudioUsageState: ctx.prevAudioUsageState ?? undefined,
   };
 }
 
@@ -249,6 +250,51 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
     }
 
     setValues((prev) => ({ ...prev, [key]: value }));
+
+    // Dynamic metadata-driven video resolution:
+    // When a select field linked to a metadata-values-from-library slot changes,
+    // fetch the matching video asset and auto-populate the linked video field.
+    const metadataDrivenLinks: MetadataDrivenLink[] = libraryPrefillContext?.metadataDrivenLinks ?? [];
+    const matchingLinks = metadataDrivenLinks.filter((l) => l.sourceFieldKey === key);
+    for (const link of matchingLinks) {
+      if (typeof value === "string" && value.trim()) {
+        try {
+          const params = new URLSearchParams({
+            libraryId: link.libraryId,
+            metadataKey: link.metadataKey,
+            value: value.trim(),
+            ...(libraryPrefillContext?.selectedAccountId ? { accountId: libraryPrefillContext.selectedAccountId } : {}),
+          });
+          const res = await fetch(`/api/library/resolve-by-metadata?${params}`);
+          if (res.ok) {
+            const asset = await res.json() as { id: string; url: string; filename: string; metadata?: Record<string, string | number | null> } | null;
+            if (asset) {
+              setLibrarySelections((prev) => ({ ...prev, [link.targetFieldKey]: asset }));
+              setValues((prev) => {
+                const patch: Record<string, unknown> = { [link.targetFieldKey]: asset.url };
+                // Also populate schema fields with metadataSource pointing at this library
+                // (e.g. adre, surface fields in the intro) — only if currently empty.
+                if (asset.metadata) {
+                  for (const schemaField of schema) {
+                    if (schemaField.metadataSource?.libraryId !== link.libraryId) continue;
+                    const metaValue = asset.metadata[schemaField.metadataSource.metadataKey];
+                    if (metaValue === null || metaValue === undefined) continue;
+                    const existing = prev[schemaField.key];
+                    if (existing !== undefined && existing !== null && existing !== "") continue;
+                    patch[schemaField.key] = String(metaValue);
+                  }
+                }
+                return { ...prev, ...patch };
+              });
+            }
+          }
+        } catch { /* non-critical — user can still select manually */ }
+      } else {
+        // Source field cleared — clear the linked video too
+        setLibrarySelections((prev) => ({ ...prev, [link.targetFieldKey]: null }));
+        setValues((prev) => ({ ...prev, [link.targetFieldKey]: "" }));
+      }
+    }
   }
 
   const sections = useMemo(() => buildVisibleFormSections(schema, formSections, values), [formSections, schema, values]);
@@ -515,6 +561,7 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
                       onUpload={(f) => handleChange(field.key, f)}
                       onFocalChange={(fp) => handleChange(field.key + "_focalpoint", fp)}
                       fromLibrary={libraryPrefilledKeys.has(field.key)}
+                      fromAsset={Boolean(field.metadataSource?.metadataKey)}
                     />
                   )}
                 </div>
@@ -705,33 +752,53 @@ function SelectFieldInput({
   const [dynamicOptions, setDynamicOptions] = useState<{ value: string; label: string }[] | null>(null);
 
   useEffect(() => {
-    if (field.optionsSource?.type !== "ig-accounts-from-library") return;
-    const libraryId = field.optionsSource.libraryId;
-    fetch(`/api/admin/libraries/media/${libraryId}/ig-accounts`)
-      .then((r) => r.ok ? r.json() : { accounts: [] })
-      .then((data: { accounts: { handle: string; name: string }[] }) => {
-        setDynamicOptions(data.accounts.map((a) => ({ value: a.handle, label: `${a.name} (@${a.handle})` })));
-      })
-      .catch(() => setDynamicOptions([]));
-  }, [field.optionsSource?.type, field.optionsSource?.libraryId]);
+    if (!field.optionsSource) return;
+    const { type, libraryId } = field.optionsSource;
+
+    if (type === "ig-accounts-from-library") {
+      fetch(`/api/admin/libraries/media/${libraryId}/ig-accounts`)
+        .then((r) => r.ok ? r.json() : { accounts: [] })
+        .then((data: { accounts: { handle: string; name: string }[] }) => {
+          setDynamicOptions(data.accounts.map((a) => ({ value: a.handle, label: `${a.name} (@${a.handle})` })));
+        })
+        .catch(() => setDynamicOptions([]));
+    } else if (type === "metadata-values-from-library") {
+      const metadataKey = field.optionsSource.metadataKey;
+      if (!metadataKey) return;
+      fetch(`/api/admin/libraries/media/${libraryId}/metadata-values?key=${encodeURIComponent(metadataKey)}`)
+        .then((r) => r.ok ? r.json() : { values: [] })
+        .then((data: { values: string[] }) => {
+          setDynamicOptions(data.values.map((v) => ({ value: v, label: v })));
+        })
+        .catch(() => setDynamicOptions([]));
+    }
+  }, [field.optionsSource?.type, field.optionsSource?.libraryId, field.optionsSource?.metadataKey]);
 
   const options: { value: string; label: string }[] = dynamicOptions
     ?? (field.options ?? []).map((o) => ({ value: o, label: o }));
 
   const isLoading = field.optionsSource && dynamicOptions === null;
+  const isMetaValues = field.optionsSource?.type === "metadata-values-from-library";
 
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={isLoading}
-      className={controlClassName}
-    >
-      <option value="">{isLoading ? "Chargement…" : "—"}</option>
-      {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>{opt.label}</option>
-      ))}
-    </select>
+    <div className="flex flex-col gap-1">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={isLoading}
+        className={controlClassName}
+      >
+        <option value="">{isLoading ? "Chargement…" : "—"}</option>
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+      {isMetaValues && !value && (
+        <span className="text-[10px] text-teal-600">
+          Valeur sélectionnée automatiquement depuis l&apos;asset si laissé vide.
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -746,6 +813,7 @@ function FieldInput({
   onUpload,
   onFocalChange,
   fromLibrary,
+  fromAsset,
 }: {
   field: SchemaField;
   value: unknown;
@@ -757,6 +825,7 @@ function FieldInput({
   onUpload: (f: File) => void;
   onFocalChange?: (fp: { x: number; y: number }) => void;
   fromLibrary?: boolean;
+  fromAsset?: boolean;
 }) {
   const isConditional = Boolean(field.showIf);
   const helperText = field.description || (isConditional
@@ -781,6 +850,12 @@ function FieldInput({
           <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-600">
             <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
             depuis la bibliothèque
+          </span>
+        )}
+        {fromAsset && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[10px] font-medium text-teal-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-teal-400" />
+            depuis l&apos;asset
           </span>
         )}
       </div>

@@ -1669,12 +1669,26 @@ function StyleEditor({
         </label>
         <label className="flex flex-col gap-0.5">
           <span className="text-gray-400">Font weight</span>
-          <select value={style.fontWeight ?? 400}
-            onChange={(e) => onChange({ fontWeight: Number(e.target.value) })}
-            className="border border-gray-200 rounded px-2 py-1"
-          >
-            {[300,400,500,600,700].map(w => <option key={w} value={w}>{w}</option>)}
-          </select>
+          <div className="flex items-center gap-1">
+            <select value={style.fontWeight ?? 400}
+              onChange={(e) => onChange({ fontWeight: Number(e.target.value) })}
+              className="flex-1 border border-gray-200 rounded px-2 py-1"
+            >
+              {[300,400,500,600,700].map(w => <option key={w} value={w}>{w}</option>)}
+            </select>
+            <button
+              type="button"
+              title="Italique"
+              onClick={() => onChange({ fontStyle: style.fontStyle === "italic" ? "normal" : "italic" })}
+              className={`h-7 w-7 rounded flex items-center justify-center border text-sm font-bold italic shrink-0 ${
+                style.fontStyle === "italic"
+                  ? "bg-indigo-100 border-indigo-400 text-indigo-700"
+                  : "border-gray-200 text-gray-500 hover:bg-gray-50"
+              }`}
+            >
+              I
+            </button>
+          </div>
         </label>
       </div>
       <label className="flex flex-col gap-0.5">

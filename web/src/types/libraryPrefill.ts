@@ -79,4 +79,31 @@ export interface LibraryPrefillContext {
     claimType: "usedInCycle" | "perAccountUsage";
     accountId?: string;
   };
+  /**
+   * Audio usage claim state taken at prefill time for failure-recovery revert.
+   * Only set for non-theme_sequence audio libraries when accountId is present.
+   */
+  prevAudioUsageState?: {
+    assetId: string;
+    accountId: string;
+    prevLastUsedAt: string | null;
+    claimedLastUsedAt: string;
+  };
+  /**
+   * Describes a link between a select field (source) and a video field (target)
+   * where the video is resolved at render time from a media asset's metadata value.
+   * Used by ListingForm to dynamically update the video field when the select changes.
+   */
+  metadataDrivenLinks?: MetadataDrivenLink[];
+}
+
+export interface MetadataDrivenLink {
+  /** Key of the select field that drives the resolution (e.g. "nom_du_client") */
+  sourceFieldKey: string;
+  /** Key of the video field to update (e.g. "rva3raw") */
+  targetFieldKey: string;
+  /** MediaLibrary ID to search in */
+  libraryId: string;
+  /** Metadata key to match against (e.g. "nom_du_client") */
+  metadataKey: string;
 }

@@ -11,9 +11,8 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
    - builder or preview parity
    - general web app or Prisma behavior
    - captions, transcription, or file-upload workflow orchestration
-   - derush workflow (analysis, scoring, segment overrides, export)
    - description generation workflow (Claude/GPT, prompts, transcript/image inputs)
-   - content library (MediaLibrary, MediaAsset, setTag, setSequence, AccountLibraryCursor, DataLibrary, selection rules, set_sequence rotation, generation pre-fill, asset editing, offer-based automation)
+   - content library (MediaLibrary, MediaAsset, setTag, setSequence, AccountLibraryCursor, DataLibrary, selection rules, set_sequence rotation, generation pre-fill, asset editing, offer-based automation, MediaAutocutJob batch autocut)
    - admin, permissions, or impersonation
    - render-engine, FFmpeg, RunPod, storage pipeline, or webhook callbacks
    - UI and UX cleanup
@@ -59,8 +58,7 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
 - `.github/skills/app-hardening/`
 - `.github/skills/security-review/`
 - `.github/skills/admin-permissions/`
-- `.github/skills/derush/`
-- `.github/skills/content-library/` — MediaLibrary, MediaAsset (setTag, category, tags, setSequence), MediaAssetAccess, MediaAssetUsage, DataLibrary, DataCampaign, DataEntry, AccountLibraryCursor, builder bindings, selection rules (theme_sequence/oldest_used/least_used), generation pre-fill, recordLibraryUsage, offer-based automation
+- `.github/skills/content-library/` — MediaLibrary, MediaAsset (setTag, category, tags, setSequence), MediaAssetAccess, MediaAssetUsage, DataLibrary, DataCampaign, DataEntry, AccountLibraryCursor, builder bindings, selection rules (theme_sequence/oldest_used/least_used), generation pre-fill, recordLibraryUsage, offer-based automation, MediaAutocutJob batch autocut
 - `.github/skills/asset-rotation/` — rotation algorithm internals: auto mode (group discovery, category exclusion, per-account ordering), override mode (cursor), pickFromGroup, per-account isolation via MediaAssetUsage, rotation simulation, common bugs, extending to DataEntry
 - `.github/skills/description-generation/` — DescriptionJob, DescriptionPrompt, Claude/GPT generation, transcript/image inputs, admin prompt management
 

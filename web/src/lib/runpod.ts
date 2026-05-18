@@ -57,6 +57,7 @@ export function isPodJobId(runpodJobId: string): boolean {
  *   completed   — RunPod job finished successfully; output is populated.
  *   failed      — RunPod job finished with an error; error is populated.
  *   in_progress — job is still IN_QUEUE or IN_PROGRESS; no action needed.
+ *                  runpodStatus is populated for Serverless jobs ("IN_QUEUE" | "IN_PROGRESS").
  *   stalled     — job exceeded the stall window; caller should mark it FAILED.
  *   unreachable — RunPod API threw; job age is within stall window; caller may
  *                 surface a warning but should NOT mark it FAILED yet.
@@ -64,7 +65,7 @@ export function isPodJobId(runpodJobId: string): boolean {
 export type RunpodJobPhase<TOutput> =
   | { phase: "completed"; output: TOutput }
   | { phase: "failed"; error: string }
-  | { phase: "in_progress" }
+  | { phase: "in_progress"; runpodStatus?: "IN_QUEUE" | "IN_PROGRESS" }
   | { phase: "stalled" }
   | { phase: "unreachable" };
 
@@ -118,7 +119,7 @@ export async function resolveRunpodJobPhase<TOutput = unknown>(
       return { phase: "stalled" };
     }
 
-    return { phase: "in_progress" };
+    return { phase: "in_progress", runpodStatus: rp.status as "IN_QUEUE" | "IN_PROGRESS" };
   } catch (err) {
     // RunPod unreachable — apply stall check anyway so genuinely abandoned jobs
     // eventually surface as FAILED even when RunPod stays down.
@@ -238,7 +239,7 @@ interface ServerlessHealth {
 }
 
 // Short-lived cache: avoids a 5s HTTP round-trip on every job submission.
-let _serverlessHealthCache: { value: boolean; expiresAt: number } | null = null;
+const _serverlessHealthCacheMap = new Map<string, { value: boolean; expiresAt: number }>();
 
 /**
  * Check whether the Serverless endpoint has idle workers ready to pick up a job.
@@ -247,8 +248,9 @@ let _serverlessHealthCache: { value: boolean; expiresAt: number } | null = null;
  * Result is cached for 15s to avoid blocking every job on a health call.
  */
 async function serverlessHasIdleWorkers(endpointId: string, apiKey: string): Promise<boolean> {
-  if (_serverlessHealthCache && Date.now() < _serverlessHealthCache.expiresAt) {
-    return _serverlessHealthCache.value;
+  const cached = _serverlessHealthCacheMap.get(endpointId);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.value;
   }
   try {
     const res = await fetch(`https://api.runpod.ai/v2/${endpointId}/health`, {
@@ -257,17 +259,17 @@ async function serverlessHasIdleWorkers(endpointId: string, apiKey: string): Pro
       signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) {
-      _serverlessHealthCache = { value: false, expiresAt: Date.now() + 5_000 };
+      _serverlessHealthCacheMap.set(endpointId, { value: false, expiresAt: Date.now() + 5_000 });
       return false;
     }
     const data = await res.json() as ServerlessHealth;
     const idle = data?.workers?.idle ?? 0;
-    console.log(`[runpod] Serverless health: ${idle} workers idle, ${data?.jobs?.inQueue ?? 0} en queue`);
+    console.log(`[runpod] Serverless health (${endpointId}): ${idle} workers idle, ${data?.jobs?.inQueue ?? 0} en queue`);
     const result = idle > 0;
-    _serverlessHealthCache = { value: result, expiresAt: Date.now() + 15_000 };
+    _serverlessHealthCacheMap.set(endpointId, { value: result, expiresAt: Date.now() + 15_000 });
     return result;
   } catch {
-    _serverlessHealthCache = { value: false, expiresAt: Date.now() + 5_000 };
+    _serverlessHealthCacheMap.set(endpointId, { value: false, expiresAt: Date.now() + 5_000 });
     return false;
   }
 }
