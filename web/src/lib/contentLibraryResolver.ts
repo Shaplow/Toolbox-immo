@@ -851,13 +851,16 @@ export async function resolveLibraryPrefill(
       estimatedVideoDuration = durations.reduce((sum, a) => sum + (a.duration ?? 0), 0);
     }
 
+    // Skip the duration filter when the track loops — any length works.
+    const audioMinDuration =
+      !musicBlock.loop && estimatedVideoDuration > 0 ? estimatedVideoDuration : undefined;
     result.audioSuggestion = await selectMediaAsset(
       musicBlock.libraryId,
       musicBlock.audioSelectionRule,
       formData,
       effectiveAccountId(musicBlock.libraryId),
       undefined,
-      estimatedVideoDuration > 0 ? estimatedVideoDuration : undefined,
+      audioMinDuration,
     );
   }
 

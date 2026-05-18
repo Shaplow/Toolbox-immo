@@ -407,11 +407,19 @@ async function resolveMusicConfig(
 
   // 2. Fall back to library resolution when no URL came from the form
   if (!rawMusicUrl && musicBlock.libraryId) {
+    // Skip the duration filter when the track will loop — any length works.
+    // Otherwise require the track to be at least as long as the canvas maxDuration.
+    const minMusicDuration =
+      !musicBlock.loop && (templateJson.canvas.maxDuration ?? 0) > 0
+        ? templateJson.canvas.maxDuration!
+        : undefined;
     const asset = await selectMediaAsset(
       musicBlock.libraryId,
       musicBlock.audioSelectionRule,
       undefined,
       accountId ?? undefined,
+      undefined,
+      minMusicDuration,
     );
     if (asset) {
       rawMusicUrl = asset.url;
@@ -1045,8 +1053,11 @@ async function resolveSlotVideoUrl(
   pinnedCategory?: string,
 ): Promise<{ url: string; assetId: string | null; resolvedSetTag: string | null; resolvedCategory: string | null; metadata: Record<string, string | number | null> }> {
   // 1. Binding explicite dans les données du formulaire
-  if (slot.binding) {
-    const raw = (listingData as Record<string, unknown>)[slot.binding] as string | undefined;
+  // Also checks slot.label (lowercased) as a fallback key — mirrors the primaryKey logic
+  // used by the generate page when injecting prefill URLs into initialValues/listing data.
+  const listingKey = slot.binding ?? slot.label?.toLowerCase();
+  if (listingKey) {
+    const raw = (listingData as Record<string, unknown>)[listingKey] as string | undefined;
     if (raw && (raw.startsWith("http") || raw.startsWith("/"))) {
       return { url: raw, assetId: null, resolvedSetTag: null, resolvedCategory: null, metadata: {} };
     }
