@@ -39,7 +39,6 @@ interface MediaLibraryManifest {
     tags: string[];
     description: string | null;
     setSequence: string[];
-    setFamilies: Record<string, string>;
     rotationScope: string;
   };
   assets: ExportedMediaAsset[];
@@ -207,7 +206,6 @@ async function buildMediaExport(
       tags: safeJsonParse<string[]>(library.tags, []),
       description: library.description ?? null,
       setSequence: safeJsonParse<string[]>(library.setSequence, []),
-      setFamilies: safeJsonParse<Record<string, string>>(library.setFamilies, {}),
       rotationScope: library.rotationScope,
     },
     assets: exportedAssets,

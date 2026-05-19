@@ -127,7 +127,6 @@ async function importMediaLibrary(
         tags: JSON.stringify(lib.tags ?? []),
         description: lib.description ?? null,
         setSequence: JSON.stringify(lib.setSequence ?? []),
-        setFamilies: JSON.stringify(lib.setFamilies ?? {}),
         rotationScope: lib.rotationScope ?? "per_account",
       },
     });

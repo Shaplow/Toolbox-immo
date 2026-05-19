@@ -17,16 +17,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const { id } = await params;
-  const body = await req.json() as { name?: string; description?: string; tags?: string[]; setSequence?: string[]; setFamilies?: Record<string, string>; rotationScope?: string; metadataSchema?: { key: string; label: string; type: string }[] };
+  const body = await req.json() as { name?: string; description?: string; tags?: string[]; setSequence?: string[]; rotationScope?: string; metadataSchema?: { key: string; label: string; type: string }[] };
 
   const data: Record<string, unknown> = {};
   if (body.name?.trim()) data.name = body.name.trim();
   if (body.description !== undefined) data.description = body.description?.trim() ?? null;
   if (Array.isArray(body.tags)) data.tags = JSON.stringify(body.tags);
   if (Array.isArray(body.setSequence)) data.setSequence = JSON.stringify(body.setSequence);
-  if (body.setFamilies && typeof body.setFamilies === "object" && !Array.isArray(body.setFamilies)) {
-    data.setFamilies = JSON.stringify(body.setFamilies);
-  }
   if (body.rotationScope === "per_account" || body.rotationScope === "shared") {
     data.rotationScope = body.rotationScope;
   }

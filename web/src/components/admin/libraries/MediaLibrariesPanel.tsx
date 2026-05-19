@@ -11,7 +11,6 @@ interface MediaLibrary {
   type: "video" | "audio";
   tags: string;
   setSequence: string;
-  setFamilies?: string;
   rotationScope?: string;
   metadataSchema?: string;
   description: string | null;

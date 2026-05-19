@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
       usedCategoryByLibrary?: Record<string, string>;
       prevCursorStateByLibrary?: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null }>;
       prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: string; accountId?: string };
+      prevAudioUsageState?: { assetId: string; accountId: string; prevLastUsedAt: string | null; claimedLastUsedAt: string };
     } = {};
 
     if (usedAssets && typeof usedAssets === "object") {
@@ -156,6 +157,24 @@ export async function POST(req: NextRequest) {
             claimType: s.claimType,
             accountId: s.accountId as string | undefined,
           };
+        }
+      }
+
+      // prevAudioUsageState — audio usage claim for failure-recovery revert.
+      if (raw.prevAudioUsageState && typeof raw.prevAudioUsageState === "object" && !Array.isArray(raw.prevAudioUsageState)) {
+        const s = raw.prevAudioUsageState as Record<string, unknown>;
+        if (typeof s.assetId === "string" && typeof s.accountId === "string"
+          && (s.prevLastUsedAt === null || typeof s.prevLastUsedAt === "string")
+          && typeof s.claimedLastUsedAt === "string") {
+          const found = await prisma.mediaAsset.findUnique({ where: { id: s.assetId }, select: { id: true } });
+          if (found) {
+            sanitizedUsedAssets.prevAudioUsageState = {
+              assetId: s.assetId,
+              accountId: s.accountId as string,
+              prevLastUsedAt: s.prevLastUsedAt as string | null,
+              claimedLastUsedAt: s.claimedLastUsedAt as string,
+            };
+          }
         }
       }
     }

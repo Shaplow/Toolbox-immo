@@ -9,6 +9,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { SHARED_CURSOR_ACCOUNT_ID } from "@/lib/contentLibraryResolver";
 
 interface UsedAssets {
   /** blockId → assetId */
@@ -35,6 +36,13 @@ interface UsedAssets {
     usagePolicy: string;
     claimType: "usedInCycle" | "perAccountUsage";
     accountId?: string;
+  };
+  /** Audio usage claim for failure-recovery revert */
+  prevAudioUsageState?: {
+    assetId: string;
+    accountId: string;
+    prevLastUsedAt: string | null;
+    claimedLastUsedAt: string;
   };
 }
 
@@ -148,22 +156,59 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
   // Cursor position and lastUsedCategory were already written at prefill time by
   // selectMediaAssetBySetSequence (SELECT FOR UPDATE, serialized across concurrent
   // generations). Here we only stamp lastAdvancedAt to mark render completion.
+  //
+  // For shared-scope libraries the cursor row is keyed by SHARED_CURSOR_ACCOUNT_ID
+  // rather than the real accountId; we also write MediaAssetUsage rows keyed by
+  // SHARED_CURSOR_ACCOUNT_ID so pickFromGroup can rotate within groups globally.
   const seqLibraryIds = usedAssets.setSequencedLibraryIds ?? [];
   const accountId = render.accountId;
-  if (accountId && seqLibraryIds.length > 0) {
+  if (seqLibraryIds.length > 0) {
+    const libs = await prisma.mediaLibrary.findMany({
+      where: { id: { in: seqLibraryIds } },
+      select: { id: true, rotationScope: true },
+    });
+    const scopeMap = new Map(libs.map((l) => [l.id, l.rotationScope ?? "per_account"]));
+    const sharedSeqLibIds = new Set(libs.filter((l) => l.rotationScope === "shared").map((l) => l.id));
+
     await Promise.allSettled(
       seqLibraryIds.map(async (libraryId) => {
+        const isShared = scopeMap.get(libraryId) === "shared";
+        const cursorAccountId = isShared ? SHARED_CURSOR_ACCOUNT_ID : accountId;
+        if (!cursorAccountId) return; // no accountId for per-account library — skip
         try {
           await prisma.accountLibraryCursor.upsert({
-            where: { accountId_libraryId: { accountId, libraryId } },
+            where: { accountId_libraryId: { accountId: cursorAccountId, libraryId } },
             update: { lastAdvancedAt: now },
-            create: { accountId, libraryId, cursor: 0, lastAdvancedAt: now },
+            create: { accountId: cursorAccountId, libraryId, cursor: 0, lastAdvancedAt: now },
           });
         } catch (err) {
           console.error(`[recordLibraryUsage] cursor lastAdvancedAt update failed for library ${libraryId}:`, err);
         }
       }),
     );
+
+    // For video assets from shared-scope set-sequence libraries, write a MediaAssetUsage row
+    // keyed by SHARED_CURSOR_ACCOUNT_ID so within-group rotation ordering is globally shared.
+    if (sharedSeqLibIds.size > 0 && videoAssetIds.length > 0) {
+      const assetLibraries = await prisma.mediaAsset.findMany({
+        where: { id: { in: videoAssetIds } },
+        select: { id: true, libraryId: true },
+      });
+      const sharedAssetIds = assetLibraries
+        .filter((a) => sharedSeqLibIds.has(a.libraryId))
+        .map((a) => a.id);
+      for (const assetId of sharedAssetIds) {
+        await prisma.mediaAssetUsage
+          .upsert({
+            where: { assetId_accountId: { assetId, accountId: SHARED_CURSOR_ACCOUNT_ID } },
+            update: { usageCount: { increment: 1 }, lastUsedAt: now },
+            create: { assetId, accountId: SHARED_CURSOR_ACCOUNT_ID, usageCount: 1, lastUsedAt: now },
+          })
+          .catch((err: unknown) =>
+            console.error(`[recordLibraryUsage] shared asset usage upsert failed assetId=${assetId}:`, err),
+          );
+      }
+    }
   }
 }
 
@@ -474,6 +519,31 @@ export async function revertLibraryCursors(renderId: string): Promise<void> {
       }
     } catch (err) {
       console.error(`[revertLibraryCursors] DataEntry revert failed for render=${renderId}:`, err);
+    }
+  }
+
+  // --- Audio usage claim revert ---
+  // We only undo the prefill-time lastUsedAt stamp if the row hasn't been touched
+  // since (optimistic concurrency via the claimedLastUsedAt sentinel value).
+  const audioState = usedAssets.prevAudioUsageState;
+  if (audioState) {
+    try {
+      const prevTs = audioState.prevLastUsedAt ? new Date(audioState.prevLastUsedAt) : null;
+      const claimedTs = new Date(audioState.claimedLastUsedAt);
+      const updated = await prisma.$executeRaw(Prisma.sql`
+        UPDATE "MediaAssetUsage"
+        SET "lastUsedAt" = ${prevTs}
+        WHERE "assetId"   = ${audioState.assetId}
+          AND "accountId" = ${audioState.accountId}
+          AND "lastUsedAt" IS NOT DISTINCT FROM ${claimedTs}
+      `);
+      if (updated > 0) {
+        console.info(
+          `[revertLibraryCursors] render=${renderId} audio assetId=${audioState.assetId} lastUsedAt reverted`,
+        );
+      }
+    } catch (err) {
+      console.error(`[revertLibraryCursors] audio revert failed for render=${renderId}:`, err);
     }
   }
 }
