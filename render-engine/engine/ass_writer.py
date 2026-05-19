@@ -280,7 +280,7 @@ def _style_effect_tags(style) -> str:
         tags += rf"\bord{style.glow_intensity:.2f}"
         tags += rf"\3c{_hex_to_ass_tag_color(style.glow_color)}"
         tags += r"\3a&H00&"  # glow fully opaque
-        tags += rf"\blur{max(0.8, style.glow_intensity * 0.85):.2f}"
+        tags += rf"\blur{max(0.3, style.glow_intensity * 0.2):.2f}"
     elif has_blur:
         # Ambient shadow halo (works for distance=0 AND distance>0)
         tags += rf"\bord{style.shadow_blur:.2f}"
