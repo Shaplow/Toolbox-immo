@@ -47,8 +47,10 @@ echo "▶ Création de l'archive du projet..."
 TMP_ARCHIVE="/tmp/toolbox-deploy.tar.gz"
 cd "${PROJECT_ROOT}"
 tar czf "${TMP_ARCHIVE}" \
+  --exclude='./.git' \
   --exclude='./web/node_modules' \
   --exclude='./web/.next' \
+  --exclude='./web/public/fonts' \
   --exclude='._*' \
   --exclude='./**/._*' \
   --exclude='.DS_Store' \
