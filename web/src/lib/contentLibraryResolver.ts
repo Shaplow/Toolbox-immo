@@ -439,20 +439,12 @@ export async function selectMediaAssetBySetSequence(
           ${accessFilter}
         ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC LIMIT 1`);
       const row = rows[0] ?? null;
-      if (!row && prevCursorState) {
-        // No assets are eligible for selectedSetTag — immediately revert the cursor advance
-        // so this set position is not permanently skipped in future generations.
-        await prisma.$executeRaw(Prisma.sql`
-          UPDATE "AccountLibraryCursor"
-          SET cursor = ${prevCursorState.prevCursor}
-          WHERE "accountId" = ${effectiveCursorId}
-            AND "libraryId" = ${libraryId}
-            AND cursor IS NOT DISTINCT FROM ${prevCursorState.claimedCursor}
-            AND "lastUsedCategory" IS NOT DISTINCT FROM ${prevCursorState.claimedLastUsedCategory}
-        `).catch((e) => {
-          console.warn(`[selectMediaAssetBySetSequence] cursor revert failed account=${effectiveCursorId} library=${libraryId}:`, e);
-        });
-        console.warn(`[selectMediaAssetBySetSequence] No eligible assets for setTag=${selectedSetTag} library=${libraryId} — cursor reverted to ${prevCursorState.prevCursor}`);
+      if (!row) {
+        // No eligible assets for this setTag (all disabled or access-restricted).
+        // Cursor was already advanced to nextCursor — leave it there so the next generation
+        // tries the following position in the sequence. The disabled position will naturally
+        // re-appear after a full cycle and be skipped again if still disabled.
+        console.warn(`[selectMediaAssetBySetSequence] No eligible assets for setTag=${selectedSetTag} library=${libraryId} — skipping to next cursor position`);
       }
       return row ? { ...row, resolvedSetTag: selectedSetTag, resolvedCategory: null, prevCursorState } : null;
     } else {
@@ -514,9 +506,9 @@ export async function selectMediaAssetBySetSequence(
               FROM "MediaAsset" ma
               LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${effectiveCursorId}
               WHERE ma."libraryId" = ${libraryId} AND (ma."setTag" IS NOT NULL OR ma."category" IS NOT NULL)
-                AND ma."disabled" = false
                 ${accessFilter}
               GROUP BY ma."setTag", ma."category"
+              HAVING COUNT(*) FILTER (WHERE NOT ma."disabled") > 0
             ) sub1
           ) sub2
           ORDER BY sub2.cat_last_used ASC NULLS FIRST, sub2.last_used ASC NULLS FIRST,
@@ -596,9 +588,9 @@ export async function selectMediaAssetBySetSequence(
                  MAX("lastUsedAt") AS last_used
           FROM "MediaAsset"
           WHERE "libraryId" = ${libraryId} AND ("setTag" IS NOT NULL OR "category" IS NOT NULL)
-            AND "disabled" = false
             AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = id)
           GROUP BY "setTag", "category"
+          HAVING COUNT(*) FILTER (WHERE NOT "disabled") > 0
         ) sub1
       ) sub2
       ORDER BY sub2.cat_last_used ASC NULLS FIRST, sub2.last_used ASC NULLS FIRST,

@@ -360,9 +360,11 @@ export function MediaAssetsPanel({ library }: Props) {
     // Only use assets accessible to the filtered account when computing last-used date.
     // Without this, inaccessible assets (restricted to other accounts) can skew group ordering.
     const getLastUsed = (groupAssets: MediaAsset[]) => {
+      // Include disabled assets in recency computation — mirrors the resolver which uses all
+      // assets for MAX(lastUsedAt) in group discovery and excludes fully-disabled groups via HAVING.
       const pool = accountFilter
-        ? groupAssets.filter((a) => !a.disabled && (a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter)))
-        : groupAssets.filter((a) => !a.disabled);
+        ? groupAssets.filter((a) => a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))
+        : groupAssets;
       return pool.reduce<string | null>((max, a) => {
         if (!a.lastUsedAt) return max;
         if (!max) return a.lastUsedAt;
@@ -458,8 +460,11 @@ export function MediaAssetsPanel({ library }: Props) {
       };
       if (accountFilter) {
         const accessible = named.filter((g) => g.isAccessible).sort(sortFn);
+        // Show inaccessible/disabled groups that are in the sequence — they occupy cursor
+        // positions and must be visible so the admin can remove them.
+        const blockedInSeq = named.filter((g) => !g.isAccessible && g.setTag && seqState.includes(g.setTag)).sort(sortFn);
         const accessibleUnnamed = unnamed.filter((g) => g.isAccessible);
-        return [...accessible, ...accessibleUnnamed];
+        return [...accessible, ...blockedInSeq, ...accessibleUnnamed];
       }
       return [...named.sort(sortFn), ...unnamed];
     }
@@ -1436,7 +1441,9 @@ export function MediaAssetsPanel({ library }: Props) {
         {/* Column header */}
         <div className={`mb-2 p-2.5 rounded-xl border flex flex-col gap-1 ${!isAccessible && accountFilter ? "bg-gray-50 border-dashed border-gray-300" : "bg-gray-50 border-gray-200"}`}>
           {!isAccessible && accountFilter && (
-            <span className="text-[9px] text-gray-400 flex items-center gap-0.5 mb-0.5"><Lock size={8} /> Hors accès pour ce compte</span>
+            groupAssets.every((a) => a.disabled)
+              ? <span className="text-[9px] text-red-400 flex items-center gap-0.5 mb-0.5"><AlertTriangle size={8} /> Set désactivé — bloque la rotation</span>
+              : <span className="text-[9px] text-gray-400 flex items-center gap-0.5 mb-0.5"><Lock size={8} /> Hors accès pour ce compte</span>
           )}
           {/* Category — only shown when NOT inside a category section (avoids redundancy) */}
           {(setTag || category) && !inSection && (
