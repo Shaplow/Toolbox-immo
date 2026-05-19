@@ -28,6 +28,7 @@ interface UsedAssets {
     claimedCursor: number;
     prevLastUsedCategory: string | null;
     claimedLastUsedCategory: string | null;
+    cursorAccountId?: string;
   }>;
   /** DataEntry claim state for failure-recovery revert */
   prevDataEntryState?: {
