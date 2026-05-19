@@ -440,7 +440,9 @@ export function MediaAssetsPanel({ library }: Props) {
       }
       const cycleSize = ordered.length;
       const orderedWithCycle = ordered.map((g) => ({ ...g, cycleSize }));
-      return [...orderedWithCycle, ...inaccessibleNamed.map((g) => ({ ...g, cycleSize: null })), ...unnamed.map((g) => ({ ...g, cycleSize: null }))];
+      // When a specific account is selected, hide inaccessible groups entirely.
+      const visibleUnnamed = accountFilter ? unnamed.filter((g) => g.isAccessible) : unnamed;
+      return [...orderedWithCycle, ...(accountFilter ? [] : inaccessibleNamed.map((g) => ({ ...g, cycleSize: null }))), ...visibleUnnamed.map((g) => ({ ...g, cycleSize: null }))];
     } else {
       // Override mode: accessible groups first (in seqState order), inaccessible at end
       const sortFn = ({ setTag: ka }: GroupItem, { setTag: kb }: GroupItem): number => {
@@ -456,8 +458,8 @@ export function MediaAssetsPanel({ library }: Props) {
       };
       if (accountFilter) {
         const accessible = named.filter((g) => g.isAccessible).sort(sortFn);
-        const inaccessible = named.filter((g) => !g.isAccessible).sort(sortFn);
-        return [...accessible, ...inaccessible, ...unnamed];
+        const accessibleUnnamed = unnamed.filter((g) => g.isAccessible);
+        return [...accessible, ...accessibleUnnamed];
       }
       return [...named.sort(sortFn), ...unnamed];
     }
@@ -1615,13 +1617,6 @@ export function MediaAssetsPanel({ library }: Props) {
                   title="Vue grille"
                 >
                   <LayoutGrid size={13} /> Grille
-                </button>
-                <button
-                  onClick={() => setViewMode("grouped")}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors ${viewMode === "grouped" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-                  title="Vue groupée par famille / set"
-                >
-                  <Layers size={13} /> Groupes
                 </button>
                 <button
                   onClick={() => setViewMode("rotation")}
