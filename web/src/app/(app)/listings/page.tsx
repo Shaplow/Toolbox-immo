@@ -62,17 +62,6 @@ export default async function ListingsPage() {
     },
   });
 
-  const derushJobs = await prisma.derushJob.findMany({
-    where: isAdmin ? {} : { userId },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    include: {
-      user: { select: { name: true, email: true } },
-      preset: { select: { name: true } },
-      derushExports: { select: { id: true } },
-    },
-  });
-
   // Serialize for the client component
   const rows: ListingRow[] = listings.map((l) => ({
     id: l.id,

@@ -3,7 +3,7 @@
  *
  * Server-Sent Events endpoint. Opens a long-lived stream scoped to the
  * authenticated user. The server pushes a job event whenever a RunPod
- * webhook completes or fails a job (captions, transcription, derush).
+ * webhook completes or fails a job (captions, transcription).
  *
  * The `X-Accel-Buffering: no` header disables nginx proxy buffering so
  * events are delivered immediately without waiting for a buffer flush.

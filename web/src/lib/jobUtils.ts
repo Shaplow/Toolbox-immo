@@ -1,6 +1,6 @@
 /**
  * Shared formatting helpers for job lists.
- * Avoids duplicating fmtDate / fmtDuration across DerushList, TranscriptionList, etc.
+ * Avoids duplicating fmtDate / fmtDuration across TranscriptionList, etc.
  */
 
 export function fmtDate(iso: string): string {
