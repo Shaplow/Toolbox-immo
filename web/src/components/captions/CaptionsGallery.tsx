@@ -1,7 +1,7 @@
 ﻿"use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AlignLeft, Film, Pencil, Plus, Scissors, X } from "lucide-react";
 import { CaptionPresetActions } from "@/components/captions/CaptionPresetActions";
@@ -17,6 +17,8 @@ type Preset = {
 
 export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const transcriptionPendingId = searchParams.get("transcriptionId");
   const [presets, setPresets] = useState<Preset[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -26,22 +28,13 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [transcriptionPendingId, setTranscriptionPendingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const id = sessionStorage.getItem("transcription_pending_id");
-    if (id) setTranscriptionPendingId(id);
-  }, []);
 
   const dismissTranscription = useCallback(() => {
-    sessionStorage.removeItem("transcription_pending_id");
-    setTranscriptionPendingId(null);
-  }, []);
+    router.replace("/tools/captions");
+  }, [router]);
 
   const handleGenerateClick = useCallback((presetId: string) => {
     if (transcriptionPendingId) {
-      sessionStorage.removeItem("transcription_pending_id");
-      setTranscriptionPendingId(null);
       router.push(`/tools/captions/${presetId}/generate?transcriptionId=${transcriptionPendingId}`);
     } else {
       router.push(`/tools/captions/${presetId}/generate`);

@@ -120,8 +120,7 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
   }, [router]);
 
   const handleUseInCaptions = useCallback(() => {
-    sessionStorage.setItem("transcription_pending_id", job.id);
-    router.push("/tools/captions");
+    router.push(`/tools/captions?transcriptionId=${job.id}`);
   }, [job.id, router]);
 
   return (

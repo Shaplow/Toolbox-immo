@@ -1,4 +1,5 @@
-﻿import { redirect } from "next/navigation";
+﻿import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { CaptionsGallery } from "@/components/captions/CaptionsGallery";
 import { getUserContext } from "@/lib/userContext";
@@ -12,5 +13,9 @@ export default async function CaptionsPage() {
     redirect("/home");
   }
 
-  return <CaptionsGallery isAdmin={isAdmin} />;
+  return (
+    <Suspense>
+      <CaptionsGallery isAdmin={isAdmin} />
+    </Suspense>
+  );
 }
