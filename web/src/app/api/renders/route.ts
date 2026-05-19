@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     } = {};
 
     if (usedAssets && typeof usedAssets === "object") {
-    const raw = usedAssets as { videoAssets?: unknown; audioAssetId?: unknown; dataEntryId?: unknown; setSequencedLibraryIds?: unknown; usedSetTagByLibrary?: unknown; usedCategoryByLibrary?: unknown; prevCursorStateByLibrary?: unknown; prevDataEntryState?: unknown };
+    const raw = usedAssets as { videoAssets?: unknown; audioAssetId?: unknown; dataEntryId?: unknown; setSequencedLibraryIds?: unknown; usedSetTagByLibrary?: unknown; usedCategoryByLibrary?: unknown; prevCursorStateByLibrary?: unknown; prevDataEntryState?: unknown; prevAudioUsageState?: unknown };
 
       // Video assets: blockId → assetId
       if (raw.videoAssets && typeof raw.videoAssets === "object" && !Array.isArray(raw.videoAssets)) {
