@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { Trash2, Upload, Clock, BarChart2, Search, Play, Music2, ArrowUpDown, CheckCircle2, Tag, X, RotateCcw, Scissors, LayoutGrid, Layers, Square, CheckSquare, ChevronUp, ChevronDown, ListOrdered, PlusCircle, MinusCircle, FolderOpen, Film, Globe, Lock, Users, Wand2, Loader2, EyeOff } from "lucide-react";
+import { Trash2, Upload, Clock, BarChart2, Search, Play, Music2, ArrowUpDown, CheckCircle2, Tag, X, RotateCcw, Scissors, LayoutGrid, Layers, Square, CheckSquare, ChevronUp, ChevronDown, ListOrdered, PlusCircle, MinusCircle, FolderOpen, Film, Globe, Lock, Users, Wand2, Loader2, EyeOff, AlertTriangle } from "lucide-react";
 import { MediaAssetEditModal } from "./MediaAssetEditModal";
 import { MediaBatchAutocutPanel } from "./MediaBatchAutocutPanel";
 
@@ -1404,7 +1404,7 @@ export function MediaAssetsPanel({ library }: Props) {
     );
   }
 
-  function renderColumn({ key, setTag, category, groupAssets, accessibleCount, lastUsed, autoRank, cycleSize, isAccessible = true, inSection = false }: { key: string; setTag: string | null; category: string | null; groupAssets: MediaAsset[]; accessibleCount?: number; lastUsed: string | null; autoRank: number | null; cycleSize?: number | null; isAccessible?: boolean; inSection?: boolean }): React.ReactNode {
+  function renderColumn({ key, setTag, category, groupAssets, accessibleCount, lastUsed, autoRank, cycleSize, isAccessible = true, inSection = false, fluid = false }: { key: string; setTag: string | null; category: string | null; groupAssets: MediaAsset[]; accessibleCount?: number; lastUsed: string | null; autoRank: number | null; cycleSize?: number | null; isAccessible?: boolean; inSection?: boolean; fluid?: boolean }): React.ReactNode {
     const isAutoMode = seqState.length === 0;
     const seqIdx = setTag ? seqState.indexOf(setTag) : -1;
     const isSequenced = seqIdx !== -1;
@@ -1424,7 +1424,7 @@ export function MediaAssetsPanel({ library }: Props) {
     const mainAssets = groupAssets.filter((a) => !roleAssetIds.has(a.id));
     const hasRoles = roleTags.length > 0;
     return (
-      <div key={key || "__unset__"} className={`flex flex-col w-52 shrink-0 ${!isAccessible && accountFilter ? "opacity-50" : ""}`}>
+      <div key={key || "__unset__"} className={`flex flex-col ${fluid ? "w-full" : "w-52 shrink-0"} ${!isAccessible && accountFilter ? "opacity-50" : ""}`}>
         {/* Column header */}
         <div className={`mb-2 p-2.5 rounded-xl border flex flex-col gap-1 ${!isAccessible && accountFilter ? "bg-gray-50 border-dashed border-gray-300" : "bg-gray-50 border-gray-200"}`}>
           {!isAccessible && accountFilter && (
@@ -1491,8 +1491,8 @@ export function MediaAssetsPanel({ library }: Props) {
                     <RotateCcw size={9} /> Prochain
                   </span>
                 ) : (
-                  <span className="text-[10px] text-gray-400 font-mono bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-1" title={cycleSize != null ? `Position ${autoRank} dans un cycle de ${cycleSize} générations` : undefined}>
-                    <RotateCcw size={9} /> {autoRank}{cycleSize != null ? `/${cycleSize}` : ""}
+                  <span className="text-[10px] text-gray-400 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                    <RotateCcw size={9} /> {autoRank != null ? `Dans ${autoRank - 1} gén.` : "–"}
                   </span>
                 )
               ) : (
@@ -1873,31 +1873,66 @@ export function MediaAssetsPanel({ library }: Props) {
             /* ─── Rotation view ─── ordered flat list by autoRank, colored by category */
             <div className="space-y-1.5">
               {(() => {
+                const allNamed = groupedBySetTag.filter((g) => g.setTag || g.category);
+                const inaccessibleCount = accountFilter ? allNamed.filter((g) => !g.isAccessible).length : 0;
                 const cycleSize = seqState.length === 0
-                  ? (groupedBySetTag.find((g) => g.cycleSize != null)?.cycleSize ?? null)
+                  ? (allNamed.find((g) => g.cycleSize != null)?.cycleSize ?? null)
+                  : null;
+                const nextGroup = seqState.length === 0
+                  ? (allNamed.find((g) => g.isAccessible && g.autoRank === 1) ?? allNamed.find((g) => g.autoRank === 1))
+                  : groupedBySetTag.find((g) => g.setTag === seqState[0]);
+                const nextLabel = nextGroup
+                  ? [nextGroup.category, nextGroup.setTag].filter(Boolean).join(" › ") || null
                   : null;
                 return (
-                  <div className="flex items-center justify-between px-3 py-2 rounded-lg border bg-gray-50 border-gray-200 mb-3">
-                    {seqState.length === 0 ? (
-                      <span className="text-xs text-gray-600 flex items-center gap-1.5 flex-wrap">
-                        <RotateCcw size={12} className="text-emerald-500" />
-                        <span className="font-medium text-emerald-700">Rotation auto</span>
-                        {cycleSize != null && cycleSize > 0 && (
-                          <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded px-1.5 py-0.5 text-[10px] font-semibold">
-                            Cycle de {cycleSize} générations
-                          </span>
+                  <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-xl border bg-gray-50 border-gray-200 mb-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {seqState.length === 0 ? (
+                          <>
+                            <span className="flex items-center gap-1 text-xs font-semibold text-emerald-700">
+                              <RotateCcw size={12} className="text-emerald-500" /> Rotation auto
+                            </span>
+                            <span className="text-gray-300 text-xs">·</span>
+                            <span className="text-xs text-gray-500">{allNamed.length} groupe{allNamed.length !== 1 ? "s" : ""}</span>
+                            {cycleSize != null && cycleSize > 0 && (
+                              <>
+                                <span className="text-gray-300 text-xs">·</span>
+                                <span className="text-xs text-gray-500">Cycle : <span className="font-medium text-gray-700">{cycleSize} gén.</span></span>
+                              </>
+                            )}
+                            {nextLabel && (
+                              <>
+                                <span className="text-gray-300 text-xs">·</span>
+                                <span className="text-xs text-gray-500">Prochain : <span className="font-semibold text-gray-700">{nextLabel}</span></span>
+                              </>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <span className="flex items-center gap-1 text-xs font-semibold text-indigo-700">
+                              <ListOrdered size={12} className="text-indigo-500" /> Ordre personnalisé
+                            </span>
+                            <span className="text-gray-300 text-xs">·</span>
+                            <span className="text-xs text-gray-500">{seqState.length} set{seqState.length !== 1 ? "s" : ""} fixés</span>
+                            {nextLabel && (
+                              <>
+                                <span className="text-gray-300 text-xs">·</span>
+                                <span className="text-xs text-gray-500">Prochain : <span className="font-semibold text-gray-700">{nextLabel}</span></span>
+                              </>
+                            )}
+                          </>
                         )}
-                        <span className="text-gray-400">— chaque groupe revient 1 fois par cycle, jamais deux fois la même catégorie d&apos;affilée</span>
+                      </div>
+                      {seqState.length > 0 && (
+                        <button onClick={() => { void saveSequence([]); }} className="text-[11px] text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-200 rounded px-2 py-0.5 transition-colors">Passer en auto</button>
+                      )}
+                    </div>
+                    {inaccessibleCount > 0 && (
+                      <span className="flex items-center gap-1 text-[11px] text-amber-600">
+                        <AlertTriangle size={10} className="shrink-0" />
+                        {inaccessibleCount} groupe{inaccessibleCount !== 1 ? "s" : ""} hors accès pour ce compte
                       </span>
-                    ) : (
-                      <span className="text-xs flex items-center gap-1.5">
-                        <ListOrdered size={12} className="text-indigo-500" />
-                        <span className="font-medium text-indigo-700">Ordre personnalisé</span>
-                        <span className="text-gray-400">{seqState.length} set{seqState.length !== 1 ? "s" : ""} fixés</span>
-                      </span>
-                    )}
-                    {seqState.length > 0 && (
-                      <button onClick={() => { void saveSequence([]); }} className="text-[11px] text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-200 rounded px-2 py-0.5">Passer en auto</button>
                     )}
                   </div>
                 );
@@ -1934,18 +1969,30 @@ export function MediaAssetsPanel({ library }: Props) {
                             : cls ? `${cls.bg} ${cls.border}` : "bg-gray-50 border-gray-200"
                         }`}>
                           {/* Rank badge */}
-                          <div className="shrink-0 flex flex-col items-center gap-0.5">
-                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 ${
-                              dimmed
-                                ? "bg-gray-100 text-gray-400 border-gray-300"
-                                : g.autoRank === 1
-                                ? "bg-emerald-500 text-white border-emerald-600"
-                                : cls ? `bg-white ${cls.text} ${cls.border}` : "bg-white text-gray-500 border-gray-300"
-                            }`}>
-                              {dimmed ? <Lock size={10} /> : (g.autoRank ?? "–")}
-                            </div>
-                            {cs != null && cs > 0 && g.autoRank != null && !dimmed && (
-                              <span className="text-[9px] text-gray-400 font-mono leading-none" title={`Revient toutes les ${cs} générations`}>/{cs}</span>
+                          <div className="shrink-0 flex flex-col items-center gap-0.5 min-w-[60px]">
+                            {dimmed ? (
+                              <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 bg-gray-100 text-gray-400 border-gray-300">
+                                <Lock size={10} />
+                              </div>
+                            ) : g.autoRank === 1 ? (
+                              <span className="px-2 py-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold whitespace-nowrap">
+                                Prochain
+                              </span>
+                            ) : g.autoRank != null ? (
+                              <>
+                                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 ${
+                                  cls ? `bg-white ${cls.text} ${cls.border}` : "bg-white text-gray-500 border-gray-300"
+                                }`}>
+                                  {g.autoRank}
+                                </div>
+                                <span className="text-[9px] text-gray-400 whitespace-nowrap leading-none">
+                                  {seqState.length === 0 ? `Dans ${g.autoRank - 1} gén.` : `#${g.autoRank}`}
+                                </span>
+                              </>
+                            ) : (
+                              <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 bg-white text-gray-300 border-gray-200">
+                                –
+                              </div>
                             )}
                           </div>
                           {/* Set + category info */}
@@ -2042,7 +2089,7 @@ export function MediaAssetsPanel({ library }: Props) {
               {groupedBySetTag.length === 0 ? (
                 <p className="text-sm text-gray-400 py-8 text-center">Aucun résultat.</p>
               ) : (
-                <div className="overflow-x-auto pb-2 -mx-1 px-1 overscroll-x-contain">
+                <div>
                   <datalist id="group-list">
                     {Array.from(new Set(assets.map((a) => a.category).filter(Boolean))).map((t) => <option key={t!} value={t!} />)}
                   </datalist>
@@ -2055,9 +2102,9 @@ export function MediaAssetsPanel({ library }: Props) {
                             <span className="text-sm font-semibold text-violet-800">{name}</span>
                             <span className="text-xs text-violet-400 font-medium">{groups.reduce((n, g) => n + g.groupAssets.length, 0)} rush{groups.reduce((n, g) => n + g.groupAssets.length, 0) !== 1 ? "es" : ""}</span>
                           </div>
-                          <div className="flex gap-3 min-w-max items-start">
+                          <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
                             {groups.map((g) => (
-                              <div key={g.key} className={`w-52 shrink-0 ${!g.isAccessible && accountFilter ? "opacity-50" : ""}`}>
+                              <div key={g.key} className={`${!g.isAccessible && accountFilter ? "opacity-50" : ""}`}>
                                 {/* Set column header */}
                                 <div className={`mb-2 px-2.5 py-2 rounded-xl border flex flex-col gap-1 ${!g.isAccessible && accountFilter ? "bg-gray-50 border-dashed border-gray-300" : "bg-white border-pink-100"}`}>
                                   <div className="flex items-center gap-1.5">
@@ -2076,8 +2123,8 @@ export function MediaAssetsPanel({ library }: Props) {
                                           <RotateCcw size={8} /> Prochain
                                         </span>
                                       ) : g.autoRank ? (
-                                        <span className="text-[9px] text-gray-400 font-mono bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-0.5" title={g.cycleSize != null ? `Position ${g.autoRank} dans un cycle de ${g.cycleSize} générations` : undefined}>
-                                          <RotateCcw size={8} /> {g.autoRank}{g.cycleSize != null ? `/${g.cycleSize}` : ""}
+                                        <span className="text-[9px] text-gray-400 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                                          <RotateCcw size={8} /> Dans {g.autoRank - 1} gén.
                                         </span>
                                       ) : null
                                     ) : null}
@@ -2098,16 +2145,16 @@ export function MediaAssetsPanel({ library }: Props) {
                             <span className="text-xs text-gray-400 font-medium">Sets sans catégorie</span>
                             <div className="flex-1 h-px bg-gray-100" />
                           </div>
-                          <div className="flex gap-3 min-w-max items-start">
-                            {sectionsByGroup.unassigned.filter((g) => g.key !== "").map((g) => renderColumn(g))}
+                          <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+                            {sectionsByGroup.unassigned.filter((g) => g.key !== "").map((g) => renderColumn({ ...g, fluid: true }))}
                           </div>
                         </div>
                       )}
-                      {sectionsByGroup.unassigned.filter((g) => g.key === "").map((g) => renderColumn(g))}
+                      {sectionsByGroup.unassigned.filter((g) => g.key === "").map((g) => renderColumn({ ...g, fluid: true }))}
                     </div>
                   ) : (
-                    <div className="flex gap-4 min-w-max items-start">
-                      {groupedBySetTag.map((g) => renderColumn(g))}
+                    <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+                      {groupedBySetTag.map((g) => renderColumn({ ...g, fluid: true }))}
                     </div>
                   )}
 
