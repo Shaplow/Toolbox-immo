@@ -393,6 +393,7 @@ async function resolveMusicConfig(
   templateJson: TemplateJSON,
   listingData: ListingData,
   accountId: string | null,
+  prefillAudioAssetId?: string | null,
 ): Promise<{ musicUrl: string; block: MusicBlock; assetId: string | null } | null> {
   const musicBlock = templateJson.blocks.find(
     (b): b is MusicBlock => b.type === "music"
@@ -405,21 +406,29 @@ async function resolveMusicConfig(
     : undefined;
   let audioAssetId: string | null = null;
 
-  // 2. Fall back to library resolution when no URL came from the form
+  // 2. Use the audio asset committed at prefill time (before falling back to a fresh query).
+  //    This guarantees the rendered audio matches what was resolved when the form opened and
+  //    prevents double-advancing the cursor for theme_sequence audio libraries.
+  if (!rawMusicUrl && prefillAudioAssetId && musicBlock.libraryId) {
+    try {
+      const assetRow = await prisma.mediaAsset.findUnique({
+        where: { id: prefillAudioAssetId },
+        select: { id: true, url: true },
+      });
+      if (assetRow) {
+        rawMusicUrl = assetRow.url;
+        audioAssetId = assetRow.id;
+      }
+    } catch { /* DB lookup failed — fall through to library selection */ }
+  }
+
+  // 3. Fall back to library resolution when no URL came from the form or prefill
   if (!rawMusicUrl && musicBlock.libraryId) {
-    // Skip the duration filter when the track will loop — any length works.
-    // Otherwise require the track to be at least as long as the canvas maxDuration.
-    const minMusicDuration =
-      !musicBlock.loop && (templateJson.canvas.maxDuration ?? 0) > 0
-        ? templateJson.canvas.maxDuration!
-        : undefined;
     const asset = await selectMediaAsset(
       musicBlock.libraryId,
       musicBlock.audioSelectionRule,
       undefined,
       accountId ?? undefined,
-      undefined,
-      minMusicDuration,
     );
     if (asset) {
       rawMusicUrl = asset.url;
@@ -631,6 +640,20 @@ async function generateVideoRender(
   try {
     const { width, height } = templateJson.canvas;
 
+    // Load prefill asset IDs written at POST /api/renders from resolveLibraryPrefill.
+    // Using these prevents re-querying the library at render time, which would
+    // double-advance the rotation cursor and render different content than shown in the form.
+    let prefillVideoAssets: Record<string, string> = {};
+    let prefillAudioAssetId: string | null = null;
+    {
+      const renderRow = await prisma.render.findUnique({ where: { id: renderId }, select: { usedAssets: true } });
+      try {
+        const ua = JSON.parse(renderRow?.usedAssets ?? "{}") as { videoAssets?: Record<string, string>; audioAssetId?: string };
+        prefillVideoAssets = ua.videoAssets ?? {};
+        prefillAudioAssetId = ua.audioAssetId ?? null;
+      } catch { /* malformed JSON — fall through to library selection */ }
+    }
+
     // 0. Résoudre l'URL vidéo en premier — nécessaire pour injecter les métadonnées dans l'overlay
     const videoBlock = videoBlocks[0];
     let videoUrl: string | undefined = videoBlock.binding
@@ -638,6 +661,24 @@ async function generateVideoRender(
       : undefined;
     let singleVideoAssetId: string | null = null;
     let singleVideoMetadata: Record<string, string | number | null> = {};
+
+    if (!videoUrl) {
+      // Prefer the prefill asset committed at form-open time over a fresh library query.
+      const prefillId = videoBlock.id ? prefillVideoAssets[videoBlock.id] : undefined;
+      if (prefillId) {
+        try {
+          const assetRow = await prisma.mediaAsset.findUnique({
+            where: { id: prefillId },
+            select: { id: true, url: true, filename: true, metadata: true },
+          });
+          if (assetRow) {
+            videoUrl = assetRow.url;
+            singleVideoAssetId = assetRow.id;
+            try { singleVideoMetadata = JSON.parse(assetRow.metadata ?? "{}") as Record<string, string | number | null>; } catch { /* ignore */ }
+          }
+        } catch { /* DB lookup failed — fall through to library selection */ }
+      }
+    }
 
     if (!videoUrl) {
       const asset = await resolveVideoBlockAsset(videoBlock, templateJson.schema ?? [], listingData, accountId);
@@ -720,7 +761,7 @@ async function generateVideoRender(
     const crop_y = focalPoint?.y ?? 0.5;
 
     // Resolve optional music block
-    const music = await resolveMusicConfig(templateJson, listingData, accountId);
+    const music = await resolveMusicConfig(templateJson, listingData, accountId, prefillAudioAssetId);
     if (music?.assetId) await mergeAudioAssetId(renderId, music.assetId);
 
     // 4. Soumettre le job RunPod
@@ -821,6 +862,20 @@ async function generateVideoRenderLocal(
     })();
     console.log(`[videoLocal] ${renderId} — START canvas=${width}x${height} CAPTIONS_API=${CAPTIONS_API}`);
 
+    // Load prefill asset IDs written at POST /api/renders from resolveLibraryPrefill.
+    // Using these prevents re-querying the library at render time, which would
+    // double-advance the rotation cursor and render different content than shown in the form.
+    let prefillVideoAssets: Record<string, string> = {};
+    let prefillAudioAssetId: string | null = null;
+    {
+      const renderRow = await prisma.render.findUnique({ where: { id: renderId }, select: { usedAssets: true } });
+      try {
+        const ua = JSON.parse(renderRow?.usedAssets ?? "{}") as { videoAssets?: Record<string, string>; audioAssetId?: string };
+        prefillVideoAssets = ua.videoAssets ?? {};
+        prefillAudioAssetId = ua.audioAssetId ?? null;
+      } catch { /* malformed JSON — fall through to library selection */ }
+    }
+
     // 0. Résoudre l'URL vidéo en premier — nécessaire pour injecter les métadonnées dans l'overlay
     const videoBlock = videoBlocks[0];
     let rawVideoUrl: string | undefined = videoBlock.binding
@@ -828,6 +883,24 @@ async function generateVideoRenderLocal(
       : undefined;
     let singleVideoAssetId: string | null = null;
     let singleVideoMetadata: Record<string, string | number | null> = {};
+
+    if (!rawVideoUrl) {
+      // Prefer the prefill asset committed at form-open time over a fresh library query.
+      const prefillId = videoBlock.id ? prefillVideoAssets[videoBlock.id] : undefined;
+      if (prefillId) {
+        try {
+          const assetRow = await prisma.mediaAsset.findUnique({
+            where: { id: prefillId },
+            select: { id: true, url: true, filename: true, metadata: true },
+          });
+          if (assetRow) {
+            rawVideoUrl = assetRow.url;
+            singleVideoAssetId = assetRow.id;
+            try { singleVideoMetadata = JSON.parse(assetRow.metadata ?? "{}") as Record<string, string | number | null>; } catch { /* ignore */ }
+          }
+        } catch { /* DB lookup failed — fall through to library selection */ }
+      }
+    }
 
     if (!rawVideoUrl) {
       const asset = await resolveVideoBlockAsset(videoBlock, templateJson.schema ?? [], listingData, accountId);
@@ -903,7 +976,7 @@ async function generateVideoRenderLocal(
     const crop_y = focalPoint?.y ?? 0.5;
 
     // Resolve optional music block
-    const music = await resolveMusicConfig(templateJson, listingData, accountId);
+    const music = await resolveMusicConfig(templateJson, listingData, accountId, prefillAudioAssetId);
     if (music?.assetId) await mergeAudioAssetId(renderId, music.assetId);
 
     // 3. Envoyer overlay(s) + vidéo à render-engine pour composite FFmpeg
@@ -1051,13 +1124,11 @@ async function resolveSlotVideoUrl(
   schema: SchemaField[],
   pinnedSetTag?: string,
   pinnedCategory?: string,
+  prefillAssetId?: string | null,
 ): Promise<{ url: string; assetId: string | null; resolvedSetTag: string | null; resolvedCategory: string | null; metadata: Record<string, string | number | null> }> {
   // 1. Binding explicite dans les données du formulaire
-  // Also checks slot.label (lowercased) as a fallback key — mirrors the primaryKey logic
-  // used by the generate page when injecting prefill URLs into initialValues/listing data.
-  const listingKey = slot.binding ?? slot.label?.toLowerCase();
-  if (listingKey) {
-    const raw = (listingData as Record<string, unknown>)[listingKey] as string | undefined;
+  if (slot.binding) {
+    const raw = (listingData as Record<string, unknown>)[slot.binding] as string | undefined;
     if (raw && (raw.startsWith("http") || raw.startsWith("/"))) {
       return { url: raw, assetId: null, resolvedSetTag: null, resolvedCategory: null, metadata: {} };
     }
@@ -1095,7 +1166,34 @@ async function resolveSlotVideoUrl(
     }
   }
 
-  // 3. Résolution serveur depuis la bibliothèque
+  // 3. Prefill asset — use the asset chosen at prefill time rather than re-querying the
+  //    library. This guarantees the rendered video matches what was shown in the form and
+  //    prevents double-advancing the cursor (or lastUsedCategory) for theme_sequence libraries.
+  //    Only applies when no higher-priority path (binding or metadata-driven) has already
+  //    resolved a URL. The pinnedSetTag is NOT checked here because the pinned set is derived
+  //    from the first slot's prefill asset — subsequent slots in the same library receive the
+  //    correct prefill asset from their own prefillAssetId entry.
+  if (prefillAssetId) {
+    try {
+      const assetRow = await prisma.mediaAsset.findUnique({
+        where: { id: prefillAssetId },
+        select: { id: true, url: true, filename: true, setTag: true, category: true, metadata: true },
+      });
+      if (assetRow) {
+        let metadata: Record<string, string | number | null> = {};
+        try { metadata = JSON.parse(assetRow.metadata ?? "{}") as Record<string, string | number | null>; } catch { /* non-critical */ }
+        return {
+          url: assetRow.url,
+          assetId: assetRow.id,
+          resolvedSetTag: assetRow.setTag ?? null,
+          resolvedCategory: assetRow.category ?? null,
+          metadata,
+        };
+      }
+    } catch { /* DB lookup failed — fall through to library selection */ }
+  }
+
+  // 4. Résolution serveur depuis la bibliothèque
   if (slot.libraryId) {
     const rule = slot.selectionRule;
     const ruleConfig = normalizeRule(rule);
@@ -1300,6 +1398,20 @@ async function generateSequenceRender(
   const sequenceSlotAssets: Record<string, string> = {};
 
   try {
+    // Load prefill asset IDs written at POST /api/renders from resolveLibraryPrefill.
+    // Using these prevents re-querying the library at render time, which would
+    // double-advance the rotation cursor and render different content than shown in the form.
+    let prefillVideoAssets: Record<string, string> = {};
+    let prefillAudioAssetId: string | null = null;
+    {
+      const renderRow = await prisma.render.findUnique({ where: { id: renderId }, select: { usedAssets: true } });
+      try {
+        const ua = JSON.parse(renderRow?.usedAssets ?? "{}") as { videoAssets?: Record<string, string>; audioAssetId?: string };
+        prefillVideoAssets = ua.videoAssets ?? {};
+        prefillAudioAssetId = ua.audioAssetId ?? null;
+      } catch { /* malformed JSON — fall through to library selection */ }
+    }
+
     // 1. Résoudre les URLs vidéo de chaque slot
     await updateRenderTracking(renderId, {
       pipeline: RENDER_PIPELINE.SEQUENCE_RUNPOD,
@@ -1316,7 +1428,7 @@ async function generateSequenceRender(
     for (const slot of slots) {
       const pinnedSetTag = slot.libraryId ? localPinnedSetTagByLibrary[slot.libraryId] : undefined;
       const pinnedCategory = slot.libraryId ? localPinnedCategoryByLibrary[slot.libraryId] : undefined;
-      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, pinnedCategory);
+      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, pinnedCategory, prefillVideoAssets[slot.id]);
       accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, usedCategoryByLibrary, sequenceSlotAssets);
       // Track pinned set for subsequent slots sharing the same library
       if (slot.libraryId && normalizeRule(slot.selectionRule).strategy === "theme_sequence") {
@@ -1384,7 +1496,7 @@ async function generateSequenceRender(
     );
 
     // 4. Résoudre la musique (MusicBlock du template)
-    const music = await resolveMusicConfig(templateJson, listingData, accountId);
+    const music = await resolveMusicConfig(templateJson, listingData, accountId, prefillAudioAssetId);
 
     // 5. Construire le payload slots pour RunPod
     const runpodSlots = resolvedSlots.map(({ slot, videoUrl }, i) => {
@@ -1449,7 +1561,8 @@ async function generateSequenceRender(
     // 7. Persist usedAssets so recordLibraryUsage can advance cursors on DONE.
     // Merge into the existing row rather than replacing it — audioAssetId and
     // prevCursorStateByLibrary were written at render creation (POST /api/renders)
-    // and must not be lost.
+    // and must not be lost. Merge sequenceSlotAssets on top of existing videoAssets
+    // so prefill entries for slots not re-resolved here are preserved.
     {
       const existingRender = await prisma.render.findUnique({ where: { id: renderId }, select: { usedAssets: true } });
       let existingUsedAssets: Record<string, unknown> = {};
@@ -1459,7 +1572,7 @@ async function generateSequenceRender(
         data: {
           usedAssets: JSON.stringify({
             ...existingUsedAssets,
-            videoAssets: sequenceSlotAssets,
+            videoAssets: { ...(existingUsedAssets.videoAssets as Record<string, string> ?? {}), ...sequenceSlotAssets },
             ...(music?.assetId ? { audioAssetId: music.assetId } : {}),
             setSequencedLibraryIds,
             usedSetTagByLibrary,
@@ -1513,6 +1626,20 @@ async function generateSequenceRenderLocal(
   const sequenceSlotAssets: Record<string, string> = {};
 
   try {
+    // Load prefill asset IDs written at POST /api/renders from resolveLibraryPrefill.
+    // Using these prevents re-querying the library at render time, which would
+    // double-advance the rotation cursor and render different content than shown in the form.
+    let prefillVideoAssets: Record<string, string> = {};
+    let prefillAudioAssetId: string | null = null;
+    {
+      const renderRow = await prisma.render.findUnique({ where: { id: renderId }, select: { usedAssets: true } });
+      try {
+        const ua = JSON.parse(renderRow?.usedAssets ?? "{}") as { videoAssets?: Record<string, string>; audioAssetId?: string };
+        prefillVideoAssets = ua.videoAssets ?? {};
+        prefillAudioAssetId = ua.audioAssetId ?? null;
+      } catch { /* malformed JSON — fall through to library selection */ }
+    }
+
     // Resolve slots
     await updateRenderTracking(renderId, {
       pipeline: RENDER_PIPELINE.SEQUENCE_LOCAL,
@@ -1528,7 +1655,7 @@ async function generateSequenceRenderLocal(
     for (const slot of slots) {
       const pinnedSetTag = slot.libraryId ? localPinnedSetTagByLibrary[slot.libraryId] : undefined;
       const pinnedCategory = slot.libraryId ? localPinnedCategoryByLibrary[slot.libraryId] : undefined;
-      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, pinnedCategory);
+      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, pinnedCategory, prefillVideoAssets[slot.id]);
       accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, usedCategoryByLibrary, sequenceSlotAssets);
       if (slot.libraryId && normalizeRule(slot.selectionRule).strategy === "theme_sequence") {
         if (resolved.resolvedSetTag && !localPinnedSetTagByLibrary[slot.libraryId]) {
@@ -1557,7 +1684,7 @@ async function generateSequenceRenderLocal(
     );
 
     // Resolve music
-    const music = await resolveMusicConfig(templateJson, listingData, accountId);
+    const music = await resolveMusicConfig(templateJson, listingData, accountId, prefillAudioAssetId);
 
     // For local path, convert local /uploads/ paths to absolute URLs.
     // FONT_BASE_URL must be set in Docker (e.g. http://web:3000) so the render-engine
@@ -1638,7 +1765,8 @@ async function generateSequenceRenderLocal(
     // Persist usedAssets before marking DONE so recordLibraryUsage can advance cursors.
     // Merge into the existing row rather than replacing it — audioAssetId and
     // prevCursorStateByLibrary were written at render creation (POST /api/renders)
-    // and must not be lost.
+    // and must not be lost. Merge sequenceSlotAssets on top of existing videoAssets
+    // so prefill entries for slots not re-resolved here are preserved.
     {
       const existingRender = await prisma.render.findUnique({ where: { id: renderId }, select: { usedAssets: true } });
       let existingUsedAssets: Record<string, unknown> = {};
@@ -1648,7 +1776,7 @@ async function generateSequenceRenderLocal(
         data: {
           usedAssets: JSON.stringify({
             ...existingUsedAssets,
-            videoAssets: sequenceSlotAssets,
+            videoAssets: { ...(existingUsedAssets.videoAssets as Record<string, string> ?? {}), ...sequenceSlotAssets },
             ...(music?.assetId ? { audioAssetId: music.assetId } : {}),
             setSequencedLibraryIds,
             usedSetTagByLibrary,

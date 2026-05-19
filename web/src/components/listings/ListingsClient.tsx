@@ -286,7 +286,6 @@ export function ListingsClient({
 
   const descriptionGroups = useMemo(() => groupByDate(filteredDescriptions), [filteredDescriptions]);
 
-  const activeGroups =
   const listingGridItems = useMemo((): GridItem[] => {
     const items: GridItem[] = [];
     for (const listing of filteredListings) {

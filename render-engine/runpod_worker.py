@@ -555,6 +555,7 @@ def _handle_captions(inp: dict) -> dict[str, Any]:
     config_dict: dict = inp["config"]
     preview_mode: bool = _to_bool(inp.get("preview_mode", True), True)
     output_key: str = inp["output_key"]
+    caption_job_id: str | None = inp.get("caption_job_id")
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
