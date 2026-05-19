@@ -927,7 +927,13 @@ export function MediaAssetsPanel({ library }: Props) {
         onClick={() => { if (selectMode) toggleSelect(asset.id); }}
       >
         {/* Tiny thumbnail */}
-        <div className="relative w-8 h-12 rounded overflow-hidden shrink-0 bg-gray-100">
+        <a
+          href={selectMode ? undefined : asset.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => { if (selectMode) e.preventDefault(); else e.stopPropagation(); }}
+          className="relative w-8 h-12 rounded overflow-hidden shrink-0 bg-gray-100 block"
+        >
           <LazyVideoThumb url={asset.url} className="w-full h-full object-cover" />
           {asset.pendingEditJob && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10 pointer-events-none">
@@ -939,7 +945,7 @@ export function MediaAssetsPanel({ library }: Props) {
               {isSelected ? <CheckSquare size={12} className="text-white" /> : <Square size={12} className="text-white/70" />}
             </div>
           )}
-        </div>
+        </a>
         {/* Info */}
         <div className="flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
           {/* breadcrumb pills — category hidden when inSection */}
@@ -976,7 +982,7 @@ export function MediaAssetsPanel({ library }: Props) {
               </button>
             )}
           </div>
-          <p className="text-[11px] font-medium text-gray-700 truncate" title={asset.filename}>{asset.filename}</p>
+          <a href={asset.url} target="_blank" rel="noopener noreferrer" className="text-[11px] font-medium text-gray-700 truncate hover:text-indigo-600 hover:underline block" title={asset.filename}>{asset.filename}</a>
           {asset.tags.length > 0 && (
             <div className="flex flex-wrap gap-0.5 mt-0.5">
               {asset.tags.map((t) => <span key={t} className="text-[9px] bg-indigo-50 text-indigo-500 border border-indigo-100 px-1 rounded">{t}</span>)}
@@ -2018,7 +2024,7 @@ export function MediaAssetsPanel({ library }: Props) {
                             </div>
                             {/* Compact cards */}
                             <div className="flex flex-col gap-1">
-                              {g.groupAssets.map((a) => renderCompactCard(a, { hideCategory: true }))}
+                              {(accountFilter ? g.groupAssets.filter((a) => !a.disabled && (a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))) : g.groupAssets).map((a) => renderCompactCard(a, { hideCategory: true }))}
                             </div>
                           </div>
                           {/* Sequence controls */}
@@ -2127,7 +2133,7 @@ export function MediaAssetsPanel({ library }: Props) {
                                   </div>
                                 </div>
                                 <div className="flex flex-col gap-1.5">
-                                  {g.groupAssets.map((a) => renderCompactCard(a, { hideCategory: true }))}
+                                  {(accountFilter ? g.groupAssets.filter((a) => !a.disabled && (a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))) : g.groupAssets).map((a) => renderCompactCard(a, { hideCategory: true }))}
                                 </div>
                               </div>
                             ))}
