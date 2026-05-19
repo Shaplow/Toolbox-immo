@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
       setSequencedLibraryIds?: string[];
       usedSetTagByLibrary?: Record<string, string>;
       usedCategoryByLibrary?: Record<string, string>;
-      prevCursorStateByLibrary?: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null }>;
+      prevCursorStateByLibrary?: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null; cursorAccountId?: string }>;
       prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: string; accountId?: string };
       prevAudioUsageState?: { assetId: string; accountId: string; prevLastUsedAt: string | null; claimedLastUsedAt: string };
     } = {};
@@ -122,9 +122,10 @@ export async function POST(req: NextRequest) {
 
       // prevCursorStateByLibrary — cursor snapshots for failure-recovery revert.
       // Validate shape: each value must have the four expected numeric/nullable-string fields.
+      // cursorAccountId is optional (absent in older renders) — revert falls back to render.accountId.
       if (raw.prevCursorStateByLibrary && typeof raw.prevCursorStateByLibrary === "object" && !Array.isArray(raw.prevCursorStateByLibrary)) {
         const map = raw.prevCursorStateByLibrary as Record<string, unknown>;
-        const sanitized: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null }> = {};
+        const sanitized: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null; cursorAccountId?: string }> = {};
         for (const [libId, v] of Object.entries(map)) {
           if (v && typeof v === "object" && !Array.isArray(v)) {
             const s = v as Record<string, unknown>;
@@ -136,6 +137,7 @@ export async function POST(req: NextRequest) {
                 claimedCursor: s.claimedCursor,
                 prevLastUsedCategory: s.prevLastUsedCategory as string | null,
                 claimedLastUsedCategory: s.claimedLastUsedCategory as string | null,
+                ...(typeof s.cursorAccountId === "string" ? { cursorAccountId: s.cursorAccountId } : {}),
               };
             }
           }

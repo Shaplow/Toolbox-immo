@@ -16,6 +16,10 @@ import type {
   MediaSelectionRule, MediaSelectionRuleConfig,
 } from "@/types/template";
 
+/** Minimal Prisma client interface accepted by selectMediaAsset — satisfied by both the
+ *  module-level `prisma` instance and the `tx` callback client from $transaction. */
+type PrismaQueryClient = Pick<typeof prisma, '$queryRaw'>;
+
 /**
  * Account ID sentinel used as cursor/usage key for shared-scope libraries.
  * A single virtual "account" represents all real accounts collectively so
@@ -124,6 +128,8 @@ export async function selectMediaAsset(
   accountId?: string,
   excludeAssetIds?: string[],
   minDuration?: number,
+  /** Optional Prisma client — pass the transaction tx to run inside an existing transaction. */
+  db?: PrismaQueryClient,
 ): Promise<{ id: string; url: string; filename: string; metadata: Record<string, string | number | null> } | null> {
   const config = normalizeRule(rule);
   const { strategy } = config;
@@ -131,6 +137,7 @@ export async function selectMediaAsset(
   if (strategy === "manual") return null;
 
   const tagFrag = buildTagFragment(config, formData);
+  const client = db ?? prisma;
 
   // Access filter: with accountId → global OR restricted-to-me; without → global only
   const accessFilter = accountId
@@ -162,7 +169,7 @@ export async function selectMediaAsset(
   }
 
   if (strategy === "random") {
-    const rows = await prisma.$queryRaw<AssetRow[]>(
+    const rows = await client.$queryRaw<AssetRow[]>(
       Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
         WHERE ma."libraryId" = ${libraryId}
         ${accessFilter}
@@ -176,7 +183,7 @@ export async function selectMediaAsset(
 
   if (strategy === "oldest_used") {
     if (accountId) {
-      const rows = await prisma.$queryRaw<AssetRow[]>(
+      const rows = await client.$queryRaw<AssetRow[]>(
         Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
           LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
           WHERE ma."libraryId" = ${libraryId}
@@ -188,7 +195,7 @@ export async function selectMediaAsset(
       );
       return rows[0] ? parseAssetRow(rows[0]) : null;
     }
-    const rows = await prisma.$queryRaw<AssetRow[]>(
+    const rows = await client.$queryRaw<AssetRow[]>(
       Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
         WHERE ma."libraryId" = ${libraryId}
         ${accessFilter}
@@ -205,7 +212,7 @@ export async function selectMediaAsset(
     console.warn(`[selectMediaAsset] stratégie inconnue "${strategy}" — fallback sur least_used`);
   }
   if (accountId) {
-    const rows = await prisma.$queryRaw<AssetRow[]>(
+    const rows = await client.$queryRaw<AssetRow[]>(
       Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
         LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}
         WHERE ma."libraryId" = ${libraryId}
@@ -217,7 +224,7 @@ export async function selectMediaAsset(
     );
     return rows[0] ? parseAssetRow(rows[0]) : null;
   }
-  const rows = await prisma.$queryRaw<AssetRow[]>(
+  const rows = await client.$queryRaw<AssetRow[]>(
     Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
       WHERE ma."libraryId" = ${libraryId}
       ${accessFilter}
@@ -301,6 +308,8 @@ export type CursorRevertState = {
   prevLastUsedCategory: string | null;
   /** lastUsedCategory WE WROTE (auto mode) — revert condition: lastUsedCategory still equals this */
   claimedLastUsedCategory: string | null;
+  /** accountId used as the cursor key (may be SHARED_CURSOR_ACCOUNT_ID for shared-scope libs) */
+  cursorAccountId: string;
 };
 
 export async function selectMediaAssetBySetSequence(
@@ -413,7 +422,7 @@ export async function selectMediaAssetBySetSequence(
         // Snapshot BEFORE writing so we can conditionally revert on render failure.
         // Override mode never touches lastUsedCategory, so claimedLastUsedCategory = prevLastUsedCat
         // (the WHERE condition in the revert will still fire only if nothing else changed it).
-        prevCursorState = { prevCursor: current, claimedCursor: nextCursor, prevLastUsedCategory: prevLastUsedCat, claimedLastUsedCategory: prevLastUsedCat };
+        prevCursorState = { prevCursor: current, claimedCursor: nextCursor, prevLastUsedCategory: prevLastUsedCat, claimedLastUsedCategory: prevLastUsedCat, cursorAccountId: effectiveCursorId };
         await tx.accountLibraryCursor.update({
           where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId } },
           data: { cursor: nextCursor, lastUsedSetTag: selectedSetTag, lastAdvancedAt: new Date() },
@@ -544,7 +553,7 @@ export async function selectMediaAssetBySetSequence(
           resultSetTag = candidate.setTag;
           resultCategory = candidate.category;
           // Snapshot BEFORE writing so we can conditionally revert on render failure
-          prevCursorState = { prevCursor: 0, claimedCursor: 0, prevLastUsedCategory: lockedCategory, claimedLastUsedCategory: candidate.category };
+          prevCursorState = { prevCursor: 0, claimedCursor: 0, prevLastUsedCategory: lockedCategory, claimedLastUsedCategory: candidate.category, cursorAccountId: effectiveCursorId };
           // Write lastUsedCategory immediately — the next generator waiting on FOR UPDATE
           // will see this value and exclude this category family.
           await tx.accountLibraryCursor.update({
@@ -773,9 +782,7 @@ export async function resolveLibraryPrefill(
               if (suggestion.resolvedCategory != null) {
                 result.usedCategoryByLibrary![libId] = suggestion.resolvedCategory;
               }
-              // Only store prevCursorState for per-account libraries.
-              // Shared libraries use no-revert semantics (user decision).
-              if (suggestion.prevCursorState && libScopeMap.get(libId) !== "shared") {
+              if (suggestion.prevCursorState) {
                 result.prevCursorStateByLibrary![libId] = suggestion.prevCursorState;
               }
             }
@@ -854,7 +861,7 @@ export async function resolveLibraryPrefill(
               if (suggestion.resolvedCategory != null) {
                 result.usedCategoryByLibrary![libId] = suggestion.resolvedCategory;
               }
-              if (suggestion.prevCursorState && libScopeMap.get(libId) !== "shared") {
+              if (suggestion.prevCursorState) {
                 result.prevCursorStateByLibrary![libId] = suggestion.prevCursorState;
               }
             }
@@ -887,42 +894,66 @@ export async function resolveLibraryPrefill(
     // Skip the duration filter when the track loops — any length works.
     const audioMinDuration =
       !musicBlock.loop && estimatedVideoDuration > 0 ? estimatedVideoDuration : undefined;
-    result.audioSuggestion = await selectMediaAsset(
-      musicBlock.libraryId,
-      musicBlock.audioSelectionRule,
-      formData,
-      effectiveAccountId(musicBlock.libraryId),
-      undefined,
-      audioMinDuration,
-    );
-  }
 
-  // Claim the selected audio asset to prevent two concurrent generations from
-  // picking the same track.  We do this by prefill-stamping MediaAssetUsage.lastUsedAt
-  // so the next concurrent generation sees this asset as recently used and skips it.
-  // The prev/claimed state is stored so revertLibraryCursors can undo it on ERROR.
-  if (result.audioSuggestion && accountId) {
-    const assetId = result.audioSuggestion.id;
-    const existing = await prisma.mediaAssetUsage.findUnique({
-      where: { assetId_accountId: { assetId, accountId } },
-      select: { lastUsedAt: true },
-    });
-    const now = new Date();
-    await prisma.mediaAssetUsage
-      .upsert({
-        where: { assetId_accountId: { assetId, accountId } },
-        update: { lastUsedAt: now },
-        create: { assetId, accountId, usageCount: 0, lastUsedAt: now },
-      })
-      .catch((err: unknown) =>
-        console.error("[resolveLibraryPrefill] audio claim upsert failed:", err),
+    const audioLibraryId = musicBlock.libraryId;
+    const audioEffectiveAccountId = effectiveAccountId(audioLibraryId);
+
+    if (accountId) {
+      // Lock-based audio selection — same SELECT FOR UPDATE pattern as video set-sequence.
+      // Acquires an AccountLibraryCursor row lock so concurrent generations see each
+      // other's claim (prefill-stamped lastUsedAt) and pick different tracks.
+      await prisma.$transaction(async (tx) => {
+        // Ensure cursor row exists as serialization sentinel (no-op if already present)
+        await tx.accountLibraryCursor.upsert({
+          where: { accountId_libraryId: { accountId, libraryId: audioLibraryId } },
+          update: {},
+          create: { accountId, libraryId: audioLibraryId, cursor: 0 },
+        });
+        // Lock the row — concurrent generations queue here until this tx commits
+        await tx.$queryRaw(
+          Prisma.sql`SELECT id FROM "AccountLibraryCursor" WHERE "accountId" = ${accountId} AND "libraryId" = ${audioLibraryId} FOR UPDATE`,
+        );
+        // Select audio inside tx so the read uses the post-lock consistent snapshot
+        const candidate = await selectMediaAsset(
+          audioLibraryId,
+          musicBlock.audioSelectionRule,
+          formData,
+          audioEffectiveAccountId,
+          undefined,
+          audioMinDuration,
+          tx,
+        );
+        if (!candidate) return;
+        result.audioSuggestion = candidate;
+        // Read prev lastUsedAt for this asset before stamping (needed for conditional revert)
+        const prevUsage = await tx.mediaAssetUsage.findUnique({
+          where: { assetId_accountId: { assetId: candidate.id, accountId } },
+          select: { lastUsedAt: true },
+        });
+        const now = new Date();
+        await tx.mediaAssetUsage.upsert({
+          where: { assetId_accountId: { assetId: candidate.id, accountId } },
+          update: { lastUsedAt: now },
+          create: { assetId: candidate.id, accountId, usageCount: 0, lastUsedAt: now },
+        });
+        result.prevAudioUsageState = {
+          assetId: candidate.id,
+          accountId,
+          prevLastUsedAt: prevUsage?.lastUsedAt?.toISOString() ?? null,
+          claimedLastUsedAt: now.toISOString(),
+        };
+      });
+    } else {
+      // No accountId (admin preview): no lock, no claim
+      result.audioSuggestion = await selectMediaAsset(
+        audioLibraryId,
+        musicBlock.audioSelectionRule,
+        formData,
+        audioEffectiveAccountId,
+        undefined,
+        audioMinDuration,
       );
-    result.prevAudioUsageState = {
-      assetId,
-      accountId,
-      prevLastUsedAt: existing?.lastUsedAt?.toISOString() ?? null,
-      claimedLastUsedAt: now.toISOString(),
-    };
+    }
   }
 
   // --- Data library ---

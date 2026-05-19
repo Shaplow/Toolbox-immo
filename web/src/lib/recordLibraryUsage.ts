@@ -391,13 +391,16 @@ export async function revertRenderUsage(renderId: string): Promise<RevertSummary
   } else if (accountId) {
     for (const [libraryId, state] of Object.entries(prevStateMap)) {
       try {
+        // Use the cursorAccountId stored at prefill time (handles shared libs that use
+        // SHARED_CURSOR_ACCOUNT_ID as their cursor key instead of the real accountId).
+        const cursorAccountId = state.cursorAccountId ?? accountId;
         const updated = await prisma.$executeRaw(Prisma.sql`
           UPDATE "AccountLibraryCursor"
           SET
             cursor               = ${state.prevCursor},
             "lastUsedCategory"   = ${state.prevLastUsedCategory},
             "lastAdvancedAt"     = NULL
-          WHERE "accountId"  = ${accountId}
+          WHERE "accountId"  = ${cursorAccountId}
             AND "libraryId"  = ${libraryId}
             AND cursor IS NOT DISTINCT FROM ${state.claimedCursor}
             AND "lastUsedCategory" IS NOT DISTINCT FROM ${state.claimedLastUsedCategory}
@@ -451,7 +454,7 @@ export async function revertLibraryCursors(renderId: string): Promise<void> {
     return;
   }
 
-  if (!render?.accountId || !render.usedAssets) return;
+  if (!render?.usedAssets) return;
 
   let usedAssets: UsedAssets = {};
   try {
@@ -462,32 +465,38 @@ export async function revertLibraryCursors(renderId: string): Promise<void> {
 
   const accountId = render.accountId;
   const prevStateMap = usedAssets.prevCursorStateByLibrary;
-  if (!prevStateMap || Object.keys(prevStateMap).length === 0) return;
 
-  await Promise.allSettled(
-    Object.entries(prevStateMap).map(async ([libraryId, state]) => {
-      try {
-        // Conditional revert: only apply if the cursor row still reflects exactly what
-        // this generation wrote.  If a concurrent or later generation has since advanced
-        // the cursor, the WHERE won't match and the update is a no-op.
-        const updated = await prisma.$executeRaw(Prisma.sql`
-          UPDATE "AccountLibraryCursor"
-          SET
-            cursor               = ${state.prevCursor},
-            "lastUsedCategory"   = ${state.prevLastUsedCategory}
-          WHERE "accountId"  = ${accountId}
-            AND "libraryId"  = ${libraryId}
-            AND cursor IS NOT DISTINCT FROM ${state.claimedCursor}
-            AND "lastUsedCategory" IS NOT DISTINCT FROM ${state.claimedLastUsedCategory}
-        `);
-        if (updated > 0) {
-          console.info(`[revertLibraryCursors] render=${renderId} library=${libraryId} cursor reverted ${state.claimedCursor}→${state.prevCursor}`);
+  // Cursor revert — only when accountId and prevStateMap are both present.
+  // DataEntry and audio reverts below run independently of this condition.
+  if (accountId && prevStateMap && Object.keys(prevStateMap).length > 0) {
+    await Promise.allSettled(
+      Object.entries(prevStateMap).map(async ([libraryId, state]) => {
+        try {
+          // Use the cursorAccountId stored at prefill time (handles shared libs that use
+          // SHARED_CURSOR_ACCOUNT_ID as their cursor key instead of the real accountId).
+          const cursorAccountId = state.cursorAccountId ?? accountId;
+          // Conditional revert: only apply if the cursor row still reflects exactly what
+          // this generation wrote.  If a concurrent or later generation has since advanced
+          // the cursor, the WHERE won't match and the update is a no-op.
+          const updated = await prisma.$executeRaw(Prisma.sql`
+            UPDATE "AccountLibraryCursor"
+            SET
+              cursor               = ${state.prevCursor},
+              "lastUsedCategory"   = ${state.prevLastUsedCategory}
+            WHERE "accountId"  = ${cursorAccountId}
+              AND "libraryId"  = ${libraryId}
+              AND cursor IS NOT DISTINCT FROM ${state.claimedCursor}
+              AND "lastUsedCategory" IS NOT DISTINCT FROM ${state.claimedLastUsedCategory}
+          `);
+          if (updated > 0) {
+            console.info(`[revertLibraryCursors] render=${renderId} library=${libraryId} cursor reverted ${state.claimedCursor}→${state.prevCursor}`);
+          }
+        } catch (err) {
+          console.error(`[revertLibraryCursors] revert failed for render=${renderId} library=${libraryId}:`, err);
         }
-      } catch (err) {
-        console.error(`[revertLibraryCursors] revert failed for render=${renderId} library=${libraryId}:`, err);
-      }
-    }),
-  );
+      }),
+    );
+  }
 
   // --- DataEntry claim revert ---
   const dataState = usedAssets.prevDataEntryState;
