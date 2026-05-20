@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import CaptionsGenerateForm from "@/components/captions/CaptionsGenerateForm";
 import { getFromR2 } from "@/lib/r2";
+import { readFile } from "fs/promises";
+import path from "path";
 import type { Segment } from "@/lib/transcriptionProcess";
 import { getUserContext } from "@/lib/userContext";
 import {
@@ -72,10 +74,16 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
     });
     if (txJob?.status === "COMPLETED" && txJob.outputJsonKey) {
       try {
-        const buf = await getFromR2(txJob.outputJsonKey);
+        let buf: Buffer;
+        if (txJob.outputJsonKey.startsWith("local/")) {
+          const localPath = path.join(process.cwd(), "public", txJob.outputJsonKey.replace(/^local\//, ""));
+          buf = await readFile(localPath);
+        } else {
+          buf = await getFromR2(txJob.outputJsonKey);
+        }
         initialSegments = JSON.parse(buf.toString("utf-8")) as Segment[];
-      } catch {
-        // Silently ignore — fallback to no preloaded segments
+      } catch (err) {
+        console.error("[captions/generate] Erreur chargement segments transcription:", err);
       }
     }
   }
