@@ -25,6 +25,11 @@ import {
   validateCorrectedCaptions,
 } from "@/lib/captionCorrector";
 import { parseHighlightedCaptions } from "@/lib/srt";
+import {
+  buildTimedSegmentsFromSegments,
+  buildWordTimestampsForSubmission,
+  realignTimedCaptions,
+} from "@/lib/captionWordTiming";
 import type { TemplateJSON, CaptionExcludeZone, AnyBlock, VideoSequenceSlot } from "@/types/template";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
@@ -345,9 +350,15 @@ export async function triggerAutoCaptionForTranscription(transcriptionJobId: str
   // If correctionPromptId is set, run an AI correction pass on the filtered
   // segments before creating the CaptionJob. On failure, create the job as
   // FAILED so the user can see what happened.
-  let correctedSegments = filteredSegments;
+  let finalSegments = buildTimedSegmentsFromSegments(filteredSegments);
+  let finalHighlighted = new Map<string, number>();
   if (captionAutoConfig.correctionPromptId) {
     const correctionModel = captionAutoConfig.correctionModel ?? "claude";
+    if (correctionModel !== "claude" && correctionModel !== "gpt") {
+      console.warn(
+        `[autoCaption] correctionModel="${correctionModel}" non reconnu — utilisation de GPT par défaut`,
+      );
+    }
     try {
       const storedPrompt = await findCaptionPromptForCorrection(captionAutoConfig.correctionPromptId);
       if (!storedPrompt) {
@@ -385,21 +396,19 @@ export async function triggerAutoCaptionForTranscription(transcriptionJobId: str
           ? await correctWithClaude(sourceCaptions, storedPrompt.prompt, autoHighlight, signal)
           : await correctWithGPT(sourceCaptions, storedPrompt.prompt, autoHighlight, signal);
 
-      const { captions: validatedCaptions } = validateCorrectedCaptions(
+      const { captions: cleanCaptions, highlighted: highlightedEntries } = validateCorrectedCaptions(
         sourceCaptions,
         rawCorrected,
         allowedHighlightGroups,
       );
 
-      // Apply corrected text back onto original segments (preserve numeric timestamps + speaker)
-      // validatedCaptions is guaranteed to have the same length as filteredSegments by validateCorrectedCaptions
-      correctedSegments = filteredSegments.map((seg, i) => ({
-        ...seg,
-        text: validatedCaptions[i].text,
-      }));
+      const initialHighlighted = new Map<string, number>(highlightedEntries);
+      const { segments: realignedSegments } = realignTimedCaptions(finalSegments, cleanCaptions, undefined);
+      finalSegments = realignedSegments;
+      finalHighlighted = initialHighlighted;
 
       console.info(
-        `[autoCaption] Correction IA (${correctionModel}) appliquée — ${correctedSegments.length} segments pour transcription=${transcriptionJobId}`,
+        `[autoCaption] Correction IA (${correctionModel}) appliquée — ${finalSegments.length} segments, ${finalHighlighted.size} highlights pour transcription=${transcriptionJobId}`,
       );
     } catch (err) {
       const errMsg = `Correction IA échouée : ${String(err instanceof Error ? err.message : err)}`;
@@ -414,7 +423,7 @@ export async function triggerAutoCaptionForTranscription(transcriptionJobId: str
             inputUrl:    getR2PublicUrl(job.inputKey),
             outputKey:   `outputs/captions/${job.userId}/${Date.now()}/auto.mp4`,
             config:      preset.config,
-            srtContent:  JSON.stringify(filteredSegments),
+            srtContent:  buildWordTimestampsForSubmission(buildTimedSegmentsFromSegments(filteredSegments), new Map()),
             srtFilename: `auto-transcription-${job.id}.json`,
             previewMode: false,
             presetId:    captionAutoConfig.presetId,
@@ -435,7 +444,7 @@ export async function triggerAutoCaptionForTranscription(transcriptionJobId: str
 
   const jobTimestamp = Date.now();
   const outputKey    = `outputs/captions/${job.userId}/${jobTimestamp}/auto.mp4`;
-  const srtContent   = JSON.stringify(correctedSegments);
+  const srtContent   = buildWordTimestampsForSubmission(finalSegments, finalHighlighted);
   const srtFilename  = `auto-transcription-${job.id}.json`;
 
   // Ne pas mettre inputKey : le webhook captions supprimerait la vidéo du render.

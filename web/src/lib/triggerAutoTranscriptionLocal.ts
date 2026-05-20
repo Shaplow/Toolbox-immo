@@ -137,6 +137,13 @@ export async function triggerAutoTranscriptionLocal(
 
   const videoDownloadUrl = `${captionsApiUrl}${renderEngineVideoPath}`;
 
+  // Déclarés hors du try pour être accessibles dans le catch.
+  let captionJob: { id: string } | undefined;
+  // Vrai uniquement si la transcription elle-même s'est terminée avec succès.
+  // Empêche d'écraser un statut COMPLETED par FAILED pour des erreurs survenant
+  // dans les étapes suivantes (preset, burn-in, DB finale).
+  let transcriptionCompleted = false;
+
   try {
     // 3. Télécharger la vidéo depuis le render engine ──────────────────────────
     const videoRes = await fetch(videoDownloadUrl, { signal: AbortSignal.timeout(60_000) });
@@ -177,6 +184,7 @@ export async function triggerAutoTranscriptionLocal(
       where: { id: transcriptionJob.id },
       data: { status: "COMPLETED", segmentCount: segments.length, duration: videoDuration },
     });
+    transcriptionCompleted = true;
 
     // 5. Appliquer les zones d'exclusion ───────────────────────────────────────
     const blocks: AnyBlock[] = templateJson.blocks ?? [];
@@ -188,10 +196,6 @@ export async function triggerAutoTranscriptionLocal(
       captionAutoConfig.excludeSlotIds?.length && templateJson.videoSequence?.length
         ? resolveSlotExcludeZones(captionAutoConfig.excludeSlotIds, templateJson.videoSequence, videoDuration, slotDurations)
         : [];
-
-    console.info(
-      `[autoTranscriptionLocal] slotDurations=${JSON.stringify(slotDurations)} slotZones=${JSON.stringify(slotZones)} resolvedZones=${JSON.stringify(resolvedZones)} — render=${renderId}`,
-    );
 
     segments = applyExcludeZones(segments, [...resolvedZones, ...slotZones], videoDuration);
 
@@ -233,6 +237,11 @@ export async function triggerAutoTranscriptionLocal(
 
     if (captionAutoConfig.correctionPromptId) {
       const correctionModel = captionAutoConfig.correctionModel ?? "claude";
+      if (correctionModel !== "claude" && correctionModel !== "gpt") {
+        console.warn(
+          `[autoTranscriptionLocal] correctionModel="${correctionModel}" non reconnu — utilisation de GPT par défaut`,
+        );
+      }
       try {
         const storedPrompt = await findCaptionPromptForCorrection(captionAutoConfig.correctionPromptId);
         if (!storedPrompt) {
@@ -332,7 +341,7 @@ export async function triggerAutoTranscriptionLocal(
     const srtFilename = `auto-${transcriptionJob.id}.json`;
 
     // 9. Créer le CaptionJob ───────────────────────────────────────────────────
-    const captionJob = await prisma.captionJob.create({
+    captionJob = await prisma.captionJob.create({
       data: {
         userId,
         status: "PROCESSING",
@@ -384,13 +393,29 @@ export async function triggerAutoTranscriptionLocal(
     );
   } catch (err) {
     console.error(`[autoTranscriptionLocal] Erreur pipeline pour render=${renderId}: ${String(err)}`);
-    await prisma.transcriptionJob
-      .update({
-        where: { id: transcriptionJob.id },
-        data: { status: "FAILED", errorMsg: String(err) },
-      })
-      .catch(() => {
-        /* ignore secondary DB error */
-      });
+    // Si le CaptionJob a déjà été créé, le marquer FAILED et notifier l'utilisateur.
+    if (captionJob) {
+      await prisma.captionJob
+        .update({
+          where: { id: captionJob.id },
+          data: { status: "FAILED", errorMsg: String(err) },
+        })
+        .catch(() => {
+          /* ignore secondary DB error */
+        });
+      notifyUser(userId, { jobType: "captions", jobId: captionJob.id, status: "FAILED", errorMsg: String(err) });
+    }
+    // Ne mettre le TranscriptionJob en FAILED que s'il n'a pas été marqué COMPLETED.
+    // Évite d'écraser un COMPLETED avec un message d'erreur d'une étape ultérieure.
+    if (!transcriptionCompleted) {
+      await prisma.transcriptionJob
+        .update({
+          where: { id: transcriptionJob.id },
+          data: { status: "FAILED", errorMsg: String(err) },
+        })
+        .catch(() => {
+          /* ignore secondary DB error */
+        });
+    }
   }
 }
