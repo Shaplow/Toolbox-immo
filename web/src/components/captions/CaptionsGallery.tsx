@@ -18,7 +18,7 @@ type Preset = {
 export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const transcriptionPendingId = searchParams.get("transcriptionId");
+  const transcriptionPendingId = searchParams?.get("transcriptionId");
   const [presets, setPresets] = useState<Preset[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
