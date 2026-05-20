@@ -47,7 +47,7 @@ function resolveInitialFieldValue(field: SchemaField, initialValue: unknown): un
 function buildUsedAssets(
   ctx: LibraryPrefillContext,
   selections: Record<string, LibraryAssetOption | null>,
-): { videoAssets?: Record<string, string>; audioAssetId?: string; dataEntryId?: string; setSequencedLibraryIds?: string[]; usedSetTagByLibrary?: Record<string, string>; usedCategoryByLibrary?: Record<string, string>; prevCursorStateByLibrary?: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null }>; prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: "usedInCycle" | "perAccountUsage"; accountId?: string }; prevAudioUsageState?: { assetId: string; accountId: string; prevLastUsedAt: string | null; claimedLastUsedAt: string } } | undefined {
+): { videoAssets?: Record<string, string>; audioAssetId?: string; dataEntryId?: string; setSequencedLibraryIds?: string[]; usedSetTagByLibrary?: Record<string, string>; usedCategoryByLibrary?: Record<string, string>; prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: "usedInCycle" | "perAccountUsage"; accountId?: string } } | undefined {
   const fieldMap = ctx.fieldLibraryMap ?? {};
   const videoAssets: Record<string, string> = {};
   let audioAssetId: string | undefined;
@@ -70,9 +70,7 @@ function buildUsedAssets(
     setSequencedLibraryIds: ctx.setSequencedLibraryIds?.length ? ctx.setSequencedLibraryIds : undefined,
     usedSetTagByLibrary: ctx.usedSetTagByLibrary && Object.keys(ctx.usedSetTagByLibrary).length > 0 ? ctx.usedSetTagByLibrary : undefined,
     usedCategoryByLibrary: ctx.usedCategoryByLibrary && Object.keys(ctx.usedCategoryByLibrary).length > 0 ? ctx.usedCategoryByLibrary : undefined,
-    prevCursorStateByLibrary: ctx.prevCursorStateByLibrary && Object.keys(ctx.prevCursorStateByLibrary).length > 0 ? ctx.prevCursorStateByLibrary : undefined,
     prevDataEntryState: ctx.prevDataEntryState ?? undefined,
-    prevAudioUsageState: ctx.prevAudioUsageState ?? undefined,
   };
 }
 
