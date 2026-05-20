@@ -1140,7 +1140,7 @@ export async function advanceAudioUsageOnSubmit(
     prevAudioUsageState: {
       assetId: audioAssetId,
       accountId,
-      prevLastUsedAt: prevUsage?.lastUsedAt?.toISOString() ?? null,
+      prevLastUsedAt: (prevUsage as { lastUsedAt: Date | null } | null)?.lastUsedAt?.toISOString() ?? null,
       claimedLastUsedAt: now.toISOString(),
     },
   };
