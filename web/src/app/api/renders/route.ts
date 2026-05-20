@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { startRenderGeneration } from "@/lib/renderer/generateRender";
 import { IMPERSONATION_COOKIE_NAME, resolveUserContext } from "@/lib/userContext";
+import { advanceLibraryCursorsOnSubmit, advanceAudioUsageOnSubmit } from "@/lib/contentLibraryResolver";
 
 // POST /api/renders — déclenche une génération
 export async function POST(req: NextRequest) {
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
     } = {};
 
     if (usedAssets && typeof usedAssets === "object") {
-    const raw = usedAssets as { videoAssets?: unknown; audioAssetId?: unknown; dataEntryId?: unknown; setSequencedLibraryIds?: unknown; usedSetTagByLibrary?: unknown; usedCategoryByLibrary?: unknown; prevCursorStateByLibrary?: unknown; prevDataEntryState?: unknown; prevAudioUsageState?: unknown };
+    const raw = usedAssets as { videoAssets?: unknown; audioAssetId?: unknown; dataEntryId?: unknown; setSequencedLibraryIds?: unknown; usedSetTagByLibrary?: unknown; usedCategoryByLibrary?: unknown; prevDataEntryState?: unknown };
 
       // Video assets: blockId → assetId
       if (raw.videoAssets && typeof raw.videoAssets === "object" && !Array.isArray(raw.videoAssets)) {
@@ -120,31 +121,6 @@ export async function POST(req: NextRequest) {
         if (Object.keys(sanitized).length > 0) sanitizedUsedAssets.usedCategoryByLibrary = sanitized;
       }
 
-      // prevCursorStateByLibrary — cursor snapshots for failure-recovery revert.
-      // Validate shape: each value must have the four expected numeric/nullable-string fields.
-      // cursorAccountId is optional (absent in older renders) — revert falls back to render.accountId.
-      if (raw.prevCursorStateByLibrary && typeof raw.prevCursorStateByLibrary === "object" && !Array.isArray(raw.prevCursorStateByLibrary)) {
-        const map = raw.prevCursorStateByLibrary as Record<string, unknown>;
-        const sanitized: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null; cursorAccountId?: string }> = {};
-        for (const [libId, v] of Object.entries(map)) {
-          if (v && typeof v === "object" && !Array.isArray(v)) {
-            const s = v as Record<string, unknown>;
-            if (typeof s.prevCursor === "number" && typeof s.claimedCursor === "number"
-              && (s.prevLastUsedCategory === null || typeof s.prevLastUsedCategory === "string")
-              && (s.claimedLastUsedCategory === null || typeof s.claimedLastUsedCategory === "string")) {
-              sanitized[libId] = {
-                prevCursor: s.prevCursor,
-                claimedCursor: s.claimedCursor,
-                prevLastUsedCategory: s.prevLastUsedCategory as string | null,
-                claimedLastUsedCategory: s.claimedLastUsedCategory as string | null,
-                ...(typeof s.cursorAccountId === "string" ? { cursorAccountId: s.cursorAccountId } : {}),
-              };
-            }
-          }
-        }
-        if (Object.keys(sanitized).length > 0) sanitizedUsedAssets.prevCursorStateByLibrary = sanitized;
-      }
-
       // prevDataEntryState — claim state for DataEntry failure-recovery revert.
       if (raw.prevDataEntryState && typeof raw.prevDataEntryState === "object" && !Array.isArray(raw.prevDataEntryState)) {
         const s = raw.prevDataEntryState as Record<string, unknown>;
@@ -162,23 +138,6 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // prevAudioUsageState — audio usage claim for failure-recovery revert.
-      if (raw.prevAudioUsageState && typeof raw.prevAudioUsageState === "object" && !Array.isArray(raw.prevAudioUsageState)) {
-        const s = raw.prevAudioUsageState as Record<string, unknown>;
-        if (typeof s.assetId === "string" && typeof s.accountId === "string"
-          && (s.prevLastUsedAt === null || typeof s.prevLastUsedAt === "string")
-          && typeof s.claimedLastUsedAt === "string") {
-          const found = await prisma.mediaAsset.findUnique({ where: { id: s.assetId }, select: { id: true } });
-          if (found) {
-            sanitizedUsedAssets.prevAudioUsageState = {
-              assetId: s.assetId,
-              accountId: s.accountId as string,
-              prevLastUsedAt: s.prevLastUsedAt as string | null,
-              claimedLastUsedAt: s.claimedLastUsedAt as string,
-            };
-          }
-        }
-      }
     }
 
     // Validate accountId if provided
@@ -200,6 +159,43 @@ export async function POST(req: NextRequest) {
       });
       if (slot && !slot.render) validatedSlotId = slot.id;
       // If slot already has a render, ignore the link — don't error, just don't overwrite
+    }
+
+    // Advance library cursors and audio usage server-side at submission time.
+    // This replaces the prefill-time advance so abandoning the generate page no longer
+    // wastes a rotation slot.
+    if (sanitizedUsedAssets.setSequencedLibraryIds?.length && validatedAccountId) {
+      const advance = await advanceLibraryCursorsOnSubmit(
+        sanitizedUsedAssets.setSequencedLibraryIds,
+        sanitizedUsedAssets.usedSetTagByLibrary ?? {},
+        sanitizedUsedAssets.usedCategoryByLibrary ?? {},
+        validatedAccountId,
+      );
+      if (Object.keys(advance.prevCursorStateByLibrary).length > 0) {
+        sanitizedUsedAssets.prevCursorStateByLibrary = advance.prevCursorStateByLibrary;
+      }
+      if (Object.keys(advance.usedSetTagByLibrary).length > 0) {
+        sanitizedUsedAssets.usedSetTagByLibrary = advance.usedSetTagByLibrary;
+      }
+      if (Object.keys(advance.usedCategoryByLibrary).length > 0) {
+        sanitizedUsedAssets.usedCategoryByLibrary = advance.usedCategoryByLibrary;
+      }
+    }
+    if (sanitizedUsedAssets.audioAssetId && validatedAccountId) {
+      const audioAsset = await prisma.mediaAsset.findUnique({
+        where: { id: sanitizedUsedAssets.audioAssetId },
+        select: { libraryId: true },
+      });
+      if (audioAsset?.libraryId) {
+        const audioAdvance = await advanceAudioUsageOnSubmit(
+          sanitizedUsedAssets.audioAssetId,
+          validatedAccountId,
+          audioAsset.libraryId,
+        );
+        if (audioAdvance) {
+          sanitizedUsedAssets.prevAudioUsageState = audioAdvance.prevAudioUsageState;
+        }
+      }
     }
 
     // Créer le render en PENDING

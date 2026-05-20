@@ -285,9 +285,7 @@ export default async function GeneratePage({ params, searchParams }: Props) {
     let setSequencedLibraryIds: string[] = [];
     let usedSetTagByLibrary: Record<string, string> | undefined;
     let usedCategoryByLibrary: Record<string, string> | undefined;
-    let prevCursorStateByLibrary: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null }> | undefined;
     let prevDataEntryState: { entryId: string; campaignId: string; usagePolicy: string; claimType: "usedInCycle" | "perAccountUsage"; accountId?: string } | undefined;
-    let prevAudioUsageState: { assetId: string; accountId: string; prevLastUsedAt: string | null; claimedLastUsedAt: string } | undefined;
 
     if (listingId) {
       // Regenerating from an existing listing: try to match stored URLs back to library assets
@@ -315,11 +313,7 @@ export default async function GeneratePage({ params, searchParams }: Props) {
       usedCategoryByLibrary = prefill.usedCategoryByLibrary && Object.keys(prefill.usedCategoryByLibrary).length > 0
         ? prefill.usedCategoryByLibrary
         : undefined;
-      prevCursorStateByLibrary = prefill.prevCursorStateByLibrary && Object.keys(prefill.prevCursorStateByLibrary).length > 0
-        ? prefill.prevCursorStateByLibrary
-        : undefined;
       prevDataEntryState = prefill.prevDataEntryState ?? undefined;
-      prevAudioUsageState = prefill.prevAudioUsageState ?? undefined;
 
       for (const block of json.blocks) {
         if (block.type === "video" && block.binding && block.libraryId) {
@@ -423,9 +417,7 @@ export default async function GeneratePage({ params, searchParams }: Props) {
       setSequencedLibraryIds,
       usedSetTagByLibrary,
       usedCategoryByLibrary,
-      prevCursorStateByLibrary,
       prevDataEntryState,
-      prevAudioUsageState,
       instagramAccounts,
       selectedAccountId: accountId,
       slotId,

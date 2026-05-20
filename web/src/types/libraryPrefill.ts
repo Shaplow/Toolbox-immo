@@ -59,17 +59,6 @@ export interface LibraryPrefillContext {
    */
   slotId?: string;
   /**
-   * libraryId → cursor snapshot taken at prefill time.
-   * Passed to the render endpoint so the cursor can be conditionally reverted
-   * if the render fails (see revertLibraryCursors in recordLibraryUsage.ts).
-   */
-  prevCursorStateByLibrary?: Record<string, {
-    prevCursor: number;
-    claimedCursor: number;
-    prevLastUsedCategory: string | null;
-    claimedLastUsedCategory: string | null;
-  }>;
-  /**
    * DataEntry claim state taken at prefill time for failure-recovery revert.
    */
   prevDataEntryState?: {
@@ -78,16 +67,6 @@ export interface LibraryPrefillContext {
     usagePolicy: string;
     claimType: "usedInCycle" | "perAccountUsage";
     accountId?: string;
-  };
-  /**
-   * Audio usage claim state taken at prefill time for failure-recovery revert.
-   * Only set for non-theme_sequence audio libraries when accountId is present.
-   */
-  prevAudioUsageState?: {
-    assetId: string;
-    accountId: string;
-    prevLastUsedAt: string | null;
-    claimedLastUsedAt: string;
   };
   /**
    * Describes a link between a select field (source) and a video field (target)
