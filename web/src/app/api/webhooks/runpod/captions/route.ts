@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     await prisma.captionJob.update({
       where: { id: job.id },
-      data: { status: "COMPLETED", outputUrl: videoUrl ?? undefined, inputKey: null },
+      data: { status: "COMPLETED", outputUrl: videoUrl ?? null, inputKey: null },
     });
 
     if (job.inputKey && r2Configured()) {

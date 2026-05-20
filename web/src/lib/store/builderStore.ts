@@ -1,5 +1,5 @@
 ﻿import { create } from "zustand";
-import type { TemplateJSON, AnyBlock, CanvasFormat, LayerGroup, SchemaField, TemplateFormSection, VideoSequenceSlot } from "@/types/template";
+import type { TemplateJSON, AnyBlock, CanvasFormat, LayerGroup, SchemaField, TemplateFormSection, VideoSequenceSlot, CaptionAutoConfig } from "@/types/template";
 import { emptyTemplate, defaultCanvas } from "@/types/template";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 
@@ -42,6 +42,7 @@ interface BuilderState {
   updateTheme: (changes: Partial<TemplateJSON["theme"]>) => void;
   updateContentLibrary: (changes: Partial<NonNullable<TemplateJSON["contentLibrary"]>>) => void;
   updateVideoSequence: (slots: VideoSequenceSlot[] | undefined) => void;
+  updateCaptionAutoConfig: (changes: Partial<CaptionAutoConfig>) => void;
   setGenerationMode: (mode: TemplateJSON["generationMode"]) => void;
   setFormat: (format: CanvasFormat) => void;
   setSchema: (schema: SchemaField[]) => void;
@@ -330,6 +331,12 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
 
   updateVideoSequence: (slots) => {
     const next = { ...get().template, videoSequence: slots };
+    withHistory(get, set, next);
+  },
+
+  updateCaptionAutoConfig: (changes) => {
+    const current = get().template.captionAutoConfig ?? { enabled: false, excludeZones: [] };
+    const next = { ...get().template, captionAutoConfig: { ...current, ...changes } };
     withHistory(get, set, next);
   },
 

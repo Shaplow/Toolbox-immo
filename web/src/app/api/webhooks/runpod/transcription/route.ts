@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { deleteFromR2, r2Configured } from "@/lib/r2";
 import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runpod";
 import { notifyUser } from "@/lib/sseStore";
+import { triggerAutoCaptionForTranscription } from "@/lib/triggerAutoCaptionFromTranscription";
 
 type TranscriptionOutput = {
   output_key?: string;
@@ -50,6 +51,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (status === "COMPLETED" && output && !output.error) {
+    // Pour les jobs auto-déclenchés (renderId présent), inputKey est la vidéo du render :
+    // on la conserve (Phase 4 en a besoin) et on ne la supprime pas de R2.
+    const isAutoPipeline = Boolean(job.renderId);
+
     await prisma.transcriptionJob.update({
       where: { id: job.id },
       data: {
@@ -58,11 +63,12 @@ export async function POST(req: NextRequest) {
         segmentCount: output.segment_count ?? null,
         duration: output.duration ?? null,
         hasDiarization: output.has_diarization ?? false,
-        inputKey: null,
+        // Conserver inputKey pour les jobs auto (render video) — null pour les jobs manuels
+        ...(isAutoPipeline ? {} : { inputKey: null }),
       },
     });
 
-    if (job.inputKey && r2Configured()) {
+    if (!isAutoPipeline && job.inputKey && r2Configured()) {
       deleteFromR2(job.inputKey).catch((err) =>
         console.warn(`[webhook/transcription] R2 cleanup failed for key=${job.inputKey}:`, err)
       );
@@ -77,15 +83,25 @@ export async function POST(req: NextRequest) {
       hasDiarization: output.has_diarization ?? false,
     });
     console.info(`[webhook/transcription] job=${job.id} done`);
+
+    // ── Pipeline sous-titres automatique ─────────────────────────────────
+    // Déclenchement non bloquant du CaptionJob si ce job vient d'un render auto.
+    if (isAutoPipeline) {
+      void triggerAutoCaptionForTranscription(job.id).catch((err) =>
+        console.error(`[webhook/transcription] triggerAutoCaption threw: ${String(err)}`),
+      );
+    }
   } else {
     const errorMsg = output?.error ?? error ?? `RunPod status: ${status}`;
+    const isAutoPipeline = Boolean(job.renderId);
 
     await prisma.transcriptionJob.update({
       where: { id: job.id },
-      data: { status: "FAILED", errorMsg, inputKey: null },
+      data: { status: "FAILED", errorMsg, ...(isAutoPipeline ? {} : { inputKey: null }) },
     });
 
-    if (job.inputKey && r2Configured()) {
+    // Ne pas supprimer le fichier R2 si c'est la vidéo d'un render auto
+    if (!isAutoPipeline && job.inputKey && r2Configured()) {
       deleteFromR2(job.inputKey).catch((err) =>
         console.warn(`[webhook/transcription] R2 cleanup failed for key=${job.inputKey}:`, err)
       );

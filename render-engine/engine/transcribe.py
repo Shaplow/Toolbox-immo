@@ -25,6 +25,8 @@ def _resolve_device() -> tuple[str, str]:
 
 _WHISPER_CACHE: dict[str, Any] = {}
 _ALIGN_CACHE: dict[str, tuple[Any, Any]] = {}
+_VAD_MODEL: Any = None  # silero-VAD, chargé à la demande
+_VAD_GET_SPEECH_TS: Any = None  # utils[0] de silero-VAD, mis en cache avec le modèle
 
 
 def _optimal_batch_size(device: str) -> int:
@@ -76,6 +78,108 @@ def _get_align_model(language: str, device: str) -> tuple[Any, Any]:
     _ALIGN_CACHE[key] = whisperx.load_align_model(language_code=language, device=device)
     print(f"[transcribe] alignement {language} prêt — {time.time()-t0:.1f}s", flush=True)
     return _ALIGN_CACHE[key]
+
+
+def _apply_vad_trim(
+    audio: Any,  # numpy float32 array at 16kHz
+    segments: list[dict[str, Any]],
+    *,
+    sample_rate: int = 16000,
+    speech_pad_ms: int = 150,
+) -> list[dict[str, Any]]:
+    """
+    Post-processing VAD : clippe les timestamps de fin des mots et segments
+    qui débordent au-delà de la fin de parole détectée par silero-VAD.
+
+    Seuls les derniers mots de chaque segment sont candidats à la correction.
+    La musique de fond (moins forte que la voix) est gérée correctement par
+    silero-VAD qui détecte la parole humaine spécifiquement.
+
+    Dégradation gracieuse : si silero-VAD est indisponible ou échoue,
+    les segments sont retournés sans modification.
+    """
+    global _VAD_MODEL, _VAD_GET_SPEECH_TS
+    try:
+        import torch
+
+        if _VAD_MODEL is None:
+            print("[transcribe] chargement silero-VAD via torch.hub...", flush=True)
+            t0 = time.time()
+            _vad_model, _vad_utils = torch.hub.load(
+                repo_or_dir="snakers4/silero-vad",
+                model="silero_vad",
+                trust_repo=True,
+            )
+            _VAD_MODEL = _vad_model
+            _VAD_GET_SPEECH_TS = _vad_utils[0]
+            print(f"[transcribe] silero-VAD prêt — {time.time()-t0:.1f}s", flush=True)
+
+        get_speech_timestamps = _VAD_GET_SPEECH_TS
+        audio_tensor = torch.from_numpy(audio).float()
+
+        speech_ts = get_speech_timestamps(
+            audio_tensor,
+            _VAD_MODEL,
+            sampling_rate=sample_rate,
+            threshold=0.5,
+            min_silence_duration_ms=100,
+            speech_pad_ms=speech_pad_ms,
+        )
+    except Exception as exc:
+        print(f"[transcribe] VAD indisponible (non bloquant) : {exc}", flush=True)
+        return segments
+
+    if not speech_ts:
+        return segments
+
+    # Convertir en secondes
+    speech_intervals: list[tuple[float, float]] = [
+        (ts["start"] / sample_rate, ts["end"] / sample_rate)
+        for ts in speech_ts
+    ]
+
+    pad_s = speech_pad_ms / 1000.0
+    trimmed_count = 0
+
+    for seg in segments:
+        words = seg.get("words", [])
+        if not words:
+            continue
+
+        seg_start = seg.get("start", 0.0)
+        seg_end = seg.get("end", words[-1]["end"])
+
+        # Intervalles VAD qui chevauchent la zone de ce segment (avec 500ms de marge)
+        relevant = [
+            (s, e) for s, e in speech_intervals
+            if e >= seg_start - 0.5 and s <= seg_end + 0.5
+        ]
+        if not relevant:
+            continue
+
+        last_speech_end = max(e for _, e in relevant)
+        cap = last_speech_end + pad_s
+
+        last_word = words[-1]
+        if last_word["end"] > cap + 0.05:  # 50ms de tolérance
+            old_end = last_word["end"]
+            last_word["end"] = round(cap, 3)
+            trimmed_count += 1
+            print(
+                f"[transcribe] VAD trim : mot «{last_word.get('word', '?')}» "
+                f"{old_end:.3f}s → {last_word['end']:.3f}s",
+                flush=True,
+            )
+
+        if seg_end > cap + 0.05:
+            seg["end"] = round(min(cap, last_word["end"]), 3)
+
+    if trimmed_count > 0:
+        print(f"[transcribe] VAD : {trimmed_count} mots finaux clippés au total", flush=True)
+    else:
+        print("[transcribe] VAD : aucun débordement détecté", flush=True)
+
+    return segments
 
 
 def transcribe_with_word_timestamps(
@@ -135,6 +239,10 @@ def transcribe_with_word_timestamps(
         return_char_alignments=False,
     )
     print(f"[transcribe] alignement terminé — {time.time()-t0:.0f}s", flush=True)
+
+    # 3b. VAD post-processing : clippe les débordements de mots en fin de segment
+    print("[transcribe] VAD post-processing...", flush=True)
+    result["segments"] = _apply_vad_trim(audio, result["segments"])
 
     # 4. Diarisation (optionnelle)
     has_diarization = False

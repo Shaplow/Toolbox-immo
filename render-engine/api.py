@@ -564,6 +564,10 @@ async def render_sequence_local(request: Request):
     final_path: Path | None = None
     # Per-slot music track params for time-varying volume expression.
     slot_audio_specs: list[dict] = []
+    # Actual probed durations per slot_id — returned in the response so the web
+    # layer can use them to compute caption exclude-zone boundaries precisely,
+    # even when the template has no maxDuration configured on the slots.
+    slot_durations: dict[str, float] = {}
 
     try:
         for i, slot in enumerate(slots):
@@ -606,6 +610,7 @@ async def render_sequence_local(request: Request):
             _clip_effective_dur = float(video_info.duration or 0.0)
             if max_dur is not None:
                 _clip_effective_dur = min(_clip_effective_dur, max_dur)
+            slot_durations[slot_id] = _clip_effective_dur
             slot_audio_specs.append({
                 "volume_db": slot.get("music_track_volume_db"),
                 "fade_in": float(slot.get("music_track_fade_in", 0) or 0),
@@ -812,7 +817,7 @@ async def render_sequence_local(request: Request):
             except _sp.TimeoutExpired:
                 logger.warning("[render_sequence] max_duration cap timeout, skipping")
 
-        return {"videoUrl": f"/outputs/temp/api/{final_path.name}"}
+        return {"videoUrl": f"/outputs/temp/api/{final_path.name}", "slotDurations": slot_durations}
 
     finally:
         # Clean up intermediate files (clips, overlays, videos) but keep the final output

@@ -201,16 +201,20 @@ export async function PATCH(
     );
   }
 
-  const updated = await prisma.transcriptionJob.update({
-    where: { id: job.id },
-    data: {
-      model,
-      language,
-      enableDiarization,
-      errorMsg: null,
-    },
+  const patchResult = await prisma.transcriptionJob.updateMany({
+    where: { id: job.id, status: "QUEUED" },
+    data: { model, language, enableDiarization, errorMsg: null },
   });
 
+  if (patchResult.count === 0) {
+    // Job transitioned away from QUEUED between the status check and the update
+    return NextResponse.json(
+      { error: "Seuls les jobs en attente peuvent être modifiés." },
+      { status: 409 }
+    );
+  }
+
+  const updated = await prisma.transcriptionJob.findUniqueOrThrow({ where: { id: job.id } });
   return NextResponse.json(formatJob(updated));
 }
 
@@ -242,12 +246,13 @@ export async function DELETE(
     return NextResponse.json({ error: "Ce job ne peut plus être annulé." }, { status: 409 });
   }
 
+  const isAutoPipeline = Boolean(job.renderId);
   const updated = await prisma.transcriptionJob.update({
     where: { id: job.id },
-    data: { status: "FAILED", errorMsg: "Annulé", inputKey: null },
+    data: { status: "FAILED", errorMsg: "Annulé", ...(isAutoPipeline ? {} : { inputKey: null }) },
   });
 
-  if (job.inputKey && r2Configured()) {
+  if (!isAutoPipeline && job.inputKey && r2Configured()) {
     deleteFromR2(job.inputKey).catch((err) =>
       console.warn(`[transcription/cancel] R2 cleanup failed for key=${job.inputKey}:`, err)
     );

@@ -91,8 +91,11 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     }
   }
 
-  await prisma.mediaLibrary.delete({ where: { id } }).catch((err) => {
+  try {
+    await prisma.mediaLibrary.delete({ where: { id } });
+  } catch (err) {
     console.error(`[admin/libraries/media/${id}] delete error:`, err);
-  });
+    return NextResponse.json({ error: "Erreur lors de la suppression en base" }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }

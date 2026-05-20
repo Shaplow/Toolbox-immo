@@ -578,7 +578,71 @@ export interface TemplateJSON {
    * Si absent ou vide, comportement standard (bloc vidéo unique).
    */
   videoSequence?: VideoSequenceSlot[];
+  /**
+   * Configuration du pipeline de sous-titrage automatique.
+   * Si défini et activé, un job de transcription est créé automatiquement
+   * à la fin d'un render vidéo basé sur ce template.
+   */
+  captionAutoConfig?: CaptionAutoConfig;
   timeline?: undefined; // V2 placeholder
+}
+
+/**
+ * Zone temporelle dans laquelle les sous-titres sont supprimés (ex: outro).
+ * Les timestamps de début et fin sont dérivés des groupes référencés ou fournis explicitement.
+ */
+export interface CaptionExcludeZone {
+  /** Identifiant unique de la zone. */
+  id: string;
+  /** Nom lisible ("outro", "générique", etc.) — utilisé dans les logs et l'UI. */
+  label: string;
+  /**
+   * ID du groupe LayerGroup dont le min(block.appearAt) des membres donne le timestamp de début.
+   * Prioritaire sur `startTime` si défini.
+   */
+  startGroupId?: string;
+  /**
+   * Timestamp de début explicite en secondes.
+   * Utilisé si `startGroupId` est absent ou si le groupe n'a aucun bloc avec `appearAt`.
+   */
+  startTime?: number;
+  /**
+   * ID du groupe LayerGroup dont le min(block.appearAt) des membres donne le timestamp de fin.
+   * Prioritaire sur `endTime` si défini.
+   */
+  endGroupId?: string;
+  /**
+   * Timestamp de fin explicite en secondes.
+   * Si absent et `endGroupId` absent, la zone s'étend jusqu'à la fin de la vidéo.
+   */
+  endTime?: number;
+}
+
+/**
+ * Configuration du pipeline de sous-titrage automatique pour un template.
+ * Si `enabled` est false ou si ce champ est absent, aucun job de transcription
+ * n'est créé automatiquement après un render.
+ */
+export interface CaptionAutoConfig {
+  /** Active le déclenchement automatique de la transcription après un render. */
+  enabled: boolean;
+  /** ID du CaptionPreset à utiliser pour le job de sous-titres. */
+  presetId?: string;
+  /**
+   * Zones temporelles à exclure du sous-titrage (ex: outro, générique).
+   * Résolues en timestamps au moment de la création du CaptionJob.
+   */
+  excludeZones: CaptionExcludeZone[];
+  /**
+   * IDs des slots de videoSequence à exclure du sous-titrage.
+   * À l'exécution, convertis en zones temporelles via les maxDuration des slots.
+   * Prioritaire sur excludeZones pour les templates séquence.
+   */
+  excludeSlotIds?: string[];
+  /** ID du CaptionPrompt à utiliser pour la correction IA des segments. Optionnel. */
+  correctionPromptId?: string;
+  /** Modèle IA à utiliser pour la correction. Défaut : "claude". */
+  correctionModel?: "claude" | "gpt";
 }
 
 // ─── V2 Placeholder ────────────────────────────────────────────────────────────

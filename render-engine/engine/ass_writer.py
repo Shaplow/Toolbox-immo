@@ -37,7 +37,7 @@ def _ass_time_cs(cs_total: int) -> str:
 
 
 def _hex_to_ass_color(hex_color: str) -> str:
-    hex_color = hex_color.strip().lstrip("#")
+    hex_color = hex_color.strip().lstrip("#")[:6]  # strip alpha channel if present
     if len(hex_color) != 6:
         return "&H00FFFFFF"
     r = hex_color[0:2]
@@ -47,7 +47,7 @@ def _hex_to_ass_color(hex_color: str) -> str:
 
 
 def _hex_to_ass_tag_color(hex_color: str) -> str:
-    hex_color = hex_color.strip().lstrip("#")
+    hex_color = hex_color.strip().lstrip("#")[:6]  # strip alpha channel if present
     if len(hex_color) != 6:
         return "&HFFFFFF&"
     r = hex_color[0:2]
@@ -57,7 +57,7 @@ def _hex_to_ass_tag_color(hex_color: str) -> str:
 
 
 def _hex_to_bgr6(hex_color: str) -> str:
-    hex_color = hex_color.strip().lstrip("#")
+    hex_color = hex_color.strip().lstrip("#")[:6]  # strip alpha channel if present
     if len(hex_color) != 6:
         return "FFFFFF"
     r = hex_color[0:2]
@@ -84,11 +84,17 @@ def _clean_keyword(word: str) -> str:
     return re.sub(r"[^\wÀ-ÿ]", "", word.lower())
 
 
-def _should_highlight(word, config: RenderConfig) -> Optional[int]:
+def _highlight_keywords(config: RenderConfig) -> frozenset[str]:
+    """Pre-build the normalized keyword set for highlight matching."""
+    return frozenset(_clean_keyword(item) for item in config.highlight.keywords if item.strip())
+
+
+def _should_highlight(word, config: RenderConfig, keywords: frozenset[str] | None = None) -> Optional[int]:
     """Returns highlight group (0-based) if word should be highlighted, else None."""
     if getattr(word, "highlight", False):
         return int(getattr(word, "highlight_group", 0))
-    keywords = {_clean_keyword(item) for item in config.highlight.keywords if item.strip()}
+    if keywords is None:
+        keywords = _highlight_keywords(config)
     if _clean_keyword(word.word) in keywords:
         return 0
     return None
@@ -137,9 +143,10 @@ def _base_words_text(words, config: RenderConfig, layer: int | None = None) -> s
         return _style_effect_tags(s)
 
     base_effects = _eff(config.base_style)
+    hl_kw = _highlight_keywords(config)
     parts = []
     for w in words:
-        hl_group = _should_highlight(w, config)
+        hl_group = _should_highlight(w, config, hl_kw)
         if hl_group is not None:
             style_name, hl_style = _hl_style_for_group(hl_group, config)
             hl_style = _hl_style_with_shadow(hl_style, config.base_style)
@@ -172,9 +179,10 @@ def _base_words_text_appear(words, visible_up_to: int, config: RenderConfig, fad
         return _style_effect_tags(s)
 
     base_effects = _eff(config.base_style)
+    hl_kw = _highlight_keywords(config)
     parts = []
     for i, w in enumerate(words):
-        hl_group = _should_highlight(w, config)
+        hl_group = _should_highlight(w, config, hl_kw)
         if i > visible_up_to:
             # ── Future word — fully invisible, static (no \t() needed) ──────
             if hl_group is not None:
@@ -369,11 +377,12 @@ def _animated_line_text(
             rf"\t({delay_ms},{delay_ms + fade},\1a&H00&\3a{a3}\4a&H00&)"
         )
 
+    hl_kw = _highlight_keywords(config)
     out: list[str] = []
 
     for wi, word in enumerate(line_words):
         word_delay_ms = max(0, int(round((word.start - block_start) * 1000)))
-        hl_group = _should_highlight(word, config)
+        hl_group = _should_highlight(word, config, hl_kw)
 
         if hl_group is not None:
             style_name, hl_style = _hl_style_for_group(hl_group, config)
@@ -447,6 +456,7 @@ def _write_word_pop_events(
     if not all_words:
         return
 
+    hl_kw = _highlight_keywords(config)
     for step, (li, word) in enumerate(all_words):
         start_cs = _to_cs_floor(word.start)
         if step + 1 < len(all_words):
@@ -458,7 +468,7 @@ def _write_word_pop_events(
         ev_end   = _ass_time_cs(end_cs)
 
         line = block.lines[li]
-        hl_group = _should_highlight(word, config)
+        hl_group = _should_highlight(word, config, hl_kw)
 
         for lyr in layers_to_emit:
             lyr_key = lyr if use_two_layers else None

@@ -13,6 +13,7 @@ import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runp
 import { notifyUser } from "@/lib/sseStore";
 import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsage";
 import { RENDER_STAGE } from "@/lib/renderer/renderWorkflow";
+import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
 
 type RenderOutput = {
   video_url?: string;
@@ -82,6 +83,19 @@ export async function POST(req: NextRequest) {
       videoUrl: videoUrl ?? null,
     });
     console.info(`[webhook/renders] render=${render.id} done, videoUrl=${videoUrl}`);
+
+    // ── Pipeline sous-titres automatique ──────────────────────────────────
+    // Non bloquant : les erreurs internes ne doivent pas faire échouer le webhook.
+    if (outputKey) {
+      void triggerAutoTranscriptionForRender(
+        render.id,
+        render.templateId,
+        outputKey,
+        userId,
+      ).catch((err) =>
+        console.error(`[webhook/renders] triggerAutoTranscription threw: ${String(err)}`),
+      );
+    }
   } else {
     const errorMsg = output?.error ?? error ?? `RunPod status: ${status}`;
 

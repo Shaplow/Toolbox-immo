@@ -16,6 +16,7 @@ import { getVisibleFieldKeys } from "@/lib/formSections";
 import { RENDER_PIPELINE, RENDER_STAGE } from "./renderWorkflow";
 import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsage";
 import { selectMediaAsset, selectMediaAssetBySetSequence, selectMediaAssetByMetadataValue, normalizeRule } from "@/lib/contentLibraryResolver";
+import { triggerAutoTranscriptionLocal } from "@/lib/triggerAutoTranscriptionLocal";
 
 const OUTPUT_DIR = path.join(process.cwd(), "public", "renders");
 const LOCAL_VIDEO_RENDER_TIMEOUT_MS = 10 * 60 * 1000;
@@ -1094,6 +1095,14 @@ async function generateVideoRenderLocal(
     recordLibraryUsage(renderId).catch((err) =>
       console.error("[generateRender] recordLibraryUsage failed:", err)
     );
+
+    // Auto-sous-titrage local (captionAutoConfig.enabled) — best-effort
+    const rawVideoPath = data.videoUrl.startsWith("http") ? null : data.videoUrl;
+    if (rawVideoPath) {
+      void triggerAutoTranscriptionLocal(renderId, CAPTIONS_API, rawVideoPath).catch((err) =>
+        console.error(`[videoLocal] triggerAutoTranscriptionLocal threw: ${String(err)}`)
+      );
+    }
   } catch (err) {
     console.error(`[videoLocal] ${renderId} — ERROR:`, err);
     await failRender(
@@ -1755,7 +1764,7 @@ async function generateSequenceRenderLocal(
       throw new Error(`render-engine ${res.status}: ${await res.text()}`);
     }
 
-    const data = await res.json() as { videoUrl?: string };
+    const data = await res.json() as { videoUrl?: string; slotDurations?: Record<string, number> };
     if (!data.videoUrl) throw new Error("render-engine n'a pas renvoyé d'URL vidéo");
 
     const finalUrl = data.videoUrl.startsWith("http")
@@ -1799,6 +1808,14 @@ async function generateSequenceRenderLocal(
     recordLibraryUsage(renderId).catch((err) =>
       console.error("[generateRender] recordLibraryUsage failed:", err)
     );
+
+    // Auto-sous-titrage local (captionAutoConfig.enabled) — best-effort
+    const rawSequenceVideoPath = data.videoUrl.startsWith("http") ? null : data.videoUrl;
+    if (rawSequenceVideoPath) {
+      void triggerAutoTranscriptionLocal(renderId, CAPTIONS_API, rawSequenceVideoPath, data.slotDurations ?? {}).catch((err) =>
+        console.error(`[sequenceLocal] triggerAutoTranscriptionLocal threw: ${String(err)}`)
+      );
+    }
   } catch (err) {
     console.error(`[sequenceLocal] ${renderId} — ERROR:`, err);
     await failRender(

@@ -888,6 +888,16 @@ export async function resolveLibraryPrefill(
       !musicBlock.loop && estimatedVideoDuration > 0 ? estimatedVideoDuration : undefined;
 
     const audioLibraryId = musicBlock.libraryId;
+
+    // Guard against stale template references: if the library was deleted, skip silently.
+    const audioLibraryExists = await prisma.mediaLibrary.findUnique({
+      where: { id: audioLibraryId },
+      select: { id: true },
+    });
+    if (!audioLibraryExists) {
+      console.warn(`[resolveLibraryPrefill] audioLibraryId=${audioLibraryId} introuvable — sélection audio ignorée`);
+    } else {
+
     const audioEffectiveAccountId = effectiveAccountId(audioLibraryId);
 
     if (accountId) {
@@ -946,6 +956,7 @@ export async function resolveLibraryPrefill(
         audioMinDuration,
       );
     }
+    } // end audioLibraryExists guard
   }
 
   // --- Data library ---
