@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { Upload, RotateCcw, BarChart2, Clock, Lock, Globe, ChevronDown, ChevronRight, X, Download } from "lucide-react";
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { Upload, RotateCcw, BarChart2, Clock, Lock, Globe, ChevronDown, ChevronRight, X, Download, Pencil, Trash2, Check } from "lucide-react";
 
 function downloadCSVFromColumns(columns: string[], campaignName: string) {
   const headers = ["set_tag", "category", ...columns];
@@ -248,6 +248,26 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
     setEntries((prev) => prev.map((e) => e.id === entry.id ? { ...e, accessAccountIds: next } : e));
   }
 
+  async function handleSaveEntry(entryId: string, fields: Record<string, string>, setTag: string | null, category: string | null) {
+    const res = await fetch(`/api/admin/libraries/data/campaigns/${campaignId}/entries/${entryId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fields, setTag: setTag || null, category: category || null }),
+    });
+    if (!res.ok) throw new Error("Erreur lors de la sauvegarde");
+    setEntries((prev) =>
+      prev.map((e) => e.id === entryId ? { ...e, fields: JSON.stringify(fields), setTag: setTag || null, category: category || null } : e)
+    );
+  }
+
+  async function handleDeleteEntry(entryId: string) {
+    const res = await fetch(`/api/admin/libraries/data/campaigns/${campaignId}/entries/${entryId}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) throw new Error("Erreur lors de la suppression");
+    setEntries((prev) => prev.filter((e) => e.id !== entryId));
+  }
+
   async function handleToggleAccessForGroup(groupEntries: DataEntry[], accountId: string, addAccess: boolean) {
     const updates = groupEntries.map((entry) => ({
       id: entry.id,
@@ -402,7 +422,7 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
           onToggleAccessForGroup={handleToggleAccessForGroup}
         />
       ) : (
-        <FlatTable entries={entries} columns={columns} accountFilter={accountFilter} usagePolicy={campaign?.usagePolicy ?? "cycle"} isAccessible={isAccessible} accounts={accounts} onToggleAccess={handleToggleAccess} />
+        <FlatTable entries={entries} columns={columns} accountFilter={accountFilter} usagePolicy={campaign?.usagePolicy ?? "cycle"} isAccessible={isAccessible} accounts={accounts} onToggleAccess={handleToggleAccess} onEditEntry={handleSaveEntry} onDeleteEntry={handleDeleteEntry} />
       )}
     </div>
   );
@@ -439,6 +459,8 @@ function FlatTable({
   isAccessible,
   accounts,
   onToggleAccess,
+  onEditEntry,
+  onDeleteEntry,
 }: {
   entries: DataEntry[];
   columns: string[];
@@ -447,7 +469,59 @@ function FlatTable({
   isAccessible: (e: DataEntry) => boolean;
   accounts: InstagramAccount[];
   onToggleAccess: (entry: DataEntry, accountId: string, addAccess: boolean) => Promise<void>;
+  onEditEntry?: (entryId: string, fields: Record<string, string>, setTag: string | null, category: string | null) => Promise<void>;
+  onDeleteEntry?: (entryId: string) => Promise<void>;
 }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<{ fields: Record<string, string>; setTag: string; category: string }>({ fields: {}, setTag: "", category: "" });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const hasSetTag = entries.some((e) => e.setTag);
+  const hasCategory = entries.some((e) => e.category);
+  const totalCols = columns.length + (hasSetTag ? 1 : 0) + (hasCategory ? 1 : 0) + 5 + 1; // +1 Actions
+
+  const startEdit = (entry: DataEntry) => {
+    setSaveError(null);
+    setEditingId(entry.id);
+    setEditDraft({
+      fields: JSON.parse(entry.fields) as Record<string, string>,
+      setTag: entry.setTag ?? "",
+      category: entry.category ?? "",
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!editingId || !onEditEntry) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onEditEntry(
+        editingId,
+        editDraft.fields,
+        editDraft.setTag.trim() || null,
+        editDraft.category.trim() || null,
+      );
+      setEditingId(null);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Erreur lors de la sauvegarde");
+    }
+    setSaving(false);
+  };
+
+  const handleDelete = async (entryId: string) => {
+    if (!onDeleteEntry) return;
+    if (!confirm("Supprimer cette entrée ? Cette action est irréversible.")) return;
+    setDeletingId(entryId);
+    try {
+      await onDeleteEntry(entryId);
+    } catch {
+      // entry stays visible on error
+    }
+    setDeletingId(null);
+  };
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -456,12 +530,13 @@ function FlatTable({
             {columns.map((col) => (
               <th key={col} className="pb-2 pr-4 font-medium font-mono">{col}</th>
             ))}
-            {entries.some((e) => e.setTag) && <th className="pb-2 pr-4 font-medium">Set</th>}
-            {entries.some((e) => e.category) && <th className="pb-2 pr-4 font-medium">Catégorie</th>}
+            {hasSetTag && <th className="pb-2 pr-4 font-medium">Set</th>}
+            {hasCategory && <th className="pb-2 pr-4 font-medium">Catégorie</th>}
             <th className="pb-2 pr-4 font-medium"><span className="flex items-center gap-1"><BarChart2 size={12} /> Usages{accountFilter ? " (compte)" : ""}</span></th>
             <th className="pb-2 pr-4 font-medium"><span className="flex items-center gap-1"><Clock size={12} /> Dernier</span></th>
             <th className="pb-2 font-medium">Cycle</th>
             <th className="pb-2 font-medium">Accès</th>
+            <th className="pb-2 font-medium"></th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-50">
@@ -473,53 +548,133 @@ function FlatTable({
               : (usagePolicy === "cycle_per_account" || usagePolicy === "once_per_account") && !!accountFilter
                 ? entry.usageCount > 0
                 : false;
+            const isEditing = editingId === entry.id;
             return (
-              <tr key={entry.id} className={`hover:bg-gray-50 ${isUsed ? "opacity-60" : ""} ${accountFilter && !accessible ? "opacity-40" : ""}`}>
-                {columns.map((col) => (
-                  <td key={col} className="py-2 pr-4 text-gray-700 max-w-[200px] truncate">{fields[col] ?? "—"}</td>
-                ))}
-                {entries.some((e) => e.setTag) && <td className="py-2 pr-4 text-xs text-gray-500 font-mono">{entry.setTag ?? "—"}</td>}
-                {entries.some((e) => e.category) && <td className="py-2 pr-4 text-xs text-gray-500">{entry.category ?? "—"}</td>}
-                <td className="py-2 pr-4 text-gray-500">{entry.usageCount}</td>
-                <td className="py-2 pr-4 text-gray-500">{formatDate(entry.lastUsedAt)}</td>
-                <td className="py-2">
-                  <CycleBadge entry={entry} usagePolicy={usagePolicy} accountFilter={accountFilter} />
-                </td>
-                <td className="py-2 max-w-[160px]">
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {entry.accessAccountIds.length === 0 ? (
-                      <span className="flex items-center gap-0.5 text-[10px] text-gray-300"><Globe size={10} /> Global</span>
-                    ) : (
-                      entry.accessAccountIds.map((id) => {
-                        const acc = accounts.find((a) => a.id === id);
-                        return acc ? (
+              <React.Fragment key={entry.id}>
+                <tr className={`group hover:bg-gray-50 ${isUsed ? "opacity-60" : ""} ${accountFilter && !accessible ? "opacity-40" : ""} ${isEditing ? "bg-indigo-50/30" : ""}`}>
+                  {columns.map((col) => (
+                    <td key={col} className="py-2 pr-4 text-gray-700 max-w-[200px] truncate">{fields[col] ?? "—"}</td>
+                  ))}
+                  {hasSetTag && <td className="py-2 pr-4 text-xs text-gray-500 font-mono">{entry.setTag ?? "—"}</td>}
+                  {hasCategory && <td className="py-2 pr-4 text-xs text-gray-500">{entry.category ?? "—"}</td>}
+                  <td className="py-2 pr-4 text-gray-500">{entry.usageCount}</td>
+                  <td className="py-2 pr-4 text-gray-500">{formatDate(entry.lastUsedAt)}</td>
+                  <td className="py-2">
+                    <CycleBadge entry={entry} usagePolicy={usagePolicy} accountFilter={accountFilter} />
+                  </td>
+                  <td className="py-2 max-w-[160px]">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {entry.accessAccountIds.length === 0 ? (
+                        <span className="flex items-center gap-0.5 text-[10px] text-gray-300"><Globe size={10} /> Global</span>
+                      ) : (
+                        entry.accessAccountIds.map((id) => {
+                          const acc = accounts.find((a) => a.id === id);
+                          return acc ? (
+                            <button
+                              key={id}
+                              onClick={() => void onToggleAccess(entry, id, false)}
+                              className="flex items-center gap-0.5 text-[10px] bg-blue-50 text-blue-600 border border-blue-100 px-1 py-0.5 rounded hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors"
+                              title={`Retirer l'accès à @${acc.handle}`}
+                            >
+                              <Lock size={8} />@{acc.handle}<X size={7} />
+                            </button>
+                          ) : null;
+                        })
+                      )}
+                      {accounts.filter((a) => !entry.accessAccountIds.includes(a.id)).length > 0 && (
+                        <select
+                          value=""
+                          onChange={(e) => { if (e.target.value) void onToggleAccess(entry, e.target.value, true); }}
+                          className="text-[10px] text-gray-400 border border-dashed border-gray-200 rounded px-1 py-0.5 focus:outline-none hover:border-blue-300 hover:text-blue-500 cursor-pointer"
+                          title="Restreindre l'accès à un compte"
+                        >
+                          <option value="">+ compte</option>
+                          {accounts.filter((a) => !entry.accessAccountIds.includes(a.id)).map((a) => (
+                            <option key={a.id} value={a.id}>@{a.handle}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-2">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {onEditEntry && (
+                        <button
+                          onClick={() => isEditing ? setEditingId(null) : startEdit(entry)}
+                          title={isEditing ? "Annuler" : "Modifier"}
+                          className={`p-1 rounded hover:bg-gray-100 transition-colors ${isEditing ? "text-indigo-500" : "text-gray-400 hover:text-indigo-500"}`}
+                        >
+                          <Pencil size={11} />
+                        </button>
+                      )}
+                      {onDeleteEntry && (
+                        <button
+                          onClick={() => void handleDelete(entry.id)}
+                          disabled={deletingId === entry.id}
+                          title="Supprimer"
+                          className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+                {isEditing && (
+                  <tr>
+                    <td colSpan={totalCols} className="p-0">
+                      <div className="px-4 py-3 bg-indigo-50 border-b border-indigo-100">
+                        <div className="flex flex-wrap gap-3 mb-3">
+                          {columns.map((col) => (
+                            <div key={col} className="flex flex-col gap-0.5 min-w-[120px]">
+                              <label className="text-[10px] font-mono text-gray-500">{col}</label>
+                              <input
+                                value={editDraft.fields[col] ?? ""}
+                                onChange={(e) => setEditDraft((d) => ({ ...d, fields: { ...d.fields, [col]: e.target.value } }))}
+                                className="text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-indigo-400 bg-white"
+                              />
+                            </div>
+                          ))}
+                          <div className="flex flex-col gap-0.5 min-w-[100px]">
+                            <label className="text-[10px] font-mono text-gray-500">set_tag</label>
+                            <input
+                              value={editDraft.setTag}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, setTag: e.target.value }))}
+                              placeholder="—"
+                              className="text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-indigo-400 bg-white"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-0.5 min-w-[100px]">
+                            <label className="text-[10px] font-mono text-gray-500">category</label>
+                            <input
+                              value={editDraft.category}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, category: e.target.value }))}
+                              placeholder="—"
+                              className="text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-indigo-400 bg-white"
+                            />
+                          </div>
+                        </div>
+                        {saveError && <p className="text-xs text-red-600 mb-2">{saveError}</p>}
+                        <div className="flex items-center gap-2">
                           <button
-                            key={id}
-                            onClick={() => void onToggleAccess(entry, id, false)}
-                            className="flex items-center gap-0.5 text-[10px] bg-blue-50 text-blue-600 border border-blue-100 px-1 py-0.5 rounded hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors"
-                            title={`Retirer l'accès à @${acc.handle}`}
+                            onClick={() => void saveEdit()}
+                            disabled={saving}
+                            className="flex items-center gap-1 text-xs px-3 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
                           >
-                            <Lock size={8} />@{acc.handle}<X size={7} />
+                            <Check size={11} /> {saving ? "…" : "Enregistrer"}
                           </button>
-                        ) : null;
-                      })
-                    )}
-                    {accounts.filter((a) => !entry.accessAccountIds.includes(a.id)).length > 0 && (
-                      <select
-                        value=""
-                        onChange={(e) => { if (e.target.value) void onToggleAccess(entry, e.target.value, true); }}
-                        className="text-[10px] text-gray-400 border border-dashed border-gray-200 rounded px-1 py-0.5 focus:outline-none hover:border-blue-300 hover:text-blue-500 cursor-pointer"
-                        title="Restreindre l'accès à un compte"
-                      >
-                        <option value="">+ compte</option>
-                        {accounts.filter((a) => !entry.accessAccountIds.includes(a.id)).map((a) => (
-                          <option key={a.id} value={a.id}>@{a.handle}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                </td>
-              </tr>
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className="text-xs px-3 py-1.5 border border-gray-200 text-gray-600 rounded hover:bg-gray-50"
+                          >
+                            Annuler
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             );
           })}
         </tbody>
