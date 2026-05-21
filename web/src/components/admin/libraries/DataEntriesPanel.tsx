@@ -551,7 +551,7 @@ function FlatTable({
             const isEditing = editingId === entry.id;
             return (
               <React.Fragment key={entry.id}>
-                <tr className={`group hover:bg-gray-50 ${isUsed ? "opacity-60" : ""} ${accountFilter && !accessible ? "opacity-40" : ""} ${isEditing ? "bg-indigo-50/30" : ""}`}>
+                <tr className={`hover:bg-gray-50 ${isUsed ? "opacity-60" : ""} ${accountFilter && !accessible ? "opacity-40" : ""} ${isEditing ? "bg-indigo-50/30" : ""}`}>
                   {columns.map((col) => (
                     <td key={col} className="py-2 pr-4 text-gray-700 max-w-[200px] truncate">{fields[col] ?? "—"}</td>
                   ))}
@@ -596,13 +596,13 @@ function FlatTable({
                       )}
                     </div>
                   </td>
-                  <td className="py-2">
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <td className="py-2 pl-2">
+                    <div className="flex items-center gap-1">
                       {onEditEntry && (
                         <button
                           onClick={() => isEditing ? setEditingId(null) : startEdit(entry)}
                           title={isEditing ? "Annuler" : "Modifier"}
-                          className={`p-1 rounded hover:bg-gray-100 transition-colors ${isEditing ? "text-indigo-500" : "text-gray-400 hover:text-indigo-500"}`}
+                          className={`p-1 rounded transition-colors ${isEditing ? "text-indigo-500 bg-indigo-50" : "text-gray-300 hover:text-indigo-500 hover:bg-gray-100"}`}
                         >
                           <Pencil size={11} />
                         </button>
@@ -612,7 +612,7 @@ function FlatTable({
                           onClick={() => void handleDelete(entry.id)}
                           disabled={deletingId === entry.id}
                           title="Supprimer"
-                          className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                          className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
                         >
                           <Trash2 size={11} />
                         </button>
