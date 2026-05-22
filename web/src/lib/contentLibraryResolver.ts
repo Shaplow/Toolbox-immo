@@ -500,11 +500,12 @@ export async function selectMediaAssetBySetSequence(
       const allGroupsRo: Array<{ setTag: string | null; category: string | null }> = await prisma.$queryRaw`
           SELECT sub2."setTag", sub2."category"
           FROM (
-            SELECT sub1."setTag", sub1."category", sub1.last_used,
+            SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
                    MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
             FROM (
               SELECT ma."setTag", ma."category",
-                     MAX(mau."lastUsedAt") AS last_used
+                     MAX(mau."lastUsedAt") AS last_used,
+                     MIN(ma."createdAt") AS group_created_at
               FROM "MediaAsset" ma
               LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${effectiveCursorId}
               WHERE ma."libraryId" = ${libraryId} AND (ma."setTag" IS NOT NULL OR ma."category" IS NOT NULL)
@@ -514,6 +515,7 @@ export async function selectMediaAssetBySetSequence(
             ) sub1
           ) sub2
           ORDER BY sub2.cat_last_used ASC NULLS FIRST, sub2.last_used ASC NULLS FIRST,
+                   sub2.group_created_at ASC NULLS LAST,
                    CASE WHEN sub2."setTag" ~ '^[0-9]+$' THEN LPAD(sub2."setTag", 20, '0') ELSE sub2."setTag" END ASC NULLS LAST,
                    sub2."category" ASC NULLS FIRST`;
       if (allGroupsRo.length === 0) {
@@ -563,16 +565,19 @@ export async function selectMediaAssetBySetSequence(
       // → ensures categories rotate round-robin before cycling within a category.
       // Secondary sort: set-level staleness (last_used of this specific group)
       // → within a category, oldest set comes first.
-      // Tertiary: stable alphabetical tiebreaker.
+      // Tertiary: group creation date (MIN createdAt within the group)
+      // → among never-used groups, follow upload order (oldest first).
+      // Quaternary: stable alphabetical tiebreaker (setTag then category).
       // Usage ordering uses effectiveCursorId; access filter uses real accountId.
       const allGroups: GroupRow[] = await tx.$queryRaw`
           SELECT sub2."setTag", sub2."category"
           FROM (
-            SELECT sub1."setTag", sub1."category", sub1.last_used,
+            SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
                    MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
             FROM (
               SELECT ma."setTag", ma."category",
-                     MAX(mau."lastUsedAt") AS last_used
+                     MAX(mau."lastUsedAt") AS last_used,
+                     MIN(ma."createdAt") AS group_created_at
               FROM "MediaAsset" ma
               LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${effectiveCursorId}
               WHERE ma."libraryId" = ${libraryId} AND (ma."setTag" IS NOT NULL OR ma."category" IS NOT NULL)
@@ -582,6 +587,7 @@ export async function selectMediaAssetBySetSequence(
             ) sub1
           ) sub2
           ORDER BY sub2.cat_last_used ASC NULLS FIRST, sub2.last_used ASC NULLS FIRST,
+                   sub2.group_created_at ASC NULLS LAST,
                    CASE WHEN sub2."setTag" ~ '^[0-9]+$' THEN LPAD(sub2."setTag", 20, '0') ELSE sub2."setTag" END ASC NULLS LAST,
                    sub2."category" ASC NULLS FIRST`;
 
@@ -651,11 +657,12 @@ export async function selectMediaAssetBySetSequence(
   const allGroups: GroupRow[] = await prisma.$queryRaw`
       SELECT sub2."setTag", sub2."category"
       FROM (
-        SELECT sub1."setTag", sub1."category", sub1.last_used,
+        SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
                MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
         FROM (
           SELECT "setTag", "category",
-                 MAX("lastUsedAt") AS last_used
+                 MAX("lastUsedAt") AS last_used,
+                 MIN("createdAt") AS group_created_at
           FROM "MediaAsset"
           WHERE "libraryId" = ${libraryId} AND ("setTag" IS NOT NULL OR "category" IS NOT NULL)
             AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = id)
@@ -664,6 +671,7 @@ export async function selectMediaAssetBySetSequence(
         ) sub1
       ) sub2
       ORDER BY sub2.cat_last_used ASC NULLS FIRST, sub2.last_used ASC NULLS FIRST,
+               sub2.group_created_at ASC NULLS LAST,
                CASE WHEN sub2."setTag" ~ '^[0-9]+$' THEN LPAD(sub2."setTag", 20, '0') ELSE sub2."setTag" END ASC NULLS LAST,
                sub2."category" ASC NULLS FIRST`;
 
