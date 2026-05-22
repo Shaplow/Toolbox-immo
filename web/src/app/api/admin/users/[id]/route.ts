@@ -16,11 +16,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const body = await req.json();
   const { name, username, email, password, role, permissions } = body;
 
+  const VALID_ROLES = ["USER", "ADMIN", "MONTEUR", "CM"];
+
   const data: Record<string, unknown> = {};
   if (name) data.name = name;
   if (username) data.username = username;
   if (email !== undefined) data.email = email || null;
-  if (role) data.role = role;
+  if (role) {
+    if (!VALID_ROLES.includes(role as string)) {
+      return NextResponse.json({ error: `Rôle invalide. Valeurs acceptées : ${VALID_ROLES.join(", ")}` }, { status: 400 });
+    }
+    data.role = role;
+  }
   if (password) data.passwordHash = await bcrypt.hash(password, 12);
   // permissions est un tableau JSON sérialisé en string ou directement un array
   if (permissions !== undefined) {

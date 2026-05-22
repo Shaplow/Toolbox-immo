@@ -14,10 +14,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
-  const body = await req.json() as { name?: string; handle?: string; offre?: string };
-  const { name, handle, offre } = body;
+  const body = await req.json() as { name?: string; handle?: string; offre?: string; clientId?: string | null };
+  const { name, handle, offre, clientId } = body;
 
-  const data: { name?: string; handle?: string; offre?: string } = {};
+  const data: { name?: string; handle?: string; offre?: string; clientId?: string | null } = {};
   if (name?.trim()) data.name = name.trim();
   if (handle?.trim()) data.handle = handle.trim().replace(/^@/, "");
   if (offre) {
@@ -26,6 +26,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: `Offre inconnue : ${offre}` }, { status: 400 });
     }
     data.offre = offre;
+  }
+  if ("clientId" in body) {
+    if (clientId === null) {
+      data.clientId = null;
+    } else if (typeof clientId === "string" && clientId.trim()) {
+      data.clientId = clientId.trim();
+    }
   }
 
   try {

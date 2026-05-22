@@ -109,8 +109,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
     await fetchUsers();
   }
 
-  async function handleRoleToggle(user: User) {
-    const newRole = user.role === "ADMIN" ? "USER" : "ADMIN";
+  async function handleRoleChange(user: User, newRole: string) {
     await fetch(`/api/admin/users/${user.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -305,18 +304,19 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                       {activeImpersonationId === user.id ? "Arrêter" : "Impersonate"}
                     </button>
                   )}
-                  {/* Role badge */}
-                  <button
-                    onClick={() => handleRoleToggle(user)}
-                    title="Cliquer pour changer le rôle"
-                    className={`shrink-0 text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${
-                      isAdmin
-                        ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-                        : "bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100"
-                    }`}
+                  {/* Role dropdown */}
+                  <select
+                    value={user.role}
+                    onChange={(e) => void handleRoleChange(user, e.target.value)}
+                    disabled={user.id === currentUserId}
+                    title="Rôle"
+                    className="shrink-0 text-xs px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
                   >
-                    {isAdmin ? "Admin" : "Utilisateur"}
-                  </button>
+                    <option value="USER">Utilisateur</option>
+                    <option value="MONTEUR">Monteur</option>
+                    <option value="CM">CM</option>
+                    <option value="ADMIN">Admin</option>
+                  </select>
                   <button
                     onClick={() => { setExpandedId(isExpanded ? null : user.id); setEditingId(null); }}
                     className="shrink-0 flex items-center gap-1 text-xs text-gray-400 hover:text-indigo-700 transition-colors px-2"
