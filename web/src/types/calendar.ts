@@ -1,4 +1,27 @@
-export type SlotStatus = "TO_DO" | "IN_PROGRESS" | "READY" | "CHECKING" | "DONE";
+// New granular pipeline statuses + legacy aliases kept until DB backfill (Phase 1.2)
+export type SlotStatus =
+  // ── New pipeline statuses ──────────────────────────────────────────────
+  | "DRAFT"
+  | "PLANNED"
+  | "RUSHES_EXPECTED"
+  | "RUSHES_RECEIVED"
+  | "IN_EDIT"
+  | "EDIT_REVIEW"
+  | "EDIT_APPROVED"
+  | "CAPTIONS_PENDING"
+  | "READY_FOR_CM"
+  | "SCHEDULED"
+  | "PUBLISHED"
+  | "REJECTED"
+  | "CANCELLED"
+  | "BLOCKED"
+  | "ARCHIVED"
+  // ── Legacy aliases (kept until DB backfill — Phase 1.2) ───────────────
+  | "TO_DO"
+  | "IN_PROGRESS"
+  | "READY"
+  | "CHECKING"
+  | "DONE";
 
 export type ContentType = "RPI" | "RVA4" | "RVA5" | "RTIPS" | "RPOD" | "REACT" | "RQR";
 
@@ -35,29 +58,8 @@ export interface OfferScheduleRule {
   updatedAt: string;
 }
 
-export const STATUS_LABELS: Record<SlotStatus, string> = {
-  TO_DO: "À faire",
-  IN_PROGRESS: "En cours",
-  READY: "Prêt",
-  CHECKING: "Vérification",
-  DONE: "Publié",
-};
-
-export const STATUS_COLORS: Record<SlotStatus, string> = {
-  TO_DO: "bg-red-100 text-red-700 border-red-200",
-  IN_PROGRESS: "bg-orange-100 text-orange-700 border-orange-200",
-  READY: "bg-blue-100 text-blue-700 border-blue-200",
-  CHECKING: "bg-amber-100 text-amber-700 border-amber-200",
-  DONE: "bg-green-100 text-green-700 border-green-200",
-};
-
-export const STATUS_DOT: Record<SlotStatus, string> = {
-  TO_DO: "bg-red-500",
-  IN_PROGRESS: "bg-orange-500",
-  READY: "bg-blue-500",
-  CHECKING: "bg-amber-400",
-  DONE: "bg-green-500",
-};
+// Re-exported from the centralized source of truth — do not duplicate here.
+export { STATUS_LABELS, STATUS_COLORS, STATUS_DOT, STATUS_GROUP } from "@/lib/slots/statusLabels";
 
 export const CONTENT_TYPES: ContentType[] = ["RPI", "RVA4", "RVA5", "RTIPS", "RPOD", "REACT", "RQR"];
 export const OFFRES = ["ESSENTIEL", "CONFIRME", "CEO", "COMPTE_AGENCE"] as const;
