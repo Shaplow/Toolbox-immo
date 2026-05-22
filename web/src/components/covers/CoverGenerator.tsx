@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { Film, Upload, Download, RefreshCw, Check, X, Image as ImageIcon } from "lucide-react";
+import Link from "next/link";
+import { Film, Upload, Download, RefreshCw, Check, X, Image as ImageIcon, Layers } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 
@@ -75,6 +76,9 @@ function pickFromCandidates(candidates: number[], count: number): number[] {
 }
 
 export function CoverGenerator() {
+  // ── Tab ────────────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<"packs" | "manual">("packs");
+
   // ── Auto packs ─────────────────────────────────────────────────────────────
   const [packs, setPacks] = useState<CoverPack[]>([]);
   const [packsLoading, setPacksLoading] = useState(true);
@@ -152,8 +156,33 @@ export function CoverGenerator() {
   useEffect(() => {
     const hasPendingPack = packs.some((pack) => pack.status === "QUEUED" || pack.status === "PROCESSING");
     if (!hasPendingPack) return;
-    const intervalId = window.setInterval(() => {
-      void loadPacks(true);
+    const intervalId = window.setInterval(async () => {
+      const prevPacks = packs;
+      const res = await fetch("/api/cover-packs").catch(() => null);
+      if (!res?.ok) return;
+      const nextPacks = await res.json() as CoverPack[];
+      // Detect QUEUED/PROCESSING → READY transitions
+      for (const next of nextPacks) {
+        const prev = prevPacks.find((p) => p.id === next.id);
+        if (prev && (prev.status === "QUEUED" || prev.status === "PROCESSING") && next.status === "READY") {
+          toast.success(`Cover prête — sélectionnez votre frame (${next.templateName}${next.client ? ` · ${next.client}` : ""})`);
+        }
+      }
+      setPacks(nextPacks);
+      setSelectedCandidateByPack((prev) => {
+        const next = { ...prev };
+        for (const pack of nextPacks) {
+          if (!next[pack.id] && pack.candidates[0]) next[pack.id] = pack.candidates[0].id;
+        }
+        return next;
+      });
+      setOverlayOffsetByPack((prev) => {
+        const next = { ...prev };
+        for (const pack of nextPacks) {
+          if (!next[pack.id]) next[pack.id] = { x: pack.overlayOffsetX ?? 0, y: pack.overlayOffsetY ?? 0 };
+        }
+        return next;
+      });
     }, 3000);
     return () => window.clearInterval(intervalId);
   }, [loadPacks, packs]);
@@ -182,6 +211,13 @@ export function CoverGenerator() {
   }, [dragState]);
 
   const regeneratePack = useCallback(async (packId: string) => {
+    const pack = packs.find((p) => p.id === packId);
+    if (pack?.status === "SELECTED") {
+      const confirmed = window.confirm(
+        "Cela supprimera la cover actuelle et relancera l'extraction. Continuer ?"
+      );
+      if (!confirmed) return;
+    }
     setPackBusyId(packId);
     try {
       const res = await fetch(`/api/cover-packs/${packId}/regenerate`, { method: "POST" });
@@ -193,11 +229,15 @@ export function CoverGenerator() {
     } finally {
       setPackBusyId(null);
     }
-  }, [loadPacks]);
+  }, [loadPacks, packs]);
 
   const selectPackCover = useCallback(async (packId: string) => {
     const candidateId = selectedCandidateByPack[packId];
     if (!candidateId) return;
+    const confirmed = window.confirm(
+      "Valider cette cover ? Les autres frames candidates seront supprimées. Cette action est irréversible."
+    );
+    if (!confirmed) return;
     const offset = overlayOffsetByPack[packId] ?? { x: 0, y: 0 };
     setPackBusyId(packId);
     try {
@@ -336,6 +376,11 @@ export function CoverGenerator() {
     setRoundNumber(0);
   };
 
+  // Switch tab to manual if no packs exist after loading
+  useEffect(() => {
+    if (!packsLoading && packs.length === 0) setActiveTab("manual");
+  }, [packsLoading, packs.length]);
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="p-8 max-w-5xl mx-auto">
@@ -343,9 +388,41 @@ export function CoverGenerator() {
         icon={ImageIcon}
         iconColor="emerald"
         title="Générateur de covers"
-        subtitle="Extrayez des frames depuis une vidéo pour choisir votre cover idéale."
+        subtitle="Générez et sélectionnez la cover de vos vidéos."
       />
 
+      {/* Tabs */}
+      <div className="flex items-center gap-1 mb-6 bg-gray-100 p-1 rounded-xl w-fit">
+        <button
+          type="button"
+          onClick={() => setActiveTab("packs")}
+          className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === "packs" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <Layers size={14} />
+          Packs semi-auto
+          {!packsLoading && packs.length > 0 && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+              activeTab === "packs" ? "bg-indigo-100 text-indigo-600" : "bg-gray-200 text-gray-500"
+            }`}>
+              {packs.length}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("manual")}
+          className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === "manual" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <Upload size={14} />
+          Extraction manuelle
+        </button>
+      </div>
+
+      {activeTab === "packs" && (
       <section className="mb-8 bg-white border border-gray-100 rounded-2xl p-5 md:p-6 shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
@@ -408,7 +485,7 @@ export function CoverGenerator() {
                           <img
                             src={selectedFrame.imageUrl}
                             alt="Frame sélectionnée"
-                            className="absolute inset-0 h-full w-full object-contain"
+                            className="absolute inset-0 h-full w-full object-cover"
                             onLoad={(event) => {
                               const img = event.currentTarget;
                               setPreviewScaleByPack((prev) => ({
@@ -420,19 +497,16 @@ export function CoverGenerator() {
                               }));
                             }}
                           />
-                          <div
-                            className="absolute inset-0 pointer-events-none"
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={`/api/cover-packs/${pack.id}/overlay`}
+                            alt=""
+                            aria-hidden
+                            className="absolute inset-0 w-full h-full object-contain pointer-events-none"
                             style={{
                               transform: `translate(${Math.round(offset.x * (previewScaleByPack[pack.id]?.x ?? 1))}px, ${Math.round(offset.y * (previewScaleByPack[pack.id]?.y ?? 1))}px)`,
                             }}
-                          >
-                            <iframe
-                              src={`/api/cover-packs/${pack.id}/overlay`}
-                              title="Aperçu texte cover"
-                              className="w-full h-full border-0 bg-transparent"
-                              sandbox="allow-scripts"
-                            />
-                          </div>
+                          />
                         </div>
                       ) : (
                         <div className="mx-auto aspect-[9/16] w-full max-w-[360px] rounded-lg flex items-center justify-center text-xs text-gray-400 bg-white">Aucune frame</div>
@@ -450,25 +524,36 @@ export function CoverGenerator() {
                               pack.status === "READY" ? "bg-green-50 text-green-600" :
                               pack.status === "SELECTED" ? "bg-indigo-50 text-indigo-600" :
                               pack.status === "FAILED" ? "bg-red-50 text-red-500" :
-                              "bg-amber-50 text-amber-600"
+                              "bg-indigo-50 text-indigo-600"
                             }`}>
                               {pack.status === "READY" ? "À choisir" : pack.status === "SELECTED" ? "Cover validée" : pack.status === "FAILED" ? "Erreur" : "Préparation…"}
                             </span>
                             <span className="text-[10px] text-gray-400">{new Date(pack.createdAt).toLocaleString("fr-FR")}</span>
                             {pack.ownerName && <span className="text-[10px] text-gray-400">{pack.ownerName}</span>}
                           </div>
+                          {selected && (
+                            <p className="text-[10px] text-indigo-500 mt-1">Cover enregistrée sur ce rendu.</p>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
                           {selected && (
-                            <a
-                              href={pack.finalCoverUrl ?? ""}
-                              download
-                              className="px-3 py-2 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-700 transition-colors flex items-center gap-1.5"
-                            >
-                              <Download size={13} />
-                              PNG
-                            </a>
+                            <>
+                              <Link
+                                href={`/renders/${pack.renderId}`}
+                                className="px-3 py-2 border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-medium hover:bg-indigo-100 transition-colors"
+                              >
+                                Voir le rendu →
+                              </Link>
+                              <a
+                                href={pack.finalCoverUrl ?? ""}
+                                download
+                                className="px-3 py-2 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-700 transition-colors flex items-center gap-1.5"
+                              >
+                                <Download size={13} />
+                                PNG
+                              </a>
+                            </>
                           )}
                           <button
                             type="button"
@@ -489,7 +574,7 @@ export function CoverGenerator() {
                       {ready && (
                         <>
                           <div className="mt-4 max-h-[340px] overflow-y-auto pr-1">
-                            <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2">
+                            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
                               {pack.candidates.map((candidate) => (
                                 <button
                                   key={candidate.id}
@@ -547,7 +632,7 @@ export function CoverGenerator() {
                               className="sm:ml-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
                             >
                               {isBusy ? <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Check size={14} />}
-                              Valider la cover PNG
+                              Valider cette cover
                             </button>
                           </div>
                         </>
@@ -560,7 +645,9 @@ export function CoverGenerator() {
           </div>
         )}
       </section>
+      )}
 
+      {activeTab === "manual" && (
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 items-start">
         {/* ── Left column ─────────────────────────────────────────────────── */}
         <div className="flex flex-col gap-5">
@@ -831,6 +918,7 @@ export function CoverGenerator() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

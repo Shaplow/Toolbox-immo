@@ -775,7 +775,7 @@ function RenderGridCard({
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); void onGenerateCover?.(); }}
             disabled={coverBusy}
             title={render?.coverPack ? "Régénérer une cover" : "Générer une cover"}
-            className="absolute bottom-2 right-2 h-6 px-2 bg-white/90 backdrop-blur-sm rounded text-[10px] font-semibold text-emerald-700 hover:bg-white opacity-0 group-hover:opacity-100 transition-all flex items-center gap-1 disabled:opacity-60"
+            className="absolute bottom-2 right-2 h-6 px-2 bg-white/90 backdrop-blur-sm rounded text-[10px] font-semibold text-indigo-700 hover:bg-white transition-all flex items-center gap-1 disabled:opacity-60"
           >
             {coverBusy ? (
               <span className="w-3 h-3 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
