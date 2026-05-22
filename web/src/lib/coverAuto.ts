@@ -630,6 +630,19 @@ export async function renderFinalCover(
   return { url: uploaded.url, key: uploaded.key };
 }
 
+export async function getCoverOverlayCanvasDimensions(packId: string): Promise<{ width: number; height: number }> {
+  const pack = await prisma.coverFramePack.findUnique({
+    where: { id: packId },
+    select: { render: { select: { template: { select: { jsonData: true } } } } },
+  });
+  try {
+    const tpl = JSON.parse(pack?.render.template?.jsonData ?? "{}") as { canvas?: { width?: number; height?: number } };
+    return { width: tpl.canvas?.width ?? 1080, height: tpl.canvas?.height ?? 1920 };
+  } catch {
+    return { width: 1080, height: 1920 };
+  }
+}
+
 export async function buildCoverOverlayPreviewHtml(packId: string): Promise<string> {
   const pack = await prisma.coverFramePack.findUnique({
     where: { id: packId },
@@ -666,26 +679,23 @@ export async function buildCoverOverlayPreviewHtml(packId: string): Promise<stri
   };
   const publicBase = "file://" + path.join(process.cwd(), "public").replace(/\\/g, "/");
   const html = await buildHTML(overlayTemplate, enrichedListing, { publicBase, overlayMode: true });
+  // Le viewport meta (width=canvas.width) gère le scaling côté navigateur — identique
+  // à ce que fait Puppeteer lors du rendu final. On applique un scale CSS uniquement
+  // si le meta viewport n'est pas respecté (fallback pour certains contextes sandbox).
+  // On évite de surcharger body.style.width avec '100vw' : sur certains navigateurs
+  // 100vw inclut la largeur de la scrollbar, ce qui décale le calcul d'échelle.
   return html.replace(
     "</body>",
     `<script>
       (function () {
+        var sw = ${overlayTemplate.canvas.width};
+        var sh = ${overlayTemplate.canvas.height};
+        if (window.innerWidth >= sw - 1) return;
+        var scale = Math.min(window.innerWidth / sw, window.innerHeight / sh);
         var canvas = document.getElementById('canvas');
-        function fit() {
-          if (!canvas) return;
-          var sourceWidth = ${overlayTemplate.canvas.width};
-          var sourceHeight = ${overlayTemplate.canvas.height};
-          var scale = Math.min(window.innerWidth / sourceWidth, window.innerHeight / sourceHeight);
-          document.documentElement.style.width = '100vw';
-          document.documentElement.style.height = '100vh';
-          document.body.style.width = '100vw';
-          document.body.style.height = '100vh';
-          document.body.style.background = 'transparent';
-          canvas.style.transformOrigin = '0 0';
-          canvas.style.transform = 'scale(' + scale + ')';
-        }
-        window.addEventListener('resize', fit);
-        fit();
+        if (!canvas) return;
+        canvas.style.transformOrigin = '0 0';
+        canvas.style.transform = 'scale(' + scale + ')';
       })();
     </script></body>`,
   );

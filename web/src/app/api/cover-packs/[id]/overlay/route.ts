@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { buildCoverOverlayPreviewHtml } from "@/lib/coverAuto";
+import { buildCoverOverlayPreviewHtml, getCoverOverlayCanvasDimensions } from "@/lib/coverAuto";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { renderPNG } from "@/lib/renderer/renderPNG";
 import { IMPERSONATION_COOKIE_NAME, resolveUserContext } from "@/lib/userContext";
 
 type Params = { params: Promise<{ id: string }> };
@@ -28,11 +29,18 @@ export async function GET(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Pack introuvable" }, { status: 404 });
   }
 
+  // Rendu via Puppeteer (même moteur que le rendu final) pour garantir une
+  // correspondance pixel-parfaite des métriques de fonte et du centrage du texte.
+  // Le PNG transparent est mis en cache navigateur (1h) — regeneré uniquement si
+  // le pack change (nouveau tirage → nouvel id).
   const html = await buildCoverOverlayPreviewHtml(id);
-  return new NextResponse(html, {
+  const { width, height } = await getCoverOverlayCanvasDimensions(id);
+  const png = await renderPNG(html, width, height, 1, true);
+
+  return new NextResponse(png, {
     headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "no-store",
+      "Content-Type": "image/png",
+      "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
     },
   });
 }
