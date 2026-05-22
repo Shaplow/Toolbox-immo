@@ -2,7 +2,17 @@
 import { ListingsClient, type ListingRow, type CaptionJobRow, type TranscriptionJobRow, type DescriptionJobRow } from "@/components/listings/ListingsClient";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { normalizeTemplateJSON } from "@/lib/templateNormalization";
+import type { TemplateJSON } from "@/types/template";
 import { List } from "lucide-react";
+
+function templateHasCoverAuto(jsonData: string): boolean {
+  try {
+    return normalizeTemplateJSON(JSON.parse(jsonData) as TemplateJSON).coverAutoConfig?.enabled === true;
+  } catch {
+    return false;
+  }
+}
 
 export default async function ListingsPage() {
   const userContext = await getUserContext();
@@ -13,12 +23,13 @@ export default async function ListingsPage() {
   const hasCaptions = isAdmin || userPerms.includes("captions");
   const hasTranscription = isAdmin || userPerms.includes("transcription");
   const hasDescription = isAdmin || userPerms.includes("description");
+  const hasCovers = isAdmin || userPerms.includes("covers");
 
   const listings = await prisma.listing.findMany({
     where: isAdmin ? {} : { userId },
     orderBy: { createdAt: "desc" },
     include: {
-      template: { select: { id: true, name: true, client: true, formats: true } },
+      template: { select: { id: true, name: true, client: true, formats: true, jsonData: true } },
       user: { select: { name: true, email: true } },
       renders: {
         orderBy: { createdAt: "asc" },
@@ -29,6 +40,7 @@ export default async function ListingsPage() {
           videoUrl: true,
           errorMsg: true,
           createdAt: true,
+          coverFramePack: { select: { id: true, status: true } },
         },
       },
     },
@@ -70,7 +82,7 @@ export default async function ListingsPage() {
     createdAt: l.createdAt.toISOString(),
     ownerName: isAdmin ? (l.user.name ?? l.user.email ?? "?") : null,
     template: l.template
-      ? { id: l.template.id, name: l.template.name, client: l.template.client, formats: l.template.formats }
+      ? { id: l.template.id, name: l.template.name, client: l.template.client, formats: l.template.formats, coverAutoEnabled: templateHasCoverAuto(l.template.jsonData) }
       : null,
     renders: l.renders.map((r) => ({
       id: r.id,
@@ -79,6 +91,7 @@ export default async function ListingsPage() {
       videoUrl: r.videoUrl ?? null,
       errorMsg: r.errorMsg ?? null,
       createdAt: r.createdAt.toISOString(),
+      coverPack: r.coverFramePack ? { id: r.coverFramePack.id, status: r.coverFramePack.status } : null,
     })),
   }));
 
@@ -152,6 +165,7 @@ export default async function ListingsPage() {
         hasCaptions={hasCaptions}
         hasTranscription={hasTranscription}
         hasDescription={hasDescription}
+        hasCovers={hasCovers}
       />
     </div>
   );

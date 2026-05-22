@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Film, RefreshCw, Download, LayoutTemplate, Mic, AlignLeft, Copy, Check, X, RotateCcw } from "lucide-react";
+import { Film, RefreshCw, Download, LayoutTemplate, Mic, AlignLeft, Copy, Check, X, RotateCcw, Image as ImageIcon } from "lucide-react";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
+import { toast } from "@/components/ui/Toast";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,7 @@ export type RenderRow = {
   videoUrl: string | null;
   errorMsg: string | null;
   createdAt: string;
+  coverPack: { id: string; status: string } | null;
 };
 
 export type ListingRow = {
@@ -23,7 +25,7 @@ export type ListingRow = {
   jsonData: string;
   createdAt: string;
   ownerName: string | null;
-  template: { id: string; name: string; client: string | null; formats: string } | null;
+  template: { id: string; name: string; client: string | null; formats: string; coverAutoEnabled: boolean } | null;
   renders: RenderRow[];
 };
 
@@ -131,6 +133,7 @@ export function ListingsClient({
   hasCaptions = false,
   hasTranscription = false,
   hasDescription = false,
+  hasCovers = false,
 }: {
   initialListings: ListingRow[];
   initialCaptionJobs: CaptionJobRow[];
@@ -140,6 +143,7 @@ export function ListingsClient({
   hasCaptions?: boolean;
   hasTranscription?: boolean;
   hasDescription?: boolean;
+  hasCovers?: boolean;
 }) {
   const [tab, setTab] = useState<"templates" | "captions" | "transcription" | "description">("templates");
   const [userFilter, setUserFilter] = useState<string | null>(null);
@@ -159,6 +163,7 @@ export function ListingsClient({
   const [deletedCaptionJobIds, setDeletedCaptionJobIds] = useState<Set<string>>(new Set());
   const [deletedTranscriptionJobIds, setDeletedTranscriptionJobIds] = useState<Set<string>>(new Set());
   const [deletedDescriptionJobIds, setDeletedDescriptionJobIds] = useState<Set<string>>(new Set());
+  const [coverBusyRenderId, setCoverBusyRenderId] = useState<string | null>(null);
 
   const handleDeleteRender = async (renderId: string) => {
     await fetch(`/api/renders/${renderId}`, { method: "DELETE" });
@@ -171,6 +176,21 @@ export function ListingsClient({
     const data = await res.json() as { assets?: unknown[]; cursors?: { libraryId: string; reverted: boolean; skippedReason?: string }[]; warnings?: string[]; error?: string };
     if (!res.ok) throw new Error((data as { error?: string }).error ?? "Erreur inconnue");
     return { warnings: data.warnings ?? [], cursors: data.cursors ?? [] };
+  };
+
+  const handleGenerateCover = async (renderId: string) => {
+    setCoverBusyRenderId(renderId);
+    try {
+      const res = await fetch(`/api/renders/${renderId}/cover`, { method: "POST" });
+      const data = await res.json().catch(() => ({})) as { error?: string; packId?: string };
+      if (!res.ok) throw new Error(data.error ?? "Erreur génération cover");
+      toast.success("Préparation cover lancée.");
+      router.push("/tools/cover");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur génération cover");
+    } finally {
+      setCoverBusyRenderId(null);
+    }
   };
 
   const handleDeleteCaptionJob = async (jobId: string) => {
@@ -468,8 +488,11 @@ export function ListingsClient({
                     key={item.id}
                     item={item}
                     isAdmin={isAdmin}
+                    hasCovers={hasCovers}
+                    coverBusy={item.render ? coverBusyRenderId === item.render.id : false}
                     onDeleteRender={item.render ? () => handleDeleteRender(item.render!.id) : undefined}
                     onRevertUsage={item.render?.status === "DONE" ? () => handleRevertRenderUsage(item.render!.id) : undefined}
+                    onGenerateCover={item.render ? () => handleGenerateCover(item.render!.id) : undefined}
                   />
                 ))}
               </div>
@@ -541,13 +564,19 @@ type RevertResult = {
 function RenderGridCard({
   item,
   isAdmin,
+  hasCovers,
+  coverBusy,
   onDeleteRender,
   onRevertUsage,
+  onGenerateCover,
 }: {
   item: GridItem;
   isAdmin: boolean;
+  hasCovers: boolean;
+  coverBusy: boolean;
   onDeleteRender?: () => Promise<void>;
   onRevertUsage?: () => Promise<RevertResult>;
+  onGenerateCover?: () => Promise<void>;
 }) {
   const { listing, render } = item;
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -560,6 +589,7 @@ function RenderGridCard({
   const isPending = render?.status === "PROCESSING" || render?.status === "PENDING";
   const isError   = render?.status === "ERROR";
   const isDone    = render?.status === "DONE";
+  const canGenerateCover = Boolean(hasCovers && isDone && render?.videoUrl && listing.template?.coverAutoEnabled && onGenerateCover);
 
   const aspectRatio = getAspectFromFormats(listing.template?.formats);
 
@@ -738,6 +768,22 @@ function RenderGridCard({
               </span>
             )}
           </div>
+        )}
+
+        {canGenerateCover && (
+          <button
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); void onGenerateCover?.(); }}
+            disabled={coverBusy}
+            title={render?.coverPack ? "Régénérer une cover" : "Générer une cover"}
+            className="absolute bottom-2 right-2 h-6 px-2 bg-white/90 backdrop-blur-sm rounded text-[10px] font-semibold text-emerald-700 hover:bg-white opacity-0 group-hover:opacity-100 transition-all flex items-center gap-1 disabled:opacity-60"
+          >
+            {coverBusy ? (
+              <span className="w-3 h-3 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+            ) : (
+              <ImageIcon size={11} />
+            )}
+            Cover
+          </button>
         )}
       </div>
 
@@ -1163,4 +1209,3 @@ function DescriptionCard({
     </div>
   );
 }
-

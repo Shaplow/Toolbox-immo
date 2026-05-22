@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Film, Upload, Download, RefreshCw, Check, X, Image as ImageIcon } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
@@ -11,11 +11,33 @@ import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 const MIN_FRAME_GAP_S = 1 / 30;
 
 type Frame = { timestamp: number; url: string };
+type CoverPack = {
+  id: string;
+  status: string;
+  renderId: string;
+  templateName: string;
+  client: string | null;
+  ownerName: string | null;
+  frameCount: number;
+  duration: number | null;
+  errorMsg: string | null;
+  finalCoverUrl: string | null;
+  overlayOffsetX: number;
+  overlayOffsetY: number;
+  canvasWidth: number;
+  canvasHeight: number;
+  createdAt: string;
+  candidates: { id: string; timestamp: number; imageUrl: string }[];
+};
 
 function fmt(seconds: number): string {
   const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
+  const rounded = Math.round(seconds * 10) / 10;
+  const s = Math.floor(rounded % 60);
+  const decimal = Math.round((rounded - Math.floor(rounded)) * 10);
+  return decimal > 0
+    ? `${m}:${s.toString().padStart(2, "0")}.${decimal}`
+    : `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 /**
@@ -53,6 +75,15 @@ function pickFromCandidates(candidates: number[], count: number): number[] {
 }
 
 export function CoverGenerator() {
+  // ── Auto packs ─────────────────────────────────────────────────────────────
+  const [packs, setPacks] = useState<CoverPack[]>([]);
+  const [packsLoading, setPacksLoading] = useState(true);
+  const [packBusyId, setPackBusyId] = useState<string | null>(null);
+  const [selectedCandidateByPack, setSelectedCandidateByPack] = useState<Record<string, string>>({});
+  const [overlayOffsetByPack, setOverlayOffsetByPack] = useState<Record<string, { x: number; y: number }>>({});
+  const [previewScaleByPack, setPreviewScaleByPack] = useState<Record<string, { x: number; y: number }>>({});
+  const [dragState, setDragState] = useState<{ packId: string; scaleY: number } | null>(null);
+
   // ── Video ──────────────────────────────────────────────────────────────────
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [videoName, setVideoName] = useState("");
@@ -85,6 +116,109 @@ export function CoverGenerator() {
     [startSeconds, endSeconds, seenTimestamps, rangeValid]
   );
   const canDoNextRound = remaining.length > 0;
+
+  const loadPacks = useCallback(async (silent = false) => {
+    if (!silent) setPacksLoading(true);
+    try {
+      const res = await fetch("/api/cover-packs");
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json() as CoverPack[];
+      setPacks(data);
+      setSelectedCandidateByPack((prev) => {
+        const next = { ...prev };
+        for (const pack of data) {
+          if (!next[pack.id] && pack.candidates[0]) next[pack.id] = pack.candidates[0].id;
+        }
+        return next;
+      });
+      setOverlayOffsetByPack((prev) => {
+        const next = { ...prev };
+        for (const pack of data) {
+          if (!next[pack.id]) next[pack.id] = { x: pack.overlayOffsetX ?? 0, y: pack.overlayOffsetY ?? 0 };
+        }
+        return next;
+      });
+    } catch (err) {
+      toast.error(`Erreur chargement packs cover : ${String(err)}`);
+    } finally {
+      if (!silent) setPacksLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPacks();
+  }, [loadPacks]);
+
+  useEffect(() => {
+    const hasPendingPack = packs.some((pack) => pack.status === "QUEUED" || pack.status === "PROCESSING");
+    if (!hasPendingPack) return;
+    const intervalId = window.setInterval(() => {
+      void loadPacks(true);
+    }, 3000);
+    return () => window.clearInterval(intervalId);
+  }, [loadPacks, packs]);
+
+  useEffect(() => {
+    if (!dragState) return;
+    const handleMove = (event: PointerEvent) => {
+      setOverlayOffsetByPack((prev) => {
+        const current = prev[dragState.packId] ?? { x: 0, y: 0 };
+        return {
+          ...prev,
+          [dragState.packId]: {
+            x: current.x,
+            y: Math.round(current.y + event.movementY * dragState.scaleY),
+          },
+        };
+      });
+    };
+    const handleUp = () => setDragState(null);
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+  }, [dragState]);
+
+  const regeneratePack = useCallback(async (packId: string) => {
+    setPackBusyId(packId);
+    try {
+      const res = await fetch(`/api/cover-packs/${packId}/regenerate`, { method: "POST" });
+      if (!res.ok) throw new Error(await res.text());
+      toast.success("Nouveau tirage lancé.");
+      await loadPacks();
+    } catch (err) {
+      toast.error(`Erreur nouveau tirage : ${String(err)}`);
+    } finally {
+      setPackBusyId(null);
+    }
+  }, [loadPacks]);
+
+  const selectPackCover = useCallback(async (packId: string) => {
+    const candidateId = selectedCandidateByPack[packId];
+    if (!candidateId) return;
+    const offset = overlayOffsetByPack[packId] ?? { x: 0, y: 0 };
+    setPackBusyId(packId);
+    try {
+      const res = await fetch(`/api/cover-packs/${packId}/select`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateId,
+          overlayOffsetX: offset.x,
+          overlayOffsetY: offset.y,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      toast.success("Cover PNG générée.");
+      await loadPacks();
+    } catch (err) {
+      toast.error(`Erreur génération cover : ${String(err)}`);
+    } finally {
+      setPackBusyId(null);
+    }
+  }, [loadPacks, overlayOffsetByPack, selectedCandidateByPack]);
 
   // ── Upload ─────────────────────────────────────────────────────────────────
   const handleFileSelect = useCallback(async (file: File) => {
@@ -211,6 +345,221 @@ export function CoverGenerator() {
         title="Générateur de covers"
         subtitle="Extrayez des frames depuis une vidéo pour choisir votre cover idéale."
       />
+
+      <section className="mb-8 bg-white border border-gray-100 rounded-2xl p-5 md:p-6 shadow-sm">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Packs automatiques</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Frames préparées depuis les renders vidéo des templates activées.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadPacks()}
+            disabled={packsLoading}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            <RefreshCw size={14} className={packsLoading ? "animate-spin" : ""} />
+            Actualiser
+          </button>
+        </div>
+
+        {packsLoading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {Array.from({ length: 2 }).map((_, index) => (
+              <div key={index} className="h-64 bg-gray-100 rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : packs.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center">
+            <p className="text-sm font-medium text-gray-700">Aucun pack cover à traiter.</p>
+            <p className="text-xs text-gray-400 mt-1">Les prochains renders vidéo avec cover activée apparaîtront ici.</p>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {packs.map((pack) => {
+              const selectedId = selectedCandidateByPack[pack.id];
+              const selectedFrame = pack.candidates.find((candidate) => candidate.id === selectedId) ?? pack.candidates[0];
+              const offset = overlayOffsetByPack[pack.id] ?? { x: 0, y: 0 };
+              const isBusy = packBusyId === pack.id;
+              const ready = pack.status === "READY" && pack.candidates.length > 0;
+              const selected = pack.status === "SELECTED" && pack.finalCoverUrl;
+              return (
+                <article key={pack.id} className="rounded-xl border border-gray-100 bg-gray-50/40 overflow-hidden">
+                  <div className="grid gap-0 md:grid-cols-[minmax(220px,360px)_1fr]">
+                    <div className="bg-white p-0 md:p-4 flex items-start justify-center">
+                      {selected ? (
+                        <div className="relative mx-auto aspect-[9/16] w-full max-h-[64vh] max-w-[360px] overflow-hidden rounded-lg bg-white">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={pack.finalCoverUrl ?? ""} alt="Cover finale" className="absolute inset-0 h-full w-full object-contain" />
+                        </div>
+                      ) : selectedFrame ? (
+                        <div
+                          className={`relative mx-auto aspect-[9/16] w-full max-h-[64vh] max-w-[360px] overflow-hidden rounded-lg bg-white select-none touch-none ${dragState?.packId === pack.id ? "cursor-grabbing" : "cursor-grab"}`}
+                          onPointerDown={(event) => {
+                            const target = event.target as HTMLElement;
+                            if (target.closest("button,a,input")) return;
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            const scaleY = (pack.canvasHeight || 1920) / Math.max(1, rect.height);
+                            event.currentTarget.setPointerCapture(event.pointerId);
+                            setDragState({ packId: pack.id, scaleY });
+                          }}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={selectedFrame.imageUrl}
+                            alt="Frame sélectionnée"
+                            className="absolute inset-0 h-full w-full object-contain"
+                            onLoad={(event) => {
+                              const img = event.currentTarget;
+                              setPreviewScaleByPack((prev) => ({
+                                ...prev,
+                                [pack.id]: {
+                                  x: img.clientWidth / Math.max(1, pack.canvasWidth || 1080),
+                                  y: img.clientHeight / Math.max(1, pack.canvasHeight || 1920),
+                                },
+                              }));
+                            }}
+                          />
+                          <div
+                            className="absolute inset-0 pointer-events-none"
+                            style={{
+                              transform: `translate(${Math.round(offset.x * (previewScaleByPack[pack.id]?.x ?? 1))}px, ${Math.round(offset.y * (previewScaleByPack[pack.id]?.y ?? 1))}px)`,
+                            }}
+                          >
+                            <iframe
+                              src={`/api/cover-packs/${pack.id}/overlay`}
+                              title="Aperçu texte cover"
+                              className="w-full h-full border-0 bg-transparent"
+                              sandbox="allow-scripts"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mx-auto aspect-[9/16] w-full max-w-[360px] rounded-lg flex items-center justify-center text-xs text-gray-400 bg-white">Aucune frame</div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 p-4 md:p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-semibold text-gray-900 truncate">
+                            {pack.templateName}{pack.client ? ` · ${pack.client}` : ""}
+                          </h3>
+                          <div className="flex items-center gap-2 flex-wrap mt-1">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                              pack.status === "READY" ? "bg-green-50 text-green-600" :
+                              pack.status === "SELECTED" ? "bg-indigo-50 text-indigo-600" :
+                              pack.status === "FAILED" ? "bg-red-50 text-red-500" :
+                              "bg-amber-50 text-amber-600"
+                            }`}>
+                              {pack.status === "READY" ? "À choisir" : pack.status === "SELECTED" ? "Cover validée" : pack.status === "FAILED" ? "Erreur" : "Préparation…"}
+                            </span>
+                            <span className="text-[10px] text-gray-400">{new Date(pack.createdAt).toLocaleString("fr-FR")}</span>
+                            {pack.ownerName && <span className="text-[10px] text-gray-400">{pack.ownerName}</span>}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {selected && (
+                            <a
+                              href={pack.finalCoverUrl ?? ""}
+                              download
+                              className="px-3 py-2 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-700 transition-colors flex items-center gap-1.5"
+                            >
+                              <Download size={13} />
+                              PNG
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void regeneratePack(pack.id)}
+                            disabled={isBusy || pack.status === "PROCESSING" || pack.status === "QUEUED"}
+                            className="px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-white transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                          >
+                            <RefreshCw size={13} className={isBusy ? "animate-spin" : ""} />
+                            Nouveau tirage
+                          </button>
+                        </div>
+                      </div>
+
+                      {pack.errorMsg && (
+                        <p className="mt-3 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg p-2">{pack.errorMsg}</p>
+                      )}
+
+                      {ready && (
+                        <>
+                          <div className="mt-4 max-h-[340px] overflow-y-auto pr-1">
+                            <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2">
+                              {pack.candidates.map((candidate) => (
+                                <button
+                                  key={candidate.id}
+                                  type="button"
+                                  onClick={() => setSelectedCandidateByPack((prev) => ({ ...prev, [pack.id]: candidate.id }))}
+                                  className={`relative rounded-lg overflow-hidden border-2 transition ${
+                                    selectedId === candidate.id ? "border-indigo-500 shadow-sm" : "border-transparent hover:border-gray-300"
+                                  }`}
+                                  title={`${fmt(candidate.timestamp)}`}
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={candidate.imageUrl} alt={`${fmt(candidate.timestamp)}`} className="w-full aspect-[9/16] object-cover" loading="lazy" />
+                                  {selectedId === candidate.id && (
+                                    <span className="absolute top-1 right-1 w-4 h-4 bg-indigo-600 rounded-full flex items-center justify-center">
+                                      <Check size={9} className="text-white" strokeWidth={3} />
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                            <div className="flex flex-1 items-center gap-2 text-xs text-gray-500 min-w-[220px]">
+                              <span>Décalage</span>
+                              <input
+                                type="range"
+                                min={-2400}
+                                max={2400}
+                                step={1}
+                                value={offset.y}
+                                onChange={(event) => setOverlayOffsetByPack((prev) => ({
+                                  ...prev,
+                                  [pack.id]: { x: offset.x, y: Number(event.target.value) || 0 },
+                                }))}
+                                className="min-w-0 flex-1 accent-indigo-600"
+                                aria-label="Décalage vertical"
+                              />
+                              <input
+                                type="number"
+                                value={offset.y}
+                                onChange={(event) => setOverlayOffsetByPack((prev) => ({
+                                  ...prev,
+                                  [pack.id]: { x: offset.x, y: Number(event.target.value) || 0 },
+                                }))}
+                                className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-xs"
+                                aria-label="Décalage vertical"
+                              />
+                              <span>px vertical</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void selectPackCover(pack.id)}
+                              disabled={!selectedId || isBusy}
+                              className="sm:ml-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                            >
+                              {isBusy ? <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Check size={14} />}
+                              Valider la cover PNG
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 items-start">
         {/* ── Left column ─────────────────────────────────────────────────── */}

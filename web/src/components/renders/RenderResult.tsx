@@ -2,9 +2,11 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { getRenderStageLabel } from "@/lib/renderer/renderWorkflow";
 import { useJobPolling } from "@/lib/hooks/useJobPolling";
 import type { JobEventPayload } from "@/lib/sseStore";
+import { toast } from "@/components/ui/Toast";
 
 type RenderStatus = "PENDING" | "PROCESSING" | "DONE" | "ERROR";
 
@@ -29,9 +31,12 @@ interface Props {
   stage?: string | null;
   statusDetail?: string | null;
   progress?: number | null;
+  coverAutoEnabled?: boolean;
+  hasCovers?: boolean;
 }
 
-export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUrl: initVideo, errorMsg: initErr, templateId, stage: initStage, statusDetail: initDetail, progress: initProgress }: Props) {
+export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUrl: initVideo, errorMsg: initErr, templateId, stage: initStage, statusDetail: initDetail, progress: initProgress, coverAutoEnabled = false, hasCovers = false }: Props) {
+  const router = useRouter();
   const [status, setStatus] = useState<RenderStatus>(initialStatus as RenderStatus);
   const [pngUrl, setPngUrl] = useState(initPng);
   const [videoUrl, setVideoUrl] = useState(initVideo ?? null);
@@ -39,6 +44,7 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
   const [stage, setStage] = useState(initStage ?? null);
   const [statusDetail, setStatusDetail] = useState(initDetail ?? null);
   const [progress, setProgress] = useState<number | null>(initProgress ?? null);
+  const [coverBusy, setCoverBusy] = useState(false);
 
   const isTerminal = useCallback((s: RenderStatus) => s === "DONE" || s === "ERROR", []);
 
@@ -81,6 +87,21 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
     });
     return () => source.close();
   }, [renderId, status, isTerminal]);
+
+  const generateCover = useCallback(async () => {
+    setCoverBusy(true);
+    try {
+      const res = await fetch(`/api/renders/${renderId}/cover`, { method: "POST" });
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Erreur génération cover");
+      toast.success("Tirage cover prêt.");
+      router.push("/tools/cover");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur génération cover");
+    } finally {
+      setCoverBusy(false);
+    }
+  }, [renderId, router]);
 
   return (
     <div className="space-y-6">
@@ -159,13 +180,25 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
           <div className="bg-black rounded-xl overflow-hidden border border-gray-200">
             <video src={videoUrl} controls className="w-full h-auto" />
           </div>
-          <a
-            href={videoUrl}
-            download
-            className="block w-full text-center py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
-          >
-            ↓ Télécharger MP4
-          </a>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <a
+              href={videoUrl}
+              download
+              className="block w-full text-center py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+            >
+              ↓ Télécharger MP4
+            </a>
+            {coverAutoEnabled && hasCovers && (
+              <button
+                type="button"
+                onClick={() => void generateCover()}
+                disabled={coverBusy}
+                className="block w-full text-center py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50"
+              >
+                {coverBusy ? "Préparation…" : "Générer une cover"}
+              </button>
+            )}
+          </div>
         </div>
       )}
 

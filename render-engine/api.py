@@ -10,6 +10,7 @@ import time
 import traceback
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import unquote, urlparse
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -61,6 +62,22 @@ app.add_middleware(
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
 app.mount("/fonts", StaticFiles(directory=str(FONTS_DIR)), name="fonts")
+
+
+def _local_outputs_path_from_url(value: str) -> Path | None:
+    """Resolve URLs served by this API under /outputs to their local file path."""
+    parsed = urlparse(value)
+    raw_path = parsed.path if parsed.scheme else value
+    if not raw_path.startswith("/outputs/"):
+        return None
+
+    output_root = OUTPUTS_DIR.resolve()
+    candidate = (output_root / unquote(raw_path.removeprefix("/outputs/"))).resolve()
+    try:
+        candidate.relative_to(output_root)
+    except ValueError:
+        return None
+    return candidate
 
 
 def _parse_subtitles(upload: UploadFile, text: str) -> list[WordTimestamp]:
@@ -243,7 +260,9 @@ async def api_probe_duration(request: Request):
     url = body.get("url", "")
     if not url:
         raise HTTPException(status_code=400, detail="url required")
-    return {"duration": probe_duration(url)}
+    local_path = _local_outputs_path_from_url(url)
+    duration = probe_duration(str(local_path)) if local_path and local_path.exists() else probe_duration(url)
+    return {"duration": duration}
 
 
 @app.get("/api/render-progress/{job_id}")
@@ -937,58 +956,75 @@ async def extract_covers(
         else:
             logger.info("[covers] Using cached uploaded video %s", video_path.name)
     else:
-        # URL distante — mise en cache par hash de l'URL
-        url_hash = hashlib.sha256(video_url.encode()).hexdigest()[:16]
-        video_path = cache_dir / f"video_{url_hash}.mp4"
-        if url_hash not in _cover_video_cache or not video_path.exists():
-            logger.info("[covers] Downloading video %s → %s", video_url, video_path.name)
-            try:
-                async with httpx.AsyncClient(timeout=180, follow_redirects=True) as client:
-                    resp = await client.get(video_url)
-                    resp.raise_for_status()
-                    video_path.write_bytes(resp.content)
-            except Exception as exc:
-                raise HTTPException(status_code=400, detail=f"Impossible de télécharger la vidéo : {exc}") from exc
-            _cover_video_cache[url_hash] = video_path
+        local_path = _local_outputs_path_from_url(video_url)
+        if local_path and local_path.exists():
+            video_path = local_path
+            logger.info("[covers] Using local output video %s", video_path.name)
         else:
-            logger.info("[covers] Using cached video %s", video_path.name)
+            # URL distante — mise en cache par hash de l'URL
+            url_hash = hashlib.sha256(video_url.encode()).hexdigest()[:16]
+            video_path = cache_dir / f"video_{url_hash}.mp4"
+            if url_hash not in _cover_video_cache or not video_path.exists():
+                logger.info("[covers] Downloading video %s → %s", video_url, video_path.name)
+                try:
+                    async with httpx.AsyncClient(timeout=180, follow_redirects=True) as client:
+                        resp = await client.get(video_url)
+                        resp.raise_for_status()
+                        video_path.write_bytes(resp.content)
+                except Exception as exc:
+                    raise HTTPException(status_code=400, detail=f"Impossible de télécharger la vidéo : {exc}") from exc
+                _cover_video_cache[url_hash] = video_path
+            else:
+                logger.info("[covers] Using cached video %s", video_path.name)
 
     # ── Extract frames with FFmpeg ─────────────────────────────────────────
     covers_dir = OUTPUTS_DIR / "covers"
     covers_dir.mkdir(parents=True, exist_ok=True)
 
     stamp = int(time.time() * 1000)
-    results: list[dict] = []
+    concurrency = max(1, min(8, int(os.environ.get("COVER_EXTRACT_CONCURRENCY", "4"))))
+    per_frame_timeout = max(10, int(os.environ.get("COVER_EXTRACT_FRAME_TIMEOUT", "90")))
+    semaphore = asyncio.Semaphore(concurrency)
 
-    for ts in timestamps:
-        safe_ts = max(0.0, ts)
-        frame_name = f"cover_{stamp}_{safe_ts:.3f}.jpg"
-        frame_path = covers_dir / frame_name
+    async def extract_one(ts: float) -> dict | None:
+        async with semaphore:
+            safe_ts = max(0.0, ts)
+            frame_name = f"cover_{stamp}_{safe_ts:.3f}.jpg"
+            frame_path = covers_dir / frame_name
 
-        cmd = [
-            "ffmpeg", "-y",
-            "-ss", str(safe_ts),
-            "-i", str(video_path),
-            "-vframes", "1",
-            "-q:v", "2",
-            str(frame_path),
-        ]
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await proc.communicate()
-
-        if proc.returncode != 0 or not frame_path.exists():
-            logger.warning(
-                "[covers] FFmpeg failed at ts=%.3f — %s",
-                safe_ts,
-                stderr.decode(errors="replace")[-300:],
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", str(safe_ts),
+                "-i", str(video_path),
+                "-vframes", "1",
+                "-q:v", "2",
+                str(frame_path),
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-            continue
+            try:
+                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=per_frame_timeout)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.communicate()
+                logger.warning("[covers] FFmpeg timeout at ts=%.3f after %ss", safe_ts, per_frame_timeout)
+                return None
 
-        results.append({"timestamp": safe_ts, "url": f"/outputs/covers/{frame_name}"})
+            if proc.returncode != 0 or not frame_path.exists():
+                logger.warning(
+                    "[covers] FFmpeg failed at ts=%.3f — %s",
+                    safe_ts,
+                    stderr.decode(errors="replace")[-300:],
+                )
+                return None
+
+            return {"timestamp": safe_ts, "url": f"/outputs/covers/{frame_name}"}
+
+    extracted = await asyncio.gather(*(extract_one(ts) for ts in timestamps))
+    results = [frame for frame in extracted if frame is not None]
 
     return results
 

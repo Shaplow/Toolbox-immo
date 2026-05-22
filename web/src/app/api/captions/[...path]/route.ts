@@ -19,6 +19,7 @@ function isAllowedPath(targetPath: string): boolean {
   // Exact match or allow /api/status/<id> sub-paths
   if (ALLOWED_PATHS.has(targetPath)) return true;
   if (targetPath.startsWith("/api/status/")) return true;
+  if (targetPath.startsWith("/outputs/")) return true;
   return false;
 }
 

@@ -17,6 +17,7 @@ import { RENDER_PIPELINE, RENDER_STAGE } from "./renderWorkflow";
 import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsage";
 import { selectMediaAsset, selectMediaAssetBySetSequence, selectMediaAssetByMetadataValue, normalizeRule } from "@/lib/contentLibraryResolver";
 import { triggerAutoTranscriptionLocal } from "@/lib/triggerAutoTranscriptionLocal";
+import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
 
 const OUTPUT_DIR = path.join(process.cwd(), "public", "renders");
 const LOCAL_VIDEO_RENDER_TIMEOUT_MS = 10 * 60 * 1000;
@@ -1102,6 +1103,20 @@ async function generateVideoRenderLocal(
       void triggerAutoTranscriptionLocal(renderId, CAPTIONS_API, rawVideoPath).catch((err) =>
         console.error(`[videoLocal] triggerAutoTranscriptionLocal threw: ${String(err)}`)
       );
+      const autoCoverRender = await prisma.render.findUnique({
+        where: { id: renderId },
+        select: { templateId: true, listing: { select: { userId: true } } },
+      });
+      if (autoCoverRender?.listing.userId) {
+        void triggerAutoCoverPackForRender(
+          renderId,
+          autoCoverRender.templateId,
+          `${CAPTIONS_API}${rawVideoPath}`,
+          autoCoverRender.listing.userId,
+        ).catch((err) =>
+          console.error(`[videoLocal] triggerAutoCoverPackForRender threw: ${String(err)}`)
+        );
+      }
     }
   } catch (err) {
     console.error(`[videoLocal] ${renderId} — ERROR:`, err);
@@ -1815,6 +1830,21 @@ async function generateSequenceRenderLocal(
       void triggerAutoTranscriptionLocal(renderId, CAPTIONS_API, rawSequenceVideoPath, data.slotDurations ?? {}).catch((err) =>
         console.error(`[sequenceLocal] triggerAutoTranscriptionLocal threw: ${String(err)}`)
       );
+      const autoCoverRender = await prisma.render.findUnique({
+        where: { id: renderId },
+        select: { templateId: true, listing: { select: { userId: true } } },
+      });
+      if (autoCoverRender?.listing.userId) {
+        void triggerAutoCoverPackForRender(
+          renderId,
+          autoCoverRender.templateId,
+          `${CAPTIONS_API}${rawSequenceVideoPath}`,
+          autoCoverRender.listing.userId,
+          data.slotDurations ?? {},
+        ).catch((err) =>
+          console.error(`[sequenceLocal] triggerAutoCoverPackForRender threw: ${String(err)}`)
+        );
+      }
     }
   } catch (err) {
     console.error(`[sequenceLocal] ${renderId} — ERROR:`, err);

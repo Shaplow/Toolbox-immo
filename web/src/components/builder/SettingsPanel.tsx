@@ -23,9 +23,10 @@ function downloadCSVTemplate(schema: SchemaField[], templateName: string) {
 }
 
 export function SettingsPanel() {
-  const { template, updateContentLibrary, updateCanvas, updateCaptionAutoConfig } = useBuilderStore();
+  const { template, updateContentLibrary, updateCanvas, updateCaptionAutoConfig, updateCoverAutoConfig } = useBuilderStore();
   const cl = template.contentLibrary;
   const captionAutoConfig = template.captionAutoConfig;
+  const coverAutoConfig = template.coverAutoConfig;
 
   const [dataLibraries, setDataLibraries] = useState<{ id: string; name: string; templateType: string }[]>([]);
   const [campaigns, setCampaigns] = useState<{ id: string; name: string; isActive: boolean }[]>([]);
@@ -516,6 +517,209 @@ export function SettingsPanel() {
                       <option value="gpt">GPT (OpenAI)</option>
                     </select>
                   </label>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Pipeline cover */}
+      <div className="px-3 py-3 border-b border-gray-100">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Pipeline cover</p>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={coverAutoConfig?.enabled ?? false}
+              onChange={(e) => updateCoverAutoConfig({ enabled: e.target.checked })}
+              className="rounded"
+            />
+            <span className="text-gray-500">Préparer un pack après chaque render vidéo</span>
+          </label>
+
+          {coverAutoConfig?.enabled && (
+            <>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-gray-500">Frames par tirage</span>
+                <input
+                  type="number"
+                  min={6}
+                  max={72}
+                  value={coverAutoConfig.frameCount ?? 36}
+                  onChange={(e) => updateCoverAutoConfig({ frameCount: Number(e.target.value) || 36 })}
+                  className="border border-gray-200 rounded px-2 py-1 text-xs"
+                />
+              </label>
+
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
+                  Groupes texte cover
+                </p>
+                {template.groups.length === 0 ? (
+                  <p className="text-[10px] text-gray-400 italic">Aucun groupe disponible.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {template.groups.map((group) => {
+                      const selected = (coverAutoConfig.overlayGroupIds ?? []).includes(group.id);
+                      return (
+                        <label key={group.id} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={(e) => {
+                              const current = coverAutoConfig.overlayGroupIds ?? [];
+                              const next = e.target.checked
+                                ? [...current, group.id]
+                                : current.filter((id) => id !== group.id);
+                              updateCoverAutoConfig({ overlayGroupIds: next });
+                            }}
+                            className="rounded"
+                          />
+                          <span className="text-xs text-gray-600">{group.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
+                  Zones exclues des frames
+                </p>
+                {(template.videoSequence?.length ?? 0) > 0 ? (
+                  <div className="space-y-1">
+                    {(template.videoSequence ?? []).map((slot) => {
+                      const isExcluded = (coverAutoConfig.excludeSlotIds ?? []).includes(slot.id);
+                      return (
+                        <label key={slot.id} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isExcluded}
+                            onChange={(e) => {
+                              const current = coverAutoConfig.excludeSlotIds ?? [];
+                              const updated = e.target.checked
+                                ? [...current, slot.id]
+                                : current.filter((id) => id !== slot.id);
+                              updateCoverAutoConfig({ excludeSlotIds: updated });
+                            }}
+                            className="rounded"
+                          />
+                          <span className="text-xs text-gray-600">{slot.label ?? "Slot"}</span>
+                          {slot.maxDuration !== undefined && (
+                            <span className="text-[9px] text-gray-400">({slot.maxDuration}s max)</span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <>
+                    {(coverAutoConfig.excludeZones ?? []).map((zone, i) => (
+                      <div key={zone.id} className="mb-2 rounded-lg border border-gray-100 bg-gray-50 p-2 space-y-1.5">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            placeholder="Label (ex: outro)"
+                            value={zone.label}
+                            onChange={(e) => {
+                              const zones = [...(coverAutoConfig.excludeZones ?? [])];
+                              zones[i] = { ...zones[i], label: e.target.value };
+                              updateCoverAutoConfig({ excludeZones: zones });
+                            }}
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const zones = (coverAutoConfig.excludeZones ?? []).filter((_, j) => j !== i);
+                              updateCoverAutoConfig({ excludeZones: zones });
+                            }}
+                            className="text-gray-400 hover:text-red-500 p-1 transition-colors"
+                            title="Supprimer cette zone"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-gray-400 text-[10px]">Début — groupe</span>
+                          <select
+                            value={zone.startGroupId ?? ""}
+                            onChange={(e) => {
+                              const zones = [...(coverAutoConfig.excludeZones ?? [])];
+                              zones[i] = { ...zones[i], startGroupId: e.target.value || undefined };
+                              updateCoverAutoConfig({ excludeZones: zones });
+                            }}
+                            className="border border-gray-200 rounded px-2 py-1 text-xs bg-white"
+                          >
+                            <option value="">— Timestamp explicite —</option>
+                            {template.groups.map((g) => (
+                              <option key={g.id} value={g.id}>{g.name}</option>
+                            ))}
+                          </select>
+                          {!zone.startGroupId && (
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.1}
+                              placeholder="Secondes"
+                              value={zone.startTime ?? ""}
+                              onChange={(e) => {
+                                const zones = [...(coverAutoConfig.excludeZones ?? [])];
+                                zones[i] = { ...zones[i], startTime: e.target.value ? Number(e.target.value) : undefined };
+                                updateCoverAutoConfig({ excludeZones: zones });
+                              }}
+                              className="border border-gray-200 rounded px-2 py-1 text-xs"
+                            />
+                          )}
+                        </label>
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-gray-400 text-[10px]">Fin — groupe</span>
+                          <select
+                            value={zone.endGroupId ?? ""}
+                            onChange={(e) => {
+                              const zones = [...(coverAutoConfig.excludeZones ?? [])];
+                              zones[i] = { ...zones[i], endGroupId: e.target.value || undefined };
+                              updateCoverAutoConfig({ excludeZones: zones });
+                            }}
+                            className="border border-gray-200 rounded px-2 py-1 text-xs bg-white"
+                          >
+                            <option value="">— Fin de vidéo —</option>
+                            {template.groups.map((g) => (
+                              <option key={g.id} value={g.id}>{g.name}</option>
+                            ))}
+                          </select>
+                          {!zone.endGroupId && (
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.1}
+                              placeholder="Secondes (fin si vide)"
+                              value={zone.endTime ?? ""}
+                              onChange={(e) => {
+                                const zones = [...(coverAutoConfig.excludeZones ?? [])];
+                                zones[i] = { ...zones[i], endTime: e.target.value ? Number(e.target.value) : undefined };
+                                updateCoverAutoConfig({ excludeZones: zones });
+                              }}
+                              className="border border-gray-200 rounded px-2 py-1 text-xs"
+                            />
+                          )}
+                        </label>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const safeZone: CaptionExcludeZone = { id: `cover-zone-${Date.now()}`, label: "" };
+                        updateCoverAutoConfig({ excludeZones: [...(coverAutoConfig.excludeZones ?? []), safeZone] });
+                      }}
+                      className="flex items-center gap-1 text-[10px] text-indigo-600 hover:text-indigo-700"
+                    >
+                      <Plus size={11} />
+                      Ajouter une zone
+                    </button>
+                  </>
                 )}
               </div>
             </>

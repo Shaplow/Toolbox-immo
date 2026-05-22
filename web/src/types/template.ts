@@ -584,6 +584,12 @@ export interface TemplateJSON {
    * à la fin d'un render vidéo basé sur ce template.
    */
   captionAutoConfig?: CaptionAutoConfig;
+  /**
+   * Configuration du pipeline cover semi-automatique.
+   * Si défini et activé, un pack de frames candidates est préparé
+   * automatiquement à la fin d'un render vidéo basé sur ce template.
+   */
+  coverAutoConfig?: CoverAutoConfig;
   timeline?: undefined; // V2 placeholder
 }
 
@@ -643,6 +649,26 @@ export interface CaptionAutoConfig {
   correctionPromptId?: string;
   /** Modèle IA à utiliser pour la correction. Défaut : "claude". */
   correctionModel?: "claude" | "gpt";
+}
+
+/**
+ * Configuration du pipeline cover semi-automatique pour un template.
+ * Les zones d'exclusion suivent le même modèle temporel que l'auto-caption.
+ */
+export interface CoverAutoConfig {
+  /** Active la préparation automatique d'un pack cover après un render vidéo. */
+  enabled: boolean;
+  /** Nombre de frames à proposer par tirage. Défaut produit: 36. */
+  frameCount?: number;
+  /** Zones temporelles à exclure de la recherche de frames. */
+  excludeZones: CaptionExcludeZone[];
+  /**
+   * IDs des slots de videoSequence à exclure de la recherche de frames.
+   * Convertis en zones temporelles comme pour l'auto-caption.
+   */
+  excludeSlotIds?: string[];
+  /** Groupes du builder à reprendre comme overlay texte sur la cover finale. */
+  overlayGroupIds?: string[];
 }
 
 // ─── V2 Placeholder ────────────────────────────────────────────────────────────

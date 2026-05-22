@@ -1,7 +1,9 @@
 ﻿import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { RenderResult } from "@/components/renders/RenderResult";
-import { getUserContext } from "@/lib/userContext";
+import { getUserContext, parsePermissions } from "@/lib/userContext";
+import { normalizeTemplateJSON } from "@/lib/templateNormalization";
+import type { TemplateJSON } from "@/types/template";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -14,7 +16,7 @@ export default async function RenderPage({ params }: Props) {
     where: { id },
     include: {
       listing: true,
-      template: { select: { id: true, name: true, client: true } },
+      template: { select: { id: true, name: true, client: true, jsonData: true } },
     },
   });
 
@@ -22,6 +24,16 @@ export default async function RenderPage({ params }: Props) {
 
   // Security: ensure render belongs to the user (admin can access any render)
   const isAdmin = userContext.canAdminBypass;
+  const userPerms = parsePermissions(userContext.effectiveUser.permissions);
+  const hasCovers = isAdmin || userPerms.includes("covers");
+  let coverAutoEnabled = false;
+  if (render.template?.jsonData) {
+    try {
+      coverAutoEnabled = normalizeTemplateJSON(JSON.parse(render.template.jsonData) as TemplateJSON).coverAutoConfig?.enabled === true;
+    } catch {
+      coverAutoEnabled = false;
+    }
+  }
   if (!isAdmin) {
     const listing = await prisma.listing.findFirst({
       where: { id: render.listingId, userId: userContext.effectiveUser.id },
@@ -50,6 +62,8 @@ export default async function RenderPage({ params }: Props) {
         stage={render.stage}
         statusDetail={render.statusDetail}
         progress={render.progress}
+        coverAutoEnabled={coverAutoEnabled}
+        hasCovers={hasCovers}
       />
     </div>
   );

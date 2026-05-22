@@ -1,5 +1,5 @@
 ﻿import { create } from "zustand";
-import type { TemplateJSON, AnyBlock, CanvasFormat, LayerGroup, SchemaField, TemplateFormSection, VideoSequenceSlot, CaptionAutoConfig } from "@/types/template";
+import type { TemplateJSON, AnyBlock, CanvasFormat, LayerGroup, SchemaField, TemplateFormSection, VideoSequenceSlot, CaptionAutoConfig, CoverAutoConfig } from "@/types/template";
 import { emptyTemplate, defaultCanvas } from "@/types/template";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 
@@ -43,6 +43,7 @@ interface BuilderState {
   updateContentLibrary: (changes: Partial<NonNullable<TemplateJSON["contentLibrary"]>>) => void;
   updateVideoSequence: (slots: VideoSequenceSlot[] | undefined) => void;
   updateCaptionAutoConfig: (changes: Partial<CaptionAutoConfig>) => void;
+  updateCoverAutoConfig: (changes: Partial<CoverAutoConfig>) => void;
   setGenerationMode: (mode: TemplateJSON["generationMode"]) => void;
   setFormat: (format: CanvasFormat) => void;
   setSchema: (schema: SchemaField[]) => void;
@@ -337,6 +338,12 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
   updateCaptionAutoConfig: (changes) => {
     const current = get().template.captionAutoConfig ?? { enabled: false, excludeZones: [] };
     const next = { ...get().template, captionAutoConfig: { ...current, ...changes } };
+    withHistory(get, set, next);
+  },
+
+  updateCoverAutoConfig: (changes) => {
+    const current = get().template.coverAutoConfig ?? { enabled: false, excludeZones: [], frameCount: 36 };
+    const next = { ...get().template, coverAutoConfig: { ...current, ...changes } };
     withHistory(get, set, next);
   },
 

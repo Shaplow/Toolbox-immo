@@ -14,6 +14,7 @@ import { notifyUser } from "@/lib/sseStore";
 import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsage";
 import { RENDER_STAGE } from "@/lib/renderer/renderWorkflow";
 import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
+import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
 
 type RenderOutput = {
   video_url?: string;
@@ -94,6 +95,17 @@ export async function POST(req: NextRequest) {
         userId,
       ).catch((err) =>
         console.error(`[webhook/renders] triggerAutoTranscription threw: ${String(err)}`),
+      );
+    }
+
+    if (videoUrl) {
+      void triggerAutoCoverPackForRender(
+        render.id,
+        render.templateId,
+        videoUrl,
+        userId,
+      ).catch((err) =>
+        console.error(`[webhook/renders] triggerAutoCoverPack threw: ${String(err)}`),
       );
     }
   } else {
