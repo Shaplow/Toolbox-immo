@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
+    "db:backup": "dotenv -e .env.local -- tsx scripts/db-backup.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "dotenv -e .env.local -- prisma migrate dev",
