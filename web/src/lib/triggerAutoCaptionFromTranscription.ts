@@ -333,10 +333,21 @@ export async function triggerAutoCaptionForTranscription(transcriptionJobId: str
     .map((zone) => resolveZone(zone, blocks))
     .filter((z): z is NonNullable<typeof z> => z !== null);
 
-  // Slot-based exclusions (sequence templates): convert slot IDs to time zones
+  // Slot-based exclusions (sequence templates): convert slot IDs to time zones.
+  // slotDurations sont persistées sur Render à la fin du rendu (api/render_sequence ou
+  // worker RunPod) — indispensables pour résoudre les bornes quand maxDuration est absent.
+  let slotDurations: Record<string, number> | undefined;
+  if (render.slotDurations) {
+    try {
+      slotDurations = JSON.parse(render.slotDurations) as Record<string, number>;
+    } catch {
+      console.warn(`[autoCaption] slotDurations JSON invalide pour render=${render.id} — ignoré`);
+    }
+  }
+
   const slotZones =
     captionAutoConfig.excludeSlotIds?.length && templateJson.videoSequence?.length
-      ? resolveSlotExcludeZones(captionAutoConfig.excludeSlotIds, templateJson.videoSequence, job.duration)
+      ? resolveSlotExcludeZones(captionAutoConfig.excludeSlotIds, templateJson.videoSequence, job.duration, slotDurations)
       : [];
 
   const filteredSegments = applyExcludeZones(segments, [...resolvedZones, ...slotZones], job.duration);

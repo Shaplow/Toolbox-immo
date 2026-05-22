@@ -81,7 +81,6 @@ export async function triggerAutoTranscriptionLocal(
   renderId: string,
   captionsApiUrl: string,
   renderEngineVideoPath: string,
-  slotDurations: Record<string, number> = {},
 ): Promise<void> {
   // 1. Load render + template ──────────────────────────────────────────────────
   const render = await prisma.render.findUnique({
@@ -89,6 +88,15 @@ export async function triggerAutoTranscriptionLocal(
     include: { listing: { select: { userId: true } } },
   });
   if (!render?.templateId || !render.listing?.userId) return;
+
+  let slotDurations: Record<string, number> = {};
+  if (render.slotDurations) {
+    try {
+      slotDurations = JSON.parse(render.slotDurations) as Record<string, number>;
+    } catch {
+      console.warn(`[autoTranscriptionLocal] slotDurations JSON invalide pour render=${renderId} — ignoré`);
+    }
+  }
 
   const template = await prisma.template.findUnique({ where: { id: render.templateId } });
   if (!template) return;

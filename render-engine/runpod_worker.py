@@ -990,6 +990,10 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
         has_effective_audio = False  # True if any slot contributes real (non-muted) audio
         # Per-slot music track params for time-varying volume expression.
         slot_audio_specs: list[dict] = []
+        # Actual effective duration per slot_id — returned so the web layer can
+        # resolve caption / cover exclude-zone boundaries even when the template
+        # has no maxDuration configured.
+        slot_durations: dict[str, float] = {}
 
         for i, slot in enumerate(slots):
             slot_id = slot.get("slot_id", str(i))
@@ -1027,6 +1031,7 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
             _clip_effective_dur = float(video_info.duration or 0.0)
             if max_dur is not None:
                 _clip_effective_dur = min(_clip_effective_dur, max_dur)
+            slot_durations[slot_id] = _clip_effective_dur
             slot_audio_specs.append({
                 "volume_db": slot.get("music_track_volume_db"),
                 "fade_in": float(slot.get("music_track_fade_in", 0) or 0),
@@ -1343,6 +1348,7 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
         "video_url": public_url,
         "output_key": output_key,
         "render_id": render_id,
+        "slot_durations": slot_durations,
     }
     if _music_warning:
         seq_result["warnings"] = [_music_warning]

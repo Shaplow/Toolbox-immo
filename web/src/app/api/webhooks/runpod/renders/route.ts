@@ -21,6 +21,8 @@ type RenderOutput = {
   output_key?: string;
   error?: string;
   render_id?: string;
+  /** Per-slot effective duration produit par le worker sequence (worker/render_sequence). */
+  slot_durations?: Record<string, number>;
 };
 
 export async function POST(req: NextRequest) {
@@ -72,6 +74,9 @@ export async function POST(req: NextRequest) {
         videoUrl: videoUrl ?? undefined,
         finishedAt: new Date(),
         lastHeartbeatAt: new Date(),
+        ...(output.slot_durations && Object.keys(output.slot_durations).length > 0
+          ? { slotDurations: JSON.stringify(output.slot_durations) }
+          : {}),
       },
     });
 

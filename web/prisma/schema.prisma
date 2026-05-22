@@ -171,6 +171,10 @@ model Render {
   /// JSON map des assets de bibliothèque utilisés pour ce render
   /// { videoAssets: { blockId: assetId }, audioAssetId?: string, dataEntryId?: string, setSequencedLibraryIds?: string[] }
   usedAssets        String            @default("{}")
+  /// JSON map { [slotId]: effectiveDurationSeconds } pour les renders sequence.
+  /// Renseigné par render-engine (local ou RunPod) après la composition. Utilisé pour
+  /// résoudre les bornes temporelles des slots exclus du sous-titrage et de la cover.
+  slotDurations     String?
   /// Compte Instagram pour lequel ce render a été généré (optionnel)
   accountId         String?
   account           InstagramAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)

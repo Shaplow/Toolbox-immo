@@ -1824,10 +1824,19 @@ async function generateSequenceRenderLocal(
       console.error("[generateRender] recordLibraryUsage failed:", err)
     );
 
+    // Persister slotDurations sur Render pour que les triggers en aval (auto-sous-titres,
+    // cover frames) puissent les lire — même path que le webhook RunPod renders.
+    if (data.slotDurations && Object.keys(data.slotDurations).length > 0) {
+      await prisma.render.update({
+        where: { id: renderId },
+        data: { slotDurations: JSON.stringify(data.slotDurations) },
+      });
+    }
+
     // Auto-sous-titrage local (captionAutoConfig.enabled) — best-effort
     const rawSequenceVideoPath = data.videoUrl.startsWith("http") ? null : data.videoUrl;
     if (rawSequenceVideoPath) {
-      void triggerAutoTranscriptionLocal(renderId, CAPTIONS_API, rawSequenceVideoPath, data.slotDurations ?? {}).catch((err) =>
+      void triggerAutoTranscriptionLocal(renderId, CAPTIONS_API, rawSequenceVideoPath).catch((err) =>
         console.error(`[sequenceLocal] triggerAutoTranscriptionLocal threw: ${String(err)}`)
       );
       const autoCoverRender = await prisma.render.findUnique({
@@ -1840,7 +1849,6 @@ async function generateSequenceRenderLocal(
           autoCoverRender.templateId,
           `${CAPTIONS_API}${rawSequenceVideoPath}`,
           autoCoverRender.listing.userId,
-          data.slotDurations ?? {},
         ).catch((err) =>
           console.error(`[sequenceLocal] triggerAutoCoverPackForRender threw: ${String(err)}`)
         );

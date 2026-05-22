@@ -340,15 +340,24 @@ export async function deleteCoverCandidateAssets(packId: string): Promise<void> 
   );
 }
 
-export async function prepareCoverFramePack(packId: string, slotDurations?: Record<string, number>): Promise<void> {
+export async function prepareCoverFramePack(packId: string): Promise<void> {
   const pack = await prisma.coverFramePack.findUnique({
     where: { id: packId },
     include: {
       template: true,
-      render: { select: { usedAssets: true, listing: { select: { jsonData: true } } } },
+      render: { select: { usedAssets: true, slotDurations: true, listing: { select: { jsonData: true } } } },
     },
   });
   if (!pack?.template || !pack.sourceVideoUrl) return;
+
+  let slotDurations: Record<string, number> | undefined;
+  if (pack.render.slotDurations) {
+    try {
+      slotDurations = JSON.parse(pack.render.slotDurations) as Record<string, number>;
+    } catch {
+      console.warn(`[coverAuto] slotDurations JSON invalide pour pack=${packId} — ignoré`);
+    }
+  }
 
   await prisma.coverFramePack.update({
     where: { id: packId },
@@ -436,8 +445,8 @@ export async function prepareCoverFramePack(packId: string, slotDurations?: Reco
   }
 }
 
-export function queueCoverFramePackPreparation(packId: string, slotDurations?: Record<string, number>): void {
-  void prepareCoverFramePack(packId, slotDurations).catch((err) => {
+export function queueCoverFramePackPreparation(packId: string): void {
+  void prepareCoverFramePack(packId).catch((err) => {
     console.error(`[coverAuto] Préparation pack=${packId} échouée : ${String(err)}`);
   });
 }
@@ -447,7 +456,6 @@ export async function triggerAutoCoverPackForRender(
   templateId: string | null | undefined,
   sourceVideoUrl: string,
   userId: string,
-  slotDurations?: Record<string, number>,
 ): Promise<void> {
   if (!templateId || !sourceVideoUrl) return;
 
@@ -491,7 +499,7 @@ export async function triggerAutoCoverPackForRender(
     return;
   }
 
-  queueCoverFramePackPreparation(pack.id, slotDurations);
+  queueCoverFramePackPreparation(pack.id);
   console.info(`[autoCover] Pack ${pack.id} lancé pour render=${renderId}`);
 }
 
