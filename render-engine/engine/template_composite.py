@@ -359,6 +359,12 @@ def build_template_ffmpeg_cmd(
     if audio_filter:
         filter_complex = f"{filter_complex};{audio_filter}"
 
+    # When max_duration is set, -t already caps the output and afade is
+    # configured to start at (max_duration - music_fade_out). Using -shortest
+    # on top of -t would truncate at the video stream end before afade finishes.
+    # Keep -shortest only when no explicit duration is available.
+    shortest_flag = [] if max_duration is not None else ["-shortest"]
+
     return [
         "ffmpeg", "-y",
         "-i", str(video_path),
@@ -367,7 +373,7 @@ def build_template_ffmpeg_cmd(
         "-filter_complex", filter_complex,
         "-map", "[out]",
         *audio_map_flags,
-        "-shortest",
+        *shortest_flag,
         *duration_args,
         "-c:v", video_codec, *video_codec_args,
         "-movflags", "+faststart",
@@ -437,6 +443,12 @@ def build_template_ffmpeg_cmd_timed(
     if audio_filter:
         filter_complex = f"{filter_complex};{audio_filter}"
 
+    # When max_duration is set, -t already caps the output and afade is
+    # configured to start at (max_duration - music_fade_out). Using -shortest
+    # on top of -t would truncate at the video stream end before afade finishes.
+    # Keep -shortest only when no explicit duration is available.
+    shortest_flag = [] if max_duration is not None else ["-shortest"]
+
     return [
         "ffmpeg", "-y",
         *inputs,
@@ -444,7 +456,7 @@ def build_template_ffmpeg_cmd_timed(
         "-filter_complex", filter_complex,
         "-map", "[out]",
         *audio_map_flags,
-        "-shortest",
+        *shortest_flag,
         *duration_args,
         "-c:v", video_codec, *video_codec_args,
         "-movflags", "+faststart",

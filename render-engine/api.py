@@ -798,6 +798,11 @@ async def render_sequence_local(request: Request):
                 else:
                     audio_filter = f"{music_vol_filter}[aout]"
                 loop_flags = ["-stream_loop", "-1"] if _music_loop else []
+                # Use explicit -t instead of -shortest so that the afade filter
+                # has enough time to ramp the music down to silence before FFmpeg
+                # stops writing samples. -shortest would truncate the output at
+                # the video end (= fade start), producing an abrupt cut.
+                duration_flag = ["-t", f"{effective_dur:.4f}"] if effective_dur is not None else ["-shortest"]
                 final_path = work_dir / f"seq_{stamp}_final.mp4"
                 music_cmd = [
                     "ffmpeg", "-y",
@@ -806,7 +811,7 @@ async def render_sequence_local(request: Request):
                     "-filter_complex", audio_filter,
                     "-map", "0:v", "-map", "[aout]",
                     "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                    "-shortest", str(final_path),
+                    *duration_flag, str(final_path),
                 ]
                 try:
                     proc = await asyncio.to_thread(_sp.run, music_cmd, capture_output=True, text=True, timeout=5 * 60)

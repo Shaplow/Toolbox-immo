@@ -1287,6 +1287,11 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                     audio_filter = f"{music_vol_filter}[aout]"
 
                 loop_flags = ["-stream_loop", "-1"] if _music_loop else []
+                # Use explicit -t instead of -shortest so that the afade filter
+                # has enough time to ramp the music down to silence before FFmpeg
+                # stops writing samples. -shortest would truncate the output at
+                # the video end (= fade start), producing an abrupt cut.
+                duration_flag = ["-t", f"{effective_dur:.4f}"] if effective_dur is not None else ["-shortest"]
                 music_cmd = [
                     "ffmpeg", "-y",
                     "-i", str(combined_path),
@@ -1296,7 +1301,7 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                     "-map", "[aout]",
                     "-c:v", "copy",
                     "-c:a", "aac", "-b:a", "192k",
-                    "-shortest",
+                    *duration_flag,
                     str(final_path),
                 ]
                 print(f"[worker/render_sequence] Music mix cmd: {_format_command(music_cmd)}", flush=True)
