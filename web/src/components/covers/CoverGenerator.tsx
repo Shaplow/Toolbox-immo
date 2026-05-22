@@ -465,13 +465,13 @@ export function CoverGenerator() {
                   <div className="grid gap-0 md:grid-cols-[minmax(220px,360px)_1fr]">
                     <div className="bg-white p-0 md:p-4 flex items-start justify-center">
                       {selected ? (
-                        <div className="relative mx-auto aspect-[9/16] w-full max-h-[64vh] max-w-[360px] overflow-hidden rounded-lg bg-white">
+                        <div className="relative mx-auto aspect-[9/16] w-full max-w-[min(360px,36vh)] overflow-hidden rounded-lg bg-white">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={pack.finalCoverUrl ?? ""} alt="Cover finale" className="absolute inset-0 h-full w-full object-contain" />
                         </div>
                       ) : selectedFrame ? (
                         <div
-                          className={`relative mx-auto aspect-[9/16] w-full max-h-[64vh] max-w-[360px] overflow-hidden rounded-lg bg-white select-none touch-none ${dragState?.packId === pack.id ? "cursor-grabbing" : "cursor-grab"}`}
+                          className={`relative mx-auto aspect-[9/16] w-full max-w-[min(360px,36vh)] overflow-hidden rounded-lg bg-white select-none touch-none ${dragState?.packId === pack.id ? "cursor-grabbing" : "cursor-grab"}`}
                           onPointerDown={(event) => {
                             const target = event.target as HTMLElement;
                             if (target.closest("button,a,input")) return;
