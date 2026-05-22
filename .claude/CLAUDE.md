@@ -1,4 +1,4 @@
-# Toolbox Immo Claude Context
+# Toolbox Immo — Claude Code Context
 
 Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface with a separate Python render engine.
 
@@ -16,8 +16,8 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
    - admin, permissions, or impersonation
    - render-engine, FFmpeg, RunPod, storage pipeline, or webhook callbacks
    - UI and UX cleanup
-2. Read `.github/copilot-instructions.md` first, then the relevant file-scoped instructions in `.github/instructions/`.
-3. Use the matching skill in `.github/skills/` when the task falls into a repeated workflow.
+2. Read `.github/copilot-instructions.md` for repo overview, then the relevant file-scoped instructions in `.github/instructions/`.
+3. Use the matching skill in `.claude/skills/` when the task falls into a repeated workflow (these auto-load when their description matches).
 4. Prefer the smallest fix that restores parity or behavior at the correct layer.
 
 ## Important Invariants
@@ -27,6 +27,66 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
 - Template video logic should stay aligned between local FastAPI and RunPod through the shared code in `render-engine/engine/template_composite.py` and related engine modules.
 - RunPod NVENC failures are not always app bugs. Some GPU offers expose CUDA and even FFmpeg NVENC encoders while still failing runtime encode sessions.
 - UX is currently uneven across the app. Improvements should reduce friction and inconsistency, not add another independent visual language.
+
+## Git Discipline (READ THIS — parallel sessions live here)
+
+The user often runs **multiple Claude Code sessions in parallel** on the same repo. The biggest historical pain points were file truncation, redundant edits across sessions, and merge conflicts. Follow these rules strictly.
+
+### Before any edit — mandatory checks
+
+1. **Run `git status` first.** If you see uncommitted changes to files you did NOT modify in this session, STOP and ask the user: another session may be in flight on those files. Do not "clean up" or overwrite them.
+2. **Run `git log --oneline -5`** if you're unsure where you are. The user may have committed via another session since you last looked.
+3. **Always `Read` before `Edit`.** Never trust your memory of file contents — another session may have changed them.
+4. **Never `Write` over an existing file** unless you are doing a deliberate full rewrite that the user asked for. Use `Edit` for surgical changes. Writing a full file over an existing one is how "fichiers cut" happen.
+
+### Branching & worktrees for parallel sessions
+
+When the user signals they're working on multiple things at once, the safe pattern is one branch per concern, ideally one git worktree per session:
+
+```bash
+# create a worktree for a parallel session
+git worktree add ../Toolbox-immo-<feature> -b feature/<feature>
+# remove when done
+git worktree remove ../Toolbox-immo-<feature>
+```
+
+- If two sessions are on the **same branch in the same working tree**, you WILL stomp on each other. Flag this to the user and recommend a worktree split before continuing.
+- If sessions are on different branches in the same working tree, switching branches mid-session can lose uncommitted work — refuse to `git checkout` another branch if there are uncommitted changes.
+
+### Committing rules
+
+- **Only commit when the user explicitly asks.** Never auto-commit at the end of a task.
+- **Prefer many small atomic commits** over one large one. Each commit should be reviewable in isolation.
+- **Never `git commit --amend`** unless the user explicitly asks. Other sessions or the user may already have built on the previous commit.
+- **Never use `--no-verify`** to skip hooks. If a hook fails, fix the underlying issue.
+- Use HEREDOC for commit messages to preserve formatting (see Claude Code's built-in commit workflow).
+
+### Destructive operations — never without explicit confirmation
+
+The following commands can destroy work the user (or another parallel session) has not pushed yet. **Always confirm in chat before running**:
+
+- `git push --force` / `git push -f` (never to `main`/`master` even with confirmation — warn loudly)
+- `git reset --hard`
+- `git checkout -- <file>` / `git restore <file>` (discards uncommitted changes)
+- `git clean -fd`
+- `git branch -D`
+- `git worktree remove --force`
+- `git rebase -i` (also: not supported, interactive)
+
+### Merge conflicts
+
+- If you encounter a merge conflict, **stop and report it** to the user. Don't try to auto-resolve unless the resolution is mechanical and obvious (e.g. both sides added the same import line).
+- Never resolve a conflict by discarding one side's changes without confirming with the user — the "other side" might be the user's work from another session.
+
+### Pulling & syncing
+
+- Before starting work on a long-lived branch, run `git fetch origin && git status` to see if you're behind.
+- Don't `git pull` automatically — let the user decide whether to merge or rebase. Default to `git pull --rebase` only when the user has set that as their config.
+
+### Communication discipline
+
+- Whenever you start a non-trivial task, **announce in one line** which files you're about to touch. This lets the user notice if another session is already on those files.
+- Whenever you finish a task, **list the files you actually modified** so the user (or another session) can pick up cleanly.
 
 ## Commands Worth Remembering
 
@@ -48,39 +108,57 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
 - For agent automation, prefer `migrate deploy` (non-interactive) over `migrate dev`.
 - `npm run db:migrate` reads `.env.local` automatically via `dotenv`.
 
-## Skills Available In Repo
+## Claude Code Agents (in `.claude/agents/`)
 
-- `.github/skills/template-builder/`
-- `.github/skills/render-engine/` — render engine, FFmpeg, RunPod, webhooks, R2
-- `.github/skills/captions-transcription/`
-- `.github/skills/ass-rendering/` — ASS file generation: line spacing, shadows, glow, animation presets, libass quirks
-- `.github/skills/ui-design/`
-- `.github/skills/app-hardening/`
-- `.github/skills/security-review/`
-- `.github/skills/admin-permissions/`
-- `.github/skills/content-library/` — MediaLibrary, MediaAsset (setTag, category, tags, setSequence), MediaAssetAccess, MediaAssetUsage, DataLibrary, DataCampaign, DataEntry, AccountLibraryCursor, builder bindings, selection rules (theme_sequence/oldest_used/least_used), generation pre-fill, recordLibraryUsage, offer-based automation, MediaAutocutJob batch autocut
-- `.github/skills/asset-rotation/` — rotation algorithm internals: auto mode (group discovery, category exclusion, per-account ordering), override mode (cursor), pickFromGroup, per-account isolation via MediaAssetUsage, rotation simulation, common bugs, extending to DataEntry
-- `.github/skills/description-generation/` — DescriptionJob, DescriptionPrompt, Claude/GPT generation, transcript/image inputs, admin prompt management
+Invoke via the Task tool with `subagent_type: "<name>"`. All agents below are project-scoped and live in `.claude/agents/`.
 
-## Agents Available In Repo
+- `toolbox-generalist` — default implementation agent for any code change in web/ or render-engine/
+- `feature-planner` — interview-based phased plan with commit boundaries; use before significant features
+- `db-migration-helper` — handles Prisma schema changes (the right subcommand cycle: edit → format → push/migrate → generate)
+- `pr-summarizer` — reads branch diff vs main, produces a clean PR title + description (run before `gh pr create`)
+- `code-reviewer` — read-only code review; produces a ranked report
+- `bug-hunter` — read-only bug hunt in a specific module
+- `security-auditor` — read-only OWASP paper audit on a surface
+- `ux-auditor` — read-only UX walkthrough of a module
+- `skill-manager` — maintenance of skills, agents, and CLAUDE.md (factual drift only)
 
-- `.github/agents/toolbox-generalist.agent.md` — default implementation agent
-- `.github/agents/feature-planner.agent.md` — interviews for product vision, produces a phased plan with commit boundaries and agent handoff
-- `.github/agents/skill-manager.agent.md` — maintains skills, agents, and repo docs
-- `.github/agents/code-reviewer.agent.md` — reviews code for quality, conventions, and regression risk; produces a report, does not implement
-- `.github/agents/security-auditor.agent.md` — OWASP paper audit: auth, permissions, inputs, secrets, uploads; produces a threat report, does not implement
-- `.github/agents/bug-hunter.agent.md` — hunts bugs, edge cases, and integration failures in a specific module; produces a ranked bug report, does not implement
-- `.github/agents/ux-auditor.agent.md` — walks through a module as a user, audits the full workflow experience, surfaces friction points and missing states; produces a ranked friction report, does not implement
+Built-in Claude Code agents (also via Task tool):
+- `Explore` — fast read-only search across the codebase; use when you need >3 lookups to map an area
+- `Plan` — software architecture planning for a specific change
+- `general-purpose` — fallback for open-ended research
 
-## Prompts Available In Repo
+## Claude Code Slash Commands (in `.claude/commands/`)
 
-Stored in `.github/prompts/` — invoke with `/` in Copilot chat:
+Invoke with `/<name>` in the chat:
 
-- `implement-feature` — feed a planner output into toolbox-generalist for phase-by-phase implementation
-- `review-feature` — trigger code-reviewer on a list of modified files
-- `hunt-bugs` — trigger bug-hunter on a specific module
-- `security-audit` — trigger security-auditor on a specific surface
-- `triage` — describe your task and get a routing recommendation (which agent, which order)
+- `/triage <description>` — get routing recommendation (which agent, which order)
+- `/implement-feature <plan>` — hand a planner output to toolbox-generalist for phase-by-phase implementation
+- `/review-feature <files>` — trigger code-reviewer on a file list
+- `/hunt-bugs <module>` — trigger bug-hunter on a module
+- `/security-audit <surface>` — trigger security-auditor on a specific surface
+
+## Reference docs (read on demand)
+
+Skills (`.claude/skills/<area>/SKILL.md`) — these auto-load when their description matches the current task; you don't need to load them manually:
+
+- `template-builder/` — builder UI, preview parity, group layout, template normalization
+- `render-engine/` — render engine, FFmpeg, RunPod, webhooks, R2
+- `captions-transcription/` — captions and transcription orchestration
+- `ass-rendering/` — ASS file generation: line spacing, shadows, glow, animation presets, libass quirks
+- `ui-design/` — design tokens, component primitives, layout conventions
+- `app-hardening/` — defensive coding patterns
+- `security-review/` — OWASP-style audit playbook
+- `admin-permissions/` — admin gating, impersonation, permission enforcement
+- `content-library/` — MediaLibrary, MediaAsset, setTag, category, tags, setSequence, MediaAssetAccess, MediaAssetUsage, DataLibrary, DataCampaign, DataEntry, AccountLibraryCursor, builder bindings, selection rules (theme_sequence/oldest_used/least_used), generation pre-fill, recordLibraryUsage, offer-based automation, MediaAutocutJob batch autocut
+- `asset-rotation/` — rotation algorithm internals: auto mode (group discovery, category exclusion, per-account ordering), override mode (cursor), pickFromGroup, per-account isolation via MediaAssetUsage, rotation simulation, common bugs
+- `description-generation/` — DescriptionJob, DescriptionPrompt, Claude/GPT generation, transcript/image inputs, admin prompt management
+
+File-scoped instructions (`.github/instructions/`):
+
+- `web.instructions.md` — Next.js, Prisma, NextAuth, API route conventions
+- `render-engine.instructions.md` — FastAPI, FFmpeg, worker, R2 conventions
+
+Repo overview: `.github/copilot-instructions.md` (still load-on-demand; not Claude-Code-specific despite the name).
 
 ## Validation Rule
 

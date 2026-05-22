@@ -17,7 +17,7 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
    - render-engine, FFmpeg, RunPod, storage pipeline, or webhook callbacks
    - UI and UX cleanup
 2. Read `.github/copilot-instructions.md` first, then the relevant file-scoped instructions in `.github/instructions/`.
-3. Use the matching skill in `.github/skills/` when the task falls into a repeated workflow.
+3. Use the matching skill in `.claude/skills/` when the task falls into a repeated workflow.
 4. Prefer the smallest fix that restores parity or behavior at the correct layer.
 
 ## Important Invariants
@@ -50,37 +50,41 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
 
 ## Skills Available In Repo
 
-- `.github/skills/template-builder/`
-- `.github/skills/render-engine/` — render engine, FFmpeg, RunPod, webhooks, R2
-- `.github/skills/captions-transcription/`
-- `.github/skills/ass-rendering/` — ASS file generation: line spacing, shadows, glow, animation presets, libass quirks
-- `.github/skills/ui-design/`
-- `.github/skills/app-hardening/`
-- `.github/skills/security-review/`
-- `.github/skills/admin-permissions/`
-- `.github/skills/content-library/` — MediaLibrary, MediaAsset (setTag, category, tags, setSequence), MediaAssetAccess, MediaAssetUsage, DataLibrary, DataCampaign, DataEntry, AccountLibraryCursor, builder bindings, selection rules (theme_sequence/oldest_used/least_used), generation pre-fill, recordLibraryUsage, offer-based automation, MediaAutocutJob batch autocut
-- `.github/skills/asset-rotation/` — rotation algorithm internals: auto mode (group discovery, category exclusion, per-account ordering), override mode (cursor), pickFromGroup, per-account isolation via MediaAssetUsage, rotation simulation, common bugs, extending to DataEntry
-- `.github/skills/description-generation/` — DescriptionJob, DescriptionPrompt, Codex/GPT generation, transcript/image inputs, admin prompt management
+- `.claude/skills/template-builder/`
+- `.claude/skills/render-engine/` — render engine, FFmpeg, RunPod, webhooks, R2
+- `.claude/skills/captions-transcription/`
+- `.claude/skills/ass-rendering/` — ASS file generation: line spacing, shadows, glow, animation presets, libass quirks
+- `.claude/skills/ui-design/`
+- `.claude/skills/app-hardening/`
+- `.claude/skills/security-review/`
+- `.claude/skills/admin-permissions/`
+- `.claude/skills/content-library/` — MediaLibrary, MediaAsset (setTag, category, tags, setSequence), MediaAssetAccess, MediaAssetUsage, DataLibrary, DataCampaign, DataEntry, AccountLibraryCursor, builder bindings, selection rules (theme_sequence/oldest_used/least_used), generation pre-fill, recordLibraryUsage, offer-based automation, MediaAutocutJob batch autocut
+- `.claude/skills/asset-rotation/` — rotation algorithm internals: auto mode (group discovery, category exclusion, per-account ordering), override mode (cursor), pickFromGroup, per-account isolation via MediaAssetUsage, rotation simulation, common bugs, extending to DataEntry
+- `.claude/skills/description-generation/` — DescriptionJob, DescriptionPrompt, Codex/GPT generation, transcript/image inputs, admin prompt management
 
 ## Agents Available In Repo
 
-- `.github/agents/toolbox-generalist.agent.md` — default implementation agent
-- `.github/agents/feature-planner.agent.md` — interviews for product vision, produces a phased plan with commit boundaries and agent handoff
-- `.github/agents/skill-manager.agent.md` — maintains skills, agents, and repo docs
-- `.github/agents/code-reviewer.agent.md` — reviews code for quality, conventions, and regression risk; produces a report, does not implement
-- `.github/agents/security-auditor.agent.md` — OWASP paper audit: auth, permissions, inputs, secrets, uploads; produces a threat report, does not implement
-- `.github/agents/bug-hunter.agent.md` — hunts bugs, edge cases, and integration failures in a specific module; produces a ranked bug report, does not implement
-- `.github/agents/ux-auditor.agent.md` — walks through a module as a user, audits the full workflow experience, surfaces friction points and missing states; produces a ranked friction report, does not implement
+Active agents live in `.claude/agents/` (Claude Code format). Legacy Copilot copies exist in `.github/agents/`.
 
-## Prompts Available In Repo
+- `toolbox-generalist` — default implementation agent for any code change
+- `feature-planner` — interviews for product vision, produces a phased plan with commit boundaries and agent handoff
+- `db-migration-helper` — handles Prisma schema changes (correct subcommand cycle)
+- `pr-summarizer` — reads branch diff vs main, produces clean PR title + description
+- `skill-manager` — maintains skills, agents, and repo docs
+- `code-reviewer` — reviews code for quality, conventions, regression risk; report only
+- `security-auditor` — OWASP paper audit; threat report only
+- `bug-hunter` — hunts bugs, edge cases, integration failures in a module; report only
+- `ux-auditor` — walks through a module as a user; friction report only
 
-Stored in `.github/prompts/` — invoke with `/` in Copilot chat:
+## Slash Commands
 
-- `implement-feature` — feed a planner output into toolbox-generalist for phase-by-phase implementation
-- `review-feature` — trigger code-reviewer on a list of modified files
-- `hunt-bugs` — trigger bug-hunter on a specific module
-- `security-audit` — trigger security-auditor on a specific surface
-- `triage` — describe your task and get a routing recommendation (which agent, which order)
+Active commands live in `.claude/commands/` (Claude Code). Legacy Copilot copies in `.github/prompts/`.
+
+- `/implement-feature` — feed a planner output into toolbox-generalist
+- `/review-feature` — trigger code-reviewer on a list of modified files
+- `/hunt-bugs` — trigger bug-hunter on a specific module
+- `/security-audit` — trigger security-auditor on a specific surface
+- `/triage` — describe your task and get a routing recommendation
 
 ## Validation Rule
 
