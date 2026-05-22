@@ -15,6 +15,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:setup": "prisma db push && prisma generate",
+    "db:backfill-plans": "dotenv -e .env.local -- tsx scripts/backfill-account-plans.ts",
     "db:import": "npx tsx scripts/import-postgres.mjs",
     "infra:up": "docker compose -f docker-compose.dev.yml up -d",
     "infra:down": "docker compose -f docker-compose.dev.yml down"
