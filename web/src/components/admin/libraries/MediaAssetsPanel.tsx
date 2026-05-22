@@ -372,7 +372,21 @@ export function MediaAssetsPanel({ library }: Props) {
       }, null);
     };
 
-    type GroupItem = { key: string; setTag: string | null; category: string | null; groupAssets: MediaAsset[]; accessibleCount: number; lastUsed: string | null; autoRank: number | null; cycleSize: number | null; isAccessible: boolean };
+    // Group creation date = MIN(createdAt) across accessible assets in the group.
+    // Mirrors the SQL MIN(ma."createdAt") group_created_at used as a tiebreaker so that
+    // among never-used groups the resolver picks oldest-uploaded first (upload order).
+    const getGroupCreatedAt = (groupAssets: MediaAsset[]) => {
+      const pool = accountFilter
+        ? groupAssets.filter((a) => a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))
+        : groupAssets;
+      return pool.reduce<string | null>((min, a) => {
+        if (!a.createdAt) return min;
+        if (!min) return a.createdAt;
+        return a.createdAt < min ? a.createdAt : min;
+      }, null);
+    };
+
+    type GroupItem = { key: string; setTag: string | null; category: string | null; groupAssets: MediaAsset[]; accessibleCount: number; lastUsed: string | null; groupCreatedAt: string | null; autoRank: number | null; cycleSize: number | null; isAccessible: boolean };
     const isAutoMode = seqState.length === 0;
 
     const allEntries: GroupItem[] = Array.from(groups.entries()).map(([key, groupAssets]) => {
@@ -384,7 +398,7 @@ export function MediaAssetsPanel({ library }: Props) {
       const accessibleCount = accountFilter
         ? groupAssets.filter((a) => !a.disabled && (a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))).length
         : groupAssets.filter((a) => !a.disabled).length;
-      return { key, setTag, category, groupAssets, accessibleCount, lastUsed: getLastUsed(groupAssets), autoRank: null, cycleSize: null, isAccessible };
+      return { key, setTag, category, groupAssets, accessibleCount, lastUsed: getLastUsed(groupAssets), groupCreatedAt: getGroupCreatedAt(groupAssets), autoRank: null, cycleSize: null, isAccessible };
     });
 
     const named = allEntries.filter((g) => g.setTag || g.category);
@@ -424,11 +438,19 @@ export function MediaAssetsPanel({ library }: Props) {
           if (a.lastUsed && !b.lastUsed) return 1;
           if (a.lastUsed && b.lastUsed && a.lastUsed !== b.lastUsed)
             return a.lastUsed < b.lastUsed ? -1 : 1;
-          // Numeric-aware setTag tiebreaker
+          // Tiebreaker: group creation date (oldest uploaded first).
+          // Mirrors the SQL ORDER BY sub2.group_created_at ASC NULLS LAST in the resolver.
+          if (a.groupCreatedAt && b.groupCreatedAt && a.groupCreatedAt !== b.groupCreatedAt)
+            return a.groupCreatedAt < b.groupCreatedAt ? -1 : 1;
+          if (a.groupCreatedAt && !b.groupCreatedAt) return -1;
+          if (!a.groupCreatedAt && b.groupCreatedAt) return 1;
+          // Final deterministic fallback: numeric-aware setTag, then category.
           const na = parseInt(a.setTag ?? "", 10);
           const nb = parseInt(b.setTag ?? "", 10);
           if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
-          return (a.setTag ?? "").localeCompare(b.setTag ?? "");
+          const setTagCmp = (a.setTag ?? "").localeCompare(b.setTag ?? "");
+          if (setTagCmp !== 0) return setTagCmp;
+          return (a.category ?? "").localeCompare(b.category ?? "");
         });
         let eligible: GroupItem[] = lastCategory ? remaining.filter((g) => g.category !== lastCategory) : remaining;
         if (eligible.length === 0) eligible = remaining;
