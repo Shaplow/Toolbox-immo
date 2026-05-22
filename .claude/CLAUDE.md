@@ -108,6 +108,21 @@ The following commands can destroy work the user (or another parallel session) h
 - For agent automation, prefer `migrate deploy` (non-interactive) over `migrate dev`.
 - `npm run db:migrate` reads `.env.local` automatically via `dotenv`.
 
+### Database backups — mandatory before production migrations
+
+**Rule: always run `npm run db:backup` immediately before any `npx prisma migrate deploy` on production.**
+
+| Goal | Command |
+|------|---------|
+| Backup DB to timestamped SQL file | `cd web && npm run db:backup` |
+
+- Reads `DATABASE_URL` from `.env.local` automatically (same dotenv-cli mechanism as `db:migrate`).
+- Writes to `web/backups/<YYYY-MM-DD_HH-mm-ss>_<dbName>.sql`.
+- Backups are **gitignored and local only** — never committed, never pushed.
+- Rotation: keeps the 20 most recent `.sql` files; older ones are deleted automatically.
+- If `pg_dump` is not installed: `brew install postgresql` (macOS) or `apt-get install -y postgresql-client` (Linux).
+- Exit code is non-zero on any failure (missing `pg_dump`, bad credentials, etc.) — safe to use in scripts.
+
 ## Claude Code Agents (in `.claude/agents/`)
 
 Invoke via the Task tool with `subagent_type: "<name>"`. All agents below are project-scoped and live in `.claude/agents/`.

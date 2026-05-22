@@ -21,6 +21,7 @@ export async function GET() {
         cursors: {
           include: { library: { select: { id: true, name: true, setSequence: true } } },
         },
+        client: { select: { id: true, name: true } },
       },
     });
     return NextResponse.json(accounts);

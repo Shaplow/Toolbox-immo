@@ -8,58 +8,63 @@ datasource db {
 }
 
 model User {
-  id           String           @id @default(cuid())
-  username     String?          @unique
-  email        String?          @unique
-  passwordHash String
-  name         String
-  role         String           @default("USER")
+  id                       String                @id @default(cuid())
+  username                 String?               @unique
+  email                    String?               @unique
+  passwordHash             String
+  name                     String
+  role                     String                @default("USER")
   /// JSON array of tool strings — ex: ["templates","captions"]
-  permissions  String           @default("[]")
-  createdAt    DateTime         @default(now())
-  templates    Template[]
-  listings     Listing[]
-  accesses     TemplateAccess[]
-  captionJobs    CaptionJob[]
-  captionPresets CaptionPreset[]
-  captionPresetAccesses CaptionPresetAccess[]
-  transcriptionJobs TranscriptionJob[]
-  descriptionJobs   DescriptionJob[]
-  coverFramePacks   CoverFramePack[]
+  permissions              String                @default("[]")
+  createdAt                DateTime              @default(now())
+  templates                Template[]
+  listings                 Listing[]
+  accesses                 TemplateAccess[]
+  captionJobs              CaptionJob[]
+  captionPresets           CaptionPreset[]
+  captionPresetAccesses    CaptionPresetAccess[]
+  transcriptionJobs        TranscriptionJob[]
+  descriptionJobs          DescriptionJob[]
+  coverFramePacks          CoverFramePack[]
+  defaultMonteurForRecipes ContentRecipe[]       @relation("RecipeDefaultMonteur")
+  defaultCmForRecipes      ContentRecipe[]       @relation("RecipeDefaultCm")
+  uploadedVersions         PublicationVersion[]  @relation("VersionUploader")
+  assignedAsMonteur        PublicationSlot[]     @relation("SlotMonteur")
+  assignedAsCm             PublicationSlot[]     @relation("SlotCm")
 }
 
 model CaptionJob {
-  id            String   @id @default(cuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status        String   @default("QUEUED") // QUEUED | PROCESSING | COMPLETED | FAILED
-  inputUrl      String?
-  inputKey      String?  // clé R2 de la vidéo source (supprimée après complétion)
-  outputUrl     String?
-  outputKey     String?  // clé R2 de l'output
-  runpodJobId   String?  @unique // ID job RunPod pour polling
-  errorMsg      String?  // message d'erreur lisible
-  config        String   @default("{}") // JSON sérialisé
-  srtContent    String?  // Contenu SRT utilisé pour la génération (pour regénérer)
-  srtFilename   String?  // Nom du fichier SRT/JSON d'origine (pour détecter format)
-  previewMode   Boolean  @default(false) // true = preview 6s, false = rendu complet
-  presetId      String?  // ID du preset utilisé
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      String   @default("QUEUED") // QUEUED | PROCESSING | COMPLETED | FAILED
+  inputUrl    String?
+  inputKey    String? // clé R2 de la vidéo source (supprimée après complétion)
+  outputUrl   String?
+  outputKey   String? // clé R2 de l'output
+  runpodJobId String?  @unique // ID job RunPod pour polling
+  errorMsg    String? // message d'erreur lisible
+  config      String   @default("{}") // JSON sérialisé
+  srtContent  String? // Contenu SRT utilisé pour la génération (pour regénérer)
+  srtFilename String? // Nom du fichier SRT/JSON d'origine (pour détecter format)
+  previewMode Boolean  @default(false) // true = preview 6s, false = rendu complet
+  presetId    String? // ID du preset utilisé
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 /// Preset de sous-titres sauvegardé (config complète + polices)
 model CaptionPreset {
-  id        String   @id @default(cuid())
+  id        String                @id @default(cuid())
   name      String
   /// null = preset global/builtin (visible par tous), sinon appartient à l'user
   userId    String?
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  isBuiltin Boolean  @default(false)
+  user      User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isBuiltin Boolean               @default(false)
   /// ConfigState JSON sérialisé (base, highlight, layout, effects, animation...)
-  config    String   @default("{}")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  config    String                @default("{}")
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
   accesses  CaptionPresetAccess[]
 }
 
@@ -87,23 +92,24 @@ model CaptionPrompt {
 }
 
 model Template {
-  id        String           @id @default(cuid())
-  name      String
-  client    String           @default("")
-  formats   String           @default("[]") // JSON array ["A3_LANDSCAPE", "A4_PORTRAIT"]
-  jsonData  String           @default("{}") // TemplateJSON sérialisé
+  id               String              @id @default(cuid())
+  name             String
+  client           String              @default("")
+  formats          String              @default("[]") // JSON array ["A3_LANDSCAPE", "A4_PORTRAIT"]
+  jsonData         String              @default("{}") // TemplateJSON sérialisé
   /// Type de contenu éditorial : "RPI" | "RVA4" | "RVA5" | "RTIPS" | "RPOD" | "REACT" | "RQR" | "" (vide = non défini)
-  contentType String         @default("")
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
-  userId    String
-  user              User             @relation(fields: [userId], references: [id])
-  listings          Listing[]
-  renders           Render[]
-  coverFramePacks   CoverFramePack[]
-  accesses          TemplateAccess[]
-  publicationSlots  PublicationSlot[]
-  scheduleRules     OfferScheduleRule[]
+  contentType      String              @default("")
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  userId           String
+  user             User                @relation(fields: [userId], references: [id])
+  listings         Listing[]
+  renders          Render[]
+  coverFramePacks  CoverFramePack[]
+  accesses         TemplateAccess[]
+  publicationSlots PublicationSlot[]
+  scheduleRules    OfferScheduleRule[]
+  contentRecipes   ContentRecipe[]
 }
 
 model FontAsset {
@@ -144,43 +150,43 @@ model Listing {
 }
 
 model Render {
-  id           String       @id @default(cuid())
-  listingId    String
-  templateId   String?
-  status       RenderStatus @default(PENDING)
+  id                String            @id @default(cuid())
+  listingId         String
+  templateId        String?
+  status            RenderStatus      @default(PENDING)
   /// Pipeline utilisé: image | video-local | video-runpod
-  pipeline     String?
+  pipeline          String?
   /// Étape détaillée pour le suivi UI / debug
-  stage        String?
+  stage             String?
   /// Détail court de progression (humain)
-  statusDetail String?
+  statusDetail      String?
   /// Progression approximative 0..1 pour l'UI
-  progress     Float?
-  pngUrl       String?
+  progress          Float?
+  pngUrl            String?
   /// URL vidéo finale (renders avec un VideoBlock — pipeline RunPod)
-  videoUrl     String?
+  videoUrl          String?
   /// ID du job RunPod (pour polling — null si pipeline Node.js)
-  runpodJobId  String?  @unique
-  errorMsg     String?
+  runpodJobId       String?           @unique
+  errorMsg          String?
   /// JSON map des assets de bibliothèque utilisés pour ce render
   /// { videoAssets: { blockId: assetId }, audioAssetId?: string, dataEntryId?: string, setSequencedLibraryIds?: string[] }
-  usedAssets   String   @default("{}")
+  usedAssets        String            @default("{}")
   /// Compte Instagram pour lequel ce render a été généré (optionnel)
-  accountId    String?
-  account      InstagramAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  accountId         String?
+  account           InstagramAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   /// Slot de calendrier auquel ce render est rattaché (optionnel)
-  publicationSlotId String? @unique
-  publicationSlot   PublicationSlot? @relation(fields: [publicationSlotId], references: [id], onDelete: SetNull)
-  createdAt    DateTime     @default(now())
-  startedAt    DateTime?
-  finishedAt   DateTime?
-  lastHeartbeatAt DateTime?
-  listing      Listing      @relation(fields: [listingId], references: [id])
-  template     Template?    @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  publicationSlotId String?           @unique
+  publicationSlot   PublicationSlot?  @relation(fields: [publicationSlotId], references: [id], onDelete: SetNull)
+  createdAt         DateTime          @default(now())
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  lastHeartbeatAt   DateTime?
+  listing           Listing           @relation(fields: [listingId], references: [id])
+  template          Template?         @relation(fields: [templateId], references: [id], onDelete: SetNull)
   /// Job de transcription déclenché automatiquement après ce render (si captionAutoConfig activé)
-  transcriptionJob TranscriptionJob?
+  transcriptionJob  TranscriptionJob?
   /// Pack de frames cover préparé automatiquement après ce render (si coverAutoConfig activé)
-  coverFramePack CoverFramePack?
+  coverFramePack    CoverFramePack?
 }
 
 enum RenderStatus {
@@ -191,55 +197,55 @@ enum RenderStatus {
 }
 
 model TranscriptionJob {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status          String   @default("QUEUED") // QUEUED | PROCESSING | COMPLETED | FAILED
-  inputKey        String?  // clé R2 du fichier audio source
-  inputFilename   String?  // nom original pour l'affichage
-  model           String   @default("turbo")  // ex: "turbo", "large-v3"
-  language        String   @default("fr")
-  enableDiarization Boolean @default(false)  // demande de segmentation par speaker
-  hasDiarization  Boolean  @default(false)   // résultat effectif (false si pas de HF_TOKEN)
-  runpodJobId     String?  @unique // ID job RunPod pour polling
-  outputJsonKey   String?  // clé R2 du JSON segments brut (persistant)
-  segmentCount    Int?
-  duration        Float?   // durée audio en secondes
-  errorMsg        String?
+  id                String           @id @default(cuid())
+  userId            String
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status            String           @default("QUEUED") // QUEUED | PROCESSING | COMPLETED | FAILED
+  inputKey          String? // clé R2 du fichier audio source
+  inputFilename     String? // nom original pour l'affichage
+  model             String           @default("turbo") // ex: "turbo", "large-v3"
+  language          String           @default("fr")
+  enableDiarization Boolean          @default(false) // demande de segmentation par speaker
+  hasDiarization    Boolean          @default(false) // résultat effectif (false si pas de HF_TOKEN)
+  runpodJobId       String?          @unique // ID job RunPod pour polling
+  outputJsonKey     String? // clé R2 du JSON segments brut (persistant)
+  segmentCount      Int?
+  duration          Float? // durée audio en secondes
+  errorMsg          String?
   /// Render à l'origine de ce job (si déclenché automatiquement via captionAutoConfig)
-  renderId        String?  @unique
-  render          Render?  @relation(fields: [renderId], references: [id], onDelete: SetNull)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  descriptionJobs DescriptionJob[]
+  renderId          String?          @unique
+  render            Render?          @relation(fields: [renderId], references: [id], onDelete: SetNull)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  descriptionJobs   DescriptionJob[]
 }
 
 model CoverFramePack {
-  id                  String   @id @default(cuid())
+  id                  String                @id @default(cuid())
   userId              String
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  renderId            String   @unique
-  render              Render   @relation(fields: [renderId], references: [id], onDelete: Cascade)
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  renderId            String                @unique
+  render              Render                @relation(fields: [renderId], references: [id], onDelete: Cascade)
   templateId          String?
-  template            Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  status              String   @default("QUEUED") // QUEUED | PROCESSING | READY | SELECTED | FAILED
+  template            Template?             @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  status              String                @default("QUEUED") // QUEUED | PROCESSING | READY | SELECTED | FAILED
   sourceVideoUrl      String?
   duration            Float?
-  frameCount          Int      @default(36)
+  frameCount          Int                   @default(36)
   /// JSON string[] — timestamps déjà proposés, pour les tirages suivants.
-  usedTimestamps      String   @default("[]")
+  usedTimestamps      String                @default("[]")
   /// JSON — snapshot de la config cover au moment de la génération.
-  config              String   @default("{}")
+  config              String                @default("{}")
   /// JSON string[] — groupes de blocs utilisés comme overlay texte cover.
-  overlayGroupIds     String   @default("[]")
-  overlayOffsetX      Float    @default(0)
-  overlayOffsetY      Float    @default(0)
+  overlayGroupIds     String                @default("[]")
+  overlayOffsetX      Float                 @default(0)
+  overlayOffsetY      Float                 @default(0)
   selectedCandidateId String?
   finalCoverUrl       String?
   finalCoverKey       String?
   errorMsg            String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
   candidates          CoverFrameCandidate[]
 
   @@index([userId, status])
@@ -247,13 +253,13 @@ model CoverFramePack {
 }
 
 model CoverFrameCandidate {
-  id        String   @id @default(cuid())
+  id        String         @id @default(cuid())
   packId    String
   pack      CoverFramePack @relation(fields: [packId], references: [id], onDelete: Cascade)
   timestamp Float
   imageUrl  String
   imageKey  String?
-  createdAt DateTime @default(now())
+  createdAt DateTime       @default(now())
 
   @@index([packId])
 }
@@ -262,7 +268,7 @@ model CoverFrameCandidate {
 model DescriptionPrompt {
   id        String           @id @default(cuid())
   name      String
-  prompt    String           // Instructions pour le LLM
+  prompt    String // Instructions pour le LLM
   isActive  Boolean          @default(true)
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
@@ -271,40 +277,40 @@ model DescriptionPrompt {
 
 /// Résultat d'une génération de description à partir d'un SRT/JSON
 model DescriptionJob {
-  id               String             @id @default(cuid())
-  userId           String
-  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status           String             @default("COMPLETED") // COMPLETED | FAILED
+  id              String             @id @default(cuid())
+  userId          String
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status          String             @default("COMPLETED") // COMPLETED | FAILED
   /// "upload" = fichier uploadé, "transcription" = TranscriptionJob existant
-  inputType        String             @default("upload")
-  inputFilename    String?            // nom du fichier SRT/JSON original
-  transcriptionId  String?
-  transcription    TranscriptionJob?  @relation(fields: [transcriptionId], references: [id], onDelete: SetNull)
-  promptId         String?
-  prompt           DescriptionPrompt? @relation(fields: [promptId], references: [id], onDelete: SetNull)
+  inputType       String             @default("upload")
+  inputFilename   String? // nom du fichier SRT/JSON original
+  transcriptionId String?
+  transcription   TranscriptionJob?  @relation(fields: [transcriptionId], references: [id], onDelete: SetNull)
+  promptId        String?
+  prompt          DescriptionPrompt? @relation(fields: [promptId], references: [id], onDelete: SetNull)
   /// Snapshot du texte du prompt au moment de la génération
-  promptSnapshot   String?
-  personalization  String?            // Texte libre injecté dans le prompt
-  model            String             @default("claude") // "claude" | "gpt"
-  result           String?            // Texte généré
-  errorMsg         String?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  promptSnapshot  String?
+  personalization String? // Texte libre injecté dans le prompt
+  model           String             @default("claude") // "claude" | "gpt"
+  result          String? // Texte généré
+  errorMsg        String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 }
 
 // ─── Content Library ─────────────────────────────────────────────────────────
 
 /// Bibliothèque de médias (vidéos rush ou musiques). Gérée par les admins.
 model MediaLibrary {
-  id          String       @id @default(cuid())
-  name        String
+  id             String                 @id @default(cuid())
+  name           String
   /// "video" | "audio"
-  type        String
+  type           String
   /// JSON string[] — tags de type template : ["RPI","RTIPS","RPOD"]
-  tags        String       @default("[]")
-  description String?
+  tags           String                 @default("[]")
+  description    String?
   /// JSON string[] — ordre explicite des setTags pour la rotation : ["tenue1-set1","tenue2-set1","tenue1-set2"]
-  setSequence String       @default("[]")
+  setSequence    String                 @default("[]")
   /// JSON Record<string,string> — setTag → famille : {"tenue1-set1":"tenue1","tenue1-set2":"tenue1","tenue2-set1":"tenue2"}
   /// En mode auto, tous les setTags d'une même famille sont exclus ensemble après utilisation.
   /// Portée de la rotation :
@@ -312,70 +318,71 @@ model MediaLibrary {
   ///   dans la bibliothèque indépendamment des autres.
   /// - "shared" : un seul curseur partagé entre tous les comptes. Tous les comptes voient le
   ///   même contenu à chaque génération (utile pour une bibliothèque commune).
-  rotationScope String     @default("per_account")
+  rotationScope  String                 @default("per_account")
   /// JSON { key: string; label: string; type: "text" | "number" | "url" }[] — champs de
   /// métadonnées structurées pouvant être remplis sur chaque asset de cette bibliothèque.
-  metadataSchema String    @default("[]")
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  assets      MediaAsset[]
+  metadataSchema String                 @default("[]")
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  assets         MediaAsset[]
   accountCursors AccountLibraryCursor[]
   autocutBatches MediaAutocutBatch[]
   autocutJobs    MediaAutocutJob[]
+  contentRecipes ContentRecipe[]
 }
 
 /// Un fichier média dans une bibliothèque (stocké sur R2).
 model MediaAsset {
-  id         String       @id @default(cuid())
-  libraryId  String
-  library    MediaLibrary @relation(fields: [libraryId], references: [id], onDelete: Cascade)
-  filename   String
-  r2Key      String       @unique
-  url        String
+  id          String             @id @default(cuid())
+  libraryId   String
+  library     MediaLibrary       @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  filename    String
+  r2Key       String             @unique
+  url         String
   /// "video/mp4" | "audio/mpeg" etc.
-  mimeType   String
+  mimeType    String
   /// Durée en secondes (remplie au probe après upload)
-  duration   Float?
+  duration    Float?
   /// JSON string[] — tags métier associés au fichier : ["RPI","RTIPS","RPOD"]
-  tags       String    @default("[]")
+  tags        String             @default("[]")
   /// Clé de groupement pour les paires intro/outro (même lieu, même tenue).
   /// Les assets partageant le même setTag sont sélectionnés ensemble lors d'une résolution theme_sequence.
-  setTag     String?
+  setTag      String?
   /// Catégorie de rotation : stockée par asset (permet le même nom de set dans plusieurs catégories).
   /// L'unité de rotation est le couple (category, setTag). Null = pas de catégorie assignée.
-  category   String?
+  category    String?
   /// Nombre de fois utilisé dans une génération (agrégat global)
-  usageCount Int          @default(0)
+  usageCount  Int                @default(0)
   /// Dernier timestamp d'utilisation global (agrégat de tous comptes)
-  lastUsedAt DateTime?
+  lastUsedAt  DateTime?
   /// Désactivé de la rotation : reste dans la bibliothèque mais jamais suggéré
-  disabled   Boolean      @default(false)
+  disabled    Boolean            @default(false)
   /// JSON Record<string, string | number | null> — valeurs de métadonnées structurées
   /// définies par le MediaLibrary.metadataSchema de la bibliothèque parente.
-  metadata   String       @default("{}")
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
-  editJobs   MediaEditJob[]
+  metadata    String             @default("{}")
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  editJobs    MediaEditJob[]
   /// Entrées de contrôle d'accès (0 entrées = global/tous comptes)
-  accesses   MediaAssetAccess[]
+  accesses    MediaAssetAccess[]
   /// Suivi d'utilisation par compte
-  usages     MediaAssetUsage[]
+  usages      MediaAssetUsage[]
   autocutJobs MediaAutocutJob[]
 }
 
 /// Job d'édition d'un rush (trim, audio fix). Traitement RunPod, destructif (écrase l'original).
 model MediaEditJob {
-  id         String     @id @default(cuid())
+  id         String           @id @default(cuid())
   assetId    String
-  asset      MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  asset      MediaAsset       @relation(fields: [assetId], references: [id], onDelete: Cascade)
   /// "pending" | "processing" | "done" | "failed"
-  status     String     @default("pending")
+  status     String           @default("pending")
   /// JSON MediaEditParams : { trimStart?, trimEnd?, mixToMono?, normalize?, gainDb? }
-  params     String     @default("{}")
-  runpodId   String?    @unique
+  params     String           @default("{}")
+  runpodId   String?          @unique
   errorMsg   String?
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
   autocutJob MediaAutocutJob?
 
   /// Accélère le filtre status actif sur les includes (/assets et /assets/active-jobs)
@@ -473,42 +480,47 @@ model DataCampaign {
 
 /// Une fiche de données texte (une ligne de l'Excel d'origine).
 model DataEntry {
-  id          String       @id @default(cuid())
+  id          String            @id @default(cuid())
   campaignId  String
-  campaign    DataCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign    DataCampaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   /// JSON — champs libres selon le templateType (ex: {quartier, prix_m2, evo_5ans_pct})
-  fields      String       @default("{}")
+  fields      String            @default("{}")
   /// Identifiant de set (regroupe les fiches d'un même thème/lot).
   setTag      String?
   /// Famille de sets — utilisé pour l'exclusion consécutive en rotation auto.
   category    String?
-  usageCount  Int          @default(0)
+  usageCount  Int               @default(0)
   lastUsedAt  DateTime?
   /// Remis à false au reset de cycle. Permet la règle "pas encore utilisé ce cycle".
-  usedInCycle Boolean      @default(false)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  usedInCycle Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
   accesses    DataEntryAccess[]
   usages      DataEntryUsage[]
 }
 
 /// Compte Instagram client géré par l'admin (pas de login propre dans l'app).
 model InstagramAccount {
-  id        String   @id @default(cuid())
-  name      String
+  id               String                 @id @default(cuid())
+  name             String
   /// Handle Instagram sans le @
-  handle    String   @unique
+  handle           String                 @unique
   /// "ESSENTIEL" | "CONFIRME" | "CEO"
-  offre     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  cursors            AccountLibraryCursor[]
-  renders            Render[]
-  publicationSlots   PublicationSlot[]
-  assetAccesses      MediaAssetAccess[]
-  assetUsages        MediaAssetUsage[]
-  entryAccesses      DataEntryAccess[]
-  entryUsages        DataEntryUsage[]
+  offre            String
+  clientId         String?
+  client           Client?                @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  cursors          AccountLibraryCursor[]
+  renders          Render[]
+  publicationSlots PublicationSlot[]
+  assetAccesses    MediaAssetAccess[]
+  assetUsages      MediaAssetUsage[]
+  entryAccesses    DataEntryAccess[]
+  entryUsages      DataEntryUsage[]
+  accountPlans     AccountPlan[]
+
+  @@index([clientId])
 }
 
 /// Contrôle d'accès d'une fiche de données par compte.
@@ -562,20 +574,20 @@ model MediaAssetUsage {
 /// Curseur de position dans la séquence de thèmes d'une bibliothèque, par compte Instagram.
 /// Clé composite unique (accountId, libraryId) — chaque compte avance indépendamment.
 model AccountLibraryCursor {
-  id              String           @id @default(cuid())
-  accountId       String
-  account         InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  libraryId       String
-  library         MediaLibrary     @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  id               String           @id @default(cuid())
+  accountId        String
+  account          InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  libraryId        String
+  library          MediaLibrary     @relation(fields: [libraryId], references: [id], onDelete: Cascade)
   /// Index courant dans MediaLibrary.setSequence (mode override uniquement)
-  cursor          Int              @default(0)
+  cursor           Int              @default(0)
   /// Dernier setTag utilisé — permet d'éviter deux fois le même groupe de suite (mode auto et override)
-  lastUsedSetTag  String?
+  lastUsedSetTag   String?
   /// Dernière catégorie utilisée — pour l'exclusion famille en mode auto (deux sets de même catégorie ne se suivent pas)
   lastUsedCategory String?
-  lastAdvancedAt  DateTime?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  lastAdvancedAt   DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   @@unique([accountId, libraryId])
 }
@@ -595,21 +607,24 @@ model Offer {
 /// Règle de planification par offre : 1 règle = 1 template, 1 jour, 1 heure.
 /// Exemple : offre=ESSENTIEL, dayOfWeek=1 (Lundi), publishTime="19:00", templateId="cld..."
 model OfferScheduleRule {
-  id          String    @id @default(cuid())
+  id           String    @id @default(cuid())
   /// "ESSENTIEL" | "CONFIRME" | "CEO" | "COMPTE_AGENCE"
-  offre       String
+  offre        String
   /// Jour ISO : 1=Lundi, 2=Mardi … 7=Dimanche
-  dayOfWeek   Int
+  dayOfWeek    Int
   /// Heure cible au format "HH:MM" (ex: "19:00")
-  publishTime String
+  publishTime  String
   /// Type de contenu — déduit automatiquement de Template.contentType lors de la création
-  contentType String
+  contentType  String
   /// Template lié (source du type de contenu)
-  templateId  String?
-  template    Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  templateId   String?
+  template     Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  isActive     Boolean   @default(true)
+  /// Marqué comme obsolète (remplacé par AccountPlan + ContentRecipe)
+  deprecated   Boolean   @default(false)
+  deprecatedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@unique([offre, dayOfWeek, publishTime, contentType])
   @@index([offre])
@@ -619,38 +634,150 @@ model OfferScheduleRule {
 
 /// Slot réel dans le calendrier opérationnel pour un compte Instagram donné.
 model PublicationSlot {
-  id          String           @id @default(cuid())
-  accountId   String
-  account     InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  id                String               @id @default(cuid())
+  accountId         String
+  account           InstagramAccount     @relation(fields: [accountId], references: [id], onDelete: Cascade)
   /// Date et heure cible de publication (UTC)
-  scheduledAt DateTime
+  scheduledAt       DateTime
   /// Type de contenu : "RPI" | "RVA4" | "RVA5" | "RTIPS" | "RPOD" | "REACT" | "RQR"
-  contentType String
+  contentType       String
   /// "TO_DO" | "IN_PROGRESS" | "READY" | "CHECKING" | "DONE"
-  status      String           @default("TO_DO")
-  title       String?
+  status            String               @default("TO_DO")
+  title             String?
   /// Texte de la légende Instagram (pour la CM)
-  caption     String?
+  caption           String?
   /// Champs libres saisis par l'utilisateur (JSON Record<string, string>)
   /// ex: {"adresse":"12 rue ...","prix":"350 000 €","propriétaire":"Dupont"}
-  fields      String           @default("{}")
+  fields            String               @default("{}")
   /// Noms des champs définis par l'admin ou l'utilisateur (JSON string[])
   /// ex: ["adresse","prix","propriétaire"]
-  fieldSchema String           @default("[]")
+  fieldSchema       String               @default("[]")
   /// Template lié (optionnel — peut être déterminé après création du slot)
-  templateId  String?
-  template    Template?        @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  templateId        String?
+  template          Template?            @relation(fields: [templateId], references: [id], onDelete: SetNull)
   /// Render final rattaché au slot (relation inverse de Render.publicationSlotId)
-  render      Render?
+  render            Render?
   /// true = créé automatiquement par le moteur de génération / cron
-  isAuto      Boolean          @default(false)
-  notes       String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  isAuto            Boolean              @default(false)
+  notes             String?
+  /// Monteur assigné à ce slot
+  assigneeMonteurId String?
+  assigneeMonteur   User?                @relation("SlotMonteur", fields: [assigneeMonteurId], references: [id], onDelete: SetNull)
+  /// Community manager assigné à ce slot
+  assigneeCmId      String?
+  assigneeCm        User?                @relation("SlotCm", fields: [assigneeCmId], references: [id], onDelete: SetNull)
+  /// Recipe de contenu associée à ce slot
+  recipeId          String?
+  recipe            ContentRecipe?       @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  /// Version courante sélectionnée (parmi les versions uploadées)
+  currentVersionId  String?              @unique
+  currentVersion    PublicationVersion?  @relation("SlotCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  /// Toutes les versions uploadées pour ce slot
+  versions          PublicationVersion[] @relation("SlotVersions")
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
   @@index([accountId, scheduledAt])
   @@index([status, scheduledAt])
   @@index([contentType, scheduledAt])
+  @@index([assigneeMonteurId])
+  @@index([assigneeCmId])
+  @@index([recipeId])
+}
+
+// ─── Clients ─────────────────────────────────────────────────────────────────
+
+/// Client final (agence ou agent immobilier) regroupant un ou plusieurs comptes Instagram.
+model Client {
+  id          String             @id @default(cuid())
+  name        String
+  contactName String?
+  email       String?
+  phone       String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  accounts    InstagramAccount[]
+}
+
+// ─── Content Recipes ──────────────────────────────────────────────────────────
+
+/// Recette de contenu : décrit comment produire un type de contenu (template, lib, besoins).
+model ContentRecipe {
+  id                       String            @id @default(cuid())
+  /// Code métier unique : "RPI", "RTIPS", "VISITE_PERSO"…
+  code                     String            @unique
+  /// Libellé humain affiché dans l'UI
+  label                    String
+  /// "auto_template" | "manual_rushes" | "external_upload"
+  source                   String
+  templateId               String?
+  template                 Template?         @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  libraryId                String?
+  library                  MediaLibrary?     @relation(fields: [libraryId], references: [id], onDelete: SetNull)
+  /// "preFilled" | "autoGenerate" | "manualWrite" | "none"
+  needsDescription         String            @default("none")
+  /// "auto" | "manualSelect" | "none"
+  needsCover               String            @default("none")
+  needsCaptions            Boolean           @default(false)
+  needsClientValidation    Boolean           @default(false)
+  defaultAssigneeMonteurId String?
+  defaultAssigneeMonteur   User?             @relation("RecipeDefaultMonteur", fields: [defaultAssigneeMonteurId], references: [id], onDelete: SetNull)
+  defaultAssigneeCmId      String?
+  defaultAssigneeCm        User?             @relation("RecipeDefaultCm", fields: [defaultAssigneeCmId], references: [id], onDelete: SetNull)
+  notes                    String?
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+  publicationSlots         PublicationSlot[]
+  accountPlans             AccountPlan[]
+}
+
+// ─── Account Plans ────────────────────────────────────────────────────────────
+
+/// Plan de publication récurrent d'un compte : un créneau hebdomadaire pour une recipe donnée.
+model AccountPlan {
+  id          String           @id @default(cuid())
+  accountId   String
+  account     InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  recipeId    String
+  recipe      ContentRecipe    @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  /// Jour ISO : 1=Lundi … 7=Dimanche
+  dayOfWeek   Int
+  /// Heure cible au format "HH:MM" (ex: "19:00")
+  publishTime String
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([accountId, dayOfWeek, publishTime, recipeId])
+  @@index([accountId])
+  @@index([dayOfWeek])
+}
+
+// ─── Publication Versions ─────────────────────────────────────────────────────
+
+/// Version d'un fichier uploadé pour un slot de publication.
+/// Chaque upload crée une nouvelle version numérotée ; la version active est pointée par PublicationSlot.currentVersionId.
+model PublicationVersion {
+  id               String           @id @default(cuid())
+  slotId           String
+  slot             PublicationSlot  @relation("SlotVersions", fields: [slotId], references: [id], onDelete: Cascade)
+  versionNumber    Int
+  /// Clé R2 déterministe : "publications/<slotId>/versions/<n>.<ext>"
+  r2Key            String           @unique
+  fileUrl          String
+  fileName         String
+  fileSizeBytes    Int?
+  mimeType         String
+  durationSec      Float?
+  uploadedByUserId String
+  uploadedBy       User             @relation("VersionUploader", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+  notes            String?
+  createdAt        DateTime         @default(now())
+  /// Slot qui pointe cette version comme courante (relation inverse de PublicationSlot.currentVersionId)
+  currentForSlot   PublicationSlot? @relation("SlotCurrentVersion")
+
+  @@unique([slotId, versionNumber])
+  @@index([slotId])
 }
 
 // ─── Pod On-Demand state ─────────────────────────────────────────────────────
@@ -659,18 +786,18 @@ model PublicationSlot {
 /// Persiste le statut et l'URL FastAPI du pod pour éviter les start/stop concurrents.
 model PodState {
   /// Toujours "singleton" — une seule ligne en DB.
-  id        String    @id @default("singleton")
+  id             String    @id @default("singleton")
   /// "stopped" | "starting" | "running" | "stopping"
-  status    String    @default("stopped")
+  status         String    @default("stopped")
   /// ID du pod RunPod actuel (créé dynamiquement depuis un template).
   /// Stocké ici pour survivre aux redémarrages de l'app web.
-  podId     String?
+  podId          String?
   /// URL de base de la FastAPI du pod (ex: https://abc123-8080.proxy.runpod.net)
-  podUrl    String?
+  podUrl         String?
   /// Timestamp du dernier job dispatché vers le pod (pour le timer d'inactivité)
-  lastJobAt     DateTime?
+  lastJobAt      DateTime?
   /// Nombre de jobs en cours sur ce pod (dispatché mais webhook pas encore reçu).
   /// Le pod n'est stoppé que quand activeJobCount = 0 ET idle depuis IDLE_MINUTES.
   activeJobCount Int       @default(0)
-  updatedAt     DateTime  @updatedAt
+  updatedAt      DateTime  @updatedAt
 }
