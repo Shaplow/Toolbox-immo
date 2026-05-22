@@ -25,7 +25,7 @@ type Client = {
 export default function AdminClientDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const clientId = params.id;
+  const clientId = params?.id ?? "";
 
   const [client, setClient] = useState<Client | null>(null);
   const [allAccounts, setAllAccounts] = useState<AccountStub[]>([]);

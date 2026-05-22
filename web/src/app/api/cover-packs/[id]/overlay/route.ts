@@ -37,7 +37,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   const { width, height } = await getCoverOverlayCanvasDimensions(id);
   const png = await renderPNG(html, width, height, 1, true);
 
-  return new NextResponse(png, {
+  return new NextResponse(new Uint8Array(png), {
     headers: {
       "Content-Type": "image/png",
       "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
