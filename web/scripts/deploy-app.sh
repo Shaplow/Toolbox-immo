@@ -38,7 +38,12 @@ else
   echo "$PKG_HASH_CURRENT" > "$PKG_HASH_FILE"
 fi
 
-# ── 2. Prisma (sans seed auto) ─────────────────────────────────────────────
+# ── 2a. Backup PostgreSQL (filet de sécurité avant migration) ──────────────
+echo ""
+echo "▶ 2/4  PostgreSQL — backup avant migration..."
+npm run db:backup
+
+# ── 2b. Prisma (sans seed auto) ────────────────────────────────────────────
 echo ""
 echo "▶ 2/4  Prisma — migrations PostgreSQL (sans seed)..."
 ./node_modules/.bin/prisma migrate deploy
