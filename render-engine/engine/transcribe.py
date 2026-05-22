@@ -85,7 +85,7 @@ def _apply_vad_trim(
     segments: list[dict[str, Any]],
     *,
     sample_rate: int = 16000,
-    speech_pad_ms: int = 150,
+    speech_pad_ms: int = 80,
 ) -> list[dict[str, Any]]:
     """
     Post-processing VAD : clippe les timestamps de fin des mots et segments
@@ -138,7 +138,6 @@ def _apply_vad_trim(
         for ts in speech_ts
     ]
 
-    pad_s = speech_pad_ms / 1000.0
     trimmed_count = 0
 
     for seg in segments:
@@ -158,21 +157,24 @@ def _apply_vad_trim(
             continue
 
         last_speech_end = max(e for _, e in relevant)
-        cap = last_speech_end + pad_s
+        cap = last_speech_end  # padding déjà inclus dans speech_pad_ms de silero
 
-        last_word = words[-1]
-        if last_word["end"] > cap + 0.05:  # 50ms de tolérance
-            old_end = last_word["end"]
-            last_word["end"] = round(cap, 3)
-            trimmed_count += 1
-            print(
-                f"[transcribe] VAD trim : mot «{last_word.get('word', '?')}» "
-                f"{old_end:.3f}s → {last_word['end']:.3f}s",
-                flush=True,
-            )
+        for word in words:
+            if word["end"] > cap + 0.03:  # 30ms de tolérance
+                if cap < word["start"]:
+                    # Mot entièrement hors zone VAD — cas extrême, on ne touche pas
+                    continue
+                old_end = word["end"]
+                word["end"] = round(max(cap, word["start"]), 3)
+                trimmed_count += 1
+                print(
+                    f"[transcribe] VAD trim : mot «{word.get('word', '?')}» "
+                    f"{old_end:.3f}s → {word['end']:.3f}s",
+                    flush=True,
+                )
 
-        if seg_end > cap + 0.05:
-            seg["end"] = round(min(cap, last_word["end"]), 3)
+        if seg_end > cap + 0.03:
+            seg["end"] = round(min(cap, words[-1]["end"]), 3)
 
     if trimmed_count > 0:
         print(f"[transcribe] VAD : {trimmed_count} mots finaux clippés au total", flush=True)

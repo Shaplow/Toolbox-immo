@@ -73,6 +73,13 @@ print('[build] downloading alignment model (fr)...', flush=True); \
 whisperx.load_align_model(language_code='fr', device='cpu'); \
 print('[build] models cached.', flush=True)"
 
+# Pre-bake silero-VAD — évite un torch.hub.load depuis internet au runtime
+RUN python -c "\
+import torch; \
+print('[build] downloading silero-VAD...', flush=True); \
+torch.hub.load('snakers4/silero-vad', model='silero_vad', trust_repo=True); \
+print('[build] silero-VAD cached.', flush=True)"
+
 # Code source — après les modèles pour ne pas invalider leur couche cache
 COPY . .
 
