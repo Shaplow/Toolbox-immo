@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState, type ReactNode } from "react";
-import { Home, List, Users, Library, LogOut, CalendarDays, Zap, Building2, Layers } from "lucide-react";
+import { Home, List, Users, Library, LogOut, CalendarDays, Zap, Building2, Layers, LayoutGrid } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { TOOL_META, TOOL_ORDER } from "@/lib/toolMeta";
 
@@ -13,6 +13,8 @@ type NavItem = {
   label: string;
   icon: ReactNode;
   disabled?: boolean;
+  /** Si true, l'item n'est actif que sur correspondance exacte de l'URL (pas startsWith). */
+  exact?: boolean;
 };
 
 type NavSection = {
@@ -70,7 +72,10 @@ export function AppNav({
         },
         {
           title: "Outils",
-          items: TOOL_ORDER.map((key) => toolNavItem(key)),
+          items: [
+            { href: "/tools", label: "Tous les outils", icon: <LayoutGrid size={16} />, exact: true },
+            ...TOOL_ORDER.map((key) => toolNavItem(key)),
+          ],
         },
         {
           title: "Suivi",
@@ -97,6 +102,7 @@ export function AppNav({
         {
           title: "Outils",
           items: [
+            { href: "/tools", label: "Tous les outils", icon: <LayoutGrid size={16} />, exact: true },
             ...(hasTemplates ? [toolNavItem("templates")] : []),
             ...(hasTranscription ? [toolNavItem("transcription")] : []),
             ...(hasCaptions ? [toolNavItem("captions")] : []),
@@ -172,9 +178,12 @@ export function AppNav({
                 </p>
               )}
               <div className="space-y-1">
-                {items.map(({ href, label, icon, disabled }) => {
+                {items.map(({ href, label, icon, disabled, exact }) => {
                   const currentPath = pathname ?? "";
-                  const active = !disabled && (currentPath === href || currentPath.startsWith(`${href}/`));
+                  const active = !disabled && (
+                    currentPath === href ||
+                    (!exact && currentPath.startsWith(`${href}/`))
+                  );
                   if (disabled) {
                     return (
                       <span
