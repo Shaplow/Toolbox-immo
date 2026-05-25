@@ -22,6 +22,7 @@ import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canMarkPublished } from "@/lib/permissions/publications";
 import { toUserRole } from "@/lib/permissions/role";
 import { logActivity } from "@/lib/publications/activity";
+import { canTransition } from "@/lib/publications/transitions";
 
 /** Hôtes Instagram autorisés pour l'URL de publication. */
 const ALLOWED_INSTAGRAM_HOSTS = ["www.instagram.com", "instagram.com"] as const;
@@ -59,6 +60,18 @@ export async function POST(req: NextRequest, { params }: Params) {
   // qu'il n'a pas la permission de marquer comme publié.
   if (!canMarkPublished({ id: userId, role }, slot)) {
     return NextResponse.json({ error: "Permission insuffisante pour marquer ce slot comme publié" }, { status: 403 });
+  }
+
+  // L5 — Vérification de transition : seul ADMIN peut passer depuis n'importe quel statut.
+  // CM ne peut publier que depuis SCHEDULED (statut attendu avant publication IG).
+  // L'ADMIN bypass la matrice (canTransition retourne true pour ADMIN vers tout statut).
+  if (!canTransition(slot.status, "PUBLISHED", role)) {
+    return NextResponse.json(
+      {
+        error: `Transition non autorisée : impossible de passer de "${slot.status}" à "PUBLISHED" pour le rôle "${role}"`,
+      },
+      { status: 400 }
+    );
   }
 
   let rawBody: unknown;

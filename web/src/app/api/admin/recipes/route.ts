@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
 const VALID_SOURCES = ["auto_template", "manual_rushes", "external_upload"] as const;
@@ -8,8 +8,8 @@ const VALID_NEEDS_COVER = ["auto", "manualSelect", "none"] as const;
 
 // GET /api/admin/recipes — liste toutes les ContentRecipe
 export async function GET(_req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") {
+  const ctx = await getUserContext();
+  if (!ctx || ctx.actualUser.role !== "ADMIN") {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -26,8 +26,8 @@ export async function GET(_req: NextRequest) {
 
 // POST /api/admin/recipes — création manuelle d'une ContentRecipe
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") {
+  const ctx = await getUserContext();
+  if (!ctx || ctx.actualUser.role !== "ADMIN") {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
