@@ -105,11 +105,50 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { accountId, scheduledAt, contentType, title, caption, notes, templateId, fields, fieldSchema } = body;
+  const {
+    accountId,
+    scheduledAt,
+    title,
+    caption,
+    notes,
+    templateId,
+    fields,
+    fieldSchema,
+    // Recipe-based creation (commit 1.2.3)
+    recipeId,
+    // Les assignees peuvent être fournis explicitement (override) ou déduits depuis la recipe
+    assigneeMonteurId: rawAssigneeMonteurId,
+    assigneeCmId: rawAssigneeCmId,
+  } = body;
+
+  // contentType peut venir du body (legacy) ou être dérivé depuis recipe.code
+  let { contentType } = body as { contentType?: string };
+
+  // --- Résolution de la recipe si fournie ---
+  let resolvedAssigneeMonteurId: string | null = rawAssigneeMonteurId ?? null;
+  let resolvedAssigneeCmId: string | null = rawAssigneeCmId ?? null;
+
+  if (recipeId) {
+    const recipe = await prisma.contentRecipe.findUnique({ where: { id: recipeId } });
+    if (!recipe) {
+      return NextResponse.json({ error: "Recipe introuvable" }, { status: 400 });
+    }
+    // Dériver contentType depuis recipe.code si non fourni dans le body
+    if (!contentType) {
+      contentType = recipe.code;
+    }
+    // Préfill des assignees : la valeur du body prime (override admin), sinon fallback recipe
+    if (!resolvedAssigneeMonteurId && recipe.defaultAssigneeMonteurId) {
+      resolvedAssigneeMonteurId = recipe.defaultAssigneeMonteurId;
+    }
+    if (!resolvedAssigneeCmId && recipe.defaultAssigneeCmId) {
+      resolvedAssigneeCmId = recipe.defaultAssigneeCmId;
+    }
+  }
 
   if (!accountId || !scheduledAt || !contentType) {
     return NextResponse.json(
-      { error: "accountId, scheduledAt et contentType sont requis" },
+      { error: "accountId, scheduledAt et contentType sont requis (ou fournir recipeId)" },
       { status: 400 }
     );
   }
@@ -124,6 +163,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "scheduledAt invalide" }, { status: 400 });
   }
 
+  // Valider que les assignees référencent des Users existants si fournis
+  if (resolvedAssigneeMonteurId) {
+    const monteur = await prisma.user.findUnique({ where: { id: resolvedAssigneeMonteurId } });
+    if (!monteur) {
+      return NextResponse.json({ error: "assigneeMonteurId : utilisateur introuvable" }, { status: 400 });
+    }
+  }
+  if (resolvedAssigneeCmId) {
+    const cm = await prisma.user.findUnique({ where: { id: resolvedAssigneeCmId } });
+    if (!cm) {
+      return NextResponse.json({ error: "assigneeCmId : utilisateur introuvable" }, { status: 400 });
+    }
+  }
+
   const slot = await prisma.publicationSlot.create({
     data: {
       accountId,
@@ -136,6 +189,9 @@ export async function POST(req: NextRequest) {
       fields: fields ? JSON.stringify(fields) : "{}",
       fieldSchema: fieldSchema ? JSON.stringify(fieldSchema) : "[]",
       isAuto: false,
+      recipeId: recipeId ?? null,
+      assigneeMonteurId: resolvedAssigneeMonteurId,
+      assigneeCmId: resolvedAssigneeCmId,
     },
     include: {
       account: { select: { id: true, name: true, handle: true, offre: true } },
