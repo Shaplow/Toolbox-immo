@@ -19,7 +19,7 @@ export default async function LibrariesHubPage() {
         subtitle="Vos médias, données et typographies pour la production"
       />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Link
           href="/admin/libraries/media"
           className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
