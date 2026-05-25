@@ -15,6 +15,7 @@
  */
 
 import type { AppUserIdentity } from "@/lib/userContext";
+import type { UserRole } from "@/types/roles";
 
 // ---------------------------------------------------------------------------
 // Type minimal pour les vérifications de permission
@@ -146,6 +147,112 @@ export function assertCanEditPublicationVersion(
   if (!canEditPublicationVersion(user, slot)) {
     throw new Error(
       `Accès refusé : le rôle "${user.role}" ne peut pas modifier la publication "${slot.id}".`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Commentaires
+// ---------------------------------------------------------------------------
+
+/**
+ * Permission de commenter sur une publication.
+ *
+ * Règle : équivalente à canSeePublication — si l'utilisateur peut voir le
+ * slot, il peut y poster un commentaire.
+ *
+ * - ADMIN  → toujours true.
+ * - MONTEUR → true si le slot lui est assigné.
+ * - CM     → true si le slot lui est assigné.
+ * - USER   → false.
+ */
+export function canCommentOnPublication(
+  user: { id: string; role: UserRole },
+  slot: { assigneeMonteurId: string | null; assigneeCmId: string | null }
+): boolean {
+  if (user.role === "ADMIN") return true;
+  if (user.role === "MONTEUR") return slot.assigneeMonteurId === user.id;
+  if (user.role === "CM") return slot.assigneeCmId === user.id;
+  return false;
+}
+
+/**
+ * Variante assert.
+ */
+export function assertCanCommentOnPublication(
+  user: { id: string; role: UserRole },
+  slot: { id: string; assigneeMonteurId: string | null; assigneeCmId: string | null }
+): void {
+  if (!canCommentOnPublication(user, slot)) {
+    throw new Error(
+      `Accès refusé : le rôle "${user.role}" ne peut pas commenter la publication "${slot.id}".`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Publication
+// ---------------------------------------------------------------------------
+
+/**
+ * Permission de marquer une publication comme publiée (status=PUBLISHED + URL IG).
+ *
+ * - ADMIN → toujours true.
+ * - CM    → true seulement si le slot lui est assigné (assigneeCmId).
+ * - MONTEUR / USER → false. Un MONTEUR produit le contenu mais ne publie pas.
+ */
+export function canMarkPublished(
+  user: { id: string; role: UserRole },
+  slot: { assigneeCmId: string | null }
+): boolean {
+  if (user.role === "ADMIN") return true;
+  if (user.role === "CM") return slot.assigneeCmId === user.id;
+  return false;
+}
+
+/**
+ * Variante assert.
+ */
+export function assertCanMarkPublished(
+  user: { id: string; role: UserRole },
+  slot: { id: string; assigneeCmId: string | null }
+): void {
+  if (!canMarkPublished(user, slot)) {
+    throw new Error(
+      `Accès refusé : le rôle "${user.role}" ne peut pas marquer la publication "${slot.id}" comme publiée.`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Commentaire — edition / suppression
+// ---------------------------------------------------------------------------
+
+/**
+ * Permission d'éditer ou supprimer un commentaire spécifique.
+ *
+ * - ADMIN          → toujours true (modération globale).
+ * - Auteur du commentaire → true (peut éditer/supprimer son propre commentaire).
+ * - Autres rôles   → false.
+ */
+export function canEditComment(
+  user: { id: string; role: UserRole },
+  comment: { authorId: string }
+): boolean {
+  if (user.role === "ADMIN") return true;
+  return comment.authorId === user.id;
+}
+
+/**
+ * Variante assert.
+ */
+export function assertCanEditComment(
+  user: { id: string; role: UserRole },
+  comment: { id: string; authorId: string }
+): void {
+  if (!canEditComment(user, comment)) {
+    throw new Error(
+      `Accès refusé : l'utilisateur "${user.id}" (rôle "${user.role}") ne peut pas modifier le commentaire "${comment.id}".`
     );
   }
 }
