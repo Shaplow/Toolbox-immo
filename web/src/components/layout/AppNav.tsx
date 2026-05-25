@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState, type ReactNode } from "react";
-import { Home, List, Users, Library, LogOut, CalendarDays, Zap, Building2, Layers, LayoutGrid } from "lucide-react";
+import { Home, List, Users, Library, LogOut, CalendarDays, Zap, Building2, Layers, LayoutGrid, Tag } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { TOOL_META } from "@/lib/toolMeta";
 import { useWorklistCount } from "@/hooks/useWorklistCount";
@@ -89,8 +89,9 @@ export function AppNav({
           title: "Gestion",
           items: [
             { href: "/admin/offer-schedule", label: "Automatisation", icon: <Zap size={16} /> },
-            { href: "/admin/libraries", label: "Bibliothèques", icon: <Library size={16} /> },
-            { href: "/admin/recipes", label: "Recipes", icon: <Layers size={16} /> },
+            { href: "/admin/libraries", label: "Ressources", icon: <Library size={16} /> },
+            { href: "/admin/offers", label: "Offres", icon: <Tag size={16} /> },
+            { href: "/admin/recipes", label: "Recettes", icon: <Layers size={16} /> },
             { href: "/admin/clients", label: "Clients", icon: <Building2 size={16} /> },
             { href: "/admin/users", label: "Utilisateurs", icon: <Users size={16} /> },
           ],

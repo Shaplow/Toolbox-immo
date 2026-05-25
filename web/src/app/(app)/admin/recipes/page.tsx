@@ -27,8 +27,8 @@ export default async function AdminRecipesPage() {
       <ToolPageHeader
         icon={Layers}
         iconColor="indigo"
-        title="Content Recipes"
-        subtitle="Visualisez et éditez les recipes de publication. Utilisez l'éditeur JSON pour modifier sans passer par Prisma Studio."
+        title="Recettes de contenu"
+        subtitle="Visualisez et éditez les recettes de publication. Utilisez l'éditeur JSON pour modifier sans passer par Prisma Studio."
       />
       <RecipesPanel initialRecipes={recipes} />
     </div>
