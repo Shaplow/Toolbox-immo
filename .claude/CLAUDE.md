@@ -236,6 +236,50 @@ File-scoped instructions (`.github/instructions/`):
 
 Repo overview: `.github/copilot-instructions.md` (still load-on-demand; not Claude-Code-specific despite the name).
 
+## Tests automatisés
+
+Le repo a deux niveaux de tests, exécutables localement et indépendamment du dev server :
+
+### Unit tests (Vitest)
+- Lance les tests purs des helpers permissions (`slotScope`, `publications`, `tools`).
+- Pas de DB, pas de browser, runtime Node uniquement.
+- Pour ajouter un test : `web/src/lib/**/*.test.ts` ou `web/src/lib/**/__tests__/*.test.ts`.
+
+```bash
+cd web
+npm run test:unit          # CI mode (exit propre)
+npm run test:unit:watch    # mode dev (re-run sur save)
+npm run test:unit:ui       # debugger Vitest UI
+```
+
+### E2E tests (Playwright)
+- Lance Chromium headless contre un serveur Next.js dédié sur le port 3100.
+- Utilise une **DB de test séparée** (`toolbox_test`) pour ne pas polluer dev.
+- Cookies/session NextAuth réels via la page `/login`.
+
+```bash
+cd web
+# Premier setup (une seule fois) :
+npm run test:db:setup      # crée toolbox_test + applique migrations
+npm run test:db:seed       # seed admin/monteur/cm/user + 1 client + 1 slot
+
+# À chaque run :
+npm run test:e2e           # CI mode (headless)
+npm run test:e2e:ui        # debugger Playwright UI (timeline + selectors)
+npm run test:e2e:headed    # voir le browser pendant les tests
+
+# Reset complet de la DB de test :
+npm run test:db:reset && npm run test:db:setup && npm run test:db:seed
+```
+
+Credentials de test (tous : password `testpass`) :
+- `admin@test.local` / `test_admin` (rôle ADMIN)
+- `monteur@test.local` / `test_monteur` (rôle MONTEUR, assigné slot `test-slot-1`)
+- `cm@test.local` / `test_cm` (rôle CM, assigné slot `test-slot-1`)
+- `user@test.local` / `test_user` (rôle USER, permission `["captions"]`)
+
+**Discipline** : tout changement qui touche permissions, helpers de scoping, ou navigation admin **doit** lancer `npm run test:unit && npm run test:e2e` avant commit. Si un test échoue à cause d'un changement intentionnel, mettre à jour le test dans le même commit.
+
 ## Validation Rule
 
 Always prefer targeted validation for the exact subsystem changed. If only manual or lint-level validation was possible, state that clearly instead of implying full confidence.

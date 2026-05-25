@@ -39,3 +39,8 @@ Thumbs.db
 
 # ─── Claude Code worktrees (parallel sessions, ephemeral) ─
 .claude/worktrees/
+
+# ─── Tests artifacts (Playwright + Vitest coverage) ────────
+web/test-results/
+web/playwright-report/
+web/coverage/

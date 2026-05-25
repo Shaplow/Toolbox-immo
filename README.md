@@ -100,19 +100,47 @@ Filtrage backend strict : un monteur ne voit que les publications où `assigneeM
 ## 🧪 Commandes utiles
 
 ```bash
-# Web
+# Web — dev & build
 cd web
 npm run dev               # dev server
 npm run build             # build production
 npm run lint              # ESLint
+
+# Base de données
 npm run db:generate       # régénère le client Prisma
 npm run db:migrate        # crée + applique migration (local interactif)
 npm run db:backup         # pg_dump dans web/backups/ (rotation auto à 20)
 npm run db:backfill-plans # backfill AccountPlan depuis OfferScheduleRule
 
+# Tests automatisés
+npm run test:unit         # Vitest — helpers purs (permissions, scoping)
+npm run test:db:setup     # crée la DB de test (toolbox_test) + migrations
+npm run test:db:seed      # seed admin/monteur/cm/user + 1 client + 1 slot
+npm run test:e2e          # Playwright — 21 scénarios (auth + nav + worklist + security)
+npm run test:e2e:ui       # Playwright UI mode (debugger interactif)
+
 # Production
-bash deploy.sh                       # menu interactif (web / docker / les deux)
-bash deploy.sh --dry-run             # voir ce qui serait fait
+bash deploy.sh            # menu interactif (web / docker / les deux)
+bash deploy.sh --dry-run  # voir ce qui serait fait
+```
+
+### Workflow tests recommandé
+
+Avant tout commit qui touche permissions, helpers de scoping, ou navigation admin :
+
+```bash
+cd web && npm run test:unit && npm run test:e2e
+```
+
+Première fois sur une machine :
+
+```bash
+cd web
+cp .env.test.example .env.test           # ajuster si besoin
+npm run test:db:setup && npm run test:db:seed
+npx playwright install chromium          # télécharge le browser headless (~150MB)
+npm run test:unit                        # 50 tests, ~100ms
+npm run test:e2e                         # 21 tests, ~20s
 ```
 
 ## 🔒 Sécurité
