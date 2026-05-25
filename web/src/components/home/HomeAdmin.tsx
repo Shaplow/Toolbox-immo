@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, AlertTriangle, FileQuestion, ArrowRight } from "lucide-react";
+import { CalendarDays, AlertTriangle, FileQuestion, ArrowRight, Layers, CalendarClock, Building2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import type { SlotStatus } from "@/types/roles";
 import { TERMINAL_STATUSES } from "@/types/worklist";
@@ -136,20 +136,27 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
       </Link>
 
       {/* Liens secondaires */}
-      <div className="grid grid-cols-2 gap-3">
-        <Link
-          href="/tools"
-          className="flex items-center gap-2 px-4 py-3 rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-colors text-sm text-gray-700"
-        >
-          <ArrowRight size={14} className="text-gray-400" />
-          Outils
-        </Link>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Link
           href="/admin/recipes"
           className="flex items-center gap-2 px-4 py-3 rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-colors text-sm text-gray-700"
         >
-          <ArrowRight size={14} className="text-gray-400" />
-          Recettes
+          <Layers size={14} className="text-gray-400 shrink-0" />
+          Voir les recettes
+        </Link>
+        <Link
+          href="/admin/offer-schedule"
+          className="flex items-center gap-2 px-4 py-3 rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-colors text-sm text-gray-700"
+        >
+          <CalendarClock size={14} className="text-gray-400 shrink-0" />
+          Configurer la planification
+        </Link>
+        <Link
+          href="/admin/clients"
+          className="flex items-center gap-2 px-4 py-3 rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-colors text-sm text-gray-700"
+        >
+          <Building2 size={14} className="text-gray-400 shrink-0" />
+          Gérer les clients
         </Link>
       </div>
     </div>
