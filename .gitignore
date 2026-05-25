@@ -13,11 +13,12 @@ venv/
 *.egg-info/
 
 # ─── Env files (ne jamais commit) ───────────────────────
+# Note : les fichiers .env.*.example sont commités (templates documentés).
 .env
-.env.*
 .env.local
 .env.production
 .env.prod
+.env.test
 captions-api/.env
 
 # ─── Outputs / uploads (fichiers générés) ───────────────

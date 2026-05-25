@@ -18,7 +18,10 @@
     "db:backfill-plans": "dotenv -e .env.local -- tsx scripts/backfill-account-plans.ts",
     "db:import": "npx tsx scripts/import-postgres.mjs",
     "infra:up": "docker compose -f docker-compose.dev.yml up -d",
-    "infra:down": "docker compose -f docker-compose.dev.yml down"
+    "infra:down": "docker compose -f docker-compose.dev.yml down",
+    "test:db:setup": "tsx scripts/setup-test-db.ts",
+    "test:db:reset": "tsx scripts/setup-test-db.ts --reset",
+    "test:db:seed": "tsx scripts/seed-test-db.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.4",
