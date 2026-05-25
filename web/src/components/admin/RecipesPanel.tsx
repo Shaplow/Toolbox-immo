@@ -1,8 +1,12 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Pencil, Trash2, RefreshCw } from "lucide-react";
+import { Pencil, RefreshCw, ClipboardList } from "lucide-react";
 import { RecipeJsonEditor } from "@/components/admin/RecipeJsonEditor";
+import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { DeleteButton } from "@/components/ui/DeleteButton";
+import { toast } from "@/components/ui/Toast";
 
 type RecipeRow = {
   id: string;
@@ -45,9 +49,6 @@ export function RecipesPanel({ initialRecipes }: { initialRecipes: RecipeRow[] }
   const [editorRecipe, setEditorRecipe] = useState<RecipeRow | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [seeding, setSeeding] = useState(false);
-  const [seedMsg, setSeedMsg] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const res = await fetch("/api/admin/recipes");
@@ -72,33 +73,28 @@ export function RecipesPanel({ initialRecipes }: { initialRecipes: RecipeRow[] }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Supprimer cette ContentRecipe ? Cette action est irréversible.")) return;
-    setDeletingId(id);
-    setDeleteError(null);
     const res = await fetch(`/api/admin/recipes/${id}`, { method: "DELETE" });
-    setDeletingId(null);
     if (!res.ok) {
       let msg = `Erreur ${res.status}`;
       try {
         const data = await res.json() as { error?: string };
         if (data.error) msg = `Erreur : ${data.error}`;
       } catch { /* body non-JSON */ }
-      setDeleteError(msg);
+      toast.error(msg);
       return;
     }
+    toast.success("Recipe supprimée.");
     await refresh();
   }
 
   async function handleSeed() {
-    if (!confirm("Seeder les recipes depuis les templates existants (idempotent) ?")) return;
     setSeeding(true);
-    setSeedMsg(null);
     const res = await fetch("/api/admin/recipes/seed-from-templates", { method: "POST" });
     const data = await res.json() as { created?: number; skipped?: number; error?: string };
     if (data.error) {
-      setSeedMsg(`Erreur : ${data.error}`);
+      toast.error(`Erreur : ${data.error}`);
     } else {
-      setSeedMsg(`Seed terminé — ${data.created ?? 0} créée(s), ${data.skipped ?? 0} ignorée(s).`);
+      toast.success(`Seed terminé — ${data.created ?? 0} créée(s), ${data.skipped ?? 0} ignorée(s).`);
     }
     setSeeding(false);
     await refresh();
@@ -108,33 +104,26 @@ export function RecipesPanel({ initialRecipes }: { initialRecipes: RecipeRow[] }
     <>
       {/* Actions bar */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
-        <button
-          onClick={() => openEditor(null)}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
-        >
+        <Button variant="primary" onClick={() => openEditor(null)}>
           + Nouvelle recipe
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="secondary"
+          icon={RefreshCw}
+          loading={seeding}
           onClick={() => void handleSeed()}
-          disabled={seeding}
-          className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-60 transition-colors"
         >
-          <RefreshCw size={14} className={seeding ? "animate-spin" : ""} />
           Seed depuis templates
-        </button>
-        {seedMsg && (
-          <p className="text-xs text-gray-500">{seedMsg}</p>
-        )}
-        {deleteError && (
-          <p className="text-xs text-red-600">{deleteError}</p>
-        )}
+        </Button>
       </div>
 
       {/* Table */}
       {recipes.length === 0 ? (
-        <p className="text-center text-gray-400 text-sm py-12">
-          Aucune ContentRecipe. Cliquez sur &ldquo;Nouvelle recipe&rdquo; ou &ldquo;Seed depuis templates&rdquo;.
-        </p>
+        <EmptyState
+          icon={ClipboardList}
+          title="Aucune ContentRecipe"
+          description='Cliquez sur "Nouvelle recipe" ou "Seed depuis templates".'
+        />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-100">
           <table className="w-full text-sm text-left">
@@ -178,21 +167,21 @@ export function RecipesPanel({ initialRecipes }: { initialRecipes: RecipeRow[] }
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 justify-end">
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={Pencil}
                         onClick={() => openEditor(r)}
                         title="Éditer JSON"
-                        className="text-gray-400 hover:text-indigo-600 transition-colors"
+                        className="text-gray-400 hover:text-indigo-600"
                       >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        onClick={() => void handleDelete(r.id)}
-                        disabled={deletingId === r.id}
-                        title="Supprimer"
-                        className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                        <span className="sr-only">Éditer JSON</span>
+                      </Button>
+                      <DeleteButton
+                        itemLabel="cette recipe"
+                        description="Cette action est irréversible."
+                        onConfirm={() => handleDelete(r.id)}
+                      />
                     </div>
                   </td>
                 </tr>
