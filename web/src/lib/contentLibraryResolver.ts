@@ -950,17 +950,54 @@ export async function resolveLibraryPrefill(
     (b): b is MusicBlock => b.type === "music" && !!b.libraryId,
   );
   if (musicBlock?.libraryId) {
-    // Estimate total video duration from all picked video assets (library-sourced only).
-    // Assets with no stored duration are treated as 0 for the estimate — safe to be
-    // conservative. If all durations are unknown the filter is skipped (minDuration = 0).
+    // Estimate total video duration. The estimate is meant to UPPER-BOUND the final
+    // output length so the duration filter rejects any track that cannot cover the
+    // whole video. Two modes:
+    //  - Sequence mode (videoSequence non-empty): sum each slot's effective duration:
+    //      library-picked slot → min(asset.duration, slot.maxDuration)
+    //      binding-form slot   → slot.maxDuration (upper bound, no asset known yet)
+    //  - Single-video mode: prefer canvas.maxDuration; fall back to summed library durations.
     let estimatedVideoDuration = 0;
-    const pickedVideoIds = Object.values(result.videoSuggestions).map((s) => s.id);
-    if (pickedVideoIds.length > 0) {
-      const durations = await prisma.mediaAsset.findMany({
-        where: { id: { in: pickedVideoIds } },
-        select: { duration: true },
-      });
-      estimatedVideoDuration = durations.reduce((sum, a) => sum + (a.duration ?? 0), 0);
+    const seq = template.videoSequence ?? [];
+
+    if (seq.length > 0) {
+      const pickedIdBySlot = new Map<string, string>();
+      for (const slot of seq) {
+        const pickedId = result.videoSuggestions[slot.id]?.id;
+        if (pickedId) pickedIdBySlot.set(slot.id, pickedId);
+      }
+      const durationByAssetId = new Map<string, number>();
+      const pickedIds = Array.from(pickedIdBySlot.values());
+      if (pickedIds.length > 0) {
+        const rows = await prisma.mediaAsset.findMany({
+          where: { id: { in: pickedIds } },
+          select: { id: true, duration: true },
+        });
+        for (const r of rows) durationByAssetId.set(r.id, r.duration ?? 0);
+      }
+      for (const slot of seq) {
+        const cap = slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined;
+        const pickedId = pickedIdBySlot.get(slot.id);
+        const assetDur = pickedId ? durationByAssetId.get(pickedId) ?? 0 : 0;
+        let slotDur: number;
+        if (assetDur > 0) {
+          slotDur = cap !== undefined ? Math.min(assetDur, cap) : assetDur;
+        } else {
+          slotDur = cap ?? 0;
+        }
+        estimatedVideoDuration += slotDur;
+      }
+    } else if (template.canvas?.maxDuration && template.canvas.maxDuration > 0) {
+      estimatedVideoDuration = template.canvas.maxDuration;
+    } else {
+      const pickedVideoIds = Object.values(result.videoSuggestions).map((s) => s.id);
+      if (pickedVideoIds.length > 0) {
+        const durations = await prisma.mediaAsset.findMany({
+          where: { id: { in: pickedVideoIds } },
+          select: { duration: true },
+        });
+        estimatedVideoDuration = durations.reduce((sum, a) => sum + (a.duration ?? 0), 0);
+      }
     }
 
     // Skip the duration filter when the track loops — any length works.
