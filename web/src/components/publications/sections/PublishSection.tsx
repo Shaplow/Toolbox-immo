@@ -8,6 +8,7 @@
  */
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Send, CheckCircle, ExternalLink, Edit2, Check } from "lucide-react";
 
 interface Props {
@@ -33,6 +34,7 @@ function formatDateTimeFR(date: Date): string {
 }
 
 export function PublishSection({ slot, canPublish }: Props) {
+  const router = useRouter();
   const isPublished = slot.status === "PUBLISHED";
 
   const [url, setUrl] = useState(slot.publishedUrl ?? "");
@@ -60,8 +62,8 @@ export function PublishSection({ slot, canPublish }: Props) {
       const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Erreur lors du marquage");
       setSuccess(true);
-      // Recharge la page pour afficher le nouveau statut
-      window.location.reload();
+      // Rafraîchit les server components sans rechargement full page
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {
@@ -86,7 +88,7 @@ export function PublishSection({ slot, canPublish }: Props) {
       if (!res.ok) throw new Error(data.error ?? "Erreur lors de la correction");
       setCorrected(true);
       setEditingUrl(false);
-      window.location.reload();
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {

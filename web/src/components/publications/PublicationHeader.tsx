@@ -178,7 +178,7 @@ export function PublicationHeader({
                     <div className="absolute right-0 top-8 z-20 bg-white rounded-xl border border-gray-100 shadow-lg py-1 w-44">
                       <button
                         type="button"
-                        onClick={() => { void handleDeleteClick(); }}
+                        onClick={() => handleDeleteClick()}
                         disabled={deleting}
                         className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
                       >

@@ -7,6 +7,7 @@ import { SlotCard } from "./SlotCard";
 import { SlotDetailPanel } from "./SlotDetailPanel";
 import { AddSlotModal } from "./AddSlotModal";
 import { CalendarFilters, type CalendarFiltersState } from "./CalendarFilters";
+import { toast } from "@/components/ui/Toast";
 
 interface Account {
   id: string;
@@ -82,7 +83,7 @@ export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) 
       const data = await res.json() as { slots: PublicationSlot[]; hasMore: boolean };
       setSlots(Array.isArray(data.slots) ? data.slots : []);
       if (data.hasMore) {
-        console.warn("[CalendarView] Le résultat est tronqué à 500 slots — affinez les filtres ou la plage de dates.");
+        toast.info("Résultat tronqué à 500 slots — affinez les filtres ou la plage de dates.");
       }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Erreur de chargement");
