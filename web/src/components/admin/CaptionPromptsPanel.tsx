@@ -1,13 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Pencil, Trash2, Check, X, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Pencil, Sparkles, X } from "lucide-react";
 import {
   DEFAULT_CAPTION_AUTO_HIGHLIGHT,
   type AutoHighlightMode,
   type AutoHighlightPlacement,
   type CaptionPromptRow,
 } from "@/lib/captionPrompt";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
+import { FormField } from "@/components/ui/FormField";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { DeleteButton } from "@/components/ui/DeleteButton";
+import { toast } from "@/components/ui/Toast";
 
 function formatAutoHighlightModeLabel(mode: AutoHighlightMode): string {
   if (mode === "highlight1") return "Highlight 1";
@@ -35,7 +42,6 @@ export function CaptionPromptsPanel({
   const [formAhPrompt, setFormAhPrompt] = useState(DEFAULT_CAPTION_AUTO_HIGHLIGHT.prompt);
 
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const resetForm = () => {
     setFormName("");
@@ -44,7 +50,6 @@ export function CaptionPromptsPanel({
     setFormAhMode(DEFAULT_CAPTION_AUTO_HIGHLIGHT.mode);
     setFormAhPlacement(DEFAULT_CAPTION_AUTO_HIGHLIGHT.placement);
     setFormAhPrompt(DEFAULT_CAPTION_AUTO_HIGHLIGHT.prompt);
-    setError(null);
   };
 
   const openCreate = () => {
@@ -61,7 +66,6 @@ export function CaptionPromptsPanel({
     setFormAhMode(p.autoHighlight.mode);
     setFormAhPlacement(p.autoHighlight.placement);
     setFormAhPrompt(p.autoHighlight.prompt);
-    setError(null);
     setEditingId(p.id);
   };
 
@@ -73,11 +77,10 @@ export function CaptionPromptsPanel({
 
   const handleSave = async () => {
     if (!formName.trim() || !formPrompt.trim()) {
-      setError("Nom et prompt requis");
+      toast.error("Nom et prompt requis");
       return;
     }
     setSaving(true);
-    setError(null);
 
     const payload = {
       name: formName.trim(),
@@ -98,10 +101,11 @@ export function CaptionPromptsPanel({
           body: JSON.stringify(payload),
         });
         const data = await res.json() as CaptionPromptRow & { error?: string };
-        if (!res.ok) { setError(data.error ?? "Erreur"); return; }
+        if (!res.ok) { toast.error(data.error ?? "Erreur lors de la création"); return; }
         setPrompts((prev) => [...prev, data]);
         setCreating(false);
         resetForm();
+        toast.success("Prompt créé.");
       } else if (editingId) {
         const res = await fetch(`/api/caption-prompts/${editingId}`, {
           method: "PATCH",
@@ -109,10 +113,11 @@ export function CaptionPromptsPanel({
           body: JSON.stringify(payload),
         });
         const data = await res.json() as CaptionPromptRow & { error?: string };
-        if (!res.ok) { setError(data.error ?? "Erreur"); return; }
+        if (!res.ok) { toast.error(data.error ?? "Erreur lors de la mise à jour"); return; }
         setPrompts((prev) => prev.map((p) => (p.id === editingId ? data : p)));
         setEditingId(null);
         resetForm();
+        toast.success("Prompt mis à jour.");
       }
     } finally {
       setSaving(false);
@@ -120,10 +125,12 @@ export function CaptionPromptsPanel({
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Supprimer ce prompt ? Les corrections déjà faites avec ce prompt ne sont pas affectées.")) return;
     const res = await fetch(`/api/caption-prompts/${id}`, { method: "DELETE" });
     if (res.ok) {
       setPrompts((prev) => prev.filter((p) => p.id !== id));
+      toast.success("Prompt supprimé.");
+    } else {
+      toast.error("Erreur lors de la suppression");
     }
   };
 
@@ -134,12 +141,9 @@ export function CaptionPromptsPanel({
         <p className="text-sm text-gray-500">
           {prompts.length} prompt{prompts.length !== 1 ? "s" : ""} configuré{prompts.length !== 1 ? "s" : ""}
         </p>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-medium hover:bg-violet-700 transition-colors"
-        >
-          <Plus size={13} /> Nouveau prompt
-        </button>
+        <Button variant="primary" size="sm" icon={Sparkles} onClick={openCreate}>
+          Nouveau prompt
+        </Button>
       </div>
 
       {/* Create form */}
@@ -151,7 +155,6 @@ export function CaptionPromptsPanel({
           ahMode={formAhMode}
           ahPlacement={formAhPlacement}
           ahPrompt={formAhPrompt}
-          error={error}
           saving={saving}
           onName={setFormName}
           onPrompt={setFormPrompt}
@@ -168,9 +171,12 @@ export function CaptionPromptsPanel({
       {/* List */}
       <div className="space-y-2">
         {prompts.length === 0 && !creating && (
-          <p className="text-sm text-gray-400 text-center py-8">
-            Aucun prompt. Créez-en un pour le rendre disponible dans l&apos;outil sous-titres.
-          </p>
+          <EmptyState
+            icon={Sparkles}
+            title="Aucun prompt"
+            description="Créez votre premier prompt pour le rendre disponible dans l'outil sous-titres."
+            cta={{ label: "Nouveau prompt", onClick: openCreate }}
+          />
         )}
         {prompts.map((p) => (
           <div key={p.id} className="bg-white border border-gray-100 rounded-xl overflow-hidden">
@@ -183,7 +189,6 @@ export function CaptionPromptsPanel({
                   ahMode={formAhMode}
                   ahPlacement={formAhPlacement}
                   ahPrompt={formAhPrompt}
-                  error={error}
                   saving={saving}
                   onName={setFormName}
                   onPrompt={setFormPrompt}
@@ -217,20 +222,20 @@ export function CaptionPromptsPanel({
                   )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={Pencil}
                     onClick={() => openEdit(p)}
-                    className="p-1.5 text-gray-400 hover:text-violet-600 transition-colors rounded-lg hover:bg-violet-50"
                     title="Modifier"
                   >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    onClick={() => void handleDelete(p.id)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"
-                    title="Supprimer"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                    <span className="sr-only">Modifier</span>
+                  </Button>
+                  <DeleteButton
+                    itemLabel="ce prompt"
+                    description="Les corrections déjà faites avec ce prompt ne sont pas affectées."
+                    onConfirm={() => handleDelete(p.id)}
+                  />
                 </div>
               </div>
             )}
@@ -250,7 +255,6 @@ function CaptionPromptForm({
   ahMode,
   ahPlacement,
   ahPrompt,
-  error,
   saving,
   onName,
   onPrompt,
@@ -268,7 +272,6 @@ function CaptionPromptForm({
   ahMode: AutoHighlightMode;
   ahPlacement: AutoHighlightPlacement;
   ahPrompt: string;
-  error: string | null;
   saving: boolean;
   onName: (v: string) => void;
   onPrompt: (v: string) => void;
@@ -285,29 +288,25 @@ function CaptionPromptForm({
   return (
     <div className="bg-violet-50/50 border border-violet-100 rounded-xl p-5 space-y-4">
       {/* Name */}
-      <div>
-        <label className="text-xs font-medium text-gray-700 block mb-1.5">Nom du prompt</label>
-        <input
+      <FormField label="Nom du prompt" required>
+        <Input
           autoFocus
-          type="text"
           value={name}
-          onChange={(e) => onName(e.target.value)}
+          onChange={onName}
           placeholder="Ex: Correction immobilier standard"
-          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-transparent bg-white"
         />
-      </div>
+      </FormField>
 
       {/* Main prompt */}
-      <div>
-        <label className="text-xs font-medium text-gray-700 block mb-1.5">Instructions de correction</label>
-        <textarea
+      <FormField label="Instructions de correction" required>
+        <Textarea
           value={prompt}
-          onChange={(e) => onPrompt(e.target.value)}
+          onChange={onPrompt}
           placeholder={"Tu es un expert en sous-titrage. Corrige les sous-titres ci-dessous pour les rendre plus lisibles et percutants.\n\nRègles :\n- Corrige les fautes d'orthographe et de grammaire\n- Améliore la ponctuation\n- Garde un style naturel et oral"}
           rows={10}
-          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-y focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-transparent bg-white font-mono leading-relaxed"
+          className="font-mono leading-relaxed"
         />
-      </div>
+      </FormField>
 
       {/* Auto-highlight section */}
       <div className="border border-violet-200 rounded-xl overflow-hidden">
@@ -367,43 +366,28 @@ function CaptionPromptForm({
                     </select>
                   </div>
                 </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 block mb-1.5">
-                    Instructions d&apos;auto-highlight
-                  </label>
-                  <textarea
+                <FormField label="Instructions d'auto-highlight">
+                  <Textarea
                     value={ahPrompt}
-                    onChange={(e) => onAhPrompt(e.target.value)}
+                    onChange={onAhPrompt}
                     placeholder="Ex: Mets en HL1 les informations clés et en HL2 les accents marketing, sans surcharger chaque ligne."
                     rows={5}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-y focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-transparent bg-white font-mono leading-relaxed"
+                    className="font-mono leading-relaxed"
                   />
-                </div>
+                </FormField>
               </div>
             )}
           </div>
         )}
       </div>
 
-      {error && (
-        <p className="text-xs text-red-500">{error}</p>
-      )}
-
       <div className="flex items-center gap-2 pt-1">
-        <button
-          onClick={onSave}
-          disabled={saving}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors"
-        >
-          {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+        <Button variant="primary" icon={Check} loading={saving} onClick={onSave}>
           {label}
-        </button>
-        <button
-          onClick={onCancel}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
-        >
-          <X size={13} /> Annuler
-        </button>
+        </Button>
+        <Button variant="secondary" icon={X} onClick={onCancel}>
+          Annuler
+        </Button>
       </div>
     </div>
   );

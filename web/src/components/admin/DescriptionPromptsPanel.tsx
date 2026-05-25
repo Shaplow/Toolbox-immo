@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Pencil, Trash2, Check, X, Loader2 } from "lucide-react";
+import { Check, MessageSquare, Pencil, X } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
+import { FormField } from "@/components/ui/FormField";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { DeleteButton } from "@/components/ui/DeleteButton";
+import { toast } from "@/components/ui/Toast";
 
 type PromptRow = {
   id: string;
@@ -20,13 +27,11 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
   const [formName, setFormName] = useState("");
   const [formPrompt, setFormPrompt] = useState("");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const openCreate = () => {
     setEditingId(null);
     setFormName("");
     setFormPrompt("");
-    setError(null);
     setCreating(true);
   };
 
@@ -34,23 +39,20 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
     setCreating(false);
     setFormName(p.name);
     setFormPrompt(p.prompt);
-    setError(null);
     setEditingId(p.id);
   };
 
   const cancelForm = () => {
     setCreating(false);
     setEditingId(null);
-    setError(null);
   };
 
   const handleSave = async () => {
     if (!formName.trim() || !formPrompt.trim()) {
-      setError("Nom et prompt requis");
+      toast.error("Nom et prompt requis");
       return;
     }
     setSaving(true);
-    setError(null);
 
     try {
       if (creating) {
@@ -60,9 +62,10 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
           body: JSON.stringify({ name: formName.trim(), prompt: formPrompt.trim() }),
         });
         const data = await res.json() as PromptRow & { error?: string };
-        if (!res.ok) { setError(data.error ?? "Erreur"); return; }
+        if (!res.ok) { toast.error(data.error ?? "Erreur lors de la création"); return; }
         setPrompts((prev) => [...prev, data]);
         setCreating(false);
+        toast.success("Prompt créé.");
       } else if (editingId) {
         const res = await fetch(`/api/description/prompts/${editingId}`, {
           method: "PATCH",
@@ -70,9 +73,10 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
           body: JSON.stringify({ name: formName.trim(), prompt: formPrompt.trim() }),
         });
         const data = await res.json() as PromptRow & { error?: string };
-        if (!res.ok) { setError(data.error ?? "Erreur"); return; }
+        if (!res.ok) { toast.error(data.error ?? "Erreur lors de la mise à jour"); return; }
         setPrompts((prev) => prev.map((p) => (p.id === editingId ? data : p)));
         setEditingId(null);
+        toast.success("Prompt mis à jour.");
       }
     } finally {
       setSaving(false);
@@ -80,10 +84,12 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Supprimer ce prompt ? Les descriptions générées avec ce prompt garderont leur snapshot.")) return;
     const res = await fetch(`/api/description/prompts/${id}`, { method: "DELETE" });
     if (res.ok) {
       setPrompts((prev) => prev.filter((p) => p.id !== id));
+      toast.success("Prompt supprimé.");
+    } else {
+      toast.error("Erreur lors de la suppression");
     }
   };
 
@@ -94,12 +100,9 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
         <p className="text-sm text-gray-500">
           {prompts.length} prompt{prompts.length !== 1 ? "s" : ""} configuré{prompts.length !== 1 ? "s" : ""}
         </p>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition-colors"
-        >
-          <Plus size={13} /> Nouveau prompt
-        </button>
+        <Button variant="primary" size="sm" icon={MessageSquare} onClick={openCreate}>
+          Nouveau prompt
+        </Button>
       </div>
 
       {/* Create form */}
@@ -107,7 +110,6 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
         <PromptForm
           name={formName}
           prompt={formPrompt}
-          error={error}
           saving={saving}
           onName={setFormName}
           onPrompt={setFormPrompt}
@@ -120,9 +122,12 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
       {/* List */}
       <div className="space-y-2">
         {prompts.length === 0 && !creating && (
-          <p className="text-sm text-gray-400 text-center py-8">
-            Aucun prompt. Créez-en un pour commencer.
-          </p>
+          <EmptyState
+            icon={MessageSquare}
+            title="Aucun prompt"
+            description="Créez votre premier prompt pour générer des descriptions immobilières."
+            cta={{ label: "Nouveau prompt", onClick: openCreate }}
+          />
         )}
         {prompts.map((p) => (
           <div key={p.id} className="bg-white border border-gray-100 rounded-xl overflow-hidden">
@@ -131,7 +136,6 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
                 <PromptForm
                   name={formName}
                   prompt={formPrompt}
-                  error={error}
                   saving={saving}
                   onName={setFormName}
                   onPrompt={setFormPrompt}
@@ -149,20 +153,20 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
                   </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={Pencil}
                     onClick={() => openEdit(p)}
-                    className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors rounded-lg hover:bg-indigo-50"
                     title="Modifier"
                   >
-                    <Pencil size={13} />
-                  </button>
-                  <button
-                    onClick={() => void handleDelete(p.id)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"
-                    title="Supprimer"
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                    <span className="sr-only">Modifier</span>
+                  </Button>
+                  <DeleteButton
+                    itemLabel="ce prompt"
+                    description="Les descriptions générées avec ce prompt garderont leur snapshot."
+                    onConfirm={() => handleDelete(p.id)}
+                  />
                 </div>
               </div>
             )}
@@ -178,7 +182,6 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
 function PromptForm({
   name,
   prompt,
-  error,
   saving,
   onName,
   onPrompt,
@@ -188,7 +191,6 @@ function PromptForm({
 }: {
   name: string;
   prompt: string;
-  error: string | null;
   saving: boolean;
   onName: (v: string) => void;
   onPrompt: (v: string) => void;
@@ -198,44 +200,29 @@ function PromptForm({
 }) {
   return (
     <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-4 space-y-3">
-      <div>
-        <label className="text-xs font-medium text-gray-700 block mb-1">Nom</label>
-        <input
-          type="text"
+      <FormField label="Nom" required>
+        <Input
           value={name}
-          onChange={(e) => onName(e.target.value)}
+          onChange={onName}
           placeholder="Ex: Annonce immobilière courte"
-          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
+          autoFocus
         />
-      </div>
-      <div>
-        <label className="text-xs font-medium text-gray-700 block mb-1">Instructions</label>
-        <textarea
+      </FormField>
+      <FormField label="Instructions" required>
+        <Textarea
           value={prompt}
-          onChange={(e) => onPrompt(e.target.value)}
+          onChange={onPrompt}
           placeholder={"Tu es un expert en immobilier. À partir de la transcription ci-dessous, rédige une annonce immobilière professionnelle et attractive. Mets en valeur les points forts du bien.\n\nFormat: paragraphes courts, ton professionnel et chaleureux."}
           rows={6}
-          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-y focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
         />
-      </div>
-      {error && (
-        <p className="text-xs text-red-500">{error}</p>
-      )}
+      </FormField>
       <div className="flex items-center gap-2">
-        <button
-          onClick={onSave}
-          disabled={saving}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-        >
-          {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+        <Button variant="primary" size="sm" icon={Check} loading={saving} onClick={onSave}>
           {label}
-        </button>
-        <button
-          onClick={onCancel}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
-        >
-          <X size={12} /> Annuler
-        </button>
+        </Button>
+        <Button variant="secondary" size="sm" icon={X} onClick={onCancel}>
+          Annuler
+        </Button>
       </div>
     </div>
   );
