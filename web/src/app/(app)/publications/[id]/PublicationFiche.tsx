@@ -19,6 +19,8 @@ import { CaptionsSection } from "@/components/publications/sections/CaptionsSect
 import { DescriptionSection } from "@/components/publications/sections/DescriptionSection";
 import { CaptionIgSection } from "@/components/publications/sections/CaptionIgSection";
 import { PublishSection } from "@/components/publications/sections/PublishSection";
+import { RushesSection } from "@/components/publications/sections/RushesSection";
+import { BriefSection } from "@/components/publications/sections/BriefSection";
 import { CommentsSection } from "@/components/publications/CommentsSection";
 import { ActivityTimeline } from "@/components/publications/ActivityTimeline";
 import type { PublicationStep } from "@/lib/publications/steps";
@@ -62,6 +64,35 @@ interface RecipeInfo {
   needsCover: string;
   needsCaptions: boolean;
   needsDescription: string;
+  needsRushes: boolean;
+  needsBrief: boolean;
+}
+
+interface RushItem {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number | null;
+  durationSec: number | null;
+  uploadedAt: string;
+  uploadedByUserId: string;
+  uploadedBy?: { id: string; name: string | null; email: string | null } | null;
+}
+
+interface BriefItem {
+  id: string;
+  body: string | null;
+  updatedAt: string;
+  updatedByUserId: string | null;
+}
+
+interface BriefAttachmentItem {
+  id: string;
+  briefId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number | null;
+  createdAt: string;
 }
 
 interface RenderInfo {
@@ -93,6 +124,15 @@ export interface PublicationFicheProps {
   canEditCover: boolean;
   canEditCaptions: boolean;
   canEditDescription: boolean;
+  // Phase B2 — Rushes
+  rushes: RushItem[];
+  canUploadRushes: boolean;
+  canManageRushes: boolean;
+  // Phase B3 — Brief
+  brief: BriefItem | null;
+  briefAttachments: BriefAttachmentItem[];
+  canEditBrief: boolean;
+  canManageAttachments: boolean;
   // Phase 1.3.6
   comments: CommentData[];
   activities: ActivityItem[];
@@ -117,6 +157,13 @@ export function PublicationFiche({
   canEditCover,
   canEditCaptions,
   canEditDescription,
+  rushes,
+  canUploadRushes,
+  canManageRushes,
+  brief,
+  briefAttachments,
+  canEditBrief,
+  canManageAttachments,
   comments,
   activities,
   activityHasMore,
@@ -142,6 +189,28 @@ export function PublicationFiche({
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         {/* Chaîne de production */}
         <ProductionChain steps={steps} />
+
+        {/* Brief éditorial — Phase B3, conditionné par recipe.needsBrief */}
+        {recipe?.needsBrief && (
+          <BriefSection
+            slotId={slot.id}
+            brief={brief}
+            attachments={briefAttachments}
+            canEditBrief={canEditBrief}
+            canManageAttachments={canManageAttachments}
+          />
+        )}
+
+        {/* Rushes — Phase B2, conditionné par recipe.needsRushes */}
+        {recipe?.needsRushes && (
+          <RushesSection
+            slotId={slot.id}
+            rushes={rushes}
+            canUploadRushes={canUploadRushes}
+            canManageRushes={canManageRushes}
+            currentUserId={currentUserId}
+          />
+        )}
 
         {/* Rendu vidéo */}
         <RenderSection
