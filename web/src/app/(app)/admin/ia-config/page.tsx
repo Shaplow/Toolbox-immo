@@ -1,17 +1,39 @@
 import { redirect } from "next/navigation";
+import { Sparkles } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
-import Link from "next/link";
-import { MessageSquare, Sparkles, Type } from "lucide-react";
+import { prisma } from "@/lib/prisma";
+import { serializeCaptionPrompt } from "@/lib/captionPrompt";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { CaptionPromptsPanel } from "@/components/admin/CaptionPromptsPanel";
+import { DescriptionPromptsPanel } from "@/components/admin/DescriptionPromptsPanel";
+import { PresetsPanel } from "@/components/admin/PresetsPanel";
+import { IaConfigTabs } from "./IaConfigTabs";
 
-export default async function IaConfigHubPage() {
+export default async function IaConfigPage() {
   const userContext = await getUserContext();
   if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") {
     redirect("/tools/templates");
   }
 
+  const [captionPromptRecords, descriptionPromptRecords] = await Promise.all([
+    prisma.captionPrompt.findMany({
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.descriptionPrompt.findMany({
+      orderBy: { createdAt: "asc" },
+      select: { id: true, name: true, prompt: true, isActive: true, createdAt: true },
+    }),
+  ]);
+
+  const captionPrompts = captionPromptRecords.map(serializeCaptionPrompt);
+
+  const descriptionPrompts = descriptionPromptRecords.map((p) => ({
+    ...p,
+    createdAt: p.createdAt.toISOString(),
+  }));
+
   return (
-    <div className="p-8 max-w-3xl mx-auto">
+    <div className="p-8 max-w-4xl mx-auto">
       <ToolPageHeader
         icon={Sparkles}
         iconColor="amber"
@@ -19,33 +41,36 @@ export default async function IaConfigHubPage() {
         subtitle="Prompts et presets pour la génération de contenu"
       />
 
-      <div className="grid grid-cols-2 gap-4">
-        <Link
-          href="/admin/prompts"
-          className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-amber-300 hover:bg-amber-50 transition-colors"
-        >
-          <div className="p-2 bg-amber-100 rounded-lg text-amber-600">
-            <MessageSquare size={20} />
-          </div>
-          <div>
-            <p className="font-medium text-gray-900">Prompts IA</p>
-            <p className="text-sm text-gray-500 mt-0.5">Prompts de génération de descriptions immobilières</p>
-          </div>
-        </Link>
+      <IaConfigTabs
+        promptsContent={
+          <div className="space-y-12">
+            {/* Caption prompts */}
+            <section>
+              <div className="mb-5">
+                <h2 className="text-base font-semibold text-gray-900">Sous-titres</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Prompts de correction IA disponibles dans l&apos;outil sous-titres.
+                </p>
+              </div>
+              <CaptionPromptsPanel initialPrompts={captionPrompts} />
+            </section>
 
-        <Link
-          href="/admin/presets"
-          className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-amber-300 hover:bg-amber-50 transition-colors"
-        >
-          <div className="p-2 bg-amber-100 rounded-lg text-amber-600">
-            <Type size={20} />
+            <div className="border-t border-gray-100" />
+
+            {/* Description prompts */}
+            <section>
+              <div className="mb-5">
+                <h2 className="text-base font-semibold text-gray-900">Descriptions</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Prompts de génération disponibles dans l&apos;outil de descriptions.
+                </p>
+              </div>
+              <DescriptionPromptsPanel initialPrompts={descriptionPrompts} />
+            </section>
           </div>
-          <div>
-            <p className="font-medium text-gray-900">Presets sous-titres</p>
-            <p className="text-sm text-gray-500 mt-0.5">Styles visuels et timings pour les sous-titres</p>
-          </div>
-        </Link>
-      </div>
+        }
+        presetsContent={<PresetsPanel />}
+      />
     </div>
   );
 }
