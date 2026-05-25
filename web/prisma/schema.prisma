@@ -666,6 +666,10 @@ model PublicationSlot {
   /// true = créé automatiquement par le moteur de génération / cron
   isAuto            Boolean               @default(false)
   notes             String?
+  /// URL Instagram de la publication (renseignée via mark-published)
+  publishedUrl      String?
+  /// Date effective de publication sur Instagram (renseignée via mark-published)
+  publishedAt       DateTime?
   /// Monteur assigné à ce slot
   assigneeMonteurId String?
   assigneeMonteur   User?                 @relation("SlotMonteur", fields: [assigneeMonteurId], references: [id], onDelete: SetNull)

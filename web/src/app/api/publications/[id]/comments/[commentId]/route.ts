@@ -19,16 +19,10 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canEditComment } from "@/lib/permissions/publications";
+import { toUserRole } from "@/lib/permissions/role";
 import type { UserRole } from "@/types/roles";
-import { USER_ROLES } from "@/types/roles";
 
 const MAX_COMMENT_LENGTH = 5000;
-
-/** Normalise un rôle brut vers UserRole. Valeur inconnue → USER. */
-function toUserRole(raw?: string | null): UserRole {
-  if (raw && Object.hasOwn(USER_ROLES, raw)) return raw as UserRole;
-  return "USER";
-}
 
 type Params = { params: Promise<{ id: string; commentId: string }> };
 

@@ -4,8 +4,7 @@ import { getUserContext, parsePermissions } from "@/lib/userContext";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import type { TemplateJSON } from "@/types/template";
-import type { UserRole } from "@/types/roles";
-import { USER_ROLES } from "@/types/roles";
+import { toUserRole } from "@/lib/permissions/role";
 import { List } from "lucide-react";
 
 function templateHasCoverAuto(jsonData: string): boolean {
@@ -14,12 +13,6 @@ function templateHasCoverAuto(jsonData: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** Normalise un rôle brut (String en base) vers UserRole. Valeur inconnue → USER. */
-function toUserRole(raw?: string | null): UserRole {
-  if (raw && Object.hasOwn(USER_ROLES, raw)) return raw as UserRole;
-  return "USER";
 }
 
 const LISTING_INCLUDE = {

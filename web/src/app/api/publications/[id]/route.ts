@@ -19,14 +19,7 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { computePublicationSteps } from "@/lib/publications/steps";
-import type { UserRole } from "@/types/roles";
-import { USER_ROLES } from "@/types/roles";
-
-/** Normalise un rôle brut vers UserRole. Valeur inconnue → USER. */
-function toUserRole(raw?: string | null): UserRole {
-  if (raw && Object.hasOwn(USER_ROLES, raw)) return raw as UserRole;
-  return "USER";
-}
+import { toUserRole } from "@/lib/permissions/role";
 
 /** Safely parse a JSON string. Returns `fallback` if falsy or invalid. */
 function safeJSON<T>(str: string | null | undefined, fallback: T): T {

@@ -15,17 +15,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
-import type { UserRole } from "@/types/roles";
-import { USER_ROLES } from "@/types/roles";
+import { toUserRole } from "@/lib/permissions/role";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
-
-/** Normalise un rôle brut vers UserRole. Valeur inconnue → USER. */
-function toUserRole(raw?: string | null): UserRole {
-  if (raw && Object.hasOwn(USER_ROLES, raw)) return raw as UserRole;
-  return "USER";
-}
 
 type Params = { params: Promise<{ id: string }> };
 

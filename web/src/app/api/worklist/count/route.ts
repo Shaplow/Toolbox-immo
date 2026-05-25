@@ -13,15 +13,8 @@
 import { NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
-import { USER_ROLES } from "@/types/roles";
 import { TERMINAL_STATUSES } from "@/types/roles";
-import type { UserRole } from "@/types/roles";
-
-/** Normalise un rôle brut (String en base) vers UserRole. Valeur inconnue → USER. */
-function toUserRole(raw?: string | null): UserRole {
-  if (raw && Object.hasOwn(USER_ROLES, raw)) return raw as UserRole;
-  return "USER";
-}
+import { toUserRole } from "@/lib/permissions/role";
 
 export async function GET() {
   const userContext = await getUserContext();

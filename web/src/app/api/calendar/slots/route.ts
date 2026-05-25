@@ -15,8 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { whereClauseForUser } from "@/lib/permissions/slotScope";
-import type { UserRole } from "@/types/roles";
-import { USER_ROLES } from "@/types/roles";
+import { toUserRole } from "@/lib/permissions/role";
 
 /** Safely parse a JSON string. Returns `fallback` if the string is falsy or invalid. */
 function safeJSON<T>(str: string | null | undefined, fallback: T): T {
@@ -26,12 +25,6 @@ function safeJSON<T>(str: string | null | undefined, fallback: T): T {
   } catch {
     return fallback;
   }
-}
-
-/** Normalise un rôle brut (String en base) vers UserRole. Valeur inconnue → USER. */
-function toUserRole(raw?: string | null): UserRole {
-  if (raw && Object.hasOwn(USER_ROLES, raw)) return raw as UserRole;
-  return "USER";
 }
 
 export async function GET(req: NextRequest) {

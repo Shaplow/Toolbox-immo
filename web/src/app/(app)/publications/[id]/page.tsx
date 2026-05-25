@@ -4,15 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canMarkPublished } from "@/lib/permissions/publications";
 import { computePublicationSteps } from "@/lib/publications/steps";
+import { toUserRole } from "@/lib/permissions/role";
 import { PublicationFiche } from "./PublicationFiche";
-import type { UserRole } from "@/types/roles";
-import { USER_ROLES } from "@/types/roles";
-
-/** Normalise un rôle brut vers UserRole. Valeur inconnue → USER. */
-function toUserRole(raw?: string | null): UserRole {
-  if (raw && Object.hasOwn(USER_ROLES, raw)) return raw as UserRole;
-  return "USER";
-}
 
 type PageProps = { params: Promise<{ id: string }> };
 

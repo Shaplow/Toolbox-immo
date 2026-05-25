@@ -16,9 +16,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot, ALLOWED_PATCH_FIELDS_BY_ROLE, isValidSlotStatus } from "@/lib/permissions/slotScope";
+import { toUserRole } from "@/lib/permissions/role";
 import { logActivity } from "@/lib/publications/activity";
-import type { UserRole } from "@/types/roles";
-import { USER_ROLES } from "@/types/roles";
 
 /** Safely parse a JSON string. Returns `fallback` if the string is falsy or invalid. */
 function safeJSON<T>(str: string | null | undefined, fallback: T): T {
@@ -30,11 +29,13 @@ function safeJSON<T>(str: string | null | undefined, fallback: T): T {
   }
 }
 
-/** Normalise un rôle brut (String en base) vers UserRole. Valeur inconnue → USER. */
-function toUserRole(raw?: string | null): UserRole {
-  if (raw && Object.hasOwn(USER_ROLES, raw)) return raw as UserRole;
-  return "USER";
-}
+/**
+ * Statuts terminaux réservés aux ADMIN uniquement.
+ * Un MONTEUR ou CM ne peut pas écrire ces valeurs via PATCH, même si "status"
+ * figure dans leurs ALLOWED_PATCH_FIELDS_BY_ROLE. L'escalade vers PUBLISHED
+ * se fait exclusivement via POST /api/publications/[id]/mark-published.
+ */
+const RESERVED_TERMINAL_STATUSES = ["PUBLISHED", "CANCELLED", "ARCHIVED", "REJECTED"] as const;
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -99,8 +100,25 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     Object.entries(rawBody).filter(([key]) => allowedFields.includes(key))
   );
 
-  const { status, title, caption, notes, templateId, scheduledAt, contentType, fields, fieldSchema,
+  const { status, title, caption, templateId, scheduledAt, contentType, fields, fieldSchema,
           assigneeMonteurId, assigneeCmId, recipeId, currentVersionId, isAuto } = body as Record<string, unknown>;
+  // notes est mutable : peut être sanitisé avant l'update (H2).
+  let { notes } = body as Record<string, unknown>;
+
+  // H1 — Guard statuts terminaux réservés.
+  // MONTEUR et CM peuvent écrire des statuts de travail (DRAFT, IN_EDIT, etc.)
+  // mais PAS les statuts terminaux réservés (PUBLISHED, CANCELLED, ARCHIVED, REJECTED).
+  // L'escalade vers PUBLISHED se fait exclusivement via POST mark-published.
+  if (
+    typeof status === "string" &&
+    (RESERVED_TERMINAL_STATUSES as readonly string[]).includes(status) &&
+    role !== "ADMIN"
+  ) {
+    return NextResponse.json(
+      { error: "Ce statut est réservé. Utilisez /mark-published ou contactez un admin." },
+      { status: 403 }
+    );
+  }
 
   // Validation du statut : doit être une valeur de SLOT_STATUSES ou un statut legacy
   // conservé en cohabitation jusqu'au backfill Phase 1.3 (cf isValidSlotStatus).
@@ -113,6 +131,37 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   if (scheduledAt !== undefined && typeof scheduledAt === "string" && isNaN(new Date(scheduledAt).getTime())) {
     return NextResponse.json({ error: "scheduledAt invalide" }, { status: 400 });
+  }
+
+  // H2 — Défense en profondeur : sanitizer les notes pour les non-ADMIN.
+  // Supprime toute ligne "PUBLISHED_URL:" que le body pourrait contenir,
+  // afin d'éviter l'injection de l'ancienne donnée hack via le champ notes.
+  if (typeof notes === "string" && role !== "ADMIN") {
+    notes = notes
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("PUBLISHED_URL:"))
+      .join("\n");
+  }
+
+  // M2 — Validation existence + rôle des assignees (ADMIN uniquement, car seul l'ADMIN
+  // a "assigneeMonteurId" et "assigneeCmId" dans ALLOWED_PATCH_FIELDS_BY_ROLE).
+  if (typeof assigneeMonteurId === "string") {
+    const monteur = await prisma.user.findUnique({
+      where: { id: assigneeMonteurId },
+      select: { role: true },
+    });
+    if (!monteur || !["MONTEUR", "ADMIN"].includes(monteur.role ?? "")) {
+      return NextResponse.json({ error: "Monteur assignee invalide" }, { status: 400 });
+    }
+  }
+  if (typeof assigneeCmId === "string") {
+    const cm = await prisma.user.findUnique({
+      where: { id: assigneeCmId },
+      select: { role: true },
+    });
+    if (!cm || !["CM", "ADMIN"].includes(cm.role ?? "")) {
+      return NextResponse.json({ error: "CM assignee invalide" }, { status: 400 });
+    }
   }
 
   const updated = await prisma.publicationSlot.update({

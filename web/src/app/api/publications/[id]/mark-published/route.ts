@@ -5,14 +5,12 @@
  *        canMarkPublished → 403 (pas 404 — cas légitime à expliquer à l'utilisateur).
  *
  * Body : { url: string, publishedAt?: string ISO }
- *   - url       : doit commencer par "https://" (validation minimale, domain check Phase 2)
+ *   - url       : doit être une URL https:// pointant vers instagram.com ou www.instagram.com,
+ *                 max 500 caractères. Validation stricte via URL() + allowlist hôtes.
  *   - publishedAt : ISO parsable ; si absent, on utilise now()
  *
- * Stockage URL : le modèle PublicationSlot n'a pas encore de champ dédié
- * pour l'URL Instagram (TODO Phase 1.3.4 — ajouter publishedUrl + publishedAt).
- * Stratégie minimale pour ce commit : l'URL est stockée dans `notes` sous la forme
- * d'une ligne PUBLISHED_URL: <url> ajoutée en tête, afin de ne pas écraser
- * les notes existantes.
+ * Stockage URL : champ dédié `publishedUrl` + `publishedAt` sur PublicationSlot
+ * (migration 20260525134426_add_published_url_to_slot).
  *
  * Après update : log d'activité PUBLISHED.
  */
@@ -22,37 +20,14 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canMarkPublished } from "@/lib/permissions/publications";
+import { toUserRole } from "@/lib/permissions/role";
 import { logActivity } from "@/lib/publications/activity";
-import type { UserRole } from "@/types/roles";
-import { USER_ROLES } from "@/types/roles";
 
-/** Normalise un rôle brut vers UserRole. Valeur inconnue → USER. */
-function toUserRole(raw?: string | null): UserRole {
-  if (raw && Object.hasOwn(USER_ROLES, raw)) return raw as UserRole;
-  return "USER";
-}
+/** Hôtes Instagram autorisés pour l'URL de publication. */
+const ALLOWED_INSTAGRAM_HOSTS = ["www.instagram.com", "instagram.com"] as const;
 
-/** Construit la nouvelle valeur de `notes` en ajoutant/remplaçant la ligne PUBLISHED_URL. */
-function upsertPublishedUrlInNotes(existingNotes: string | null, url: string): string {
-  const PREFIX = "PUBLISHED_URL: ";
-  const newLine = `${PREFIX}${url}`;
-
-  if (!existingNotes) {
-    return newLine;
-  }
-
-  // Remplacer la ligne existante si elle est déjà là, sinon la préfixer.
-  const lines = existingNotes.split("\n");
-  const existingIndex = lines.findIndex((l) => l.startsWith(PREFIX));
-
-  if (existingIndex >= 0) {
-    lines[existingIndex] = newLine;
-    return lines.join("\n");
-  }
-
-  // Pas encore de ligne PUBLISHED_URL — la mettre en tête.
-  return `${newLine}\n${existingNotes}`;
-}
+/** Longueur max de l'URL Instagram. */
+const MAX_URL_LENGTH = 500;
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -72,7 +47,6 @@ export async function POST(req: NextRequest, { params }: Params) {
       id: true,
       assigneeMonteurId: true,
       assigneeCmId: true,
-      notes: true,
       status: true,
     },
   });
@@ -96,11 +70,28 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { url, publishedAt: publishedAtRaw } = rawBody as Record<string, unknown>;
 
-  if (typeof url !== "string" || !url.startsWith("https://")) {
-    return NextResponse.json(
-      { error: "url est requis et doit commencer par https://" },
-      { status: 400 }
-    );
+  if (typeof url !== "string") {
+    return NextResponse.json({ error: "url est requis" }, { status: 400 });
+  }
+
+  // M1 — Validation URL stricte : protocole, hôte, longueur.
+  if (url.length > MAX_URL_LENGTH) {
+    return NextResponse.json({ error: `URL trop longue (max ${MAX_URL_LENGTH})` }, { status: 400 });
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    return NextResponse.json({ error: "URL invalide" }, { status: 400 });
+  }
+
+  if (parsedUrl.protocol !== "https:") {
+    return NextResponse.json({ error: "URL doit être en https" }, { status: 400 });
+  }
+
+  if (!(ALLOWED_INSTAGRAM_HOSTS as readonly string[]).includes(parsedUrl.host)) {
+    return NextResponse.json({ error: "URL doit pointer vers instagram.com" }, { status: 400 });
   }
 
   let effectivePublishedAt: Date;
@@ -114,15 +105,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     effectivePublishedAt = new Date();
   }
 
-  const updatedNotes = upsertPublishedUrlInNotes(slot.notes, url);
-
+  // H2 — Stocker l'URL et la date dans les champs dédiés (plus de hack notes).
   const updated = await prisma.publicationSlot.update({
     where: { id: slotId },
     data: {
       status: "PUBLISHED",
-      notes: updatedNotes,
+      publishedUrl: url,
+      publishedAt: effectivePublishedAt,
     },
-    select: { id: true, status: true, notes: true, updatedAt: true },
+    select: { id: true, status: true, publishedUrl: true, publishedAt: true, updatedAt: true },
   });
 
   // Log non bloquant.
@@ -138,7 +129,6 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   return NextResponse.json({
     ...updated,
-    // Exposer l'URL et la date effective pour confirmation côté client.
     publishedUrl: url,
     publishedAt: effectivePublishedAt.toISOString(),
   });
