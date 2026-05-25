@@ -6,6 +6,8 @@ import { canMarkPublished } from "@/lib/permissions/publications";
 import { computePublicationSteps } from "@/lib/publications/steps";
 import { toUserRole } from "@/lib/permissions/role";
 import { PublicationFiche } from "./PublicationFiche";
+import type { CommentData } from "@/components/publications/CommentItem";
+import type { ActivityItem } from "@/components/publications/ActivityTimeline";
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -69,6 +71,49 @@ export default async function PublicationPage({ params }: PageProps) {
 
   // Dériver le listing depuis le render si présent
   const listing = slot.render?.listing ?? null;
+
+  // Fetch commentaires (50 premiers, oldest first)
+  const rawComments = await prisma.publicationComment.findMany({
+    where: { slotId: id },
+    orderBy: { createdAt: "asc" },
+    take: 50,
+    include: {
+      author: { select: { id: true, name: true, email: true } },
+    },
+  });
+
+  const comments: CommentData[] = rawComments.map((c) => ({
+    id: c.id,
+    body: c.body,
+    createdAt: c.createdAt.toISOString(),
+    updatedAt: c.updatedAt.toISOString(),
+    deletedAt: c.deletedAt ? c.deletedAt.toISOString() : null,
+    authorId: c.authorId,
+    author: {
+      id: c.author.id,
+      name: c.author.name,
+      email: c.author.email,
+    },
+  }));
+
+  // Fetch activités (30 premières, newest first)
+  const rawActivities = await prisma.publicationActivity.findMany({
+    where: { slotId: id },
+    orderBy: { createdAt: "desc" },
+    take: 31, // +1 pour détecter hasMore
+    include: {
+      actor: { select: { id: true, name: true } },
+    },
+  });
+
+  const activityHasMore = rawActivities.length > 30;
+  const activities: ActivityItem[] = rawActivities.slice(0, 30).map((a) => ({
+    id: a.id,
+    type: a.type,
+    payload: (a.payload as Record<string, unknown> | null) ?? null,
+    createdAt: a.createdAt.toISOString(),
+    actor: a.actor ? { id: a.actor.id, name: a.actor.name } : null,
+  }));
 
   // Calcul des steps
   const steps = computePublicationSteps({
@@ -148,6 +193,11 @@ export default async function PublicationPage({ params }: PageProps) {
       canEditCover={canEditCover}
       canEditCaptions={canEditCaptions}
       canEditDescription={canEditDescription}
+      comments={comments}
+      activities={activities}
+      activityHasMore={activityHasMore}
+      currentUserId={userId}
+      currentUserRole={role}
     />
   );
 }

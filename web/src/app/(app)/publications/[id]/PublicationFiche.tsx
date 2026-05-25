@@ -19,7 +19,12 @@ import { CaptionsSection } from "@/components/publications/sections/CaptionsSect
 import { DescriptionSection } from "@/components/publications/sections/DescriptionSection";
 import { CaptionIgSection } from "@/components/publications/sections/CaptionIgSection";
 import { PublishSection } from "@/components/publications/sections/PublishSection";
+import { CommentsSection } from "@/components/publications/CommentsSection";
+import { ActivityTimeline } from "@/components/publications/ActivityTimeline";
 import type { PublicationStep } from "@/lib/publications/steps";
+import type { CommentData } from "@/components/publications/CommentItem";
+import type { ActivityItem } from "@/components/publications/ActivityTimeline";
+import type { UserRole } from "@/types/roles";
 
 interface AssigneeInfo {
   id: string;
@@ -86,6 +91,12 @@ export interface PublicationFicheProps {
   canEditCover: boolean;
   canEditCaptions: boolean;
   canEditDescription: boolean;
+  // Phase 1.3.6
+  comments: CommentData[];
+  activities: ActivityItem[];
+  activityHasMore: boolean;
+  currentUserId: string;
+  currentUserRole: UserRole;
 }
 
 export function PublicationFiche({
@@ -104,6 +115,11 @@ export function PublicationFiche({
   canEditCover,
   canEditCaptions,
   canEditDescription,
+  comments,
+  activities,
+  activityHasMore,
+  currentUserId,
+  currentUserRole,
 }: PublicationFicheProps) {
   return (
     <div className="min-h-screen bg-gray-50">
@@ -176,11 +192,20 @@ export function PublicationFiche({
           canPublish={canMarkPublished}
         />
 
-        {/* Section commentaires — placeholder Phase 1.3.6 */}
-        <section id="comments" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">Commentaires</h2>
-          <p className="text-sm text-gray-400 italic">Section à venir (Phase 1.3.6)</p>
-        </section>
+        {/* Section commentaires — Phase 1.3.6 */}
+        <CommentsSection
+          slotId={slot.id}
+          initialComments={comments}
+          currentUserId={currentUserId}
+          currentUserRole={currentUserRole}
+        />
+
+        {/* Historique d'activité — Phase 1.3.6 */}
+        <ActivityTimeline
+          slotId={slot.id}
+          initialActivities={activities}
+          initialHasMore={activityHasMore}
+        />
       </div>
     </div>
   );
