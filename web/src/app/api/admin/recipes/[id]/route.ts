@@ -54,6 +54,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     needsCover,
     needsCaptions,
     needsClientValidation,
+    needsRushes,
+    needsBrief,
     defaultAssigneeMonteurId,
     defaultAssigneeCmId,
     notes,
@@ -89,6 +91,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (needsCover !== undefined) data.needsCover = needsCover;
   if (needsCaptions !== undefined) data.needsCaptions = needsCaptions;
   if (needsClientValidation !== undefined) data.needsClientValidation = needsClientValidation;
+  if (needsRushes !== undefined) data.needsRushes = needsRushes;
+  if (needsBrief !== undefined) data.needsBrief = needsBrief;
   if (defaultAssigneeMonteurId !== undefined) data.defaultAssigneeMonteurId = defaultAssigneeMonteurId ?? null;
   if (defaultAssigneeCmId !== undefined) data.defaultAssigneeCmId = defaultAssigneeCmId ?? null;
   if (notes !== undefined) data.notes = notes ?? null;

@@ -148,6 +148,8 @@ async function main() {
       needsCover: "auto",
       needsCaptions: true,
       needsClientValidation: false,
+      needsRushes: true,
+      needsBrief: true,
       defaultAssigneeMonteurId: monteur.id,
       defaultAssigneeCmId: cm.id,
     },

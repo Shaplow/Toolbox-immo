@@ -19,6 +19,8 @@ type RecipeRow = {
   needsCover: string;
   needsCaptions: boolean;
   needsClientValidation: boolean;
+  needsRushes: boolean;
+  needsBrief: boolean;
   defaultAssigneeMonteurId: string | null;
   defaultAssigneeCmId: string | null;
   notes: string | null;
@@ -137,6 +139,8 @@ export function RecipesPanel({ initialRecipes }: { initialRecipes: RecipeRow[] }
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Desc.</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cover</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Caps.</th>
+                <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Rushes</th>
+                <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Brief</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Valid.</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Monteur</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">CM</th>
@@ -159,6 +163,8 @@ export function RecipesPanel({ initialRecipes }: { initialRecipes: RecipeRow[] }
                   <td className="px-4 py-3">{strTag(r.needsDescription)}</td>
                   <td className="px-4 py-3">{strTag(r.needsCover)}</td>
                   <td className="px-4 py-3">{boolTag(r.needsCaptions)}</td>
+                  <td className="px-4 py-3">{boolTag(r.needsRushes)}</td>
+                  <td className="px-4 py-3">{boolTag(r.needsBrief)}</td>
                   <td className="px-4 py-3">{boolTag(r.needsClientValidation)}</td>
                   <td className="px-4 py-3 text-xs text-gray-600">{r.defaultAssigneeMonteur?.name ?? <span className="text-gray-300">—</span>}</td>
                   <td className="px-4 py-3 text-xs text-gray-600">{r.defaultAssigneeCm?.name ?? <span className="text-gray-300">—</span>}</td>
