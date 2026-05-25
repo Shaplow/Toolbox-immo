@@ -84,6 +84,46 @@ function activityLabel(type: string, payload: Record<string, unknown> | null): s
       return "Publié sur Instagram";
     case "COMMENT_ADDED":
       return "A ajouté un commentaire";
+    // ── Rushes / versions / brief ──────────────────────────────────────────
+    case "BRIEF_UPDATED": {
+      const hasAttachment = payload?.hasAttachment === true;
+      return hasAttachment ? "Brief mis à jour (pièce jointe)" : "Brief mis à jour";
+    }
+    case "RUSHES_UPLOADED": {
+      const count = typeof payload?.count === "number" ? payload.count : 1;
+      const fileName = typeof payload?.fileName === "string" ? ` · ${payload.fileName}` : "";
+      return count === 1
+        ? `Rush téléversé${fileName}`
+        : `Rushes téléversés (${count})`;
+    }
+    case "RUSHES_DELETED": {
+      const fileName = typeof payload?.fileName === "string" ? ` · ${payload.fileName}` : "";
+      return `Rush supprimé${fileName}`;
+    }
+    case "VERSION_UPLOADED": {
+      const vn = typeof payload?.versionNumber === "number" ? payload.versionNumber : "?";
+      const fileName = typeof payload?.fileName === "string" ? ` · ${payload.fileName}` : "";
+      return `V${vn} téléversée${fileName}`;
+    }
+    case "VERSION_PROMOTED": {
+      const vn = typeof payload?.versionNumber === "number" ? payload.versionNumber : "?";
+      return `V${vn} promue version courante`;
+    }
+    case "VERSION_DELETED": {
+      const vn = typeof payload?.versionNumber === "number" ? payload.versionNumber : "?";
+      return `V${vn} supprimée`;
+    }
+    case "VERSION_RESTORED": {
+      const vn = typeof payload?.versionNumber === "number" ? payload.versionNumber : "?";
+      return `V${vn} restaurée`;
+    }
+    case "CURRENT_VERSION_CHANGED": {
+      const prev = typeof payload?.previousVersionNumber === "number"
+        ? `V${payload.previousVersionNumber}`
+        : (payload?.previousVersionId ? "V?" : "aucune");
+      const next = typeof payload?.versionNumber === "number" ? `V${payload.versionNumber}` : "V?";
+      return `Version courante : ${prev} → ${next}`;
+    }
     default:
       return type;
   }
@@ -109,7 +149,24 @@ function ActivityIcon({ type }: ActivityIconProps) {
     case "PUBLISHED":
       return <span className={`${base} bg-green-100 text-green-700`} title="Publié">P</span>;
     case "COMMENT_ADDED":
-      return <span className={`${base} bg-gray-100 text-gray-600`} title="Commentaire">💬</span>;
+      return <span className={`${base} bg-gray-100 text-gray-600`} title="Commentaire">C</span>;
+    // ── Rushes / versions / brief ──────────────────────────────────────────
+    case "BRIEF_UPDATED":
+      return <span className={`${base} bg-violet-100 text-violet-700`} title="Brief">B</span>;
+    case "RUSHES_UPLOADED":
+      return <span className={`${base} bg-amber-100 text-amber-700`} title="Rush">R</span>;
+    case "RUSHES_DELETED":
+      return <span className={`${base} bg-red-100 text-red-600`} title="Rush supprimé">R</span>;
+    case "VERSION_UPLOADED":
+      return <span className={`${base} bg-blue-100 text-blue-700`} title="Version">V</span>;
+    case "VERSION_PROMOTED":
+      return <span className={`${base} bg-green-100 text-green-700`} title="Promue">V</span>;
+    case "VERSION_DELETED":
+      return <span className={`${base} bg-red-100 text-red-600`} title="Supprimée">V</span>;
+    case "VERSION_RESTORED":
+      return <span className={`${base} bg-teal-100 text-teal-700`} title="Restaurée">V</span>;
+    case "CURRENT_VERSION_CHANGED":
+      return <span className={`${base} bg-indigo-100 text-indigo-700`} title="Version courante">VC</span>;
     default:
       return <span className={`${base} bg-gray-100 text-gray-500`} title={type}>•</span>;
   }
