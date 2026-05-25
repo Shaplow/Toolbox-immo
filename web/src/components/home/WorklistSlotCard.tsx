@@ -7,9 +7,26 @@ import type { SlotDetailPanelMode } from "@/components/calendar/SlotDetailPanel"
 import type { WorklistSlot } from "@/types/worklist";
 import { isSlotOverdue } from "@/types/worklist";
 
+/**
+ * Badges contextuels optionnels pour les monteurs.
+ * Passés depuis HomeMonteur lorsque les données de versions/rushes sont disponibles.
+ * Non inclus dans WorklistSlot (type partagé) pour éviter de polluer le type commun.
+ */
+export interface WorklistSlotBadges {
+  /** True si le slot vient de recevoir des nouveaux rushes (RUSHES_RECEIVED). */
+  hasNewRushes?: boolean;
+  /**
+   * Numéro de la dernière version livrée en attente de validation.
+   * Non null si le slot est en EDIT_REVIEW et le monteur est assigné.
+   */
+  versionPendingNumber?: number | null;
+}
+
 interface WorklistSlotCardProps {
   slot: WorklistSlot;
   mode: SlotDetailPanelMode;
+  /** Badges contextuels monteur — non affichés pour CM/ADMIN. */
+  monteurBadges?: WorklistSlotBadges;
 }
 
 /**
@@ -29,9 +46,12 @@ function formatScheduledAt(date: Date): string {
   return `${datePart} · ${timePart}`;
 }
 
-export function WorklistSlotCard({ slot }: WorklistSlotCardProps) {
+export function WorklistSlotCard({ slot, monteurBadges }: WorklistSlotCardProps) {
   const router = useRouter();
   const overdue = isSlotOverdue(slot);
+
+  const showNewRushes = monteurBadges?.hasNewRushes === true;
+  const versionPendingN = monteurBadges?.versionPendingNumber ?? null;
 
   return (
     <div
@@ -67,6 +87,22 @@ export function WorklistSlotCard({ slot }: WorklistSlotCardProps) {
           {formatScheduledAt(slot.scheduledAt)}
           {overdue && <span className="ml-1 font-semibold uppercase text-red-600 text-[10px]">EN RETARD</span>}
         </p>
+
+        {/* Badges contextuels monteur */}
+        {(showNewRushes || versionPendingN !== null) && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {showNewRushes && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700 border border-amber-200">
+                Nouveaux rushes
+              </span>
+            )}
+            {versionPendingN !== null && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700 border border-blue-200">
+                V{versionPendingN} en attente validation
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="shrink-0 flex flex-col items-end gap-2">

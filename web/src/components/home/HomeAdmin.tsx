@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, AlertTriangle, FileQuestion, ArrowRight, Layers, CalendarClock, Building2 } from "lucide-react";
+import { CalendarDays, AlertTriangle, FileQuestion, ArrowRight, Layers, CalendarClock, Building2, Film } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import type { SlotStatus } from "@/types/roles";
 import { TERMINAL_STATUSES } from "@/types/worklist";
@@ -36,7 +36,7 @@ interface HomeAdminProps {
 export async function HomeAdmin({ userName }: HomeAdminProps) {
   const now = new Date();
 
-  const [overdueCount, noRecipeCount] = await Promise.all([
+  const [overdueCount, noRecipeCount, editReviewSlots] = await Promise.all([
     prisma.publicationSlot.count({
       where: {
         scheduledAt: { lt: now },
@@ -48,6 +48,24 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
         recipeId: null,
         status: { in: ACTIVE_STATUSES },
       },
+    }),
+    // Slots en EDIT_REVIEW = version livrée, attend validation admin
+    prisma.publicationSlot.findMany({
+      where: { status: "EDIT_REVIEW" },
+      select: {
+        id: true,
+        title: true,
+        contentType: true,
+        account: { select: { handle: true, name: true } },
+        versions: {
+          where: { deletedAt: null },
+          select: { versionNumber: true, createdAt: true },
+          orderBy: { versionNumber: "desc" },
+          take: 1,
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 10,
     }),
   ]);
 
@@ -114,6 +132,65 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
             {noRecipeCount}
           </p>
         </div>
+      </div>
+
+      {/* Widget "Versions à valider" */}
+      <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Film size={15} className="text-blue-600 shrink-0" />
+          <h2 className="text-sm font-semibold text-blue-800">Versions à valider</h2>
+          {editReviewSlots.length > 0 && (
+            <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-medium bg-blue-200 text-blue-800">
+              {editReviewSlots.length}
+            </span>
+          )}
+        </div>
+
+        {editReviewSlots.length === 0 ? (
+          <p className="text-xs text-blue-500 italic">Toutes les versions sont à jour.</p>
+        ) : (
+          <div className="space-y-2">
+            {editReviewSlots.map((slot) => {
+              const latestVersion = slot.versions[0];
+              const versionLabel = latestVersion ? `V${latestVersion.versionNumber}` : "Version";
+              const uploadDate = latestVersion
+                ? new Date(latestVersion.createdAt).toLocaleDateString("fr-FR", {
+                    day: "numeric",
+                    month: "short",
+                  })
+                : null;
+
+              return (
+                <Link
+                  key={slot.id}
+                  href={`/publications/${slot.id}`}
+                  className="flex items-center justify-between bg-white rounded-lg border border-blue-100 px-3 py-2 hover:border-blue-300 transition-colors group"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-gray-900 truncate">
+                      {slot.title ?? slot.contentType}
+                    </p>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      @{slot.account.handle}
+                      {slot.account.name !== slot.account.handle && (
+                        <span className="text-gray-400"> · {slot.account.name}</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="shrink-0 flex items-center gap-2 ml-3">
+                    <span className="text-[11px] font-medium text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
+                      {versionLabel} en attente
+                    </span>
+                    {uploadDate && (
+                      <span className="text-[10px] text-gray-400 hidden sm:block">{uploadDate}</span>
+                    )}
+                    <ArrowRight size={12} className="text-blue-400 group-hover:text-blue-600 transition-colors" />
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Lien principal vers le calendrier */}

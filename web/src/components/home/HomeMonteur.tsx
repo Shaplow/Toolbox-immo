@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { WorklistSection } from "./WorklistSection";
+import type { WorklistSlotBadges } from "./WorklistSlotCard";
 import type { WorklistSlot } from "@/types/worklist";
 import type { SlotStatus } from "@/types/roles";
 import {
@@ -65,6 +66,46 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
     recipe: s.recipe,
   }));
 
+  // ── Badges contextuels monteur ─────────────────────────────────────────────
+  // Fetch la dernière version non-deleted pour les slots EDIT_REVIEW,
+  // afin d'afficher "V{n} en attente validation".
+  const editReviewSlotIds = slots
+    .filter((s) => s.status === "EDIT_REVIEW")
+    .map((s) => s.id);
+
+  const latestVersionsBySlot = new Map<string, number>();
+  if (editReviewSlotIds.length > 0) {
+    const latestVersions = await prisma.publicationVersion.findMany({
+      where: {
+        slotId: { in: editReviewSlotIds },
+        deletedAt: null,
+      },
+      select: { slotId: true, versionNumber: true },
+      orderBy: { versionNumber: "desc" },
+    });
+    // Garder seulement le max par slot
+    for (const v of latestVersions) {
+      if (!latestVersionsBySlot.has(v.slotId)) {
+        latestVersionsBySlot.set(v.slotId, v.versionNumber);
+      }
+    }
+  }
+
+  const monteurBadgesMap = new Map<string, WorklistSlotBadges>();
+  for (const slot of slots) {
+    const badges: WorklistSlotBadges = {};
+    if (slot.status === "RUSHES_RECEIVED") {
+      badges.hasNewRushes = true;
+    }
+    if (slot.status === "EDIT_REVIEW") {
+      const vn = latestVersionsBySlot.get(slot.id);
+      badges.versionPendingNumber = vn ?? null;
+    }
+    if (badges.hasNewRushes || badges.versionPendingNumber !== undefined) {
+      monteurBadgesMap.set(slot.id, badges);
+    }
+  }
+
   // ── Découpe en sections ────────────────────────────────────────────────────
 
   /** En retard : dans le passé, statut non-terminal, exclu "waiting" (déjà fait côté monteur) */
@@ -119,6 +160,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
           slots={overdue}
           mode="monteur"
           tone="danger"
+          monteurBadgesMap={monteurBadgesMap}
         />
       )}
 
@@ -129,6 +171,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
         mode="monteur"
         tone="default"
         emptyMessage="Aucune publication à monter cette semaine."
+        monteurBadgesMap={monteurBadgesMap}
       />
 
       {/* Section À venir (collapsable) */}
@@ -139,6 +182,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
         tone="muted"
         collapsible
         defaultOpen={false}
+        monteurBadgesMap={monteurBadgesMap}
       />
 
       {/* Section Mes envois en attente — informatif */}
