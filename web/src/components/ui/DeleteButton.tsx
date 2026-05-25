@@ -8,6 +8,8 @@ import { ConfirmDialog } from "./ConfirmDialog";
 interface DeleteButtonProps {
   /** Label de l'élément ciblé, ex: "ce client", "cette recette" */
   itemLabel: string;
+  /** Message affiché sous le titre du dialog. Défaut : "Cette action est irréversible." */
+  description?: string;
   onConfirm: () => void | Promise<void>;
   size?: "sm" | "md";
   loading?: boolean;
@@ -15,6 +17,7 @@ interface DeleteButtonProps {
 
 export function DeleteButton({
   itemLabel,
+  description = "Cette action est irréversible.",
   onConfirm,
   size = "sm",
   loading = false,
@@ -45,7 +48,7 @@ export function DeleteButton({
         open={open}
         variant="danger"
         title={`Supprimer ${itemLabel} ?`}
-        description="Cette action est irréversible."
+        description={description}
         confirmLabel="Supprimer"
         loading={loading}
         onConfirm={handleConfirm}
