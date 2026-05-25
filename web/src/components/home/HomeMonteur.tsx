@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Captions, Mic, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { WorklistSection } from "./WorklistSection";
 import type { WorklistSlot } from "@/types/worklist";
@@ -110,23 +110,6 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
           </p>
         </div>
 
-        {/* Accès rapide aux outils */}
-        <div className="flex items-center gap-2 shrink-0">
-          <Link
-            href="/tools/captions"
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
-          >
-            <Captions size={13} />
-            Sous-titres
-          </Link>
-          <Link
-            href="/tools/transcription"
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
-          >
-            <Mic size={13} />
-            Transcription
-          </Link>
-        </div>
       </div>
 
       {/* Section En retard */}

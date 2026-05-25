@@ -4,13 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  ArrowLeft,
   ChevronRight,
   MoreHorizontal,
   Trash2,
   CheckCircle,
 } from "lucide-react";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/slots/statusLabels";
-import type { SlotStatus } from "@/types/roles";
+import type { SlotStatus, UserRole } from "@/types/roles";
 
 export interface PublicationHeaderProps {
   slot: {
@@ -35,6 +36,7 @@ export interface PublicationHeaderProps {
   } | null;
   canMarkPublished: boolean;
   canDelete: boolean;
+  currentUserRole: UserRole;
 }
 
 function formatDateFR(date: Date): string {
@@ -61,6 +63,7 @@ export function PublicationHeader({
   assigneeCm,
   canMarkPublished,
   canDelete,
+  currentUserRole,
 }: PublicationHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -105,10 +108,14 @@ export function PublicationHeader({
   return (
     <div className="sticky top-0 z-20 bg-white border-b border-gray-100 shadow-sm">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3">
-        {/* Breadcrumb */}
+        {/* Breadcrumb + bouton retour role-aware */}
         <nav className="flex items-center gap-1 text-xs text-gray-400 mb-2 flex-wrap">
-          <Link href="/calendar" className="hover:text-indigo-600 transition-colors">
-            Calendrier
+          <Link
+            href={currentUserRole === "ADMIN" ? "/calendar" : "/home"}
+            className="flex items-center gap-1 hover:text-indigo-600 transition-colors"
+          >
+            <ArrowLeft size={12} className="flex-shrink-0" />
+            {currentUserRole === "ADMIN" ? "Retour au calendrier" : "Retour à ma liste"}
           </Link>
           <ChevronRight size={12} className="flex-shrink-0" />
           <span className="text-gray-500">

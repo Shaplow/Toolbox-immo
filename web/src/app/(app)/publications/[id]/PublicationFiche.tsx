@@ -133,6 +133,7 @@ export function PublicationFiche({
         assigneeCm={assigneeCm}
         canMarkPublished={canMarkPublished}
         canDelete={canDelete}
+        currentUserRole={currentUserRole}
       />
 
       {/* Corps de la fiche */}

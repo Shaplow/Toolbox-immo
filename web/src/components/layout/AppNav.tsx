@@ -6,7 +6,7 @@ import { signOut } from "next-auth/react";
 import { useState, type ReactNode } from "react";
 import { Home, List, Users, Library, LogOut, CalendarDays, Zap, Building2, Layers, LayoutGrid } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
-import { TOOL_META, TOOL_ORDER } from "@/lib/toolMeta";
+import { TOOL_META } from "@/lib/toolMeta";
 import { useWorklistCount } from "@/hooks/useWorklistCount";
 
 type NavItem = {
@@ -76,7 +76,6 @@ export function AppNav({
           title: "Outils",
           items: [
             { href: "/tools", label: "Tous les outils", icon: <LayoutGrid size={16} />, exact: true },
-            ...TOOL_ORDER.map((key) => toolNavItem(key)),
           ],
         },
         {
@@ -116,9 +115,6 @@ export function AppNav({
           title: "Suivi",
           items: [
             { href: "/listings", label: "Mes générations", icon: <List size={16} /> },
-            ...(navUser.role === "MONTEUR" || navUser.role === "CM"
-              ? [{ href: "/calendar", label: "Calendrier", icon: <CalendarDays size={16} /> }]
-              : []),
           ],
         },
       ];

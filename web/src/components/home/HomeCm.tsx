@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, CalendarCheck } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { WorklistSection } from "./WorklistSection";
 import type { WorklistSlot } from "@/types/worklist";
@@ -114,14 +114,6 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
           </p>
         </div>
 
-        {/* Accès rapide au calendrier */}
-        <Link
-          href="/calendar"
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors shrink-0"
-        >
-          <CalendarCheck size={13} />
-          Calendrier
-        </Link>
       </div>
 
       {/* Section En retard */}
