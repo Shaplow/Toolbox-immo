@@ -30,6 +30,7 @@ export type ActivityType =
   | "VERSION_UPLOADED"
   | "VERSION_PROMOTED"
   | "VERSION_DELETED"
+  | "VERSION_RESTORED"
   | "CURRENT_VERSION_CHANGED";
 
 export interface LogActivityInput {
