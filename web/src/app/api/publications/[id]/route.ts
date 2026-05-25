@@ -65,6 +65,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
           needsCaptions: true,
           needsDescription: true,
           needsClientValidation: true,
+          needsRushes: true,
+          needsBrief: true,
         },
       },
       template: { select: { id: true, name: true } },
@@ -101,6 +103,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     // Ils seront passés dans une logique séparée si nécessaire (Phase 1.4+).
     captionJob: null,
     descriptionJob: null,
+    versionsCount: 0,
+    currentVersionId: slot.currentVersionId ?? null,
   });
 
   return NextResponse.json({

@@ -2,7 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
-import { canMarkPublished, canUploadRushes, canEditBrief } from "@/lib/permissions/publications";
+import { canMarkPublished, canUploadRushes, canEditBrief, canUploadVersion, canPromoteVersion } from "@/lib/permissions/publications";
 import { computePublicationSteps } from "@/lib/publications/steps";
 import { toUserRole } from "@/lib/permissions/role";
 import { PublicationFiche } from "./PublicationFiche";
@@ -137,6 +137,33 @@ export default async function PublicationPage({ params }: PageProps) {
     uploadedBy: r.uploadedBy,
   }));
 
+  // Fetch versions (ADMIN voit les soft-deleted)
+  const isAdmin = role === "ADMIN";
+  const rawVersions = await prisma.publicationVersion.findMany({
+    where: {
+      slotId: id,
+      ...(isAdmin ? {} : { deletedAt: null }),
+    },
+    orderBy: { versionNumber: "desc" },
+    include: {
+      uploadedBy: { select: { id: true, name: true, email: true } },
+    },
+  });
+
+  const versions = rawVersions.map((v) => ({
+    id: v.id,
+    versionNumber: v.versionNumber,
+    fileName: v.fileName,
+    mimeType: v.mimeType,
+    fileSizeBytes: v.fileSizeBytes,
+    durationSec: v.durationSec,
+    notes: v.notes,
+    deletedAt: v.deletedAt ? v.deletedAt.toISOString() : null,
+    createdAt: v.createdAt.toISOString(),
+    uploadedByUserId: v.uploadedByUserId,
+    uploadedBy: v.uploadedBy,
+  }));
+
   // Fetch brief + attachments
   const rawBrief = await prisma.publicationBrief.findUnique({
     where: { slotId: id },
@@ -174,6 +201,8 @@ export default async function PublicationPage({ params }: PageProps) {
     coverPack: slot.render?.coverFramePack ?? null,
     captionJob: null,
     descriptionJob: null,
+    versionsCount: rawVersions.filter((v) => v.deletedAt === null).length,
+    currentVersionId: slot.currentVersionId ?? null,
   });
 
   // Permissions UI
@@ -194,6 +223,8 @@ export default async function PublicationPage({ params }: PageProps) {
   const canManageRushes = role === "ADMIN";
   const canEditBriefFlag = canEditBrief(userForPermission, slotForPermission);
   const canManageAttachments = canEditBriefFlag;
+  const canUploadVersionFlag = canUploadVersion(userForPermission, slotForPermission);
+  const canPromoteVersionFlag = canPromoteVersion(userForPermission);
 
   return (
     <PublicationFiche
@@ -259,6 +290,10 @@ export default async function PublicationPage({ params }: PageProps) {
       briefAttachments={briefAttachments}
       canEditBrief={canEditBriefFlag}
       canManageAttachments={canManageAttachments}
+      versions={versions}
+      currentVersionId={slot.currentVersionId ?? null}
+      canUploadVersion={canUploadVersionFlag}
+      canPromoteVersion={canPromoteVersionFlag}
       comments={comments}
       activities={activities}
       activityHasMore={activityHasMore}
