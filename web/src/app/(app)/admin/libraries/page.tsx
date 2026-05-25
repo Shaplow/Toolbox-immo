@@ -59,15 +59,6 @@ export default async function LibrariesHubPage() {
           </div>
         </Link>
       </div>
-
-      <div className="mt-6 pt-4 border-t border-gray-100">
-        <Link
-          href="/admin/accounts"
-          className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          Voir tous les comptes Instagram →
-        </Link>
-      </div>
     </div>
   );
 }
