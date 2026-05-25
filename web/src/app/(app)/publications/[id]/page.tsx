@@ -148,6 +148,7 @@ export default async function PublicationPage({ params }: PageProps) {
         scheduledAt: slot.scheduledAt,
         contentType: slot.contentType,
         caption: slot.caption,
+        description: slot.description,
         publishedUrl: slot.publishedUrl,
         publishedAt: slot.publishedAt,
         notes: slot.notes,

@@ -141,12 +141,15 @@ export function canUserAccessSlot(
  * scoping multi-rôle).
  *
  * - ADMIN   → accès complet à tous les champs métier du slot.
- * - MONTEUR → peut uniquement mettre à jour le statut et les notes.
- * - CM      → peut uniquement mettre à jour le statut et les notes.
+ * - MONTEUR → peut mettre à jour le statut, les notes internes et la description.
+ * - CM      → peut mettre à jour le statut, les notes internes et la description.
  * - USER    → aucun champ modifiable.
  *
  * Note : `assigneeMonteurId` et `assigneeCmId` ne figurent pas dans les listes
  * MONTEUR et CM — seul un ADMIN peut réassigner.
+ *
+ * Note : `description` est le champ dédié à la description de publication (R14).
+ * Il est distinct de `notes` qui reste pour les annotations internes libres.
  */
 export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
   {
@@ -155,6 +158,7 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
       "title",
       "caption",
       "notes",
+      "description",
       "templateId",
       "scheduledAt",
       "contentType",
@@ -166,7 +170,7 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
       "currentVersionId",
       "isAuto",
     ],
-    MONTEUR: ["status", "notes"],
-    CM: ["status", "notes"],
+    MONTEUR: ["status", "notes", "description"],
+    CM: ["status", "notes", "description"],
     USER: [],
   } as const;

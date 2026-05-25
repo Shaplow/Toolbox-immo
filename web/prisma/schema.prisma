@@ -652,6 +652,9 @@ model PublicationSlot {
   title             String?
   /// Texte de la légende Instagram (pour la CM)
   caption           String?
+  /// Description de publication (rédigée par la CM ou générée par IA).
+  /// Distinct de `notes` qui reste réservé aux notes internes.
+  description       String?
   /// Champs libres saisis par l'utilisateur (JSON Record<string, string>)
   /// ex: {"adresse":"12 rue ...","prix":"350 000 €","propriétaire":"Dupont"}
   fields            String                @default("{}")

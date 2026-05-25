@@ -3,13 +3,12 @@
 /**
  * DescriptionSection — section "Description" de la fiche publication.
  *
- * Phase 1.3.5 : édition inline de la description stockée dans le champ `notes`
- * du PublicationSlot via PATCH /api/calendar/slots/[id].
+ * Phase 1.3.5.6 : migration vers le champ dédié `description` sur
+ * PublicationSlot (R14 — audit UX). Avant cette phase, la description
+ * était stockée dans `notes`, créant une ambiguïté avec les notes internes.
  *
- * Choix pragmatique : on utilise le champ `notes` existant (accessible à tous
- * les rôles via ALLOWED_PATCH_FIELDS_BY_ROLE). Un champ dédié `description`
- * sera envisagé en Phase 1.4 si le besoin de séparation avec les notes internes
- * se confirme. En attendant, `notes` sert de description de publication.
+ * Le PATCH cible désormais le champ `description` exclusivement.
+ * Le champ `notes` reste intact et accessible via d'autres usages internes.
  *
  * Si needsDescription === "none", la section est masquée.
  */
@@ -21,7 +20,7 @@ import { FileText, ExternalLink, Save, Check } from "lucide-react";
 interface Props {
   slot: { id: string };
   recipe: { needsDescription: string } | null;
-  /** Valeur initiale = slot.notes ?? "" */
+  /** Valeur initiale = slot.description ?? "" */
   initialDescription: string;
   /** true pour CM et ADMIN */
   canEdit: boolean;
@@ -59,7 +58,7 @@ function DescriptionSectionInner({ slot, recipe, initialDescription, canEdit, re
       const res = await fetch(`/api/calendar/slots/${slot.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: value || null }),
+        body: JSON.stringify({ description: value || null }),
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };

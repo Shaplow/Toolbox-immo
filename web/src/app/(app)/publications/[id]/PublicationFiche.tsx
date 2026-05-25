@@ -39,6 +39,8 @@ interface SlotInfo {
   scheduledAt: Date;
   contentType: string;
   caption: string | null;
+  /** Champ dédié à la description de publication (R14 — Phase 1.3.5.6). */
+  description: string | null;
   publishedUrl: string | null;
   publishedAt: Date | null;
   notes: string | null;
@@ -166,11 +168,11 @@ export function PublicationFiche({
           canEdit={canEditCaptions}
         />
 
-        {/* Description (stockée dans notes) */}
+        {/* Description de publication */}
         <DescriptionSection
           slot={{ id: slot.id }}
           recipe={recipe ? { needsDescription: recipe.needsDescription } : null}
-          initialDescription={slot.notes ?? ""}
+          initialDescription={slot.description ?? ""}
           canEdit={canEditDescription}
           renderId={render?.id ?? null}
         />
@@ -178,7 +180,7 @@ export function PublicationFiche({
         {/* Légende Instagram */}
         <CaptionIgSection
           slot={{ id: slot.id, caption: slot.caption }}
-          description={slot.notes}
+          description={slot.description}
           canEdit={canMarkPublished || canEditDescription}
         />
 
