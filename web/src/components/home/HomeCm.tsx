@@ -132,6 +132,7 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
         slots={toPrepare}
         mode="cm"
         tone="default"
+        emptyMessage="Aucune publication à préparer."
       />
 
       {/* Section À publier cette semaine */}
@@ -140,6 +141,7 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
         slots={toPublishThisWeek}
         mode="cm"
         tone="default"
+        emptyMessage="Aucune publication prévue cette semaine."
       />
 
       {/* Section Publié récemment */}

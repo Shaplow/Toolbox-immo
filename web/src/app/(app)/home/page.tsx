@@ -31,6 +31,6 @@ export default async function HomePage() {
     return <HomeCm userId={effectiveUser.id} userName={effectiveUser.name} />;
   }
 
-  // Fallback USER (ou rôle inconnu) : page "rôle non configuré" + lien vers /tools
-  return <HomeUser />;
+  // Fallback USER (ou rôle inconnu) : page d'accueil + lien vers /tools
+  return <HomeUser permissions={effectiveUser.permissions} />;
 }

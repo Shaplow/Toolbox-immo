@@ -128,6 +128,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
         slots={thisWeekTodo}
         mode="monteur"
         tone="default"
+        emptyMessage="Aucune publication à monter cette semaine."
       />
 
       {/* Section À venir (collapsable) */}

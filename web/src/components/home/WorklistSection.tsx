@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { WorklistSlotCard } from "./WorklistSlotCard";
 import type { WorklistSlot } from "@/types/worklist";
 import type { SlotDetailPanelMode } from "@/components/calendar/SlotDetailPanel";
@@ -24,6 +24,11 @@ interface WorklistSectionProps {
   collapsible?: boolean;
   /** Si `collapsible` est true, contrôle l'état ouvert/fermé initial. Default: true (ouvert). */
   defaultOpen?: boolean;
+  /**
+   * Message affiché dans la carte empty state quand `slots` est vide et
+   * `collapsible` est false. Si omis, un texte générique est utilisé.
+   */
+  emptyMessage?: string;
 }
 
 const TONE_STYLES = {
@@ -51,6 +56,7 @@ export function WorklistSection({
   tone = "default",
   collapsible = false,
   defaultOpen = true,
+  emptyMessage,
 }: WorklistSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   const styles = TONE_STYLES[tone];
@@ -90,7 +96,16 @@ export function WorklistSection({
       {(!collapsible || open) && (
         <div className="space-y-2">
           {slots.length === 0 ? (
-            <p className="text-xs text-gray-400 italic py-2">Aucune publication</p>
+            collapsible ? (
+              <p className="text-xs text-gray-400 italic py-2">Aucune publication</p>
+            ) : (
+              <div className="flex items-center gap-3 rounded-xl bg-green-50 border border-green-100 px-4 py-3">
+                <CheckCircle2 size={18} className="text-green-400 shrink-0" />
+                <p className="text-sm text-green-700">
+                  {emptyMessage ?? "Rien à traiter ici pour le moment."}
+                </p>
+              </div>
+            )
           ) : (
             slots.map((slot) => (
               <WorklistSlotCard key={slot.id} slot={slot} mode={mode} />
