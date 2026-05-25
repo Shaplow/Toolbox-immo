@@ -18,6 +18,8 @@ interface Props {
   } | null;
   /** true pour CM et ADMIN */
   canEdit: boolean;
+  /** Version courante promue par l'ADMIN (si needsRushes=true). */
+  currentVersion?: { versionNumber: number; fileName: string } | null;
 }
 
 const COVER_STATUS_LABELS: Record<string, string> = {
@@ -36,7 +38,7 @@ const COVER_STATUS_COLORS: Record<string, string> = {
   FAILED: "bg-red-50 text-red-700 border-red-200",
 };
 
-export function CoverSection({ slot, recipe, coverPack, canEdit }: Props) {
+export function CoverSection({ slot, recipe, coverPack, canEdit, currentVersion }: Props) {
   // Si la recipe indique que la cover n'est pas nécessaire, on masque la section
   if (recipe?.needsCover === "none") return null;
 
@@ -49,6 +51,11 @@ export function CoverSection({ slot, recipe, coverPack, canEdit }: Props) {
         <div className="flex items-center gap-2">
           <ImageIcon size={16} className="text-gray-400" />
           <h2 className="text-sm font-semibold text-gray-700">Cover</h2>
+          {currentVersion && (
+            <span className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full font-medium">
+              Lié à V{currentVersion.versionNumber}
+            </span>
+          )}
         </div>
 
         {coverPack && (
