@@ -7,14 +7,19 @@ function adminOnly(role?: string) {
 }
 
 // GET /api/admin/accounts — liste les comptes Instagram
-export async function GET() {
+// Accepte ?clientId=<id> pour filtrer par client
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id || adminOnly(session.user.role)) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
+  const { searchParams } = new URL(req.url);
+  const clientIdFilter = searchParams.get("clientId");
+
   try {
     const accounts = await prisma.instagramAccount.findMany({
+      where: clientIdFilter ? { clientId: clientIdFilter } : undefined,
       orderBy: { name: "asc" },
       include: {
         _count: { select: { renders: true } },
@@ -38,8 +43,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
-  const body = await req.json() as { name?: string; handle?: string; offre?: string };
-  const { name, handle, offre } = body;
+  const body = await req.json() as { name?: string; handle?: string; offre?: string; clientId?: string | null };
+  const { name, handle, offre, clientId } = body;
 
   if (!name?.trim()) return NextResponse.json({ error: "Le nom est requis" }, { status: 400 });
   if (!handle?.trim()) return NextResponse.json({ error: "Le handle Instagram est requis" }, { status: 400 });
@@ -51,12 +56,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Offre inconnue : ${offre}` }, { status: 400 });
   }
 
+  // Vérifier que le client existe si clientId est fourni
+  if (clientId) {
+    const existingClient = await prisma.client.findUnique({ where: { id: clientId } });
+    if (!existingClient) {
+      return NextResponse.json({ error: "Client introuvable" }, { status: 400 });
+    }
+  }
+
   try {
     const account = await prisma.instagramAccount.create({
       data: {
         name: name.trim(),
         handle: handle.trim().replace(/^@/, ""),
         offre,
+        ...(clientId ? { client: { connect: { id: clientId } } } : {}),
       },
     });
     return NextResponse.json(account, { status: 201 });

@@ -13,9 +13,10 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
    - captions, transcription, or file-upload workflow orchestration
    - description generation workflow (Claude/GPT, prompts, transcript/image inputs)
    - content library (MediaLibrary, MediaAsset, setTag, setSequence, AccountLibraryCursor, DataLibrary, selection rules, set_sequence rotation, generation pre-fill, asset editing, offer-based automation, MediaAutocutJob batch autocut)
-   - admin, permissions, or impersonation
+   - admin, permissions, or impersonation (ADMIN/MONTEUR/CM/USER roles — see Phase 1.x conventions)
+   - **publication pipeline** (PublicationSlot, ContentRecipe, fiche `/publications/[id]`, worklists per role — Phase 1.2 / 1.3)
    - render-engine, FFmpeg, RunPod, storage pipeline, or webhook callbacks
-   - UI and UX cleanup
+   - UI and UX cleanup (use `web/src/components/ui/` primitives — see Phase 1.4 conventions)
 2. Read `.github/copilot-instructions.md` for repo overview, then the relevant file-scoped instructions in `.github/instructions/`.
 3. Use the matching skill in `.claude/skills/` when the task falls into a repeated workflow (these auto-load when their description matches).
 4. Prefer the smallest fix that restores parity or behavior at the correct layer.
@@ -27,6 +28,66 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
 - Template video logic should stay aligned between local FastAPI and RunPod through the shared code in `render-engine/engine/template_composite.py` and related engine modules.
 - RunPod NVENC failures are not always app bugs. Some GPU offers expose CUDA and even FFmpeg NVENC encoders while still failing runtime encode sessions.
 - UX is currently uneven across the app. Improvements should reduce friction and inconsistency, not add another independent visual language.
+
+## Phase 1.x — Conventions actées (publication pipeline overhaul)
+
+L'app a pivoté d'une grille d'outils standalone vers un pipeline éditorial avec rôles. Les conventions ci-dessous sont **stables** et doivent être respectées par les futures features.
+
+### Rôles utilisateurs
+- 4 rôles : `ADMIN`, `MONTEUR`, `CM`, `USER` (legacy). Définis dans `web/src/types/roles.ts`.
+- Filtrage par rôle des slots : `web/src/lib/permissions/slotScope.ts` (`whereClauseForUser`, `canUserAccessSlot`, `ALLOWED_PATCH_FIELDS_BY_ROLE`).
+- Permissions outils par rôle : `web/src/lib/permissions/tools.ts` (`ROLE_TOOL_SCOPE`).
+- Helpers publications : `web/src/lib/permissions/publications.ts` (`canSeePublication`, `canMarkPublished`, `canEditComment`).
+- **Impersonation** : utiliser `effectiveUser` (via `getUserContext`) pour les scopes de données, pas `auth()` direct.
+
+### Modèles Prisma centraux
+- `PublicationSlot` (avec `assigneeMonteurId`, `assigneeCmId`, `recipeId`, `currentVersionId`, `publishedUrl`, `publishedAt`, `description`)
+- `ContentRecipe` (config production : source, template, library, needs* flags, defaultAssigneeMonteurId/CmId)
+- `Client` → 1..N `InstagramAccount` (`clientId` nullable)
+- `AccountPlan` (slots récurrents par compte)
+- `PublicationVersion` (versions livrées monteur, soft-delete)
+- `PublicationComment`, `PublicationActivity` (fil + log)
+
+### Page fiche publication
+- Hub central : `/publications/[id]` (`web/src/app/(app)/publications/[id]/`)
+- 6 sections driven by recipe : Render, Cover, Captions, Description, Caption IG, Publish
+- `ProductionChain` visualise les steps depuis `computePublicationSteps`
+- `logActivity` (`web/src/lib/publications/activity.ts`) à appeler après chaque action métier significative (mark-published, comment, status change, assignee change)
+
+### Primitives UI (`web/src/components/ui/`)
+**Utiliser ces composants pour tout nouveau code, ne pas dupliquer les classes Tailwind** :
+- `Button` — variants `primary | secondary | ghost | danger`, sizes `sm | md`, props `loading | disabled | icon`
+- `Input` — input contrôlé avec `value/onChange(string)`, `error` ring rouge si présent
+- `Textarea` — même API qu'Input + `resize-y`
+- `FormField` — wrapper `label + required + help + error + children`
+- `EmptyState` — icône + titre + description + CTA optionnel
+- `ConfirmDialog` — modal Tailwind, focus trap, ESC pour fermer, variant `danger`
+- `DeleteButton` — encapsule "icône Trash → ConfirmDialog" (props `itemLabel`, `description?`, `onConfirm`)
+- `Toast` (`@/components/ui/Toast`) — `toast.success/error/info`. **Jamais d'`alert()` ni `confirm()` natif dans le code admin/UI.**
+
+### Patterns admin
+- **Pattern d'onglets** : `state activeTab` + boutons toggle inline + support `?tab=X` via `useSearchParams`. Références : `/admin/clients/[id]/page.tsx`, `/admin/offer-schedule/page.tsx`.
+- **Pattern hub avec cards** : grid responsive `grid-cols-1 sm:grid-cols-2 lg:grid-cols-N` + cards stack vertical (icône 40×40 dans wrapper colored + titre + description). Référence : `/admin/libraries/page.tsx` (hub "Ressources").
+- **Page admin avec panel client** : server component qui fetch via Prisma + passe initialData à un client component. Garde admin via `getUserContext` + `actualUser.role === "ADMIN"` (redirect si non).
+- **ToolPageHeader** partout en haut des pages admin (titre + subtitle + icône + actions optionnelles).
+
+### Navigation admin (3 sous-sections)
+```
+PRODUCTION  — Templates / Recettes / Planification
+CLIENTS     — Clients (avec onglet Comptes Instagram)
+CONFIGURATION — Ressources (hub 4 cards) / Utilisateurs
+```
+- **Templates** : module central, dans Production (pas dans Outils — voir mémoire `templates-module-importance`)
+- **Hub Ressources** : Médias / Données / Typographies / Prompts IA (extensible — ajouter une card pour tout nouveau type de ressource réutilisable)
+- **Comptes Instagram** : gérés via fiche Client `/admin/clients/[id]` onglet "Comptes" (PAS de page top-level)
+- **Presets sous-titres** : gérés uniquement via `/tools/captions` (PAS de page admin dédiée)
+- **Offres** : onglet de `/admin/offer-schedule` (Planification), pas de page séparée
+
+### Dette technique
+Voir mémoire `phase-1-2-technical-debt.md` pour la liste actualisée. Principaux items reportés :
+- Refacto UX **interne** du module Templates (builder Canvas, ergonomie éditeur) — chantier dédié Phase 1.5+
+- Migration `MediaAssetsPanel` (2440 LOC) aux primitives UI — split en sous-composants requis avant
+- Libraries sous-pages restantes (MediaLibrariesPanel, DataLibrariesPanel, etc.) à migrer aux primitives
 
 ## Git Discipline (READ THIS — parallel sessions live here)
 
@@ -174,6 +235,50 @@ File-scoped instructions (`.github/instructions/`):
 - `render-engine.instructions.md` — FastAPI, FFmpeg, worker, R2 conventions
 
 Repo overview: `.github/copilot-instructions.md` (still load-on-demand; not Claude-Code-specific despite the name).
+
+## Tests automatisés
+
+Le repo a deux niveaux de tests, exécutables localement et indépendamment du dev server :
+
+### Unit tests (Vitest)
+- Lance les tests purs des helpers permissions (`slotScope`, `publications`, `tools`).
+- Pas de DB, pas de browser, runtime Node uniquement.
+- Pour ajouter un test : `web/src/lib/**/*.test.ts` ou `web/src/lib/**/__tests__/*.test.ts`.
+
+```bash
+cd web
+npm run test:unit          # CI mode (exit propre)
+npm run test:unit:watch    # mode dev (re-run sur save)
+npm run test:unit:ui       # debugger Vitest UI
+```
+
+### E2E tests (Playwright)
+- Lance Chromium headless contre un serveur Next.js dédié sur le port 3100.
+- Utilise une **DB de test séparée** (`toolbox_test`) pour ne pas polluer dev.
+- Cookies/session NextAuth réels via la page `/login`.
+
+```bash
+cd web
+# Premier setup (une seule fois) :
+npm run test:db:setup      # crée toolbox_test + applique migrations
+npm run test:db:seed       # seed admin/monteur/cm/user + 1 client + 1 slot
+
+# À chaque run :
+npm run test:e2e           # CI mode (headless)
+npm run test:e2e:ui        # debugger Playwright UI (timeline + selectors)
+npm run test:e2e:headed    # voir le browser pendant les tests
+
+# Reset complet de la DB de test :
+npm run test:db:reset && npm run test:db:setup && npm run test:db:seed
+```
+
+Credentials de test (tous : password `testpass`) :
+- `admin@test.local` / `test_admin` (rôle ADMIN)
+- `monteur@test.local` / `test_monteur` (rôle MONTEUR, assigné slot `test-slot-1`)
+- `cm@test.local` / `test_cm` (rôle CM, assigné slot `test-slot-1`)
+- `user@test.local` / `test_user` (rôle USER, permission `["captions"]`)
+
+**Discipline** : tout changement qui touche permissions, helpers de scoping, ou navigation admin **doit** lancer `npm run test:unit && npm run test:e2e` avant commit. Si un test échoue à cause d'un changement intentionnel, mettre à jour le test dans le même commit.
 
 ## Validation Rule
 

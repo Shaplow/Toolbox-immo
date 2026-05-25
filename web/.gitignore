@@ -31,7 +31,9 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
+# Note : les fichiers .env.*.example sont commités (templates documentés).
 .env*
+!.env*.example
 
 # vercel
 .vercel

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Trash2, ChevronRight, RotateCcw, Pencil, X, Check } from "lucide-react";
+import { toast } from "@/components/ui/Toast";
 import Link from "next/link";
 
 const USAGE_POLICIES = [
@@ -101,7 +102,7 @@ export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
     const res = await fetch(`/api/admin/libraries/data/campaigns/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const d = await res.json() as { error?: string };
-      alert(d.error ?? "Erreur lors de la suppression");
+      toast.error(d.error ?? "Erreur lors de la suppression");
       return;
     }
     void load();
@@ -118,7 +119,7 @@ export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
     setPendingToggleId(null);
     if (!res.ok) {
       const d = await res.json() as { error?: string };
-      alert(d.error ?? "Erreur lors de la mise à jour");
+      toast.error(d.error ?? "Erreur lors de la mise à jour");
       return;
     }
     void load();
@@ -134,7 +135,7 @@ export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
     setPolicySaving(false);
     if (!res.ok) {
       const d = await res.json() as { error?: string };
-      alert(d.error ?? "Erreur lors de la mise à jour");
+      toast.error(d.error ?? "Erreur lors de la mise à jour");
       return;
     }
     setEditingPolicyId(null);

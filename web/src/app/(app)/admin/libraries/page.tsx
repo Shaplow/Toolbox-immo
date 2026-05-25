@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
 import Link from "next/link";
-import { Video, Database, Instagram, Type, MessageSquare, Library } from "lucide-react";
+import { Video, Database, Type, Library, Sparkles } from "lucide-react";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 
 export default async function LibrariesHubPage() {
@@ -11,59 +11,46 @@ export default async function LibrariesHubPage() {
   }
 
   return (
-    <div className="p-8 max-w-3xl mx-auto">
+    <div className="p-8 max-w-5xl mx-auto">
       <ToolPageHeader
         icon={Library}
         iconColor="indigo"
         title="Ressources"
-        subtitle="Bibliothèques médias, données, polices et prompts IA"
+        subtitle="Vos médias, données, typographies et prompts pour la production"
       />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Link
           href="/admin/libraries/media"
-          className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+          className="flex flex-col gap-3 p-5 border border-gray-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
         >
-          <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
+          <div className="w-10 h-10 p-2 bg-indigo-100 rounded-lg text-indigo-600 flex items-center justify-center">
             <Video size={20} />
           </div>
           <div>
-            <p className="font-medium text-gray-900">Bibliothèques médias</p>
+            <p className="font-medium text-gray-900">Médias</p>
             <p className="text-sm text-gray-500 mt-0.5">Vidéos rush et musiques à lier aux templates</p>
           </div>
         </Link>
 
         <Link
           href="/admin/libraries/data"
-          className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+          className="flex flex-col gap-3 p-5 border border-gray-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
         >
-          <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
+          <div className="w-10 h-10 p-2 bg-indigo-100 rounded-lg text-indigo-600 flex items-center justify-center">
             <Database size={20} />
           </div>
           <div>
-            <p className="font-medium text-gray-900">Bibliothèques de données</p>
+            <p className="font-medium text-gray-900">Données</p>
             <p className="text-sm text-gray-500 mt-0.5">Données texte RPI, RTIPS… importées depuis Excel</p>
           </div>
         </Link>
 
         <Link
-          href="/admin/accounts"
-          className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-pink-300 hover:bg-pink-50 transition-colors"
-        >
-          <div className="p-2 bg-pink-100 rounded-lg text-pink-600">
-            <Instagram size={20} />
-          </div>
-          <div>
-            <p className="font-medium text-gray-900">Comptes Instagram</p>
-            <p className="text-sm text-gray-500 mt-0.5">Clients avec séquence de thèmes et curseurs</p>
-          </div>
-        </Link>
-
-        <Link
           href="/admin/fonts"
-          className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-violet-300 hover:bg-violet-50 transition-colors"
+          className="flex flex-col gap-3 p-5 border border-gray-200 rounded-xl hover:border-violet-300 hover:bg-violet-50 transition-colors"
         >
-          <div className="p-2 bg-violet-100 rounded-lg text-violet-600">
+          <div className="w-10 h-10 p-2 bg-violet-100 rounded-lg text-violet-600 flex items-center justify-center">
             <Type size={20} />
           </div>
           <div>
@@ -74,14 +61,14 @@ export default async function LibrariesHubPage() {
 
         <Link
           href="/admin/prompts"
-          className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-amber-300 hover:bg-amber-50 transition-colors"
+          className="flex flex-col gap-3 p-5 border border-gray-200 rounded-xl hover:border-amber-300 hover:bg-amber-50 transition-colors"
         >
-          <div className="p-2 bg-amber-100 rounded-lg text-amber-600">
-            <MessageSquare size={20} />
+          <div className="w-10 h-10 p-2 bg-amber-100 rounded-lg text-amber-600 flex items-center justify-center">
+            <Sparkles size={20} />
           </div>
           <div>
             <p className="font-medium text-gray-900">Prompts IA</p>
-            <p className="text-sm text-gray-500 mt-0.5">Prompts de génération de descriptions immobilières</p>
+            <p className="text-sm text-gray-500 mt-0.5">Prompts pour la génération de sous-titres et descriptions</p>
           </div>
         </Link>
       </div>

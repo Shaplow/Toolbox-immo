@@ -31,6 +31,8 @@ model User {
   uploadedVersions         PublicationVersion[]  @relation("VersionUploader")
   assignedAsMonteur        PublicationSlot[]     @relation("SlotMonteur")
   assignedAsCm             PublicationSlot[]     @relation("SlotCm")
+  publicationComments      PublicationComment[]  @relation("PublicationCommentAuthor")
+  publicationActivities    PublicationActivity[] @relation("PublicationActivityActor")
 }
 
 model CaptionJob {
@@ -638,48 +640,57 @@ model OfferScheduleRule {
 
 /// Slot réel dans le calendrier opérationnel pour un compte Instagram donné.
 model PublicationSlot {
-  id                String               @id @default(cuid())
+  id                String                @id @default(cuid())
   accountId         String
-  account           InstagramAccount     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account           InstagramAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
   /// Date et heure cible de publication (UTC)
   scheduledAt       DateTime
   /// Type de contenu : "RPI" | "RVA4" | "RVA5" | "RTIPS" | "RPOD" | "REACT" | "RQR"
   contentType       String
   /// "TO_DO" | "IN_PROGRESS" | "READY" | "CHECKING" | "DONE"
-  status            String               @default("TO_DO")
+  status            String                @default("TO_DO")
   title             String?
   /// Texte de la légende Instagram (pour la CM)
   caption           String?
+  /// Description de publication (rédigée par la CM ou générée par IA).
+  /// Distinct de `notes` qui reste réservé aux notes internes.
+  description       String?
   /// Champs libres saisis par l'utilisateur (JSON Record<string, string>)
   /// ex: {"adresse":"12 rue ...","prix":"350 000 €","propriétaire":"Dupont"}
-  fields            String               @default("{}")
+  fields            String                @default("{}")
   /// Noms des champs définis par l'admin ou l'utilisateur (JSON string[])
   /// ex: ["adresse","prix","propriétaire"]
-  fieldSchema       String               @default("[]")
+  fieldSchema       String                @default("[]")
   /// Template lié (optionnel — peut être déterminé après création du slot)
   templateId        String?
-  template          Template?            @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  template          Template?             @relation(fields: [templateId], references: [id], onDelete: SetNull)
   /// Render final rattaché au slot (relation inverse de Render.publicationSlotId)
   render            Render?
   /// true = créé automatiquement par le moteur de génération / cron
-  isAuto            Boolean              @default(false)
+  isAuto            Boolean               @default(false)
   notes             String?
+  /// URL Instagram de la publication (renseignée via mark-published)
+  publishedUrl      String?
+  /// Date effective de publication sur Instagram (renseignée via mark-published)
+  publishedAt       DateTime?
   /// Monteur assigné à ce slot
   assigneeMonteurId String?
-  assigneeMonteur   User?                @relation("SlotMonteur", fields: [assigneeMonteurId], references: [id], onDelete: SetNull)
+  assigneeMonteur   User?                 @relation("SlotMonteur", fields: [assigneeMonteurId], references: [id], onDelete: SetNull)
   /// Community manager assigné à ce slot
   assigneeCmId      String?
-  assigneeCm        User?                @relation("SlotCm", fields: [assigneeCmId], references: [id], onDelete: SetNull)
+  assigneeCm        User?                 @relation("SlotCm", fields: [assigneeCmId], references: [id], onDelete: SetNull)
   /// Recipe de contenu associée à ce slot
   recipeId          String?
-  recipe            ContentRecipe?       @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  recipe            ContentRecipe?        @relation(fields: [recipeId], references: [id], onDelete: SetNull)
   /// Version courante sélectionnée (parmi les versions uploadées)
-  currentVersionId  String?              @unique
-  currentVersion    PublicationVersion?  @relation("SlotCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  currentVersionId  String?               @unique
+  currentVersion    PublicationVersion?   @relation("SlotCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
   /// Toutes les versions uploadées pour ce slot
-  versions          PublicationVersion[] @relation("SlotVersions")
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  versions          PublicationVersion[]  @relation("SlotVersions")
+  comments          PublicationComment[]
+  activities        PublicationActivity[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
   @@index([accountId, scheduledAt])
   @@index([status, scheduledAt])
@@ -687,6 +698,33 @@ model PublicationSlot {
   @@index([assigneeMonteurId])
   @@index([assigneeCmId])
   @@index([recipeId])
+}
+
+model PublicationComment {
+  id        String          @id @default(cuid())
+  slotId    String
+  authorId  String
+  body      String          @db.Text
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  deletedAt DateTime?
+  slot      PublicationSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  author    User            @relation("PublicationCommentAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([slotId, createdAt])
+}
+
+model PublicationActivity {
+  id        String          @id @default(cuid())
+  slotId    String
+  actorId   String?
+  type      String
+  payload   Json?
+  createdAt DateTime        @default(now())
+  slot      PublicationSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  actor     User?           @relation("PublicationActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([slotId, createdAt])
 }
 
 // ─── Clients ─────────────────────────────────────────────────────────────────

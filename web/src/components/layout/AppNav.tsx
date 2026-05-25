@@ -4,15 +4,18 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState, type ReactNode } from "react";
-import { Home, List, Users, Library, LogOut, CalendarDays, Zap, Building2 } from "lucide-react";
+import { Home, List, Users, Library, LogOut, CalendarDays, Zap, Building2, Layers, LayoutGrid, LayoutTemplate } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
-import { TOOL_META, TOOL_ORDER } from "@/lib/toolMeta";
+import { TOOL_META } from "@/lib/toolMeta";
+import { useWorklistCount } from "@/hooks/useWorklistCount";
 
 type NavItem = {
   href: string;
   label: string;
   icon: ReactNode;
   disabled?: boolean;
+  /** Si true, l'item n'est actif que sur correspondance exacte de l'URL (pas startsWith). */
+  exact?: boolean;
 };
 
 type NavSection = {
@@ -38,6 +41,7 @@ export function AppNav({
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const { count: worklistCount } = useWorklistCount();
   const canSeeAdmin = actualUser.role === "ADMIN";
   const navUser = isImpersonating ? effectiveUser : actualUser;
   const isAdminView = canSeeAdmin && !isImpersonating;
@@ -70,7 +74,9 @@ export function AppNav({
         },
         {
           title: "Outils",
-          items: TOOL_ORDER.map((key) => toolNavItem(key)),
+          items: [
+            { href: "/tools", label: "Tous les outils", icon: <LayoutGrid size={16} />, exact: true },
+          ],
         },
         {
           title: "Suivi",
@@ -80,11 +86,23 @@ export function AppNav({
           ],
         },
         {
-          title: "Gestion",
+          title: "Production",
           items: [
-            { href: "/admin/offer-schedule", label: "Automatisation", icon: <Zap size={16} /> },
-            { href: "/admin/libraries", label: "Bibliothèques", icon: <Library size={16} /> },
+            { href: "/templates", label: "Templates", icon: <LayoutTemplate size={16} /> },
+            { href: "/admin/recipes", label: "Recettes", icon: <Layers size={16} /> },
+            { href: "/admin/offer-schedule", label: "Planification", icon: <Zap size={16} /> },
+          ],
+        },
+        {
+          title: "Clients",
+          items: [
             { href: "/admin/clients", label: "Clients", icon: <Building2 size={16} /> },
+          ],
+        },
+        {
+          title: "Configuration",
+          items: [
+            { href: "/admin/libraries", label: "Ressources", icon: <Library size={16} /> },
             { href: "/admin/users", label: "Utilisateurs", icon: <Users size={16} /> },
           ],
         },
@@ -96,6 +114,7 @@ export function AppNav({
         {
           title: "Outils",
           items: [
+            { href: "/tools", label: "Tous les outils", icon: <LayoutGrid size={16} />, exact: true },
             ...(hasTemplates ? [toolNavItem("templates")] : []),
             ...(hasTranscription ? [toolNavItem("transcription")] : []),
             ...(hasCaptions ? [toolNavItem("captions")] : []),
@@ -105,7 +124,9 @@ export function AppNav({
         },
         {
           title: "Suivi",
-          items: [{ href: "/listings", label: "Mes générations", icon: <List size={16} /> }],
+          items: [
+            { href: "/listings", label: "Mes générations", icon: <List size={16} /> },
+          ],
         },
       ];
 
@@ -171,9 +192,12 @@ export function AppNav({
                 </p>
               )}
               <div className="space-y-1">
-                {items.map(({ href, label, icon, disabled }) => {
+                {items.map(({ href, label, icon, disabled, exact }) => {
                   const currentPath = pathname ?? "";
-                  const active = !disabled && (currentPath === href || currentPath.startsWith(`${href}/`));
+                  const active = !disabled && (
+                    currentPath === href ||
+                    (!exact && currentPath.startsWith(`${href}/`))
+                  );
                   if (disabled) {
                     return (
                       <span
@@ -186,19 +210,37 @@ export function AppNav({
                       </span>
                     );
                   }
+                  const isHome = href === "/home";
+                  const showBadge = isHome && worklistCount > 0;
                   return (
                     <Link
                       key={href}
                       href={href}
-                      title={label}
+                      title={isHome && showBadge ? `${label} (${worklistCount})` : label}
                       className={`flex items-center gap-2.5 py-2 rounded-lg text-sm transition-colors ${
                         active
                           ? "bg-indigo-50 text-indigo-700 font-medium"
                           : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                       } ${collapsed ? "justify-center px-0" : "px-3"}`}
                     >
-                      <span className="shrink-0 flex items-center">{icon}</span>
-                      {!collapsed ? label : null}
+                      <span className="shrink-0 flex items-center relative">
+                        {icon}
+                        {/* Point pastille en nav collapsée */}
+                        {showBadge && collapsed && (
+                          <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-indigo-600 ring-2 ring-white" />
+                        )}
+                      </span>
+                      {!collapsed ? (
+                        <span className="flex-1 flex items-center justify-between">
+                          {label}
+                          {/* Badge pill en nav ouverte */}
+                          {showBadge && (
+                            <span className="ml-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-indigo-600 text-white text-[10px] font-semibold leading-none px-1">
+                              {worklistCount > 99 ? "99+" : worklistCount}
+                            </span>
+                          )}
+                        </span>
+                      ) : null}
                     </Link>
                   );
                 })}

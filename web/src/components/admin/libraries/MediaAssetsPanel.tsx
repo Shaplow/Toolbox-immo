@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { Trash2, Upload, Clock, BarChart2, Search, Play, Music2, ArrowUpDown, CheckCircle2, Tag, X, RotateCcw, Scissors, LayoutGrid, Layers, Square, CheckSquare, ChevronUp, ChevronDown, ListOrdered, PlusCircle, MinusCircle, FolderOpen, Film, Globe, Lock, Users, Wand2, Loader2, EyeOff, AlertTriangle } from "lucide-react";
+import { toast } from "@/components/ui/Toast";
 import { MediaAssetEditModal } from "./MediaAssetEditModal";
 import { MediaBatchAutocutPanel } from "./MediaBatchAutocutPanel";
 
@@ -908,7 +909,7 @@ export function MediaAssetsPanel({ library }: Props) {
     const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, { method: "DELETE" });
     if (!res.ok) {
       const d = await res.json() as { error?: string };
-      alert(d.error ?? "Erreur lors de la suppression");
+      toast.error(d.error ?? "Erreur lors de la suppression");
       return;
     }
     setAssets((prev) => prev.filter((a) => a.id !== asset.id));

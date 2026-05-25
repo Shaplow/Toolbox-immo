@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Download, FileJson, Film, Loader2, ChevronDown } from "lucide-react";
+import { toast } from "@/components/ui/Toast";
 
 interface Props {
   libraryId: string;
@@ -59,7 +60,9 @@ export function LibraryExportButton({ libraryId, libraryName, libraryType }: Pro
       if (warningsHeader) {
         try {
           const w = JSON.parse(warningsHeader) as string[];
-          if (w.length > 0) console.warn("[LibraryExport] warnings:", w);
+          if (w.length > 0) {
+            toast.info(`Export terminé avec ${w.length} avertissement${w.length > 1 ? "s" : ""} : ${w.slice(0, 2).join(", ")}${w.length > 2 ? "…" : ""}`);
+          }
         } catch { /* ignore */ }
       }
 

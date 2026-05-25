@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Trash2, ToggleLeft, ToggleRight, AlertCircle, Pencil, Check, X } from "lucide-react";
+import { Plus, ToggleLeft, ToggleRight, AlertCircle, Pencil, Check, X, CalendarClock } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { FormField } from "@/components/ui/FormField";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { DeleteButton } from "@/components/ui/DeleteButton";
+import { toast } from "@/components/ui/Toast";
 import { DAY_LABELS, type OfferScheduleRule } from "@/types/calendar";
 
 interface TemplateOption {
@@ -85,13 +91,14 @@ export function OfferSchedulePanel() {
     });
     if (!res.ok) {
       const d = await res.json() as { error?: string };
-      setOfferError(d.error ?? "Erreur");
+      toast.error(d.error ?? "Erreur lors de la création");
       return;
     }
     const created = await res.json() as Offer;
     setOffers((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
     setNewOfferName("");
     setAddingOffer(false);
+    toast.success("Offre créée.");
   }
 
   async function handleRenameOffer(id: string) {
@@ -114,22 +121,19 @@ export function OfferSchedulePanel() {
       return old && r.offre === old.name ? { ...r, offre: updated.name } : r;
     }));
     setEditingOfferId(null);
+    toast.success("Offre renommée.");
   }
 
   async function handleDeleteOffer(offer: Offer) {
-    const rulesForOffer = rules.filter((r) => r.offre === offer.name);
-    const msg = rulesForOffer.length > 0
-      ? `Supprimer l'offre « ${offer.name} » et ses ${rulesForOffer.length} règle(s) associées ?`
-      : `Supprimer l'offre « ${offer.name} » ?`;
-    if (!confirm(msg)) return;
     const res = await fetch(`/api/admin/offers/${offer.id}`, { method: "DELETE" });
     if (!res.ok) {
       const d = await res.json() as { error?: string };
-      alert(d.error ?? "Erreur lors de la suppression");
+      toast.error(d.error ?? "Erreur lors de la suppression");
       return;
     }
     setOffers((prev) => prev.filter((o) => o.id !== offer.id));
     setRules((prev) => prev.filter((r) => r.offre !== offer.name));
+    toast.success("Offre supprimée.");
   }
 
   // ── Rule CRUD ───────────────────────────────────────────────────────────────
@@ -174,9 +178,13 @@ export function OfferSchedulePanel() {
   }
 
   async function handleDeleteRule(id: string) {
-    if (!confirm("Supprimer cette règle ?")) return;
     const res = await fetch(`/api/admin/offer-schedule/${id}`, { method: "DELETE" });
-    if (res.ok) setRules((prev) => prev.filter((r) => r.id !== id));
+    if (res.ok) {
+      setRules((prev) => prev.filter((r) => r.id !== id));
+      toast.success("Règle supprimée.");
+    } else {
+      toast.error("Erreur lors de la suppression");
+    }
   }
 
   // ── Derived state ───────────────────────────────────────────────────────────
@@ -237,13 +245,13 @@ export function OfferSchedulePanel() {
             </select>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Heure</label>
-            <input
-              type="time"
-              value={form.publishTime}
-              onChange={(e) => setForm((f) => ({ ...f, publishTime: e.target.value }))}
-              className="border border-gray-200 rounded-lg px-2.5 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            />
+            <FormField label="Heure">
+              <Input
+                type="time"
+                value={form.publishTime}
+                onChange={(v) => setForm((f) => ({ ...f, publishTime: v }))}
+              />
+            </FormField>
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Template</label>
@@ -268,13 +276,15 @@ export function OfferSchedulePanel() {
               )}
             </div>
           </div>
-          <button
+          <Button
             type="submit"
-            disabled={creating || templates.length === 0 || offers.length === 0}
-            className="px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-60 flex items-center gap-2"
+            variant="primary"
+            icon={Plus}
+            loading={creating}
+            disabled={templates.length === 0 || offers.length === 0}
           >
-            <Plus size={14} /> {creating ? "Création…" : "Ajouter"}
-          </button>
+            Ajouter
+          </Button>
         </form>
         {formError && <p className="mt-2 text-xs text-red-600">{formError}</p>}
       </div>
@@ -286,6 +296,13 @@ export function OfferSchedulePanel() {
       {/* Offer groups */}
       {!loading && (
         <div className="space-y-4">
+          {allOfferNames.length === 0 && (
+            <EmptyState
+              icon={CalendarClock}
+              title="Aucune règle de planification"
+              description="Créez d'abord une offre, puis ajoutez des règles de publication pour chaque jour et heure."
+            />
+          )}
           {allOfferNames.map((offerName) => {
             const offer = offers.find((o) => o.name === offerName);
             const isEditing = editingOfferId === offer?.id;
@@ -295,22 +312,35 @@ export function OfferSchedulePanel() {
                 <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-100 bg-gray-50">
                   {isEditing && offer ? (
                     <>
-                      <input
+                      <Input
                         autoFocus
                         value={editingOfferName}
-                        onChange={(e) => setEditingOfferName(e.target.value)}
+                        onChange={setEditingOfferName}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") { e.preventDefault(); void handleRenameOffer(offer.id); }
                           if (e.key === "Escape") setEditingOfferId(null);
                         }}
-                        className="text-sm font-semibold border border-indigo-300 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 w-40"
+                        className="text-sm font-semibold w-40 py-0.5"
                       />
-                      <button type="button" onClick={() => { void handleRenameOffer(offer.id); }} className="text-indigo-600 hover:text-indigo-800" title="Valider">
-                        <Check size={14} />
-                      </button>
-                      <button type="button" onClick={() => setEditingOfferId(null)} className="text-gray-400 hover:text-gray-600" title="Annuler">
-                        <X size={14} />
-                      </button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={Check}
+                        onClick={() => { void handleRenameOffer(offer.id); }}
+                        title="Valider"
+                        className="text-indigo-600 hover:text-indigo-800"
+                      >
+                        <span className="sr-only">Valider</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={X}
+                        onClick={() => setEditingOfferId(null)}
+                        title="Annuler"
+                      >
+                        <span className="sr-only">Annuler</span>
+                      </Button>
                     </>
                   ) : (
                     <>
@@ -318,22 +348,24 @@ export function OfferSchedulePanel() {
                       <span className="text-xs text-gray-400 mr-2">{grouped[offerName]!.length} règle(s)</span>
                       {offer && (
                         <>
-                          <button
-                            type="button"
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={Pencil}
                             onClick={() => { setEditingOfferId(offer.id); setEditingOfferName(offer.name); setOfferError(null); }}
-                            className="rounded p-1 text-gray-400 hover:text-indigo-600"
                             title="Renommer l'offre"
                           >
-                            <Pencil size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { void handleDeleteOffer(offer); }}
-                            className="rounded p-1 text-gray-400 hover:text-red-500"
-                            title="Supprimer l'offre"
-                          >
-                            <X size={13} />
-                          </button>
+                            <span className="sr-only">Renommer</span>
+                          </Button>
+                          <DeleteButton
+                            itemLabel={`l'offre « ${offer.name} »`}
+                            description={
+                              rules.filter((r) => r.offre === offer.name).length > 0
+                                ? `Cette offre possède ${rules.filter((r) => r.offre === offer.name).length} règle(s) associée(s) qui seront également supprimées.`
+                                : "Cette action est irréversible."
+                            }
+                            onConfirm={() => handleDeleteOffer(offer)}
+                          />
                         </>
                       )}
                     </>
@@ -357,23 +389,21 @@ export function OfferSchedulePanel() {
                           <span className="text-xs text-gray-500 truncate max-w-xs">
                             {rule.template?.name ?? <span className="italic text-gray-400">sans template</span>}
                           </span>
-                          <div className="ml-auto flex items-center gap-2">
-                            <button
-                              type="button"
+                          <div className="ml-auto flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               onClick={() => { void toggleActive(rule); }}
-                              className={`text-${rule.isActive ? "indigo" : "gray"}-400 hover:text-indigo-600`}
                               title={rule.isActive ? "Désactiver" : "Activer"}
+                              className={rule.isActive ? "text-indigo-500 hover:text-indigo-700" : "text-gray-400 hover:text-indigo-600"}
                             >
                               {rule.isActive ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { void handleDeleteRule(rule.id); }}
-                              className="text-gray-400 hover:text-red-500"
-                              title="Supprimer la règle"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                              <span className="sr-only">{rule.isActive ? "Désactiver" : "Activer"}</span>
+                            </Button>
+                            <DeleteButton
+                              itemLabel="cette règle"
+                              onConfirm={() => handleDeleteRule(rule.id)}
+                            />
                           </div>
                         </div>
                       ))}
@@ -389,31 +419,36 @@ export function OfferSchedulePanel() {
               onSubmit={(e) => { void handleAddOffer(e); }}
               className="flex items-center gap-2 bg-white rounded-xl border border-indigo-200 px-5 py-3"
             >
-              <input
-                autoFocus
-                required
-                value={newOfferName}
-                onChange={(e) => { setNewOfferName(e.target.value); setOfferError(null); }}
-                onKeyDown={(e) => { if (e.key === "Escape") { setAddingOffer(false); setNewOfferName(""); } }}
-                placeholder="Nom de l'offre (ex: PREMIUM)"
-                className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
-              <button type="submit" className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 flex items-center gap-1">
-                <Check size={14} /> Créer
-              </button>
-              <button type="button" onClick={() => { setAddingOffer(false); setNewOfferName(""); setOfferError(null); }} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50">
-                <X size={14} />
-              </button>
-              {offerError && <span className="text-xs text-red-600">{offerError}</span>}
+              <div className="flex-1">
+                <Input
+                  autoFocus
+                  required
+                  value={newOfferName}
+                  onChange={(v) => { setNewOfferName(v); setOfferError(null); }}
+                  onKeyDown={(e) => { if (e.key === "Escape") { setAddingOffer(false); setNewOfferName(""); } }}
+                  placeholder="Nom de l'offre (ex: PREMIUM)"
+                />
+              </div>
+              <Button type="submit" variant="primary" size="sm" icon={Check}>
+                Créer
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={X}
+                onClick={() => { setAddingOffer(false); setNewOfferName(""); setOfferError(null); }}
+              >
+                Annuler
+              </Button>
             </form>
           ) : (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              icon={Plus}
               onClick={() => { setAddingOffer(true); setOfferError(null); }}
-              className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium py-1"
             >
-              <Plus size={15} /> Ajouter une offre
-            </button>
+              Ajouter une offre
+            </Button>
           )}
         </div>
       )}

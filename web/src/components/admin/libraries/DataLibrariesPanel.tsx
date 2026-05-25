@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Trash2, Database, ChevronRight, Search, Pencil, X, Check } from "lucide-react";
+import { toast } from "@/components/ui/Toast";
 import Link from "next/link";
 import { LibraryExportButton } from "./LibraryExportButton";
 
@@ -98,7 +99,7 @@ export function DataLibrariesPanel() {
     const res = await fetch(`/api/admin/libraries/data/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const d = await res.json() as { error?: string };
-      alert(d.error ?? "Erreur lors de la suppression");
+      toast.error(d.error ?? "Erreur lors de la suppression");
       return;
     }
     void load();

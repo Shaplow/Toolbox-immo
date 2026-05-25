@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Tag } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { FormField } from "@/components/ui/FormField";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { DeleteButton } from "@/components/ui/DeleteButton";
+import { toast } from "@/components/ui/Toast";
 
 interface Offer {
   id: string;
@@ -14,8 +20,7 @@ export function OffersPanel() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -35,8 +40,7 @@ export function OffersPanel() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    setFormError(null);
-    setCreating(true);
+    setSaving(true);
     try {
       const res = await fetch("/api/admin/offers", {
         method: "POST",
@@ -48,23 +52,24 @@ export function OffersPanel() {
         throw new Error(d.error ?? "Erreur lors de la création");
       }
       setNewName("");
+      toast.success("Offre créée.");
       await load();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Erreur inconnue");
+      toast.error(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {
-      setCreating(false);
+      setSaving(false);
     }
   }
 
-  async function handleDelete(id: string, name: string) {
-    if (!confirm(`Supprimer l'offre « ${name} » ? Les comptes et règles utilisant cette offre conserveront leur valeur.`)) return;
+  async function handleDelete(id: string) {
     const res = await fetch(`/api/admin/offers/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const d = await res.json() as { error?: string };
-      alert(d.error ?? "Erreur lors de la suppression");
+      toast.error(d.error ?? "Erreur lors de la suppression");
       return;
     }
     setOffers((prev) => prev.filter((o) => o.id !== id));
+    toast.success("Offre supprimée.");
   }
 
   if (loading) return <p className="text-sm text-gray-500">Chargement…</p>;
@@ -72,44 +77,40 @@ export function OffersPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Create form */}
+      {/* Formulaire de création */}
       <form onSubmit={(e) => { void handleCreate(e); }} className="flex items-end gap-3">
         <div className="flex-1">
-          <label className="block text-xs font-medium text-gray-600 mb-1">Nom de l&apos;offre</label>
-          <input
-            required
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="ex: PREMIUM"
-            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-          />
+          <FormField label="Nom de l'offre" required>
+            <Input
+              value={newName}
+              onChange={setNewName}
+              placeholder="ex: PREMIUM"
+              required
+            />
+          </FormField>
         </div>
-        <button
-          type="submit"
-          disabled={creating}
-          className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
-        >
-          <Plus className="h-4 w-4" />
-          {creating ? "Ajout…" : "Ajouter"}
-        </button>
+        <Button type="submit" variant="primary" icon={Plus} loading={saving}>
+          Ajouter
+        </Button>
       </form>
-      {formError && <p className="text-xs text-red-500">{formError}</p>}
 
-      {/* List */}
+      {/* Liste ou état vide */}
       {offers.length === 0 ? (
-        <p className="text-sm text-gray-500">Aucune offre configurée.</p>
+        <EmptyState
+          icon={Tag}
+          title="Aucune offre"
+          description="Créez votre première offre commerciale."
+        />
       ) : (
         <div className="divide-y divide-gray-100 rounded-lg border border-gray-200">
           {offers.map((offer) => (
             <div key={offer.id} className="flex items-center justify-between px-4 py-3">
               <span className="text-sm font-medium text-gray-800">{offer.name}</span>
-              <button
-                onClick={() => void handleDelete(offer.id, offer.name)}
-                className="rounded p-1 text-gray-400 hover:text-red-600"
-                title="Supprimer"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <DeleteButton
+                itemLabel="cette offre"
+                description="Les comptes et règles utilisant cette offre conserveront leur valeur."
+                onConfirm={() => handleDelete(offer.id)}
+              />
             </div>
           ))}
         </div>

@@ -1,20 +1,44 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import Link from "next/link";
 import { X, ExternalLink, Trash2, Check, Clapperboard } from "lucide-react";
 import { STATUS_LABELS, CONTENT_TYPES, type SlotStatus, type PublicationSlot } from "@/types/calendar";
 import { FlexFieldsEditor } from "./FlexFieldsEditor";
+
+/**
+ * Mode d'affichage du panneau de détail.
+ *
+ * - "admin"   : comportement complet — tous les champs sont éditables,
+ *               bouton Supprimer visible, bouton Générer visible.
+ *               Default pour rester rétrocompatible avec les call sites existants.
+ * - "monteur" : champs restreints — seuls `status` et `notes` sont éditables,
+ *               cohérent avec ALLOWED_PATCH_FIELDS_BY_ROLE["MONTEUR"] côté serveur.
+ * - "cm"      : identique à "monteur" côté UI.
+ */
+export type SlotDetailPanelMode = "admin" | "monteur" | "cm";
 
 interface SlotDetailPanelProps {
   slot: PublicationSlot;
   onUpdated: (slot: PublicationSlot) => void;
   onDeleted: (id: string) => void;
   onClose: () => void;
+  /**
+   * Contrôle les actions et champs éditables selon le rôle de l'utilisateur.
+   * Default : "admin" — aucun changement de comportement pour les call sites existants.
+   */
+  mode?: SlotDetailPanelMode;
 }
 
 const STATUSES = Object.keys(STATUS_LABELS) as SlotStatus[];
 
-export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose }: SlotDetailPanelProps) {
+const READ_ONLY_INPUT_CLS =
+  "w-full border border-gray-100 rounded-lg px-3 py-2 text-sm text-gray-600 bg-gray-50 cursor-default select-none";
+
+export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "admin" }: SlotDetailPanelProps) {
+  /** true pour MONTEUR et CM — pilote toutes les restrictions d'affichage */
+  const isRestricted = mode !== "admin";
+
   const [form, setForm] = useState({
     title: slot.title ?? "",
     caption: slot.caption ?? "",
@@ -38,18 +62,28 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose }: SlotDet
     setSaving(true);
     setError(null);
     try {
+      /**
+       * En mode restreint (monteur/cm), on n'envoie que les champs autorisés
+       * par ALLOWED_PATCH_FIELDS_BY_ROLE : status et notes.
+       * Le backend filtre déjà de son côté, mais ne pas envoyer les autres champs
+       * évite toute ambiguïté et réduit la surface de requête.
+       */
+      const body = isRestricted
+        ? { status: form.status, notes: form.notes || null }
+        : {
+            title: form.title || null,
+            caption: form.caption || null,
+            notes: form.notes || null,
+            status: form.status,
+            contentType: form.contentType,
+            fields: form.fields,
+            fieldSchema: form.fieldSchema,
+          };
+
       const res = await fetch(`/api/calendar/slots/${slot.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: form.title || null,
-          caption: form.caption || null,
-          notes: form.notes || null,
-          status: form.status,
-          contentType: form.contentType,
-          fields: form.fields,
-          fieldSchema: form.fieldSchema,
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const err = await res.json() as { error?: string };
@@ -103,6 +137,12 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose }: SlotDet
             <p className="text-xs text-gray-400 mt-0.5">
               @{slot.account.handle} · {slot.account.offre}
             </p>
+            <Link
+              href={`/publications/${slot.id}`}
+              className="inline-flex items-center gap-1 mt-1.5 text-xs text-indigo-600 hover:text-indigo-800 hover:underline"
+            >
+              Ouvrir la fiche complète <ExternalLink size={11} />
+            </Link>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100">
             <X size={16} />
@@ -115,6 +155,7 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose }: SlotDet
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="block text-xs font-medium text-gray-600 mb-1">Statut</label>
+              {/* status : éditable pour tous les modes */}
               <select
                 value={form.status}
                 onChange={(e) => set("status", e.target.value as SlotStatus)}
@@ -127,58 +168,85 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose }: SlotDet
             </div>
             <div className="flex-1">
               <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
-              <select
-                value={form.contentType}
-                onChange={(e) => set("contentType", e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              >
-                {CONTENT_TYPES.map((ct) => (
-                  <option key={ct} value={ct}>{ct}</option>
-                ))}
-              </select>
+              {/* contentType : éditable uniquement pour admin */}
+              {isRestricted ? (
+                <p className={READ_ONLY_INPUT_CLS}>{form.contentType}</p>
+              ) : (
+                <select
+                  value={form.contentType}
+                  onChange={(e) => set("contentType", e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                >
+                  {CONTENT_TYPES.map((ct) => (
+                    <option key={ct} value={ct}>{ct}</option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
-          {/* Title */}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Titre</label>
-            <input
-              type="text"
-              value={form.title}
-              onChange={(e) => set("title", e.target.value)}
-              placeholder="Nom du bien, propriétaire…"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            />
-          </div>
+          {/* Title — admin uniquement */}
+          {!isRestricted && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Titre</label>
+              <input
+                type="text"
+                value={form.title}
+                onChange={(e) => set("title", e.target.value)}
+                placeholder="Nom du bien, propriétaire…"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+            </div>
+          )}
 
-          {/* Caption */}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Légende Instagram</label>
-            <textarea
-              value={form.caption}
-              onChange={(e) => set("caption", e.target.value)}
-              rows={3}
-              placeholder="Texte de la publication…"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
-            />
-          </div>
+          {/* Title — monteur/cm : lecture seule, affiché uniquement si une valeur existe */}
+          {isRestricted && form.title && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Titre</label>
+              <p className={READ_ONLY_INPUT_CLS}>{form.title}</p>
+            </div>
+          )}
 
-          {/* Flex fields */}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-2">
-              Informations complémentaires
-            </label>
-            <FlexFieldsEditor
-              schema={form.fieldSchema}
-              values={form.fields}
-              onChange={(schema, values) => {
-                set("fieldSchema", schema);
-                set("fields", values);
-              }}
-            />
-          </div>
+          {/* Caption — admin uniquement */}
+          {!isRestricted && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Légende Instagram</label>
+              <textarea
+                value={form.caption}
+                onChange={(e) => set("caption", e.target.value)}
+                rows={3}
+                placeholder="Texte de la publication…"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+              />
+            </div>
+          )}
 
-          {/* Notes */}
+          {/* Template affiché en lecture seule pour monteur/cm */}
+          {isRestricted && slot.template && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Template</label>
+              <p className={READ_ONLY_INPUT_CLS}>{slot.template.name}</p>
+            </div>
+          )}
+
+          {/* Flex fields — admin uniquement */}
+          {!isRestricted && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-2">
+                Informations complémentaires
+              </label>
+              <FlexFieldsEditor
+                schema={form.fieldSchema}
+                values={form.fields}
+                onChange={(schema, values) => {
+                  set("fieldSchema", schema);
+                  set("fields", values);
+                }}
+              />
+            </div>
+          )}
+
+          {/* Notes — éditable pour tous les modes */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Notes internes</label>
             <textarea
@@ -223,19 +291,22 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose }: SlotDet
 
         {/* Footer */}
         <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => { void handleDelete(); }}
-            disabled={deleting}
-            className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
-          >
-            <Trash2 size={15} />
-          </button>
+          {/* Bouton Supprimer — admin uniquement */}
+          {!isRestricted && (
+            <button
+              type="button"
+              onClick={() => { void handleDelete(); }}
+              disabled={deleting}
+              className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
 
           <div className="flex-1" />
 
-          {/* Generate button — only when a template is linked */}
-          {slot.templateId && (
+          {/* Bouton Générer — admin uniquement, quand un template est lié */}
+          {!isRestricted && slot.templateId && (
             <a
               href={`/generate/${slot.templateId}?accountId=${slot.accountId}&slotId=${slot.id}`}
               target="_blank"

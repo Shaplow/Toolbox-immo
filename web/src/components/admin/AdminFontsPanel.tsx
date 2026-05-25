@@ -1,6 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Type } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { FormField } from "@/components/ui/FormField";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { DeleteButton } from "@/components/ui/DeleteButton";
+import { toast } from "@/components/ui/Toast";
 
 type FontAsset = {
   id: string;
@@ -37,21 +44,20 @@ export function AdminFontsPanel() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadFonts = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) setLoading(true);
-    setError(null);
+    setLoadError(null);
     try {
       const fontsRes = await fetch("/api/font-assets", { cache: "no-store" });
       const data = await readJsonSafely<FontAsset[] | { error?: string }>(fontsRes);
       if (!fontsRes.ok || !data) throw new Error(data && "error" in data ? data.error || "Chargement impossible" : "Chargement impossible");
       setFonts(Array.isArray(data) ? data : []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Chargement impossible");
+      setLoadError(err instanceof Error ? err.message : "Chargement impossible");
       setFonts([]);
     } finally {
       if (!options?.silent) setLoading(false);
@@ -74,7 +80,7 @@ export function AdminFontsPanel() {
         }
         await loadFonts({ silent: true });
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Synchronisation impossible");
+        toast.error(err instanceof Error ? err.message : "Synchronisation impossible");
       } finally {
         setSyncing(false);
       }
@@ -83,33 +89,30 @@ export function AdminFontsPanel() {
 
   async function handleUpload(file: File) {
     setUploading(true);
-    setError(null);
     try {
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch("/api/upload/font", { method: "POST", body: formData });
       const data = await res.json() as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Upload impossible");
+      toast.success("Typographie importée.");
       await loadFonts();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload impossible");
+      toast.error(err instanceof Error ? err.message : "Upload impossible");
     } finally {
       setUploading(false);
     }
   }
 
   async function handleDelete(font: FontAsset) {
-    setError(null);
-    try {
-      const res = await fetch(`/api/font-assets/${font.id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => ({})) as { error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Suppression impossible");
-      setFonts((current) => current.filter((item) => item.id !== font.id));
-      setConfirmDeleteId(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Suppression impossible");
-      setConfirmDeleteId(null);
+    const res = await fetch(`/api/font-assets/${font.id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({})) as { error?: string };
+    if (!res.ok) {
+      toast.error(data.error ?? "Suppression impossible");
+      return;
     }
+    setFonts((current) => current.filter((item) => item.id !== font.id));
+    toast.success("Typographie supprimée.");
   }
 
   const stats = useMemo(() => ({
@@ -126,8 +129,12 @@ export function AdminFontsPanel() {
     });
   }, [fonts, query]);
 
+  if (loading) return <p className="text-sm text-gray-500">Chargement…</p>;
+  if (loadError) return <p className="text-sm text-red-500">{loadError}</p>;
+
   return (
     <div className="space-y-6">
+      {/* Hero header */}
       <div className="rounded-[28px] border border-gray-200 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_45%,#ffffff_100%)] p-6 shadow-sm">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
@@ -151,19 +158,17 @@ export function AdminFontsPanel() {
         </div>
       </div>
 
+      {/* Toolbar */}
       <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div className="flex-1">
-            <label className="block text-[11px] font-semibold tracking-[0.16em] uppercase text-gray-400 mb-2">
-              Rechercher
-            </label>
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Nom de famille, fichier, storage key..."
-              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            />
+            <FormField label="Rechercher">
+              <Input
+                value={query}
+                onChange={setQuery}
+                placeholder="Nom de famille, fichier, storage key..."
+              />
+            </FormField>
           </div>
           <div className="flex flex-wrap items-end gap-3 xl:shrink-0">
             <input
@@ -177,14 +182,14 @@ export function AdminFontsPanel() {
                 e.target.value = "";
               }}
             />
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
+            <Button
+              variant="primary"
+              loading={uploading}
               disabled={uploading || syncing}
-              className="h-[42px] whitespace-nowrap px-4 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-60"
+              onClick={() => fileRef.current?.click()}
             >
               {uploading ? "Import en cours…" : "Importer une typo"}
-            </button>
+            </Button>
           </div>
         </div>
         <p className="text-xs text-gray-400 mt-4">
@@ -193,15 +198,17 @@ export function AdminFontsPanel() {
         <p className="text-xs text-gray-400 mt-1">
           woff et woff2 restent reservés au web. Pour captions, seules les polices ttf et otf sont utilisables par le moteur Python.
         </p>
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </div>
 
-      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="p-6 text-sm text-gray-400">Chargement des typographies…</div>
-        ) : filteredFonts.length === 0 ? (
-          <div className="p-6 text-sm text-gray-400">Aucune typographie globale pour le moment.</div>
-        ) : (
+      {/* Liste des polices */}
+      {filteredFonts.length === 0 ? (
+        <EmptyState
+          icon={Type}
+          title="Aucune police"
+          description={query ? "Aucune typographie ne correspond à votre recherche." : "Importez votre première typographie pour commencer."}
+        />
+      ) : (
+        <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
           <div className="divide-y divide-gray-100">
             {filteredFonts.map((font) => {
               const compatible = isCaptionCompatible(font);
@@ -231,52 +238,29 @@ export function AdminFontsPanel() {
                     <p className="text-[11px] text-gray-400 mt-1">Mise à jour le {new Date(font.updatedAt).toLocaleDateString("fr-FR")}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <a
-                      href={font.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => window.open(font.url, "_blank", "noreferrer")}
                     >
                       Ouvrir
-                    </a>
-                    {confirmDeleteId === font.id ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => void handleDelete(font)}
-                          className="px-3 py-1.5 text-xs rounded-lg bg-red-500 text-white hover:bg-red-600"
-                        >
-                          Confirmer
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteId(null)}
-                          className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50"
-                        >
-                          Annuler
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDeleteId(font.id)}
-                        className="px-3 py-1.5 text-xs rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
-                      >
-                        Supprimer
-                      </button>
-                    )}
+                    </Button>
+                    <DeleteButton
+                      itemLabel="cette police"
+                      description="La police sera retirée de la bibliothèque. Les templates qui l'utilisent déjà ne seront pas affectés."
+                      onConfirm={() => handleDelete(font)}
+                    />
                   </div>
                 </div>
               );
             })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {syncing && !loading ? (
+      {syncing ? (
         <p className="text-xs text-gray-400 px-1">Synchronisation automatique des typographies en cours…</p>
       ) : null}
-
     </div>
   );
 }
