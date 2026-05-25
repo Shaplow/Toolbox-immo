@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Trash2, ToggleLeft, ToggleRight, AlertCircle, Pencil, Check, X } from "lucide-react";
+import { toast } from "@/components/ui/Toast";
 import { DAY_LABELS, type OfferScheduleRule } from "@/types/calendar";
 
 interface TemplateOption {
@@ -125,7 +126,7 @@ export function OfferSchedulePanel() {
     const res = await fetch(`/api/admin/offers/${offer.id}`, { method: "DELETE" });
     if (!res.ok) {
       const d = await res.json() as { error?: string };
-      alert(d.error ?? "Erreur lors de la suppression");
+      toast.error(d.error ?? "Erreur lors de la suppression");
       return;
     }
     setOffers((prev) => prev.filter((o) => o.id !== offer.id));

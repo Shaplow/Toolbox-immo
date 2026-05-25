@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Trash2, Instagram, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { toast } from "@/components/ui/Toast";
 
 interface Cursor {
   libraryId: string;
@@ -82,7 +83,7 @@ export function InstagramAccountsPanel() {
     const res = await fetch(`/api/admin/accounts/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const d = await res.json() as { error?: string };
-      alert(d.error ?? "Erreur lors de la suppression");
+      toast.error(d.error ?? "Erreur lors de la suppression");
       return;
     }
     void load();
@@ -96,7 +97,7 @@ export function InstagramAccountsPanel() {
     });
     if (!res.ok) {
       const d = await res.json() as { error?: string };
-      alert(d.error ?? "Erreur lors de la mise à jour de l'offre");
+      toast.error(d.error ?? "Erreur lors de la mise à jour de l'offre");
       return;
     }
     setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, offre } : a)));
@@ -106,7 +107,7 @@ export function InstagramAccountsPanel() {
     if (!confirm(`Remettre tous les curseurs de séquence de « ${name} » à zéro ?`)) return;
     const res = await fetch(`/api/admin/accounts/${id}/cursors/reset`, { method: "POST" });
     if (!res.ok) {
-      alert("Erreur lors du reset des curseurs");
+      toast.error("Erreur lors du reset des curseurs");
       return;
     }
     void load();

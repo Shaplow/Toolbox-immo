@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Plus, Trash2, Video, Music2, ChevronRight, Search, Pencil, Check, X } from "lucide-react";
+import { toast } from "@/components/ui/Toast";
 import Link from "next/link";
 import { LibraryExportButton } from "./LibraryExportButton";
 
@@ -162,7 +163,7 @@ export function MediaLibrariesPanel() {
     const res = await fetch(`/api/admin/libraries/media/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const d = await res.json() as { error?: string };
-      alert(d.error ?? "Erreur lors de la suppression");
+      toast.error(d.error ?? "Erreur lors de la suppression");
       return;
     }
     void load();

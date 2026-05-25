@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Trash2 } from "lucide-react";
+import { toast } from "@/components/ui/Toast";
 
 interface Offer {
   id: string;
@@ -61,7 +62,7 @@ export function OffersPanel() {
     const res = await fetch(`/api/admin/offers/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const d = await res.json() as { error?: string };
-      alert(d.error ?? "Erreur lors de la suppression");
+      toast.error(d.error ?? "Erreur lors de la suppression");
       return;
     }
     setOffers((prev) => prev.filter((o) => o.id !== id));
