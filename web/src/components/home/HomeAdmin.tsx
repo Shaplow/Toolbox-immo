@@ -149,7 +149,7 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
           className="flex items-center gap-2 px-4 py-3 rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-colors text-sm text-gray-700"
         >
           <ArrowRight size={14} className="text-gray-400" />
-          Recipes
+          Recettes
         </Link>
       </div>
     </div>
