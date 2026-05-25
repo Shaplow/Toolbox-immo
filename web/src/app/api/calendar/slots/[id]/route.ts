@@ -9,15 +9,15 @@
  *             avant l'update (champs non autorisés ignorés silencieusement).
  *   - DELETE : réservé ADMIN ; 404 pour les non-admin (cohérence avec GET).
  *
- * On utilise auth() directement afin d'isoler sur le rôle réel de l'utilisateur
- * connecté, indépendamment de toute impersonation.
+ * L'impersonation s'applique : la vue est celle de effectiveUser. Un admin qui
+ * impersonne un MONTEUR verra et modifiera uniquement les slots assignés à ce MONTEUR.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
-import { canUserAccessSlot, ALLOWED_PATCH_FIELDS_BY_ROLE } from "@/lib/permissions/slotScope";
+import { canUserAccessSlot, ALLOWED_PATCH_FIELDS_BY_ROLE, isValidSlotStatus } from "@/lib/permissions/slotScope";
 import type { UserRole } from "@/types/roles";
-import { USER_ROLES, SLOT_STATUSES } from "@/types/roles";
+import { USER_ROLES } from "@/types/roles";
 
 /** Safely parse a JSON string. Returns `fallback` if the string is falsy or invalid. */
 function safeJSON<T>(str: string | null | undefined, fallback: T): T {
@@ -31,20 +31,20 @@ function safeJSON<T>(str: string | null | undefined, fallback: T): T {
 
 /** Normalise un rôle brut (String en base) vers UserRole. Valeur inconnue → USER. */
 function toUserRole(raw?: string | null): UserRole {
-  if (raw && raw in USER_ROLES) return raw as UserRole;
+  if (raw && Object.hasOwn(USER_ROLES, raw)) return raw as UserRole;
   return "USER";
 }
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
-  const role = toUserRole(session.user.role);
-  const userId = session.user.id;
+  const role = toUserRole(userContext.effectiveUser.role);
+  const userId = userContext.effectiveUser.id;
   const { id } = await params;
 
   const slot = await prisma.publicationSlot.findUnique({
@@ -70,13 +70,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
-  const role = toUserRole(session.user.role);
-  const userId = session.user.id;
+  const role = toUserRole(userContext.effectiveUser.role);
+  const userId = userContext.effectiveUser.id;
   const { id } = await params;
 
   const slot = await prisma.publicationSlot.findUnique({
@@ -101,10 +101,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { status, title, caption, notes, templateId, scheduledAt, contentType, fields, fieldSchema,
           assigneeMonteurId, assigneeCmId, recipeId, currentVersionId, isAuto } = body as Record<string, unknown>;
 
-  // Validation du statut : doit être une valeur de SLOT_STATUSES si fourni.
-  if (status !== undefined && (typeof status !== "string" || !(status in SLOT_STATUSES))) {
+  // Validation du statut : doit être une valeur de SLOT_STATUSES ou un statut legacy
+  // conservé en cohabitation jusqu'au backfill Phase 1.3 (cf isValidSlotStatus).
+  if (status !== undefined && !isValidSlotStatus(status)) {
     return NextResponse.json(
-      { error: `Statut invalide. Valeurs acceptées : ${Object.keys(SLOT_STATUSES).join(", ")}` },
+      { error: "Statut invalide." },
       { status: 400 }
     );
   }
@@ -146,12 +147,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
-  const role = toUserRole(session.user.role);
+  const role = toUserRole(userContext.effectiveUser.role);
   const { id } = await params;
 
   // DELETE réservé ADMIN. On renvoie 404 (pas 403) pour cohérence avec GET/PATCH :

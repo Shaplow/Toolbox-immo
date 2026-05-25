@@ -18,7 +18,7 @@ function templateHasCoverAuto(jsonData: string): boolean {
 
 /** Normalise un rôle brut (String en base) vers UserRole. Valeur inconnue → USER. */
 function toUserRole(raw?: string | null): UserRole {
-  if (raw && raw in USER_ROLES) return raw as UserRole;
+  if (raw && Object.hasOwn(USER_ROLES, raw)) return raw as UserRole;
   return "USER";
 }
 
@@ -41,12 +41,12 @@ const LISTING_INCLUDE = {
 
 export default async function ListingsPage() {
   const userContext = await getUserContext();
-  // Pour les listings, on travaille sur l'utilisateur effectif (pour les permissions outil)
-  // mais pour le scope publication on utilise le rôle réel (actualUser) afin d'éviter
-  // qu'un admin en impersonation voie les listings via le scope MONTEUR/CM de la cible.
+  // L'impersonation s'applique : la vue est celle de effectiveUser.
+  // Un admin qui impersonne un MONTEUR voit la vue exacte de ce MONTEUR :
+  // ses propres listings + les listings dont les renders sont assignés à lui via slot.
   const userId = userContext!.effectiveUser.id;
   const isAdmin = userContext!.canAdminBypass;
-  const actualRole = toUserRole(userContext!.actualUser.role);
+  const effectiveRole = toUserRole(userContext!.effectiveUser.role);
 
   const userPerms = parsePermissions(userContext!.effectiveUser.permissions);
   const hasCaptions = isAdmin || userPerms.includes("captions");
@@ -75,22 +75,22 @@ export default async function ListingsPage() {
       orderBy: { createdAt: "desc" },
       include: LISTING_INCLUDE,
     });
-  } else if (actualRole === "MONTEUR" || actualRole === "CM") {
-    // Requête 1 : listings dont l'utilisateur est propriétaire
+  } else if (effectiveRole === "MONTEUR" || effectiveRole === "CM") {
+    // Requête 1 : listings dont l'utilisateur effectif est propriétaire
     const ownListings = await prisma.listing.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
       include: LISTING_INCLUDE,
     });
 
-    // Requête 2 : listings dont un render est associé à un slot assigné à cet utilisateur
-    const assigneeField = actualRole === "MONTEUR" ? "assigneeMonteurId" : "assigneeCmId";
+    // Requête 2 : listings dont un render est associé à un slot assigné à l'utilisateur effectif
+    const assigneeField = effectiveRole === "MONTEUR" ? "assigneeMonteurId" : "assigneeCmId";
     const assignedListings = await prisma.listing.findMany({
       where: {
         renders: {
           some: {
             publicationSlot: {
-              [assigneeField]: userContext!.actualUser.id,
+              [assigneeField]: userId,
             },
           },
         },

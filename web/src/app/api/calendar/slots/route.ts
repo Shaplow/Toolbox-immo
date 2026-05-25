@@ -8,11 +8,11 @@
  *   CM      → uniquement les slots dont assigneeCmId = userId
  *   USER    → aucun slot (clause impossible "__never__")
  *
- * On utilise auth() directement (sans getUserContext) afin d'isoler sur le
- * rôle réel de l'utilisateur connecté, indépendamment de toute impersonation.
+ * L'impersonation s'applique : la vue est celle de effectiveUser. Un admin qui
+ * impersonne un MONTEUR voit uniquement les slots assignés à ce MONTEUR.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { whereClauseForUser } from "@/lib/permissions/slotScope";
 import type { UserRole } from "@/types/roles";
@@ -30,18 +30,18 @@ function safeJSON<T>(str: string | null | undefined, fallback: T): T {
 
 /** Normalise un rôle brut (String en base) vers UserRole. Valeur inconnue → USER. */
 function toUserRole(raw?: string | null): UserRole {
-  if (raw && raw in USER_ROLES) return raw as UserRole;
+  if (raw && Object.hasOwn(USER_ROLES, raw)) return raw as UserRole;
   return "USER";
 }
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
-  const role = toUserRole(session.user.role);
-  const userId = session.user.id;
+  const role = toUserRole(userContext.effectiveUser.role);
+  const userId = userContext.effectiveUser.id;
 
   // ADMIN, MONTEUR, et CM peuvent lire. USER n'a pas accès à la pipeline éditoriale.
   if (role === "USER") {
@@ -55,23 +55,27 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get("dateFrom");
   const dateTo = searchParams.get("dateTo");
 
-  // Le scope de rôle est combiné (AND) avec les filtres URL existants.
+  // Le scope de rôle est placé en premier dans AND pour que les filtres URL
+  // ne puissent jamais l'écraser (protection contre un futur filtre ?id=X qui
+  // overriderait le scope USER "{id:'__never__'}" via spread).
   const roleScope = whereClauseForUser(role, userId);
 
   const slots = await prisma.publicationSlot.findMany({
     where: {
-      ...roleScope,
-      ...(accountId ? { accountId } : {}),
-      ...(status ? { status } : {}),
-      ...(contentType ? { contentType } : {}),
-      ...(dateFrom || dateTo
-        ? {
-            scheduledAt: {
-              ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-              ...(dateTo ? { lte: new Date(dateTo) } : {}),
-            },
-          }
-        : {}),
+      AND: [
+        roleScope,
+        accountId ? { accountId } : {},
+        status ? { status } : {},
+        contentType ? { contentType } : {},
+        dateFrom || dateTo
+          ? {
+              scheduledAt: {
+                ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+                ...(dateTo ? { lte: new Date(dateTo) } : {}),
+              },
+            }
+          : {},
+      ],
     },
     orderBy: { scheduledAt: "asc" },
     take: 500,
@@ -93,9 +97,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
+  const userContext = await getUserContext();
   // POST reste réservé aux admins — la création de slots est une opération de planification.
-  if (!session?.user?.id || toUserRole(session.user.role) !== "ADMIN") {
+  // L'impersonation ne donne pas les droits d'un admin : canAdminBypass est false quand on impersonne.
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
