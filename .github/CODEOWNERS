@@ -1,0 +1,29 @@
+# CODEOWNERS — défaut : Mathis valide tout sur le repo.
+# Format : <pattern> <owner1> <owner2>
+# Voir https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+* @Shaplow
+
+# Zones critiques — review explicite (même owner pour l'instant, en place
+# pour quand des collaborateurs rejoignent le repo plus tard).
+
+# Schéma Prisma et migrations
+/web/prisma/                  @Shaplow
+
+# Permissions et auth (impact sécurité multi-rôle)
+/web/src/lib/permissions/     @Shaplow
+/web/src/lib/auth.ts          @Shaplow
+/web/src/lib/userContext.ts   @Shaplow
+
+# Render engine (FFmpeg, RunPod, code Python)
+/render-engine/               @Shaplow
+
+# Infrastructure déploiement
+/deploy.sh                    @Shaplow
+/web/scripts/deploy-*.sh      @Shaplow
+/web/scripts/db-backup.ts     @Shaplow
+
+# Documentation et instructions Claude Code
+/.github/                     @Shaplow
+/.claude/                     @Shaplow
+/CLAUDE.md                    @Shaplow
