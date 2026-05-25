@@ -20,6 +20,14 @@ DOCKER_LOCAL_CACHE="${HOME}/.cache/toolbox-render-buildcache"
 SERVER_IP="37.27.246.85"
 SERVER_USER="root"
 
+# La prod est toujours déployée depuis cette ref git (par défaut origin/main), pas depuis
+# les fichiers locaux du working tree. Permet de travailler sur n'importe quelle branche
+# de feature sans qu'elle ne pollue le déploiement. Override possible via env var :
+#   DEPLOY_REF=HEAD bash deploy.sh        # déploie la branche courante
+#   DEPLOY_REF=feat/foo bash deploy.sh    # déploie une autre branche
+DEPLOY_REF="${DEPLOY_REF:-origin/main}"
+DEPLOY_SOURCE_DIR="${HOME}/.cache/toolbox-deploy-source"
+
 DRY_RUN=false
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=true
 
@@ -44,6 +52,51 @@ run()    {
   fi
 }
 
+# ── Préparation source depuis git ─────────────────────────────────────────────
+# Crée un worktree git temporaire pointant sur DEPLOY_REF (origin/main par défaut)
+# et y symlinke les fichiers gitignorés requis (.env.prod). Le déploiement utilisera
+# ce répertoire comme source au lieu du working tree de l'utilisateur, ce qui rend
+# le déploiement indépendant de la branche courante / des modifs non commitées.
+prepare_deploy_source() {
+  header "Préparation source — ${DEPLOY_REF}"
+
+  if ! git -C "${SCRIPT_DIR}" rev-parse --git-dir >/dev/null 2>&1; then
+    err "${SCRIPT_DIR} n'est pas un dépôt git — impossible de préparer le worktree de deploy"
+  fi
+
+  # Récupère les derniers commits avant de checkout
+  run "git -C \"${SCRIPT_DIR}\" fetch origin main --quiet"
+
+  # Nettoie un worktree résiduel d'un deploy précédent (si interrompu)
+  if [[ -d "${DEPLOY_SOURCE_DIR}" ]]; then
+    git -C "${SCRIPT_DIR}" worktree remove --force "${DEPLOY_SOURCE_DIR}" 2>/dev/null || true
+    rm -rf "${DEPLOY_SOURCE_DIR}"
+  fi
+
+  run "git -C \"${SCRIPT_DIR}\" worktree add --detach \"${DEPLOY_SOURCE_DIR}\" \"${DEPLOY_REF}\""
+
+  if ! $DRY_RUN; then
+    # .env.prod n'est jamais commité → vient du working tree user
+    if [[ -f "${SCRIPT_DIR}/.env.prod" ]]; then
+      ln -sf "${SCRIPT_DIR}/.env.prod" "${DEPLOY_SOURCE_DIR}/.env.prod"
+    fi
+
+    local deployed_sha deployed_msg
+    deployed_sha=$(git -C "${DEPLOY_SOURCE_DIR}" rev-parse --short HEAD 2>/dev/null || echo "?")
+    deployed_msg=$(git -C "${DEPLOY_SOURCE_DIR}" log -1 --pretty=%s 2>/dev/null || echo "?")
+    ok "Commit à déployer : ${BOLD}${deployed_sha}${RESET}${GREEN} — ${deployed_msg}"
+  fi
+}
+
+cleanup_deploy_source() {
+  if [[ -d "${DEPLOY_SOURCE_DIR}" ]]; then
+    git -C "${SCRIPT_DIR}" worktree remove --force "${DEPLOY_SOURCE_DIR}" 2>/dev/null || true
+    rm -rf "${DEPLOY_SOURCE_DIR}"
+  fi
+}
+
+trap cleanup_deploy_source EXIT
+
 # ── Déploiement web ───────────────────────────────────────────────────────────
 deploy_web() {
   header "Déploiement Web → Hetzner (${SERVER_IP})"
@@ -52,7 +105,7 @@ deploy_web() {
     err "ssh introuvable"
   fi
 
-  run "bash \"${SCRIPT_DIR}/web/scripts/deploy-remote.sh\" ${SERVER_IP} ${SERVER_USER}"
+  run "bash \"${DEPLOY_SOURCE_DIR}/web/scripts/deploy-remote.sh\" ${SERVER_IP} ${SERVER_USER}"
   WEB_DEPLOYED=true
 }
 
@@ -93,14 +146,14 @@ deploy_docker() {
   mkdir -p "${DOCKER_LOCAL_CACHE}"
   run "docker buildx build \
     --platform linux/amd64 \
-    -f \"${SCRIPT_DIR}/render-engine/Dockerfile.runpod\" \
+    -f \"${DEPLOY_SOURCE_DIR}/render-engine/Dockerfile.runpod\" \
     -t \"${NEW_TAG}\" \
     -t \"${DOCKER_IMAGE}:latest\" \
     --cache-from type=local,src=\"${DOCKER_LOCAL_CACHE}\" \
     --cache-to type=local,dest=\"${DOCKER_LOCAL_CACHE}\",mode=max \
     --provenance=false \
     --push \
-    \"${SCRIPT_DIR}/render-engine\""
+    \"${DEPLOY_SOURCE_DIR}/render-engine\""
 
   # Écriture de la version (seulement si tout a réussi)
   if ! $DRY_RUN; then
@@ -158,14 +211,17 @@ read -rp "Choix [1/2/3] : " CHOICE
 
 case "$CHOICE" in
   1)
+    prepare_deploy_source
     deploy_web
     print_summary
     ;;
   2)
+    prepare_deploy_source
     deploy_docker
     print_summary
     ;;
   3)
+    prepare_deploy_source
     deploy_docker
     deploy_web
     print_summary

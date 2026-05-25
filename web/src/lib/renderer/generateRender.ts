@@ -426,11 +426,32 @@ async function resolveMusicConfig(
 
   // 3. Fall back to library resolution when no URL came from the form or prefill
   if (!rawMusicUrl && musicBlock.libraryId) {
+    // Conservative upper-bound on output duration, used to reject too-short tracks.
+    // We use the template's explicit caps (slot.maxDuration / canvas.maxDuration) rather
+    // than probing assets — at render time the picked video assets are not yet known
+    // here, so caps give a safe (often slightly over-) estimate. If no caps exist,
+    // we skip the filter (degraded but matches pre-existing behaviour).
+    let estimatedVideoDuration = 0;
+    const seq = templateJson.videoSequence ?? [];
+    if (seq.length > 0) {
+      for (const slot of seq) {
+        if (slot.maxDuration && slot.maxDuration > 0) {
+          estimatedVideoDuration += slot.maxDuration;
+        }
+      }
+    } else if (templateJson.canvas?.maxDuration && templateJson.canvas.maxDuration > 0) {
+      estimatedVideoDuration = templateJson.canvas.maxDuration;
+    }
+    const audioMinDuration =
+      !musicBlock.loop && estimatedVideoDuration > 0 ? estimatedVideoDuration : undefined;
+
     const asset = await selectMediaAsset(
       musicBlock.libraryId,
       musicBlock.audioSelectionRule,
       undefined,
       accountId ?? undefined,
+      undefined,
+      audioMinDuration,
     );
     if (asset) {
       rawMusicUrl = asset.url;

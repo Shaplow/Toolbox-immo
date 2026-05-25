@@ -1035,6 +1035,7 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
             slot_audio_specs.append({
                 "volume_db": slot.get("music_track_volume_db"),
                 "fade_in": float(slot.get("music_track_fade_in", 0) or 0),
+                "fade_out": float(slot.get("music_track_fade_out", 0) or 0),
                 "dur": _clip_effective_dur,
             })
 
