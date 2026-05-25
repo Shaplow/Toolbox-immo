@@ -67,3 +67,26 @@ export const SLOT_STATUSES = {
   BLOCKED: "BLOCKED",
   ARCHIVED: "ARCHIVED",
 } as const satisfies Record<SlotStatus, SlotStatus>;
+
+// ---------------------------------------------------------------------------
+// Statuts terminaux / actifs
+// ---------------------------------------------------------------------------
+
+/**
+ * Statuts terminaux du pipeline éditorial : un slot dans l'un de ces statuts
+ * est considéré comme "terminé" et n'apparaît pas dans la worklist active.
+ *
+ * Inclut également "DONE" — statut legacy terminal, coexistant avec
+ * "PUBLISHED" le temps du backfill Phase 1.3.
+ *
+ * @see slotScope.ts pour les statuts legacy non-terminaux (TO_DO, IN_PROGRESS, etc.)
+ */
+export const TERMINAL_STATUSES = [
+  "PUBLISHED",
+  "ARCHIVED",
+  "CANCELLED",
+  "REJECTED",
+  "DONE", // statut legacy terminal
+] as const satisfies string[];
+
+export type TerminalStatus = (typeof TERMINAL_STATUSES)[number];

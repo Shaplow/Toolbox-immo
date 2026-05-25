@@ -7,6 +7,7 @@ import { useState, type ReactNode } from "react";
 import { Home, List, Users, Library, LogOut, CalendarDays, Zap, Building2, Layers, LayoutGrid } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { TOOL_META, TOOL_ORDER } from "@/lib/toolMeta";
+import { useWorklistCount } from "@/hooks/useWorklistCount";
 
 type NavItem = {
   href: string;
@@ -40,6 +41,7 @@ export function AppNav({
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const { count: worklistCount } = useWorklistCount();
   const canSeeAdmin = actualUser.role === "ADMIN";
   const navUser = isImpersonating ? effectiveUser : actualUser;
   const isAdminView = canSeeAdmin && !isImpersonating;
@@ -196,19 +198,37 @@ export function AppNav({
                       </span>
                     );
                   }
+                  const isHome = href === "/home";
+                  const showBadge = isHome && worklistCount > 0;
                   return (
                     <Link
                       key={href}
                       href={href}
-                      title={label}
+                      title={isHome && showBadge ? `${label} (${worklistCount})` : label}
                       className={`flex items-center gap-2.5 py-2 rounded-lg text-sm transition-colors ${
                         active
                           ? "bg-indigo-50 text-indigo-700 font-medium"
                           : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                       } ${collapsed ? "justify-center px-0" : "px-3"}`}
                     >
-                      <span className="shrink-0 flex items-center">{icon}</span>
-                      {!collapsed ? label : null}
+                      <span className="shrink-0 flex items-center relative">
+                        {icon}
+                        {/* Point pastille en nav collapsée */}
+                        {showBadge && collapsed && (
+                          <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-indigo-600 ring-2 ring-white" />
+                        )}
+                      </span>
+                      {!collapsed ? (
+                        <span className="flex-1 flex items-center justify-between">
+                          {label}
+                          {/* Badge pill en nav ouverte */}
+                          {showBadge && (
+                            <span className="ml-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-indigo-600 text-white text-[10px] font-semibold leading-none px-1">
+                              {worklistCount > 99 ? "99+" : worklistCount}
+                            </span>
+                          )}
+                        </span>
+                      ) : null}
                     </Link>
                   );
                 })}
