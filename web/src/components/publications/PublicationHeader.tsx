@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ChevronRight,
@@ -62,6 +63,8 @@ export function PublicationHeader({
   canDelete,
 }: PublicationHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const router = useRouter();
 
   const scheduledAt = new Date(slot.scheduledAt);
   const status = slot.status as SlotStatus;
@@ -74,10 +77,21 @@ export function PublicationHeader({
 
   const title = slot.title ?? "Publication sans titre";
 
-  function handleDeleteClick() {
+  async function handleDeleteClick() {
     setMenuOpen(false);
-    // Placeholder — implémentation complète en Phase 1.3.7
-    console.warn("[PublicationHeader] Suppression non encore implémentée pour le slot", slot.id);
+    if (!confirm("Supprimer cette publication ? Cette action est irréversible.")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/calendar/slots/${slot.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.json() as { error?: string };
+        throw new Error(body.error ?? "Erreur lors de la suppression");
+      }
+      router.push("/calendar");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erreur lors de la suppression");
+      setDeleting(false);
+    }
   }
 
   function handleMarkPublished() {
@@ -157,11 +171,12 @@ export function PublicationHeader({
                     <div className="absolute right-0 top-8 z-20 bg-white rounded-xl border border-gray-100 shadow-lg py-1 w-44">
                       <button
                         type="button"
-                        onClick={handleDeleteClick}
-                        className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                        onClick={() => { void handleDeleteClick(); }}
+                        disabled={deleting}
+                        className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
                       >
                         <Trash2 size={14} />
-                        Supprimer
+                        {deleting ? "Suppression…" : "Supprimer"}
                       </button>
                     </div>
                   </>

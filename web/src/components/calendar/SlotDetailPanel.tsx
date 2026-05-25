@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import Link from "next/link";
 import { X, ExternalLink, Trash2, Check, Clapperboard } from "lucide-react";
 import { STATUS_LABELS, CONTENT_TYPES, type SlotStatus, type PublicationSlot } from "@/types/calendar";
 import { FlexFieldsEditor } from "./FlexFieldsEditor";
@@ -136,6 +137,12 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
             <p className="text-xs text-gray-400 mt-0.5">
               @{slot.account.handle} · {slot.account.offre}
             </p>
+            <Link
+              href={`/publications/${slot.id}`}
+              className="inline-flex items-center gap-1 mt-1.5 text-xs text-indigo-600 hover:text-indigo-800 hover:underline"
+            >
+              Ouvrir la fiche complète <ExternalLink size={11} />
+            </Link>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100">
             <X size={16} />
