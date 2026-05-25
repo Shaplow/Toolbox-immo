@@ -37,6 +37,7 @@ export default async function PublicationPage({ params }: PageProps) {
           code: true,
           label: true,
           source: true,
+          templateId: true,
           needsCover: true,
           needsCaptions: true,
           needsDescription: true,
@@ -88,6 +89,10 @@ export default async function PublicationPage({ params }: PageProps) {
 
   const canPublish = canMarkPublished(userForPermission, slotForPermission);
   const canDelete = role === "ADMIN";
+  const canEditRender = role === "ADMIN";
+  const canEditCover = role === "ADMIN" || role === "CM";
+  const canEditCaptions = role === "ADMIN" || role === "MONTEUR" || role === "CM";
+  const canEditDescription = role === "ADMIN" || role === "CM";
 
   return (
     <PublicationFiche
@@ -97,6 +102,10 @@ export default async function PublicationPage({ params }: PageProps) {
         status: slot.status,
         scheduledAt: slot.scheduledAt,
         contentType: slot.contentType,
+        caption: slot.caption,
+        publishedUrl: slot.publishedUrl,
+        publishedAt: slot.publishedAt,
+        notes: slot.notes,
       }}
       account={{
         id: slot.account.id,
@@ -111,14 +120,34 @@ export default async function PublicationPage({ params }: PageProps) {
               id: slot.recipe.id,
               code: slot.recipe.code,
               label: slot.recipe.label,
+              source: slot.recipe.source,
+              templateId: slot.recipe.templateId,
+              needsCover: slot.recipe.needsCover,
+              needsCaptions: slot.recipe.needsCaptions,
+              needsDescription: slot.recipe.needsDescription,
             }
           : null
       }
+      render={
+        slot.render
+          ? {
+              id: slot.render.id,
+              status: slot.render.status,
+              videoUrl: slot.render.videoUrl,
+              pngUrl: slot.render.pngUrl,
+            }
+          : null
+      }
+      coverPack={slot.render?.coverFramePack ?? null}
       assigneeMonteur={slot.assigneeMonteur}
       assigneeCm={slot.assigneeCm}
       steps={steps}
       canMarkPublished={canPublish}
       canDelete={canDelete}
+      canEditRender={canEditRender}
+      canEditCover={canEditCover}
+      canEditCaptions={canEditCaptions}
+      canEditDescription={canEditDescription}
     />
   );
 }

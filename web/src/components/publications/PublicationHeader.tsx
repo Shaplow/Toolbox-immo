@@ -81,8 +81,11 @@ export function PublicationHeader({
   }
 
   function handleMarkPublished() {
-    // Placeholder — action câblée en Phase 1.3.5
-    console.warn("[PublicationHeader] Marquer publié non encore implémenté pour le slot", slot.id);
+    // Scroll vers la section #publish où se trouve le formulaire de marquage.
+    const section = document.getElementById("publish");
+    if (section) {
+      section.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
 
   return (

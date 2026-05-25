@@ -3,13 +3,22 @@
 /**
  * PublicationFiche — wrapper client pour la fiche publication.
  *
- * En Phase 1.3.4 ce composant sert de point d'ancrage pour l'état interactif
- * qui sera ajouté en 1.3.5 (actions) et 1.3.6 (commentaires).
- * Le layout sticky du header et le scroll vers les sections sont déjà en place.
+ * Phase 1.3.5 : intégration des sections outils (render, cover, captions,
+ * description, légende IG, publication). Les sections reçoivent leurs données
+ * du server component (page.tsx) via des props sérialisables.
+ *
+ * Phase 1.3.6 : section commentaires + activité.
+ * Phase 1.3.7 : câblage worklists + handleDeleteClick.
  */
 
 import { PublicationHeader } from "@/components/publications/PublicationHeader";
 import { ProductionChain } from "@/components/publications/ProductionChain";
+import { RenderSection } from "@/components/publications/sections/RenderSection";
+import { CoverSection } from "@/components/publications/sections/CoverSection";
+import { CaptionsSection } from "@/components/publications/sections/CaptionsSection";
+import { DescriptionSection } from "@/components/publications/sections/DescriptionSection";
+import { CaptionIgSection } from "@/components/publications/sections/CaptionIgSection";
+import { PublishSection } from "@/components/publications/sections/PublishSection";
 import type { PublicationStep } from "@/lib/publications/steps";
 
 interface AssigneeInfo {
@@ -24,6 +33,10 @@ interface SlotInfo {
   status: string;
   scheduledAt: Date;
   contentType: string;
+  caption: string | null;
+  publishedUrl: string | null;
+  publishedAt: Date | null;
+  notes: string | null;
 }
 
 interface AccountInfo {
@@ -37,6 +50,24 @@ interface RecipeInfo {
   id: string;
   code: string;
   label: string;
+  source: string;
+  templateId: string | null;
+  needsCover: string;
+  needsCaptions: boolean;
+  needsDescription: string;
+}
+
+interface RenderInfo {
+  id: string;
+  status: string;
+  videoUrl: string | null;
+  pngUrl: string | null;
+}
+
+interface CoverPackInfo {
+  id: string;
+  status: string;
+  finalCoverUrl: string | null;
 }
 
 export interface PublicationFicheProps {
@@ -44,11 +75,17 @@ export interface PublicationFicheProps {
   account: AccountInfo;
   listing: { id: string } | null;
   recipe: RecipeInfo | null;
+  render: RenderInfo | null;
+  coverPack: CoverPackInfo | null;
   assigneeMonteur: AssigneeInfo | null;
   assigneeCm: AssigneeInfo | null;
   steps: PublicationStep[];
   canMarkPublished: boolean;
   canDelete: boolean;
+  canEditRender: boolean;
+  canEditCover: boolean;
+  canEditCaptions: boolean;
+  canEditDescription: boolean;
 }
 
 export function PublicationFiche({
@@ -56,11 +93,17 @@ export function PublicationFiche({
   account,
   listing,
   recipe,
+  render,
+  coverPack,
   assigneeMonteur,
   assigneeCm,
   steps,
   canMarkPublished,
   canDelete,
+  canEditRender,
+  canEditCover,
+  canEditCaptions,
+  canEditDescription,
 }: PublicationFicheProps) {
   return (
     <div className="min-h-screen bg-gray-50">
@@ -69,7 +112,7 @@ export function PublicationFiche({
         slot={slot}
         account={account}
         listing={listing}
-        recipe={recipe}
+        recipe={recipe ? { id: recipe.id, code: recipe.code, label: recipe.label } : null}
         assigneeMonteur={assigneeMonteur}
         assigneeCm={assigneeCm}
         canMarkPublished={canMarkPublished}
@@ -81,36 +124,57 @@ export function PublicationFiche({
         {/* Chaîne de production */}
         <ProductionChain steps={steps} />
 
-        {/* Sections outils — placeholders Phase 1.3.5 */}
-        <section id="render" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">Rendu vidéo</h2>
-          <p className="text-sm text-gray-400 italic">Section à venir (Phase 1.3.5)</p>
-        </section>
+        {/* Rendu vidéo */}
+        <RenderSection
+          slot={{ id: slot.id }}
+          recipe={recipe ? { source: recipe.source, templateId: recipe.templateId } : null}
+          render={render}
+          listingId={listing?.id ?? null}
+          canEdit={canEditRender}
+        />
 
-        <section id="cover" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">Cover</h2>
-          <p className="text-sm text-gray-400 italic">Section à venir (Phase 1.3.5)</p>
-        </section>
+        {/* Cover Instagram */}
+        <CoverSection
+          slot={{ id: slot.id }}
+          recipe={recipe ? { needsCover: recipe.needsCover } : null}
+          coverPack={coverPack}
+          canEdit={canEditCover}
+        />
 
-        <section id="captions" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">Sous-titres</h2>
-          <p className="text-sm text-gray-400 italic">Section à venir (Phase 1.3.5)</p>
-        </section>
+        {/* Sous-titres */}
+        <CaptionsSection
+          slot={{ id: slot.id }}
+          renderId={render?.id ?? null}
+          recipe={recipe ? { needsCaptions: recipe.needsCaptions } : null}
+          canEdit={canEditCaptions}
+        />
 
-        <section id="description" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">Description</h2>
-          <p className="text-sm text-gray-400 italic">Section à venir (Phase 1.3.5)</p>
-        </section>
+        {/* Description (stockée dans notes) */}
+        <DescriptionSection
+          slot={{ id: slot.id }}
+          recipe={recipe ? { needsDescription: recipe.needsDescription } : null}
+          initialDescription={slot.notes ?? ""}
+          canEdit={canEditDescription}
+          renderId={render?.id ?? null}
+        />
 
-        <section id="validation" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">Validation client</h2>
-          <p className="text-sm text-gray-400 italic">Section à venir (Phase 1.3.5)</p>
-        </section>
+        {/* Légende Instagram */}
+        <CaptionIgSection
+          slot={{ id: slot.id, caption: slot.caption }}
+          description={slot.notes}
+          canEdit={canMarkPublished || canEditDescription}
+        />
 
-        <section id="publish" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">Publication</h2>
-          <p className="text-sm text-gray-400 italic">Section à venir (Phase 1.3.5)</p>
-        </section>
+        {/* Publication */}
+        <PublishSection
+          slot={{
+            id: slot.id,
+            status: slot.status,
+            publishedUrl: slot.publishedUrl,
+            publishedAt: slot.publishedAt,
+          }}
+          canPublish={canMarkPublished}
+        />
 
         {/* Section commentaires — placeholder Phase 1.3.6 */}
         <section id="comments" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
