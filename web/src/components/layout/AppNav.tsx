@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState, type ReactNode } from "react";
-import { Home, List, Users, Library, LogOut, CalendarDays, Zap, Building2, Layers, LayoutGrid, LayoutTemplate, Sparkles } from "lucide-react";
+import { Home, List, Users, Library, LogOut, CalendarDays, Zap, Building2, Layers, LayoutGrid, LayoutTemplate } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { TOOL_META } from "@/lib/toolMeta";
 import { useWorklistCount } from "@/hooks/useWorklistCount";
@@ -103,7 +103,6 @@ export function AppNav({
           title: "Configuration",
           items: [
             { href: "/admin/libraries", label: "Bibliothèques", icon: <Library size={16} /> },
-            { href: "/admin/ia-config", label: "Config IA", icon: <Sparkles size={16} /> },
             { href: "/admin/users", label: "Utilisateurs", icon: <Users size={16} /> },
           ],
         },
