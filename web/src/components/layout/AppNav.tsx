@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState, type ReactNode } from "react";
-import { Home, List, Users, Library, LogOut, CalendarDays, Zap, Building2, Layers, LayoutGrid, Tag, LayoutTemplate, Sparkles } from "lucide-react";
+import { Home, List, Users, Library, LogOut, CalendarDays, Zap, Building2, Layers, LayoutGrid, LayoutTemplate, Sparkles } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { TOOL_META } from "@/lib/toolMeta";
 import { useWorklistCount } from "@/hooks/useWorklistCount";
@@ -97,7 +97,6 @@ export function AppNav({
           title: "Clients",
           items: [
             { href: "/admin/clients", label: "Clients", icon: <Building2 size={16} /> },
-            { href: "/admin/offers", label: "Offres", icon: <Tag size={16} /> },
           ],
         },
         {
