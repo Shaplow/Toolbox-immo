@@ -114,7 +114,12 @@ export function AppNav({
         },
         {
           title: "Suivi",
-          items: [{ href: "/listings", label: "Mes générations", icon: <List size={16} /> }],
+          items: [
+            { href: "/listings", label: "Mes générations", icon: <List size={16} /> },
+            ...(navUser.role === "MONTEUR" || navUser.role === "CM"
+              ? [{ href: "/calendar", label: "Calendrier", icon: <CalendarDays size={16} /> }]
+              : []),
+          ],
         },
       ];
 

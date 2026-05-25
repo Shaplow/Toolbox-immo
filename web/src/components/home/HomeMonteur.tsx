@@ -69,7 +69,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
 
   /** En retard : dans le passé, statut non-terminal, exclu "waiting" (déjà fait côté monteur) */
   const overdue = slots.filter(
-    (s) => !TERMINAL_STATUSES.includes(s.status) && s.scheduledAt < now
+    (s) => !(TERMINAL_STATUSES as readonly string[]).includes(s.status) && s.scheduledAt < now
   );
 
   /** À monter / En cours : dans la semaine courante OU sans date dépassée, sections todo/in_progress */

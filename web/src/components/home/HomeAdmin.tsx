@@ -40,7 +40,7 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
     prisma.publicationSlot.count({
       where: {
         scheduledAt: { lt: now },
-        status: { in: ACTIVE_STATUSES.filter((s) => !TERMINAL_STATUSES.includes(s)) },
+        status: { in: ACTIVE_STATUSES.filter((s) => !(TERMINAL_STATUSES as readonly string[]).includes(s)) },
       },
     }),
     prisma.publicationSlot.count({

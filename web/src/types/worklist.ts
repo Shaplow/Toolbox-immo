@@ -12,6 +12,9 @@
  */
 
 import type { SlotStatus } from "@/types/roles";
+import { TERMINAL_STATUSES } from "@/types/roles";
+export type { TerminalStatus } from "@/types/roles";
+export { TERMINAL_STATUSES };
 
 // ---------------------------------------------------------------------------
 // WorklistSlot
@@ -123,20 +126,12 @@ export function getCmSection(status: SlotStatus): CmSection | null {
 // Helpers communs
 // ---------------------------------------------------------------------------
 
-/** Statuts considérés comme "terminaux" — un slot dans ces statuts n'est pas en retard. */
-export const TERMINAL_STATUSES: SlotStatus[] = [
-  "PUBLISHED",
-  "ARCHIVED",
-  "CANCELLED",
-  "REJECTED",
-];
-
 /**
  * Retourne true si un slot est en retard :
  * scheduledAt est dans le passé ET le statut n'est pas terminal.
  */
 export function isSlotOverdue(slot: Pick<WorklistSlot, "scheduledAt" | "status">): boolean {
-  if (TERMINAL_STATUSES.includes(slot.status)) return false;
+  if ((TERMINAL_STATUSES as readonly string[]).includes(slot.status)) return false;
   return slot.scheduledAt < new Date();
 }
 

@@ -72,7 +72,7 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
   /** En retard : passé, non-terminal, statut CM actif (pas PUBLISHED) */
   const overdue = slots.filter(
     (s) =>
-      !TERMINAL_STATUSES.includes(s.status) &&
+      !(TERMINAL_STATUSES as readonly string[]).includes(s.status) &&
       s.status !== "PUBLISHED" &&
       s.scheduledAt < now
   );

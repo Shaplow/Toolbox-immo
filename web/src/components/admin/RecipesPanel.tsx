@@ -42,11 +42,12 @@ function strTag(v: string | null | undefined, defaultVal = "—") {
 
 export function RecipesPanel({ initialRecipes }: { initialRecipes: RecipeRow[] }) {
   const [recipes, setRecipes] = useState<RecipeRow[]>(initialRecipes);
-  const [editorRecipe, setEditorRecipe] = useState<RecipeRow | null | "new">(undefined as unknown as "new");
+  const [editorRecipe, setEditorRecipe] = useState<RecipeRow | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [seedMsg, setSeedMsg] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const res = await fetch("/api/admin/recipes");
@@ -62,7 +63,7 @@ export function RecipesPanel({ initialRecipes }: { initialRecipes: RecipeRow[] }
 
   function closeEditor() {
     setEditorOpen(false);
-    setEditorRecipe(undefined as unknown as "new");
+    setEditorRecipe(null);
   }
 
   async function handleSaved() {
@@ -73,8 +74,18 @@ export function RecipesPanel({ initialRecipes }: { initialRecipes: RecipeRow[] }
   async function handleDelete(id: string) {
     if (!confirm("Supprimer cette ContentRecipe ? Cette action est irréversible.")) return;
     setDeletingId(id);
-    await fetch(`/api/admin/recipes/${id}`, { method: "DELETE" });
+    setDeleteError(null);
+    const res = await fetch(`/api/admin/recipes/${id}`, { method: "DELETE" });
     setDeletingId(null);
+    if (!res.ok) {
+      let msg = `Erreur ${res.status}`;
+      try {
+        const data = await res.json() as { error?: string };
+        if (data.error) msg = `Erreur : ${data.error}`;
+      } catch { /* body non-JSON */ }
+      setDeleteError(msg);
+      return;
+    }
     await refresh();
   }
 
@@ -113,6 +124,9 @@ export function RecipesPanel({ initialRecipes }: { initialRecipes: RecipeRow[] }
         </button>
         {seedMsg && (
           <p className="text-xs text-gray-500">{seedMsg}</p>
+        )}
+        {deleteError && (
+          <p className="text-xs text-red-600">{deleteError}</p>
         )}
       </div>
 
@@ -191,7 +205,7 @@ export function RecipesPanel({ initialRecipes }: { initialRecipes: RecipeRow[] }
       {/* JSON editor modal */}
       {editorOpen && (
         <RecipeJsonEditor
-          recipe={editorRecipe === null ? null : (editorRecipe as RecipeRow)}
+          recipe={editorRecipe}
           onClose={closeEditor}
           onSaved={() => void handleSaved()}
         />
