@@ -149,7 +149,7 @@ export function PublicationHeader({
               <button
                 type="button"
                 onClick={handleMarkPublished}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+                className="flex items-center gap-1.5 px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors font-medium"
               >
                 <CheckCircle size={14} />
                 <span className="hidden sm:inline">Marquer publié</span>

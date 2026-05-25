@@ -224,7 +224,7 @@ export function PublishSection({ slot, canPublish }: Props) {
               type="button"
               onClick={handleMarkPublished}
               disabled={submitting || !url.trim()}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <CheckCircle size={15} />
               {submitting ? "Marquage…" : "Marquer publié"}
