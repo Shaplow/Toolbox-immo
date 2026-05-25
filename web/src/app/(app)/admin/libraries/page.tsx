@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
 import Link from "next/link";
-import { Video, Database, Instagram, Type, MessageSquare, Library } from "lucide-react";
+import { Video, Database, Type, Library } from "lucide-react";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 
 export default async function LibrariesHubPage() {
@@ -15,8 +15,8 @@ export default async function LibrariesHubPage() {
       <ToolPageHeader
         icon={Library}
         iconColor="indigo"
-        title="Ressources"
-        subtitle="Bibliothèques médias, données, polices et prompts IA"
+        title="Bibliothèques"
+        subtitle="Vos médias, données et typographies pour la production"
       />
 
       <div className="grid grid-cols-2 gap-4">
@@ -47,19 +47,6 @@ export default async function LibrariesHubPage() {
         </Link>
 
         <Link
-          href="/admin/accounts"
-          className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-pink-300 hover:bg-pink-50 transition-colors"
-        >
-          <div className="p-2 bg-pink-100 rounded-lg text-pink-600">
-            <Instagram size={20} />
-          </div>
-          <div>
-            <p className="font-medium text-gray-900">Comptes Instagram</p>
-            <p className="text-sm text-gray-500 mt-0.5">Clients avec séquence de thèmes et curseurs</p>
-          </div>
-        </Link>
-
-        <Link
           href="/admin/fonts"
           className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-violet-300 hover:bg-violet-50 transition-colors"
         >
@@ -71,18 +58,14 @@ export default async function LibrariesHubPage() {
             <p className="text-sm text-gray-500 mt-0.5">Polices personnalisées chargées dans les templates</p>
           </div>
         </Link>
+      </div>
 
+      <div className="mt-6 pt-4 border-t border-gray-100">
         <Link
-          href="/admin/prompts"
-          className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-amber-300 hover:bg-amber-50 transition-colors"
+          href="/admin/accounts"
+          className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
         >
-          <div className="p-2 bg-amber-100 rounded-lg text-amber-600">
-            <MessageSquare size={20} />
-          </div>
-          <div>
-            <p className="font-medium text-gray-900">Prompts IA</p>
-            <p className="text-sm text-gray-500 mt-0.5">Prompts de génération de descriptions immobilières</p>
-          </div>
+          Voir tous les comptes Instagram →
         </Link>
       </div>
     </div>
