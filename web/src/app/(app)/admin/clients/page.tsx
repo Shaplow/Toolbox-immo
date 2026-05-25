@@ -1,9 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Building2, Trash2 } from "lucide-react";
+import { Building2, Plus } from "lucide-react";
 import Link from "next/link";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { FormField } from "@/components/ui/FormField";
+import { DeleteButton } from "@/components/ui/DeleteButton";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { toast } from "@/components/ui/Toast";
 
 type AccountStub = { id: string; name: string; handle: string };
 type Client = {
@@ -21,9 +27,7 @@ export default function AdminClientsPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newClient, setNewClient] = useState({ name: "", contactName: "", email: "", phone: "" });
-  const [createError, setCreateError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const fetchClients = useCallback(async () => {
     const res = await fetch("/api/admin/clients");
@@ -33,29 +37,34 @@ export default function AdminClientsPage() {
     setLoading(false);
   }, []);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void fetchClients(); }, [fetchClients]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    setCreateError("");
     setSaving(true);
-    const res = await fetch("/api/admin/clients", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newClient),
-    });
-    const data = await res.json() as { error?: string };
-    setSaving(false);
-    if (data.error) { setCreateError(data.error); return; }
-    setNewClient({ name: "", contactName: "", email: "", phone: "" });
-    setCreating(false);
-    await fetchClients();
+    try {
+      const res = await fetch("/api/admin/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newClient),
+      });
+      const data = await res.json() as { error?: string };
+      if (data.error) { toast.error(data.error); return; }
+      setNewClient({ name: "", contactName: "", email: "", phone: "" });
+      setCreating(false);
+      toast.success("Client créé.");
+      await fetchClients();
+    } catch {
+      toast.error("Erreur lors de la création.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleDelete(clientId: string) {
-    await fetch(`/api/admin/clients/${clientId}`, { method: "DELETE" });
-    setConfirmDeleteId(null);
+    const res = await fetch(`/api/admin/clients/${clientId}`, { method: "DELETE" });
+    if (!res.ok) { toast.error("Erreur lors de la suppression."); return; }
+    toast.success("Client supprimé.");
     await fetchClients();
   }
 
@@ -78,86 +87,71 @@ export default function AdminClientsPage() {
         title="Clients"
         subtitle="Gérez les clients et leur rattachement aux comptes Instagram."
         actions={
-          <button
-            onClick={() => { setCreating(true); setCreateError(""); }}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
-          >
-            + Nouveau client
-          </button>
+          <Button variant="primary" icon={Plus} onClick={() => setCreating(true)}>
+            Nouveau client
+          </Button>
         }
       />
 
       <div className="space-y-4">
         {/* Create form */}
         {creating && (
-          <form onSubmit={handleCreate} className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 space-y-3">
+          <form onSubmit={(e) => { void handleCreate(e); }} className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 space-y-3">
             <p className="text-sm font-semibold text-indigo-800">Nouveau client</p>
             <div className="grid grid-cols-2 gap-3">
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-gray-500">Nom <span className="text-red-400">*</span></span>
-                <input
+              <FormField label="Nom" required>
+                <Input
                   type="text"
                   required
                   value={newClient.name}
-                  onChange={(e) => setNewClient({ ...newClient, name: e.target.value })}
+                  onChange={(v) => setNewClient({ ...newClient, name: v })}
                   placeholder="Agence Martin"
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-gray-500">Contact <span className="text-gray-300">(optionnel)</span></span>
-                <input
+              </FormField>
+              <FormField label="Contact" help="Optionnel">
+                <Input
                   type="text"
                   value={newClient.contactName}
-                  onChange={(e) => setNewClient({ ...newClient, contactName: e.target.value })}
+                  onChange={(v) => setNewClient({ ...newClient, contactName: v })}
                   placeholder="Jean Martin"
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-gray-500">Email <span className="text-gray-300">(optionnel)</span></span>
-                <input
+              </FormField>
+              <FormField label="Email" help="Optionnel">
+                <Input
                   type="email"
                   value={newClient.email}
-                  onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
+                  onChange={(v) => setNewClient({ ...newClient, email: v })}
                   placeholder="jean@agence.fr"
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-gray-500">Téléphone <span className="text-gray-300">(optionnel)</span></span>
-                <input
+              </FormField>
+              <FormField label="Téléphone" help="Optionnel">
+                <Input
                   type="tel"
                   value={newClient.phone}
-                  onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })}
+                  onChange={(v) => setNewClient({ ...newClient, phone: v })}
                   placeholder="06 00 00 00 00"
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
-              </label>
+              </FormField>
             </div>
-            {createError && <p className="text-sm text-red-600">{createError}</p>}
             <div className="flex gap-2 justify-end pt-1">
-              <button
-                type="button"
-                onClick={() => setCreating(false)}
-                className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
-              >
+              <Button type="button" variant="secondary" onClick={() => setCreating(false)}>
                 Annuler
-              </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium disabled:opacity-60"
-              >
-                {saving ? "Création…" : "Créer"}
-              </button>
+              </Button>
+              <Button type="submit" variant="primary" loading={saving}>
+                Créer
+              </Button>
             </div>
           </form>
         )}
 
         {/* Clients list */}
         {clients.length === 0 && !creating ? (
-          <p className="text-center text-gray-400 text-sm py-12">Aucun client. Cliquez sur &ldquo;Nouveau client&rdquo; pour commencer.</p>
+          <EmptyState
+            icon={Building2}
+            title="Aucun client"
+            description="Créez le premier client pour commencer."
+            cta={{ label: "Nouveau client", onClick: () => setCreating(true) }}
+          />
         ) : (
           <div className="space-y-3">
             {clients.map((client) => (
@@ -191,30 +185,11 @@ export default function AdminClientsPage() {
                   >
                     Configurer
                   </Link>
-                  {confirmDeleteId === client.id ? (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => void handleDelete(client.id)}
-                        className="text-xs px-2 py-1 bg-red-500 text-white rounded-md hover:bg-red-600"
-                      >
-                        Supprimer
-                      </button>
-                      <button
-                        onClick={() => setConfirmDeleteId(null)}
-                        className="text-xs px-2 py-1 border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50"
-                      >
-                        Annuler
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmDeleteId(client.id)}
-                      title="Supprimer le client"
-                      className="shrink-0 text-gray-300 hover:text-red-400 transition-colors"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
+                  <DeleteButton
+                    itemLabel="ce client"
+                    description="Le client sera définitivement supprimé."
+                    onConfirm={() => handleDelete(client.id)}
+                  />
                 </div>
               </div>
             ))}
