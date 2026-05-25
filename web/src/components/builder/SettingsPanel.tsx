@@ -179,6 +179,22 @@ export function SettingsPanel() {
               className="border border-gray-200 rounded px-2 py-1 text-xs"
             />
           </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-gray-500">Durée fixe (s)</span>
+            <input
+              type="number"
+              min={0.5}
+              step={0.5}
+              value={template.canvas.maxDuration ?? ""}
+              placeholder="auto"
+              onChange={(e) => {
+                const raw = e.target.value;
+                updateCanvas({ maxDuration: raw === "" ? undefined : Math.max(0.5, Number(raw) || 0.5) });
+              }}
+              className="border border-gray-200 rounded px-2 py-1 text-xs"
+            />
+            <span className="text-[10px] text-gray-400">Trim/pad la vidéo finale à cette durée. Vide = somme des slots.</span>
+          </label>
         </div>
       </div>
 
