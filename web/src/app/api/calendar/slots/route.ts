@@ -1,14 +1,22 @@
 /**
- * GET  /api/calendar/slots — liste les slots avec filtres
+ * GET  /api/calendar/slots — liste les slots avec filtres, scopée par rôle
  * POST /api/calendar/slots — création manuelle d'un slot (admin uniquement)
+ *
+ * Filtrage par rôle (commit 1.2.2) :
+ *   ADMIN   → tous les slots (aucune restriction)
+ *   MONTEUR → uniquement les slots dont assigneeMonteurId = userId
+ *   CM      → uniquement les slots dont assigneeCmId = userId
+ *   USER    → aucun slot (clause impossible "__never__")
+ *
+ * On utilise auth() directement (sans getUserContext) afin d'isoler sur le
+ * rôle réel de l'utilisateur connecté, indépendamment de toute impersonation.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-
-function adminOnly(role?: string) {
-  return role !== "ADMIN";
-}
+import { whereClauseForUser } from "@/lib/permissions/slotScope";
+import type { UserRole } from "@/types/roles";
+import { USER_ROLES } from "@/types/roles";
 
 /** Safely parse a JSON string. Returns `fallback` if the string is falsy or invalid. */
 function safeJSON<T>(str: string | null | undefined, fallback: T): T {
@@ -20,10 +28,24 @@ function safeJSON<T>(str: string | null | undefined, fallback: T): T {
   }
 }
 
+/** Normalise un rôle brut (String en base) vers UserRole. Valeur inconnue → USER. */
+function toUserRole(raw?: string | null): UserRole {
+  if (raw && raw in USER_ROLES) return raw as UserRole;
+  return "USER";
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id || adminOnly(session.user.role)) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  }
+
+  const role = toUserRole(session.user.role);
+  const userId = session.user.id;
+
+  // ADMIN, MONTEUR, et CM peuvent lire. USER n'a pas accès à la pipeline éditoriale.
+  if (role === "USER") {
+    return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);
@@ -33,8 +55,12 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get("dateFrom");
   const dateTo = searchParams.get("dateTo");
 
+  // Le scope de rôle est combiné (AND) avec les filtres URL existants.
+  const roleScope = whereClauseForUser(role, userId);
+
   const slots = await prisma.publicationSlot.findMany({
     where: {
+      ...roleScope,
       ...(accountId ? { accountId } : {}),
       ...(status ? { status } : {}),
       ...(contentType ? { contentType } : {}),
@@ -68,7 +94,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session?.user?.id || adminOnly(session.user.role)) {
+  // POST reste réservé aux admins — la création de slots est une opération de planification.
+  if (!session?.user?.id || toUserRole(session.user.role) !== "ADMIN") {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

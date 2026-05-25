@@ -4,6 +4,8 @@ import { getUserContext, parsePermissions } from "@/lib/userContext";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import type { TemplateJSON } from "@/types/template";
+import type { UserRole } from "@/types/roles";
+import { USER_ROLES } from "@/types/roles";
 import { List } from "lucide-react";
 
 function templateHasCoverAuto(jsonData: string): boolean {
@@ -14,10 +16,37 @@ function templateHasCoverAuto(jsonData: string): boolean {
   }
 }
 
+/** Normalise un rôle brut (String en base) vers UserRole. Valeur inconnue → USER. */
+function toUserRole(raw?: string | null): UserRole {
+  if (raw && raw in USER_ROLES) return raw as UserRole;
+  return "USER";
+}
+
+const LISTING_INCLUDE = {
+  template: { select: { id: true, name: true, client: true, formats: true, jsonData: true } },
+  user: { select: { name: true, email: true } },
+  renders: {
+    orderBy: { createdAt: "asc" } as const,
+    select: {
+      id: true,
+      status: true,
+      pngUrl: true,
+      videoUrl: true,
+      errorMsg: true,
+      createdAt: true,
+      coverFramePack: { select: { id: true, status: true } },
+    },
+  },
+} as const;
+
 export default async function ListingsPage() {
   const userContext = await getUserContext();
+  // Pour les listings, on travaille sur l'utilisateur effectif (pour les permissions outil)
+  // mais pour le scope publication on utilise le rôle réel (actualUser) afin d'éviter
+  // qu'un admin en impersonation voie les listings via le scope MONTEUR/CM de la cible.
   const userId = userContext!.effectiveUser.id;
   const isAdmin = userContext!.canAdminBypass;
+  const actualRole = toUserRole(userContext!.actualUser.role);
 
   const userPerms = parsePermissions(userContext!.effectiveUser.permissions);
   const hasCaptions = isAdmin || userPerms.includes("captions");
@@ -25,26 +54,68 @@ export default async function ListingsPage() {
   const hasDescription = isAdmin || userPerms.includes("description");
   const hasCovers = isAdmin || userPerms.includes("covers");
 
-  const listings = await prisma.listing.findMany({
-    where: isAdmin ? {} : { userId },
-    orderBy: { createdAt: "desc" },
-    include: {
-      template: { select: { id: true, name: true, client: true, formats: true, jsonData: true } },
-      user: { select: { name: true, email: true } },
-      renders: {
-        orderBy: { createdAt: "asc" },
-        select: {
-          id: true,
-          status: true,
-          pngUrl: true,
-          videoUrl: true,
-          errorMsg: true,
-          createdAt: true,
-          coverFramePack: { select: { id: true, status: true } },
+  // ---------------------------------------------------------------------------
+  // Listings : filtrage selon le rôle
+  //
+  // ADMIN   → tous les listings (comportement précédent inchangé)
+  // USER    → uniquement les listings dont userId = userId
+  // MONTEUR → listings dont userId = userId  OR  render.publicationSlot.assigneeMonteurId = actualUserId
+  // CM      → listings dont userId = userId  OR  render.publicationSlot.assigneeCmId    = actualUserId
+  //
+  // Pour MONTEUR/CM : 2 requêtes séparées + merge JS afin d'éviter une jointure
+  // imbriquée complexe (OR sur 2 niveaux de relation). Volumétrie : ~10 comptes,
+  // ~30-40 publications/semaine → pas de contrainte de perf.
+  // ---------------------------------------------------------------------------
+
+  let listings: Awaited<ReturnType<typeof prisma.listing.findMany<{ include: typeof LISTING_INCLUDE }>>>;
+
+  if (isAdmin) {
+    listings = await prisma.listing.findMany({
+      where: {},
+      orderBy: { createdAt: "desc" },
+      include: LISTING_INCLUDE,
+    });
+  } else if (actualRole === "MONTEUR" || actualRole === "CM") {
+    // Requête 1 : listings dont l'utilisateur est propriétaire
+    const ownListings = await prisma.listing.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      include: LISTING_INCLUDE,
+    });
+
+    // Requête 2 : listings dont un render est associé à un slot assigné à cet utilisateur
+    const assigneeField = actualRole === "MONTEUR" ? "assigneeMonteurId" : "assigneeCmId";
+    const assignedListings = await prisma.listing.findMany({
+      where: {
+        renders: {
+          some: {
+            publicationSlot: {
+              [assigneeField]: userContext!.actualUser.id,
+            },
+          },
         },
       },
-    },
-  });
+      orderBy: { createdAt: "desc" },
+      include: LISTING_INCLUDE,
+    });
+
+    // Merge et déduplication par id, tri global par createdAt desc
+    const seen = new Set<string>();
+    const merged = [...ownListings, ...assignedListings].filter((l) => {
+      if (seen.has(l.id)) return false;
+      seen.add(l.id);
+      return true;
+    });
+    merged.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    listings = merged;
+  } else {
+    // USER ou rôle inconnu : uniquement ses propres listings
+    listings = await prisma.listing.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      include: LISTING_INCLUDE,
+    });
+  }
 
   const captionJobs = await prisma.captionJob.findMany({
     where: isAdmin ? {} : { userId },
