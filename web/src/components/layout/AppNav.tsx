@@ -102,7 +102,7 @@ export function AppNav({
         {
           title: "Configuration",
           items: [
-            { href: "/admin/libraries", label: "Bibliothèques", icon: <Library size={16} /> },
+            { href: "/admin/libraries", label: "Ressources", icon: <Library size={16} /> },
             { href: "/admin/users", label: "Utilisateurs", icon: <Users size={16} /> },
           ],
         },

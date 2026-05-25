@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
 import Link from "next/link";
-import { Video, Database, Type, Library } from "lucide-react";
+import { Video, Database, Type, Library, Sparkles } from "lucide-react";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 
 export default async function LibrariesHubPage() {
@@ -15,11 +15,11 @@ export default async function LibrariesHubPage() {
       <ToolPageHeader
         icon={Library}
         iconColor="indigo"
-        title="Bibliothèques"
-        subtitle="Vos médias, données et typographies pour la production"
+        title="Ressources"
+        subtitle="Vos médias, données, typographies et prompts pour la production"
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Link
           href="/admin/libraries/media"
           className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
@@ -56,6 +56,19 @@ export default async function LibrariesHubPage() {
           <div>
             <p className="font-medium text-gray-900">Typographies</p>
             <p className="text-sm text-gray-500 mt-0.5">Polices personnalisées chargées dans les templates</p>
+          </div>
+        </Link>
+
+        <Link
+          href="/admin/prompts"
+          className="flex items-start gap-4 p-5 border border-gray-200 rounded-xl hover:border-amber-300 hover:bg-amber-50 transition-colors"
+        >
+          <div className="p-2 bg-amber-100 rounded-lg text-amber-600">
+            <Sparkles size={20} />
+          </div>
+          <div>
+            <p className="font-medium text-gray-900">Prompts IA</p>
+            <p className="text-sm text-gray-500 mt-0.5">Prompts pour la génération de sous-titres et descriptions</p>
           </div>
         </Link>
       </div>
