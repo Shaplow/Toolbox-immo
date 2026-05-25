@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot, ALLOWED_PATCH_FIELDS_BY_ROLE, isValidSlotStatus } from "@/lib/permissions/slotScope";
+import { logActivity } from "@/lib/publications/activity";
 import type { UserRole } from "@/types/roles";
 import { USER_ROLES } from "@/types/roles";
 
@@ -81,7 +82,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const slot = await prisma.publicationSlot.findUnique({
     where: { id },
-    select: { id: true, assigneeMonteurId: true, assigneeCmId: true },
+    select: { id: true, status: true, assigneeMonteurId: true, assigneeCmId: true },
   });
 
   // 404 systématique : slot inexistant OU pas accessible selon le rôle.
@@ -138,6 +139,37 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
     },
   });
+
+  // Log d'activité — STATUS_CHANGED si le statut a changé.
+  if (status !== undefined && typeof status === "string" && status !== slot.status) {
+    await logActivity(prisma, {
+      slotId: id,
+      actorId: userId,
+      type: "STATUS_CHANGED",
+      payload: { from: slot.status, to: status },
+    });
+  }
+
+  // Log d'activité — ASSIGNEE_CHANGED si l'un des assignees a changé.
+  const monteurChanged =
+    assigneeMonteurId !== undefined && assigneeMonteurId !== slot.assigneeMonteurId;
+  const cmChanged =
+    assigneeCmId !== undefined && assigneeCmId !== slot.assigneeCmId;
+  if (monteurChanged || cmChanged) {
+    await logActivity(prisma, {
+      slotId: id,
+      actorId: userId,
+      type: "ASSIGNEE_CHANGED",
+      payload: {
+        ...(monteurChanged
+          ? { monteur: { from: slot.assigneeMonteurId, to: assigneeMonteurId ?? null } }
+          : {}),
+        ...(cmChanged
+          ? { cm: { from: slot.assigneeCmId, to: assigneeCmId ?? null } }
+          : {}),
+      },
+    });
+  }
 
   return NextResponse.json({
     ...updated,
