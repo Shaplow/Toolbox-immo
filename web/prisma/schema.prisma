@@ -64,17 +64,17 @@ model CaptionJob {
 
 /// Preset de sous-titres sauvegardé (config complète + polices)
 model CaptionPreset {
-  id        String                @id @default(cuid())
-  name      String
+  id              String                @id @default(cuid())
+  name            String
   /// null = preset global/builtin (visible par tous), sinon appartient à l'user
-  userId    String?
-  user      User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  isBuiltin Boolean               @default(false)
+  userId          String?
+  user            User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isBuiltin       Boolean               @default(false)
   /// ConfigState JSON sérialisé (base, highlight, layout, effects, animation...)
-  config    String                @default("{}")
-  createdAt DateTime              @default(now())
-  updatedAt DateTime              @updatedAt
-  accesses  CaptionPresetAccess[]
+  config          String                @default("{}")
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  accesses        CaptionPresetAccess[]
   accountPatterns AccountPattern[]
 }
 
@@ -297,13 +297,13 @@ model CoverFrameCandidate {
 
 /// Prompt personnalisé pour la génération de descriptions (géré par les admins)
 model DescriptionPrompt {
-  id        String           @id @default(cuid())
-  name      String
-  prompt    String // Instructions pour le LLM
-  isActive  Boolean          @default(true)
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
-  jobs      DescriptionJob[]
+  id              String           @id @default(cuid())
+  name            String
+  prompt          String // Instructions pour le LLM
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  jobs            DescriptionJob[]
   accountPatterns AccountPattern[]
 }
 
@@ -756,7 +756,7 @@ model AccountPattern {
   needsBrief            Boolean @default(false)
 
   // Planning (intégré au pattern)
-  dayOfWeek   Int // 1=Lundi … 7=Dimanche
+  dayOfWeek   Int[] // [1..7] — 1=Lundi … 7=Dimanche ; tableau pour multi-jour
   publishTime String // "HH:MM"
   isActive    Boolean @default(true)
 
