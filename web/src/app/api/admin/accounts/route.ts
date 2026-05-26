@@ -48,14 +48,6 @@ export async function POST(req: NextRequest) {
 
   if (!name?.trim()) return NextResponse.json({ error: "Le nom est requis" }, { status: 400 });
   if (!handle?.trim()) return NextResponse.json({ error: "Le handle Instagram est requis" }, { status: 400 });
-  if (!offre?.trim()) {
-    return NextResponse.json({ error: "L'offre est requise" }, { status: 400 });
-  }
-  const existingOffer = await prisma.offer.findUnique({ where: { name: offre } });
-  if (!existingOffer) {
-    return NextResponse.json({ error: `Offre inconnue : ${offre}` }, { status: 400 });
-  }
-
   // Vérifier que le client existe si clientId est fourni
   if (clientId) {
     const existingClient = await prisma.client.findUnique({ where: { id: clientId } });
@@ -69,7 +61,7 @@ export async function POST(req: NextRequest) {
       data: {
         name: name.trim(),
         handle: handle.trim().replace(/^@/, ""),
-        offre,
+        offre: offre ?? "",
         ...(clientId ? { client: { connect: { id: clientId } } } : {}),
       },
     });

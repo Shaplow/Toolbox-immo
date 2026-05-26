@@ -126,13 +126,6 @@ async function main() {
 
   console.log(`  ✓ Client + Account : client=${client.id}, account=${account.id}`);
 
-  // ── Offer (requis par OfferScheduleRule, et apparaît dans /admin/offers) ─
-  await prisma.offer.upsert({
-    where: { name: "ESSENTIEL" },
-    update: {},
-    create: { name: "ESSENTIEL" },
-  });
-
   // ── AccountPattern minimale (remplace ContentRecipe) ────────────────────
   const pattern = await prisma.accountPattern.upsert({
     where: { id: "test-pattern-1" },
