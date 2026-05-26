@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { Download, Plus, X } from "lucide-react";
 import { useBuilderStore } from "@/lib/store/builderStore";
+import { CoverPresetsPanel } from "./CoverPresetsPanel";
 import { CANVAS_FORMATS } from "@/types/template";
 import type { CaptionExcludeZone, SchemaField } from "@/types/template";
 
@@ -23,7 +23,12 @@ function downloadCSVTemplate(schema: SchemaField[], templateName: string) {
   URL.revokeObjectURL(url);
 }
 
-export function SettingsPanel() {
+type Props = {
+  /** ID du template en base — nécessaire pour la gestion des presets cover. */
+  templateId?: string;
+};
+
+export function SettingsPanel({ templateId }: Props) {
   const { template, updateContentLibrary, updateCanvas, updateCaptionAutoConfig } = useBuilderStore();
   const cl = template.contentLibrary;
   const captionAutoConfig = template.captionAutoConfig;
@@ -540,15 +545,18 @@ export function SettingsPanel() {
         </div>
       </div>
 
-      {/* Pipeline cover — configuré au niveau du pattern (Phase 1.8) */}
+      {/* Presets cover */}
       <div className="px-3 py-3 border-b border-gray-100">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Pipeline cover</p>
-        <p className="text-xs text-gray-500">
-          La configuration de la cover automatique se fait désormais par pattern.{" "}
-          <Link href="/admin/accounts" className="text-indigo-600 underline hover:text-indigo-700">
-            Configurer sur un compte
-          </Link>
-        </p>
+        {templateId ? (
+          <CoverPresetsPanel templateId={templateId} />
+        ) : (
+          <>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Presets cover</p>
+            <p className="text-xs text-gray-500">
+              Sauvegarde le template d&apos;abord pour gérer les presets cover.
+            </p>
+          </>
+        )}
       </div>
 
       {/* Margins */}
