@@ -9,7 +9,7 @@
  * Query params :
  *   ?dryRun=true  — liste les orphelins sans les supprimer (safe par défaut en prod)
  *
- * Body : vide (GET ou POST)
+ * Body : vide (POST uniquement — pas de GET pour réduire la surface en prod)
  *
  * Réponse :
  *   200 { scanned, orphans, deleted, dryRun }
@@ -59,9 +59,4 @@ export async function POST(req: NextRequest) {
     const message = err instanceof Error ? err.message : "Erreur interne";
     return NextResponse.json({ error: message }, { status: 500 });
   }
-}
-
-// Accepte également GET pour les health checks / dry-run manuels depuis un browser
-export async function GET(req: NextRequest) {
-  return POST(req);
 }

@@ -82,6 +82,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Le champ 'r2Key' est requis" }, { status: 400 });
   }
 
+  // Anti cross-slot : la clé R2 doit appartenir à ce slot.
+  // Sans ce guard, un MONTEUR assigné au slot A pourrait associer une PublicationVersion
+  // pointant vers une clé R2 issue d'un upload-presign sur le slot B.
+  if (!r2Key.startsWith(`publications/${slotId}/`)) {
+    return NextResponse.json({ error: "Permission refusée" }, { status: 403 });
+  }
+
   if (!fileName || typeof fileName !== "string") {
     return NextResponse.json({ error: "Le champ 'fileName' est requis" }, { status: 400 });
   }
@@ -188,35 +195,39 @@ async function handleRushComplete(args: {
 }): Promise<NextResponse> {
   const { slotId, slot, userId, r2Key, fileName, mimeType, sizeBytes, durationSec } = args;
 
-  const rush = await args.prisma.publicationRush.create({
-    data: {
+  // Insert + count + activity + auto-transition dans une seule transaction pour éviter
+  // un double STATUS_CHANGED parasite en cas d'uploads concurrents.
+  const rush = await args.prisma.$transaction(async (tx) => {
+    const created = await tx.publicationRush.create({
+      data: {
+        slotId,
+        r2Key,
+        fileName,
+        mimeType,
+        sizeBytes: sizeBytes ?? null,
+        durationSec: durationSec ?? null,
+        uploadedByUserId: userId,
+      },
+      select: { id: true },
+    });
+
+    const rushCount = await tx.publicationRush.count({
+      where: { slotId, deletedAt: null },
+    });
+
+    await logActivity(tx as typeof args.prisma, {
       slotId,
-      r2Key,
-      fileName,
-      mimeType,
-      sizeBytes: sizeBytes ?? null,
-      durationSec: durationSec ?? null,
-      uploadedByUserId: userId,
-    },
-    select: { id: true },
-  });
+      actorId: userId,
+      type: "RUSHES_UPLOADED",
+      payload: { rushId: created.id, fileName, mimeType },
+    });
 
-  // Compter les rushes pour savoir si c'est le premier
-  const rushCount = await args.prisma.publicationRush.count({
-    where: { slotId, deletedAt: null },
-  });
+    if (rushCount === 1) {
+      await applyAutoTransition(tx as typeof args.prisma, slotId, slot.status, "RUSHES_UPLOADED_FIRST", userId);
+    }
 
-  await logActivity(args.prisma, {
-    slotId,
-    actorId: userId,
-    type: "RUSHES_UPLOADED",
-    payload: { rushId: rush.id, fileName, mimeType },
+    return created;
   });
-
-  // Auto-transition si c'est le 1er rush
-  if (rushCount === 1) {
-    await applyAutoTransition(args.prisma, slotId, slot.status, "RUSHES_UPLOADED_FIRST", userId);
-  }
 
   return NextResponse.json({ ok: true, id: rush.id });
 }
@@ -239,7 +250,8 @@ async function handleVersionComplete(args: {
 }): Promise<NextResponse> {
   const { slotId, slot, userId, r2Key, fileUrl, fileName, mimeType, sizeBytes, durationSec } = args;
 
-  // Calculer le numéro de version dans une transaction
+  // Tout dans une seule transaction : versionNumber calculé atomiquement,
+  // logActivity et applyAutoTransition cohérents (pas de drift slot.status / DB).
   const result = await args.prisma.$transaction(async (tx) => {
     const agg = await tx.publicationVersion.aggregate({
       where: { slotId },
@@ -262,20 +274,18 @@ async function handleVersionComplete(args: {
       select: { id: true, versionNumber: true },
     });
 
+    await logActivity(tx as typeof args.prisma, {
+      slotId,
+      actorId: userId,
+      type: "VERSION_UPLOADED",
+      payload: { versionId: version.id, versionNumber: version.versionNumber, fileName },
+    });
+
+    const trigger = version.versionNumber === 1 ? "VERSION_UPLOADED_FIRST" : "VERSION_UPLOADED_AGAIN";
+    await applyAutoTransition(tx as typeof args.prisma, slotId, slot.status, trigger, userId);
+
     return version;
   });
-
-  await logActivity(args.prisma, {
-    slotId,
-    actorId: userId,
-    type: "VERSION_UPLOADED",
-    payload: { versionId: result.id, versionNumber: result.versionNumber, fileName },
-  });
-
-  // Auto-transition selon le statut actuel
-  const firstVersion = result.versionNumber === 1;
-  const trigger = firstVersion ? "VERSION_UPLOADED_FIRST" : "VERSION_UPLOADED_AGAIN";
-  await applyAutoTransition(args.prisma, slotId, slot.status, trigger, userId);
 
   return NextResponse.json({ ok: true, id: result.id, versionNumber: result.versionNumber });
 }

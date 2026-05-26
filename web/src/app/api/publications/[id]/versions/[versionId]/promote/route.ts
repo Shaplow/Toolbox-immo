@@ -83,7 +83,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     );
   }
 
-  // 5. Transaction : update slot + log activités + auto-transition
+  // 5. Transaction : update slot + log activités + auto-transition (atomique)
   const previousVersionId = slot.currentVersionId;
 
   await prisma.$transaction(async (tx) => {
@@ -112,10 +112,11 @@ export async function POST(_req: NextRequest, { params }: Params) {
       type: "CURRENT_VERSION_CHANGED",
       payload: { from: previousVersionId ?? null, to: versionId },
     });
-  });
 
-  // Auto-transition hors transaction (logActivity dans applyAutoTransition écrit aussi)
-  await applyAutoTransition(prisma, slotId, slot.status, "VERSION_PROMOTED", userId);
+    // Auto-transition dans la même tx — évite un statut figé sur EDIT_REVIEW
+    // si le process crash entre le commit de la tx et l'appel hors-tx.
+    await applyAutoTransition(tx as typeof prisma, slotId, slot.status, "VERSION_PROMOTED", userId);
+  });
 
   return NextResponse.json({ ok: true, currentVersionId: versionId });
 }
