@@ -352,9 +352,14 @@ export default function AdminClientDetailPage() {
         <div className="space-y-4">
           {/* Header onglet */}
           <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500">
-              Comptes Instagram configurés pour ce client.
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-gray-500">
+                Comptes Instagram configurés pour ce client.
+              </p>
+              <Link href="/admin/accounts" className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors">
+                → Voir tous les comptes Instagram
+              </Link>
+            </div>
             <button
               onClick={() => setShowAddForm((v) => !v)}
               className="flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
