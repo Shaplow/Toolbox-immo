@@ -28,6 +28,34 @@ function readTemplateCanvas(jsonData: string | null | undefined): { canvasWidth:
   }
 }
 
+type TemplateGroup = { id: string; name: string; hidden?: boolean; locked?: boolean };
+
+function readTemplateGroups(jsonData: string | null | undefined): TemplateGroup[] {
+  if (!jsonData) return [];
+  try {
+    const parsed = JSON.parse(jsonData) as { groups?: unknown[] };
+    if (!Array.isArray(parsed.groups)) return [];
+    return parsed.groups
+      .filter((g): g is { id: string; name: string; hidden?: boolean; locked?: boolean } =>
+        typeof (g as Record<string, unknown>)?.id === "string" &&
+        typeof (g as Record<string, unknown>)?.name === "string",
+      )
+      .map((g) => ({ id: g.id, name: g.name, hidden: g.hidden, locked: g.locked }));
+  } catch {
+    return [];
+  }
+}
+
+function safeJsonArray(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as string[]).filter((s): s is string => typeof s === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(req: NextRequest) {
   const userContext = await getUserContext();
   if (!userContext) {
@@ -69,6 +97,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(
     packs.map((pack) => {
       const canvas = readTemplateCanvas(pack.render.template?.jsonData);
+      const templateGroups = readTemplateGroups(pack.render.template?.jsonData);
       return {
         id: pack.id,
         status: pack.status,
@@ -84,6 +113,8 @@ export async function GET(req: NextRequest) {
         finalCoverUrl: toBrowserMediaUrl(pack.finalCoverUrl),
         overlayOffsetX: pack.overlayOffsetX,
         overlayOffsetY: pack.overlayOffsetY,
+        overlayGroupIds: safeJsonArray(pack.overlayGroupIds),
+        templateGroups,
         canvasWidth: canvas.canvasWidth,
         canvasHeight: canvas.canvasHeight,
         createdAt: pack.createdAt.toISOString(),
