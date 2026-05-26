@@ -470,7 +470,26 @@ export async function triggerAutoCoverPackForRender(
     return;
   }
 
-  const config = templateJson.coverAutoConfig;
+  // Lire Pattern.coverConfig en priorité (source de vérité Phase 1.8)
+  // Fallback sur template.coverAutoConfig pour les renders sans slot ou sans pattern configuré
+  let config: CoverAutoConfig | undefined;
+  const renderSlot = await prisma.render.findUnique({
+    where: { id: renderId },
+    select: {
+      publicationSlot: {
+        select: {
+          pattern: { select: { coverMode: true, coverConfig: true } },
+        },
+      },
+    },
+  });
+  const slotPattern = renderSlot?.publicationSlot?.pattern;
+  if (slotPattern?.coverMode === "auto" && slotPattern.coverConfig) {
+    config = slotPattern.coverConfig as CoverAutoConfig;
+  } else {
+    config = templateJson.coverAutoConfig;
+  }
+
   if (!config?.enabled) return;
 
   const existing = await prisma.coverFramePack.findUnique({ where: { renderId } });
