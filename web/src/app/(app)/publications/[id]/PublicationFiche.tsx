@@ -9,6 +9,7 @@
  *
  * Phase 1.3.6 : section commentaires + activité.
  * Phase 1.3.7 : câblage worklists + handleDeleteClick.
+ * Phase 1.9 (A1) : collapse des sections non-primaires selon le rôle.
  */
 
 import { PublicationHeader } from "@/components/publications/PublicationHeader";
@@ -25,10 +26,63 @@ import { VersionsSection } from "@/components/publications/sections/VersionsSect
 import type { VersionItem } from "@/components/publications/sections/VersionsSection";
 import { CommentsSection } from "@/components/publications/CommentsSection";
 import { ActivityTimeline } from "@/components/publications/ActivityTimeline";
+import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import type { PublicationStep } from "@/lib/publications/steps";
 import type { CommentData } from "@/components/publications/CommentItem";
 import type { ActivityItem } from "@/components/publications/ActivityTimeline";
 import type { UserRole } from "@/types/roles";
+
+// ---------------------------------------------------------------------------
+// Logique de priorité des sections selon le rôle
+// ---------------------------------------------------------------------------
+
+type SectionKey =
+  | "brief"
+  | "rushes"
+  | "versions"
+  | "render"
+  | "cover"
+  | "captions"
+  | "description"
+  | "captionIg"
+  | "publish"
+  | "comments"
+  | "activity";
+
+/**
+ * Retourne true si la section est "primaire" pour ce rôle (déplié par défaut).
+ *
+ * - ADMIN : tout déplié (vision complète de la pipeline).
+ * - MONTEUR : travail = Brief, Rushes, Versions, Commentaires — le reste est secondaire.
+ * - CM : travail = Render (lecture), Cover, Captions, Description, Légende IG, Publication.
+ * - USER : tout replié par défaut (accès minimal, rôle legacy).
+ */
+function isPrimaryForRole(section: SectionKey, role: UserRole): boolean {
+  if (role === "ADMIN") return true;
+
+  const primaryByRole: Record<Exclude<UserRole, "ADMIN">, SectionKey[]> = {
+    MONTEUR: ["brief", "rushes", "versions", "comments"],
+    CM: ["render", "cover", "captions", "description", "captionIg", "publish", "comments"],
+    USER: [],
+  };
+
+  return primaryByRole[role]?.includes(section) ?? true;
+}
+
+/** Labels lisibles pour les sections repliées. */
+const SECTION_LABELS: Record<SectionKey, string> = {
+  brief: "Brief éditorial",
+  rushes: "Rushes",
+  versions: "Versions livrées",
+  render: "Rendu vidéo",
+  cover: "Cover Instagram",
+  captions: "Sous-titres",
+  description: "Description",
+  captionIg: "Légende Instagram",
+  publish: "Publication",
+  comments: "Commentaires",
+  activity: "Historique d'activité",
+};
 
 interface AssigneeInfo {
   id: string;
@@ -184,6 +238,16 @@ export function PublicationFiche({
     ? (versions.find((v) => v.id === currentVersionId && v.deletedAt === null) ?? null)
     : null;
 
+  // Helper pour wrap conditionnel selon le rôle
+  const wrap = (key: SectionKey, node: React.ReactNode) => (
+    <CollapsibleSection
+      title={SECTION_LABELS[key]}
+      defaultOpen={isPrimaryForRole(key, currentUserRole)}
+    >
+      {node}
+    </CollapsibleSection>
+  );
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header sticky */}
@@ -201,105 +265,133 @@ export function PublicationFiche({
 
       {/* Corps de la fiche */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {/* Chaîne de production */}
+        {/* Chaîne de production — toujours visible */}
         <ProductionChain steps={steps} />
 
         {/* Brief éditorial — Phase B3, conditionné par pattern.needsBrief */}
-        {pattern?.needsBrief && (
-          <BriefSection
-            slotId={slot.id}
-            brief={brief}
-            attachments={briefAttachments}
-            canEditBrief={canEditBrief}
-            canManageAttachments={canManageAttachments}
-          />
-        )}
+        {pattern?.needsBrief &&
+          wrap(
+            "brief",
+            <BriefSection
+              slotId={slot.id}
+              brief={brief}
+              attachments={briefAttachments}
+              canEditBrief={canEditBrief}
+              canManageAttachments={canManageAttachments}
+            />
+          )}
 
         {/* Rushes — Phase B2, conditionné par pattern.needsRushes */}
-        {pattern?.needsRushes && (
-          <RushesSection
-            slotId={slot.id}
-            rushes={rushes}
-            canUploadRushes={canUploadRushes}
-            canManageRushes={canManageRushes}
-            currentUserId={currentUserId}
-          />
-        )}
+        {pattern?.needsRushes &&
+          wrap(
+            "rushes",
+            <RushesSection
+              slotId={slot.id}
+              rushes={rushes}
+              canUploadRushes={canUploadRushes}
+              canManageRushes={canManageRushes}
+              currentUserId={currentUserId}
+            />
+          )}
 
         {/* Versions livrées — Phase C1, conditionné par pattern.needsRushes */}
-        {pattern?.needsRushes && (
-          <VersionsSection
-            slotId={slot.id}
-            versions={versions}
-            currentVersionId={currentVersionId}
-            canUploadVersion={canUploadVersion}
-            canPromoteVersion={canPromoteVersion}
-            isAdmin={currentUserRole === "ADMIN"}
-            currentUserId={currentUserId}
+        {pattern?.needsRushes &&
+          wrap(
+            "versions",
+            <VersionsSection
+              slotId={slot.id}
+              versions={versions}
+              currentVersionId={currentVersionId}
+              canUploadVersion={canUploadVersion}
+              canPromoteVersion={canPromoteVersion}
+              isAdmin={currentUserRole === "ADMIN"}
+              currentUserId={currentUserId}
+            />
+          )}
+
+        {/* Rendu vidéo */}
+        {wrap(
+          "render",
+          <RenderSection
+            slot={{ id: slot.id }}
+            pattern={pattern ? { source: pattern.source, templateId: pattern.templateId } : null}
+            render={render}
+            listingId={listing?.id ?? null}
+            canEdit={canEditRender}
           />
         )}
 
-        {/* Rendu vidéo */}
-        <RenderSection
-          slot={{ id: slot.id }}
-          pattern={pattern ? { source: pattern.source, templateId: pattern.templateId } : null}
-          render={render}
-          listingId={listing?.id ?? null}
-          canEdit={canEditRender}
-        />
-
         {/* Cover Instagram */}
-        <CoverSection
-          slot={{ id: slot.id }}
-          pattern={pattern ? { coverMode: pattern.coverMode } : null}
-          coverPack={coverPack}
-          canEdit={canEditCover}
-          currentVersion={currentVersion}
-        />
+        {wrap(
+          "cover",
+          <CoverSection
+            slot={{ id: slot.id }}
+            pattern={pattern ? { coverMode: pattern.coverMode } : null}
+            coverPack={coverPack}
+            canEdit={canEditCover}
+            currentVersion={currentVersion}
+          />
+        )}
 
-        {/* Sous-titres */}
-        <CaptionsSection
-          slot={{ id: slot.id }}
-          renderId={render?.id ?? null}
-          pattern={pattern ? { needsCaptions: pattern.needsCaptions } : null}
-          canEdit={canEditCaptions}
-          currentVersion={currentVersion}
-        />
+        {/* Sous-titres — conditionné par pattern.needsCaptions */}
+        {pattern?.needsCaptions === true &&
+          wrap(
+            "captions",
+            <CaptionsSection
+              slot={{ id: slot.id }}
+              renderId={render?.id ?? null}
+              pattern={pattern ? { needsCaptions: pattern.needsCaptions } : null}
+              canEdit={canEditCaptions}
+              currentVersion={currentVersion}
+            />
+          )}
 
         {/* Description de publication */}
-        <DescriptionSection
-          slot={{ id: slot.id }}
-          pattern={pattern ? { needsDescription: pattern.needsDescription } : null}
-          initialDescription={slot.description ?? ""}
-          canEdit={canEditDescription}
-          renderId={render?.id ?? null}
-        />
+        {wrap(
+          "description",
+          <DescriptionSection
+            slot={{ id: slot.id }}
+            pattern={pattern ? { needsDescription: pattern.needsDescription } : null}
+            initialDescription={slot.description ?? ""}
+            canEdit={canEditDescription}
+            renderId={render?.id ?? null}
+          />
+        )}
 
         {/* Légende Instagram */}
-        <CaptionIgSection
-          slot={{ id: slot.id, caption: slot.caption }}
-          description={slot.description}
-          canEdit={canMarkPublished || canEditDescription}
-        />
+        {wrap(
+          "captionIg",
+          <CaptionIgSection
+            slot={{ id: slot.id, caption: slot.caption }}
+            description={slot.description}
+            canEdit={canMarkPublished || canEditDescription}
+          />
+        )}
 
         {/* Publication */}
-        <PublishSection
-          slot={{
-            id: slot.id,
-            status: slot.status,
-            publishedUrl: slot.publishedUrl,
-            publishedAt: slot.publishedAt,
-          }}
-          canPublish={canMarkPublished}
-        />
+        {wrap(
+          "publish",
+          <PublishSection
+            slot={{
+              id: slot.id,
+              status: slot.status,
+              publishedUrl: slot.publishedUrl,
+              publishedAt: slot.publishedAt,
+            }}
+            canPublish={canMarkPublished}
+          />
+        )}
 
         {/* Section commentaires — Phase 1.3.6 */}
-        <CommentsSection
-          slotId={slot.id}
-          initialComments={comments}
-          currentUserId={currentUserId}
-          currentUserRole={currentUserRole}
-        />
+        {wrap(
+          "comments",
+          <CommentsSection
+            slotId={slot.id}
+            initialComments={comments}
+            currentUserId={currentUserId}
+            currentUserRole={currentUserRole}
+          />
+        )}
 
         {/* Historique d'activité — Phase 1.3.6 */}
         <ActivityTimeline
