@@ -39,6 +39,7 @@ L'app a pivoté d'une grille d'outils standalone vers un pipeline éditorial ave
 - Permissions outils par rôle : `web/src/lib/permissions/tools.ts` (`ROLE_TOOL_SCOPE`).
 - Helpers publications : `web/src/lib/permissions/publications.ts` (`canSeePublication`, `canMarkPublished`, `canEditComment`).
 - **Impersonation** : utiliser `effectiveUser` (via `getUserContext`) pour les scopes de données, pas `auth()` direct.
+- **Architecture access control** : 3 niveaux coexistents — ADMIN bypass, role tool scope, granular per-resource tables. Documentés dans `web/docs/adr/001-access-control-patterns.md`.
 
 ### API routes — règle d'auth (Phase 1.8)
 **Toujours utiliser `getUserContext()` dans les routes API. Ne jamais appeler `auth()` directement.**
@@ -61,8 +62,11 @@ Exceptions intentionnelles :
 ### Modèles Prisma centraux
 - `PublicationSlot` (avec `assigneeMonteurId`, `assigneeCmId`, `patternId`, `currentVersionId`, `publishedUrl`, `publishedAt`, `description`)
 - `AccountPattern` (Phase 1.6 — remplace ContentRecipe + AccountPlan + OfferScheduleRule) : pattern de publication par compte IG avec planning intégré (`dayOfWeek`, `publishTime`), source (`auto_template | manual_rushes | external_upload`), cover config, needs* flags, assignations par défaut
-  - **`coverConfig`** : source de vérité unique pour la cover auto (Phase 1.8 — `Template.coverAutoConfig` droppé)
+  - **`coverConfig`** : source de vérité unique pour la cover auto. Forme cible : `{ enabled, coverPresetName }`. Le nom du preset est résolu à runtime via `TemplateCoverPreset` (Phase 2.0).
+  - **`captionPresetId`** / **`descriptionPromptId`** : FK optionnelles vers les presets/prompts par défaut pour ce pattern (Phase 2.0 E1, onDelete SetNull).
   - **`libraryId`** : supprimé en Phase 1.8 (champ mort — jamais consommé par `generateRender.ts`)
+- `TemplateCoverPreset` (Phase 2.0) : presets cover définis au niveau du template (nom, sortOrder, config snapshot). Le pattern référence par **nom** (pas ID) pour la robustesse.
+  - Cover config = `TemplateCoverPreset` (matériel, défini dans le builder) + `Pattern.coverConfig.coverPresetName` (décision, sélectionnée dans la fiche pattern)
 - `Client` → 1..N `InstagramAccount` → 1..N `AccountPattern`
 - `PublicationVersion` (versions livrées monteur, soft-delete)
 - `PublicationComment`, `PublicationActivity` (fil + log)

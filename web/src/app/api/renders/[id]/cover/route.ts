@@ -26,7 +26,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       coverFramePack: true,
       publicationSlot: {
         select: {
-          pattern: { select: { coverMode: true, coverConfig: true } },
+          pattern: { select: { id: true, coverMode: true, coverConfig: true, templateId: true } },
         },
       },
     },
@@ -38,14 +38,45 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Le render vidéo doit être terminé" }, { status: 400 });
   }
 
-  // Lire Pattern.coverConfig (source de vérité Phase 1.8 — template.coverAutoConfig supprimé)
+  // Phase 2.0 — résolution via coverPresetName → TemplateCoverPreset
   const slotPattern = render.publicationSlot?.pattern;
-  let config: CoverAutoConfig | undefined;
-  if (slotPattern?.coverMode === "auto" && slotPattern.coverConfig) {
-    config = slotPattern.coverConfig as unknown as CoverAutoConfig;
-  }
-  if (!config?.enabled) {
+  if (slotPattern?.coverMode !== "auto" || !slotPattern.coverConfig) {
     return NextResponse.json({ error: "Cover semi-auto non configurée sur ce pattern" }, { status: 400 });
+  }
+
+  const coverConfigJson = slotPattern.coverConfig as { enabled?: boolean; coverPresetName?: string } | null;
+  if (!coverConfigJson?.enabled) {
+    return NextResponse.json({ error: "Cover semi-auto non activée sur ce pattern" }, { status: 400 });
+  }
+
+  const presetName = coverConfigJson.coverPresetName;
+  if (!presetName) {
+    return NextResponse.json(
+      { error: "Cover config invalide : aucun preset sélectionné. Configurez un preset dans le template." },
+      { status: 400 }
+    );
+  }
+
+  const patternTemplateId = slotPattern.templateId ?? render.templateId;
+  if (!patternTemplateId) {
+    return NextResponse.json({ error: "Template introuvable pour ce pattern" }, { status: 400 });
+  }
+
+  const preset = await prisma.templateCoverPreset.findUnique({
+    where: { templateId_name: { templateId: patternTemplateId, name: presetName } },
+  });
+  if (!preset) {
+    return NextResponse.json(
+      {
+        error: `Cover config invalide : le preset "${presetName}" n'existe plus sur ce template. Reconfigurer le pattern.`,
+      },
+      { status: 400 }
+    );
+  }
+
+  const config = preset.config as unknown as CoverAutoConfig;
+  if (!config?.enabled) {
+    return NextResponse.json({ error: "Le preset cover est désactivé" }, { status: 400 });
   }
 
   const sourceVideoUrl = toCoverSourceVideoUrl(render.videoUrl);

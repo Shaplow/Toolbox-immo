@@ -36,6 +36,8 @@ export type AccountPatternRow = {
   isActive: boolean;
   defaultAssigneeMonteurId?: string | null;
   defaultAssigneeCmId?: string | null;
+  captionPresetId?: string | null;
+  descriptionPromptId?: string | null;
   notes?: string | null;
 };
 
@@ -68,6 +70,8 @@ type FormValues = {
   publishTime: string;
   defaultAssigneeMonteurId: string;
   defaultAssigneeCmId: string;
+  captionPresetId: string;
+  descriptionPromptId: string;
   notes: string;
 };
 
@@ -89,6 +93,8 @@ function defaultValues(initial?: AccountPatternRow | null): FormValues {
       publishTime: "09:00",
       defaultAssigneeMonteurId: "",
       defaultAssigneeCmId: "",
+      captionPresetId: "",
+      descriptionPromptId: "",
       notes: "",
     };
   }
@@ -109,6 +115,8 @@ function defaultValues(initial?: AccountPatternRow | null): FormValues {
     publishTime: initial.publishTime,
     defaultAssigneeMonteurId: initial.defaultAssigneeMonteurId ?? "",
     defaultAssigneeCmId: initial.defaultAssigneeCmId ?? "",
+    captionPresetId: initial.captionPresetId ?? "",
+    descriptionPromptId: initial.descriptionPromptId ?? "",
     notes: initial.notes ?? "",
   };
 }
@@ -123,13 +131,6 @@ function validate(values: FormValues): Partial<Record<keyof FormValues, string>>
   const dow = Number(values.dayOfWeek);
   if (!Number.isInteger(dow) || dow < 1 || dow > 7) errors.dayOfWeek = "Jour invalide (1-7)";
   if (!PUBLISH_TIME_RE.test(values.publishTime)) errors.publishTime = "Format HH:MM requis";
-  if (values.coverMode === "auto" && values.coverConfigJson.trim()) {
-    try {
-      JSON.parse(values.coverConfigJson);
-    } catch {
-      errors.coverConfigJson = "JSON invalide";
-    }
-  }
   return errors;
 }
 
@@ -145,6 +146,8 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [monteurs, setMonteurs] = useState<UserOption[]>([]);
   const [cms, setCms] = useState<UserOption[]>([]);
+  const [captionPresets, setCaptionPresets] = useState<{ id: string; name: string }[]>([]);
+  const [descriptionPrompts, setDescriptionPrompts] = useState<{ id: string; name: string }[]>([]);
 
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -162,9 +165,11 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
 
   async function fetchOptions() {
     try {
-      const [tplRes, usersRes] = await Promise.all([
+      const [tplRes, usersRes, presetsRes, promptsRes] = await Promise.all([
         fetch("/api/templates"),
         fetch("/api/admin/users"),
+        fetch("/api/caption-presets"),
+        fetch("/api/description/prompts"),
       ]);
       if (tplRes.ok) {
         const tpls = await tplRes.json() as TemplateOption[];
@@ -174,6 +179,13 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
         const users = await usersRes.json() as UserOption[];
         setMonteurs(users.filter((u) => u.role === "MONTEUR" || u.role === "ADMIN"));
         setCms(users.filter((u) => u.role === "CM" || u.role === "ADMIN"));
+      }
+      if (presetsRes.ok) {
+        setCaptionPresets(await presetsRes.json() as { id: string; name: string }[]);
+      }
+      if (promptsRes.ok) {
+        const prompts = await promptsRes.json() as { id: string; name: string; isActive: boolean }[];
+        setDescriptionPrompts(prompts.filter((p) => p.isActive));
       }
     } catch {
       // Non-fatal — selects will be empty
@@ -226,6 +238,8 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
         publishTime: values.publishTime,
         defaultAssigneeMonteurId: values.defaultAssigneeMonteurId || null,
         defaultAssigneeCmId: values.defaultAssigneeCmId || null,
+        captionPresetId: values.captionPresetId || null,
+        descriptionPromptId: values.descriptionPromptId || null,
         notes: values.notes.trim() || null,
       };
 
@@ -357,6 +371,16 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
                   checked={values.needsCaptions}
                   onChange={(v) => set("needsCaptions", v)}
                 />
+                {values.needsCaptions && captionPresets.length > 0 && (
+                  <FormField label="Preset captions par défaut">
+                    <SelectField
+                      value={values.captionPresetId}
+                      onChange={(v) => set("captionPresetId", v)}
+                      options={captionPresets}
+                      placeholder="— Hérité du formulaire de génération —"
+                    />
+                  </FormField>
+                )}
                 <FormField label="Description">
                   <select
                     value={values.needsDescription}
@@ -369,6 +393,16 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
                     <option value="manualWrite">Manuelle</option>
                   </select>
                 </FormField>
+                {values.needsDescription !== "none" && descriptionPrompts.length > 0 && (
+                  <FormField label="Prompt description par défaut">
+                    <SelectField
+                      value={values.descriptionPromptId}
+                      onChange={(v) => set("descriptionPromptId", v)}
+                      options={descriptionPrompts}
+                      placeholder="— Hérité du formulaire de génération —"
+                    />
+                  </FormField>
+                )}
                 <ToggleField
                   label="Validation client"
                   checked={values.needsClientValidation}

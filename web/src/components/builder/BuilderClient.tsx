@@ -371,7 +371,7 @@ export function BuilderClient({
                 {activePanel === "layers"   && <BlocksPanel />}
                 {activePanel === "schema"   && <SchemaPanel />}
                 {activePanel === "sequence" && <VideoSequencePanel videoLibraries={videoLibraries} setVideoLibraries={setVideoLibraries} />}
-                {activePanel === "settings" && <SettingsPanel />}
+                {activePanel === "settings" && <SettingsPanel templateId={templateId} />}
               </div>
             </div>
           )}

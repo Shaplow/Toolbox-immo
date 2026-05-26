@@ -468,17 +468,41 @@ export async function triggerAutoCoverPackForRender(
     select: {
       publicationSlot: {
         select: {
-          pattern: { select: { coverMode: true, coverConfig: true } },
+          pattern: { select: { id: true, coverMode: true, coverConfig: true, templateId: true } },
         },
       },
     },
   });
   const slotPattern = renderSlot?.publicationSlot?.pattern;
-  const config: CoverAutoConfig | undefined =
-    slotPattern?.coverMode === "auto" && slotPattern.coverConfig
-      ? (slotPattern.coverConfig as unknown as CoverAutoConfig)
-      : undefined;
 
+  if (slotPattern?.coverMode !== "auto") return;
+  if (!slotPattern.coverConfig) return;
+
+  // Phase 2.0 — résolution via coverPresetName → TemplateCoverPreset
+  const coverConfigJson = slotPattern.coverConfig as { enabled?: boolean; coverPresetName?: string } | null;
+  if (!coverConfigJson?.enabled) return;
+
+  const presetName = coverConfigJson.coverPresetName;
+  if (!presetName) {
+    console.warn(
+      `[autoCover] Pattern ${slotPattern.id} has coverMode=auto but no coverPresetName — skip (configure un preset dans le template)`,
+    );
+    return;
+  }
+
+  const patternTemplateId = slotPattern.templateId ?? templateId;
+  const preset = await prisma.templateCoverPreset.findUnique({
+    where: { templateId_name: { templateId: patternTemplateId, name: presetName } },
+  });
+
+  if (!preset) {
+    console.warn(
+      `[autoCover] Preset "${presetName}" introuvable pour template ${patternTemplateId} — skip (Cover config invalide)`,
+    );
+    return;
+  }
+
+  const config = preset.config as unknown as CoverAutoConfig;
   if (!config?.enabled) return;
 
   const existing = await prisma.coverFramePack.findUnique({ where: { renderId } });
@@ -508,7 +532,7 @@ export async function triggerAutoCoverPackForRender(
   }
 
   queueCoverFramePackPreparation(pack.id);
-  console.info(`[autoCover] Pack ${pack.id} lancé pour render=${renderId}`);
+  console.info(`[autoCover] Pack ${pack.id} lancé pour render=${renderId} (preset="${presetName}")`);
 }
 
 function buildMetadataByLibrary(assets: Array<{ libraryId: string; metadata: string }>): Map<string, Record<string, string | number | null>> {
