@@ -18,6 +18,11 @@ interface Account {
   handle: string;
 }
 
+interface AssigneeOption {
+  id: string;
+  label: string;
+}
+
 interface CalendarViewProps {
   accounts: Account[];
   /** ISO string of Monday for the initial week, computed server-side to avoid hydration mismatches. */
@@ -27,6 +32,10 @@ interface CalendarViewProps {
    * MONTEUR et CM consultent en lecture seule, filtrés sur leurs slots assignés.
    */
   currentUserRole: UserRole;
+  /** Liste des monteurs (ADMIN uniquement) — vide pour MONTEUR/CM. */
+  monteurs?: AssigneeOption[];
+  /** Liste des CM (ADMIN uniquement) — vide pour MONTEUR/CM. */
+  cms?: AssigneeOption[];
 }
 
 const ROLE_DETAIL_MODE: Record<UserRole, SlotDetailPanelMode> = {
@@ -60,7 +69,13 @@ function isSameDay(a: Date, b: Date) {
   );
 }
 
-export function CalendarView({ accounts, initialWeekStart, currentUserRole }: CalendarViewProps) {
+export function CalendarView({
+  accounts,
+  initialWeekStart,
+  currentUserRole,
+  monteurs = [],
+  cms = [],
+}: CalendarViewProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialAccountId = searchParams?.get("accountId") ?? "";
@@ -80,6 +95,8 @@ export function CalendarView({ accounts, initialWeekStart, currentUserRole }: Ca
     accountId: initialAccountId,
     status: "",
     contentType: "",
+    monteurId: "",
+    cmId: "",
   });
 
   /** Compte actif correspondant au filtre accountId, pour afficher le badge. */
@@ -108,6 +125,8 @@ export function CalendarView({ accounts, initialWeekStart, currentUserRole }: Ca
         ...(filters.accountId ? { accountId: filters.accountId } : {}),
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.contentType ? { contentType: filters.contentType } : {}),
+        ...(filters.monteurId ? { monteurId: filters.monteurId } : {}),
+        ...(filters.cmId ? { cmId: filters.cmId } : {}),
       });
       const res = await fetch(`/api/calendar/slots?${params.toString()}`);
       if (!res.ok) throw new Error(`Erreur ${res.status}`);
@@ -162,16 +181,19 @@ export function CalendarView({ accounts, initialWeekStart, currentUserRole }: Ca
   function handleSlotUpdated(updated: PublicationSlot) {
     setSlots((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     setSelectedSlot(updated);
+    toast.success("Slot mis à jour");
   }
 
   function handleSlotDeleted(id: string) {
     setSlots((prev) => prev.filter((s) => s.id !== id));
     setSelectedSlot(null);
+    toast.success("Slot supprimé");
   }
 
   function handleSlotCreated(slot: PublicationSlot) {
     setSlots((prev) => [...prev, slot]);
     setShowAdd(false);
+    toast.success("Slot créé");
   }
 
   const weekLabel = `${weekStart.toLocaleDateString("fr-FR", { day: "numeric", month: "long" })} – ${addDays(weekStart, 6).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}`;
@@ -224,7 +246,13 @@ export function CalendarView({ accounts, initialWeekStart, currentUserRole }: Ca
         )}
 
         <div className="ml-auto flex items-center gap-2 flex-wrap">
-          <CalendarFilters accounts={accounts} filters={filters} onChange={setFilters} />
+          <CalendarFilters
+            accounts={accounts}
+            filters={filters}
+            onChange={setFilters}
+            monteurs={monteurs}
+            cms={cms}
+          />
 
           <button
             type="button"

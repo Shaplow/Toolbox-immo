@@ -41,6 +41,30 @@ export default async function CalendarPage() {
     select: { id: true, name: true, handle: true },
   });
 
+  // Listes des assignés disponibles — chargées uniquement pour ADMIN
+  // (les MONTEUR/CM ne voient que leurs propres slots, le filtre serait
+  // inutile pour eux).
+  const [monteurs, cms] =
+    role === "ADMIN"
+      ? await Promise.all([
+          prisma.user.findMany({
+            where: { role: "MONTEUR" },
+            select: { id: true, name: true, email: true },
+            orderBy: { name: "asc" },
+          }),
+          prisma.user.findMany({
+            where: { role: "CM" },
+            select: { id: true, name: true, email: true },
+            orderBy: { name: "asc" },
+          }),
+        ])
+      : [[], []];
+
+  const formatAssignee = (u: { id: string; name: string | null; email: string | null }) => ({
+    id: u.id,
+    label: u.name ?? u.email ?? u.id,
+  });
+
   // Pass the server-computed Monday so client and server agree on the initial week,
   // preventing React hydration mismatches caused by timezone differences.
   const initialWeekStart = getMondayISOOf(new Date());
@@ -51,6 +75,8 @@ export default async function CalendarPage() {
         accounts={accounts}
         initialWeekStart={initialWeekStart}
         currentUserRole={role}
+        monteurs={monteurs.map(formatAssignee)}
+        cms={cms.map(formatAssignee)}
       />
     </div>
   );

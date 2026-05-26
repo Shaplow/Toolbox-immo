@@ -45,6 +45,8 @@ export async function GET(req: NextRequest) {
   const accountId = searchParams.get("accountId") ?? undefined;
   const status = searchParams.get("status") ?? undefined;
   const contentType = searchParams.get("contentType") ?? undefined;
+  const monteurId = searchParams.get("monteurId") ?? undefined;
+  const cmId = searchParams.get("cmId") ?? undefined;
   const dateFrom = searchParams.get("dateFrom");
   const dateTo = searchParams.get("dateTo");
 
@@ -53,6 +55,9 @@ export async function GET(req: NextRequest) {
   // overriderait le scope USER "{id:'__never__'}" via spread).
   const roleScope = whereClauseForUser(role, userId);
 
+  // Les filtres monteurId/cmId sont des raffinements UX (ADMIN qui cherche
+  // les slots d'un monteur). Si un MONTEUR ou CM essaie de les utiliser, le
+  // roleScope reste prioritaire (intersection AND) — sauf risque sécurité.
   const slots = await prisma.publicationSlot.findMany({
     where: {
       AND: [
@@ -60,6 +65,8 @@ export async function GET(req: NextRequest) {
         accountId ? { accountId } : {},
         status ? { status } : {},
         contentType ? { contentType } : {},
+        monteurId ? { assigneeMonteurId: monteurId } : {},
+        cmId ? { assigneeCmId: cmId } : {},
         dateFrom || dateTo
           ? {
               scheduledAt: {
