@@ -17,6 +17,8 @@ export type RenderRow = {
   errorMsg: string | null;
   createdAt: string;
   coverPack: { id: string; status: string } | null;
+  /** Cover auto activée si le slot lié a un pattern avec coverMode=auto (Phase 1.8). */
+  coverAutoEnabled: boolean;
 };
 
 export type ListingRow = {
@@ -25,7 +27,7 @@ export type ListingRow = {
   jsonData: string;
   createdAt: string;
   ownerName: string | null;
-  template: { id: string; name: string; client: string | null; formats: string; coverAutoEnabled: boolean } | null;
+  template: { id: string; name: string; client: string | null; formats: string } | null;
   renders: RenderRow[];
 };
 
@@ -589,7 +591,7 @@ function RenderGridCard({
   const isPending = render?.status === "PROCESSING" || render?.status === "PENDING";
   const isError   = render?.status === "ERROR";
   const isDone    = render?.status === "DONE";
-  const canGenerateCover = Boolean(hasCovers && isDone && render?.videoUrl && listing.template?.coverAutoEnabled && onGenerateCover);
+  const canGenerateCover = Boolean(hasCovers && isDone && render?.videoUrl && render?.coverAutoEnabled && onGenerateCover);
 
   const aspectRatio = getAspectFromFormats(listing.template?.formats);
 
