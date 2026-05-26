@@ -5,6 +5,7 @@ import Link from "next/link";
 import { X, ExternalLink, Trash2, Check, Clapperboard } from "lucide-react";
 import { STATUS_LABELS, CONTENT_TYPES, type SlotStatus, type PublicationSlot } from "@/types/calendar";
 import { FlexFieldsEditor } from "./FlexFieldsEditor";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 /**
  * Mode d'affichage du panneau de détail.
@@ -50,6 +51,7 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -100,8 +102,7 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
     }
   }
 
-  async function handleDelete() {
-    if (!confirm("Supprimer ce slot ? Cette action est irréversible.")) return;
+  async function handleDeleteConfirmed() {
     setDeleting(true);
     try {
       const res = await fetch(`/api/calendar/slots/${slot.id}`, { method: "DELETE" });
@@ -110,6 +111,7 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inconnue");
       setDeleting(false);
+      setConfirmDeleteOpen(false);
     }
   }
 
@@ -117,6 +119,17 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
 
   return (
     <>
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Supprimer ce slot ?"
+        description="Cette action est irréversible. Le slot et toutes ses données associées seront supprimés."
+        confirmLabel="Supprimer"
+        variant="danger"
+        loading={deleting}
+        onConfirm={() => { void handleDeleteConfirmed(); }}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
+
       {/* Overlay */}
       <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
 
@@ -295,7 +308,7 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
           {!isRestricted && (
             <button
               type="button"
-              onClick={() => { void handleDelete(); }}
+              onClick={() => setConfirmDeleteOpen(true)}
               disabled={deleting}
               className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
             >
