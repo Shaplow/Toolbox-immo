@@ -10,7 +10,7 @@ import { Film, Play, RefreshCw, AlertCircle } from "lucide-react";
 
 interface Props {
   slot: { id: string };
-  recipe: { source: string; templateId: string | null } | null;
+  pattern: { source: string; templateId: string | null } | null;
   render: {
     id: string;
     status: string;
@@ -36,8 +36,8 @@ const RENDER_STATUS_COLORS: Record<string, string> = {
   ERROR: "bg-red-50 text-red-700 border-red-200",
 };
 
-export function RenderSection({ slot, recipe, render, listingId, canEdit }: Props) {
-  const templateId = recipe?.templateId ?? null;
+export function RenderSection({ slot, pattern, render, listingId, canEdit }: Props) {
+  const templateId = pattern?.templateId ?? null;
   const builderHref = templateId
     ? `/builder/${templateId}${listingId ? `?listingId=${listingId}&slotId=${slot.id}` : `?slotId=${slot.id}`}`
     : null;
@@ -62,8 +62,8 @@ export function RenderSection({ slot, recipe, render, listingId, canEdit }: Prop
         )}
       </div>
 
-      {/* Cas : recipe sans template automatique */}
-      {recipe?.source !== "auto_template" && (
+      {/* Cas : pattern sans template automatique */}
+      {pattern?.source !== "auto_template" && (
         <div className="flex items-start gap-2 text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
           <AlertCircle size={15} className="text-gray-400 mt-0.5 flex-shrink-0" />
           <span>
@@ -73,7 +73,7 @@ export function RenderSection({ slot, recipe, render, listingId, canEdit }: Prop
       )}
 
       {/* Cas : source auto_template sans render lancé */}
-      {recipe?.source === "auto_template" && !render && (
+      {pattern?.source === "auto_template" && !render && (
         <div className="space-y-3">
           <p className="text-sm text-gray-500">Aucun rendu lancé pour ce slot.</p>
           {canEdit && builderHref && (
@@ -87,7 +87,7 @@ export function RenderSection({ slot, recipe, render, listingId, canEdit }: Prop
           )}
           {canEdit && !builderHref && (
             <p className="text-xs text-gray-400 italic">
-              Aucun template associé à cette recipe — configurez un template d&apos;abord.
+              Aucun template associé à ce pattern — configurez un template d&apos;abord.
             </p>
           )}
         </div>

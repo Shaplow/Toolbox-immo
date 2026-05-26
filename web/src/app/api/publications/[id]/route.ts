@@ -3,7 +3,7 @@
  *
  * Retourne le slot avec toutes les relations nécessaires au hub de publication :
  *   - slot (tous les champs)
- *   - recipe (infos pour computePublicationSteps)
+ *   - pattern (infos pour computePublicationSteps)
  *   - account (id, handle, name, offre, client { name })
  *   - listing (id, jsonData)
  *   - assigneeMonteur / assigneeCm (id, name, email)
@@ -55,13 +55,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
           client: { select: { name: true } },
         },
       },
-      recipe: {
+      pattern: {
         select: {
           id: true,
-          code: true,
           label: true,
           source: true,
-          needsCover: true,
+          coverMode: true,
           needsCaptions: true,
           needsDescription: true,
           needsClientValidation: true,
@@ -96,7 +95,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Calcul des steps côté serveur pour que le client n'ait pas à les dériver.
   const steps = computePublicationSteps({
     slot: { status: slot.status, caption: slot.caption },
-    recipe: slot.recipe ?? null,
+    pattern: slot.pattern ?? null,
     renderJob: slot.render ?? null,
     coverPack: slot.render?.coverFramePack ?? null,
     // captionJob et descriptionJob ne sont pas liés directement au slot via FK.

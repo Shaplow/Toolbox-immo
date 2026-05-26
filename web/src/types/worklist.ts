@@ -3,7 +3,7 @@
  *
  * WorklistSlot est un subset de PublicationSlot avec les relations nécessaires
  * à l'affichage des cards. Il est distinct de PublicationSlot pour deux raisons :
- *   1. Les relations (account, recipe) sont des objets natifs Prisma, pas des ISO-strings.
+ *   1. Les relations (account, pattern) sont des objets natifs Prisma, pas des ISO-strings.
  *   2. Il inclut les champs d'assignation (assigneeMonteurId, assigneeCmId) qui ne
  *      font pas encore partie du type PublicationSlot côté API calendar.
  *
@@ -27,8 +27,7 @@ export interface WorklistAccount {
   offre: string;
 }
 
-export interface WorklistRecipe {
-  code: string;
+export interface WorklistPattern {
   label: string;
 }
 
@@ -41,9 +40,9 @@ export interface WorklistSlot {
   notes: string | null;
   assigneeMonteurId: string | null;
   assigneeCmId: string | null;
-  recipeId: string | null;
+  patternId: string | null;
   account: WorklistAccount;
-  recipe: WorklistRecipe | null;
+  pattern: WorklistPattern | null;
 }
 
 // ---------------------------------------------------------------------------

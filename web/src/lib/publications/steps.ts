@@ -8,7 +8,7 @@
 
 import type {
   PublicationSlot,
-  ContentRecipe,
+  AccountPattern,
   Render,
   CoverFramePack,
   CaptionJob,
@@ -142,10 +142,21 @@ function descriptionJobStatus(
  */
 export function computePublicationSteps(input: {
   slot: Pick<PublicationSlot, "status" | "caption">;
-  recipe: Pick<
-    ContentRecipe,
+  /** @deprecated Use `pattern` instead. Kept for backwards compat during Wave A2 rename. */
+  recipe?: Pick<
+    AccountPattern,
     | "source"
-    | "needsCover"
+    | "coverMode"
+    | "needsCaptions"
+    | "needsDescription"
+    | "needsClientValidation"
+    | "needsRushes"
+    | "needsBrief"
+  > | null;
+  pattern?: Pick<
+    AccountPattern,
+    | "source"
+    | "coverMode"
     | "needsCaptions"
     | "needsDescription"
     | "needsClientValidation"
@@ -161,18 +172,20 @@ export function computePublicationSteps(input: {
   /** ID de la version courante promue par l'ADMIN. */
   currentVersionId?: string | null;
 }): PublicationStep[] {
-  const { slot, recipe, renderJob, coverPack, captionJob, descriptionJob, versionsCount = 0, currentVersionId } =
+  const { slot, renderJob, coverPack, captionJob, descriptionJob, versionsCount = 0, currentVersionId } =
     input;
+  // Support both legacy `recipe` and new `pattern` arg during transition
+  const pattern = input.pattern ?? input.recipe ?? null;
 
-  // ── Visibilité par recipe ──────────────────────────────────────────────────
-  const renderVisible = recipe?.source === "auto_template";
-  const editVisible = recipe?.needsRushes === true || recipe?.needsBrief === true;
+  // ── Visibilité par pattern ────────────────────────────────────────────────
+  const renderVisible = pattern?.source === "auto_template";
+  const editVisible = pattern?.needsRushes === true || pattern?.needsBrief === true;
   const coverVisible =
-    recipe != null && recipe.needsCover !== "none";
-  const captionsVisible = recipe?.needsCaptions === true;
+    pattern != null && pattern.coverMode !== "none";
+  const captionsVisible = pattern?.needsCaptions === true;
   const descriptionVisible =
-    recipe != null && recipe.needsDescription !== "none";
-  const validationVisible = recipe?.needsClientValidation === true;
+    pattern != null && pattern.needsDescription !== "none";
+  const validationVisible = pattern?.needsClientValidation === true;
   // publish : toujours visible
 
   // ── Statut step "edit" ─────────────────────────────────────────────────────

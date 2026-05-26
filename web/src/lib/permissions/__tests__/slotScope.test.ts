@@ -113,10 +113,10 @@ describe("ALLOWED_PATCH_FIELDS_BY_ROLE — security invariants", () => {
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.USER).toEqual([]);
   });
 
-  it("ADMIN can modify assignees and recipe (override capability)", () => {
+  it("ADMIN can modify assignees and pattern (override capability)", () => {
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("assigneeMonteurId");
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("assigneeCmId");
-    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("recipeId");
+    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("patternId");
   });
 });
 

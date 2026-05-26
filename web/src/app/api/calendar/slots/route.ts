@@ -107,41 +107,37 @@ export async function POST(req: NextRequest) {
     templateId,
     fields,
     fieldSchema,
-    // Recipe-based creation (commit 1.2.3)
-    recipeId,
-    // Les assignees peuvent être fournis explicitement (override) ou déduits depuis la recipe
+    // Pattern-based creation (Phase 1.6)
+    patternId,
+    // Les assignees peuvent être fournis explicitement (override) ou déduits depuis le pattern
     assigneeMonteurId: rawAssigneeMonteurId,
     assigneeCmId: rawAssigneeCmId,
   } = body;
 
-  // contentType peut venir du body (legacy) ou être dérivé depuis recipe.code
-  let { contentType } = body as { contentType?: string };
+  // contentType doit être fourni directement dans le body
+  const { contentType } = body as { contentType?: string };
 
-  // --- Résolution de la recipe si fournie ---
+  // --- Résolution du pattern si fourni ---
   let resolvedAssigneeMonteurId: string | null = rawAssigneeMonteurId ?? null;
   let resolvedAssigneeCmId: string | null = rawAssigneeCmId ?? null;
 
-  if (recipeId) {
-    const recipe = await prisma.contentRecipe.findUnique({ where: { id: recipeId } });
-    if (!recipe) {
-      return NextResponse.json({ error: "Recipe introuvable" }, { status: 400 });
+  if (patternId) {
+    const pattern = await prisma.accountPattern.findUnique({ where: { id: patternId } });
+    if (!pattern) {
+      return NextResponse.json({ error: "Pattern introuvable" }, { status: 400 });
     }
-    // Dériver contentType depuis recipe.code si non fourni dans le body
-    if (!contentType) {
-      contentType = recipe.code;
+    // Préfill des assignees : la valeur du body prime (override admin), sinon fallback pattern
+    if (!resolvedAssigneeMonteurId && pattern.defaultAssigneeMonteurId) {
+      resolvedAssigneeMonteurId = pattern.defaultAssigneeMonteurId;
     }
-    // Préfill des assignees : la valeur du body prime (override admin), sinon fallback recipe
-    if (!resolvedAssigneeMonteurId && recipe.defaultAssigneeMonteurId) {
-      resolvedAssigneeMonteurId = recipe.defaultAssigneeMonteurId;
-    }
-    if (!resolvedAssigneeCmId && recipe.defaultAssigneeCmId) {
-      resolvedAssigneeCmId = recipe.defaultAssigneeCmId;
+    if (!resolvedAssigneeCmId && pattern.defaultAssigneeCmId) {
+      resolvedAssigneeCmId = pattern.defaultAssigneeCmId;
     }
   }
 
   if (!accountId || !scheduledAt || !contentType) {
     return NextResponse.json(
-      { error: "accountId, scheduledAt et contentType sont requis (ou fournir recipeId)" },
+      { error: "accountId, scheduledAt et contentType sont requis" },
       { status: 400 }
     );
   }
@@ -182,7 +178,7 @@ export async function POST(req: NextRequest) {
       fields: fields ? JSON.stringify(fields) : "{}",
       fieldSchema: fieldSchema ? JSON.stringify(fieldSchema) : "[]",
       isAuto: false,
-      recipeId: recipeId ?? null,
+      patternId: patternId ?? null,
       assigneeMonteurId: resolvedAssigneeMonteurId,
       assigneeCmId: resolvedAssigneeCmId,
     },

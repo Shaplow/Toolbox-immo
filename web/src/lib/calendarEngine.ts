@@ -11,116 +11,136 @@ export interface GenerateCalendarResult {
   created: number;
   /** Slots déjà existants, ignorés */
   skipped: number;
+  note?: string;
+}
+
+const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Normalise une date vers le lundi 00:00:00 UTC de sa semaine.
+ * dayOfWeek interne : 1=Lundi … 7=Dimanche (cohérent avec AccountPattern.dayOfWeek).
+ */
+function toMondayUTC(d: Date): Date {
+  const jsDay = d.getUTCDay(); // 0=Dim, 1=Lun, …, 6=Sam
+  const dayOfWeek = jsDay === 0 ? 7 : jsDay; // 1=Lun, 7=Dim
+  const daysToSubtract = dayOfWeek - 1;
+  const mon = new Date(d);
+  mon.setUTCDate(d.getUTCDate() - daysToSubtract);
+  mon.setUTCHours(0, 0, 0, 0);
+  return mon;
 }
 
 /**
- * Génère des PublicationSlot pour les comptes et la plage de dates donnés,
- * en se basant sur les OfferScheduleRule actives.
- * Idempotent : ignore les slots qui existent déjà (même accountId + scheduledAt + contentType).
+ * Génère des PublicationSlots pour la plage [dateFrom, dateTo] à partir des AccountPattern actifs.
+ *
+ * Supporte plusieurs semaines : itère sur chaque lundi entre `toMondayUTC(dateFrom)` et
+ * `toMondayUTC(dateTo)` inclus, et matérialise chaque pattern actif pour ce lundi.
+ *
+ * Idempotence : si un slot existe déjà pour le même (accountId, scheduledAt, patternId),
+ * il est ignoré. Implémenté via une seule requête bulk + filtrage en mémoire (pas de N+1).
+ *
+ * Performance : 2 requêtes DB au total (findMany existing + createMany) au lieu de 2N.
  */
 export async function generateCalendarSlots(
   options: GenerateCalendarOptions
 ): Promise<GenerateCalendarResult> {
-  const { dateFrom, dateTo, accountIds } = options;
+  const { accountIds, dateFrom, dateTo } = options;
 
-  const accounts = await prisma.instagramAccount.findMany({
-    where: accountIds ? { id: { in: accountIds } } : undefined,
-    select: { id: true, offre: true },
-  });
-
-  if (accounts.length === 0) return { created: 0, skipped: 0 };
-
-  const rules = await prisma.offerScheduleRule.findMany({
-    where: { isActive: true },
-  });
-
-  if (rules.length === 0) return { created: 0, skipped: 0 };
-
-  // Index des règles par offre
-  const rulesByOffre = new Map<string, typeof rules>();
-  for (const rule of rules) {
-    const list = rulesByOffre.get(rule.offre) ?? [];
-    list.push(rule);
-    rulesByOffre.set(rule.offre, list);
-  }
-
-  const slotsToCreate: Array<{
-    accountId: string;
-    scheduledAt: Date;
-    contentType: string;
-    templateId?: string;
-    isAuto: boolean;
-  }> = [];
-
-  // All date arithmetic is UTC so the engine is timezone-agnostic regardless
-  // of the server's local timezone. publishTime ("HH:MM") is treated as UTC.
-  const current = new Date(dateFrom);
-  current.setUTCHours(0, 0, 0, 0);
-  const end = new Date(dateTo);
-  end.setUTCHours(23, 59, 59, 999);
-
-  while (current <= end) {
-    // getUTCDay(): 0=Dim, 1=Lun … 6=Sam → converti en ISO 1=Lun … 7=Dim
-    const jsDay = current.getUTCDay();
-    const isoDay = jsDay === 0 ? 7 : jsDay;
-
-    for (const account of accounts) {
-      const accountRules = rulesByOffre.get(account.offre) ?? [];
-      const dayRules = accountRules.filter((r) => r.dayOfWeek === isoDay);
-
-      for (const rule of dayRules) {
-        const [hours, minutes] = rule.publishTime.split(":").map(Number);
-        if (isNaN(hours!) || isNaN(minutes!)) {
-          console.warn(`[calendarEngine] publishTime invalide pour la règle ${rule.id}: "${rule.publishTime}" — ignorée`);
-          continue;
-        }
-        const scheduledAt = new Date(current);
-        scheduledAt.setUTCHours(hours!, minutes!, 0, 0);
-
-        slotsToCreate.push({
-          accountId: account.id,
-          scheduledAt: new Date(scheduledAt),
-          contentType: rule.contentType,
-          templateId: rule.templateId ?? undefined,
-          isAuto: true,
-        });
-      }
-    }
-
-    current.setUTCDate(current.getUTCDate() + 1);
-  }
-
-  if (slotsToCreate.length === 0) return { created: 0, skipped: 0 };
-
-  // Chargement des slots existants sur la même plage pour déduplication
-  const existingSlots = await prisma.publicationSlot.findMany({
+  // 1. Récupérer tous les patterns actifs (filtrés par compte si précisé)
+  const patterns = await prisma.accountPattern.findMany({
     where: {
-      accountId: { in: accounts.map((a) => a.id) },
+      isActive: true,
+      ...(accountIds && accountIds.length > 0 ? { accountId: { in: accountIds } } : {}),
+    },
+    select: {
+      id: true,
+      accountId: true,
+      label: true,
+      dayOfWeek: true,
+      publishTime: true,
+      templateId: true,
+      defaultAssigneeMonteurId: true,
+      defaultAssigneeCmId: true,
+    },
+  });
+
+  if (patterns.length === 0) {
+    return { created: 0, skipped: 0 };
+  }
+
+  // 2. Calculer toutes les dates cibles sur l'ensemble des semaines de la plage
+  type TargetSlot = {
+    pattern: typeof patterns[number];
+    scheduledAt: Date;
+  };
+  const targets: TargetSlot[] = [];
+
+  const startMondayMs = toMondayUTC(dateFrom).getTime();
+  const endMondayMs = toMondayUTC(dateTo).getTime();
+
+  for (let weekMs = startMondayMs; weekMs <= endMondayMs; weekMs += ONE_WEEK_MS) {
+    for (const pattern of patterns) {
+      const targetDate = new Date(weekMs);
+      targetDate.setUTCDate(targetDate.getUTCDate() + (pattern.dayOfWeek - 1));
+      const [hours, minutes] = pattern.publishTime.split(":").map(Number);
+      targetDate.setUTCHours(hours, minutes, 0, 0);
+
+      // Skip si en dehors de la plage demandée (utile aux bords semaine partielle)
+      if (targetDate < dateFrom || targetDate > dateTo) continue;
+
+      targets.push({ pattern, scheduledAt: targetDate });
+    }
+  }
+
+  if (targets.length === 0) {
+    return { created: 0, skipped: 0 };
+  }
+
+  // 3. Bulk fetch des slots existants pour ces patterns sur la plage
+  const patternIds = patterns.map((p) => p.id);
+  const existing = await prisma.publicationSlot.findMany({
+    where: {
+      patternId: { in: patternIds },
       scheduledAt: { gte: dateFrom, lte: dateTo },
     },
-    select: { accountId: true, scheduledAt: true, contentType: true },
+    select: { accountId: true, scheduledAt: true, patternId: true },
   });
 
+  // Index : "accountId|scheduledAtMs|patternId"
   const existingKeys = new Set(
-    existingSlots.map(
-      (s) => `${s.accountId}|${s.scheduledAt.toISOString()}|${s.contentType}`
-    )
+    existing.map((s) => `${s.accountId}|${s.scheduledAt.getTime()}|${s.patternId}`)
   );
 
-  const newSlots = slotsToCreate.filter(
-    (s) =>
-      !existingKeys.has(
-        `${s.accountId}|${s.scheduledAt.toISOString()}|${s.contentType}`
-      )
-  );
+  // 4. Filtrer les cibles qui n'existent pas encore
+  const toCreate = targets.filter(({ pattern, scheduledAt }) => {
+    const key = `${pattern.accountId}|${scheduledAt.getTime()}|${pattern.id}`;
+    return !existingKeys.has(key);
+  });
 
-  const skipped = slotsToCreate.length - newSlots.length;
-
-  if (newSlots.length > 0) {
-    await prisma.publicationSlot.createMany({ data: newSlots });
+  // 5. Bulk insert
+  if (toCreate.length > 0) {
+    await prisma.publicationSlot.createMany({
+      data: toCreate.map(({ pattern, scheduledAt }) => ({
+        accountId: pattern.accountId,
+        scheduledAt,
+        patternId: pattern.id,
+        // contentType : utilise pattern.label (champ legacy String) — à nettoyer en Wave E
+        contentType: pattern.label,
+        status: "TO_DO",
+        templateId: pattern.templateId ?? null,
+        assigneeMonteurId: pattern.defaultAssigneeMonteurId ?? null,
+        assigneeCmId: pattern.defaultAssigneeCmId ?? null,
+        isAuto: true,
+        fields: "{}",
+        fieldSchema: "[]",
+      })),
+    });
   }
 
-  return { created: newSlots.length, skipped };
+  return {
+    created: toCreate.length,
+    skipped: targets.length - toCreate.length,
+  };
 }
 
 /** Retourne la plage [lundi, dimanche] de la semaine suivante (UTC) */

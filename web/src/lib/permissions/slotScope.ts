@@ -166,7 +166,7 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
       "fieldSchema",
       "assigneeMonteurId",
       "assigneeCmId",
-      "recipeId",
+      "patternId",
       "currentVersionId",
       "isAuto",
     ],

@@ -43,14 +43,14 @@ export interface PublicationSlot {
   isAuto: boolean;
   createdAt: string;
   updatedAt: string;
-  // ── Assignation et recipe (Phase 1.2) ─────────────────────────────────────
-  // Champs nullables ajoutés en Phase 1.2. Absents des réponses API calendar qui
+  // ── Assignation et pattern (Phase 1.6) ───────────────────────────────────
+  // Champs nullables. Absents des réponses API calendar qui
   // ne font pas d'include explicite — d'où le `| undefined`.
   assigneeMonteurId?: string | null;
   assigneeCmId?: string | null;
-  recipeId?: string | null;
+  patternId?: string | null;
   currentVersionId?: string | null;
-  recipe?: { code: string; label: string } | null;
+  pattern?: { label: string } | null;
   assigneeMonteur?: { id: string; name: string | null } | null;
   assigneeCm?: { id: string; name: string | null } | null;
 }
