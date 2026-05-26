@@ -1,34 +1,24 @@
 ﻿"use client";
 
 import { useRef } from "react";
-import {
-  compileTextTemplate,
-  extractTemplateVars,
-  parseTextTemplate,
-  resolveTextTemplate,
-  type TextTemplateSegment,
-} from "@/lib/textTemplate";
-import { collectBuilderFonts, type BuilderFontEntry } from "@/lib/builderFonts";
-import { buildSchemaPreviewData } from "@/lib/schemaFields";
+import { extractTemplateVars } from "@/lib/textTemplate";
+import { type BuilderFontEntry } from "@/lib/builderFonts";
 import { getAutoLayoutMode, getAutoLayoutOrderedBlocks, getGroupBounds } from "@/lib/groupLayout";
-import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled, type BoxPadding } from "@/lib/textBackground";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import type {
   AnyBlock, TextBlock, ImageBlock, VideoBlock, DPEBlock,
-  ShapeBlock, BlockStyle, SchemaField, LayerGroup, MusicBlock,
+  ShapeBlock, SchemaField, LayerGroup, MusicBlock,
 } from "@/types/template";
-import type { ListingData } from "@/types/listing";
 import { Section } from "./properties/Section";
-import { toUniformPaddingValue, buildAnchoredSizeChange } from "./properties/utils";
-import { BoxPaddingEditor } from "./properties/BoxPaddingEditor";
-import { FontFamilyPicker } from "./properties/FontFamilyPicker";
-import { TextFieldMeta } from "./properties/TextFieldMeta";
+import { buildAnchoredSizeChange } from "./properties/utils";
 import { BlockConditionalRulesSection } from "./properties/BlockConditionalRulesSection";
 import { GroupConditionalRulesSection } from "./properties/GroupConditionalRulesSection";
 import { ShapeBlockPropertiesPanel } from "./properties/ShapeBlockPropertiesPanel";
 import { ImageBlockPropertiesPanel } from "./properties/ImageBlockPropertiesPanel";
 import { VideoBlockPropertiesPanel } from "./properties/VideoBlockPropertiesPanel";
 import { DPEBlockPropertiesPanel } from "./properties/DPEBlockPropertiesPanel";
+import { StyleEditor } from "./properties/StyleEditor";
+import { TextContentSection } from "./properties/TextContentSection";
 
 export function PropertiesPanel({
   globalFonts,
@@ -44,8 +34,6 @@ export function PropertiesPanel({
   const group = template.groups.find((item) => item.id === selectedGroupId) ?? null;
 
   const prevBindingRef = useRef<string>("");
-  // Track old content on focus for schema cleanup on blur
-  const prevContentRef = useRef<string>("");
 
   function updateSchemaField(fieldKey: string, changes: Partial<SchemaField>) {
     setSchema(template.schema.map((field) => (
@@ -849,259 +837,18 @@ export function PropertiesPanel({
         </Section>
 
         {/* Content (text blocks) — template string with {{variable}} interpolation */}
-        {block.type === "text" && (() => {
-          const tb = block as TextBlock;
-          const currentContent = tb.content
-            ?? (tb.contentSegments ? compileTextTemplate(tb.contentSegments) : undefined)
-            ?? (tb.binding ? `{{${tb.binding}}}` : tb.staticText ?? "");
-          const currentSegments = tb.contentSegments ?? parseTextTemplate(currentContent);
-          const schemaKeyListId = `schema-keys-${tb.id}`;
-          const schemaFieldOptions = [...template.schema].sort((a, b) => a.label.localeCompare(b.label, "fr", { sensitivity: "base" }));
-          const previewData = buildSchemaPreviewData(template.schema);
-          const previewText = resolveTextTemplate(currentContent, previewData as ListingData, template.schema);
-
-          function applySegments(nextSegments: TextTemplateSegment[]) {
-            const nextContent = compileTextTemplate(nextSegments);
-            updateBlock(tb.id, { content: nextContent, contentSegments: nextSegments } as never);
-            syncTextSchema(currentContent, nextContent);
-          }
-
-          function updateSegment(index: number, nextSegment: TextTemplateSegment) {
-            const nextSegments = [...currentSegments];
-            nextSegments[index] = nextSegment;
-            applySegments(nextSegments);
-          }
-
-          function removeSegment(index: number) {
-            applySegments(currentSegments.filter((_, currentIndex) => currentIndex !== index));
-          }
-
-          function moveSegment(index: number, direction: -1 | 1) {
-            const nextIndex = index + direction;
-            if (nextIndex < 0 || nextIndex >= currentSegments.length) return;
-            const nextSegments = [...currentSegments];
-            const [segment] = nextSegments.splice(index, 1);
-            nextSegments.splice(nextIndex, 0, segment);
-            applySegments(nextSegments);
-          }
-
-          function addSegment(type: TextTemplateSegment["type"]) {
-            const baseSegment: TextTemplateSegment =
-              type === "text"
-                ? { type: "text", value: "" }
-                : type === "variable"
-                  ? { type: "variable", key: "nouvelle_variable" }
-                  : { type: "if", field: "", equals: "", thenContent: "", elseContent: "" };
-            applySegments([...currentSegments, baseSegment]);
-          }
-
-          return (
-            <Section label="Contenu">
-              <div className="space-y-2">
-                {currentSegments.length === 0 && (
-                  <div className="border border-dashed border-gray-200 rounded-lg px-3 py-3 text-[11px] text-gray-400">
-                    Aucun segment. Ajoutez du texte, une variable ou une condition.
-                  </div>
-                )}
-                {currentSegments.map((segment, index) => (
-                  <div key={`${segment.type}-${index}`} className="border border-gray-200 rounded-lg p-2 space-y-2 bg-gray-50">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] uppercase tracking-wide text-gray-400 min-w-16">
-                        {segment.type === "text" ? "Texte" : segment.type === "variable" ? "Variable" : "Condition"}
-                      </span>
-                      <button type="button" onClick={() => moveSegment(index, -1)} disabled={index === 0} className="px-1.5 py-0.5 text-[10px] border rounded disabled:opacity-30">↑</button>
-                      <button type="button" onClick={() => moveSegment(index, 1)} disabled={index === currentSegments.length - 1} className="px-1.5 py-0.5 text-[10px] border rounded disabled:opacity-30">↓</button>
-                      <button type="button" onClick={() => removeSegment(index)} className="ml-auto px-1.5 py-0.5 text-[10px] border border-red-200 text-red-500 rounded">Suppr.</button>
-                    </div>
-
-                    {segment.type === "text" && (
-                      <textarea
-                        rows={2}
-                        value={segment.value}
-                        onChange={(e) => updateSegment(index, { ...segment, value: e.target.value })}
-                        onKeyDown={(e) => e.stopPropagation()}
-                        placeholder="Texte libre"
-                        className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                      />
-                    )}
-
-                    {segment.type === "variable" && (
-                      <div className="space-y-2">
-                        <input
-                          type="text"
-                          list={schemaKeyListId}
-                          value={segment.key}
-                          onChange={(e) => updateSegment(index, { ...segment, key: e.target.value.replace(/\s+/g, "_") })}
-                          placeholder="nom_variable"
-                          className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                        />
-                        <TextFieldMeta
-                          field={template.schema.find((field) => field.key === segment.key)}
-                          kind="variable"
-                          rawKey={segment.key}
-                          onSaveOptions={(fieldKey, options) => updateSchemaField(fieldKey, { options })}
-                        />
-                      </div>
-                    )}
-
-                    {segment.type === "if" && (
-                      <div className="space-y-2">
-                        <div className="grid grid-cols-2 gap-2">
-                          <select
-                            value={segment.field}
-                            onChange={(e) => updateSegment(index, { ...segment, field: e.target.value })}
-                            className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                          >
-                            <option value="">Choisir une variable</option>
-                            {schemaFieldOptions.map((field) => (
-                              <option key={field.key} value={field.key}>
-                                {field.label} ({field.key})
-                              </option>
-                            ))}
-                            {segment.field && !schemaFieldOptions.some((field) => field.key === segment.field) ? (
-                              <option value={segment.field}>{segment.field}</option>
-                            ) : null}
-                          </select>
-                          <input
-                            type="text"
-                            value={segment.equals}
-                            onChange={(e) => updateSegment(index, { ...segment, equals: e.target.value })}
-                            placeholder="valeur attendue"
-                            className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                          />
-                        </div>
-                        {(() => {
-                          const conditionField = template.schema.find((field) => field.key === segment.field);
-                          return (
-                            <div className="space-y-2">
-                              <TextFieldMeta
-                                field={conditionField}
-                                kind="condition"
-                                rawKey={segment.field}
-                                onSaveOptions={(fieldKey, options) => updateSchemaField(fieldKey, { options })}
-                              />
-                              {conditionField?.type === "select" && (conditionField.options?.length ?? 0) > 0 && (
-                                <div className="flex flex-wrap gap-1">
-                                  {(conditionField.options ?? []).map((option) => {
-                                    const isActive = segment.equals === option;
-                                    return (
-                                      <button
-                                        key={option}
-                                        type="button"
-                                        onClick={() => updateSegment(index, { ...segment, equals: option })}
-                                        className={`rounded-full px-2 py-0.5 text-[10px] border ${isActive ? "border-indigo-300 bg-indigo-50 text-indigo-700" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"}`}
-                                      >
-                                        {option}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
-                        <label className="flex flex-col gap-0.5">
-                          <span className="text-[11px] text-gray-400">Si vrai</span>
-                          <textarea
-                            rows={2}
-                            value={segment.thenContent}
-                            onChange={(e) => updateSegment(index, { ...segment, thenContent: e.target.value })}
-                            onKeyDown={(e) => e.stopPropagation()}
-                            placeholder="Contenu affiché si la condition est vraie"
-                            className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                          />
-                        </label>
-                        <label className="flex flex-col gap-0.5">
-                          <span className="text-[11px] text-gray-400">Sinon</span>
-                          <textarea
-                            rows={2}
-                            value={segment.elseContent ?? ""}
-                            onChange={(e) => updateSegment(index, { ...segment, elseContent: e.target.value })}
-                            onKeyDown={(e) => e.stopPropagation()}
-                            placeholder="Contenu affiché sinon (optionnel)"
-                            className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                          />
-                        </label>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                <button type="button" onClick={() => addSegment("text")} className="px-2 py-1 text-[11px] border rounded hover:bg-gray-50">+ Texte</button>
-                <button type="button" onClick={() => addSegment("variable")} className="px-2 py-1 text-[11px] border rounded hover:bg-gray-50">+ Variable</button>
-                <button type="button" onClick={() => addSegment("if")} className="px-2 py-1 text-[11px] border rounded hover:bg-gray-50">+ Condition</button>
-              </div>
-
-              <datalist id={schemaKeyListId}>
-                {template.schema.map((field) => (
-                  <option key={field.key} value={field.key}>
-                    {field.label}
-                  </option>
-                ))}
-              </datalist>
-
-              <details className="mt-3">
-                <summary className="cursor-pointer text-[11px] text-gray-500">Mode avancé</summary>
-                <textarea
-                  rows={4}
-                  value={currentContent}
-                  onChange={(e) => {
-                    updateBlock(block.id, { content: e.target.value, contentSegments: parseTextTemplate(e.target.value) } as never);
-                    syncTextSchema(currentContent, e.target.value);
-                  }}
-                  onFocus={() => { prevContentRef.current = currentContent; }}
-                  onBlur={(e) => syncTextSchema(prevContentRef.current, e.target.value)}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  placeholder={`Texte libre avec variables :\n{{prix}} € · Surface : {{surface}} m²\n\nConditionnel :\n{{#if is_copro == oui}} - Nbre lots : {{nbre_lots}}{{/if}}`}
-                  className="mt-2 w-full border border-gray-200 rounded px-2 py-1.5 text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                />
-              </details>
-
-              <p className="text-[10px] text-gray-400 mt-1 leading-relaxed">
-                <code className="bg-gray-100 px-0.5 rounded">{`{{variable}}`}</code> pour insérer une valeur.{" "}
-                <code className="bg-gray-100 px-0.5 rounded">{`{{#if champ == val}}...{{else}}...{{/if}}`}</code> pour un segment conditionnel.{" "}
-                Les espaces, tirets et retours à la ligne sont conservés tels qu&apos;ils sont écrits.
-              </p>
-
-              <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Aperçu</p>
-                  <input
-                    type="checkbox"
-                    checked={showResolvedTextPreview}
-                    onChange={(e) => onShowResolvedTextPreviewChange(e.target.checked)}
-                    title="Afficher le texte d'aperçu dans le builder"
-                    className="rounded"
-                  />
-                </div>
-                <pre className="mt-1 whitespace-pre-wrap break-words text-xs text-gray-700 font-sans">{previewText || "Aucun contenu affiché avec les valeurs actuelles."}</pre>
-              </div>
-
-              {extractTemplateVars(currentContent).map((key) => {
-                const sf = template.schema.find((f) => f.key === key);
-                if (!sf) return null;
-                return (
-                  <label key={key} className="flex items-center gap-1.5 mt-1.5 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={sf.required}
-                      onChange={(e) => setSchema(template.schema.map((f) =>
-                        f.key === key ? { ...f, required: e.target.checked } : f
-                      ))}
-                      className="rounded"
-                    />
-                    <code className="text-[11px] text-indigo-700 bg-indigo-50 px-1 rounded">{`{{${key}}}`}</code>
-                    <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full ${
-                      sf.required ? "bg-red-50 text-red-400" : "bg-gray-100 text-gray-400"
-                    }`}>{sf.required ? "*" : "opt"}</span>
-                  </label>
-                );
-              })}
-            </Section>
-          );
-        })()}
+        {block.type === "text" && (
+          <TextContentSection
+            block={block as TextBlock}
+            schema={template.schema}
+            showResolvedTextPreview={showResolvedTextPreview}
+            onShowResolvedTextPreviewChange={onShowResolvedTextPreviewChange}
+            onUpdateBlock={(id, changes) => updateBlock(id, changes)}
+            onUpdateSchemaField={updateSchemaField}
+            onSyncTextSchema={syncTextSchema}
+            onSetSchema={setSchema}
+          />
+        )}
 
         {/* Binding — only for image / dpe / shape blocks */}
         {block.type !== "text" && (
@@ -1182,9 +929,61 @@ export function PropertiesPanel({
         )}
 
         {/* Text specific */}
-        {block.type === "text" && (
-          <TextProps block={block as TextBlock} globalFonts={globalFonts} onChange={(c) => updateBlock(block.id, c)} />
-        )}
+        {block.type === "text" && (() => {
+          const tb = block as TextBlock;
+          return (
+            <>
+              <Section label="Style">
+                <StyleEditor
+                  style={tb.style}
+                  globalFonts={globalFonts}
+                  backgroundDefaults={{ width: tb.w, height: tb.h }}
+                  onChange={(s) => updateBlock(tb.id, { style: { ...tb.style, ...s } })}
+                />
+              </Section>
+              <Section label="Règles texte">
+                <div className="space-y-2">
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-gray-400">Max lignes</span>
+                    <input type="number" min={1} placeholder="Illimite" value={tb.rules.maxLines ?? ""}
+                      onChange={(e) => updateBlock(tb.id, { rules: { ...tb.rules, maxLines: e.target.value ? Number(e.target.value) : undefined } })}
+                      className="border border-gray-200 rounded px-2 py-1"
+                    />
+                    <span className="text-[10px] text-gray-400">Laisser vide pour autoriser autant de lignes que possible.</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={!!tb.rules.shrinkToFit}
+                      onChange={(e) => updateBlock(tb.id, { rules: {
+                        ...tb.rules,
+                        shrinkToFit: e.target.checked,
+                        minFontSize: e.target.checked ? (tb.rules.minFontSize ?? Math.max(6, Math.round((tb.style.fontSize ?? 14) * 0.6))) : undefined,
+                      } })} />
+                    <span className="text-gray-600">Shrink to fit</span>
+                  </label>
+                  {tb.rules.shrinkToFit && (
+                    <label className="flex flex-col gap-0.5">
+                      <span className="text-gray-400">Taille min (pt)</span>
+                      <input
+                        type="number"
+                        min={1}
+                        step={0.5}
+                        value={tb.rules.minFontSize ?? ""}
+                        onChange={(e) => updateBlock(tb.id, { rules: { ...tb.rules, minFontSize: e.target.value ? Number(e.target.value) : undefined } })}
+                        className="border border-gray-200 rounded px-2 py-1"
+                      />
+                      <span className="text-[10px] text-gray-400">Le texte réduit jusqu&apos;à cette taille minimale s&apos;il ne rentre pas dans la box.</span>
+                    </label>
+                  )}
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={!!tb.rules.uppercase}
+                      onChange={(e) => updateBlock(tb.id, { rules: { ...tb.rules, uppercase: e.target.checked } })} />
+                    <span className="text-gray-600">Majuscules</span>
+                  </label>
+                </div>
+              </Section>
+            </>
+          );
+        })()}
 
         {/* Shape specific */}
         {block.type === "shape" && (
@@ -1215,494 +1014,4 @@ export function PropertiesPanel({
     </aside>
   );
 }
-
-
-
-
-function StyleEditor({
-  style,
-  globalFonts,
-  backgroundDefaults,
-  onChange,
-}: {
-  style: BlockStyle;
-  globalFonts: BuilderFontEntry[];
-  backgroundDefaults?: { width: number; height: number };
-  onChange: (s: Partial<BlockStyle>) => void;
-}) {
-  const { template } = useBuilderStore();
-  const availableFonts = collectBuilderFonts(template, globalFonts);
-  const backgroundEnabled = isTextBackgroundEnabled(style);
-  const backgroundMode = getTextBackgroundMode(style);
-  const backgroundSize = getTextBackgroundSize(
-    style,
-    backgroundDefaults?.width ?? 200,
-    backgroundDefaults?.height ?? 60
-  );
-  const textPadding = getTextContentPadding(style);
-  const backgroundPadding = getTextBackgroundPadding(style);
-  const textPaddingSplit = style.padding === undefined && (
-    style.paddingTop !== undefined ||
-    style.paddingRight !== undefined ||
-    style.paddingBottom !== undefined ||
-    style.paddingLeft !== undefined
-  );
-  const backgroundPaddingSplit = style.textBackgroundPadding === undefined && (
-    style.textBackgroundPaddingTop !== undefined ||
-    style.textBackgroundPaddingRight !== undefined ||
-    style.textBackgroundPaddingBottom !== undefined ||
-    style.textBackgroundPaddingLeft !== undefined
-  );
-  const backgroundRadius = getTextBackgroundBorderRadius(style);
-
-  function updateTextPaddingUniform(value: number) {
-    onChange({
-      padding: value,
-      paddingTop: undefined,
-      paddingRight: undefined,
-      paddingBottom: undefined,
-      paddingLeft: undefined,
-    });
-  }
-
-  function updateTextPaddingSide(side: keyof BoxPadding, value: number) {
-    onChange({
-      padding: undefined,
-      ...(side === "top" ? { paddingTop: value } : {}),
-      ...(side === "right" ? { paddingRight: value } : {}),
-      ...(side === "bottom" ? { paddingBottom: value } : {}),
-      ...(side === "left" ? { paddingLeft: value } : {}),
-    });
-  }
-
-  function updateBackgroundPaddingUniform(value: number) {
-    onChange({
-      textBackgroundPadding: value,
-      textBackgroundPaddingTop: undefined,
-      textBackgroundPaddingRight: undefined,
-      textBackgroundPaddingBottom: undefined,
-      textBackgroundPaddingLeft: undefined,
-    });
-  }
-
-  function updateBackgroundPaddingSide(side: keyof BoxPadding, value: number) {
-    onChange({
-      textBackgroundPadding: undefined,
-      ...(side === "top" ? { textBackgroundPaddingTop: value } : {}),
-      ...(side === "right" ? { textBackgroundPaddingRight: value } : {}),
-      ...(side === "bottom" ? { textBackgroundPaddingBottom: value } : {}),
-      ...(side === "left" ? { textBackgroundPaddingLeft: value } : {}),
-    });
-  }
-
-  return (
-    <div className="space-y-2">
-      <label className="flex flex-col gap-0.5">
-        <span className="text-gray-400">Police</span>
-        <FontFamilyPicker
-          value={style.fontFamily}
-          fonts={availableFonts}
-          onChange={(fontFamily) => onChange({ fontFamily })}
-        />
-      </label>
-      <div className="grid grid-cols-2 gap-2">
-        <label className="flex flex-col gap-0.5">
-          <span className="text-gray-400">Taille (pt)</span>
-          <input type="number" value={style.fontSize ?? 14}
-            onChange={(e) => onChange({ fontSize: Number(e.target.value) })}
-            className="border border-gray-200 rounded px-2 py-1"
-          />
-        </label>
-        <label className="flex flex-col gap-0.5">
-          <span className="text-gray-400">Font weight</span>
-          <div className="flex items-center gap-1">
-            <select value={style.fontWeight ?? 400}
-              onChange={(e) => onChange({ fontWeight: Number(e.target.value) })}
-              className="flex-1 border border-gray-200 rounded px-2 py-1"
-            >
-              {[300,400,500,600,700].map(w => <option key={w} value={w}>{w}</option>)}
-            </select>
-            <button
-              type="button"
-              title="Italique"
-              onClick={() => onChange({ fontStyle: style.fontStyle === "italic" ? "normal" : "italic" })}
-              className={`h-7 w-7 rounded flex items-center justify-center border text-sm font-bold italic shrink-0 ${
-                style.fontStyle === "italic"
-                  ? "bg-indigo-100 border-indigo-400 text-indigo-700"
-                  : "border-gray-200 text-gray-500 hover:bg-gray-50"
-              }`}
-            >
-              I
-            </button>
-          </div>
-        </label>
-      </div>
-      <label className="flex flex-col gap-0.5">
-        <span className="text-gray-400">Espacement lettres</span>
-        <input
-          type="number"
-          step={0.1}
-          value={style.letterSpacing ?? 0}
-          onChange={(e) => onChange({ letterSpacing: Number(e.target.value) })}
-          className="border border-gray-200 rounded px-2 py-1"
-        />
-      </label>
-      <label className="flex items-center gap-2 rounded border border-gray-200 px-2 py-2">
-        <input
-          type="checkbox"
-          checked={style.textShadowEnabled ?? false}
-          onChange={(e) => {
-            if (e.target.checked) {
-              onChange({
-                textShadowEnabled: true,
-                textShadowColor: style.textShadowColor ?? "#000000",
-                textShadowOpacity: style.textShadowOpacity ?? 0.35,
-                textShadowBlur: style.textShadowBlur ?? 6,
-                textShadowDistance: style.textShadowDistance ?? 4,
-                textShadowAngle: style.textShadowAngle ?? 90,
-              });
-              return;
-            }
-
-            onChange({
-              textShadowEnabled: false,
-              textShadowColor: undefined,
-              textShadowOpacity: undefined,
-              textShadowBlur: undefined,
-              textShadowDistance: undefined,
-              textShadowAngle: undefined,
-            });
-          }}
-          className="rounded"
-        />
-        <span className="text-gray-600">Ombre du texte</span>
-      </label>
-      {style.textShadowEnabled ? (
-        <div className="grid grid-cols-2 gap-2 rounded border border-gray-100 bg-gray-50 p-2">
-          <label className="flex flex-col gap-0.5">
-            <span className="text-gray-400">Couleur ombre</span>
-            <input
-              type="color"
-              value={style.textShadowColor ?? "#000000"}
-              onChange={(e) => onChange({ textShadowColor: e.target.value })}
-              className="w-full h-7 cursor-pointer rounded border border-gray-200"
-            />
-          </label>
-          <label className="flex flex-col gap-0.5">
-            <span className="text-gray-400">Opacité</span>
-            <input
-              type="number"
-              min={0}
-              max={1}
-              step={0.05}
-              value={style.textShadowOpacity ?? 0.35}
-              onChange={(e) => onChange({ textShadowOpacity: Number(e.target.value) })}
-              className="border border-gray-200 rounded px-2 py-1"
-            />
-          </label>
-          <label className="flex flex-col gap-0.5">
-            <span className="text-gray-400">Distance</span>
-            <input
-              type="number"
-              min={0}
-              step={0.5}
-              value={style.textShadowDistance ?? 4}
-              onChange={(e) => onChange({ textShadowDistance: Number(e.target.value) })}
-              className="border border-gray-200 rounded px-2 py-1"
-            />
-          </label>
-          <label className="flex flex-col gap-0.5">
-            <span className="text-gray-400">Angle</span>
-            <input
-              type="number"
-              min={-180}
-              max={180}
-              step={1}
-              value={style.textShadowAngle ?? 90}
-              onChange={(e) => onChange({ textShadowAngle: Number(e.target.value) })}
-              className="border border-gray-200 rounded px-2 py-1"
-            />
-          </label>
-          <label className="flex flex-col gap-0.5 col-span-2">
-            <span className="text-gray-400">Flou</span>
-            <input
-              type="number"
-              min={0}
-              step={0.5}
-              value={style.textShadowBlur ?? 6}
-              onChange={(e) => onChange({ textShadowBlur: Number(e.target.value) })}
-              className="border border-gray-200 rounded px-2 py-1"
-            />
-          </label>
-        </div>
-      ) : null}
-      <div className="grid grid-cols-2 gap-2">
-        <label className="flex flex-col gap-0.5">
-          <span className="text-gray-400">Couleur texte</span>
-          <input type="color" value={style.color ?? "#000000"}
-            onChange={(e) => onChange({ color: e.target.value })}
-            className="w-full h-7 cursor-pointer rounded border border-gray-200"
-          />
-        </label>
-        <label className="flex items-center gap-2 rounded border border-gray-200 px-2 py-2">
-          <input
-            type="checkbox"
-            checked={backgroundEnabled}
-            onChange={(e) => {
-              if (e.target.checked) {
-                onChange({
-                  textBackgroundEnabled: true,
-                  textBackgroundMode: style.textBackgroundMode ?? "fit",
-                  backgroundColor: style.backgroundColor ?? "#FFFFFF",
-                  textBackgroundBorderRadius: style.textBackgroundBorderRadius ?? style.borderRadius,
-                });
-                return;
-              }
-
-              onChange({ textBackgroundEnabled: false });
-            }}
-            className="rounded"
-          />
-          <span className="text-gray-600">Fond texte</span>
-        </label>
-      </div>
-      {backgroundEnabled ? (
-        <div className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <p className="text-[11px] font-medium text-gray-700">Fond texte</p>
-              <p className="text-[10px] text-gray-400">
-                {backgroundMode === "fit"
-                  ? "Le cartouche suit le texte et respecte son alignement."
-                  : backgroundMode === "per-line"
-                    ? "Chaque ligne a son propre cartouche ajusté à sa largeur."
-                    : "Le cartouche conserve une largeur et une hauteur fixes."}
-              </p>
-            </div>
-            <input type="color" value={style.backgroundColor ?? "#FFFFFF"}
-              onChange={(e) => onChange({ backgroundColor: e.target.value })}
-              className="h-8 w-10 shrink-0 cursor-pointer rounded border border-gray-200 bg-white"
-            />
-          </div>
-          <div className="grid grid-cols-3 gap-1 rounded-lg border border-gray-200 bg-white p-1">
-            <button
-              type="button"
-              onClick={() => onChange({ textBackgroundMode: "fit" })}
-              className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${
-                backgroundMode === "fit"
-                  ? "bg-indigo-600 text-white"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              Adaptatif
-            </button>
-            <button
-              type="button"
-              onClick={() => onChange({ textBackgroundMode: "per-line" })}
-              className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${
-                backgroundMode === "per-line"
-                  ? "bg-indigo-600 text-white"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              Par ligne
-            </button>
-            <button
-              type="button"
-              onClick={() => onChange({
-                textBackgroundMode: "fixed",
-                textBackgroundWidth: style.textBackgroundWidth ?? (backgroundDefaults?.width ?? 200),
-                textBackgroundHeight: style.textBackgroundHeight ?? (backgroundDefaults?.height ?? 60),
-              })}
-              className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${
-                backgroundMode === "fixed"
-                  ? "bg-indigo-600 text-white"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              Fixe
-            </button>
-          </div>
-          {backgroundMode === "fixed" ? (
-            <div className="grid grid-cols-2 gap-2">
-              <label className="flex flex-col gap-0.5">
-                <span className="text-gray-400">Largeur fond</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={backgroundSize.width}
-                  onChange={(e) => onChange({ textBackgroundWidth: Number(e.target.value) })}
-                  className="border border-gray-200 rounded px-2 py-1"
-                />
-              </label>
-              <label className="flex flex-col gap-0.5">
-                <span className="text-gray-400">Hauteur fond</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={backgroundSize.height}
-                  onChange={(e) => onChange({ textBackgroundHeight: Number(e.target.value) })}
-                  className="border border-gray-200 rounded px-2 py-1"
-                />
-              </label>
-            </div>
-          ) : (
-            <p className="rounded-lg border border-dashed border-gray-200 bg-white px-2 py-1.5 text-[10px] text-gray-400 leading-4">
-              {backgroundMode === "per-line"
-                ? "Chaque ligne obtient son propre fond ajusté. Le padding vertical agit comme espacement entre les lignes."
-                : "Le fond suit automatiquement la largeur du texte et s'ancre selon l'alignement horizontal du bloc."}
-            </p>
-          )}
-
-          <BoxPaddingEditor
-            label="Padding du fond"
-            values={backgroundPadding}
-            split={backgroundPaddingSplit}
-            onToggleSplit={(nextSplit) => {
-              if (nextSplit) {
-                onChange({
-                  textBackgroundPadding: undefined,
-                  textBackgroundPaddingTop: backgroundPadding.top,
-                  textBackgroundPaddingRight: backgroundPadding.right,
-                  textBackgroundPaddingBottom: backgroundPadding.bottom,
-                  textBackgroundPaddingLeft: backgroundPadding.left,
-                });
-                return;
-              }
-
-              updateBackgroundPaddingUniform(toUniformPaddingValue(backgroundPadding));
-            }}
-            onChangeUniform={updateBackgroundPaddingUniform}
-            onChangeSide={updateBackgroundPaddingSide}
-          />
-
-          <label className="flex flex-col gap-0.5">
-            <span className="text-gray-400">Arrondi du fond</span>
-            <input
-              type="number"
-              min={0}
-              value={backgroundRadius}
-              onChange={(e) => onChange({ textBackgroundBorderRadius: Number(e.target.value) })}
-              className="border border-gray-200 rounded px-2 py-1"
-            />
-          </label>
-        </div>
-      ) : null}
-      <BoxPaddingEditor
-        label={backgroundEnabled ? "Padding texte" : "Padding texte"}
-        values={textPadding}
-        split={textPaddingSplit}
-        onToggleSplit={(nextSplit) => {
-          if (nextSplit) {
-            onChange({
-              padding: undefined,
-              paddingTop: textPadding.top,
-              paddingRight: textPadding.right,
-              paddingBottom: textPadding.bottom,
-              paddingLeft: textPadding.left,
-            });
-            return;
-          }
-
-          updateTextPaddingUniform(toUniformPaddingValue(textPadding));
-        }}
-        onChangeUniform={updateTextPaddingUniform}
-        onChangeSide={updateTextPaddingSide}
-      />
-      <label className="flex flex-col gap-0.5">
-        <span className="text-gray-400">Alignement vertical</span>
-        <div className="flex gap-1">
-          {(["top", "middle", "bottom"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => onChange({ verticalAlign: v })}
-              title={v === "top" ? "Haut" : v === "middle" ? "Milieu" : "Bas"}
-              className={`flex-1 py-1 rounded border text-xs transition-colors ${
-                (style.verticalAlign ?? "top") === v
-                  ? "bg-indigo-600 text-white border-indigo-600"
-                  : "border-gray-200 text-gray-500 hover:border-indigo-300"
-              }`}
-            >
-              {v === "top" ? "↑" : v === "middle" ? "↕" : "↓"}
-            </button>
-          ))}
-        </div>
-      </label>
-      <label className="flex flex-col gap-0.5">
-        <span className="text-gray-400">Alignement horizontal</span>
-        <select value={style.textAlign ?? "left"}
-          onChange={(e) => onChange({ textAlign: e.target.value as BlockStyle["textAlign"] })}
-          className="border border-gray-200 rounded px-2 py-1"
-        >
-          <option value="left">Gauche</option>
-          <option value="center">Centre</option>
-          <option value="right">Droite</option>
-        </select>
-      </label>
-    </div>
-  );
-}
-
-function TextProps({
-  block,
-  globalFonts,
-  onChange,
-}: {
-  block: TextBlock;
-  globalFonts: BuilderFontEntry[];
-  onChange: (c: Partial<TextBlock>) => void;
-}) {
-  return (
-    <>
-      <Section label="Style">
-        <StyleEditor style={block.style}
-          globalFonts={globalFonts}
-          backgroundDefaults={{ width: block.w, height: block.h }}
-          onChange={(s) => onChange({ style: { ...block.style, ...s } })} />
-      </Section>
-      <Section label="Règles texte">
-        <div className="space-y-2">
-          <label className="flex flex-col gap-0.5">
-            <span className="text-gray-400">Max lignes</span>
-            <input type="number" min={1} placeholder="Illimite" value={block.rules.maxLines ?? ""}
-              onChange={(e) => onChange({ rules: { ...block.rules, maxLines: e.target.value ? Number(e.target.value) : undefined } })}
-              className="border border-gray-200 rounded px-2 py-1"
-            />
-            <span className="text-[10px] text-gray-400">Laisser vide pour autoriser autant de lignes que possible.</span>
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={!!block.rules.shrinkToFit}
-              onChange={(e) => onChange({ rules: {
-                ...block.rules,
-                shrinkToFit: e.target.checked,
-                minFontSize: e.target.checked ? (block.rules.minFontSize ?? Math.max(6, Math.round((block.style.fontSize ?? 14) * 0.6))) : undefined,
-              } })} />
-            <span className="text-gray-600">Shrink to fit</span>
-          </label>
-          {block.rules.shrinkToFit && (
-            <label className="flex flex-col gap-0.5">
-              <span className="text-gray-400">Taille min (pt)</span>
-              <input
-                type="number"
-                min={1}
-                step={0.5}
-                value={block.rules.minFontSize ?? ""}
-                onChange={(e) => onChange({ rules: { ...block.rules, minFontSize: e.target.value ? Number(e.target.value) : undefined } })}
-                className="border border-gray-200 rounded px-2 py-1"
-              />
-              <span className="text-[10px] text-gray-400">Le texte réduit jusqu&apos;à cette taille minimale s&apos;il ne rentre pas dans la box.</span>
-            </label>
-          )}
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={!!block.rules.uppercase}
-              onChange={(e) => onChange({ rules: { ...block.rules, uppercase: e.target.checked } })} />
-            <span className="text-gray-600">Majuscules</span>
-          </label>
-        </div>
-      </Section>
-    </>
-  );
-}
-
 
