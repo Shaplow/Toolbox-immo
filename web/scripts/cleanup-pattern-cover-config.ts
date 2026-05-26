@@ -16,7 +16,7 @@
  *   - All patterns with coverMode=auto that have legacy fields are reviewed
  */
 
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -65,7 +65,7 @@ async function main() {
 
     await prisma.accountPattern.update({
       where: { id: pattern.id },
-      data: { coverConfig: newConfig },
+      data: { coverConfig: newConfig as Prisma.InputJsonValue },
     });
     updated++;
   }
