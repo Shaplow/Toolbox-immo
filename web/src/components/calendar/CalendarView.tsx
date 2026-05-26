@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ChevronLeft, ChevronRight, Plus, RefreshCw, Calendar } from "lucide-react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Calendar, X } from "lucide-react";
 import { DAY_LABELS, type PublicationSlot } from "@/types/calendar";
 import { SlotCard } from "./SlotCard";
 import { SlotDetailPanel } from "./SlotDetailPanel";
@@ -48,6 +49,10 @@ function isSameDay(a: Date, b: Date) {
 }
 
 export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const initialAccountId = searchParams?.get("accountId") ?? "";
+
   const [weekStart, setWeekStart] = useState<Date>(() => new Date(initialWeekStart));
   const [slots, setSlots] = useState<PublicationSlot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,10 +63,20 @@ export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) 
   const [generating, setGenerating] = useState(false);
   const [confirmGenOpen, setConfirmGenOpen] = useState(false);
   const [filters, setFilters] = useState<CalendarFiltersState>({
-    accountId: "",
+    accountId: initialAccountId,
     status: "",
     contentType: "",
   });
+
+  /** Compte actif correspondant au filtre accountId, pour afficher le badge. */
+  const filteredAccount = filters.accountId
+    ? accounts.find((a) => a.id === filters.accountId) ?? null
+    : null;
+
+  function clearAccountFilter() {
+    setFilters((f) => ({ ...f, accountId: "" }));
+    router.replace("/calendar");
+  }
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const dateFrom = weekStart;
@@ -178,6 +193,21 @@ export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) 
         </div>
 
         <span className="text-sm font-medium text-gray-800">{weekLabel}</span>
+
+        {/* Badge filtre compte actif (provenant de ?accountId=) */}
+        {filteredAccount && (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+            @{filteredAccount.handle}
+            <button
+              type="button"
+              onClick={clearAccountFilter}
+              className="hover:text-indigo-900 transition-colors"
+              title="Effacer le filtre compte"
+            >
+              <X size={11} />
+            </button>
+          </span>
+        )}
 
         <div className="ml-auto flex items-center gap-2 flex-wrap">
           <CalendarFilters accounts={accounts} filters={filters} onChange={setFilters} />
