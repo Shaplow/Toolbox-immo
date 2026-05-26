@@ -41,16 +41,17 @@ L'app a pivoté d'une grille d'outils standalone vers un pipeline éditorial ave
 - **Impersonation** : utiliser `effectiveUser` (via `getUserContext`) pour les scopes de données, pas `auth()` direct.
 
 ### Modèles Prisma centraux
-- `PublicationSlot` (avec `assigneeMonteurId`, `assigneeCmId`, `recipeId`, `currentVersionId`, `publishedUrl`, `publishedAt`, `description`)
-- `ContentRecipe` (config production : source, template, library, needs* flags, defaultAssigneeMonteurId/CmId)
-- `Client` → 1..N `InstagramAccount` (`clientId` nullable)
-- `AccountPlan` (slots récurrents par compte)
+- `PublicationSlot` (avec `assigneeMonteurId`, `assigneeCmId`, `patternId`, `currentVersionId`, `publishedUrl`, `publishedAt`, `description`)
+- `AccountPattern` (Phase 1.6 — remplace ContentRecipe + AccountPlan + OfferScheduleRule) : pattern de publication par compte IG avec planning intégré (`dayOfWeek`, `publishTime`), source (`auto_template | manual_rushes | external_upload`), cover config, needs* flags, assignations par défaut
+- `Client` → 1..N `InstagramAccount` → 1..N `AccountPattern`
 - `PublicationVersion` (versions livrées monteur, soft-delete)
 - `PublicationComment`, `PublicationActivity` (fil + log)
 
+**Modèles supprimés en Phase 1.6** (ne pas les recréer) : `ContentRecipe`, `AccountPlan`, `OfferScheduleRule`
+
 ### Page fiche publication
 - Hub central : `/publications/[id]` (`web/src/app/(app)/publications/[id]/`)
-- 6 sections driven by recipe : Render, Cover, Captions, Description, Caption IG, Publish
+- 6 sections driven by pattern : Render, Cover, Captions, Description, Caption IG, Publish
 - `ProductionChain` visualise les steps depuis `computePublicationSteps`
 - `logActivity` (`web/src/lib/publications/activity.ts`) à appeler après chaque action métier significative (mark-published, comment, status change, assignee change)
 
@@ -73,18 +74,27 @@ L'app a pivoté d'une grille d'outils standalone vers un pipeline éditorial ave
 
 ### Navigation admin (3 sous-sections)
 ```
-PRODUCTION  — Templates / Recettes / Planification
-CLIENTS     — Clients (avec onglet Comptes Instagram)
+PRODUCTION  — Templates / Calendrier / Offres
+CLIENTS     — Clients (avec onglet Comptes Instagram → fiche compte → Patterns)
 CONFIGURATION — Ressources (hub 4 cards) / Utilisateurs
 ```
 - **Templates** : module central, dans Production (pas dans Outils — voir mémoire `templates-module-importance`)
+- **Calendrier** (`/calendar`) : vue hebdo des slots + bouton "Générer la semaine" (lit les `AccountPattern` actifs)
+- **Offres** (`/admin/offer-schedule`) : liste des codes d'offre uniquement (onglet Règles OfferScheduleRule supprimé Phase 1.6)
 - **Hub Ressources** : Médias / Données / Typographies / Prompts IA (extensible — ajouter une card pour tout nouveau type de ressource réutilisable)
-- **Comptes Instagram** : gérés via fiche Client `/admin/clients/[id]` onglet "Comptes" (PAS de page top-level)
+- **Comptes Instagram** : gérés via fiche Client `/admin/clients/[id]` onglet "Comptes" → lien "Configurer" → `/admin/accounts/[id]` (fiche compte avec patterns)
+- **Patterns** : gérés via `/admin/accounts/[id]` (form structuré, jamais de JSON exposé) — PAS de page `/admin/patterns` top-level
 - **Presets sous-titres** : gérés uniquement via `/tools/captions` (PAS de page admin dédiée)
-- **Offres** : onglet de `/admin/offer-schedule` (Planification), pas de page séparée
+
+**Routes supprimées en Phase 1.6** (retournent 404) : `/admin/recipes`, onglet Règles de `/admin/offer-schedule`
 
 ### Dette technique
-Voir mémoire `phase-1-2-technical-debt.md` pour la liste actualisée. Principaux items reportés :
+- Phase 1.2 : voir mémoire `phase-1-2-technical-debt.md`
+- Phase 1.6 : voir mémoire `project_phase_1_6_technical_debt.md` — notamment :
+  - Drop `Template.coverAutoConfig` (28 usages actifs, dépend refacto builder Phase 1.5+)
+  - Picker patterns dans `AddSlotModal` (champ texte libre pour l'instant)
+  - `computePublicationSteps` compat arg `recipe` (legacy, à supprimer)
+  - `CoverConfigEditor` champs avancés en JSON textarea (excludeZones, excludeSlotIds)
 - Refacto UX **interne** du module Templates (builder Canvas, ergonomie éditeur) — chantier dédié Phase 1.5+
 - Migration `MediaAssetsPanel` (2440 LOC) aux primitives UI — split en sous-composants requis avant
 - Libraries sous-pages restantes (MediaLibrariesPanel, DataLibrariesPanel, etc.) à migrer aux primitives
