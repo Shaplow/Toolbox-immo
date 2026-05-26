@@ -58,24 +58,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ cloned: 0, sources: [] });
   }
 
-  // Cloner chaque pattern vers le compte cible
-  const clonedIds: string[] = [];
-  for (const src of sourcePatterns) {
-    // Exclure les champs non transférables (id, accountId, timestamps)
-    const { id: srcId, accountId: _srcAccountId, createdAt: _srcCreatedAt, updatedAt: _srcUpdatedAt, ...rest } = src;
-    void _srcAccountId; void _srcCreatedAt; void _srcUpdatedAt;
-    await prisma.accountPattern.create({
-      data: {
-        ...rest,
-        accountId: targetAccountId,
-        // coverConfig est un Json nullable — on le passe tel quel
-        coverConfig: rest.coverConfig !== null && rest.coverConfig !== undefined
-          ? (rest.coverConfig as import("@prisma/client").Prisma.InputJsonValue)
-          : undefined,
-      },
-    });
-    clonedIds.push(srcId);
-  }
+  // Cloner chaque pattern vers le compte cible — atomique : si un create échoue,
+  // tous les patterns déjà clonés dans la même transaction sont rollback.
+  const clonedIds = await prisma.$transaction(async (tx) => {
+    const ids: string[] = [];
+    for (const src of sourcePatterns) {
+      // Exclure les champs non transférables (id, accountId, timestamps)
+      const { id: srcId, accountId: _srcAccountId, createdAt: _srcCreatedAt, updatedAt: _srcUpdatedAt, ...rest } = src;
+      void _srcAccountId; void _srcCreatedAt; void _srcUpdatedAt;
+      await tx.accountPattern.create({
+        data: {
+          ...rest,
+          accountId: targetAccountId,
+          // coverConfig est un Json nullable — on le passe tel quel
+          coverConfig: rest.coverConfig !== null && rest.coverConfig !== undefined
+            ? (rest.coverConfig as import("@prisma/client").Prisma.InputJsonValue)
+            : undefined,
+        },
+      });
+      ids.push(srcId);
+    }
+    return ids;
+  });
 
   return NextResponse.json({ cloned: clonedIds.length, sources: clonedIds });
 }
