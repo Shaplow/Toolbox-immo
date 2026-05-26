@@ -8,6 +8,7 @@ import type {
   ShapeBlock, SchemaField,
 } from "@/types/template";
 import { type BuilderFontEntry } from "@/lib/builderFonts";
+import { Slider } from "@/components/ui/Slider";
 import { Section } from "./Section";
 import { buildAnchoredSizeChange } from "./utils";
 import { BlockConditionalRulesSection } from "./BlockConditionalRulesSection";
@@ -17,6 +18,29 @@ import { VideoBlockPropertiesPanel } from "./VideoBlockPropertiesPanel";
 import { DPEBlockPropertiesPanel } from "./DPEBlockPropertiesPanel";
 import { TextBlockPropertiesPanel } from "./TextBlockPropertiesPanel";
 import { TextContentSection } from "./TextContentSection";
+
+/** Shared align button row used for both canvas align sections */
+function AlignButtonRow({
+  actions,
+}: {
+  actions: { title: string; label: string; fn: () => void }[];
+}) {
+  return (
+    <div className="flex gap-1">
+      {actions.map(({ title, label, fn }) => (
+        <button
+          key={title}
+          type="button"
+          title={title}
+          onClick={fn}
+          className="flex-1 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-colors"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function BlockBasePropertiesSection({
   block,
@@ -65,165 +89,141 @@ export function BlockBasePropertiesSection({
 
   return (
     <>
+      {/* ── Calque ── */}
       <Section label="Calque">
-        <label className="flex flex-col gap-0.5">
-          <span className="text-gray-400 uppercase">Nom</span>
-          <input
-            type="text"
-            value={block.name ?? ""}
-            onChange={(e) => updateBlock(block.id, { name: e.target.value } as Partial<AnyBlock>)}
-            placeholder={`${block.type}-${block.id.slice(-4)}`}
-            className="border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-          />
-        </label>
-        <label className="flex flex-col gap-0.5 mt-2">
-          <span className="text-gray-400 uppercase">Groupe</span>
-          <select
-            value={block.groupId ?? ""}
-            onChange={(e) => updateBlock(block.id, { groupId: e.target.value || undefined } as Partial<AnyBlock>)}
-            className="border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-          >
-            <option value="">Aucun groupe</option>
-            {template.groups.map((groupOption) => (
-              <option key={groupOption.id} value={groupOption.id}>{groupOption.name}</option>
-            ))}
-          </select>
-        </label>
-      </Section>
-
-      {/* Position & taille */}
-      <Section label="Position / Taille">
-        <div className="grid grid-cols-2 gap-2">
-          {(["x", "y", "w", "h", "z"] as const).map((field) => (
-            <label key={field} className="flex flex-col gap-0.5">
-              <span className="text-gray-400 uppercase">{field}</span>
-              <input
-                type="number"
-                value={(block as unknown as Record<string, number>)[field]}
-                min={field === "w" || field === "h" ? 0 : undefined}
-                onChange={(e) => {
-                  const value = Number(e.target.value);
-                  if (field === "w" || field === "h") {
-                    updateBlock(block.id, buildAnchoredSizeChange(block, field, value));
-                    return;
-                  }
-                  updateBlock(block.id, { [field]: value } as Partial<AnyBlock>);
-                }}
-                className="border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              />
-            </label>
-          ))}
-          {/* Rotation */}
-          <label className="flex flex-col gap-0.5 col-span-2">
-            <span className="text-gray-400 uppercase">Rotation (°)</span>
-            <div className="flex items-center gap-2">
-              <input
-                type="range"
-                min={-180}
-                max={180}
-                step={1}
-                value={block.rotation ?? 0}
-                onChange={(e) => updateBlock(block.id, { rotation: Number(e.target.value) || undefined } as Partial<AnyBlock>)}
-                className="flex-1"
-              />
-              <input
-                type="number"
-                min={-180}
-                max={180}
-                value={block.rotation ?? 0}
-                onChange={(e) => updateBlock(block.id, { rotation: Number(e.target.value) || undefined } as Partial<AnyBlock>)}
-                className="w-16 border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              />
-            </div>
+        <div className="space-y-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-600">Nom</span>
+            <input
+              type="text"
+              value={block.name ?? ""}
+              onChange={(e) => updateBlock(block.id, { name: e.target.value } as Partial<AnyBlock>)}
+              placeholder={`${block.type}-${block.id.slice(-4)}`}
+              className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-600">Groupe</span>
+            <select
+              value={block.groupId ?? ""}
+              onChange={(e) => updateBlock(block.id, { groupId: e.target.value || undefined } as Partial<AnyBlock>)}
+              className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+            >
+              <option value="">Aucun groupe</option>
+              {template.groups.map((groupOption) => (
+                <option key={groupOption.id} value={groupOption.id}>{groupOption.name}</option>
+              ))}
+            </select>
           </label>
         </div>
       </Section>
 
-      {/* Timing vidéo — visible si le template a un bloc vidéo OU une séquence */}
-      {((template.blocks.some((b) => b.type === "video") || (template.videoSequence?.length ?? 0) > 0)) && block.type !== "video" ? (
-        <Section label="Timing vidéo">
-          {/* Global fallback (non-sequence or per-slot not set) */}
+      {/* ── Position / Taille ── */}
+      <Section label="Position / Taille">
+        <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
-            <label className="flex flex-col gap-0.5">
-              <span className="text-gray-400 uppercase text-[10px]">Apparaît à (s)</span>
-              <input
-                type="number"
-                min={0}
-                step={0.5}
-                placeholder="0"
-                value={block.appearAt ?? ""}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  updateBlock(block.id, {
-                    appearAt: raw === "" ? undefined : Math.max(0, Number(raw)),
-                  } as Partial<AnyBlock>);
-                }}
-                className="border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 text-sm"
-              />
-            </label>
-            <label className="flex flex-col gap-0.5">
-              <span className="text-gray-400 uppercase text-[10px]">Disparaît à (s)</span>
-              <input
-                type="number"
-                min={0}
-                step={0.5}
-                placeholder="fin"
-                value={block.hideAt ?? ""}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  updateBlock(block.id, {
-                    hideAt: raw === "" ? undefined : Math.max(0, Number(raw)),
-                  } as Partial<AnyBlock>);
-                }}
-                className="border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 text-sm"
-              />
-            </label>
-          </div>
-          <p className="text-[10px] text-gray-400 mt-1">
-            Vide = valeur par défaut (0 s / fin de vidéo). Pas d&apos;effet sur les renders image.
-          </p>
-
-          {/* Per-slot overrides: renvoi vers la timeline */}
-          {(template.videoSequence?.length ?? 0) > 0 && (
-            <p className="text-[10px] text-indigo-500 mt-1">
-              Pour ajuster par clip : sélectionnez ce bloc + un clip dans la timeline ci-dessous.
-            </p>
-          )}
-        </Section>
-      ) : null}
-
-      <Section label="Aligner sur le canvas">
-        <div className="flex flex-col gap-1.5">
-          {/* Horizontal */}
-          <div className="flex gap-1">
-            {([
-              { title: "Aligner à gauche",        label: "⇤",  fn: () => ({ x: 0 }) },
-              { title: "Centrer horizontalement", label: "↔",  fn: () => ({ x: Math.round((template.canvas.width  - block.w) / 2) }) },
-              { title: "Aligner à droite",        label: "⇥",  fn: () => ({ x: template.canvas.width  - block.w }) },
-            ] as { title: string; label: string; fn: () => Partial<AnyBlock> }[]).map(({ title, label, fn }) => (
-              <button key={title} type="button" title={title} onClick={() => updateBlock(block.id, fn())}
-                className="flex-1 py-1.5 rounded border border-gray-200 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-colors">
-                {label}
-              </button>
+            {(["x", "y", "w", "h", "z"] as const).map((field) => (
+              <label key={field} className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-gray-600 uppercase">{field}</span>
+                <input
+                  type="number"
+                  value={(block as unknown as Record<string, number>)[field]}
+                  min={field === "w" || field === "h" ? 0 : undefined}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    if (field === "w" || field === "h") {
+                      updateBlock(block.id, buildAnchoredSizeChange(block, field, value));
+                      return;
+                    }
+                    updateBlock(block.id, { [field]: value } as Partial<AnyBlock>);
+                  }}
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+                />
+              </label>
             ))}
           </div>
-          {/* Vertical */}
-          <div className="flex gap-1">
-            {([
-              { title: "Aligner en haut",        label: "⇡",  fn: () => ({ y: 0 }) },
-              { title: "Centrer verticalement",  label: "↕",  fn: () => ({ y: Math.round((template.canvas.height - block.h) / 2) }) },
-              { title: "Aligner en bas",         label: "⇣",  fn: () => ({ y: template.canvas.height - block.h }) },
-            ] as { title: string; label: string; fn: () => Partial<AnyBlock> }[]).map(({ title, label, fn }) => (
-              <button key={title} type="button" title={title} onClick={() => updateBlock(block.id, fn())}
-                className="flex-1 py-1.5 rounded border border-gray-200 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-colors">
-                {label}
-              </button>
-            ))}
-          </div>
+
+          {/* Rotation slider + number input */}
+          <Slider
+            label="Rotation"
+            value={block.rotation ?? 0}
+            onChange={(v) => updateBlock(block.id, { rotation: v || undefined } as Partial<AnyBlock>)}
+            min={-180}
+            max={180}
+            unit="°"
+          />
         </div>
       </Section>
 
-      {/* Content (text blocks) — template string with {{variable}} interpolation */}
+      {/* ── Timing vidéo ── */}
+      {((template.blocks.some((b) => b.type === "video") || (template.videoSequence?.length ?? 0) > 0)) && block.type !== "video" ? (
+        <Section label="Timing vidéo">
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-gray-600">Apparaît à (s)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  placeholder="0"
+                  value={block.appearAt ?? ""}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    updateBlock(block.id, {
+                      appearAt: raw === "" ? undefined : Math.max(0, Number(raw)),
+                    } as Partial<AnyBlock>);
+                  }}
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-gray-600">Disparaît à (s)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  placeholder="fin"
+                  value={block.hideAt ?? ""}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    updateBlock(block.id, {
+                      hideAt: raw === "" ? undefined : Math.max(0, Number(raw)),
+                    } as Partial<AnyBlock>);
+                  }}
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+                />
+              </label>
+            </div>
+            <p className="text-[10px] text-gray-400">
+              Vide = valeur par défaut (0 s / fin de vidéo). Pas d&apos;effet sur les renders image.
+            </p>
+            {(template.videoSequence?.length ?? 0) > 0 && (
+              <p className="text-[10px] text-indigo-500">
+                Pour ajuster par clip : sélectionnez ce bloc + un clip dans la timeline ci-dessous.
+              </p>
+            )}
+          </div>
+        </Section>
+      ) : null}
+
+      {/* ── Aligner sur le canvas ── */}
+      <Section label="Aligner sur le canvas">
+        <div className="flex flex-col gap-1.5">
+          <AlignButtonRow actions={[
+            { title: "Aligner à gauche",        label: "⇤",  fn: () => updateBlock(block.id, { x: 0 }) },
+            { title: "Centrer horizontalement", label: "↔",  fn: () => updateBlock(block.id, { x: Math.round((template.canvas.width  - block.w) / 2) }) },
+            { title: "Aligner à droite",        label: "⇥",  fn: () => updateBlock(block.id, { x: template.canvas.width  - block.w }) },
+          ]} />
+          <AlignButtonRow actions={[
+            { title: "Aligner en haut",        label: "⇡",  fn: () => updateBlock(block.id, { y: 0 }) },
+            { title: "Centrer verticalement",  label: "↕",  fn: () => updateBlock(block.id, { y: Math.round((template.canvas.height - block.h) / 2) }) },
+            { title: "Aligner en bas",         label: "⇣",  fn: () => updateBlock(block.id, { y: template.canvas.height - block.h }) },
+          ]} />
+        </div>
+      </Section>
+
+      {/* ── Contenu (text blocks) ── */}
       {block.type === "text" && (
         <TextContentSection
           block={block as TextBlock}
@@ -237,7 +237,7 @@ export function BlockBasePropertiesSection({
         />
       )}
 
-      {/* Binding — only for image / dpe / shape blocks */}
+      {/* ── Binding (non-text blocks) ── */}
       {block.type !== "text" && (
         <Section label="Binding (variable)">
           <input
@@ -249,12 +249,10 @@ export function BlockBasePropertiesSection({
               const newKey = e.target.value.trim();
               const oldKey = prevBindingRef.current.trim();
 
-              // Nothing changed
               if (newKey === oldKey) return;
 
               let nextSchema = [...template.schema];
 
-              // Remove the old key if no OTHER block still uses it
               if (oldKey) {
                 const stillUsed = template.blocks.some(
                   (b) => b.id !== block.id && b.binding === oldKey
@@ -264,7 +262,6 @@ export function BlockBasePropertiesSection({
                 }
               }
 
-              // Add new key if non-empty and not already in schema
               if (newKey && !nextSchema.some((f) => f.key === newKey)) {
                 const inferredType: SchemaField["type"] =
                   block.type === "image" ? "image" :
@@ -280,9 +277,8 @@ export function BlockBasePropertiesSection({
               setSchema(nextSchema);
             }}
             placeholder="ex: price_eur"
-            className="w-full border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
           />
-          {/* Inline required toggle for this binding */}
           {block.binding && (() => {
             const sf = template.schema.find((f) => f.key === block.binding);
             if (!sf) return (
@@ -304,9 +300,10 @@ export function BlockBasePropertiesSection({
                   className="rounded"
                 />
                 <span className="text-gray-600 text-[11px]">Obligatoire dans le formulaire</span>
-                <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full ${
-                  sf.required ? "bg-red-50 text-red-400" : "bg-gray-100 text-gray-400"
-                }`}>
+                <span className={[
+                  "ml-auto text-[10px] px-1.5 py-0.5 rounded-full",
+                  sf.required ? "bg-red-50 text-red-400" : "bg-gray-100 text-gray-400",
+                ].join(" ")}>
                   {sf.required ? "*" : "optionnel"}
                 </span>
               </label>
@@ -315,7 +312,7 @@ export function BlockBasePropertiesSection({
         </Section>
       )}
 
-      {/* Text specific */}
+      {/* ── Block-type specific panels ── */}
       {block.type === "text" && (
         <TextBlockPropertiesPanel
           block={block as TextBlock}
@@ -323,23 +320,15 @@ export function BlockBasePropertiesSection({
           onUpdateBlock={(id, changes) => updateBlock(id, changes)}
         />
       )}
-
-      {/* Shape specific */}
       {block.type === "shape" && (
         <ShapeBlockPropertiesPanel block={block as ShapeBlock} onChange={(c) => updateBlock(block.id, c)} />
       )}
-
-      {/* Image specific */}
       {block.type === "image" && (
         <ImageBlockPropertiesPanel block={block as ImageBlock} onChange={(c) => updateBlock(block.id, c)} />
       )}
-
-      {/* Vidéo specific */}
       {block.type === "video" && (
         <VideoBlockPropertiesPanel block={block as VideoBlock} onChange={(c) => updateBlock(block.id, c)} />
       )}
-
-      {/* DPE specific */}
       {block.type === "dpe" && (
         <DPEBlockPropertiesPanel block={block as DPEBlock} onChange={(c) => updateBlock(block.id, c)} />
       )}
