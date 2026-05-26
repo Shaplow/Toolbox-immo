@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { LayoutList, Edit, Copy, Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
+import { Input } from "@/components/ui/Input";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { toast } from "@/components/ui/Toast";
@@ -217,6 +218,8 @@ function CloneDialog({
   const [loading, setLoading] = useState(false);
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
+  /** Filtre texte côté client — Phase 1.9 B3 */
+  const [filterQuery, setFilterQuery] = useState("");
 
   // Load accounts list when the dialog opens
   useEffect(() => {
@@ -310,18 +313,36 @@ function CloneDialog({
               ) : accounts.length === 0 ? (
                 <p className="text-sm text-gray-400">Aucun autre compte disponible.</p>
               ) : (
-                <select
-                  value={sourceAccountId}
-                  onChange={(e) => setSourceAccountId(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-                >
-                  <option value="">— Sélectionner un compte —</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      @{a.handle}{a.clientName ? ` (${a.clientName})` : ""}
-                    </option>
-                  ))}
-                </select>
+                <div className="space-y-2">
+                  {/* Filtre texte — Phase 1.9 B3 */}
+                  <Input
+                    value={filterQuery}
+                    onChange={setFilterQuery}
+                    placeholder="Filtrer par @handle ou nom de client…"
+                  />
+                  <select
+                    value={sourceAccountId}
+                    onChange={(e) => setSourceAccountId(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                  >
+                    <option value="">— Sélectionner un compte —</option>
+                    {accounts
+                      .filter((a) => {
+                        const q = filterQuery.toLowerCase().trim();
+                        if (!q) return true;
+                        return (
+                          a.handle.toLowerCase().includes(q) ||
+                          (a.clientName ?? "").toLowerCase().includes(q) ||
+                          a.name.toLowerCase().includes(q)
+                        );
+                      })
+                      .map((a) => (
+                        <option key={a.id} value={a.id}>
+                          @{a.handle}{a.clientName ? ` (${a.clientName})` : ""}
+                        </option>
+                      ))}
+                  </select>
+                </div>
               )}
             </FormField>
           </div>

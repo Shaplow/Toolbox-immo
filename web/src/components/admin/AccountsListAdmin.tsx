@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Instagram, Settings2, ChevronRight } from "lucide-react";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Input } from "@/components/ui/Input";
 
 interface AccountItem {
   id: string;
@@ -72,14 +73,12 @@ export function AccountsListAdmin({ accounts }: Props) {
         subtitle={`${accounts.length} compte${accounts.length !== 1 ? "s" : ""} répartis sur ${totalClients} client${totalClients !== 1 ? "s" : ""}`}
       />
 
-      {/* Search bar */}
-      <div className="mb-6">
-        <input
-          type="search"
+      {/* Search bar — Phase 1.9 B3 : migré vers primitif Input */}
+      <div className="mb-6 max-w-sm">
+        <Input
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Rechercher par handle, nom ou client…"
-          className="w-full max-w-sm rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          onChange={setSearch}
+          placeholder="Rechercher par @handle, nom ou client…"
         />
       </div>
 
