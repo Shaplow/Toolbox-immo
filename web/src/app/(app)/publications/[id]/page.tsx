@@ -1,4 +1,5 @@
 import { redirect, notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
@@ -10,6 +11,18 @@ import type { CommentData } from "@/components/publications/CommentItem";
 import type { ActivityItem } from "@/components/publications/ActivityTimeline";
 
 type PageProps = { params: Promise<{ id: string }> };
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { id } = await params;
+  const slot = await prisma.publicationSlot.findUnique({
+    where: { id },
+    select: { contentType: true, account: { select: { handle: true } } },
+  });
+  if (!slot) return { title: "Publication | Toolbox Immo" };
+  return {
+    title: `${slot.contentType} · @${slot.account.handle} | Toolbox Immo`,
+  };
+}
 
 export default async function PublicationPage({ params }: PageProps) {
   const userContext = await getUserContext();

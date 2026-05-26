@@ -1,11 +1,22 @@
 ﻿import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { RenderResult } from "@/components/renders/RenderResult";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
 
 type Props = { params: Promise<{ id: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params;
+  const render = await prisma.render.findUnique({
+    where: { id },
+    select: { template: { select: { name: true } } },
+  });
+  const name = render?.template?.name ?? "Rendu";
+  return { title: `${name} | Toolbox Immo` };
+}
 
 export default async function RenderPage({ params }: Props) {
   const { id } = await params;
