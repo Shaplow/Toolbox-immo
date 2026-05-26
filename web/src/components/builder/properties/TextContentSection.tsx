@@ -79,23 +79,54 @@ export function TextContentSection({
     applySegments([...currentSegments, baseSegment]);
   }
 
+  const segmentTypeLabel: Record<TextTemplateSegment["type"], string> = {
+    text: "Texte",
+    variable: "Variable",
+    if: "Condition",
+  };
+  const segmentTypeBadge: Record<TextTemplateSegment["type"], string> = {
+    text: "bg-gray-100 text-gray-500",
+    variable: "bg-indigo-50 text-indigo-600",
+    if: "bg-amber-50 text-amber-600",
+  };
+
   return (
     <Section label="Contenu">
       <div className="space-y-2">
         {currentSegments.length === 0 && (
-          <div className="border border-dashed border-gray-200 rounded-lg px-3 py-3 text-[11px] text-gray-400">
+          <div className="border border-dashed border-gray-200 rounded-lg px-3 py-3 text-[11px] text-gray-400 text-center">
             Aucun segment. Ajoutez du texte, une variable ou une condition.
           </div>
         )}
         {currentSegments.map((segment, index) => (
-          <div key={`${segment.type}-${index}`} className="border border-gray-200 rounded-lg p-2 space-y-2 bg-gray-50">
+          <div key={`${segment.type}-${index}`} className="border border-gray-200 rounded-lg p-2.5 space-y-2 bg-white">
+            {/* Segment header */}
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-wide text-gray-400 min-w-16">
-                {segment.type === "text" ? "Texte" : segment.type === "variable" ? "Variable" : "Condition"}
+              <span className={[
+                "text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded-md",
+                segmentTypeBadge[segment.type],
+              ].join(" ")}>
+                {segmentTypeLabel[segment.type]}
               </span>
-              <button type="button" onClick={() => moveSegment(index, -1)} disabled={index === 0} className="px-1.5 py-0.5 text-[10px] border rounded disabled:opacity-30">↑</button>
-              <button type="button" onClick={() => moveSegment(index, 1)} disabled={index === currentSegments.length - 1} className="px-1.5 py-0.5 text-[10px] border rounded disabled:opacity-30">↓</button>
-              <button type="button" onClick={() => removeSegment(index)} className="ml-auto px-1.5 py-0.5 text-[10px] border border-red-200 text-red-500 rounded">Suppr.</button>
+              <div className="flex items-center gap-1 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => moveSegment(index, -1)}
+                  disabled={index === 0}
+                  className="px-1.5 py-0.5 text-[10px] border border-gray-200 rounded text-gray-500 hover:border-indigo-300 hover:text-indigo-600 disabled:opacity-30 transition-colors"
+                >↑</button>
+                <button
+                  type="button"
+                  onClick={() => moveSegment(index, 1)}
+                  disabled={index === currentSegments.length - 1}
+                  className="px-1.5 py-0.5 text-[10px] border border-gray-200 rounded text-gray-500 hover:border-indigo-300 hover:text-indigo-600 disabled:opacity-30 transition-colors"
+                >↓</button>
+                <button
+                  type="button"
+                  onClick={() => removeSegment(index)}
+                  className="px-1.5 py-0.5 text-[10px] border border-red-200 text-red-400 rounded hover:bg-red-50 hover:text-red-600 transition-colors"
+                >Suppr.</button>
+              </div>
             </div>
 
             {segment.type === "text" && (
@@ -105,7 +136,7 @@ export function TextContentSection({
                 onChange={(e) => updateSegment(index, { ...segment, value: e.target.value })}
                 onKeyDown={(e) => e.stopPropagation()}
                 placeholder="Texte libre"
-                className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
               />
             )}
 
@@ -117,7 +148,7 @@ export function TextContentSection({
                   value={segment.key}
                   onChange={(e) => updateSegment(index, { ...segment, key: e.target.value.replace(/\s+/g, "_") })}
                   placeholder="nom_variable"
-                  className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
                 />
                 <TextFieldMeta
                   field={schema.find((field) => field.key === segment.key)}
@@ -134,7 +165,7 @@ export function TextContentSection({
                   <select
                     value={segment.field}
                     onChange={(e) => updateSegment(index, { ...segment, field: e.target.value })}
-                    className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
                   >
                     <option value="">Choisir une variable</option>
                     {schemaFieldOptions.map((field) => (
@@ -151,7 +182,7 @@ export function TextContentSection({
                     value={segment.equals}
                     onChange={(e) => updateSegment(index, { ...segment, equals: e.target.value })}
                     placeholder="valeur attendue"
-                    className="border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
                   />
                 </div>
                 {(() => {
@@ -173,7 +204,12 @@ export function TextContentSection({
                                 key={option}
                                 type="button"
                                 onClick={() => updateSegment(index, { ...segment, equals: option })}
-                                className={`rounded-full px-2 py-0.5 text-[10px] border ${isActive ? "border-indigo-300 bg-indigo-50 text-indigo-700" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"}`}
+                                className={[
+                                  "rounded-full px-2 py-0.5 text-[10px] border transition-colors",
+                                  isActive
+                                    ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50",
+                                ].join(" ")}
                               >
                                 {option}
                               </button>
@@ -184,26 +220,26 @@ export function TextContentSection({
                     </div>
                   );
                 })()}
-                <label className="flex flex-col gap-0.5">
-                  <span className="text-[11px] text-gray-400">Si vrai</span>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-gray-600">Si vrai</span>
                   <textarea
                     rows={2}
                     value={segment.thenContent}
                     onChange={(e) => updateSegment(index, { ...segment, thenContent: e.target.value })}
                     onKeyDown={(e) => e.stopPropagation()}
                     placeholder="Contenu affiché si la condition est vraie"
-                    className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
                   />
                 </label>
-                <label className="flex flex-col gap-0.5">
-                  <span className="text-[11px] text-gray-400">Sinon</span>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-gray-600">Sinon</span>
                   <textarea
                     rows={2}
                     value={segment.elseContent ?? ""}
                     onChange={(e) => updateSegment(index, { ...segment, elseContent: e.target.value })}
                     onKeyDown={(e) => e.stopPropagation()}
                     placeholder="Contenu affiché sinon (optionnel)"
-                    className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
                   />
                 </label>
               </div>
@@ -212,10 +248,18 @@ export function TextContentSection({
         ))}
       </div>
 
+      {/* Add segment buttons */}
       <div className="flex flex-wrap gap-1.5 mt-2">
-        <button type="button" onClick={() => addSegment("text")} className="px-2 py-1 text-[11px] border rounded hover:bg-gray-50">+ Texte</button>
-        <button type="button" onClick={() => addSegment("variable")} className="px-2 py-1 text-[11px] border rounded hover:bg-gray-50">+ Variable</button>
-        <button type="button" onClick={() => addSegment("if")} className="px-2 py-1 text-[11px] border rounded hover:bg-gray-50">+ Condition</button>
+        {(["text", "variable", "if"] as const).map((type) => (
+          <button
+            key={type}
+            type="button"
+            onClick={() => addSegment(type)}
+            className="px-2 py-1 text-[11px] border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-600 transition-colors"
+          >
+            + {type === "text" ? "Texte" : type === "variable" ? "Variable" : "Condition"}
+          </button>
+        ))}
       </div>
 
       <datalist id={schemaKeyListId}>
@@ -227,7 +271,7 @@ export function TextContentSection({
       </datalist>
 
       <details className="mt-3">
-        <summary className="cursor-pointer text-[11px] text-gray-500">Mode avancé</summary>
+        <summary className="cursor-pointer text-[11px] text-gray-500 select-none">Mode avancé</summary>
         <textarea
           rows={4}
           value={currentContent}
@@ -239,7 +283,7 @@ export function TextContentSection({
           onBlur={(e) => onSyncTextSchema(prevContentRef.current, e.target.value)}
           onKeyDown={(e) => e.stopPropagation()}
           placeholder={`Texte libre avec variables :\n{{prix}} € · Surface : {{surface}} m²\n\nConditionnel :\n{{#if is_copro == oui}} - Nbre lots : {{nbre_lots}}{{/if}}`}
-          className="mt-2 w-full border border-gray-200 rounded px-2 py-1.5 text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          className="mt-2 w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
         />
       </details>
 
@@ -249,6 +293,7 @@ export function TextContentSection({
         Les espaces, tirets et retours à la ligne sont conservés tels qu&apos;ils sont écrits.
       </p>
 
+      {/* Aperçu */}
       <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
         <div className="flex items-center justify-between gap-2">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Aperçu</p>
@@ -260,7 +305,9 @@ export function TextContentSection({
             className="rounded"
           />
         </div>
-        <pre className="mt-1 whitespace-pre-wrap break-words text-xs text-gray-700 font-sans">{previewText || "Aucun contenu affiché avec les valeurs actuelles."}</pre>
+        <pre className="mt-1 whitespace-pre-wrap break-words text-xs text-gray-700 font-sans">
+          {previewText || "Aucun contenu affiché avec les valeurs actuelles."}
+        </pre>
       </div>
 
       {extractTemplateVars(currentContent).map((key) => {
@@ -277,9 +324,12 @@ export function TextContentSection({
               className="rounded"
             />
             <code className="text-[11px] text-indigo-700 bg-indigo-50 px-1 rounded">{`{{${key}}}`}</code>
-            <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full ${
-              sf.required ? "bg-red-50 text-red-400" : "bg-gray-100 text-gray-400"
-            }`}>{sf.required ? "*" : "opt"}</span>
+            <span className={[
+              "ml-auto text-[10px] px-1.5 py-0.5 rounded-full",
+              sf.required ? "bg-red-50 text-red-400" : "bg-gray-100 text-gray-400",
+            ].join(" ")}>
+              {sf.required ? "*" : "opt"}
+            </span>
           </label>
         );
       })}

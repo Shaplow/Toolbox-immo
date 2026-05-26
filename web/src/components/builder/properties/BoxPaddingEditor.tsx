@@ -19,23 +19,25 @@ export function BoxPaddingEditor({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-gray-400">{label}</span>
+        <span className="text-xs font-medium text-gray-600">{label}</span>
         <div className="grid grid-cols-2 gap-1 rounded-lg border border-gray-200 bg-white p-1">
           <button
             type="button"
             onClick={() => onToggleSplit(false)}
-            className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-              !split ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"
-            }`}
+            className={[
+              "rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+              !split ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50",
+            ].join(" ")}
           >
             Uniforme
           </button>
           <button
             type="button"
             onClick={() => onToggleSplit(true)}
-            className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-              split ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"
-            }`}
+            className={[
+              "rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+              split ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50",
+            ].join(" ")}
           >
             Côtés
           </button>
@@ -50,27 +52,27 @@ export function BoxPaddingEditor({
             ["bottom", "Bas"],
             ["left", "Gauche"],
           ] as const).map(([side, sideLabel]) => (
-            <label key={side} className="flex flex-col gap-0.5">
-              <span className="text-gray-400">{sideLabel}</span>
+            <label key={side} className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-600">{sideLabel}</span>
               <input
                 type="number"
                 min={0}
                 value={values[side]}
                 onChange={(e) => onChangeSide(side, Number(e.target.value))}
-                className="border border-gray-200 rounded px-2 py-1"
+                className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
               />
             </label>
           ))}
         </div>
       ) : (
-        <label className="flex flex-col gap-0.5">
-          <span className="text-gray-400">Padding</span>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-600">Padding</span>
           <input
             type="number"
             min={0}
             value={toUniformPaddingValue(values)}
             onChange={(e) => onChangeUniform(Number(e.target.value))}
-            className="border border-gray-200 rounded px-2 py-1"
+            className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
           />
         </label>
       )}
