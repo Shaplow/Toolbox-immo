@@ -31,7 +31,7 @@ export default async function AccountFichePage({ params }: Props) {
     include: {
       client: { select: { id: true, name: true } },
       accountPatterns: {
-        orderBy: [{ dayOfWeek: "asc" }, { publishTime: "asc" }],
+        orderBy: [{ publishTime: "asc" }, { label: "asc" }],
         include: {
           template: { select: { id: true, name: true } },
           defaultAssigneeMonteur: { select: { id: true, name: true } },

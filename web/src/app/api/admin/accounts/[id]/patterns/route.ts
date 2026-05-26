@@ -29,7 +29,7 @@ type PostBody = {
   needsClientValidation?: boolean;
   needsRushes?: boolean;
   needsBrief?: boolean;
-  dayOfWeek?: number;
+  dayOfWeek?: number[];
   publishTime?: string;
   isActive?: boolean;
   defaultAssigneeMonteurId?: string | null;
@@ -45,7 +45,7 @@ function validatePatternBody(body: PostBody, requireAll: boolean): string | null
     if (!body.source) return "Le champ source est requis";
     if (!body.coverMode) return "Le champ coverMode est requis";
     if (!body.needsDescription) return "Le champ needsDescription est requis";
-    if (body.dayOfWeek == null) return "Le champ dayOfWeek est requis";
+    if (!Array.isArray(body.dayOfWeek) || body.dayOfWeek.length === 0) return "Le champ dayOfWeek est requis (tableau non vide)";
     if (!body.publishTime) return "Le champ publishTime est requis";
   }
 
@@ -59,8 +59,13 @@ function validatePatternBody(body: PostBody, requireAll: boolean): string | null
     return `needsDescription invalide. Valeurs acceptées : ${VALID_NEEDS_DESCRIPTION.join(", ")}`;
   }
   if (body.dayOfWeek !== undefined) {
-    const d = Number(body.dayOfWeek);
-    if (!Number.isInteger(d) || d < 1 || d > 7) return "dayOfWeek doit être un entier entre 1 (lundi) et 7 (dimanche)";
+    if (!Array.isArray(body.dayOfWeek) || body.dayOfWeek.length === 0) {
+      return "dayOfWeek doit être un tableau non vide";
+    }
+    const validDays = body.dayOfWeek.every(
+      (d: unknown) => typeof d === "number" && Number.isInteger(d) && d >= 1 && d <= 7
+    );
+    if (!validDays) return "Chaque jour doit être un entier entre 1 (lundi) et 7 (dimanche)";
   }
   if (body.publishTime !== undefined && !PUBLISH_TIME_RE.test(body.publishTime)) {
     return "publishTime doit être au format HH:MM";
@@ -90,7 +95,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const patterns = await prisma.accountPattern.findMany({
     where: { accountId: id },
-    orderBy: [{ dayOfWeek: "asc" }, { publishTime: "asc" }],
+    orderBy: [{ publishTime: "asc" }, { label: "asc" }],
     include: patternIncludes,
   });
 
@@ -130,7 +135,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         needsClientValidation: body.needsClientValidation ?? false,
         needsRushes: body.needsRushes ?? false,
         needsBrief: body.needsBrief ?? false,
-        dayOfWeek: Number(body.dayOfWeek),
+        dayOfWeek: [...new Set(body.dayOfWeek!)].sort((a, b) => a - b),
         publishTime: body.publishTime!,
         isActive: body.isActive ?? true,
         defaultAssigneeMonteurId: body.defaultAssigneeMonteurId ?? null,
