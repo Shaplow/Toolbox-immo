@@ -24,7 +24,6 @@ export type AccountPatternRow = {
   label: string;
   source: string;
   templateId: string | null;
-  libraryId: string | null;
   coverMode: string;
   coverConfig: unknown;
   needsDescription: string;
@@ -42,7 +41,6 @@ export type AccountPatternRow = {
 
 type UserOption = { id: string; name: string | null; role: string };
 type TemplateOption = { id: string; name: string };
-type LibraryOption = { id: string; name: string };
 
 type Props = {
   accountId: string;
@@ -59,7 +57,6 @@ type FormValues = {
   isActive: boolean;
   source: string;
   templateId: string;
-  libraryId: string;
   coverMode: string;
   coverConfigJson: string;
   needsCaptions: boolean;
@@ -81,7 +78,6 @@ function defaultValues(initial?: AccountPatternRow | null): FormValues {
       isActive: true,
       source: "auto_template",
       templateId: "",
-      libraryId: "",
       coverMode: "none",
       coverConfigJson: "",
       needsCaptions: false,
@@ -101,7 +97,6 @@ function defaultValues(initial?: AccountPatternRow | null): FormValues {
     isActive: initial.isActive,
     source: initial.source,
     templateId: initial.templateId ?? "",
-    libraryId: initial.libraryId ?? "",
     coverMode: initial.coverMode,
     coverConfigJson:
       initial.coverConfig != null ? JSON.stringify(initial.coverConfig, null, 2) : "",
@@ -148,7 +143,6 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
 
   // Options fetched client-side
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
-  const [libraries, setLibraries] = useState<LibraryOption[]>([]);
   const [monteurs, setMonteurs] = useState<UserOption[]>([]);
   const [cms, setCms] = useState<UserOption[]>([]);
 
@@ -168,18 +162,13 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
 
   async function fetchOptions() {
     try {
-      const [tplRes, libRes, usersRes] = await Promise.all([
+      const [tplRes, usersRes] = await Promise.all([
         fetch("/api/templates"),
-        fetch("/api/admin/libraries/media"),
         fetch("/api/admin/users"),
       ]);
       if (tplRes.ok) {
         const tpls = await tplRes.json() as TemplateOption[];
         setTemplates(tpls.map((t) => ({ id: t.id, name: t.name })));
-      }
-      if (libRes.ok) {
-        const libs = await libRes.json() as LibraryOption[];
-        setLibraries(libs.map((l) => ({ id: l.id, name: l.name })));
       }
       if (usersRes.ok) {
         const users = await usersRes.json() as UserOption[];
@@ -226,7 +215,6 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
         isActive: values.isActive,
         source: values.source,
         templateId: values.templateId || null,
-        libraryId: values.libraryId || null,
         coverMode: values.coverMode,
         coverConfig,
         needsCaptions: values.needsCaptions,
@@ -339,14 +327,6 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
                     />
                   </FormField>
                 )}
-                <FormField label="Bibliothèque (optionnel)">
-                  <SelectField
-                    value={values.libraryId}
-                    onChange={(v) => set("libraryId", v)}
-                    options={libraries}
-                    placeholder="— Aucune bibliothèque —"
-                  />
-                </FormField>
               </Section>
 
               {/* ── Section 3 : Cover ── */}

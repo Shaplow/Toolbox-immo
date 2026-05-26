@@ -15,7 +15,6 @@ const PUBLISH_TIME_RE = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
 
 const patternIncludes = {
   template: { select: { id: true, name: true } },
-  library: { select: { id: true, name: true } },
   defaultAssigneeMonteur: { select: { id: true, name: true } },
   defaultAssigneeCm: { select: { id: true, name: true } },
   _count: { select: { publicationSlots: true } },
@@ -25,7 +24,6 @@ type PatchBody = {
   label?: string;
   source?: string;
   templateId?: string | null;
-  libraryId?: string | null;
   coverMode?: string;
   coverConfig?: unknown;
   needsDescription?: string;
@@ -110,7 +108,6 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (body.label !== undefined) data.label = body.label.trim();
   if (body.source !== undefined) data.source = body.source;
   if ("templateId" in body) data.template = body.templateId ? { connect: { id: body.templateId } } : { disconnect: true };
-  if ("libraryId" in body) data.library = body.libraryId ? { connect: { id: body.libraryId } } : { disconnect: true };
   if (body.coverMode !== undefined) data.coverMode = body.coverMode;
   if ("coverConfig" in body) data.coverConfig = body.coverConfig !== null && body.coverConfig !== undefined ? (body.coverConfig as Prisma.InputJsonValue) : Prisma.JsonNull;
   if (body.needsDescription !== undefined) data.needsDescription = body.needsDescription;

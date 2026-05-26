@@ -13,7 +13,6 @@ const PUBLISH_TIME_RE = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
 
 const patternIncludes = {
   template: { select: { id: true, name: true } },
-  library: { select: { id: true, name: true } },
   defaultAssigneeMonteur: { select: { id: true, name: true } },
   defaultAssigneeCm: { select: { id: true, name: true } },
   _count: { select: { publicationSlots: true } },
@@ -23,7 +22,6 @@ type PostBody = {
   label?: string;
   source?: string;
   templateId?: string | null;
-  libraryId?: string | null;
   coverMode?: string;
   coverConfig?: unknown;
   needsDescription?: string;
@@ -117,7 +115,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         label: body.label!.trim(),
         source: body.source!,
         templateId: body.templateId ?? null,
-        libraryId: body.libraryId ?? null,
         coverMode: body.coverMode!,
         coverConfig: body.coverConfig !== undefined ? (body.coverConfig as import("@prisma/client").Prisma.InputJsonValue) : undefined,
         needsDescription: body.needsDescription!,
