@@ -57,7 +57,7 @@ export const TOOL_META: Record<ToolKey, ToolMeta> = {
     badge: null,
   },
   transcription: {
-    href: "/tools/transcription",
+    href: "/transcriptions",
     navLabel: "Transcription",
     cardLabel: "Transcription",
     description:

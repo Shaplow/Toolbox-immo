@@ -116,7 +116,7 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
   }, [job.id]);
 
   const relaunchWithDiarization = useCallback(async () => {
-    router.push("/tools/transcription");
+    router.push("/transcriptions");
   }, [router]);
 
   const handleUseInCaptions = useCallback(() => {
@@ -128,7 +128,7 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
       {/* Back */}
       <button
         type="button"
-        onClick={() => router.push("/tools/transcription")}
+        onClick={() => router.push("/transcriptions")}
         className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900"
       >
         <ArrowLeft className="w-4 h-4" />

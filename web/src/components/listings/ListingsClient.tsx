@@ -456,7 +456,7 @@ export function ListingsClient({
               <p className="font-medium">Aucune transcription</p>
               <p className="text-sm mt-1">
                 Rendez-vous dans{" "}
-                <Link href="/tools/transcription" className="text-teal-600 hover:underline">Transcription</Link>
+                <Link href="/transcriptions" className="text-teal-600 hover:underline">Transcription</Link>
               </p>
             </>
           ) : (
@@ -1056,7 +1056,7 @@ function TranscriptionCard({
             </a>
           )}
           <Link
-            href={`/tools/transcription/${job.id}`}
+            href={`/transcriptions/${job.id}`}
             className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 font-medium transition-colors"
           >
             Détails →
