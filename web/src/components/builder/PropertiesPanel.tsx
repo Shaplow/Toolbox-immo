@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import {
   compileTextTemplate,
   extractTemplateVars,
@@ -15,7 +15,7 @@ import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackground
 import { useBuilderStore } from "@/lib/store/builderStore";
 import type {
   AnyBlock, TextBlock, ImageBlock, VideoBlock, DPEBlock,
-  ShapeBlock, ShapeKind, BlockStyle, SchemaField, LayerGroup, MusicBlock,
+  ShapeBlock, BlockStyle, SchemaField, LayerGroup, MusicBlock,
 } from "@/types/template";
 import type { ListingData } from "@/types/listing";
 import { Section } from "./properties/Section";
@@ -25,6 +25,10 @@ import { FontFamilyPicker } from "./properties/FontFamilyPicker";
 import { TextFieldMeta } from "./properties/TextFieldMeta";
 import { BlockConditionalRulesSection } from "./properties/BlockConditionalRulesSection";
 import { GroupConditionalRulesSection } from "./properties/GroupConditionalRulesSection";
+import { ShapeBlockPropertiesPanel } from "./properties/ShapeBlockPropertiesPanel";
+import { ImageBlockPropertiesPanel } from "./properties/ImageBlockPropertiesPanel";
+import { VideoBlockPropertiesPanel } from "./properties/VideoBlockPropertiesPanel";
+import { DPEBlockPropertiesPanel } from "./properties/DPEBlockPropertiesPanel";
 
 export function PropertiesPanel({
   globalFonts,
@@ -1184,22 +1188,22 @@ export function PropertiesPanel({
 
         {/* Shape specific */}
         {block.type === "shape" && (
-          <ShapeProps block={block as ShapeBlock} onChange={(c) => updateBlock(block.id, c)} />
+          <ShapeBlockPropertiesPanel block={block as ShapeBlock} onChange={(c) => updateBlock(block.id, c)} />
         )}
 
         {/* Image specific */}
         {block.type === "image" && (
-          <ImageProps block={block as ImageBlock} onChange={(c) => updateBlock(block.id, c)} />
+          <ImageBlockPropertiesPanel block={block as ImageBlock} onChange={(c) => updateBlock(block.id, c)} />
         )}
 
         {/* Vidéo specific */}
         {block.type === "video" && (
-          <VideoProps block={block as VideoBlock} onChange={(c) => updateBlock(block.id, c)} />
+          <VideoBlockPropertiesPanel block={block as VideoBlock} onChange={(c) => updateBlock(block.id, c)} />
         )}
 
         {/* DPE specific */}
         {block.type === "dpe" && (
-          <DPEProps block={block as DPEBlock} onChange={(c) => updateBlock(block.id, c)} />
+          <DPEBlockPropertiesPanel block={block as DPEBlock} onChange={(c) => updateBlock(block.id, c)} />
         )}
 
         <BlockConditionalRulesSection
@@ -1701,294 +1705,4 @@ function TextProps({
   );
 }
 
-function ShapeProps({ block, onChange }: { block: ShapeBlock; onChange: (c: Partial<ShapeBlock>) => void }) {
-  return (
-    <>
-      <Section label="Forme">
-        <select
-          value={block.shape}
-          onChange={(e) => onChange({ shape: e.target.value as ShapeKind })}
-          className="w-full border border-gray-200 rounded px-2 py-1"
-        >
-          <option value="rectangle">▬ Rectangle</option>
-          <option value="circle">● Cercle / Ovale</option>
-          <option value="triangle">▲ Triangle</option>
-          <option value="diamond">◆ Diamant</option>
-        </select>
-      </Section>
-      <Section label="Couleurs">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-gray-400">Remplissage</label>
-            <input
-              type="color"
-              value={block.fillColor}
-              onChange={(e) => onChange({ fillColor: e.target.value })}
-              className="w-8 h-6 cursor-pointer rounded border border-gray-200"
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <label className="text-gray-400">Contour</label>
-            <input
-              type="color"
-              value={block.borderColor ?? "#000000"}
-              onChange={(e) => onChange({ borderColor: e.target.value })}
-              className="w-8 h-6 cursor-pointer rounded border border-gray-200"
-            />
-          </div>
-        </div>
-      </Section>
-      <Section label="Options">
-        <div className="space-y-2">
-          {block.shape === "rectangle" && (
-            <label className="flex flex-col gap-0.5">
-              <span className="text-gray-400">Arrondi (px)</span>
-              <input
-                type="number" min={0} max={500}
-                value={block.borderRadius ?? 0}
-                onChange={(e) => onChange({ borderRadius: Number(e.target.value) })}
-                className="border border-gray-200 rounded px-2 py-1"
-              />
-            </label>
-          )}
-          <label className="flex flex-col gap-0.5">
-            <span className="text-gray-400">Épaisseur contour (px)</span>
-            <input
-              type="number" min={0} max={50}
-              value={block.borderWidth ?? 0}
-              onChange={(e) => onChange({ borderWidth: Number(e.target.value) || undefined })}
-              className="border border-gray-200 rounded px-2 py-1"
-            />
-          </label>
-          <label className="flex flex-col gap-0.5">
-            <span className="text-gray-400">Opacité (0–1)</span>
-            <div className="flex items-center gap-2">
-              <input
-                type="range" min={0} max={1} step={0.05}
-                value={block.opacity ?? 1}
-                onChange={(e) => onChange({ opacity: Number(e.target.value) })}
-                className="flex-1"
-              />
-              <span className="text-gray-500 w-8 text-right">{((block.opacity ?? 1) * 100).toFixed(0)}%</span>
-            </div>
-          </label>
-        </div>
-      </Section>
-    </>
-  );
-}
-
-function ImageProps({ block, onChange }: { block: ImageBlock; onChange: (c: Partial<ImageBlock>) => void }) {
-  const staticInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-
-  async function handleStaticUpload(file: File) {
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      const data = await res.json();
-      if (data.url) onChange({ staticSrc: data.url });
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  return (
-    <Section label="Options image">
-      {/* Image statique (logo, fond fixe) */}
-      <div className="mb-3">
-        <p className="text-gray-400 mb-1">Image statique (logo, fond…)</p>
-        <input
-          ref={staticInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleStaticUpload(f);
-            e.target.value = "";
-          }}
-        />
-        {block.staticSrc ? (
-          <div className="flex items-center gap-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={block.staticSrc} alt="" className="h-10 w-10 object-contain rounded border border-gray-200 bg-gray-50" />
-            <span className="text-[10px] text-gray-500 flex-1 truncate">{block.staticSrc.split("/").pop()}</span>
-            <button
-              type="button"
-              onClick={() => onChange({ staticSrc: undefined })}
-              className="text-[10px] text-red-400 hover:text-red-600"
-              title="Retirer l'image statique"
-            >✕</button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => staticInputRef.current?.click()}
-            disabled={uploading}
-            className="w-full text-xs py-1.5 border border-dashed border-gray-300 rounded text-gray-500 hover:bg-gray-50 disabled:opacity-50"
-          >
-            {uploading ? "Upload…" : "+ Télécharger une image"}
-          </button>
-        )}
-        {block.staticSrc && (
-          <button
-            type="button"
-            onClick={() => staticInputRef.current?.click()}
-            disabled={uploading}
-            className="mt-1 w-full text-[10px] text-gray-400 hover:text-gray-600"
-          >
-            Remplacer
-          </button>
-        )}
-        <p className="text-[9px] text-gray-300 mt-1">
-          Si renseigné, cette image est toujours affichée (ignore le binding).
-        </p>
-      </div>
-
-      <label className="flex flex-col gap-0.5">
-        <span className="text-gray-400">Ajustement</span>
-        <select value={block.fit}
-          onChange={(e) => onChange({ fit: e.target.value as "cover" | "contain" })}
-          className="border border-gray-200 rounded px-2 py-1"
-        >
-          <option value="cover">Cover</option>
-          <option value="contain">Contain</option>
-        </select>
-      </label>
-      <label className="flex flex-col gap-0.5 mt-2">
-        <span className="text-gray-400">Border radius</span>
-        <input type="number" value={block.borderRadius ?? 0}
-          onChange={(e) => onChange({ borderRadius: Number(e.target.value) })}
-          className="border border-gray-200 rounded px-2 py-1"
-        />
-      </label>
-    </Section>
-  );
-}
-
-function VideoProps({ block, onChange }: { block: VideoBlock; onChange: (c: Partial<VideoBlock>) => void }) {
-  return (
-    <Section label="Options vidéo">
-      <label className="flex flex-col gap-0.5">
-        <span className="text-gray-400">Redimensionnement</span>
-        <select
-          value={block.fit ?? "cover"}
-          onChange={(e) => onChange({ fit: e.target.value as "cover" | "contain" })}
-          className="border border-gray-200 rounded px-2 py-1 text-sm"
-        >
-          <option value="cover">Cover (remplir + recadrer)</option>
-          <option value="contain">Contain (letterbox)</option>
-        </select>
-      </label>
-      <label className="flex flex-col gap-0.5 mt-2">
-        <span className="text-gray-400">Border radius</span>
-        <input type="number" value={block.borderRadius ?? 0}
-          onChange={(e) => onChange({ borderRadius: Number(e.target.value) })}
-          className="border border-gray-200 rounded px-2 py-1"
-        />
-      </label>
-      <label className="flex flex-col gap-0.5 mt-2">
-        <span className="text-gray-400">Couleur placeholder (builder)</span>
-        <input type="color" value={block.placeholderColor ?? "#111827"}
-          onChange={(e) => onChange({ placeholderColor: e.target.value })}
-          className="h-8 w-full border border-gray-200 rounded"
-        />
-      </label>
-      <label className="flex items-center gap-2 mt-3 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={block.mute ?? false}
-          onChange={(e) => onChange({ mute: e.target.checked })}
-          className="rounded"
-        />
-        <span className="text-gray-600 text-[11px]">Couper l&apos;audio de cette vidéo</span>
-      </label>
-      {!block.mute && (
-        <label className="flex flex-col gap-1 mt-3">
-          <div className="flex justify-between text-[11px]">
-            <span className="text-gray-400">Volume audio</span>
-            <span className="text-gray-600">{Math.round((block.audioVolume ?? 1) * 100)}%</span>
-          </div>
-          <input
-            type="range" min={0} max={1} step={0.05}
-            value={block.audioVolume ?? 1}
-            onChange={(e) => onChange({ audioVolume: Number(e.target.value) })}
-            className="w-full"
-          />
-        </label>
-      )}
-      <p className="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
-        🎬 Ce bloc est le fond vidéo du template.<br />
-        La source et la bibliothèque se configurent dans l&apos;onglet <strong>Séquence</strong>.
-      </p>
-    </Section>
-  );
-}
-
-function DPEProps({ block, onChange }: { block: DPEBlock; onChange: (c: Partial<DPEBlock>) => void }) {
-  return (
-    <Section label="Diagramme">
-      <div className="flex gap-1">
-        {(["energy", "climate"] as const).map((v) => (
-          <button
-            key={v}
-            onClick={() => onChange({ variant: v, w: 430, h: 400 })}
-            className={`flex-1 text-xs py-1 rounded border transition-colors ${
-              block.variant === v
-                ? "bg-indigo-600 text-white border-indigo-600"
-                : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"
-            }`}
-          >
-            {v === "energy" ? "⚡ Énergie" : "🌡 Climat CO₂"}
-          </button>
-        ))}
-      </div>
-      <div className="grid grid-cols-2 gap-2 mt-3">
-        <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={block.showFrame ?? true}
-            onChange={(e) => onChange({ showFrame: e.target.checked })}
-          />
-          Afficher le cadre
-        </label>
-        <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={block.showBackground ?? true}
-            onChange={(e) => onChange({ showBackground: e.target.checked })}
-          />
-          Afficher le fond
-        </label>
-      </div>
-      <div className="grid grid-cols-2 gap-2 mt-2">
-        <label className="flex flex-col gap-0.5">
-          <span className="text-gray-400 text-[11px]">Couleur du cadre</span>
-          <input
-            type="color"
-            value={block.frameColor ?? "#9a9a9a"}
-            onChange={(e) => onChange({ frameColor: e.target.value })}
-            className="h-8 w-full border border-gray-200 rounded"
-          />
-        </label>
-        <label className="flex flex-col gap-0.5">
-          <span className="text-gray-400 text-[11px]">Couleur du fond</span>
-          <input
-            type="color"
-            value={block.backgroundColor ?? "#ffffff"}
-            onChange={(e) => onChange({ backgroundColor: e.target.value })}
-            className="h-8 w-full border border-gray-200 rounded"
-          />
-        </label>
-      </div>
-      <p className="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
-        Les valeurs sont saisies lors de la génération.<br/>
-        Clés fixes : <span className="font-mono">dpe_note</span>, <span className="font-mono">dpe_valeur</span>, <span className="font-mono">ges_note</span>, <span className="font-mono">ges_valeur</span>.
-      </p>
-    </Section>
-  );
-}
 
