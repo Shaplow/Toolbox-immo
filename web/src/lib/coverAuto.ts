@@ -15,9 +15,10 @@ const DEFAULT_FRAME_COUNT = 36;
 const MIN_FRAME_GAP_S = 1 / 30;
 
 type ExtractedFrame = { timestamp: number; url: string };
+type TaggedExtractedFrame = ExtractedFrame & { _pick?: CoverFramePick };
 type FrameInterval = { start: number; end: number };
 type CoverSeenFrame = number | { sourceUrl: string; timestamp: number };
-type CoverFramePick = { sourceUrl: string; timestamp: number };
+type CoverFramePick = { sourceUrl: string; timestamp: number; slotId?: string; sequenceIndex?: number };
 type CoverFrameSource = { slotId: string; sourceUrl: string; duration: number };
 
 function safeJson<T>(raw: string | null | undefined, fallback: T): T {
@@ -131,12 +132,13 @@ function normalizeSeenFrames(raw: CoverSeenFrame[]): { finalTimestamps: number[]
 function pickNativeFrames(sources: CoverFrameSource[], count: number, seen: Set<string>): CoverFramePick[] {
   const collect = (seenValues: Set<string>) => {
     const candidates: CoverFramePick[] = [];
-    for (const source of sources) {
+    for (let seqIdx = 0; seqIdx < sources.length; seqIdx += 1) {
+      const source = sources[seqIdx]!;
       const sourceFrameCount = Math.floor(source.duration / MIN_FRAME_GAP_S);
       for (let index = 0; index < sourceFrameCount; index += 1) {
         const timestamp = Math.round((((index + 0.5) * source.duration) / sourceFrameCount) * 1000) / 1000;
         if (!seenValues.has(`${source.sourceUrl}::${timestamp}`)) {
-          candidates.push({ sourceUrl: source.sourceUrl, timestamp });
+          candidates.push({ sourceUrl: source.sourceUrl, timestamp, slotId: source.slotId, sequenceIndex: seqIdx });
         }
       }
     }
@@ -379,16 +381,27 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
     );
     let duration = pack.duration;
     let framePicks: CoverFramePick[] = [];
-    let extractedFrames: ExtractedFrame[] = [];
+    let extractedFrames: TaggedExtractedFrame[] = [];
 
+    // picksBySource: maps sourceUrl → picks with provenance metadata (slotId, sequenceIndex)
+    const picksBySource = new Map<string, CoverFramePick[]>();
     if (nativeSources.length > 0) {
       duration = nativeSources.reduce((sum, source) => sum + source.duration, 0);
       framePicks = pickNativeFrames(nativeSources, frameCount, seen.nativeKeys);
+      for (const pick of framePicks) {
+        const arr = picksBySource.get(pick.sourceUrl) ?? [];
+        arr.push(pick);
+        picksBySource.set(pick.sourceUrl, arr);
+      }
       for (const source of nativeSources) {
-        const sourcePicks = framePicks.filter((pick) => pick.sourceUrl === source.sourceUrl);
+        const sourcePicks = picksBySource.get(source.sourceUrl) ?? [];
         if (sourcePicks.length === 0) continue;
         const frames = await extractFrames(source.sourceUrl, sourcePicks.map((pick) => pick.timestamp));
-        extractedFrames.push(...frames);
+        extractedFrames.push(...frames.map((frame) => ({
+          ...frame,
+          // Attach provenance: match extracted frame timestamp back to pick
+          _pick: sourcePicks.find((p) => Math.abs(p.timestamp - frame.timestamp) < MIN_FRAME_GAP_S * 0.6) ?? sourcePicks[0],
+        })));
       }
     } else {
       duration = duration ?? await probeDuration(pack.sourceVideoUrl);
@@ -407,6 +420,8 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
     const persisted = await Promise.all(
       extractedFrames.map(async (frame, index) => ({
         timestamp: frame.timestamp,
+        slotId: frame._pick?.slotId ?? null,
+        sequenceIndex: frame._pick?.sequenceIndex ?? null,
         ...(await persistFrame(pack.id, pack.userId, frame, index)),
       })),
     );
@@ -417,6 +432,8 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
         timestamp: frame.timestamp,
         imageUrl: frame.imageUrl,
         imageKey: frame.imageKey,
+        slotId: frame.slotId,
+        sequenceIndex: frame.sequenceIndex,
       })),
     });
 

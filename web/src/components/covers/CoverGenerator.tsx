@@ -12,6 +12,7 @@ import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 const MIN_FRAME_GAP_S = 1 / 30;
 
 type Frame = { timestamp: number; url: string };
+type TemplateGroup = { id: string; name: string; hidden?: boolean; locked?: boolean };
 type CoverPack = {
   id: string;
   status: string;
@@ -25,10 +26,12 @@ type CoverPack = {
   finalCoverUrl: string | null;
   overlayOffsetX: number;
   overlayOffsetY: number;
+  overlayGroupIds: string[];
+  templateGroups: TemplateGroup[];
   canvasWidth: number;
   canvasHeight: number;
   createdAt: string;
-  candidates: { id: string; timestamp: number; imageUrl: string }[];
+  candidates: { id: string; timestamp: number; imageUrl: string; slotId: string | null; sequenceIndex: number | null }[];
 };
 
 function fmt(seconds: number): string {
@@ -86,7 +89,10 @@ export function CoverGenerator() {
   const [selectedCandidateByPack, setSelectedCandidateByPack] = useState<Record<string, string>>({});
   const [overlayOffsetByPack, setOverlayOffsetByPack] = useState<Record<string, { x: number; y: number }>>({});
   const [previewScaleByPack, setPreviewScaleByPack] = useState<Record<string, { x: number; y: number }>>({});
-  const [dragState, setDragState] = useState<{ packId: string; scaleY: number } | null>(null);
+  const [dragState, setDragState] = useState<{ packId: string; scaleX: number; scaleY: number } | null>(null);
+  const [overlayGroupsByPack, setOverlayGroupsByPack] = useState<Record<string, string[]>>({});
+  const [groupPatchingPackId, setGroupPatchingPackId] = useState<string | null>(null);
+  const [overlayKey, setOverlayKey] = useState(0); // increment to force overlay PNG re-fetch
 
   // ── Video ──────────────────────────────────────────────────────────────────
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -142,6 +148,13 @@ export function CoverGenerator() {
         }
         return next;
       });
+      setOverlayGroupsByPack((prev) => {
+        const next = { ...prev };
+        for (const pack of data) {
+          if (!next[pack.id]) next[pack.id] = pack.overlayGroupIds ?? [];
+        }
+        return next;
+      });
     } catch (err) {
       toast.error(`Erreur chargement packs cover : ${String(err)}`);
     } finally {
@@ -183,6 +196,13 @@ export function CoverGenerator() {
         }
         return next;
       });
+      setOverlayGroupsByPack((prev) => {
+        const next = { ...prev };
+        for (const pack of nextPacks) {
+          if (!next[pack.id]) next[pack.id] = pack.overlayGroupIds ?? [];
+        }
+        return next;
+      });
     }, 3000);
     return () => window.clearInterval(intervalId);
   }, [loadPacks, packs]);
@@ -195,7 +215,7 @@ export function CoverGenerator() {
         return {
           ...prev,
           [dragState.packId]: {
-            x: current.x,
+            x: Math.round(current.x + event.movementX * dragState.scaleX),
             y: Math.round(current.y + event.movementY * dragState.scaleY),
           },
         };
@@ -259,6 +279,31 @@ export function CoverGenerator() {
       setPackBusyId(null);
     }
   }, [loadPacks, overlayOffsetByPack, selectedCandidateByPack]);
+
+  const patchPackOverlayGroups = useCallback(async (packId: string, groupIds: string[]) => {
+    // Optimistic update
+    setOverlayGroupsByPack((prev) => ({ ...prev, [packId]: groupIds }));
+    setGroupPatchingPackId(packId);
+    try {
+      const res = await fetch(`/api/cover-packs/${packId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overlayGroupIds: groupIds }),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err);
+      }
+      // Force overlay PNG re-fetch (new group config changes the overlay)
+      setOverlayKey((k) => k + 1);
+    } catch (err) {
+      toast.error(`Erreur mise à jour groupes : ${String(err)}`);
+      // Revert optimistic update — reload from server
+      await loadPacks(true);
+    } finally {
+      setGroupPatchingPackId(null);
+    }
+  }, [loadPacks]);
 
   // ── Upload ─────────────────────────────────────────────────────────────────
   const handleFileSelect = useCallback(async (file: File) => {
@@ -476,9 +521,10 @@ export function CoverGenerator() {
                             const target = event.target as HTMLElement;
                             if (target.closest("button,a,input")) return;
                             const rect = event.currentTarget.getBoundingClientRect();
+                            const scaleX = (pack.canvasWidth || 1080) / Math.max(1, rect.width);
                             const scaleY = (pack.canvasHeight || 1920) / Math.max(1, rect.height);
                             event.currentTarget.setPointerCapture(event.pointerId);
-                            setDragState({ packId: pack.id, scaleY });
+                            setDragState({ packId: pack.id, scaleX, scaleY });
                           }}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -499,7 +545,7 @@ export function CoverGenerator() {
                           />
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={`/api/cover-packs/${pack.id}/overlay`}
+                            src={`/api/cover-packs/${pack.id}/overlay?v=${overlayKey}`}
                             alt=""
                             aria-hidden
                             className="absolute inset-0 w-full h-full object-contain pointer-events-none"
@@ -573,37 +619,132 @@ export function CoverGenerator() {
 
                       {ready && (
                         <>
+                          {/* Frame thumbnail grid */}
                           <div className="mt-4 max-h-[340px] overflow-y-auto pr-1">
                             <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
-                              {pack.candidates.map((candidate) => (
-                                <button
-                                  key={candidate.id}
-                                  type="button"
-                                  onClick={() => setSelectedCandidateByPack((prev) => ({ ...prev, [pack.id]: candidate.id }))}
-                                  className={`relative rounded-lg overflow-hidden border-2 transition ${
-                                    selectedId === candidate.id ? "border-indigo-500 shadow-sm" : "border-transparent hover:border-gray-300"
-                                  }`}
-                                  title={`${fmt(candidate.timestamp)}`}
-                                >
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={candidate.imageUrl} alt={`${fmt(candidate.timestamp)}`} className="w-full aspect-[9/16] object-cover" loading="lazy" />
-                                  {selectedId === candidate.id && (
-                                    <span className="absolute top-1 right-1 w-4 h-4 bg-indigo-600 rounded-full flex items-center justify-center">
-                                      <Check size={9} className="text-white" strokeWidth={3} />
-                                    </span>
-                                  )}
-                                </button>
-                              ))}
+                              {pack.candidates.map((candidate) => {
+                                const seqLabel = candidate.sequenceIndex !== null
+                                  ? `S${candidate.sequenceIndex + 1}`
+                                  : null;
+                                const titleLabel = candidate.slotId
+                                  ? `${candidate.slotId} · ${fmt(candidate.timestamp)}`
+                                  : fmt(candidate.timestamp);
+                                return (
+                                  <button
+                                    key={candidate.id}
+                                    type="button"
+                                    onClick={() => setSelectedCandidateByPack((prev) => ({ ...prev, [pack.id]: candidate.id }))}
+                                    className={`relative rounded-lg overflow-hidden border-2 transition ${
+                                      selectedId === candidate.id ? "border-indigo-500 shadow-sm" : "border-transparent hover:border-gray-300"
+                                    }`}
+                                    title={titleLabel}
+                                  >
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={candidate.imageUrl} alt={fmt(candidate.timestamp)} className="w-full aspect-[9/16] object-cover" loading="lazy" />
+                                    {selectedId === candidate.id && (
+                                      <span className="absolute top-1 right-1 w-4 h-4 bg-indigo-600 rounded-full flex items-center justify-center">
+                                        <Check size={9} className="text-white" strokeWidth={3} />
+                                      </span>
+                                    )}
+                                    {seqLabel && (
+                                      <span className="absolute top-1 left-1 text-[9px] font-bold bg-black/60 text-white px-1 py-0.5 rounded">
+                                        {seqLabel}
+                                      </span>
+                                    )}
+                                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-1 py-0.5">
+                                      <span className="text-[9px] font-medium text-white">{fmt(candidate.timestamp)}</span>
+                                    </div>
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
 
-                          <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-3">
-                            <div className="flex flex-1 items-center gap-2 text-xs text-gray-500 min-w-[220px]">
-                              <span>Décalage</span>
+                          {/* Overlay groups toggle */}
+                          {pack.templateGroups.filter((g) => !g.hidden && !g.locked).length > 0 ? (
+                            <div className="mt-4 p-3 rounded-lg bg-gray-50 border border-gray-100">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-medium text-gray-600">Overlays</span>
+                                {groupPatchingPackId === pack.id && (
+                                  <span className="text-[10px] text-indigo-500">Enregistrement…</span>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {pack.templateGroups
+                                  .filter((g) => !g.hidden && !g.locked)
+                                  .map((group) => {
+                                    const currentGroupIds = overlayGroupsByPack[pack.id] ?? pack.overlayGroupIds;
+                                    const isChecked = currentGroupIds.includes(group.id);
+                                    return (
+                                      <label
+                                        key={group.id}
+                                        className={`flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1 rounded-md border transition-colors ${
+                                          isChecked
+                                            ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                                            : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
+                                        } ${groupPatchingPackId === pack.id ? "opacity-60 pointer-events-none" : ""}`}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isChecked}
+                                          className="accent-indigo-600 w-3 h-3"
+                                          disabled={groupPatchingPackId === pack.id}
+                                          onChange={(event) => {
+                                            const checked = event.target.checked;
+                                            const next = checked
+                                              ? [...currentGroupIds, group.id]
+                                              : currentGroupIds.filter((id) => id !== group.id);
+                                            void patchPackOverlayGroups(pack.id, next);
+                                          }}
+                                        />
+                                        {group.name}
+                                      </label>
+                                    );
+                                  })}
+                              </div>
+                              {(overlayGroupsByPack[pack.id] ?? pack.overlayGroupIds).length === 0 && (
+                                <p className="text-[10px] text-gray-400 mt-1.5">Aucun overlay — la cover sera la frame brute.</p>
+                              )}
+                            </div>
+                          ) : pack.templateGroups.length === 0 ? (
+                            <p className="mt-3 text-[10px] text-gray-400">Ce template n&apos;a pas d&apos;overlays.</p>
+                          ) : null}
+
+                          {/* Offset controls */}
+                          <div className="mt-4 flex flex-col gap-2">
+                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                              <span className="w-16 shrink-0">X</span>
                               <input
                                 type="range"
-                                min={-2400}
-                                max={2400}
+                                min={-(pack.canvasWidth ?? 1080)}
+                                max={pack.canvasWidth ?? 1080}
+                                step={1}
+                                value={offset.x}
+                                onChange={(event) => setOverlayOffsetByPack((prev) => ({
+                                  ...prev,
+                                  [pack.id]: { x: Number(event.target.value) || 0, y: offset.y },
+                                }))}
+                                className="min-w-0 flex-1 accent-indigo-600"
+                                aria-label="Décalage horizontal"
+                              />
+                              <input
+                                type="number"
+                                value={offset.x}
+                                onChange={(event) => setOverlayOffsetByPack((prev) => ({
+                                  ...prev,
+                                  [pack.id]: { x: Number(event.target.value) || 0, y: offset.y },
+                                }))}
+                                className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-xs"
+                                aria-label="Décalage horizontal"
+                              />
+                              <span className="w-14 shrink-0">px horiz.</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                              <span className="w-16 shrink-0">Y</span>
+                              <input
+                                type="range"
+                                min={-(pack.canvasHeight ?? 1920)}
+                                max={pack.canvasHeight ?? 1920}
                                 step={1}
                                 value={offset.y}
                                 onChange={(event) => setOverlayOffsetByPack((prev) => ({
@@ -623,8 +764,11 @@ export function CoverGenerator() {
                                 className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-xs"
                                 aria-label="Décalage vertical"
                               />
-                              <span>px vertical</span>
+                              <span className="w-14 shrink-0">px vert.</span>
                             </div>
+                          </div>
+
+                          <div className="mt-3 flex justify-end">
                             <button
                               type="button"
                               onClick={() => void selectPackCover(pack.id)}
