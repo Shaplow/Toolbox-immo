@@ -284,13 +284,17 @@ model CoverFramePack {
 }
 
 model CoverFrameCandidate {
-  id        String         @id @default(cuid())
-  packId    String
-  pack      CoverFramePack @relation(fields: [packId], references: [id], onDelete: Cascade)
-  timestamp Float
-  imageUrl  String
-  imageKey  String?
-  createdAt DateTime       @default(now())
+  id            String         @id @default(cuid())
+  packId        String
+  pack          CoverFramePack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  timestamp     Float
+  imageUrl      String
+  imageKey      String?
+  /// VideoSequence slotId d'origine (null pour single-sequence ou frame sans tracking)
+  slotId        String?
+  /// Index de la source dans videoSequence[] si applicable (0-based)
+  sequenceIndex Int?
+  createdAt     DateTime       @default(now())
 
   @@index([packId])
 }

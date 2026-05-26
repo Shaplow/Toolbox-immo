@@ -91,6 +91,8 @@ export async function GET(req: NextRequest) {
           id: candidate.id,
           timestamp: candidate.timestamp,
           imageUrl: toBrowserMediaUrl(candidate.imageUrl) ?? candidate.imageUrl,
+          slotId: candidate.slotId ?? null,
+          sequenceIndex: candidate.sequenceIndex ?? null,
         })),
       };
     }),
