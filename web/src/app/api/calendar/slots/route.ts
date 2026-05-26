@@ -76,6 +76,7 @@ export async function GET(req: NextRequest) {
       account: { select: { id: true, name: true, handle: true, offre: true } },
       template: { select: { id: true, name: true } },
       render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
+      pattern: { select: { label: true } },
     },
   });
 
