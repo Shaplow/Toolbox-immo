@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   compileTextTemplate,
   extractTemplateVars,
@@ -9,19 +9,22 @@ import {
   type TextTemplateSegment,
 } from "@/lib/textTemplate";
 import { collectBuilderFonts, type BuilderFontEntry } from "@/lib/builderFonts";
-import {
-  buildSchemaPreviewData,
-  getConditionSourceFields,
-  getConditionValueOptions,
-} from "@/lib/schemaFields";
+import { buildSchemaPreviewData } from "@/lib/schemaFields";
 import { getAutoLayoutMode, getAutoLayoutOrderedBlocks, getGroupBounds } from "@/lib/groupLayout";
 import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled, type BoxPadding } from "@/lib/textBackground";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import type {
   AnyBlock, TextBlock, ImageBlock, VideoBlock, DPEBlock,
-  ShapeBlock, ShapeKind, BlockStyle, SchemaField, BlockConditionalRule, LayerGroup, MusicBlock,
+  ShapeBlock, ShapeKind, BlockStyle, SchemaField, LayerGroup, MusicBlock,
 } from "@/types/template";
 import type { ListingData } from "@/types/listing";
+import { Section } from "./properties/Section";
+import { toUniformPaddingValue, buildAnchoredSizeChange } from "./properties/utils";
+import { BoxPaddingEditor } from "./properties/BoxPaddingEditor";
+import { FontFamilyPicker } from "./properties/FontFamilyPicker";
+import { TextFieldMeta } from "./properties/TextFieldMeta";
+import { BlockConditionalRulesSection } from "./properties/BlockConditionalRulesSection";
+import { GroupConditionalRulesSection } from "./properties/GroupConditionalRulesSection";
 
 export function PropertiesPanel({
   globalFonts,
@@ -36,8 +39,6 @@ export function PropertiesPanel({
   const block = template.blocks.find((b) => b.id === selectedBlockId) ?? null;
   const group = template.groups.find((item) => item.id === selectedGroupId) ?? null;
 
-  const [inlineSelectEditorKey, setInlineSelectEditorKey] = useState<string | null>(null);
-  const [inlineSelectDrafts, setInlineSelectDrafts] = useState<Record<string, string>>({});
   const prevBindingRef = useRef<string>("");
   // Track old content on focus for schema cleanup on blur
   const prevContentRef = useRef<string>("");
@@ -46,26 +47,6 @@ export function PropertiesPanel({
     setSchema(template.schema.map((field) => (
       field.key === fieldKey ? { ...field, ...changes } : field
     )));
-  }
-
-  function openInlineSelectEditor(field: SchemaField) {
-    if (field.type !== "select") return;
-    setInlineSelectEditorKey(field.key);
-    setInlineSelectDrafts((current) => ({
-      ...current,
-      [field.key]: current[field.key] ?? field.options?.join("\n") ?? "",
-    }));
-  }
-
-  function closeInlineSelectEditor() {
-    setInlineSelectEditorKey(null);
-  }
-
-  function saveInlineSelectOptions(fieldKey: string) {
-    const draft = inlineSelectDrafts[fieldKey] ?? "";
-    const options = draft.split("\n").map((value) => value.trim()).filter(Boolean);
-    updateSchemaField(fieldKey, { options });
-    closeInlineSelectEditor();
   }
 
   function syncTextSchema(oldContent: string, newContent: string) {
@@ -91,22 +72,6 @@ export function PropertiesPanel({
     }
 
     setSchema(nextSchema);
-  }
-
-  function buildAnchoredSizeChange(target: AnyBlock, field: "w" | "h", rawValue: number): Partial<AnyBlock> {
-    const nextValue = Math.max(0, Number.isFinite(rawValue) ? rawValue : 0);
-    if (field === "w") {
-      const delta = nextValue - target.w;
-      return {
-        w: nextValue,
-        x: Math.round(target.x - delta / 2),
-      } as Partial<AnyBlock>;
-    }
-    const delta = nextValue - target.h;
-    return {
-      h: nextValue,
-      y: Math.round(target.y - delta / 2),
-    } as Partial<AnyBlock>;
   }
 
   if (!block && group) {
@@ -926,103 +891,6 @@ export function PropertiesPanel({
             applySegments([...currentSegments, baseSegment]);
           }
 
-          function renderFieldMeta(field: SchemaField | undefined, kind: "variable" | "condition", rawKey: string) {
-            if (kind === "condition" && !rawKey.trim()) {
-              return (
-                <div className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-500">
-                  Choisissez une variable existante pour definir la condition.
-                </div>
-              );
-            }
-
-            if (!field) {
-              return (
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">
-                  <span className="font-medium">Champ non defini</span>
-                  {rawKey ? `: ${rawKey}` : ""}. Ajoutez-le dans le schema ou corrigez la cle.
-                </div>
-              );
-            }
-
-            return (
-              <div className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-600 space-y-1">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="font-mono text-gray-700">{field.key}</span>
-                  <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">{field.type}</span>
-                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${field.required ? "bg-red-50 text-red-500" : "bg-gray-100 text-gray-500"}`}>
-                    {field.required ? "requis" : "optionnel"}
-                  </span>
-                  {kind === "condition" && field.showIf && (
-                    <span className="rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-600">
-                      visible si {field.showIf.field} = {field.showIf.equals}
-                    </span>
-                  )}
-                </div>
-                <div className="text-gray-500">
-                  {field.label || field.key}
-                  {field.description ? ` · ${field.description}` : ""}
-                </div>
-                {field.type === "select" && (
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap gap-1">
-                      {(field.options ?? []).length > 0 ? (field.options ?? []).map((option) => (
-                        <span key={option} className="rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] text-gray-600">
-                          {option}
-                        </span>
-                      )) : (
-                        <span className="text-[10px] text-gray-400">Aucune option definie.</span>
-                      )}
-                    </div>
-                    {kind === "condition" && (
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => inlineSelectEditorKey === field.key ? closeInlineSelectEditor() : openInlineSelectEditor(field)}
-                            className="text-[10px] font-medium text-indigo-600 hover:text-indigo-700"
-                          >
-                            {inlineSelectEditorKey === field.key ? "Fermer l'edition" : "Modifier les options ici"}
-                          </button>
-                        </div>
-                        {inlineSelectEditorKey === field.key && (
-                          <div className="rounded-md border border-indigo-100 bg-indigo-50 p-2 space-y-2">
-                            <textarea
-                              rows={4}
-                              value={inlineSelectDrafts[field.key] ?? field.options?.join("\n") ?? ""}
-                              onChange={(e) => setInlineSelectDrafts((current) => ({
-                                ...current,
-                                [field.key]: e.target.value,
-                              }))}
-                              onKeyDown={(e) => e.stopPropagation()}
-                              placeholder="Une option par ligne"
-                              className="w-full resize-none rounded border border-indigo-200 bg-white px-2 py-1.5 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                            />
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                type="button"
-                                onClick={closeInlineSelectEditor}
-                                className="px-2 py-1 text-[10px] border border-gray-200 rounded hover:bg-white"
-                              >
-                                Annuler
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => saveInlineSelectOptions(field.key)}
-                                className="px-2 py-1 text-[10px] rounded bg-indigo-600 text-white hover:bg-indigo-700"
-                              >
-                                Enregistrer
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          }
-
           return (
             <Section label="Contenu">
               <div className="space-y-2">
@@ -1063,7 +931,12 @@ export function PropertiesPanel({
                           placeholder="nom_variable"
                           className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-indigo-400"
                         />
-                        {renderFieldMeta(template.schema.find((field) => field.key === segment.key), "variable", segment.key)}
+                        <TextFieldMeta
+                          field={template.schema.find((field) => field.key === segment.key)}
+                          kind="variable"
+                          rawKey={segment.key}
+                          onSaveOptions={(fieldKey, options) => updateSchemaField(fieldKey, { options })}
+                        />
                       </div>
                     )}
 
@@ -1097,7 +970,12 @@ export function PropertiesPanel({
                           const conditionField = template.schema.find((field) => field.key === segment.field);
                           return (
                             <div className="space-y-2">
-                              {renderFieldMeta(conditionField, "condition", segment.field)}
+                              <TextFieldMeta
+                                field={conditionField}
+                                kind="condition"
+                                rawKey={segment.field}
+                                onSaveOptions={(fieldKey, options) => updateSchemaField(fieldKey, { options })}
+                              />
                               {conditionField?.type === "select" && (conditionField.options?.length ?? 0) > 0 && (
                                 <div className="flex flex-wrap gap-1">
                                   {(conditionField.options ?? []).map((option) => {
@@ -1324,7 +1202,7 @@ export function PropertiesPanel({
           <DPEProps block={block as DPEBlock} onChange={(c) => updateBlock(block.id, c)} />
         )}
 
-        <ConditionalRulesSection
+        <BlockConditionalRulesSection
           block={block}
           schema={template.schema}
           onChange={(c) => updateBlock(block.id, c as Partial<AnyBlock>)}
@@ -1334,244 +1212,8 @@ export function PropertiesPanel({
   );
 }
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">{label}</p>
-      {children}
-    </div>
-  );
-}
 
-function toUniformPaddingValue(values: BoxPadding): number {
-  if (values.top === values.right && values.top === values.bottom && values.top === values.left) {
-    return values.top;
-  }
 
-  return Math.round((values.top + values.right + values.bottom + values.left) / 4);
-}
-
-function BoxPaddingEditor({
-  label,
-  values,
-  split,
-  onToggleSplit,
-  onChangeUniform,
-  onChangeSide,
-}: {
-  label: string;
-  values: BoxPadding;
-  split: boolean;
-  onToggleSplit: (nextSplit: boolean) => void;
-  onChangeUniform: (value: number) => void;
-  onChangeSide: (side: keyof BoxPadding, value: number) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-gray-400">{label}</span>
-        <div className="grid grid-cols-2 gap-1 rounded-lg border border-gray-200 bg-white p-1">
-          <button
-            type="button"
-            onClick={() => onToggleSplit(false)}
-            className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-              !split ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            Uniforme
-          </button>
-          <button
-            type="button"
-            onClick={() => onToggleSplit(true)}
-            className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-              split ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            Côtés
-          </button>
-        </div>
-      </div>
-
-      {split ? (
-        <div className="grid grid-cols-2 gap-2">
-          {([
-            ["top", "Haut"],
-            ["right", "Droite"],
-            ["bottom", "Bas"],
-            ["left", "Gauche"],
-          ] as const).map(([side, sideLabel]) => (
-            <label key={side} className="flex flex-col gap-0.5">
-              <span className="text-gray-400">{sideLabel}</span>
-              <input
-                type="number"
-                min={0}
-                value={values[side]}
-                onChange={(e) => onChangeSide(side, Number(e.target.value))}
-                className="border border-gray-200 rounded px-2 py-1"
-              />
-            </label>
-          ))}
-        </div>
-      ) : (
-        <label className="flex flex-col gap-0.5">
-          <span className="text-gray-400">Padding</span>
-          <input
-            type="number"
-            min={0}
-            value={toUniformPaddingValue(values)}
-            onChange={(e) => onChangeUniform(Number(e.target.value))}
-            className="border border-gray-200 rounded px-2 py-1"
-          />
-        </label>
-      )}
-    </div>
-  );
-}
-
-function FontFamilyPicker({
-  value,
-  fonts,
-  onChange,
-}: {
-  value?: string;
-  fonts: BuilderFontEntry[];
-  onChange: (fontFamily: string | undefined) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState(value ?? "");
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setQuery(value ?? "");
-  }, [value]);
-
-  useEffect(() => {
-    function handlePointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-        setQuery(value ?? "");
-      }
-    }
-
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [value]);
-
-  const filteredFonts = fonts.filter((font) => {
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return true;
-    return font.family.toLowerCase().includes(normalizedQuery);
-  });
-
-  const selectedFont = fonts.find((font) => font.family === value);
-
-  return (
-    <div ref={rootRef} className="relative">
-      <div className="space-y-1.5">
-        <button
-          type="button"
-          onClick={() => setOpen((current) => !current)}
-          className="w-full rounded border border-gray-200 bg-white px-2 py-2 text-left transition hover:border-indigo-300"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <p
-                className="truncate text-sm text-gray-900"
-                style={value ? { fontFamily: value } : undefined}
-              >
-                {value || "Choisir une typographie"}
-              </p>
-              <p className="truncate text-[10px] uppercase tracking-wide text-gray-400">
-                {selectedFont ? sourceLabel(selectedFont.source) : "Toutes les typographies disponibles"}
-              </p>
-            </div>
-            <span className="shrink-0 text-xs text-gray-400">{open ? "▲" : "▼"}</span>
-          </div>
-        </button>
-
-        {value ? (
-          <button
-            type="button"
-            onClick={() => onChange(undefined)}
-            className="text-[11px] text-gray-500 hover:text-gray-700"
-          >
-            Retirer la police du bloc
-          </button>
-        ) : null}
-      </div>
-
-      {open ? (
-        <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
-          <div className="border-b border-gray-100 p-2">
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Rechercher une typographie"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              autoFocus
-            />
-          </div>
-
-          <div className="max-h-72 overflow-y-auto p-2">
-            {filteredFonts.length === 0 ? (
-              <p className="px-2 py-4 text-center text-xs text-gray-400">Aucune typographie correspondante.</p>
-            ) : (
-              <div className="space-y-1">
-                {filteredFonts.map((font) => {
-                  const isSelected = font.family === value;
-                  return (
-                    <button
-                      key={font.family}
-                      type="button"
-                      onClick={() => {
-                        onChange(font.family);
-                        setQuery(font.family);
-                        setOpen(false);
-                      }}
-                      className={`w-full rounded-lg border px-3 py-2 text-left transition ${
-                        isSelected
-                          ? "border-indigo-200 bg-indigo-50"
-                          : "border-transparent hover:border-gray-200 hover:bg-gray-50"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <p
-                            className="truncate text-base text-gray-900"
-                            style={{ fontFamily: font.family }}
-                          >
-                            {font.family}
-                          </p>
-                          <p
-                            className="truncate text-[11px] text-gray-500"
-                            style={{ fontFamily: font.family }}
-                          >
-                            Apercu Aa Bb Cc 123
-                          </p>
-                        </div>
-                        <span className="shrink-0 rounded-full bg-gray-100 px-2 py-1 text-[10px] uppercase tracking-wide text-gray-500">
-                          {sourceLabel(font.source)}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function sourceLabel(source: BuilderFontEntry["source"]) {
-  if (source === "global") return "Globale";
-  if (source === "template") return "Template";
-  return "Detectee";
-}
 
 function StyleEditor({
   style,
@@ -2350,397 +1992,3 @@ function DPEProps({ block, onChange }: { block: DPEBlock; onChange: (c: Partial<
   );
 }
 
-function ConditionalRulesSection({
-  block,
-  schema,
-  onChange,
-}: {
-  block: AnyBlock;
-  schema: SchemaField[];
-  onChange: (c: Partial<AnyBlock>) => void;
-}) {
-  const conditionalRules = block.conditionalRules ?? [];
-  const conditionFields = getConditionSourceFields(schema);
-  const supportsTextColor = block.type === "text";
-  const supportsBackgroundColor = block.type === "text" || block.type === "shape" || block.type === "dpe";
-  const supportsOpacity = block.type === "text" || block.type === "shape" || block.type === "dpe";
-
-  function updateRule(index: number, changes: Partial<BlockConditionalRule>) {
-    const next = conditionalRules.map((rule, ruleIndex) => {
-      if (ruleIndex !== index) return rule;
-      return {
-        ...rule,
-        ...changes,
-        when: { ...rule.when, ...(changes.when ?? {}) },
-        effects: { ...rule.effects, ...(changes.effects ?? {}) },
-      };
-    });
-    onChange({ conditionalRules: next, showIf: undefined, conditionalOverrides: undefined } as Partial<AnyBlock>);
-  }
-
-  function removeRule(index: number) {
-    onChange({ conditionalRules: conditionalRules.filter((_, ruleIndex) => ruleIndex !== index), showIf: undefined, conditionalOverrides: undefined } as Partial<AnyBlock>);
-  }
-
-  function addRule() {
-    const firstField = conditionFields[0];
-    const defaultEquals = getConditionValueOptions(firstField)[0]?.value ?? "";
-    onChange({
-      conditionalRules: [
-        ...conditionalRules,
-        {
-          when: { field: firstField?.key ?? "", equals: defaultEquals },
-          effects: {},
-        },
-      ],
-      showIf: undefined,
-      conditionalOverrides: undefined,
-    } as Partial<AnyBlock>);
-  }
-
-  return (
-    <Section label="Règles conditionnelles">
-      <div className="space-y-3">
-        <p className="text-[11px] text-gray-500 leading-relaxed">
-          Une règle peut afficher ou masquer le bloc, le décaler, le faire pivoter ou ajuster son rendu selon une valeur du formulaire.
-        </p>
-        {conditionFields.length === 0 && (
-          <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
-            Ajoute d&apos;abord un champ de type liste ou oui/non dans le schéma pour créer une variante conditionnelle.
-          </p>
-        )}
-        {conditionalRules.map((rule, index) => {
-          const selectedField = schema.find((item) => item.key === rule.when.field);
-          const valueOptions = getConditionValueOptions(selectedField);
-          return (
-            <div key={`${rule.when.field}-${index}`} className="rounded-2xl border border-gray-200 bg-gray-50 p-3 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-[11px] font-medium text-gray-600">Règle {index + 1}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">Quand {selectedField?.label || rule.when.field || "un champ"} vaut {rule.when.equals || "…"}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => removeRule(index)}
-                  className="text-[11px] text-red-500 hover:text-red-600"
-                >
-                  Supprimer
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="flex flex-col gap-0.5 col-span-2">
-                  <span className="text-gray-400 text-[11px]">Champ</span>
-                  <select
-                    value={rule.when.field}
-                    onChange={(e) => {
-                      const nextField = schema.find((item) => item.key === e.target.value);
-                      updateRule(index, {
-                        when: {
-                          field: e.target.value,
-                          equals: getConditionValueOptions(nextField)[0]?.value ?? "",
-                        },
-                      });
-                    }}
-                    className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white"
-                  >
-                    <option value="">— choisir —</option>
-                    {conditionFields.map((field) => (
-                      <option key={field.key} value={field.key}>{field.label || field.key}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-0.5 col-span-2">
-                  <span className="text-gray-400 text-[11px]">Valeur attendue</span>
-                  {valueOptions.length > 0 ? (
-                    <select
-                      value={rule.when.equals}
-                      onChange={(e) => updateRule(index, { when: { ...rule.when, equals: e.target.value } })}
-                      className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white"
-                    >
-                      <option value="">— choisir —</option>
-                      {valueOptions.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={rule.when.equals}
-                      onChange={(e) => updateRule(index, { when: { ...rule.when, equals: e.target.value } })}
-                      placeholder="valeur"
-                      className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white"
-                    />
-                  )}
-                </label>
-                <label className="flex flex-col gap-0.5 col-span-2">
-                  <span className="text-gray-400 text-[11px]">Effet de visibilité</span>
-                  <select
-                    value={rule.effects.visible === true ? "show" : rule.effects.visible === false ? "hide" : "none"}
-                    onChange={(e) => updateRule(index, {
-                      effects: {
-                        ...rule.effects,
-                        visible: e.target.value === "show" ? true : e.target.value === "hide" ? false : undefined,
-                      },
-                    })}
-                    className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white"
-                  >
-                    <option value="none">Aucun</option>
-                    <option value="show">Afficher le bloc</option>
-                    <option value="hide">Masquer le bloc</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-0.5">
-                  <span className="text-gray-400 text-[11px]">Décalage X</span>
-                  <input
-                    type="number"
-                    value={rule.effects.offsetX ?? 0}
-                    onChange={(e) => updateRule(index, { effects: { ...rule.effects, offsetX: Number(e.target.value) } })}
-                    className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white"
-                  />
-                </label>
-                <label className="flex flex-col gap-0.5">
-                  <span className="text-gray-400 text-[11px]">Décalage Y</span>
-                  <input
-                    type="number"
-                    value={rule.effects.offsetY ?? 0}
-                    onChange={(e) => updateRule(index, { effects: { ...rule.effects, offsetY: Number(e.target.value) } })}
-                    className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white"
-                  />
-                </label>
-                <label className="flex flex-col gap-0.5">
-                  <span className="text-gray-400 text-[11px]">Rotation</span>
-                  <input
-                    type="number"
-                    value={rule.effects.rotation ?? ""}
-                    onChange={(e) => updateRule(index, {
-                      effects: { ...rule.effects, rotation: e.target.value === "" ? undefined : Number(e.target.value) },
-                    })}
-                    placeholder="inchangée"
-                    className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white"
-                  />
-                </label>
-                {supportsOpacity && (
-                  <label className="flex flex-col gap-0.5">
-                    <span className="text-gray-400 text-[11px]">Opacité</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={rule.effects.opacity ?? ""}
-                      onChange={(e) => updateRule(index, {
-                        effects: { ...rule.effects, opacity: e.target.value === "" ? undefined : Number(e.target.value) },
-                      })}
-                      placeholder="inchangée"
-                      className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white"
-                    />
-                  </label>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {supportsTextColor && (
-                  <label className="flex flex-col gap-0.5">
-                    <span className="text-gray-400 text-[11px]">Couleur du texte</span>
-                    <input
-                      type="color"
-                      value={rule.effects.textColor ?? "#000000"}
-                      onChange={(e) => updateRule(index, { effects: { ...rule.effects, textColor: e.target.value } })}
-                      className="h-9 w-full border border-gray-200 rounded bg-white"
-                    />
-                  </label>
-                )}
-                {supportsBackgroundColor && (
-                  <label className="flex flex-col gap-0.5">
-                    <span className="text-gray-400 text-[11px]">Couleur de fond</span>
-                    <input
-                      type="color"
-                      value={rule.effects.backgroundColor ?? "#ffffff"}
-                      onChange={(e) => updateRule(index, { effects: { ...rule.effects, backgroundColor: e.target.value } })}
-                      className="h-9 w-full border border-gray-200 rounded bg-white"
-                    />
-                  </label>
-                )}
-              </div>
-            </div>
-          );
-        })}
-        <button
-          type="button"
-          onClick={addRule}
-          disabled={conditionFields.length === 0}
-          className="w-full text-center text-xs py-2 border border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-50 disabled:hover:border-gray-300 disabled:hover:text-gray-600"
-        >
-          + Ajouter une règle
-        </button>
-      </div>
-    </Section>
-  );
-}
-
-function GroupConditionalRulesSection({
-  group,
-  schema,
-  onChange,
-}: {
-  group: LayerGroup;
-  schema: SchemaField[];
-  onChange: (c: Partial<LayerGroup>) => void;
-}) {
-  const conditionalRules = group.conditionalRules ?? [];
-  const conditionFields = getConditionSourceFields(schema);
-
-  function updateRule(index: number, changes: Partial<BlockConditionalRule>) {
-    const next = conditionalRules.map((rule, ruleIndex) => {
-      if (ruleIndex !== index) return rule;
-      return {
-        ...rule,
-        ...changes,
-        when: { ...rule.when, ...(changes.when ?? {}) },
-        effects: {
-          ...rule.effects,
-          ...(changes.effects ?? {}),
-        },
-      };
-    });
-    onChange({ conditionalRules: next });
-  }
-
-  function removeRule(index: number) {
-    onChange({ conditionalRules: conditionalRules.filter((_, ruleIndex) => ruleIndex !== index) });
-  }
-
-  function addRule() {
-    const firstField = conditionFields[0];
-    const defaultEquals = getConditionValueOptions(firstField)[0]?.value ?? "";
-    onChange({
-      conditionalRules: [
-        ...conditionalRules,
-        {
-          when: { field: firstField?.key ?? "", equals: defaultEquals },
-          effects: {},
-        },
-      ],
-    });
-  }
-
-  return (
-    <Section label="Règles conditionnelles">
-      <div className="space-y-3">
-        <p className="text-[11px] text-gray-500 leading-relaxed">
-          Les règles de groupe permettent de masquer tout un ensemble de calques ou de le décaler d&apos;un coup selon une valeur du formulaire.
-        </p>
-        {conditionFields.length === 0 && (
-          <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
-            Ajoute d&apos;abord un champ de type liste ou oui/non dans le schéma pour créer une variante conditionnelle.
-          </p>
-        )}
-        {conditionalRules.map((rule, index) => {
-          const selectedField = schema.find((item) => item.key === rule.when.field);
-          const valueOptions = getConditionValueOptions(selectedField);
-          return (
-            <div key={`${rule.when.field}-${index}`} className="rounded-2xl border border-gray-200 bg-gray-50 p-3 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-[11px] font-medium text-gray-600">Règle {index + 1}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">Quand {selectedField?.label || rule.when.field || "un champ"} vaut {rule.when.equals || "…"}</p>
-                </div>
-                <button type="button" onClick={() => removeRule(index)} className="text-[11px] text-red-500 hover:text-red-600">
-                  Supprimer
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="flex flex-col gap-0.5 col-span-2">
-                  <span className="text-gray-400 text-[11px]">Champ</span>
-                  <select
-                    value={rule.when.field}
-                    onChange={(e) => {
-                      const nextField = schema.find((item) => item.key === e.target.value);
-                      updateRule(index, {
-                        when: {
-                          field: e.target.value,
-                          equals: getConditionValueOptions(nextField)[0]?.value ?? "",
-                        },
-                      });
-                    }}
-                    className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white"
-                  >
-                    <option value="">— choisir —</option>
-                    {conditionFields.map((field) => (
-                      <option key={field.key} value={field.key}>{field.label || field.key}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-0.5 col-span-2">
-                  <span className="text-gray-400 text-[11px]">Valeur attendue</span>
-                  {valueOptions.length > 0 ? (
-                    <select
-                      value={rule.when.equals}
-                      onChange={(e) => updateRule(index, { when: { ...rule.when, equals: e.target.value } })}
-                      className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white"
-                    >
-                      <option value="">— choisir —</option>
-                      {valueOptions.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={rule.when.equals}
-                      onChange={(e) => updateRule(index, { when: { ...rule.when, equals: e.target.value } })}
-                      placeholder="valeur"
-                      className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white"
-                    />
-                  )}
-                </label>
-                <label className="flex flex-col gap-0.5 col-span-2">
-                  <span className="text-gray-400 text-[11px]">Effet de visibilité</span>
-                  <select
-                    value={rule.effects.visible === true ? "show" : rule.effects.visible === false ? "hide" : "none"}
-                    onChange={(e) => updateRule(index, {
-                      effects: {
-                        ...rule.effects,
-                        visible: e.target.value === "show" ? true : e.target.value === "hide" ? false : undefined,
-                      },
-                    })}
-                    className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white"
-                  >
-                    <option value="none">Aucun</option>
-                    <option value="show">Afficher le groupe</option>
-                    <option value="hide">Masquer le groupe</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-0.5">
-                  <span className="text-gray-400 text-[11px]">Décalage X</span>
-                  <input
-                    type="number"
-                    value={rule.effects.offsetX ?? 0}
-                    onChange={(e) => updateRule(index, { effects: { ...rule.effects, offsetX: Number(e.target.value) } })}
-                    className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white"
-                  />
-                </label>
-                <label className="flex flex-col gap-0.5">
-                  <span className="text-gray-400 text-[11px]">Décalage Y</span>
-                  <input
-                    type="number"
-                    value={rule.effects.offsetY ?? 0}
-                    onChange={(e) => updateRule(index, { effects: { ...rule.effects, offsetY: Number(e.target.value) } })}
-                    className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white"
-                  />
-                </label>
-              </div>
-            </div>
-          );
-        })}
-        <button
-          type="button"
-          onClick={addRule}
-          disabled={conditionFields.length === 0}
-          className="w-full text-center text-xs py-2 border border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-50 disabled:hover:border-gray-300 disabled:hover:text-gray-600"
-        >
-          + Ajouter une règle
-        </button>
-      </div>
-    </Section>
-  );
-}
