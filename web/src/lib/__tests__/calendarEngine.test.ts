@@ -4,18 +4,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // On mock le module entier pour éviter toute connexion DB.
 // Les tests injectent leurs propres données via les mocks ci-dessous.
 
-const mockFindMany = vi.fn();
-const mockFindFirst = vi.fn();
-const mockCreate = vi.fn();
+const mockPatternFindMany = vi.fn();
+const mockSlotFindMany = vi.fn();
+const mockCreateMany = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     accountPattern: {
-      findMany: (...args: unknown[]) => mockFindMany(...args),
+      findMany: (...args: unknown[]) => mockPatternFindMany(...args),
     },
     publicationSlot: {
-      findFirst: (...args: unknown[]) => mockFindFirst(...args),
-      create: (...args: unknown[]) => mockCreate(...args),
+      findMany: (...args: unknown[]) => mockSlotFindMany(...args),
+      createMany: (...args: unknown[]) => mockCreateMany(...args),
     },
   },
 }));
@@ -41,6 +41,15 @@ function thisSunday(monday: Date): Date {
   const d = new Date(monday);
   d.setUTCDate(d.getUTCDate() + 6);
   d.setUTCHours(23, 59, 59, 999);
+  return d;
+}
+
+/** Calcule la date cible attendue pour un pattern donné dans la semaine de monday */
+function expectedSlotDate(monday: Date, dayOfWeek: number, publishTime: string): Date {
+  const d = new Date(monday);
+  d.setUTCDate(d.getUTCDate() + (dayOfWeek - 1));
+  const [h, m] = publishTime.split(":").map(Number);
+  d.setUTCHours(h, m, 0, 0);
   return d;
 }
 
@@ -78,15 +87,15 @@ describe("generateCalendarSlots", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Par défaut : pas de slot existant → pas de skip
-    mockFindFirst.mockResolvedValue(null);
-    mockCreate.mockResolvedValue({ id: "new-slot-1" });
+    // Par défaut : pas de slot existant
+    mockSlotFindMany.mockResolvedValue([]);
+    mockCreateMany.mockResolvedValue({ count: 0 });
   });
 
   // ── Cas 0 pattern actif ───────────────────────────────────────────────────
 
   it("0 pattern actif → 0 slot créé, 0 skipped", async () => {
-    mockFindMany.mockResolvedValue([]);
+    mockPatternFindMany.mockResolvedValue([]);
 
     const result = await generateCalendarSlots({
       dateFrom: monday,
@@ -95,13 +104,13 @@ describe("generateCalendarSlots", () => {
 
     expect(result.created).toBe(0);
     expect(result.skipped).toBe(0);
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockCreateMany).not.toHaveBeenCalled();
   });
 
   // ── Cas 1 pattern actif ───────────────────────────────────────────────────
 
   it("1 pattern actif lundi 09:00 → 1 slot créé pour la semaine", async () => {
-    mockFindMany.mockResolvedValue([makePattern()]);
+    mockPatternFindMany.mockResolvedValue([makePattern()]);
 
     const result = await generateCalendarSlots({
       dateFrom: monday,
@@ -110,27 +119,26 @@ describe("generateCalendarSlots", () => {
 
     expect(result.created).toBe(1);
     expect(result.skipped).toBe(0);
-    expect(mockCreate).toHaveBeenCalledOnce();
+    expect(mockCreateMany).toHaveBeenCalledOnce();
 
-    // Vérifier que le slot est créé avec accountId, patternId, status correct
-    const createArg = mockCreate.mock.calls[0][0].data;
-    expect(createArg.accountId).toBe("account-1");
-    expect(createArg.patternId).toBe("pattern-1");
-    expect(createArg.status).toBe("TO_DO");
-    expect(createArg.isAuto).toBe(true);
+    const dataArr = mockCreateMany.mock.calls[0][0].data;
+    expect(dataArr).toHaveLength(1);
+    const slot = dataArr[0];
+    expect(slot.accountId).toBe("account-1");
+    expect(slot.patternId).toBe("pattern-1");
+    expect(slot.status).toBe("TO_DO");
+    expect(slot.isAuto).toBe(true);
 
     // Vérifier la date : lundi 09:00 UTC
-    const scheduledAt: Date = createArg.scheduledAt;
-    expect(scheduledAt.getUTCHours()).toBe(9);
-    expect(scheduledAt.getUTCMinutes()).toBe(0);
-    // dayOfWeek=1 → lundi = même jour que monday
-    expect(scheduledAt.getUTCDate()).toBe(monday.getUTCDate());
+    expect(slot.scheduledAt.getUTCHours()).toBe(9);
+    expect(slot.scheduledAt.getUTCMinutes()).toBe(0);
+    expect(slot.scheduledAt.getUTCDate()).toBe(monday.getUTCDate());
   });
 
   // ── 2 patterns sur même compte, jours différents ──────────────────────────
 
   it("2 patterns sur le même compte jours différents → 2 slots créés", async () => {
-    mockFindMany.mockResolvedValue([
+    mockPatternFindMany.mockResolvedValue([
       makePattern({ id: "p1", dayOfWeek: 1, publishTime: "09:00" }),
       makePattern({ id: "p2", dayOfWeek: 3, publishTime: "18:00" }), // Mercredi
     ]);
@@ -142,25 +150,33 @@ describe("generateCalendarSlots", () => {
 
     expect(result.created).toBe(2);
     expect(result.skipped).toBe(0);
-    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(mockCreateMany).toHaveBeenCalledOnce();
 
-    // Premier slot : lundi 09:00
-    const firstDate: Date = mockCreate.mock.calls[0][0].data.scheduledAt;
-    expect(firstDate.getUTCHours()).toBe(9);
-    expect(firstDate.getUTCDate()).toBe(monday.getUTCDate());
+    const dataArr = mockCreateMany.mock.calls[0][0].data;
+    expect(dataArr).toHaveLength(2);
 
-    // Deuxième slot : mercredi 18:00 (monday + 2 jours)
-    const secondDate: Date = mockCreate.mock.calls[1][0].data.scheduledAt;
-    expect(secondDate.getUTCHours()).toBe(18);
-    expect(secondDate.getUTCDate()).toBe(monday.getUTCDate() + 2);
+    const first = dataArr[0];
+    expect(first.scheduledAt.getUTCHours()).toBe(9);
+    expect(first.scheduledAt.getUTCDate()).toBe(monday.getUTCDate());
+
+    const second = dataArr[1];
+    expect(second.scheduledAt.getUTCHours()).toBe(18);
+    expect(second.scheduledAt.getUTCDate()).toBe(monday.getUTCDate() + 2);
   });
 
   // ── Idempotence ───────────────────────────────────────────────────────────
 
   it("idempotence : slot déjà existant → skipped, pas de doublon", async () => {
-    mockFindMany.mockResolvedValue([makePattern()]);
+    const pattern = makePattern();
+    mockPatternFindMany.mockResolvedValue([pattern]);
     // Simuler que le slot existe déjà
-    mockFindFirst.mockResolvedValue({ id: "existing-slot" });
+    mockSlotFindMany.mockResolvedValue([
+      {
+        accountId: pattern.accountId,
+        scheduledAt: expectedSlotDate(monday, pattern.dayOfWeek, pattern.publishTime),
+        patternId: pattern.id,
+      },
+    ]);
 
     const result = await generateCalendarSlots({
       dateFrom: monday,
@@ -169,33 +185,39 @@ describe("generateCalendarSlots", () => {
 
     expect(result.created).toBe(0);
     expect(result.skipped).toBe(1);
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockCreateMany).not.toHaveBeenCalled();
   });
 
   it("idempotence : 2 appels consécutifs → 1 créé au total (2e appel = 0 créé)", async () => {
-    mockFindMany.mockResolvedValue([makePattern()]);
+    const pattern = makePattern();
+    mockPatternFindMany.mockResolvedValue([pattern]);
 
-    // Premier appel : slot inexistant → création
-    mockFindFirst.mockResolvedValueOnce(null);
+    // 1er appel : pas de slot existant → 1 created
+    mockSlotFindMany.mockResolvedValueOnce([]);
     const r1 = await generateCalendarSlots({ dateFrom: monday, dateTo: sunday });
     expect(r1.created).toBe(1);
 
-    // Deuxième appel : slot existe → skip
-    mockFindFirst.mockResolvedValueOnce({ id: "just-created" });
+    // 2e appel : le slot précédent est maintenant en base → 0 created, 1 skipped
+    mockSlotFindMany.mockResolvedValueOnce([
+      {
+        accountId: pattern.accountId,
+        scheduledAt: expectedSlotDate(monday, pattern.dayOfWeek, pattern.publishTime),
+        patternId: pattern.id,
+      },
+    ]);
     const r2 = await generateCalendarSlots({ dateFrom: monday, dateTo: sunday });
     expect(r2.created).toBe(0);
     expect(r2.skipped).toBe(1);
 
-    // Au total, create n'a été appelé qu'une fois
-    expect(mockCreate).toHaveBeenCalledOnce();
+    // createMany n'a été appelé qu'une seule fois (sur le 1er appel)
+    expect(mockCreateMany).toHaveBeenCalledOnce();
   });
 
   // ── Pattern inactif → skip ────────────────────────────────────────────────
 
   it("pattern inactif (isActive=false) → ignoré par la query (0 slot créé)", async () => {
     // La query Prisma filtre déjà isActive=true — on simule en retournant []
-    // (même si on passe un pattern inactif dans les fixtures, Prisma ne le retournerait pas)
-    mockFindMany.mockResolvedValue([]);
+    mockPatternFindMany.mockResolvedValue([]);
 
     const result = await generateCalendarSlots({
       dateFrom: monday,
@@ -205,8 +227,7 @@ describe("generateCalendarSlots", () => {
     expect(result.created).toBe(0);
     expect(result.skipped).toBe(0);
 
-    // Vérifier que la query Prisma est appelée avec isActive: true
-    expect(mockFindMany).toHaveBeenCalledWith(
+    expect(mockPatternFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ isActive: true }),
       })
@@ -216,7 +237,7 @@ describe("generateCalendarSlots", () => {
   // ── Filtrage par accountIds ───────────────────────────────────────────────
 
   it("filtrage par accountIds : query Prisma inclut accountId dans le where", async () => {
-    mockFindMany.mockResolvedValue([]);
+    mockPatternFindMany.mockResolvedValue([]);
 
     await generateCalendarSlots({
       dateFrom: monday,
@@ -224,7 +245,7 @@ describe("generateCalendarSlots", () => {
       accountIds: ["account-1", "account-2"],
     });
 
-    expect(mockFindMany).toHaveBeenCalledWith(
+    expect(mockPatternFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           accountId: { in: ["account-1", "account-2"] },
@@ -234,7 +255,7 @@ describe("generateCalendarSlots", () => {
   });
 
   it("accountIds vide [] → pas de filtre sur accountId (tous les comptes)", async () => {
-    mockFindMany.mockResolvedValue([]);
+    mockPatternFindMany.mockResolvedValue([]);
 
     await generateCalendarSlots({
       dateFrom: monday,
@@ -242,23 +263,19 @@ describe("generateCalendarSlots", () => {
       accountIds: [],
     });
 
-    const whereArg = mockFindMany.mock.calls[0][0].where;
+    const whereArg = mockPatternFindMany.mock.calls[0][0].where;
     expect(whereArg).not.toHaveProperty("accountId");
   });
 
   // ── Pattern hors plage → skip ─────────────────────────────────────────────
 
   it("pattern dont la date calculée est hors plage → 0 créé", async () => {
-    // Le moteur calcule targetDate = dateFrom + (dayOfWeek - 1) jours.
-    // Pour qu'un pattern soit hors plage, il faut que dayOfWeek soit très grand
-    // et que dateTo soit court. On passe dateFrom=lundi, dateTo=lundi (1 seul jour)
-    // et un pattern dayOfWeek=7 (dimanche) : targetDate = lundi + 6 > dateTo.
     const mondayOnly = new Date(monday);
     const mondayEnd = new Date(monday);
     mondayEnd.setUTCHours(23, 59, 59, 999);
 
     // dayOfWeek=7 → targetDate = lundi + 6 = dimanche → > mondayEnd → hors plage
-    mockFindMany.mockResolvedValue([makePattern({ dayOfWeek: 7 })]);
+    mockPatternFindMany.mockResolvedValue([makePattern({ dayOfWeek: 7 })]);
 
     const result = await generateCalendarSlots({
       dateFrom: mondayOnly,
@@ -267,13 +284,13 @@ describe("generateCalendarSlots", () => {
 
     expect(result.created).toBe(0);
     expect(result.skipped).toBe(0);
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockCreateMany).not.toHaveBeenCalled();
   });
 
   // ── Assignations par défaut propagées ────────────────────────────────────
 
   it("les assignées par défaut du pattern sont propagées dans le slot créé", async () => {
-    mockFindMany.mockResolvedValue([
+    mockPatternFindMany.mockResolvedValue([
       makePattern({
         defaultAssigneeMonteurId: "monteur-1",
         defaultAssigneeCmId: "cm-1",
@@ -282,9 +299,56 @@ describe("generateCalendarSlots", () => {
 
     await generateCalendarSlots({ dateFrom: monday, dateTo: sunday });
 
-    const createArg = mockCreate.mock.calls[0][0].data;
-    expect(createArg.assigneeMonteurId).toBe("monteur-1");
-    expect(createArg.assigneeCmId).toBe("cm-1");
+    const slot = mockCreateMany.mock.calls[0][0].data[0];
+    expect(slot.assigneeMonteurId).toBe("monteur-1");
+    expect(slot.assigneeCmId).toBe("cm-1");
+  });
+
+  // ── Multi-semaine (régression du BLOCKER code review) ──────────────────────
+
+  it("plage 2 semaines + 1 pattern → 2 slots créés (1 par semaine)", async () => {
+    const pattern = makePattern({ dayOfWeek: 1, publishTime: "09:00" });
+    mockPatternFindMany.mockResolvedValue([pattern]);
+
+    const dateFrom = new Date(monday);
+    const dateTo = new Date(monday);
+    dateTo.setUTCDate(dateTo.getUTCDate() + 13); // +13 jours = 2 semaines complètes
+    dateTo.setUTCHours(23, 59, 59, 999);
+
+    const result = await generateCalendarSlots({ dateFrom, dateTo });
+
+    expect(result.created).toBe(2);
+    expect(mockCreateMany).toHaveBeenCalledOnce();
+
+    const dataArr = mockCreateMany.mock.calls[0][0].data;
+    expect(dataArr).toHaveLength(2);
+
+    const first: Date = dataArr[0].scheduledAt;
+    const second: Date = dataArr[1].scheduledAt;
+    const diffMs = second.getTime() - first.getTime();
+    expect(diffMs).toBe(7 * 24 * 60 * 60 * 1000); // exactement 7 jours
+  });
+
+  // ── Bulk performance : 1 seul appel findMany + 1 seul appel createMany ────
+
+  it("performance : N patterns → 1 findMany existing + 1 createMany (pas de N+1)", async () => {
+    const patterns = [
+      makePattern({ id: "p1", dayOfWeek: 1, publishTime: "09:00" }),
+      makePattern({ id: "p2", dayOfWeek: 2, publishTime: "10:00" }),
+      makePattern({ id: "p3", dayOfWeek: 3, publishTime: "11:00" }),
+      makePattern({ id: "p4", dayOfWeek: 4, publishTime: "12:00" }),
+    ];
+    mockPatternFindMany.mockResolvedValue(patterns);
+
+    await generateCalendarSlots({ dateFrom: monday, dateTo: sunday });
+
+    // 1 findMany pour les patterns + 1 findMany pour les slots existants + 1 createMany
+    expect(mockPatternFindMany).toHaveBeenCalledOnce();
+    expect(mockSlotFindMany).toHaveBeenCalledOnce();
+    expect(mockCreateMany).toHaveBeenCalledOnce();
+
+    // createMany reçoit toutes les insertions en un seul array
+    expect(mockCreateMany.mock.calls[0][0].data).toHaveLength(4);
   });
 });
 
@@ -308,8 +372,6 @@ describe("nextWeekRange", () => {
 
   it("dateTo est 6 jours complets après dateFrom (lundi → dimanche inclus)", () => {
     const { dateFrom, dateTo } = nextWeekRange();
-    // dateFrom = lundi 00:00, dateTo = dimanche 23:59:59.999 → ~6.99 jours
-    // On vérifie plutôt que le delta en ms est compris entre 6 et 7 jours
     const diffMs = dateTo.getTime() - dateFrom.getTime();
     const sixDaysMs = 6 * 24 * 60 * 60 * 1000;
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
