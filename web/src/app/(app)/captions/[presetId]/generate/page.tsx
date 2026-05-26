@@ -12,7 +12,7 @@ import {
   getCaptionPromptStorageMessage,
   listCaptionPromptRows,
 } from "@/lib/captionPromptStore";
-import "../../captions.css";
+import "@/components/captions/captions.css";
 
 type Props = {
   params: Promise<{ presetId: string }>;

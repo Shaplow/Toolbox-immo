@@ -106,7 +106,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
       const created = await res.json() as { id: string };
       setShowCreateForm(false);
       setCreateName("");
-      router.push(`/captions/${created.id}/edit`);
+      router.push(`/admin/captions/presets/${created.id}/edit`);
     } catch {
       setCreateError("Impossible de créer le preset.");
     } finally {
@@ -328,7 +328,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                 <div className="flex gap-2">
                   {isAdmin && (
                     <Link
-                      href={`/captions/${preset.id}/edit`}
+                      href={`/admin/captions/presets/${preset.id}/edit`}
                       className="flex-1 text-center text-xs bg-gray-900 text-white py-1.5 rounded-lg hover:bg-gray-700 transition-colors"
                     >
                       Éditer
