@@ -18,6 +18,9 @@ export async function GET(_req: NextRequest) {
     include: {
       template: { select: { id: true, name: true, contentType: true } },
       library: { select: { id: true, name: true } },
+      defaultAssigneeMonteur: { select: { name: true } },
+      defaultAssigneeCm: { select: { name: true } },
+      _count: { select: { publicationSlots: true } },
     },
   });
 
@@ -96,6 +99,9 @@ export async function POST(req: NextRequest) {
       include: {
         template: { select: { id: true, name: true, contentType: true } },
         library: { select: { id: true, name: true } },
+        defaultAssigneeMonteur: { select: { name: true } },
+        defaultAssigneeCm: { select: { name: true } },
+        _count: { select: { publicationSlots: true } },
       },
     });
     return NextResponse.json(recipe, { status: 201 });

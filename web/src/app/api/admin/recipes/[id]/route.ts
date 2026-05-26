@@ -106,6 +106,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         library: { select: { id: true, name: true } },
         defaultAssigneeMonteur: { select: { id: true, name: true } },
         defaultAssigneeCm: { select: { id: true, name: true } },
+        _count: { select: { publicationSlots: true } },
       },
     });
     return NextResponse.json(recipe);
