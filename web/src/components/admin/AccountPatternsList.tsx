@@ -1,9 +1,15 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { LayoutList, Edit, Copy, Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { FormField } from "@/components/ui/FormField";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { DeleteButton } from "@/components/ui/DeleteButton";
 import { toast } from "@/components/ui/Toast";
+import { AccountPatternForm, type AccountPatternRow } from "./AccountPatternForm";
 
 // ─── Labels FR ────────────────────────────────────────────────────────────────
 
@@ -30,19 +36,7 @@ const NEEDS_DESCRIPTION_LABELS: Record<string, string> = {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Pattern = {
-  id: string;
-  label: string;
-  source: string;
-  coverMode: string;
-  needsCaptions: boolean;
-  needsDescription: string;
-  needsRushes: boolean;
-  needsBrief: boolean;
-  needsClientValidation: boolean;
-  dayOfWeek: number;
-  publishTime: string;
-  isActive: boolean;
+type Pattern = AccountPatternRow & {
   template: { id: string; name: string } | null;
   library: { id: string; name: string } | null;
   defaultAssigneeMonteur: { id: string; name: string | null } | null;
@@ -57,8 +51,21 @@ type Props = {
 
 // ─── PatternCard ──────────────────────────────────────────────────────────────
 
-function PatternCard({ pattern }: { pattern: Pattern }) {
-  const comingSoon = "Disponible prochainement (Wave C3)";
+function PatternCard({
+  pattern,
+  accountId,
+  onEdit,
+  onClone,
+  onDeleted,
+}: {
+  pattern: Pattern;
+  accountId: string;
+  onEdit: (pattern: Pattern) => void;
+  onClone: () => void;
+  onDeleted: () => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+  const hasSlots = pattern._count.publicationSlots > 0;
 
   const flags: { label: string; value: boolean | string }[] = [
     { label: "Captions", value: pattern.needsCaptions },
@@ -66,6 +73,26 @@ function PatternCard({ pattern }: { pattern: Pattern }) {
     { label: "Brief", value: pattern.needsBrief },
     { label: "Validation client", value: pattern.needsClientValidation },
   ];
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/accounts/${accountId}/patterns/${pattern.id}`, {
+        method: "DELETE",
+      });
+      if (res.ok || res.status === 204) {
+        toast.success("Pattern supprimé");
+        onDeleted();
+        return;
+      }
+      const data = await res.json() as { error?: string };
+      toast.error(data.error ?? "Erreur lors de la suppression");
+    } catch {
+      toast.error("Erreur réseau");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-4">
@@ -134,15 +161,32 @@ function PatternCard({ pattern }: { pattern: Pattern }) {
 
       {/* Actions */}
       <div className="flex items-center gap-2 pt-1 border-t border-gray-50">
-        <Button variant="secondary" size="sm" icon={Edit} disabled title={comingSoon}>
+        <Button variant="secondary" size="sm" icon={Edit} onClick={() => onEdit(pattern)}>
           Éditer
         </Button>
-        <Button variant="ghost" size="sm" icon={Copy} disabled title={comingSoon}>
+        <Button variant="ghost" size="sm" icon={Copy} onClick={() => onClone()}>
           Cloner
         </Button>
-        <Button variant="ghost" size="sm" icon={Trash2} disabled title={comingSoon} className="ml-auto text-gray-400">
-          Supprimer
-        </Button>
+        <div className="ml-auto" title={hasSlots ? `Ce pattern a ${pattern._count.publicationSlots} slot(s) associé(s). Suppression impossible.` : undefined}>
+          {hasSlots ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={Trash2}
+              disabled
+              className="text-gray-300 cursor-not-allowed"
+            >
+              Supprimer
+            </Button>
+          ) : (
+            <DeleteButton
+              itemLabel={`le pattern "${pattern.label}"`}
+              description="Cette action est irréversible. Le pattern sera définitivement supprimé."
+              onConfirm={handleDelete}
+              loading={deleting}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -157,11 +201,144 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+// ─── CloneDialog ──────────────────────────────────────────────────────────────
+
+function CloneDialog({
+  open,
+  accountId,
+  onClose,
+  onCloned,
+}: {
+  open: boolean;
+  accountId: string;
+  onClose: () => void;
+  onCloned: () => void;
+}) {
+  const [sourceAccountId, setSourceAccountId] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // ESC to close
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, onClose]);
+
+  async function handleClone() {
+    if (!sourceAccountId.trim()) {
+      toast.error("L'ID du compte source est requis");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/accounts/${accountId}/patterns/clone-from`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceAccountId: sourceAccountId.trim() }),
+      });
+      const data = await res.json() as { cloned?: number; error?: string };
+      if (!res.ok) {
+        toast.error(data.error ?? "Erreur lors du clonage");
+        return;
+      }
+      toast.success(`${data.cloned ?? 0} pattern(s) cloné(s)`);
+      setSourceAccountId("");
+      onCloned();
+      onClose();
+    } catch {
+      toast.error("Erreur réseau");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} aria-hidden="true" />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="clone-dialog-title"
+        className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none"
+      >
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md pointer-events-auto overflow-hidden">
+          <div className="px-6 pt-6 pb-4">
+            <h2 id="clone-dialog-title" className="text-base font-semibold text-gray-900 mb-1">
+              Cloner des patterns depuis un autre compte
+            </h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Tous les patterns du compte source seront copiés vers ce compte.
+            </p>
+            <FormField label="ID du compte source" required>
+              <Input
+                value={sourceAccountId}
+                onChange={setSourceAccountId}
+                placeholder="cuid du compte Instagram source…"
+              />
+            </FormField>
+          </div>
+          <div className="flex items-center justify-end gap-2 px-6 py-4 bg-gray-50 border-t border-gray-100">
+            <Button variant="ghost" size="md" onClick={onClose} disabled={loading}>
+              Annuler
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              loading={loading}
+              onClick={() => void handleClone()}
+            >
+              Cloner
+            </Button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── AccountPatternsList ──────────────────────────────────────────────────────
 
-export function AccountPatternsList({ patterns }: Props) {
-  function handleAddPattern() {
-    toast.info("Édition des patterns disponible en Wave C3.");
+export function AccountPatternsList({ account, patterns }: Props) {
+  const router = useRouter();
+
+  // Edit / Create modal
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingPattern, setEditingPattern] = useState<Pattern | null>(null);
+
+  // Clone dialog
+  const [cloneOpen, setCloneOpen] = useState(false);
+
+  function openCreate() {
+    setEditingPattern(null);
+    setFormOpen(true);
+  }
+
+  function openEdit(pattern: Pattern) {
+    setEditingPattern(pattern);
+    setFormOpen(true);
+  }
+
+  function openClone() {
+    // For simplicity (as per spec), "Clone" opens a global clone-from dialog
+    // (all patterns from source account). A per-pattern clone UI is Wave+.
+    setCloneOpen(true);
+  }
+
+  function handleSaved() {
+    router.refresh();
+  }
+
+  function handleDeleted() {
+    router.refresh();
+  }
+
+  function handleCloned() {
+    router.refresh();
   }
 
   return (
@@ -177,13 +354,7 @@ export function AccountPatternsList({ patterns }: Props) {
             </span>
           )}
         </div>
-        <Button
-          variant="primary"
-          size="sm"
-          icon={Plus}
-          onClick={handleAddPattern}
-          title="Édition disponible en Wave C3"
-        >
+        <Button variant="primary" size="sm" icon={Plus} onClick={openCreate}>
           Ajouter pattern
         </Button>
       </div>
@@ -196,16 +367,40 @@ export function AccountPatternsList({ patterns }: Props) {
           description="Crée un pattern pour automatiser la création de slots dans le calendrier."
           cta={{
             label: "Ajouter un pattern",
-            onClick: handleAddPattern,
+            onClick: openCreate,
           }}
         />
       ) : (
         <div className="grid grid-cols-1 gap-4">
           {patterns.map((pattern) => (
-            <PatternCard key={pattern.id} pattern={pattern} />
+            <PatternCard
+              key={pattern.id}
+              pattern={pattern}
+              accountId={account.id}
+              onEdit={openEdit}
+              onClone={() => openClone()}
+              onDeleted={handleDeleted}
+            />
           ))}
         </div>
       )}
+
+      {/* Form modal (create / edit) */}
+      <AccountPatternForm
+        accountId={account.id}
+        initialValues={editingPattern}
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        onSaved={handleSaved}
+      />
+
+      {/* Clone dialog */}
+      <CloneDialog
+        open={cloneOpen}
+        accountId={account.id}
+        onClose={() => setCloneOpen(false)}
+        onCloned={handleCloned}
+      />
     </div>
   );
 }
