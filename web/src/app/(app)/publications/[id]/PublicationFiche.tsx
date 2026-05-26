@@ -192,6 +192,14 @@ export interface PublicationFicheProps {
   currentVersionId: string | null;
   canUploadVersion: boolean;
   canPromoteVersion: boolean;
+  // Phase 1.9 A2 — Dernier job captions lié
+  latestCaptionJob: {
+    id: string;
+    status: string;
+    outputUrl: string | null;
+    errorMsg: string | null;
+    createdAt: string;
+  } | null;
   // Phase 1.3.6
   comments: CommentData[];
   activities: ActivityItem[];
@@ -227,6 +235,7 @@ export function PublicationFiche({
   currentVersionId,
   canUploadVersion,
   canPromoteVersion,
+  latestCaptionJob,
   comments,
   activities,
   activityHasMore,
@@ -343,6 +352,7 @@ export function PublicationFiche({
               pattern={pattern ? { needsCaptions: pattern.needsCaptions } : null}
               canEdit={canEditCaptions}
               currentVersion={currentVersion}
+              latestCaptionJob={latestCaptionJob}
             />
           )}
 

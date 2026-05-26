@@ -134,6 +134,7 @@ export async function POST(req: NextRequest) {
       config?: unknown;
       previewMode?: unknown;
       presetId?: unknown;
+      slotId?: unknown;
     };
     try {
       body = await req.json();
@@ -147,6 +148,7 @@ export async function POST(req: NextRequest) {
     const srtFilename  = String(body.srtFilename ?? "captions.srt").trim();
     const previewMode  = String(body.previewMode ?? "false").toLowerCase() !== "false";
     const presetId     = body.presetId ? String(body.presetId).trim() : undefined;
+    const slotId       = body.slotId ? String(body.slotId).trim() : undefined;
 
     if (!filename || !VIDEO_EXTENSIONS.has(ext)) {
       return NextResponse.json(
@@ -214,6 +216,7 @@ export async function POST(req: NextRequest) {
         srtFilename,
         previewMode,
         presetId:    presetId ?? null,
+        slotId:      slotId ?? null,
       },
     });
 
@@ -233,6 +236,7 @@ export async function POST(req: NextRequest) {
   const configStr      = formData.get("config") as string | null;
   const previewModeStr = (formData.get("preview_mode") as string | null) ?? "true";
   const presetId       = (formData.get("preset_id") as string | null) ?? undefined;
+  const slotId         = (formData.get("slot_id") as string | null) ?? undefined;
 
   if (presetId && !isAdmin) {
     const presetAccess = await prisma.captionPresetAccess.findFirst({
@@ -276,6 +280,7 @@ export async function POST(req: NextRequest) {
         srtContent: srtContentLocal,
         srtFilename: subtitlesFile.name,
         presetId:   presetId ?? null,
+        slotId:     slotId ?? null,
       },
     });
 
@@ -363,6 +368,7 @@ export async function POST(req: NextRequest) {
       srtContent,
       srtFilename: subtitlesFile.name,
       presetId:  presetId ?? null,
+      slotId:    slotId ?? null,
     },
   });
 
