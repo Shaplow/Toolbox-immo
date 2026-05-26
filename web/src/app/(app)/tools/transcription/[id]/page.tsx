@@ -1,4 +1,6 @@
 import { redirect, notFound } from "next/navigation";
+import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -41,21 +43,31 @@ export default async function TranscriptionJobPage({
   if (job.userId !== userContext.effectiveUser.id && !isAdmin) redirect("/home");
 
   return (
-    <TranscriptionDetail
-      job={{
-        id: job.id,
-        status: job.status as "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED",
-        inputFilename: job.inputFilename,
-        model: job.model,
-        language: job.language,
-        enableDiarization: job.enableDiarization,
-        hasDiarization: job.hasDiarization,
-        segmentCount: job.segmentCount,
-        duration: job.duration,
-        createdAt: job.createdAt.toISOString(),
-        errorMsg: job.errorMsg,
-        hasOutput: !!job.outputJsonKey,
-      }}
-    />
+    <div className="p-8 max-w-2xl mx-auto">
+      {/* Lien retour — Phase 1.9 A3 */}
+      <Link
+        href="/tools/transcription"
+        className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 mb-6 transition-colors"
+      >
+        <ChevronLeft size={13} />
+        Transcriptions
+      </Link>
+      <TranscriptionDetail
+        job={{
+          id: job.id,
+          status: job.status as "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED",
+          inputFilename: job.inputFilename,
+          model: job.model,
+          language: job.language,
+          enableDiarization: job.enableDiarization,
+          hasDiarization: job.hasDiarization,
+          segmentCount: job.segmentCount,
+          duration: job.duration,
+          createdAt: job.createdAt.toISOString(),
+          errorMsg: job.errorMsg,
+          hasOutput: !!job.outputJsonKey,
+        }}
+      />
+    </div>
   );
 }

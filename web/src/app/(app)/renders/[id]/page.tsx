@@ -1,5 +1,7 @@
 ﻿import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
+import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 import { RenderResult } from "@/components/renders/RenderResult";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
 
@@ -17,6 +19,7 @@ export default async function RenderPage({ params }: Props) {
       template: { select: { id: true, name: true, client: true, jsonData: true } },
       publicationSlot: {
         select: {
+          id: true,
           pattern: { select: { coverMode: true, coverConfig: true } },
         },
       },
@@ -43,8 +46,23 @@ export default async function RenderPage({ params }: Props) {
     if (!listing) notFound();
   }
 
+  // Lien retour contextualisé : fiche publication si lié, sinon liste des générations
+  const backHref = render.publicationSlot?.id
+    ? `/publications/${render.publicationSlot.id}`
+    : "/listings";
+  const backLabel = render.publicationSlot?.id ? "Retour à la publication" : "Retour aux générations";
+
   return (
     <div className="p-8 max-w-2xl mx-auto">
+      {/* Lien retour — Phase 1.9 A3 */}
+      <Link
+        href={backHref}
+        className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 mb-6 transition-colors"
+      >
+        <ChevronLeft size={13} />
+        {backLabel}
+      </Link>
+
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">Résultat</h1>
         <p className="text-sm text-gray-500 mt-1">

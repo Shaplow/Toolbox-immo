@@ -6,6 +6,7 @@ import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import { TemplatePreviewFrame } from "@/components/templates/TemplatePreviewFrame";
 import type { TemplateJSON } from "@/types/template";
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
 
 type Props = {
   params: Promise<{ templateId: string }>;
@@ -56,12 +57,20 @@ export default async function TemplatePreviewPage({ params, searchParams }: Prop
           <p className="text-xs uppercase tracking-[0.18em] text-white/45">{layoutDebug ? "Debug layout" : "Aperçu du template"}</p>
           <h1 className="text-sm font-medium truncate">{title}</h1>
         </div>
-        <a
-          href={`/tools/templates/${templateId}/edit`}
-          className="text-xs px-3 py-1.5 rounded-lg border border-white/15 text-white/80 hover:bg-white/10 transition-colors"
-        >
-          Retour à l'éditeur
-        </a>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/tools/templates"
+            className="text-xs px-3 py-1.5 rounded-lg border border-white/15 text-white/60 hover:bg-white/10 transition-colors"
+          >
+            ← Galerie templates
+          </Link>
+          <a
+            href={`/tools/templates/${templateId}/edit`}
+            className="text-xs px-3 py-1.5 rounded-lg border border-white/15 text-white/80 hover:bg-white/10 transition-colors"
+          >
+            Retour à l&apos;éditeur
+          </a>
+        </div>
       </div>
       <div className="min-h-0 flex-1 bg-neutral-950 p-3 md:p-4">
         <TemplatePreviewFrame

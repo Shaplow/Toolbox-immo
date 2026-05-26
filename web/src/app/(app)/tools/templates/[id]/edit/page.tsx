@@ -28,6 +28,7 @@ export default async function BuilderPage({ params }: Props) {
       templateClient={template.client}
       initialJSON={json}
       initialFormats={formats}
+      backUrl="/tools/templates"
     />
   );
 }
