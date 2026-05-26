@@ -449,4 +449,63 @@ test.describe("Navigation client → fiche compte", () => {
       page.getByRole("link", { name: /configurer/i }).first()
     ).toBeVisible({ timeout: 10_000 });
   });
+
+  test("l'onglet Comptes a un lien 'Voir tous les comptes Instagram' vers /admin/accounts", async ({ page }) => {
+    await loginAs(page, "admin");
+    await page.goto("/admin/clients/test-client-1");
+
+    // Cliquer sur l'onglet Comptes Instagram
+    const comptesTab = page.locator("button").filter({ hasText: /comptes instagram/i }).first();
+    await expect(comptesTab).toBeVisible({ timeout: 10_000 });
+    await comptesTab.click();
+
+    await page.waitForTimeout(500);
+
+    // Le lien bidirectionnel vers la vue plate doit être visible
+    const allAccountsLink = page.getByRole("link", { name: /voir tous les comptes instagram/i });
+    await expect(allAccountsLink).toBeVisible({ timeout: 10_000 });
+    await expect(allAccountsLink).toHaveAttribute("href", "/admin/accounts");
+  });
+});
+
+// ── 8. Vue plate /admin/accounts (Phase 1.7) ──────────────────────────────────
+
+test.describe("ADMIN — vue plate /admin/accounts", () => {
+  test("admin peut accéder à /admin/accounts et voit la liste des comptes", async ({ page }) => {
+    await loginAs(page, "admin");
+    const response = await page.goto("/admin/accounts");
+    expect(response?.status()).toBe(200);
+
+    // Le titre doit être présent
+    await expect(
+      page.getByRole("heading", { name: /comptes instagram/i }).first()
+    ).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("la liste affiche le compte test_account", async ({ page }) => {
+    await loginAs(page, "admin");
+    await page.goto("/admin/accounts");
+
+    await expect(page.locator("text=test_account").first()).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("cliquer sur un compte navigue vers /admin/accounts/[id]", async ({ page }) => {
+    await loginAs(page, "admin");
+    await page.goto("/admin/accounts");
+
+    // Le lien "Configurer" doit pointer vers /admin/accounts/[id]
+    const configLink = page.getByRole("link", { name: /configurer/i }).first();
+    await expect(configLink).toBeVisible({ timeout: 10_000 });
+    await configLink.click();
+
+    await expect(page).toHaveURL(/\/admin\/accounts\/.+/, { timeout: 10_000 });
+  });
+
+  test("MONTEUR redirigé depuis /admin/accounts", async ({ page }) => {
+    await loginAs(page, "monteur");
+    await page.goto("/admin/accounts");
+
+    // Le monteur n'est pas admin — doit être redirigé
+    await expect(page).not.toHaveURL("/admin/accounts", { timeout: 5_000 });
+  });
 });

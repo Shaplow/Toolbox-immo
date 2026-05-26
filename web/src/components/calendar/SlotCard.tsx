@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { STATUS_COLORS, STATUS_DOT, STATUS_LABELS, type PublicationSlot } from "@/types/calendar";
 
 interface SlotCardProps {
@@ -33,6 +34,19 @@ export function SlotCard({ slot, onClick }: SlotCardProps) {
       {/* Title */}
       {slot.title && (
         <p className="text-xs text-gray-600 truncate mb-1.5">{slot.title}</p>
+      )}
+
+      {/* Pattern badge — visible uniquement si le slot vient d'un pattern */}
+      {slot.pattern?.label && (
+        <div className="mb-1.5" onClick={(e) => e.stopPropagation()}>
+          <Link
+            href={`/admin/accounts/${slot.accountId}`}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 transition-colors"
+            title={`Pattern : ${slot.pattern.label} — voir la fiche compte`}
+          >
+            {slot.pattern.label}
+          </Link>
+        </div>
       )}
 
       {/* Footer: status + account */}

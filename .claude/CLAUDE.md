@@ -67,34 +67,37 @@ L'app a pivoté d'une grille d'outils standalone vers un pipeline éditorial ave
 - `Toast` (`@/components/ui/Toast`) — `toast.success/error/info`. **Jamais d'`alert()` ni `confirm()` natif dans le code admin/UI.**
 
 ### Patterns admin
-- **Pattern d'onglets** : `state activeTab` + boutons toggle inline + support `?tab=X` via `useSearchParams`. Références : `/admin/clients/[id]/page.tsx`, `/admin/offer-schedule/page.tsx`.
+- **Pattern d'onglets** : `state activeTab` + boutons toggle inline + support `?tab=X` via `useSearchParams`. Référence : `/admin/clients/[id]/page.tsx`.
 - **Pattern hub avec cards** : grid responsive `grid-cols-1 sm:grid-cols-2 lg:grid-cols-N` + cards stack vertical (icône 40×40 dans wrapper colored + titre + description). Référence : `/admin/libraries/page.tsx` (hub "Ressources").
 - **Page admin avec panel client** : server component qui fetch via Prisma + passe initialData à un client component. Garde admin via `getUserContext` + `actualUser.role === "ADMIN"` (redirect si non).
 - **ToolPageHeader** partout en haut des pages admin (titre + subtitle + icône + actions optionnelles).
 
 ### Navigation admin (3 sous-sections)
 ```
-PRODUCTION  — Templates / Calendrier / Offres
-CLIENTS     — Clients (avec onglet Comptes Instagram → fiche compte → Patterns)
+PRODUCTION  — Templates / Calendrier
+CLIENTS     — Clients / Comptes Instagram
 CONFIGURATION — Ressources (hub 4 cards) / Utilisateurs
 ```
 - **Templates** : module central, dans Production (pas dans Outils — voir mémoire `templates-module-importance`)
-- **Calendrier** (`/calendar`) : vue hebdo des slots + bouton "Générer la semaine" (lit les `AccountPattern` actifs)
-- **Offres** (`/admin/offer-schedule`) : liste des codes d'offre uniquement (onglet Règles OfferScheduleRule supprimé Phase 1.6)
+- **Calendrier** (`/calendar`) : vue hebdo des slots + bouton "Générer la semaine" (lit les `AccountPattern` actifs). Les `SlotCard` affichent un badge violet `pattern.label` cliquable → fiche compte.
 - **Hub Ressources** : Médias / Données / Typographies / Prompts IA (extensible — ajouter une card pour tout nouveau type de ressource réutilisable)
-- **Comptes Instagram** : gérés via fiche Client `/admin/clients/[id]` onglet "Comptes" → lien "Configurer" → `/admin/accounts/[id]` (fiche compte avec patterns)
-- **Patterns** : gérés via `/admin/accounts/[id]` (form structuré, jamais de JSON exposé) — PAS de page `/admin/patterns` top-level
+- **Comptes Instagram** (`/admin/accounts`) : vue plate de tous les comptes IG groupés par client — ajouté Phase 1.7. Lien bidirectionnel depuis fiche Client onglet Comptes.
+- **Fiche compte** (`/admin/accounts/[id]`) : patterns par compte (form structuré, jamais de JSON exposé). `AddSlotModal` utilise un picker de ces patterns (plus de saisie libre contentType).
+- **Patterns** : gérés via `/admin/accounts/[id]`. `CloneDialog` utilise un select visuel des comptes (plus d'ID CUID brut). — PAS de page `/admin/patterns` top-level
 - **Presets sous-titres** : gérés uniquement via `/tools/captions` (PAS de page admin dédiée)
+- **`Offer` n'existe plus** côté Prisma (droppé Phase 1.7 A1). `InstagramAccount.offre` est un champ `String` libre (valeurs ESSENTIEL/CONFIRME/CEO préservées comme tag).
 
-**Routes supprimées en Phase 1.6** (retournent 404) : `/admin/recipes`, onglet Règles de `/admin/offer-schedule`
+**Routes supprimées en Phase 1.6** (retournent 404) : `/admin/recipes`
+**Routes supprimées en Phase 1.7** (retournent 404) : `/admin/offer-schedule`, `/api/admin/offers`
 
 ### Dette technique
 - Phase 1.2 : voir mémoire `phase-1-2-technical-debt.md`
-- Phase 1.6 : voir mémoire `project_phase_1_6_technical_debt.md` — notamment :
-  - Drop `Template.coverAutoConfig` (28 usages actifs, dépend refacto builder Phase 1.5+)
-  - Picker patterns dans `AddSlotModal` (champ texte libre pour l'instant)
-  - `computePublicationSteps` compat arg `recipe` (legacy, à supprimer)
-  - `CoverConfigEditor` champs avancés en JSON textarea (excludeZones, excludeSlotIds)
+- Phase 1.6 : voir mémoire `project_phase_1_6_technical_debt.md` — items résolus en Phase 1.7 (C1-C4) :
+  - ~~Picker patterns dans `AddSlotModal`~~ → résolu C1
+  - ~~Badge pattern absent dans `SlotCard`~~ → résolu C2
+  - ~~`CloneDialog` ID CUID brut~~ → résolu C3
+  - ~~`computePublicationSteps` compat arg `recipe`~~ → résolu C4
+  - Reste : Drop `Template.coverAutoConfig` (28 usages, dépend Phase 1.5+), `CoverConfigEditor` zones avancées JSON
 - Refacto UX **interne** du module Templates (builder Canvas, ergonomie éditeur) — chantier dédié Phase 1.5+
 - Migration `MediaAssetsPanel` (2440 LOC) aux primitives UI — split en sous-composants requis avant
 - Libraries sous-pages restantes (MediaLibrariesPanel, DataLibrariesPanel, etc.) à migrer aux primitives

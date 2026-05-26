@@ -13,7 +13,7 @@ function baseSlot(overrides?: Partial<{ status: string; caption: string | null }
 
 const recipeWithRushes = {
   source: "manual_rushes" as const,
-  needsCover: "none" as const,
+  coverMode: "none" as const,
   needsCaptions: false,
   needsDescription: "none" as const,
   needsClientValidation: false,
@@ -34,7 +34,7 @@ const recipeWithBoth = {
 
 const recipeAutoTemplate = {
   source: "auto_template" as const,
-  needsCover: "auto" as const,
+  coverMode: "auto" as const,
   needsCaptions: true,
   needsDescription: "autoGenerate" as const,
   needsClientValidation: false,
@@ -46,31 +46,31 @@ const recipeAutoTemplate = {
 
 describe("computePublicationSteps — step 'edit' visibility", () => {
   it("visible si needsRushes=true", () => {
-    const steps = computePublicationSteps({ slot: baseSlot(), recipe: recipeWithRushes });
+    const steps = computePublicationSteps({ slot: baseSlot(), pattern: recipeWithRushes });
     const edit = steps.find((s) => s.key === "edit");
     expect(edit?.visible).toBe(true);
   });
 
   it("visible si needsBrief=true", () => {
-    const steps = computePublicationSteps({ slot: baseSlot(), recipe: recipeWithBrief });
+    const steps = computePublicationSteps({ slot: baseSlot(), pattern: recipeWithBrief });
     const edit = steps.find((s) => s.key === "edit");
     expect(edit?.visible).toBe(true);
   });
 
   it("visible si needsRushes ET needsBrief", () => {
-    const steps = computePublicationSteps({ slot: baseSlot(), recipe: recipeWithBoth });
+    const steps = computePublicationSteps({ slot: baseSlot(), pattern: recipeWithBoth });
     const edit = steps.find((s) => s.key === "edit");
     expect(edit?.visible).toBe(true);
   });
 
-  it("non visible si recipe null", () => {
-    const steps = computePublicationSteps({ slot: baseSlot(), recipe: null });
+  it("non visible si pattern null", () => {
+    const steps = computePublicationSteps({ slot: baseSlot(), pattern: null });
     const edit = steps.find((s) => s.key === "edit");
     expect(edit?.visible).toBe(false);
   });
 
   it("non visible si needsRushes=false et needsBrief=false", () => {
-    const steps = computePublicationSteps({ slot: baseSlot(), recipe: recipeAutoTemplate });
+    const steps = computePublicationSteps({ slot: baseSlot(), pattern: recipeAutoTemplate });
     const edit = steps.find((s) => s.key === "edit");
     expect(edit?.visible).toBe(false);
   });
@@ -82,7 +82,7 @@ describe("computePublicationSteps — step 'edit' status", () => {
   it("'todo' si aucune version et pas de currentVersionId", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
-      recipe: recipeWithRushes,
+      pattern: recipeWithRushes,
       versionsCount: 0,
       currentVersionId: null,
     });
@@ -93,7 +93,7 @@ describe("computePublicationSteps — step 'edit' status", () => {
   it("'processing' si au moins une version mais pas encore promue", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
-      recipe: recipeWithRushes,
+      pattern: recipeWithRushes,
       versionsCount: 1,
       currentVersionId: null,
     });
@@ -104,7 +104,7 @@ describe("computePublicationSteps — step 'edit' status", () => {
   it("'processing' si plusieurs versions mais aucune promue", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
-      recipe: recipeWithRushes,
+      pattern: recipeWithRushes,
       versionsCount: 3,
       currentVersionId: undefined,
     });
@@ -115,7 +115,7 @@ describe("computePublicationSteps — step 'edit' status", () => {
   it("'done' si currentVersionId est défini", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
-      recipe: recipeWithRushes,
+      pattern: recipeWithRushes,
       versionsCount: 2,
       currentVersionId: "version-abc-123",
     });
@@ -126,7 +126,7 @@ describe("computePublicationSteps — step 'edit' status", () => {
   it("'done' même sans versionsCount si currentVersionId fourni", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
-      recipe: recipeWithRushes,
+      pattern: recipeWithRushes,
       // versionsCount omis → default 0
       currentVersionId: "version-abc-123",
     });
@@ -148,7 +148,7 @@ describe("computePublicationSteps — ordre des steps", () => {
       needsRushes: true,
       needsBrief: true,
     };
-    const steps = computePublicationSteps({ slot: baseSlot(), recipe: recipeAll });
+    const steps = computePublicationSteps({ slot: baseSlot(), pattern: recipeAll });
     const editIdx = steps.findIndex((s) => s.key === "edit");
     const coverIdx = steps.findIndex((s) => s.key === "cover");
     const captionsIdx = steps.findIndex((s) => s.key === "captions");
@@ -158,16 +158,16 @@ describe("computePublicationSteps — ordre des steps", () => {
   });
 
   it("le step 'publish' est toujours le dernier", () => {
-    const steps = computePublicationSteps({ slot: baseSlot(), recipe: recipeWithBoth });
+    const steps = computePublicationSteps({ slot: baseSlot(), pattern: recipeWithBoth });
     expect(steps[steps.length - 1].key).toBe("publish");
   });
 });
 
 // ── auto_template recipe — step "edit" non visible ─────────────────────────────
 
-describe("computePublicationSteps — recipe auto_template sans rushes", () => {
+describe("computePublicationSteps — pattern auto_template sans rushes", () => {
   it("le step 'render' est visible mais pas 'edit'", () => {
-    const steps = computePublicationSteps({ slot: baseSlot(), recipe: recipeAutoTemplate });
+    const steps = computePublicationSteps({ slot: baseSlot(), pattern: recipeAutoTemplate });
     const render = steps.find((s) => s.key === "render");
     const edit = steps.find((s) => s.key === "edit");
     expect(render?.visible).toBe(true);

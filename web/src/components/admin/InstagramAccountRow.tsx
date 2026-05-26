@@ -23,23 +23,20 @@ export interface InstagramAccountData {
   cursors: Cursor[];
 }
 
-interface Offer {
-  id: string;
-  name: string;
-}
-
 interface InstagramAccountRowProps {
   account: InstagramAccountData;
-  offers: Offer[];
   onUpdated: () => void;
 }
 
-export function InstagramAccountRow({ account, offers, onUpdated }: InstagramAccountRowProps) {
+export function InstagramAccountRow({ account, onUpdated }: InstagramAccountRowProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  const [editingOffre, setEditingOffre] = useState(false);
+  const [offreValue, setOffreValue] = useState(account.offre);
 
   async function handleChangeOffre(offre: string) {
     const res = await fetch(`/api/admin/accounts/${account.id}`, {
@@ -52,6 +49,7 @@ export function InstagramAccountRow({ account, offers, onUpdated }: InstagramAcc
       toast.error(d.error ?? "Erreur lors de la mise à jour de l'offre");
       return;
     }
+    setEditingOffre(false);
     onUpdated();
   }
 
@@ -94,18 +92,31 @@ export function InstagramAccountRow({ account, offers, onUpdated }: InstagramAcc
               @{account.handle} · {account._count.renders} render{account._count.renders !== 1 ? "s" : ""}
             </p>
           </div>
-          <select
-            value={account.offre}
-            onChange={(e) => { void handleChangeOffre(e.target.value); }}
-            className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            title="Changer l'offre"
-          >
-            {offers.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}
-            {/* Affiche l'offre actuelle même si elle n'est plus dans la liste */}
-            {!offers.some((o) => o.name === account.offre) && (
-              <option value={account.offre}>{account.offre}</option>
-            )}
-          </select>
+          {editingOffre ? (
+            <form
+              onSubmit={(e) => { e.preventDefault(); void handleChangeOffre(offreValue); }}
+              className="flex items-center gap-1"
+            >
+              <input
+                autoFocus
+                value={offreValue}
+                onChange={(e) => setOffreValue(e.target.value)}
+                className="rounded border border-indigo-300 px-2 py-1 text-xs w-28 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                placeholder="ex: ESSENTIEL"
+              />
+              <button type="submit" className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">OK</button>
+              <button type="button" onClick={() => { setEditingOffre(false); setOffreValue(account.offre); }} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditingOffre(true)}
+              className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+              title="Modifier l'offre"
+            >
+              {account.offre || <span className="text-gray-400 italic">—</span>}
+            </button>
+          )}
           <Link
             href={`/admin/accounts/${account.id}`}
             className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"

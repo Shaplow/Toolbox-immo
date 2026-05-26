@@ -599,16 +599,6 @@ model AccountLibraryCursor {
   @@unique([accountId, libraryId])
 }
 
-// ─── Offres commerciales ─────────────────────────────────────────────────────
-
-/// Offre commerciale — liste gérée depuis l'admin.
-/// Le champ name (ex: "ESSENTIEL") est utilisé comme clé dans les comptes Instagram et les règles de planification.
-model Offer {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  createdAt DateTime @default(now())
-}
-
 /// Slot réel dans le calendrier opérationnel pour un compte Instagram donné.
 model PublicationSlot {
   id                String                @id @default(cuid())

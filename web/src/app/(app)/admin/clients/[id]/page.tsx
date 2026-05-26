@@ -25,11 +25,6 @@ type Client = {
   accounts: { id: string; name: string; handle: string }[];
 };
 
-interface Offer {
-  id: string;
-  name: string;
-}
-
 type Tab = "info" | "accounts";
 
 export default function AdminClientDetailPage() {
@@ -51,7 +46,6 @@ export default function AdminClientDetailPage() {
   const [igAccounts, setIgAccounts] = useState<InstagramAccountData[]>([]);
   const [igLoading, setIgLoading] = useState(false);
   const [igError, setIgError] = useState<string | null>(null);
-  const [offers, setOffers] = useState<Offer[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState({ name: "", handle: "", offre: "" });
   const [addFormError, setAddFormError] = useState<string | null>(null);
@@ -90,16 +84,9 @@ export default function AdminClientDetailPage() {
     setIgLoading(true);
     setIgError(null);
     try {
-      const [accountsRes, offersRes] = await Promise.all([
-        fetch(`/api/admin/accounts?clientId=${clientId}`),
-        fetch("/api/admin/offers"),
-      ]);
+      const accountsRes = await fetch(`/api/admin/accounts?clientId=${clientId}`);
       if (!accountsRes.ok) throw new Error(`Erreur serveur (HTTP ${accountsRes.status})`);
-      if (!offersRes.ok) throw new Error(`Erreur chargement offres (HTTP ${offersRes.status})`);
-      const offersData = await offersRes.json() as Offer[];
       setIgAccounts(await accountsRes.json() as InstagramAccountData[]);
-      setOffers(offersData);
-      setAddForm((f) => (f.offre ? f : { ...f, offre: offersData[0]?.name ?? "" }));
     } catch (err) {
       setIgError(err instanceof Error ? err.message : "Erreur de chargement");
     } finally {
@@ -172,7 +159,7 @@ export default function AdminClientDetailPage() {
     }
     toast.success("Compte Instagram créé");
     setShowAddForm(false);
-    setAddForm({ name: "", handle: "", offre: offers[0]?.name ?? "" });
+    setAddForm({ name: "", handle: "", offre: "" });
     void fetchIgAccounts();
     // Mettre à jour la liste globale pour le picker de l'onglet Infos
     void fetchData();
@@ -365,9 +352,14 @@ export default function AdminClientDetailPage() {
         <div className="space-y-4">
           {/* Header onglet */}
           <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500">
-              Comptes Instagram configurés pour ce client.
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-gray-500">
+                Comptes Instagram configurés pour ce client.
+              </p>
+              <Link href="/admin/accounts" className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors">
+                → Voir tous les comptes Instagram
+              </Link>
+            </div>
             <button
               onClick={() => setShowAddForm((v) => !v)}
               className="flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
@@ -407,13 +399,12 @@ export default function AdminClientDetailPage() {
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-gray-600">Offre</label>
-                  <select
+                  <input
                     value={addForm.offre}
                     onChange={(e) => setAddForm((f) => ({ ...f, offre: e.target.value }))}
+                    placeholder="ex: ESSENTIEL"
                     className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                  >
-                    {offers.map((o) => <option key={o.id} value={o.name}>{o.name}</option>)}
-                  </select>
+                  />
                 </div>
               </div>
               {addFormError && <p className="text-xs text-red-500">{addFormError}</p>}
@@ -460,7 +451,6 @@ export default function AdminClientDetailPage() {
                 <InstagramAccountRow
                   key={account.id}
                   account={account}
-                  offers={offers}
                   onUpdated={() => {
                     void fetchIgAccounts();
                     void fetchData();

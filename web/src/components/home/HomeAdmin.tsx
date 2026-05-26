@@ -215,11 +215,11 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
       {/* Liens secondaires */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Link
-          href="/admin/offer-schedule"
+          href="/admin/accounts"
           className="flex items-center gap-2 px-4 py-3 rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-colors text-sm text-gray-700"
         >
           <CalendarClock size={14} className="text-gray-400 shrink-0" />
-          Configurer la planification
+          Gérer les comptes Instagram
         </Link>
         <Link
           href="/admin/clients"
