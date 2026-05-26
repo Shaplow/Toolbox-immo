@@ -1,4 +1,5 @@
 import { redirect, notFound } from "next/navigation";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronLeft, Instagram } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
@@ -7,6 +8,15 @@ import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { AccountPatternsList } from "@/components/admin/AccountPatternsList";
 
 type Props = { params: Promise<{ id: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params;
+  const account = await prisma.instagramAccount.findUnique({
+    where: { id },
+    select: { handle: true },
+  });
+  return { title: `@${account?.handle ?? "Compte"} | Toolbox Immo Admin` };
+}
 
 export default async function AccountFichePage({ params }: Props) {
   const userContext = await getUserContext();

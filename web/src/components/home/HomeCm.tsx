@@ -169,7 +169,7 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
       {/* Section Publié récemment */}
       {publishedRecently.length > 0 && (
         <WorklistSection
-          title={`Publié récemment (${PUBLISHED_WINDOW_DAYS}j)`}
+          title="Publications récentes (2 dernières semaines)"
           slots={publishedRecently}
           mode="cm"
           tone="muted"

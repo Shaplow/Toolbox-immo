@@ -104,6 +104,8 @@ export default function CaptionsGenerateForm({
   promptStorageAvailable = true,
   promptStorageMessage = null,
   aiConfig = { hasClaude: true, hasGpt: true },
+  slotId = null,
+  returnTo = null,
 }: {
   preset: PresetData;
   initialSrt?: string | null;
@@ -114,6 +116,10 @@ export default function CaptionsGenerateForm({
   promptStorageAvailable?: boolean;
   promptStorageMessage?: string | null;
   aiConfig?: { hasClaude: boolean; hasGpt: boolean };
+  /** Slot de publication lié (Phase 1.9 A2) — passé au POST pour câbler la FK */
+  slotId?: string | null;
+  /** URL de retour anti-open-redirect (Phase 1.9 A2) */
+  returnTo?: string | null;
 }) {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [subsFile, setSubsFile] = useState<File | null>(null);
@@ -558,6 +564,7 @@ export default function CaptionsGenerateForm({
           config:      configWithProfile,
           previewMode: false,
           presetId:    preset.id,
+          ...(slotId ? { slotId } : {}),
         }),
       });
 
@@ -594,6 +601,7 @@ export default function CaptionsGenerateForm({
         form.append("config", JSON.stringify(configWithProfile));
         form.append("preview_mode", "false");
         form.append("preset_id", preset.id);
+        if (slotId) form.append("slot_id", slotId);
         const fallbackRes = await fetch("/api/render/captions", { method: "POST", body: form });
         if (!fallbackRes.ok) {
           const err = await fallbackRes.json().catch(() => ({ error: fallbackRes.statusText })) as { error?: string };
@@ -1178,6 +1186,18 @@ export default function CaptionsGenerateForm({
           >
             {message}
           </p>
+        )}
+
+        {/* Lien retour publication après soumission (Phase 1.9 A2) */}
+        {returnTo && jobs.length > 0 && !busy && (
+          <div className="text-center mt-3">
+            <a
+              href={returnTo}
+              className="text-xs text-indigo-600 hover:underline"
+            >
+              ← Retour à la publication
+            </a>
+          </div>
         )}
 
         {/* Generation queue */}

@@ -35,6 +35,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "L'impersonation d'un admin n'est pas autorisée" }, { status: 400 });
   }
 
+  // Audit log — Phase 1.9 B4
+  console.info("[impersonation] start", {
+    actorId: session.user.id,
+    actorEmail: session.user.email,
+    targetUserId: targetUser.id,
+    targetUserEmail: targetUser.email,
+    targetUserRole: targetUser.role,
+    timestamp: new Date().toISOString(),
+  });
+
   const response = NextResponse.json({ ok: true, user: targetUser });
   response.cookies.set(IMPERSONATION_COOKIE_NAME, targetUser.id, {
     httpOnly: true,
@@ -50,6 +60,13 @@ export async function DELETE() {
   if (!session?.user?.id || session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
+
+  // Audit log — Phase 1.9 B4
+  console.info("[impersonation] stop", {
+    actorId: session.user.id,
+    actorEmail: session.user.email,
+    timestamp: new Date().toISOString(),
+  });
 
   const response = NextResponse.json({ ok: true });
   response.cookies.set(IMPERSONATION_COOKIE_NAME, "", {

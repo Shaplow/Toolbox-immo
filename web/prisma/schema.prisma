@@ -38,23 +38,28 @@ model User {
 }
 
 model CaptionJob {
-  id          String   @id @default(cuid())
+  id          String          @id @default(cuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status      String   @default("QUEUED") // QUEUED | PROCESSING | COMPLETED | FAILED
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      String          @default("QUEUED") // QUEUED | PROCESSING | COMPLETED | FAILED
   inputUrl    String?
   inputKey    String? // clé R2 de la vidéo source (supprimée après complétion)
   outputUrl   String?
   outputKey   String? // clé R2 de l'output
-  runpodJobId String?  @unique // ID job RunPod pour polling
+  runpodJobId String?         @unique // ID job RunPod pour polling
   errorMsg    String? // message d'erreur lisible
-  config      String   @default("{}") // JSON sérialisé
+  config      String          @default("{}") // JSON sérialisé
   srtContent  String? // Contenu SRT utilisé pour la génération (pour regénérer)
   srtFilename String? // Nom du fichier SRT/JSON d'origine (pour détecter format)
-  previewMode Boolean  @default(false) // true = preview 6s, false = rendu complet
+  previewMode Boolean         @default(false) // true = preview 6s, false = rendu complet
   presetId    String? // ID du preset utilisé
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  /// Slot de publication optionnellement lié (Phase 1.9 — A2)
+  slotId      String?
+  slot        PublicationSlot? @relation(fields: [slotId], references: [id], onDelete: SetNull)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([slotId])
 }
 
 /// Preset de sous-titres sauvegardé (config complète + polices)
@@ -649,6 +654,8 @@ model PublicationSlot {
   activities        PublicationActivity[]
   brief             PublicationBrief?
   rushes            PublicationRush[]
+  /// Jobs captions liés à ce slot (Phase 1.9 — A2)
+  captionJobs       CaptionJob[]
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
 

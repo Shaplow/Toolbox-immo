@@ -36,7 +36,7 @@ interface HomeAdminProps {
 export async function HomeAdmin({ userName }: HomeAdminProps) {
   const now = new Date();
 
-  const [overdueCount, noRecipeCount, editReviewSlots] = await Promise.all([
+  const [overdueCount, noPatternCount, editReviewSlots] = await Promise.all([
     prisma.publicationSlot.count({
       where: {
         scheduledAt: { lt: now },
@@ -69,16 +69,22 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
     }),
   ]);
 
+  // Formater la date du jour en français
+  const todayLabel = now.toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">
-          Tableau de bord{userName ? ` · ${userName.split(" ")[0]}` : ""}
+          Bonjour{userName ? `, ${userName.split(" ")[0]}` : ""}
         </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Vue d&apos;ensemble de la pipeline éditoriale.
-        </p>
+        <p className="text-sm text-gray-500 mt-1 capitalize">{todayLabel}</p>
       </div>
 
       {/* Métriques globales */}
@@ -110,7 +116,7 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
 
         <div
           className={`rounded-xl border p-4 flex flex-col gap-1 ${
-            noRecipeCount > 0
+            noPatternCount > 0
               ? "border-amber-200 bg-amber-50"
               : "border-gray-200 bg-gray-50"
           }`}
@@ -118,7 +124,7 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
           <div className="flex items-center gap-2">
             <FileQuestion
               size={15}
-              className={noRecipeCount > 0 ? "text-amber-500" : "text-gray-400"}
+              className={noPatternCount > 0 ? "text-amber-500" : "text-gray-400"}
             />
             <span className="text-xs font-medium text-gray-600">
               Sans pattern
@@ -126,10 +132,10 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
           </div>
           <p
             className={`text-3xl font-bold mt-1 ${
-              noRecipeCount > 0 ? "text-amber-700" : "text-gray-400"
+              noPatternCount > 0 ? "text-amber-700" : "text-gray-400"
             }`}
           >
-            {noRecipeCount}
+            {noPatternCount}
           </p>
         </div>
       </div>

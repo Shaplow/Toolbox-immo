@@ -1,4 +1,5 @@
 import { redirect, notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
@@ -10,6 +11,18 @@ import type { CommentData } from "@/components/publications/CommentItem";
 import type { ActivityItem } from "@/components/publications/ActivityTimeline";
 
 type PageProps = { params: Promise<{ id: string }> };
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { id } = await params;
+  const slot = await prisma.publicationSlot.findUnique({
+    where: { id },
+    select: { contentType: true, account: { select: { handle: true } } },
+  });
+  if (!slot) return { title: "Publication | Toolbox Immo" };
+  return {
+    title: `${slot.contentType} · @${slot.account.handle} | Toolbox Immo`,
+  };
+}
 
 export default async function PublicationPage({ params }: PageProps) {
   const userContext = await getUserContext();
@@ -59,6 +72,18 @@ export default async function PublicationPage({ params }: PageProps) {
             select: { id: true, status: true, finalCoverUrl: true },
           },
           listing: { select: { id: true } },
+        },
+      },
+      // Phase 1.9 A2 — dernier job captions lié au slot
+      captionJobs: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          status: true,
+          outputUrl: true,
+          errorMsg: true,
+          createdAt: true,
         },
       },
     },
@@ -191,6 +216,9 @@ export default async function PublicationPage({ params }: PageProps) {
     createdAt: a.createdAt.toISOString(),
   })) ?? [];
 
+  // Phase 1.9 A2 — dernier job captions lié
+  const latestCaptionJob = slot.captionJobs[0] ?? null;
+
   // Calcul des steps
   const steps = computePublicationSteps({
     slot: { status: slot.status, caption: slot.caption },
@@ -290,6 +318,17 @@ export default async function PublicationPage({ params }: PageProps) {
       currentVersionId={slot.currentVersionId ?? null}
       canUploadVersion={canUploadVersionFlag}
       canPromoteVersion={canPromoteVersionFlag}
+      latestCaptionJob={
+        latestCaptionJob
+          ? {
+              id: latestCaptionJob.id,
+              status: latestCaptionJob.status,
+              outputUrl: latestCaptionJob.outputUrl,
+              errorMsg: latestCaptionJob.errorMsg,
+              createdAt: latestCaptionJob.createdAt.toISOString(),
+            }
+          : null
+      }
       comments={comments}
       activities={activities}
       activityHasMore={activityHasMore}

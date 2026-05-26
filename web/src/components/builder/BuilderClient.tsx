@@ -1,7 +1,8 @@
 ﻿"use client";
 
 import { useEffect, useCallback, useMemo, useState } from "react";
-import { Layers, AlignLeft, Film, Settings, Undo2, Redo2, X } from "lucide-react";
+import Link from "next/link";
+import { Layers, AlignLeft, Film, Settings, Undo2, Redo2, X, ChevronLeft } from "lucide-react";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import { collectBuilderFontsFromSources, type BuilderFontEntry } from "@/lib/builderFonts";
 import { toast } from "@/components/ui/Toast";
@@ -41,12 +42,15 @@ interface Props {
   templateClient: string;
   initialJSON: TemplateJSON;
   initialFormats: string[];
+  /** Phase 1.9 A3 — Lien retour contextuel (ex: "/tools/templates") */
+  backUrl?: string;
 }
 
 export function BuilderClient({
   templateId,
   templateName,
   initialJSON,
+  backUrl,
 }: Props) {
   const { template, setTemplate, isSaving, setSaving, undo, redo, past, future } =
     useBuilderStore();
@@ -234,6 +238,18 @@ export function BuilderClient({
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <header className="flex items-center gap-1.5 bg-white border-b border-gray-200 px-3 h-10 shrink-0">
+        {/* Lien retour — Phase 1.9 A3 */}
+        {backUrl && (
+          <Link
+            href={backUrl}
+            className="inline-flex items-center gap-0.5 text-xs text-gray-400 hover:text-gray-700 transition-colors mr-1 shrink-0"
+            title="Retour à la galerie templates"
+          >
+            <ChevronLeft size={13} />
+            Templates
+          </Link>
+        )}
+
         {/* Template name */}
         <span className="font-semibold text-gray-900 text-sm truncate max-w-[220px]" title={templateName}>
           {templateName}

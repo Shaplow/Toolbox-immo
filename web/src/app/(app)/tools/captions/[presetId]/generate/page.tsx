@@ -16,12 +16,12 @@ import "../../captions.css";
 
 type Props = {
   params: Promise<{ presetId: string }>;
-  searchParams: Promise<{ captionJobId?: string; transcriptionId?: string }>;
+  searchParams: Promise<{ captionJobId?: string; transcriptionId?: string; slotId?: string; returnTo?: string }>;
 };
 
 export default async function CaptionsGeneratePage({ params, searchParams }: Props) {
   const { presetId } = await params;
-  const { captionJobId, transcriptionId } = await searchParams;
+  const { captionJobId, transcriptionId, slotId, returnTo } = await searchParams;
   const userContext = await getUserContext();
   if (!userContext) redirect("/login");
 
@@ -107,6 +107,10 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
     }
   }
 
+  // Anti-open-redirect : returnTo doit être une URL relative /
+  const safeReturnTo =
+    returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : undefined;
+
   return (
     <CaptionsGenerateForm
       preset={{
@@ -125,6 +129,8 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
         hasClaude: !!process.env.ANTHROPIC_API_KEY,
         hasGpt: !!process.env.OPENAI_API_KEY,
       }}
+      slotId={slotId ?? null}
+      returnTo={safeReturnTo ?? null}
     />
   );
 }

@@ -1,11 +1,21 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { BuilderClient } from "@/components/builder/BuilderClient";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import type { TemplateJSON } from "@/types/template";
 
 type Props = { params: Promise<{ id: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params;
+  const template = await prisma.template.findUnique({
+    where: { id },
+    select: { name: true },
+  });
+  return { title: `Édition · ${template?.name ?? "Template"} | Toolbox Immo` };
+}
 
 export default async function BuilderPage({ params }: Props) {
   const { id } = await params;
@@ -28,6 +38,7 @@ export default async function BuilderPage({ params }: Props) {
       templateClient={template.client}
       initialJSON={json}
       initialFormats={formats}
+      backUrl="/tools/templates"
     />
   );
 }

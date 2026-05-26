@@ -50,13 +50,20 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
     router.replace("/tools/captions");
   }, [router]);
 
+  const slotId = searchParams?.get("slotId") ?? null;
+
   const handleGenerateClick = useCallback((presetId: string) => {
-    if (transcriptionPendingId) {
-      router.push(`/tools/captions/${presetId}/generate?transcriptionId=${transcriptionPendingId}`);
+    const extra = new URLSearchParams();
+    if (transcriptionPendingId) extra.set("transcriptionId", transcriptionPendingId);
+    if (slotId) extra.set("slotId", slotId);
+    if (returnTo) extra.set("returnTo", returnTo);
+    const query = extra.toString();
+    if (query) {
+      router.push(`/tools/captions/${presetId}/generate?${query}`);
     } else {
       router.push(`/tools/captions/${presetId}/generate`);
     }
-  }, [transcriptionPendingId, router]);
+  }, [transcriptionPendingId, slotId, returnTo, router]);
 
   const fetchPresets = useCallback(async () => {
     setLoading(true);
