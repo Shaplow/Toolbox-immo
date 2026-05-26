@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
@@ -9,8 +9,8 @@ function adminOnly(role?: string) {
 
 // GET /api/admin/users
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id || adminOnly(session.user.role)) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -38,8 +38,8 @@ export async function GET() {
 
 // POST /api/admin/users — créer un utilisateur
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id || adminOnly(session.user.role)) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

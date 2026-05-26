@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { revertRenderUsage } from "@/lib/recordLibraryUsage";
 
@@ -16,11 +16,8 @@ type Params = { params: Promise<{ id: string }> };
  * Returns a RevertSummary describing what was reverted and any warnings.
  */
 export async function POST(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
-  if (session.user.role !== "ADMIN") {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -43,7 +40,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
   try {
     const summary = await revertRenderUsage(id);
     console.info(
-      `[admin/revert-usage] admin=${session.user.id} reverted render=${id} assets=${summary.assets.length} cursors=${summary.cursors.length} warnings=${summary.warnings.length}`,
+      `[admin/revert-usage] admin=${userContext.actualUser.id} reverted render=${id} assets=${summary.assets.length} cursors=${summary.cursors.length} warnings=${summary.warnings.length}`,
     );
     return NextResponse.json(summary);
   } catch (err) {

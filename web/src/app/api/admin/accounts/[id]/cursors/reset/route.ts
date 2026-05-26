@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
 function adminOnly(role?: string) {
@@ -8,8 +8,8 @@ function adminOnly(role?: string) {
 
 // POST /api/admin/accounts/[id]/cursors/reset — remet tous les curseurs d'un compte à 0
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id || adminOnly(session.user.role)) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

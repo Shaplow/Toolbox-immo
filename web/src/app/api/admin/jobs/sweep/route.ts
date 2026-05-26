@@ -17,15 +17,15 @@
  */
 
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
 const PROCESSING_STALL_MS  = 2 * 60 * 60 * 1000;  // 2 h
 const QUEUED_STALL_MS      = 30 * 60 * 1000;       // 30 min
 
 export async function POST() {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
@@ -71,7 +71,7 @@ export async function POST() {
       transcriptionProcessing.count + transcriptionQueued.count,
   };
 
-  console.info("[admin/jobs/sweep] Sweep terminé par", session.user.email, "—", JSON.stringify(summary));
+  console.info("[admin/jobs/sweep] Sweep terminé par", userContext.actualUser.id, "—", JSON.stringify(summary));
 
   return NextResponse.json({ ok: true, swept: summary });
 }

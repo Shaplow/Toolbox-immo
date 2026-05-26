@@ -1,13 +1,13 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
 type Params = { params: Promise<{ id: string }> };
 
 // GET /api/admin/users/[id]/caption-preset-accesses
 export async function GET(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
   const { id: userId } = await params;
@@ -20,8 +20,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 // POST /api/admin/users/[id]/caption-preset-accesses — assigner un preset
 export async function POST(req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
   const { id: userId } = await params;
@@ -37,8 +37,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
 // DELETE /api/admin/users/[id]/caption-preset-accesses — révoquer un preset
 export async function DELETE(req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
   const { id: userId } = await params;

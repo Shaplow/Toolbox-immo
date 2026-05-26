@@ -12,15 +12,15 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { forceStopPod, forceTerminatePod, resetPodJobCounter } from "@/lib/podOrchestrator";
 
 // ─── GET — pod status ─────────────────────────────────────────────────────────
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -46,8 +46,8 @@ export async function GET() {
 // ─── POST — maintenance actions ───────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

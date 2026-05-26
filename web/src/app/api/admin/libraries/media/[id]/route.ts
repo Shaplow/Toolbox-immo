@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { deleteFromR2, r2Configured } from "@/lib/r2";
 
@@ -11,8 +11,8 @@ type Params = { params: Promise<{ id: string }> };
 
 // PATCH /api/admin/libraries/media/[id] — met à jour une MediaLibrary (name, description, setSequence, tags)
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id || adminOnly(session.user.role)) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -52,8 +52,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 // DELETE /api/admin/libraries/media/[id] — supprime une MediaLibrary (cascade assets)
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id || adminOnly(session.user.role)) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

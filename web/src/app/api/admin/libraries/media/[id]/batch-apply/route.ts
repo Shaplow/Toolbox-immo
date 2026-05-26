@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
@@ -28,8 +28,8 @@ const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID ?? "";
  * Retourne : { submitted: number, failed: [{ jobId, error }] }
  */
 export async function POST(req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id || adminOnly(session.user.role)) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

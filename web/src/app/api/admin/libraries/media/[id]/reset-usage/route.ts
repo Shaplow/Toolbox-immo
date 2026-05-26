@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
 function adminOnly(role?: string) {
@@ -14,8 +14,8 @@ type Params = { params: Promise<{ id: string }> };
  * Remet usageCount = 0 et lastUsedAt = null sur tous les MediaAsset de la bibliothèque.
  */
 export async function POST(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id || adminOnly(session.user.role)) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

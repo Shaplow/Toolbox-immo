@@ -20,7 +20,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { importLibraryFromZip } from "@/lib/libraryImport";
 
 export const runtime = "nodejs";
@@ -29,8 +29,8 @@ export const dynamic = "force-dynamic";
 const MAX_ZIP_SIZE_BYTES = parseInt(process.env.LIBRARY_IMPORT_MAX_SIZE ?? "") || 10 * 1024 * 1024 * 1024;
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
