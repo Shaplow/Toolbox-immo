@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState, type ReactNode } from "react";
-import { Home, List, Users, Library, LogOut, CalendarDays, Building2, LayoutGrid, LayoutTemplate } from "lucide-react";
+import { Home, List, Users, Library, LogOut, CalendarDays, Building2, LayoutGrid, LayoutTemplate, Instagram } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { TOOL_META } from "@/lib/toolMeta";
 import { useWorklistCount } from "@/hooks/useWorklistCount";
@@ -95,6 +95,7 @@ export function AppNav({
           title: "Clients",
           items: [
             { href: "/admin/clients", label: "Clients", icon: <Building2 size={16} /> },
+            { href: "/admin/accounts", label: "Comptes Instagram", icon: <Instagram size={16} /> },
           ],
         },
         {
