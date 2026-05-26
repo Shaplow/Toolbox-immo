@@ -12,9 +12,57 @@ import {
 } from "@/lib/textBackground";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import type { BlockStyle } from "@/types/template";
+import { Slider } from "@/components/ui/Slider";
 import { BoxPaddingEditor } from "./BoxPaddingEditor";
 import { FontFamilyPicker } from "./FontFamilyPicker";
 import { toUniformPaddingValue } from "./utils";
+
+/** Inline toggle switch used locally within StyleEditor */
+function ToggleSwitch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="flex items-center gap-2 w-full text-left"
+    >
+      <span
+        className={[
+          "relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent",
+          "transition-colors duration-150",
+          checked ? "bg-indigo-600" : "bg-gray-200",
+        ].join(" ")}
+      >
+        <span
+          className={[
+            "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow",
+            "transition-transform duration-150",
+            checked ? "translate-x-4" : "translate-x-0",
+          ].join(" ")}
+        />
+      </span>
+      <span className="text-xs text-gray-600">{label}</span>
+    </button>
+  );
+}
+
+/** Reusable section sub-header within StyleEditor */
+function SubSection({ label }: { label: string }) {
+  return (
+    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider pt-1">
+      {label}
+    </p>
+  );
+}
 
 export function StyleEditor({
   style,
@@ -93,160 +141,131 @@ export function StyleEditor({
   }
 
   return (
-    <div className="space-y-2">
-      <label className="flex flex-col gap-0.5">
-        <span className="text-gray-400">Police</span>
+    <div className="space-y-3">
+      {/* ── Typographie ── */}
+      <SubSection label="Typographie" />
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-600">Police</span>
         <FontFamilyPicker
           value={style.fontFamily}
           fonts={availableFonts}
           onChange={(fontFamily) => onChange({ fontFamily })}
         />
       </label>
-      <div className="grid grid-cols-2 gap-2">
-        <label className="flex flex-col gap-0.5">
-          <span className="text-gray-400">Taille (pt)</span>
-          <input type="number" value={style.fontSize ?? 14}
-            onChange={(e) => onChange({ fontSize: Number(e.target.value) })}
-            className="border border-gray-200 rounded px-2 py-1"
-          />
+
+      <Slider
+        label="Taille (pt)"
+        value={style.fontSize ?? 14}
+        onChange={(v) => onChange({ fontSize: v })}
+        min={10}
+        max={200}
+        unit="pt"
+      />
+
+      {/* Font weight — kept as select; slider step-100 looks odd in practice */}
+      <div className="flex items-end gap-2">
+        <label className="flex flex-col gap-1 flex-1">
+          <span className="text-xs font-medium text-gray-600">Graisse</span>
+          <select
+            value={style.fontWeight ?? 400}
+            onChange={(e) => onChange({ fontWeight: Number(e.target.value) })}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+          >
+            {[300, 400, 500, 600, 700].map((w) => (
+              <option key={w} value={w}>{w}</option>
+            ))}
+          </select>
         </label>
-        <label className="flex flex-col gap-0.5">
-          <span className="text-gray-400">Font weight</span>
-          <div className="flex items-center gap-1">
-            <select value={style.fontWeight ?? 400}
-              onChange={(e) => onChange({ fontWeight: Number(e.target.value) })}
-              className="flex-1 border border-gray-200 rounded px-2 py-1"
-            >
-              {[300,400,500,600,700].map(w => <option key={w} value={w}>{w}</option>)}
-            </select>
-            <button
-              type="button"
-              title="Italique"
-              onClick={() => onChange({ fontStyle: style.fontStyle === "italic" ? "normal" : "italic" })}
-              className={`h-7 w-7 rounded flex items-center justify-center border text-sm font-bold italic shrink-0 ${
-                style.fontStyle === "italic"
-                  ? "bg-indigo-100 border-indigo-400 text-indigo-700"
-                  : "border-gray-200 text-gray-500 hover:bg-gray-50"
-              }`}
-            >
-              I
-            </button>
+        <button
+          type="button"
+          title="Italique"
+          onClick={() => onChange({ fontStyle: style.fontStyle === "italic" ? "normal" : "italic" })}
+          className={[
+            "h-8 w-9 rounded-lg flex items-center justify-center border text-sm font-bold italic shrink-0 transition-colors",
+            style.fontStyle === "italic"
+              ? "bg-indigo-100 border-indigo-400 text-indigo-700"
+              : "border-gray-200 text-gray-500 hover:bg-gray-50",
+          ].join(" ")}
+        >
+          I
+        </button>
+      </div>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-600">Espacement lettres</span>
+        <div className="flex items-center gap-2">
+          <input
+            type="range"
+            min={-5}
+            max={20}
+            step={0.1}
+            value={style.letterSpacing ?? 0}
+            onChange={(e) => onChange({ letterSpacing: Number(e.target.value) })}
+            className="flex-1 h-1.5 rounded-full appearance-none accent-indigo-600 cursor-pointer"
+          />
+          <span className="text-xs font-mono text-gray-700 tabular-nums min-w-[3rem] text-right">
+            {(style.letterSpacing ?? 0).toFixed(1)}
+          </span>
+        </div>
+      </label>
+
+      {/* Alignements */}
+      <div className="grid grid-cols-2 gap-2">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-600">Alignement H</span>
+          <select
+            value={style.textAlign ?? "left"}
+            onChange={(e) => onChange({ textAlign: e.target.value as BlockStyle["textAlign"] })}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+          >
+            <option value="left">Gauche</option>
+            <option value="center">Centre</option>
+            <option value="right">Droite</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-600">Alignement V</span>
+          <div className="flex gap-1">
+            {(["top", "middle", "bottom"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => onChange({ verticalAlign: v })}
+                title={v === "top" ? "Haut" : v === "middle" ? "Milieu" : "Bas"}
+                className={[
+                  "flex-1 py-1.5 rounded-lg border text-xs transition-colors",
+                  (style.verticalAlign ?? "top") === v
+                    ? "bg-indigo-600 text-white border-indigo-600"
+                    : "border-gray-200 text-gray-500 hover:border-indigo-300",
+                ].join(" ")}
+              >
+                {v === "top" ? "↑" : v === "middle" ? "↕" : "↓"}
+              </button>
+            ))}
           </div>
         </label>
       </div>
-      <label className="flex flex-col gap-0.5">
-        <span className="text-gray-400">Espacement lettres</span>
-        <input
-          type="number"
-          step={0.1}
-          value={style.letterSpacing ?? 0}
-          onChange={(e) => onChange({ letterSpacing: Number(e.target.value) })}
-          className="border border-gray-200 rounded px-2 py-1"
-        />
-      </label>
-      <label className="flex items-center gap-2 rounded border border-gray-200 px-2 py-2">
-        <input
-          type="checkbox"
-          checked={style.textShadowEnabled ?? false}
-          onChange={(e) => {
-            if (e.target.checked) {
-              onChange({
-                textShadowEnabled: true,
-                textShadowColor: style.textShadowColor ?? "#000000",
-                textShadowOpacity: style.textShadowOpacity ?? 0.35,
-                textShadowBlur: style.textShadowBlur ?? 6,
-                textShadowDistance: style.textShadowDistance ?? 4,
-                textShadowAngle: style.textShadowAngle ?? 90,
-              });
-              return;
-            }
 
-            onChange({
-              textShadowEnabled: false,
-              textShadowColor: undefined,
-              textShadowOpacity: undefined,
-              textShadowBlur: undefined,
-              textShadowDistance: undefined,
-              textShadowAngle: undefined,
-            });
-          }}
-          className="rounded"
-        />
-        <span className="text-gray-600">Ombre du texte</span>
-      </label>
-      {style.textShadowEnabled ? (
-        <div className="grid grid-cols-2 gap-2 rounded border border-gray-100 bg-gray-50 p-2">
-          <label className="flex flex-col gap-0.5">
-            <span className="text-gray-400">Couleur ombre</span>
-            <input
-              type="color"
-              value={style.textShadowColor ?? "#000000"}
-              onChange={(e) => onChange({ textShadowColor: e.target.value })}
-              className="w-full h-7 cursor-pointer rounded border border-gray-200"
-            />
-          </label>
-          <label className="flex flex-col gap-0.5">
-            <span className="text-gray-400">Opacité</span>
-            <input
-              type="number"
-              min={0}
-              max={1}
-              step={0.05}
-              value={style.textShadowOpacity ?? 0.35}
-              onChange={(e) => onChange({ textShadowOpacity: Number(e.target.value) })}
-              className="border border-gray-200 rounded px-2 py-1"
-            />
-          </label>
-          <label className="flex flex-col gap-0.5">
-            <span className="text-gray-400">Distance</span>
-            <input
-              type="number"
-              min={0}
-              step={0.5}
-              value={style.textShadowDistance ?? 4}
-              onChange={(e) => onChange({ textShadowDistance: Number(e.target.value) })}
-              className="border border-gray-200 rounded px-2 py-1"
-            />
-          </label>
-          <label className="flex flex-col gap-0.5">
-            <span className="text-gray-400">Angle</span>
-            <input
-              type="number"
-              min={-180}
-              max={180}
-              step={1}
-              value={style.textShadowAngle ?? 90}
-              onChange={(e) => onChange({ textShadowAngle: Number(e.target.value) })}
-              className="border border-gray-200 rounded px-2 py-1"
-            />
-          </label>
-          <label className="flex flex-col gap-0.5 col-span-2">
-            <span className="text-gray-400">Flou</span>
-            <input
-              type="number"
-              min={0}
-              step={0.5}
-              value={style.textShadowBlur ?? 6}
-              onChange={(e) => onChange({ textShadowBlur: Number(e.target.value) })}
-              className="border border-gray-200 rounded px-2 py-1"
-            />
-          </label>
-        </div>
-      ) : null}
+      {/* ── Couleurs ── */}
+      <SubSection label="Couleurs" />
+
       <div className="grid grid-cols-2 gap-2">
-        <label className="flex flex-col gap-0.5">
-          <span className="text-gray-400">Couleur texte</span>
-          <input type="color" value={style.color ?? "#000000"}
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-600">Texte</span>
+          <input
+            type="color"
+            value={style.color ?? "#000000"}
             onChange={(e) => onChange({ color: e.target.value })}
-            className="w-full h-7 cursor-pointer rounded border border-gray-200"
+            className="h-8 w-full cursor-pointer rounded-lg border border-gray-200"
           />
         </label>
-        <label className="flex items-center gap-2 rounded border border-gray-200 px-2 py-2">
-          <input
-            type="checkbox"
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-600">Fond texte</span>
+          <ToggleSwitch
             checked={backgroundEnabled}
-            onChange={(e) => {
-              if (e.target.checked) {
+            onChange={(checked) => {
+              if (checked) {
                 onChange({
                   textBackgroundEnabled: true,
                   textBackgroundMode: style.textBackgroundMode ?? "fit",
@@ -255,16 +274,15 @@ export function StyleEditor({
                 });
                 return;
               }
-
               onChange({ textBackgroundEnabled: false });
             }}
-            className="rounded"
+            label=""
           />
-          <span className="text-gray-600">Fond texte</span>
-        </label>
+        </div>
       </div>
-      {backgroundEnabled ? (
-        <div className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-2.5">
+
+      {backgroundEnabled && (
+        <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-2.5">
           <div className="flex items-center justify-between gap-2">
             <div>
               <p className="text-[11px] font-medium text-gray-700">Fond texte</p>
@@ -276,70 +294,58 @@ export function StyleEditor({
                     : "Le cartouche conserve une largeur et une hauteur fixes."}
               </p>
             </div>
-            <input type="color" value={style.backgroundColor ?? "#FFFFFF"}
+            <input
+              type="color"
+              value={style.backgroundColor ?? "#FFFFFF"}
               onChange={(e) => onChange({ backgroundColor: e.target.value })}
-              className="h-8 w-10 shrink-0 cursor-pointer rounded border border-gray-200 bg-white"
+              className="h-8 w-10 shrink-0 cursor-pointer rounded-lg border border-gray-200 bg-white"
             />
           </div>
           <div className="grid grid-cols-3 gap-1 rounded-lg border border-gray-200 bg-white p-1">
-            <button
-              type="button"
-              onClick={() => onChange({ textBackgroundMode: "fit" })}
-              className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${
-                backgroundMode === "fit"
-                  ? "bg-indigo-600 text-white"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              Adaptatif
-            </button>
-            <button
-              type="button"
-              onClick={() => onChange({ textBackgroundMode: "per-line" })}
-              className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${
-                backgroundMode === "per-line"
-                  ? "bg-indigo-600 text-white"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              Par ligne
-            </button>
-            <button
-              type="button"
-              onClick={() => onChange({
-                textBackgroundMode: "fixed",
-                textBackgroundWidth: style.textBackgroundWidth ?? (backgroundDefaults?.width ?? 200),
-                textBackgroundHeight: style.textBackgroundHeight ?? (backgroundDefaults?.height ?? 60),
-              })}
-              className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors ${
-                backgroundMode === "fixed"
-                  ? "bg-indigo-600 text-white"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              Fixe
-            </button>
+            {(["fit", "per-line", "fixed"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => {
+                  if (mode === "fixed") {
+                    onChange({
+                      textBackgroundMode: "fixed",
+                      textBackgroundWidth: style.textBackgroundWidth ?? (backgroundDefaults?.width ?? 200),
+                      textBackgroundHeight: style.textBackgroundHeight ?? (backgroundDefaults?.height ?? 60),
+                    });
+                    return;
+                  }
+                  onChange({ textBackgroundMode: mode });
+                }}
+                className={[
+                  "rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors",
+                  backgroundMode === mode ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50",
+                ].join(" ")}
+              >
+                {mode === "fit" ? "Adaptatif" : mode === "per-line" ? "Par ligne" : "Fixe"}
+              </button>
+            ))}
           </div>
           {backgroundMode === "fixed" ? (
             <div className="grid grid-cols-2 gap-2">
-              <label className="flex flex-col gap-0.5">
-                <span className="text-gray-400">Largeur fond</span>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-gray-600">Largeur fond</span>
                 <input
                   type="number"
                   min={1}
                   value={backgroundSize.width}
                   onChange={(e) => onChange({ textBackgroundWidth: Number(e.target.value) })}
-                  className="border border-gray-200 rounded px-2 py-1"
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 />
               </label>
-              <label className="flex flex-col gap-0.5">
-                <span className="text-gray-400">Hauteur fond</span>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-gray-600">Hauteur fond</span>
                 <input
                   type="number"
                   min={1}
                   value={backgroundSize.height}
                   onChange={(e) => onChange({ textBackgroundHeight: Number(e.target.value) })}
-                  className="border border-gray-200 rounded px-2 py-1"
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 />
               </label>
             </div>
@@ -366,27 +372,113 @@ export function StyleEditor({
                 });
                 return;
               }
-
               updateBackgroundPaddingUniform(toUniformPaddingValue(backgroundPadding));
             }}
             onChangeUniform={updateBackgroundPaddingUniform}
             onChangeSide={updateBackgroundPaddingSide}
           />
 
-          <label className="flex flex-col gap-0.5">
-            <span className="text-gray-400">Arrondi du fond</span>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-600">Arrondi du fond</span>
             <input
               type="number"
               min={0}
               value={backgroundRadius}
               onChange={(e) => onChange({ textBackgroundBorderRadius: Number(e.target.value) })}
-              className="border border-gray-200 rounded px-2 py-1"
+              className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
             />
           </label>
         </div>
-      ) : null}
+      )}
+
+      {/* ── Ombre ── */}
+      <SubSection label="Ombre" />
+
+      <ToggleSwitch
+        checked={style.textShadowEnabled ?? false}
+        onChange={(checked) => {
+          if (checked) {
+            onChange({
+              textShadowEnabled: true,
+              textShadowColor: style.textShadowColor ?? "#000000",
+              textShadowOpacity: style.textShadowOpacity ?? 0.35,
+              textShadowBlur: style.textShadowBlur ?? 6,
+              textShadowDistance: style.textShadowDistance ?? 4,
+              textShadowAngle: style.textShadowAngle ?? 90,
+            });
+            return;
+          }
+          onChange({
+            textShadowEnabled: false,
+            textShadowColor: undefined,
+            textShadowOpacity: undefined,
+            textShadowBlur: undefined,
+            textShadowDistance: undefined,
+            textShadowAngle: undefined,
+          });
+        }}
+        label="Ombre du texte"
+      />
+
+      {style.textShadowEnabled && (
+        <div className="space-y-3 rounded-xl border border-gray-100 bg-gray-50 p-2.5">
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-600">Couleur ombre</span>
+              <input
+                type="color"
+                value={style.textShadowColor ?? "#000000"}
+                onChange={(e) => onChange({ textShadowColor: e.target.value })}
+                className="h-8 w-full cursor-pointer rounded-lg border border-gray-200"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-600">Opacité ombre</span>
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={style.textShadowOpacity ?? 0.35}
+                onChange={(e) => onChange({ textShadowOpacity: Number(e.target.value) })}
+                className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+            </label>
+          </div>
+          <Slider
+            label="Distance"
+            value={style.textShadowDistance ?? 4}
+            onChange={(v) => onChange({ textShadowDistance: v })}
+            min={0}
+            max={30}
+            step={0.5}
+            unit="px"
+          />
+          <Slider
+            label="Angle"
+            value={style.textShadowAngle ?? 90}
+            onChange={(v) => onChange({ textShadowAngle: v })}
+            min={-180}
+            max={180}
+            unit="°"
+          />
+          <Slider
+            label="Flou"
+            value={style.textShadowBlur ?? 6}
+            onChange={(v) => onChange({ textShadowBlur: v })}
+            min={0}
+            max={30}
+            step={0.5}
+            unit="px"
+          />
+        </div>
+      )}
+
+      {/* ── Espacement ── */}
+      <SubSection label="Espacement" />
+
       <BoxPaddingEditor
-        label={backgroundEnabled ? "Padding texte" : "Padding texte"}
+        label="Padding texte"
         values={textPadding}
         split={textPaddingSplit}
         onToggleSplit={(nextSplit) => {
@@ -400,43 +492,11 @@ export function StyleEditor({
             });
             return;
           }
-
           updateTextPaddingUniform(toUniformPaddingValue(textPadding));
         }}
         onChangeUniform={updateTextPaddingUniform}
         onChangeSide={updateTextPaddingSide}
       />
-      <label className="flex flex-col gap-0.5">
-        <span className="text-gray-400">Alignement vertical</span>
-        <div className="flex gap-1">
-          {(["top", "middle", "bottom"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => onChange({ verticalAlign: v })}
-              title={v === "top" ? "Haut" : v === "middle" ? "Milieu" : "Bas"}
-              className={`flex-1 py-1 rounded border text-xs transition-colors ${
-                (style.verticalAlign ?? "top") === v
-                  ? "bg-indigo-600 text-white border-indigo-600"
-                  : "border-gray-200 text-gray-500 hover:border-indigo-300"
-              }`}
-            >
-              {v === "top" ? "↑" : v === "middle" ? "↕" : "↓"}
-            </button>
-          ))}
-        </div>
-      </label>
-      <label className="flex flex-col gap-0.5">
-        <span className="text-gray-400">Alignement horizontal</span>
-        <select value={style.textAlign ?? "left"}
-          onChange={(e) => onChange({ textAlign: e.target.value as BlockStyle["textAlign"] })}
-          className="border border-gray-200 rounded px-2 py-1"
-        >
-          <option value="left">Gauche</option>
-          <option value="center">Centre</option>
-          <option value="right">Droite</option>
-        </select>
-      </label>
     </div>
   );
 }
