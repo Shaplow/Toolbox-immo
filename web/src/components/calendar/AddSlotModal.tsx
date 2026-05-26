@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { Plus, X } from "lucide-react";
-import { CONTENT_TYPES } from "@/types/calendar";
+import { Plus, X, AlertCircle } from "lucide-react";
+import Link from "next/link";
 import type { PublicationSlot } from "@/types/calendar";
 
 interface Account {
@@ -10,6 +10,16 @@ interface Account {
   name: string;
   handle: string;
   offre: string;
+}
+
+interface PatternOption {
+  id: string;
+  label: string;
+  dayOfWeek: number;
+  publishTime: string;
+  isActive: boolean;
+  defaultAssigneeMonteur: { id: string; name: string } | null;
+  defaultAssigneeCm: { id: string; name: string } | null;
 }
 
 /** Shape minimale d'un User telle que retournée par GET /api/admin/users */
@@ -26,6 +36,8 @@ interface AddSlotModalProps {
   onClose: () => void;
 }
 
+const DAYS = ["", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+
 const INPUT_CLS =
   "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300";
 
@@ -38,8 +50,13 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     date: today,
     time: "19:00",
     title: "",
-    contentType: "RPI",
+    contentType: "",
   });
+
+  // --- Pattern picker ---
+  const [patterns, setPatterns] = useState<PatternOption[]>([]);
+  const [selectedPatternId, setSelectedPatternId] = useState<string>("");
+  const [loadingPatterns, setLoadingPatterns] = useState(false);
 
   // --- Assignees ---
   const [assigneeMonteurId, setAssigneeMonteurId] = useState<string>("");
@@ -77,12 +94,70 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     return () => { cancelled = true; };
   }, []);
 
+  // Fetch patterns quand le compte change
+  useEffect(() => {
+    if (!form.accountId) return;
+    let cancelled = false;
+    setLoadingPatterns(true);
+    setSelectedPatternId("");
+    setForm((prev) => ({ ...prev, contentType: "" }));
+    setAssigneeMonteurId("");
+    setAssigneeCmId("");
+
+    async function loadPatterns() {
+      try {
+        const res = await fetch(`/api/admin/accounts/${form.accountId}/patterns`);
+        if (cancelled) return;
+        if (res.ok) {
+          const data = await res.json() as PatternOption[];
+          const active = data.filter((p) => p.isActive);
+          setPatterns(active);
+          // Auto-select first active pattern
+          if (active.length > 0) {
+            const first = active[0];
+            setSelectedPatternId(first.id);
+            setForm((prev) => ({ ...prev, contentType: first.label }));
+            setAssigneeMonteurId(first.defaultAssigneeMonteur?.id ?? "");
+            setAssigneeCmId(first.defaultAssigneeCm?.id ?? "");
+          }
+        }
+      } catch {
+        // silencieux
+      } finally {
+        if (!cancelled) setLoadingPatterns(false);
+      }
+    }
+    void loadPatterns();
+    return () => { cancelled = true; };
+  }, [form.accountId]);
+
+  // Quand un pattern est sélectionné, pré-remplir les champs
+  function handlePatternSelect(patternId: string) {
+    setSelectedPatternId(patternId);
+    if (!patternId) {
+      setForm((prev) => ({ ...prev, contentType: "" }));
+      setAssigneeMonteurId("");
+      setAssigneeCmId("");
+      return;
+    }
+    const pattern = patterns.find((p) => p.id === patternId);
+    if (pattern) {
+      setForm((prev) => ({ ...prev, contentType: pattern.label }));
+      setAssigneeMonteurId(pattern.defaultAssigneeMonteur?.id ?? "");
+      setAssigneeCmId(pattern.defaultAssigneeCm?.id ?? "");
+    }
+  }
+
   // Users filtrés par rôle pour les selects d'assignees
   const monteurs = users.filter((u) => u.role === "MONTEUR" || u.role === "ADMIN");
   const cms = users.filter((u) => u.role === "CM" || u.role === "ADMIN");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.contentType.trim()) {
+      setError("Le type de contenu est requis. Sélectionnez un pattern ou saisissez-le manuellement.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -95,6 +170,7 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
         title: form.title || null,
         assigneeMonteurId: assigneeMonteurId || null,
         assigneeCmId: assigneeCmId || null,
+        patternId: selectedPatternId || null,
       };
 
       const res = await fetch("/api/calendar/slots", {
@@ -114,6 +190,8 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
       setSaving(false);
     }
   }
+
+  const hasNoPatterns = !loadingPatterns && patterns.length === 0 && form.accountId;
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -144,6 +222,60 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
             </select>
           </div>
 
+          {/* Pattern picker */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Pattern de contenu</label>
+            {loadingPatterns ? (
+              <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+                <div className="w-4 h-4 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin" />
+                Chargement des patterns…
+              </div>
+            ) : hasNoPatterns ? (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                <span>
+                  Pas de pattern actif sur ce compte.{" "}
+                  <Link
+                    href={`/admin/accounts/${form.accountId}`}
+                    target="_blank"
+                    className="underline hover:text-amber-900"
+                  >
+                    Configurez-en un d&apos;abord.
+                  </Link>
+                </span>
+              </div>
+            ) : (
+              <select
+                value={selectedPatternId}
+                onChange={(e) => handlePatternSelect(e.target.value)}
+                className={INPUT_CLS}
+              >
+                <option value="">— Saisie manuelle —</option>
+                {patterns.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {DAYS[p.dayOfWeek] ?? `Jour ${p.dayOfWeek}`} {p.publishTime} — {p.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Type de contenu — pré-rempli depuis pattern, éditable manuellement */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Type de contenu
+              {selectedPatternId && <span className="ml-1 text-indigo-500 text-[10px]">(depuis le pattern)</span>}
+            </label>
+            <input
+              type="text"
+              value={form.contentType}
+              onChange={(e) => set("contentType", e.target.value)}
+              placeholder="ex: RPI, RTIPS…"
+              required
+              className={INPUT_CLS}
+            />
+          </div>
+
           {/* Date + Heure */}
           <div className="flex gap-3">
             <div className="flex-1">
@@ -166,20 +298,6 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
                 className={INPUT_CLS}
               />
             </div>
-          </div>
-
-          {/* Type de contenu */}
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Type de contenu</label>
-            <select
-              value={form.contentType}
-              onChange={(e) => set("contentType", e.target.value)}
-              className={INPUT_CLS}
-            >
-              {CONTENT_TYPES.map((ct) => (
-                <option key={ct} value={ct}>{ct}</option>
-              ))}
-            </select>
           </div>
 
           {/* Assignees */}
@@ -236,7 +354,7 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
             </button>
             <button
               type="submit"
-              disabled={saving || loadingMeta}
+              disabled={saving || loadingMeta || loadingPatterns}
               className="flex-1 px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-60 flex items-center justify-center gap-2"
             >
               <Plus size={14} />
