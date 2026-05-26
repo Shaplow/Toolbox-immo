@@ -192,14 +192,14 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
 
       {/* Advanced: excludeZones + excludeSlotIds as JSON */}
       <FormField
-        label="Avancé — zones d'exclusion (JSON)"
-        help='Champs excludeZones et excludeSlotIds. Laisser vide si inutile.'
+        label="Zones d'exclusion avancées (optionnel)"
+        help="Permet d'exclure des plages temporelles (excludeZones) ou des slots spécifiques (excludeSlotIds). Laisser vide si inutile. Format JSON attendu."
         error={advancedError}
       >
         <Textarea
           value={advancedJson}
           onChange={handleAdvancedChange}
-          placeholder='{"excludeZones": [], "excludeSlotIds": []}'
+          placeholder={'{\n  "excludeZones": [],\n  "excludeSlotIds": []\n}'}
           rows={4}
           error={advancedError}
         />
