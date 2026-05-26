@@ -8,6 +8,7 @@ const mockRenderFindUnique = vi.fn();
 const mockTemplateFindUnique = vi.fn();
 const mockCoverFramePackFindUnique = vi.fn();
 const mockCoverFramePackCreate = vi.fn();
+const mockTemplateCoverPresetFindUnique = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -20,6 +21,9 @@ vi.mock("@/lib/prisma", () => ({
     coverFramePack: {
       findUnique: (...args: unknown[]) => mockCoverFramePackFindUnique(...args),
       create: (...args: unknown[]) => mockCoverFramePackCreate(...args),
+    },
+    templateCoverPreset: {
+      findUnique: (...args: unknown[]) => mockTemplateCoverPresetFindUnique(...args),
     },
   },
 }));
@@ -49,27 +53,41 @@ import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const BASE_CONFIG = {
+/** Config pattern Phase 2.0 : coverPresetName au lieu de overlayGroupIds bruts */
+const PATTERN_CONFIG_WITH_PRESET = {
+  enabled: true,
+  coverPresetName: "Default",
+};
+
+/** Config preset en DB (c'est lui qui porte les overlayGroupIds, frameCount, etc.) */
+const PRESET_CONFIG = {
   enabled: true,
   frameCount: 12,
   excludeZones: [],
-  overlayGroupIds: ["group-pattern"],
+  overlayGroupIds: ["group-overlay-1"],
+  offsetX: 0,
+  offsetY: 0,
 };
 
-const TEMPLATE_CONFIG = {
-  enabled: true,
-  frameCount: 6,
-  excludeZones: [],
-  overlayGroupIds: ["group-template"],
+const MOCK_PRESET = {
+  id: "preset-1",
+  templateId: "tpl-1",
+  name: "Default",
+  config: PRESET_CONFIG,
+  sortOrder: 0,
 };
 
 function mockTemplateExists() {
   mockTemplateFindUnique.mockResolvedValueOnce({ id: "tpl-1" });
 }
 
+function mockPresetExists(preset = MOCK_PRESET) {
+  mockTemplateCoverPresetFindUnique.mockResolvedValueOnce(preset);
+}
+
 // ── Tests : triggerAutoCoverPackForRender ─────────────────────────────────────
 
-describe("triggerAutoCoverPackForRender — Pattern.coverConfig priorité", () => {
+describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPresetName", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Par défaut : pas de pack existant, create retourne un id de pack
@@ -101,7 +119,6 @@ describe("triggerAutoCoverPackForRender — Pattern.coverConfig priorité", () =
 
     await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
 
-    // Pas de config → enabled=false → pas de pack
     expect(mockCoverFramePackCreate).not.toHaveBeenCalled();
   });
 
@@ -109,7 +126,7 @@ describe("triggerAutoCoverPackForRender — Pattern.coverConfig priorité", () =
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: { coverMode: "manual", coverConfig: BASE_CONFIG },
+        pattern: { id: "pat-1", coverMode: "manual", coverConfig: PATTERN_CONFIG_WITH_PRESET, templateId: "tpl-1" },
       },
     });
 
@@ -122,67 +139,9 @@ describe("triggerAutoCoverPackForRender — Pattern.coverConfig priorité", () =
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: { coverMode: "auto", coverConfig: null },
+        pattern: { id: "pat-1", coverMode: "auto", coverConfig: null, templateId: "tpl-1" },
       },
     });
-
-    await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
-
-    expect(mockCoverFramePackCreate).not.toHaveBeenCalled();
-  });
-
-  it("crée un pack avec le config du pattern quand coverMode=auto et coverConfig non-null", async () => {
-    mockTemplateExists();
-    mockRenderFindUnique.mockResolvedValueOnce({
-      publicationSlot: {
-        pattern: { coverMode: "auto", coverConfig: BASE_CONFIG },
-      },
-    });
-
-    await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
-
-    expect(mockCoverFramePackCreate).toHaveBeenCalledOnce();
-    const createCall = mockCoverFramePackCreate.mock.calls[0][0] as { data: Record<string, unknown> };
-    // La config sérialisée dans le pack doit contenir les overlayGroupIds du pattern
-    const storedConfig = JSON.parse(createCall.data.config as string) as { overlayGroupIds?: string[] };
-    expect(storedConfig.overlayGroupIds).toEqual(BASE_CONFIG.overlayGroupIds);
-    // Le frameCount du pattern doit être respecté
-    expect(createCall.data.frameCount).toBe(BASE_CONFIG.frameCount);
-  });
-
-  it("utilise la config du pattern (pas celle du template) quand les deux existent", async () => {
-    // Scenario : le pattern a coverConfig + coverMode=auto.
-    // Le template aurait TEMPLATE_CONFIG mais ne doit PAS être lu.
-    mockTemplateExists();
-    mockRenderFindUnique.mockResolvedValueOnce({
-      publicationSlot: {
-        pattern: {
-          coverMode: "auto",
-          coverConfig: BASE_CONFIG, // overlayGroupIds: ["group-pattern"]
-        },
-      },
-    });
-
-    await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
-
-    expect(mockCoverFramePackCreate).toHaveBeenCalledOnce();
-    const createCall = mockCoverFramePackCreate.mock.calls[0][0] as { data: Record<string, unknown> };
-    const storedConfig = JSON.parse(createCall.data.config as string) as { overlayGroupIds?: string[] };
-
-    // Le pack doit contenir "group-pattern" (config du pattern), PAS "group-template"
-    expect(storedConfig.overlayGroupIds).toContain("group-pattern");
-    expect(storedConfig.overlayGroupIds).not.toContain("group-template");
-  });
-
-  it("skip si un pack existe déjà pour ce render", async () => {
-    mockTemplateExists();
-    mockRenderFindUnique.mockResolvedValueOnce({
-      publicationSlot: {
-        pattern: { coverMode: "auto", coverConfig: BASE_CONFIG },
-      },
-    });
-    // Override : pack déjà existant pour ce render
-    mockCoverFramePackFindUnique.mockResolvedValueOnce({ id: "existing-pack" });
 
     await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
 
@@ -194,11 +153,126 @@ describe("triggerAutoCoverPackForRender — Pattern.coverConfig priorité", () =
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
         pattern: {
+          id: "pat-1",
           coverMode: "auto",
-          coverConfig: { ...BASE_CONFIG, enabled: false },
+          coverConfig: { enabled: false, coverPresetName: "Default" },
+          templateId: "tpl-1",
         },
       },
     });
+
+    await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
+
+    expect(mockCoverFramePackCreate).not.toHaveBeenCalled();
+    // Le preset ne doit pas être cherché si enabled=false
+    expect(mockTemplateCoverPresetFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("warn + skip si coverPresetName est absent (pattern non migré)", async () => {
+    mockTemplateExists();
+    mockRenderFindUnique.mockResolvedValueOnce({
+      publicationSlot: {
+        pattern: {
+          id: "pat-unmigrated",
+          coverMode: "auto",
+          coverConfig: { enabled: true }, // pas de coverPresetName
+          templateId: "tpl-1",
+        },
+      },
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
+
+    expect(mockCoverFramePackCreate).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("no coverPresetName"));
+    warnSpy.mockRestore();
+  });
+
+  it("warn + skip si le preset référencé n'existe pas en DB", async () => {
+    mockTemplateExists();
+    mockRenderFindUnique.mockResolvedValueOnce({
+      publicationSlot: {
+        pattern: {
+          id: "pat-1",
+          coverMode: "auto",
+          coverConfig: { enabled: true, coverPresetName: "Inexistant" },
+          templateId: "tpl-1",
+        },
+      },
+    });
+    // Preset introuvable
+    mockTemplateCoverPresetFindUnique.mockResolvedValueOnce(null);
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
+
+    expect(mockCoverFramePackCreate).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("introuvable"));
+    warnSpy.mockRestore();
+  });
+
+  it("crée un pack en utilisant preset.config quand coverPresetName est valide", async () => {
+    mockTemplateExists();
+    mockRenderFindUnique.mockResolvedValueOnce({
+      publicationSlot: {
+        pattern: {
+          id: "pat-1",
+          coverMode: "auto",
+          coverConfig: PATTERN_CONFIG_WITH_PRESET,
+          templateId: "tpl-1",
+        },
+      },
+    });
+    mockPresetExists();
+
+    await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
+
+    expect(mockCoverFramePackCreate).toHaveBeenCalledOnce();
+    const createCall = mockCoverFramePackCreate.mock.calls[0][0] as { data: Record<string, unknown> };
+    // La config stockée dans le pack doit venir du preset, pas du pattern
+    const storedConfig = JSON.parse(createCall.data.config as string) as { overlayGroupIds?: string[] };
+    expect(storedConfig.overlayGroupIds).toEqual(PRESET_CONFIG.overlayGroupIds);
+    expect(createCall.data.frameCount).toBe(PRESET_CONFIG.frameCount);
+  });
+
+  it("le preset est résolu avec le templateId du pattern si disponible", async () => {
+    mockTemplateExists();
+    mockRenderFindUnique.mockResolvedValueOnce({
+      publicationSlot: {
+        pattern: {
+          id: "pat-1",
+          coverMode: "auto",
+          coverConfig: PATTERN_CONFIG_WITH_PRESET,
+          templateId: "tpl-pattern", // templateId du pattern (peut différer du render)
+        },
+      },
+    });
+    mockPresetExists({ ...MOCK_PRESET, templateId: "tpl-pattern" });
+
+    await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
+
+    expect(mockTemplateCoverPresetFindUnique).toHaveBeenCalledWith({
+      where: { templateId_name: { templateId: "tpl-pattern", name: "Default" } },
+    });
+    expect(mockCoverFramePackCreate).toHaveBeenCalledOnce();
+  });
+
+  it("skip si un pack existe déjà pour ce render", async () => {
+    mockTemplateExists();
+    mockRenderFindUnique.mockResolvedValueOnce({
+      publicationSlot: {
+        pattern: {
+          id: "pat-1",
+          coverMode: "auto",
+          coverConfig: PATTERN_CONFIG_WITH_PRESET,
+          templateId: "tpl-1",
+        },
+      },
+    });
+    mockPresetExists();
+    // Override : pack déjà existant pour ce render
+    mockCoverFramePackFindUnique.mockResolvedValueOnce({ id: "existing-pack" });
 
     await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
 
@@ -209,9 +283,15 @@ describe("triggerAutoCoverPackForRender — Pattern.coverConfig priorité", () =
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: { coverMode: "auto", coverConfig: BASE_CONFIG },
+        pattern: {
+          id: "pat-X",
+          coverMode: "auto",
+          coverConfig: PATTERN_CONFIG_WITH_PRESET,
+          templateId: "tpl-99",
+        },
       },
     });
+    mockPresetExists({ ...MOCK_PRESET, templateId: "tpl-99" });
 
     await triggerAutoCoverPackForRender("render-42", "tpl-99", "http://video.example.com/rush.mp4", "user-X");
 
@@ -222,5 +302,28 @@ describe("triggerAutoCoverPackForRender — Pattern.coverConfig priorité", () =
     expect(createCall.data.sourceVideoUrl).toBe("http://video.example.com/rush.mp4");
     expect(createCall.data.userId).toBe("user-X");
     expect(createCall.data.status).toBe("QUEUED");
+  });
+
+  it("ne crée pas de pack si preset.config.enabled est false", async () => {
+    mockTemplateExists();
+    mockRenderFindUnique.mockResolvedValueOnce({
+      publicationSlot: {
+        pattern: {
+          id: "pat-1",
+          coverMode: "auto",
+          coverConfig: PATTERN_CONFIG_WITH_PRESET,
+          templateId: "tpl-1",
+        },
+      },
+    });
+    // Preset existant mais disabled
+    mockTemplateCoverPresetFindUnique.mockResolvedValueOnce({
+      ...MOCK_PRESET,
+      config: { ...PRESET_CONFIG, enabled: false },
+    });
+
+    await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
+
+    expect(mockCoverFramePackCreate).not.toHaveBeenCalled();
   });
 });
