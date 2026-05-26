@@ -52,7 +52,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const slot = await prisma.publicationSlot.findUnique({
     where: { id },
     include: {
-      account: { select: { id: true, name: true, handle: true, offre: true } },
+      account: { select: { id: true, name: true, handle: true } },
       template: { select: { id: true, name: true } },
       render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
     },
@@ -184,7 +184,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(isAuto !== undefined ? { isAuto: isAuto as boolean } : {}),
     },
     include: {
-      account: { select: { id: true, name: true, handle: true, offre: true } },
+      account: { select: { id: true, name: true, handle: true } },
       template: { select: { id: true, name: true } },
       render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
     },

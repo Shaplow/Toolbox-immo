@@ -43,8 +43,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
-  const body = await req.json() as { name?: string; handle?: string; offre?: string; clientId?: string | null };
-  const { name, handle, offre, clientId } = body;
+  const body = await req.json() as { name?: string; handle?: string; clientId?: string | null };
+  const { name, handle, clientId } = body;
 
   if (!name?.trim()) return NextResponse.json({ error: "Le nom est requis" }, { status: 400 });
   if (!handle?.trim()) return NextResponse.json({ error: "Le handle Instagram est requis" }, { status: 400 });
@@ -61,7 +61,6 @@ export async function POST(req: NextRequest) {
       data: {
         name: name.trim(),
         handle: handle.trim().replace(/^@/, ""),
-        offre: offre ?? "",
         ...(clientId ? { client: { connect: { id: clientId } } } : {}),
       },
     });

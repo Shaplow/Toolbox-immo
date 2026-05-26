@@ -6,7 +6,6 @@ interface Account {
   id: string;
   name: string;
   handle: string;
-  offre: string;
 }
 
 export interface CalendarFiltersState {

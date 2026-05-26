@@ -28,7 +28,7 @@ export type ContentType = "RPI" | "RVA4" | "RVA5" | "RTIPS" | "RPOD" | "REACT" |
 export interface PublicationSlot {
   id: string;
   accountId: string;
-  account: { id: string; name: string; handle: string; offre: string };
+  account: { id: string; name: string; handle: string };
   scheduledAt: string; // ISO
   contentType: string;
   status: SlotStatus;

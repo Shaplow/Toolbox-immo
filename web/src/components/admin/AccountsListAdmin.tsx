@@ -10,7 +10,6 @@ interface AccountItem {
   id: string;
   handle: string;
   name: string;
-  offre: string;
   activePatternCount: number;
   client: { id: string; name: string } | null;
 }
@@ -127,13 +126,6 @@ export function AccountsListAdmin({ accounts }: Props) {
                       <p className="text-sm font-medium text-gray-900">{account.name}</p>
                       <p className="text-xs text-gray-500">@{account.handle}</p>
                     </div>
-
-                    {/* Offre badge */}
-                    {account.offre && (
-                      <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
-                        {account.offre}
-                      </span>
-                    )}
 
                     {/* Active patterns count */}
                     <span className="shrink-0 text-xs text-gray-400">

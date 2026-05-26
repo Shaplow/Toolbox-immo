@@ -21,7 +21,7 @@ export default async function CalendarPage() {
 
   const accounts = await prisma.instagramAccount.findMany({
     orderBy: { name: "asc" },
-    select: { id: true, name: true, handle: true, offre: true },
+    select: { id: true, name: true, handle: true },
   });
 
   // Pass the server-computed Monday so client and server agree on the initial week,

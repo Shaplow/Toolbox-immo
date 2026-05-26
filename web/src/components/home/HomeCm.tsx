@@ -44,7 +44,7 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
     },
     include: {
       account: {
-        select: { id: true, handle: true, name: true, offre: true },
+        select: { id: true, handle: true, name: true },
       },
       pattern: {
         select: { label: true },

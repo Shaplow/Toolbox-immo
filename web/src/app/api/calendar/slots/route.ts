@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
     orderBy: { scheduledAt: "asc" },
     take: 500,
     include: {
-      account: { select: { id: true, name: true, handle: true, offre: true } },
+      account: { select: { id: true, name: true, handle: true } },
       template: { select: { id: true, name: true } },
       render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
       pattern: { select: { label: true } },
@@ -184,7 +184,7 @@ export async function POST(req: NextRequest) {
       assigneeCmId: resolvedAssigneeCmId,
     },
     include: {
-      account: { select: { id: true, name: true, handle: true, offre: true } },
+      account: { select: { id: true, name: true, handle: true } },
     },
   });
 

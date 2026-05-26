@@ -9,7 +9,6 @@ interface Account {
   id: string;
   name: string;
   handle: string;
-  offre: string;
 }
 
 interface PatternOption {

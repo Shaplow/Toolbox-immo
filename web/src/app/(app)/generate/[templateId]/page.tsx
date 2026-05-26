@@ -279,7 +279,7 @@ export default async function GeneratePage({ params, searchParams }: Props) {
 
     // Fetch Instagram accounts if needed (for theme_sequence blocks)
     const instagramAccounts = hasThemeSequenceBlocks
-      ? await prisma.instagramAccount.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, handle: true, offre: true } })
+      ? await prisma.instagramAccount.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, handle: true } })
       : [];
 
     let setSequencedLibraryIds: string[] = [];

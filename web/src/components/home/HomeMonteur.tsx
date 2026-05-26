@@ -42,7 +42,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
     },
     include: {
       account: {
-        select: { id: true, handle: true, name: true, offre: true },
+        select: { id: true, handle: true, name: true },
       },
       pattern: {
         select: { label: true },

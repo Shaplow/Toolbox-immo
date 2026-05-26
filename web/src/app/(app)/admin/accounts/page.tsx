@@ -26,7 +26,6 @@ export default async function AdminAccountsPage() {
     id: a.id,
     handle: a.handle,
     name: a.name,
-    offre: a.offre,
     activePatternCount: a.accountPatterns.length,
     client: a.client,
   }));

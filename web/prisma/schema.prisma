@@ -512,8 +512,6 @@ model InstagramAccount {
   name             String
   /// Handle Instagram sans le @
   handle           String                 @unique
-  /// "ESSENTIEL" | "CONFIRME" | "CEO"
-  offre            String
   clientId         String?
   client           Client?                @relation(fields: [clientId], references: [id], onDelete: SetNull)
   createdAt        DateTime               @default(now())
