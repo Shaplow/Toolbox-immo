@@ -8,6 +8,7 @@ import { SlotDetailPanel } from "./SlotDetailPanel";
 import { AddSlotModal } from "./AddSlotModal";
 import { CalendarFilters, type CalendarFiltersState } from "./CalendarFilters";
 import { toast } from "@/components/ui/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 interface Account {
   id: string;
@@ -55,6 +56,7 @@ export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) 
   const [showAdd, setShowAdd] = useState(false);
   const [addDefaultDate, setAddDefaultDate] = useState<string | undefined>(undefined);
   const [generating, setGenerating] = useState(false);
+  const [confirmGenOpen, setConfirmGenOpen] = useState(false);
   const [filters, setFilters] = useState<CalendarFiltersState>({
     accountId: "",
     status: "",
@@ -105,8 +107,8 @@ export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) 
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
   }
 
-  async function handleGenerate() {
-    if (!confirm(`Générer les slots auto pour la semaine du ${weekStart.toLocaleDateString("fr-FR")} ?`)) return;
+  async function handleGenerateConfirmed() {
+    setConfirmGenOpen(false);
     setGenerating(true);
     try {
       const res = await fetch("/api/calendar/generate", {
@@ -119,10 +121,10 @@ export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) 
       });
       if (!res.ok) throw new Error("Erreur lors de la génération");
       const result = await res.json() as { created: number; skipped: number };
-      alert(`${result.created} slot(s) créé(s), ${result.skipped} ignoré(s) (existaient déjà).`);
+      toast.success(`${result.created} slot(s) créé(s), ${result.skipped} ignoré(s) (existaient déjà).`);
       void load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Erreur inconnue");
+      toast.error(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {
       setGenerating(false);
     }
@@ -191,7 +193,7 @@ export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) 
 
           <button
             type="button"
-            onClick={() => { void handleGenerate(); }}
+            onClick={() => setConfirmGenOpen(true)}
             disabled={generating}
             className="px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
           >
@@ -284,6 +286,17 @@ export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) 
           onClose={() => setShowAdd(false)}
         />
       )}
+
+      {/* Confirm generate dialog */}
+      <ConfirmDialog
+        open={confirmGenOpen}
+        title="Générer les slots de la semaine ?"
+        description={`Générer les slots auto pour la semaine du ${weekStart.toLocaleDateString("fr-FR")} ? Les slots existants ne seront pas écrasés.`}
+        confirmLabel="Générer"
+        loading={generating}
+        onConfirm={() => { void handleGenerateConfirmed(); }}
+        onCancel={() => setConfirmGenOpen(false)}
+      />
     </div>
   );
 }

@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/slots/statusLabels";
 import type { SlotStatus, UserRole } from "@/types/roles";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { toast } from "@/components/ui/Toast";
 
 export interface PublicationHeaderProps {
   slot: {
@@ -66,6 +68,7 @@ export function PublicationHeader({
   currentUserRole,
 }: PublicationHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
 
@@ -80,9 +83,12 @@ export function PublicationHeader({
 
   const title = slot.title ?? "Publication sans titre";
 
-  async function handleDeleteClick() {
+  function handleDeleteClick() {
     setMenuOpen(false);
-    if (!confirm("Supprimer cette publication ? Cette action est irréversible.")) return;
+    setConfirmDeleteOpen(true);
+  }
+
+  async function handleDeleteConfirmed() {
     setDeleting(true);
     try {
       const res = await fetch(`/api/calendar/slots/${slot.id}`, { method: "DELETE" });
@@ -92,8 +98,9 @@ export function PublicationHeader({
       }
       router.push("/calendar");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Erreur lors de la suppression");
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la suppression");
       setDeleting(false);
+      setConfirmDeleteOpen(false);
     }
   }
 
@@ -106,6 +113,17 @@ export function PublicationHeader({
   }
 
   return (
+    <>
+    <ConfirmDialog
+      open={confirmDeleteOpen}
+      title="Supprimer cette publication ?"
+      description="Cette action est irréversible. La publication et toutes ses données associées seront supprimées."
+      confirmLabel="Supprimer"
+      variant="danger"
+      loading={deleting}
+      onConfirm={() => { void handleDeleteConfirmed(); }}
+      onCancel={() => setConfirmDeleteOpen(false)}
+    />
     <div className="sticky top-0 z-20 bg-white border-b border-gray-100 shadow-sm">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3">
         {/* Breadcrumb + bouton retour role-aware */}
@@ -228,5 +246,6 @@ export function PublicationHeader({
         </div>
       </div>
     </div>
+    </>
   );
 }
