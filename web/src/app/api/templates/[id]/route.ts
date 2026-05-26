@@ -1,5 +1,5 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canAccessTemplate } from "@/lib/permissions";
 import { normalizeTemplateJSON, serializeTemplateJSON } from "@/lib/templateNormalization";
@@ -8,13 +8,13 @@ type Params = { params: Promise<{ id: string }> };
 
 // GET /api/templates/:id — propriétaire admin OU user avec accès
 export async function GET(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
   const { id } = await params;
 
-  const ok = await canAccessTemplate(session.user.id, id, session.user.role ?? undefined);
+  const ok = await canAccessTemplate(userContext.effectiveUser.id, id, userContext.effectiveUser.role ?? undefined);
   if (!ok) return NextResponse.json({ error: "Template introuvable" }, { status: 404 });
 
   const template = await prisma.template.findUnique({ where: { id } });
@@ -29,11 +29,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 // PUT /api/templates/:id — propriétaire admin seulement
 export async function PUT(req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
-  if (session.user.role !== "ADMIN") {
+  if (!userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
   const { id } = await params;
@@ -70,18 +70,17 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
 // DELETE /api/templates/:id — propriétaire admin seulement
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
-  if (session.user.role !== "ADMIN") {
+  if (!userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
   const { id } = await params;
 
-  const existing = await prisma.template.findFirst({
-    where: { id, userId: session.user.id },
-  });
+  // Admin can delete any template (not scoped to userId like original)
+  const existing = await prisma.template.findFirst({ where: { id } });
   if (!existing) {
     return NextResponse.json({ error: "Template introuvable" }, { status: 404 });
   }
@@ -94,5 +93,3 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
   return NextResponse.json({ success: true });
 }
-
-

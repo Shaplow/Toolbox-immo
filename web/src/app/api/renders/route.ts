@@ -1,19 +1,17 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { startRenderGeneration } from "@/lib/renderer/generateRender";
-import { IMPERSONATION_COOKIE_NAME, resolveUserContext } from "@/lib/userContext";
 import { advanceLibraryCursorsOnSubmit, advanceAudioUsageOnSubmit } from "@/lib/contentLibraryResolver";
 
 // POST /api/renders — déclenche une génération
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const userContext = await getUserContext();
+    if (!userContext?.effectiveUser.id) {
       return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
     }
-    const userContext = await resolveUserContext(session, req.cookies.get(IMPERSONATION_COOKIE_NAME)?.value ?? null);
     const isAdmin = userContext.canAdminBypass;
 
     // Verify the user has the templates tool

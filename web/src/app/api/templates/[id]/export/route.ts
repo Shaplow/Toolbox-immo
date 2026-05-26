@@ -1,20 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { buildTemplateExportFilename, buildTemplateTransferPayload } from "@/lib/templateTransfer";
-import { IMPERSONATION_COOKIE_NAME, resolveUserContext } from "@/lib/userContext";
 import type { TemplateJSON } from "@/types/template";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
   const { id } = await params;
-  const userContext = await resolveUserContext(session, _req.cookies.get(IMPERSONATION_COOKIE_NAME)?.value ?? null);
   const isAdmin = userContext.canAdminBypass;
 
   const template = await prisma.template.findFirst({

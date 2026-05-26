@@ -1,16 +1,14 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
-import { IMPERSONATION_COOKIE_NAME, resolveUserContext } from "@/lib/userContext";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
-  const userContext = await resolveUserContext(session, _req.cookies.get(IMPERSONATION_COOKIE_NAME)?.value ?? null);
   const { id } = await params;
 
   const listing = await prisma.listing.findFirst({
@@ -28,12 +26,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
   // Only admins can delete listings
-  if ((session.user as { role?: string }).role !== "ADMIN") {
+  if (!userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux admins" }, { status: 403 });
   }
   const { id } = await params;
@@ -51,11 +49,10 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 }
 
 export async function PUT(req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
-  const userContext = await resolveUserContext(session, req.cookies.get(IMPERSONATION_COOKIE_NAME)?.value ?? null);
   const { id } = await params;
 
   const listing = await prisma.listing.findFirst({

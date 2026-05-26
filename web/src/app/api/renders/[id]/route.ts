@@ -1,8 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { RENDER_PIPELINE, RENDER_STAGE } from "@/lib/renderer/renderWorkflow";
-import { IMPERSONATION_COOKIE_NAME, resolveUserContext } from "@/lib/userContext";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -14,11 +13,10 @@ const PRE_SUBMIT_STALL_MS = 2 * 60 * 1000;
 
 // GET /api/renders/:id — statut courant (RunPod completes via webhook, pas de polling ici)
 export async function GET(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
-  const userContext = await resolveUserContext(session, _req.cookies.get(IMPERSONATION_COOKIE_NAME)?.value ?? null);
   const { id } = await params;
 
   let render = await prisma.render.findUnique({ where: { id } });
@@ -82,17 +80,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 // DELETE /api/renders/:id — admin only
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const deleteContext = await getUserContext();
+  if (!deleteContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
-  if (session.user.role !== "ADMIN") {
+  if (!deleteContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
   const { id } = await params;
   const render = await prisma.render.findUnique({ where: { id } });
   if (!render) return NextResponse.json({ error: "Render introuvable" }, { status: 404 });
   await prisma.render.delete({ where: { id } });
-  console.warn(`[renders/DELETE] admin=${session.user.id} deleted render=${id} status=${render.status}`);
+  // actualUser.id for audit: who actually performed the deletion
+  console.warn(`[renders/DELETE] admin=${deleteContext.actualUser.id} deleted render=${id} status=${render.status}`);
   return NextResponse.json({ ok: true });
 }
