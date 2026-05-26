@@ -438,7 +438,7 @@ export function ListingsClient({
               <p className="font-medium">Aucun template pour l&apos;instant</p>
               <p className="text-sm mt-1">
                 Choisissez un template depuis la page{" "}
-                <Link href="/tools/templates" className="text-indigo-600 hover:underline">Templates</Link>
+                <Link href="/templates" className="text-indigo-600 hover:underline">Templates</Link>
               </p>
             </>
           ) : tab === "captions" ? (

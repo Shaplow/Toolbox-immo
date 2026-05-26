@@ -9,7 +9,7 @@ import { Film } from "lucide-react";
 export default async function MediaLibrariesPage() {
   const userContext = await getUserContext();
   if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") {
-    redirect("/tools/templates");
+    redirect("/templates");
   }
 
   return (

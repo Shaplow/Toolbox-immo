@@ -10,7 +10,7 @@ type Props = { params: Promise<{ id: string; campaignId: string }> };
 export default async function DataCampaignDetailPage({ params }: Props) {
   const userContext = await getUserContext();
   if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") {
-    redirect("/tools/templates");
+    redirect("/templates");
   }
 
   const { id, campaignId } = await params;

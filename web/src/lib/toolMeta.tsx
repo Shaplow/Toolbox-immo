@@ -27,7 +27,7 @@ export type ToolMeta = {
 
 export const TOOL_META: Record<ToolKey, ToolMeta> = {
   templates: {
-    href: "/tools/templates",
+    href: "/templates",
     navLabel: "Templates",
     cardLabel: "Générateur de templates",
     description:

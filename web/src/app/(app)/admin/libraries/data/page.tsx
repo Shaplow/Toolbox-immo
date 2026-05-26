@@ -9,7 +9,7 @@ import { Database } from "lucide-react";
 export default async function DataLibrariesPage() {
   const userContext = await getUserContext();
   if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") {
-    redirect("/tools/templates");
+    redirect("/templates");
   }
 
   return (

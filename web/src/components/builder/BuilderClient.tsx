@@ -42,7 +42,6 @@ interface Props {
   templateClient: string;
   initialJSON: TemplateJSON;
   initialFormats: string[];
-  /** Phase 1.9 A3 — Lien retour contextuel (ex: "/tools/templates") */
   backUrl?: string;
 }
 

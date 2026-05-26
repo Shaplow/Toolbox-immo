@@ -103,7 +103,7 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
         <p className="text-sm text-gray-500">
           Ce template n&apos;a aucun preset cover.{" "}
           <Link
-            href={`/tools/templates/${templateId}/edit`}
+            href={`/templates/${templateId}/edit`}
             className="text-indigo-600 underline hover:text-indigo-700"
             target="_blank"
             rel="noopener noreferrer"

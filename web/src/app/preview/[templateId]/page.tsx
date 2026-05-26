@@ -59,13 +59,13 @@ export default async function TemplatePreviewPage({ params, searchParams }: Prop
         </div>
         <div className="flex items-center gap-2">
           <Link
-            href="/tools/templates"
+            href="/templates"
             className="text-xs px-3 py-1.5 rounded-lg border border-white/15 text-white/60 hover:bg-white/10 transition-colors"
           >
             ← Galerie templates
           </Link>
           <a
-            href={`/tools/templates/${templateId}/edit`}
+            href={`/templates/${templateId}/edit`}
             className="text-xs px-3 py-1.5 rounded-lg border border-white/15 text-white/80 hover:bg-white/10 transition-colors"
           >
             Retour à l&apos;éditeur

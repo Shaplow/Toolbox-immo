@@ -1,44 +1,10 @@
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { notFound } from "next/navigation";
-import type { Metadata } from "next";
-import { BuilderClient } from "@/components/builder/BuilderClient";
-import { normalizeTemplateJSON } from "@/lib/templateNormalization";
-import type { TemplateJSON } from "@/types/template";
+import { redirect } from "next/navigation";
 
-type Props = { params: Promise<{ id: string }> };
-
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export default async function TemplateBuilderLegacyRedirect({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
-  const template = await prisma.template.findUnique({
-    where: { id },
-    select: { name: true },
-  });
-  return { title: `Édition · ${template?.name ?? "Template"} | Toolbox Immo` };
-}
-
-export default async function BuilderPage({ params }: Props) {
-  const { id } = await params;
-  const session = await auth();
-  const userId = session!.user!.id!;
-  const isAdmin = session!.user!.role === "ADMIN";
-
-  const template = await prisma.template.findFirst({
-    where: isAdmin ? { id } : { id, userId },
-  });
-  if (!template) notFound();
-
-  const json = normalizeTemplateJSON(JSON.parse(template.jsonData) as TemplateJSON);
-  const formats = JSON.parse(template.formats) as string[];
-
-  return (
-    <BuilderClient
-      templateId={template.id}
-      templateName={template.name}
-      templateClient={template.client}
-      initialJSON={json}
-      initialFormats={formats}
-      backUrl="/tools/templates"
-    />
-  );
+  redirect(`/templates/${id}/edit`);
 }
