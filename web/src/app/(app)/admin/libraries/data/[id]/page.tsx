@@ -20,7 +20,7 @@ export default async function DataLibraryDetailPage({ params }: Props) {
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <Link href="/admin/libraries/data" className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 mb-6 transition-colors">
-        <ChevronLeft size={13} /> Bibliothèques de données
+        <ChevronLeft size={13} /> Ressources données
       </Link>
       <DataCampaignsPanel libraryId={library.id} libraryName={library.name} />
     </div>
