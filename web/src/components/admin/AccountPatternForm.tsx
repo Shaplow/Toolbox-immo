@@ -123,13 +123,6 @@ function validate(values: FormValues): Partial<Record<keyof FormValues, string>>
   const dow = Number(values.dayOfWeek);
   if (!Number.isInteger(dow) || dow < 1 || dow > 7) errors.dayOfWeek = "Jour invalide (1-7)";
   if (!PUBLISH_TIME_RE.test(values.publishTime)) errors.publishTime = "Format HH:MM requis";
-  if (values.coverMode === "auto" && values.coverConfigJson.trim()) {
-    try {
-      JSON.parse(values.coverConfigJson);
-    } catch {
-      errors.coverConfigJson = "JSON invalide";
-    }
-  }
   return errors;
 }
 

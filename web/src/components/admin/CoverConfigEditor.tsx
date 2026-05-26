@@ -1,35 +1,27 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { FormField } from "@/components/ui/FormField";
-import { Input } from "@/components/ui/Input";
-import { Textarea } from "@/components/ui/Textarea";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-/**
- * Subset of CoverAutoConfig from @/types/template that we expose as structured fields.
- * - enabled (boolean)
- * - frameCount (number, 6-72)
- * - overlayGroupIds (string[], requires templateId to show group picker)
- *
- * Complex fields (excludeZones, excludeSlotIds) are kept as an "advanced" JSON textarea
- * because they reference template group IDs that need a separate UI to resolve.
- */
-type PartialCoverConfig = {
-  enabled?: boolean;
-  frameCount?: number;
-  overlayGroupIds?: string[];
-  // Advanced fields kept as raw JSON
-  [key: string]: unknown;
+type CoverPreset = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  config: Record<string, unknown>;
 };
 
-type TemplateGroup = { id: string; name?: string };
+type PartialCoverConfig = {
+  enabled?: boolean;
+  coverPresetName?: string | null;
+};
 
 type Props = {
-  /** Template ID — used to fetch the overlay groups available in the template. */
+  /** Template ID — used to fetch the available presets for this template. */
   templateId: string | null;
-  /** Current CoverAutoConfig value (already parsed from JSON). */
+  /** Current coverConfig value (already parsed from JSON). Only { enabled, coverPresetName } are used. */
   value: object | null;
   onChange: (config: object) => void;
 };
@@ -39,37 +31,28 @@ type Props = {
 export function CoverConfigEditor({ templateId, value, onChange }: Props) {
   const config = (value ?? {}) as PartialCoverConfig;
 
-  const [groups, setGroups] = useState<TemplateGroup[]>([]);
-  // advancedJson is local input state; initialized once from the incoming value.
-  // We use a ref to track if it was ever initialized so we can reset on open.
-  const [advancedJson, setAdvancedJson] = useState<string>(() => buildAdvancedJson(config));
-  const [advancedError, setAdvancedError] = useState<string | undefined>(undefined);
-  const prevTemplateIdRef = useRef<string | null | undefined>(undefined);
+  const [presets, setPresets] = useState<CoverPreset[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Fetch template groups when templateId changes (async, no sync setState in effect body)
+  // Fetch available presets when templateId changes
   useEffect(() => {
     let cancelled = false;
-    const newTplId = templateId;
-    // Only re-fetch if templateId actually changed
-    if (newTplId === prevTemplateIdRef.current) return;
-    prevTemplateIdRef.current = newTplId;
-
-    async function load() {
-      if (!newTplId) {
-        if (!cancelled) setGroups([]);
+    void (async () => {
+      if (!templateId) {
+        if (!cancelled) { setPresets([]); setLoading(false); }
         return;
       }
+      if (!cancelled) setLoading(true);
       try {
-        const res = await fetch(`/api/templates/${newTplId}`);
-        if (cancelled || !res.ok) return;
-        const data = await res.json() as { groups?: TemplateGroup[] };
-        if (!cancelled) setGroups(data.groups ?? []);
+        const r = await fetch(`/api/templates/${templateId}/cover-presets`);
+        const data: CoverPreset[] = r.ok ? await (r.json() as Promise<CoverPreset[]>) : [];
+        if (!cancelled) setPresets(data);
       } catch {
         // Non-fatal
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    }
-
-    void load();
+    })();
     return () => { cancelled = true; };
   }, [templateId]);
 
@@ -77,42 +60,24 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
     onChange({ ...config, ...partial });
   }
 
-  function handleAdvancedChange(raw: string) {
-    setAdvancedJson(raw);
-    if (!raw.trim()) {
-      const { excludeZones: _ez, excludeSlotIds: _esi, ...rest } = config;
-      void _ez; void _esi;
-      onChange(rest);
-      setAdvancedError(undefined);
-      return;
-    }
-    try {
-      const parsed = JSON.parse(raw) as Partial<PartialCoverConfig>;
-      setAdvancedError(undefined);
-      // Merge advanced fields (only excludeZones + excludeSlotIds) into config
-      const updated = { ...config };
-      if ("excludeZones" in parsed) updated.excludeZones = parsed.excludeZones;
-      if ("excludeSlotIds" in parsed) updated.excludeSlotIds = parsed.excludeSlotIds;
-      onChange(updated);
-    } catch {
-      setAdvancedError("JSON invalide");
-    }
+  // ── No template selected ──────────────────────────────────────────────────
+
+  if (!templateId) {
+    return (
+      <p className="text-sm text-gray-500 italic">
+        Sélectionne d&apos;abord un template dans la section Source pour configurer la cover automatique.
+      </p>
+    );
   }
 
-  function toggleOverlayGroup(groupId: string, checked: boolean) {
-    const current = config.overlayGroupIds ?? [];
-    const updated = checked
-      ? [...current, groupId]
-      : current.filter((id) => id !== groupId);
-    patch({ overlayGroupIds: updated });
-  }
+  // ── Template selected ─────────────────────────────────────────────────────
 
-  const selectedOverlayIds = new Set(config.overlayGroupIds ?? []);
+  const selectedPreset = presets.find((p) => p.name === config.coverPresetName) ?? null;
 
   return (
     <div className="flex flex-col gap-4">
 
-      {/* enabled */}
+      {/* enabled toggle */}
       <label className="inline-flex items-center gap-3 cursor-pointer">
         <div className="relative">
           <input
@@ -131,89 +96,66 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
         <span className="text-sm text-gray-700">Activer la génération automatique de cover</span>
       </label>
 
-      {/* frameCount */}
-      <FormField
-        label="Nombre de frames proposées"
-        help="Entre 6 et 72. Défaut : 36."
-      >
-        <Input
-          type="number"
-          value={String(config.frameCount ?? 36)}
-          onChange={(v) => {
-            const n = parseInt(v, 10);
-            patch({ frameCount: Number.isFinite(n) ? Math.min(72, Math.max(6, n)) : 36 });
-          }}
-          min={6}
-          max={72}
-        />
-      </FormField>
-
-      {/* overlayGroupIds */}
-      {templateId && (
+      {/* Preset picker */}
+      {loading ? (
+        <p className="text-sm text-gray-400 italic">Chargement des presets…</p>
+      ) : presets.length === 0 ? (
+        <p className="text-sm text-gray-500">
+          Ce template n&apos;a aucun preset cover.{" "}
+          <Link
+            href={`/tools/templates/${templateId}/edit`}
+            className="text-indigo-600 underline hover:text-indigo-700"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Va dans le builder template
+          </Link>{" "}
+          pour en créer.
+        </p>
+      ) : (
         <FormField
-          label="Groupes overlay à reprendre sur la cover"
-          help="Groupes du template qui seront composés par-dessus le frame sélectionné."
+          label="Preset cover"
+          help="Sélectionne le preset cover à utiliser pour ce pattern."
         >
-          {groups.length === 0 ? (
-            <p className="text-xs text-gray-400 italic">Aucun groupe trouvé dans ce template.</p>
-          ) : (
-            <div className="flex flex-wrap gap-2 mt-1">
-              {groups.map((group) => {
-                const isSelected = selectedOverlayIds.has(group.id);
-                return (
-                  <label
-                    key={group.id}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs cursor-pointer transition-colors ${
-                      isSelected
-                        ? "bg-indigo-50 border-indigo-300 text-indigo-700 font-medium"
-                        : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={(e) => toggleOverlayGroup(group.id, e.target.checked)}
-                      className="sr-only"
-                    />
-                    {group.name ?? group.id}
-                  </label>
-                );
-              })}
-            </div>
-          )}
+          <select
+            value={config.coverPresetName ?? ""}
+            onChange={(e) => patch({ coverPresetName: e.target.value || null })}
+            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+          >
+            <option value="" disabled>Choisir un preset…</option>
+            {presets.map((p) => (
+              <option key={p.id} value={p.name}>
+                {p.name}
+              </option>
+            ))}
+          </select>
         </FormField>
       )}
 
-      {!templateId && (
-        <p className="text-xs text-gray-400 italic">
-          Sélectionnez un template pour choisir les groupes overlay disponibles.
+      {/* Summary of selected preset */}
+      {selectedPreset && (
+        <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 text-xs text-indigo-700 space-y-0.5">
+          <p className="font-medium">{selectedPreset.name}</p>
+          <p>
+            {Array.isArray((selectedPreset.config as { overlayGroupIds?: unknown[] }).overlayGroupIds)
+              ? `${(selectedPreset.config as { overlayGroupIds: unknown[] }).overlayGroupIds.length} groupe(s) overlay`
+              : "—"}{" "}
+            &middot;{" "}
+            {typeof (selectedPreset.config as { frameCount?: number }).frameCount === "number"
+              ? `${(selectedPreset.config as { frameCount: number }).frameCount} frames`
+              : "36 frames"}
+          </p>
+        </div>
+      )}
+
+      {/* Warning if coverPresetName set but preset not found */}
+      {config.coverPresetName && !selectedPreset && presets.length > 0 && (
+        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Le preset &laquo;{config.coverPresetName}&raquo; est introuvable dans ce template.
+          Sélectionne-en un autre.
         </p>
       )}
 
-      {/* Advanced: excludeZones + excludeSlotIds as JSON */}
-      <FormField
-        label="Zones d'exclusion avancées (optionnel)"
-        help="Permet d'exclure des plages temporelles (excludeZones) ou des slots spécifiques (excludeSlotIds). Laisser vide si inutile. Format JSON attendu."
-        error={advancedError}
-      >
-        <Textarea
-          value={advancedJson}
-          onChange={handleAdvancedChange}
-          placeholder={'{\n  "excludeZones": [],\n  "excludeSlotIds": []\n}'}
-          rows={4}
-          error={advancedError}
-        />
-      </FormField>
-
     </div>
   );
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function buildAdvancedJson(config: PartialCoverConfig): string {
-  const advanced: Record<string, unknown> = {};
-  if (config.excludeZones !== undefined) advanced.excludeZones = config.excludeZones;
-  if (config.excludeSlotIds !== undefined) advanced.excludeSlotIds = config.excludeSlotIds;
-  return Object.keys(advanced).length > 0 ? JSON.stringify(advanced, null, 2) : "";
 }
