@@ -272,143 +272,155 @@ export function PublicationFiche({
         currentUserRole={currentUserRole}
       />
 
-      {/* Corps de la fiche */}
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {/* Chaîne de production — toujours visible */}
-        <ProductionChain steps={steps} />
+      {/* ProductionChain — sticky sous le header pour rester visible pendant le scroll. */}
+      <div className="sticky top-[68px] z-10 bg-gray-50/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/80 border-b border-gray-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
+          <ProductionChain steps={steps} />
+        </div>
+      </div>
 
-        {/* Brief éditorial — Phase B3, conditionné par pattern.needsBrief */}
-        {pattern?.needsBrief &&
-          wrap(
-            "brief",
-            <BriefSection
-              slotId={slot.id}
-              brief={brief}
-              attachments={briefAttachments}
-              canEditBrief={canEditBrief}
-              canManageAttachments={canManageAttachments}
-            />
-          )}
+      {/* Corps de la fiche — 2 colonnes en xl, stack vertical en dessous. */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+        <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-6">
+          {/* Colonne workflow — sections d'action */}
+          <div className="space-y-6 min-w-0">
+            {/* Brief éditorial — Phase B3, conditionné par pattern.needsBrief */}
+            {pattern?.needsBrief &&
+              wrap(
+                "brief",
+                <BriefSection
+                  slotId={slot.id}
+                  brief={brief}
+                  attachments={briefAttachments}
+                  canEditBrief={canEditBrief}
+                  canManageAttachments={canManageAttachments}
+                />
+              )}
 
-        {/* Rushes — Phase B2, conditionné par pattern.needsRushes */}
-        {pattern?.needsRushes &&
-          wrap(
-            "rushes",
-            <RushesSection
-              slotId={slot.id}
-              rushes={rushes}
-              canUploadRushes={canUploadRushes}
-              canManageRushes={canManageRushes}
-              currentUserId={currentUserId}
-            />
-          )}
+            {/* Rushes — Phase B2, conditionné par pattern.needsRushes */}
+            {pattern?.needsRushes &&
+              wrap(
+                "rushes",
+                <RushesSection
+                  slotId={slot.id}
+                  rushes={rushes}
+                  canUploadRushes={canUploadRushes}
+                  canManageRushes={canManageRushes}
+                  currentUserId={currentUserId}
+                />
+              )}
 
-        {/* Versions livrées — Phase C1, conditionné par pattern.needsRushes */}
-        {pattern?.needsRushes &&
-          wrap(
-            "versions",
-            <VersionsSection
-              slotId={slot.id}
-              versions={versions}
-              currentVersionId={currentVersionId}
-              canUploadVersion={canUploadVersion}
-              canPromoteVersion={canPromoteVersion}
-              isAdmin={currentUserRole === "ADMIN"}
-              currentUserId={currentUserId}
-            />
-          )}
+            {/* Versions livrées — Phase C1, conditionné par pattern.needsRushes */}
+            {pattern?.needsRushes &&
+              wrap(
+                "versions",
+                <VersionsSection
+                  slotId={slot.id}
+                  versions={versions}
+                  currentVersionId={currentVersionId}
+                  canUploadVersion={canUploadVersion}
+                  canPromoteVersion={canPromoteVersion}
+                  isAdmin={currentUserRole === "ADMIN"}
+                  currentUserId={currentUserId}
+                />
+              )}
 
-        {/* Rendu vidéo */}
-        {wrap(
-          "render",
-          <RenderSection
-            slot={{ id: slot.id }}
-            pattern={pattern ? { source: pattern.source, templateId: pattern.templateId } : null}
-            render={render}
-            listingId={listing?.id ?? null}
-            canEdit={canEditRender}
-          />
-        )}
+            {/* Rendu vidéo */}
+            {wrap(
+              "render",
+              <RenderSection
+                slot={{ id: slot.id }}
+                pattern={pattern ? { source: pattern.source, templateId: pattern.templateId } : null}
+                render={render}
+                listingId={listing?.id ?? null}
+                canEdit={canEditRender}
+              />
+            )}
 
-        {/* Cover Instagram */}
-        {wrap(
-          "cover",
-          <CoverSection
-            slot={{ id: slot.id }}
-            pattern={pattern ? { coverMode: pattern.coverMode } : null}
-            coverPack={coverPack}
-            canEdit={canEditCover}
-            currentVersion={currentVersion}
-          />
-        )}
+            {/* Cover Instagram */}
+            {wrap(
+              "cover",
+              <CoverSection
+                slot={{ id: slot.id }}
+                pattern={pattern ? { coverMode: pattern.coverMode } : null}
+                coverPack={coverPack}
+                canEdit={canEditCover}
+                currentVersion={currentVersion}
+              />
+            )}
 
-        {/* Sous-titres — conditionné par pattern.needsCaptions */}
-        {pattern?.needsCaptions === true &&
-          wrap(
-            "captions",
-            <CaptionsSection
-              slot={{ id: slot.id }}
-              renderId={render?.id ?? null}
-              pattern={pattern ? { needsCaptions: pattern.needsCaptions } : null}
-              canEdit={canEditCaptions}
-              currentVersion={currentVersion}
-              latestCaptionJob={latestCaptionJob}
-            />
-          )}
+            {/* Sous-titres — conditionné par pattern.needsCaptions */}
+            {pattern?.needsCaptions === true &&
+              wrap(
+                "captions",
+                <CaptionsSection
+                  slot={{ id: slot.id }}
+                  renderId={render?.id ?? null}
+                  pattern={pattern ? { needsCaptions: pattern.needsCaptions } : null}
+                  canEdit={canEditCaptions}
+                  currentVersion={currentVersion}
+                  latestCaptionJob={latestCaptionJob}
+                />
+              )}
 
-        {/* Description de publication */}
-        {wrap(
-          "description",
-          <DescriptionSection
-            slot={{ id: slot.id }}
-            pattern={pattern ? { needsDescription: pattern.needsDescription } : null}
-            initialDescription={slot.description ?? ""}
-            canEdit={canEditDescription}
-            renderId={render?.id ?? null}
-          />
-        )}
+            {/* Description de publication */}
+            {wrap(
+              "description",
+              <DescriptionSection
+                slot={{ id: slot.id }}
+                pattern={pattern ? { needsDescription: pattern.needsDescription } : null}
+                initialDescription={slot.description ?? ""}
+                canEdit={canEditDescription}
+                renderId={render?.id ?? null}
+              />
+            )}
 
-        {/* Légende Instagram */}
-        {wrap(
-          "captionIg",
-          <CaptionIgSection
-            slot={{ id: slot.id, caption: slot.caption }}
-            description={slot.description}
-            canEdit={canMarkPublished || canEditDescription}
-          />
-        )}
+            {/* Légende Instagram */}
+            {wrap(
+              "captionIg",
+              <CaptionIgSection
+                slot={{ id: slot.id, caption: slot.caption }}
+                description={slot.description}
+                canEdit={canMarkPublished || canEditDescription}
+              />
+            )}
 
-        {/* Publication */}
-        {wrap(
-          "publish",
-          <PublishSection
-            slot={{
-              id: slot.id,
-              status: slot.status,
-              publishedUrl: slot.publishedUrl,
-              publishedAt: slot.publishedAt,
-            }}
-            canPublish={canMarkPublished}
-          />
-        )}
+            {/* Publication */}
+            {wrap(
+              "publish",
+              <PublishSection
+                slot={{
+                  id: slot.id,
+                  status: slot.status,
+                  publishedUrl: slot.publishedUrl,
+                  publishedAt: slot.publishedAt,
+                }}
+                canPublish={canMarkPublished}
+              />
+            )}
+          </div>
 
-        {/* Section commentaires — Phase 1.3.6 */}
-        {wrap(
-          "comments",
-          <CommentsSection
-            slotId={slot.id}
-            initialComments={comments}
-            currentUserId={currentUserId}
-            currentUserRole={currentUserRole}
-          />
-        )}
+          {/* Colonne droite — Conversation + Activité, sticky en xl. */}
+          <aside className="mt-6 xl:mt-0 space-y-6">
+            <div className="xl:sticky xl:top-[200px] space-y-6 xl:max-h-[calc(100vh-220px)] xl:overflow-y-auto xl:pr-1">
+              {wrap(
+                "comments",
+                <CommentsSection
+                  slotId={slot.id}
+                  initialComments={comments}
+                  currentUserId={currentUserId}
+                  currentUserRole={currentUserRole}
+                />
+              )}
 
-        {/* Historique d'activité — Phase 1.3.6 */}
-        <ActivityTimeline
-          slotId={slot.id}
-          initialActivities={activities}
-          initialHasMore={activityHasMore}
-        />
+              <ActivityTimeline
+                slotId={slot.id}
+                initialActivities={activities}
+                initialHasMore={activityHasMore}
+              />
+            </div>
+          </aside>
+        </div>
       </div>
     </div>
   );
