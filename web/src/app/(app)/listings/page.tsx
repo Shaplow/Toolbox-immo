@@ -211,13 +211,17 @@ export default async function ListingsPage() {
     captionRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length +
     transcriptionRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length;
 
+  const totalItems = rows.length + captionRows.length + transcriptionRows.length + descriptionRows.length;
+  const subtitleParts = [`${totalItems} élément${totalItems !== 1 ? "s" : ""}`];
+  if (inProgressCount > 0) subtitleParts.push(`${inProgressCount} en cours`);
+
   return (
     <div className="p-8">
       <ToolPageHeader
         icon={List}
         iconColor="indigo"
-        title={isAdmin ? "Générations" : "Mes générations"}
-        subtitle={`${rows.length} génération${rows.length !== 1 ? "s" : ""}${captionRows.length > 0 ? ` · ${captionRows.length} export${captionRows.length !== 1 ? "s" : ""} captions` : ""}${transcriptionRows.length > 0 ? ` · ${transcriptionRows.length} transcription${transcriptionRows.length !== 1 ? "s" : ""}` : ""}${descriptionRows.length > 0 ? ` · ${descriptionRows.length} description${descriptionRows.length !== 1 ? "s" : ""}` : ""}${inProgressCount > 0 ? ` · ${inProgressCount} en cours` : ""}`}
+        title={isAdmin ? "Historique des générations" : "Mon historique"}
+        subtitle={subtitleParts.join(" · ")}
       />
 
       <ListingsClient
