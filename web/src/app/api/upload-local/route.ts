@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 
 const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -20,8 +20,8 @@ const SAFE_KEY = /^[\w\-.]+$/; // alphanumeric, dash, dot, underscore only
  * qu'un PUT vers une URL pré-signée S3/R2).
  */
 export async function PUT(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return new NextResponse("Non autorisé", { status: 401 });
   }
 

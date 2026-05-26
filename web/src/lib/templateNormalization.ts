@@ -3,7 +3,6 @@ import type {
   AnyBlock,
   BlockConditionalRule,
   ConditionalBlockOverride,
-  CoverAutoConfig,
   LayerGroup,
   TemplateFormSection,
   TemplateJSON,
@@ -104,21 +103,6 @@ function normalizeLayerGroup(group: LayerGroup): LayerGroup {
   };
 }
 
-function normalizeCoverAutoConfig(config: TemplateJSON["coverAutoConfig"], validGroupIds: Set<string>): CoverAutoConfig | undefined {
-  if (!config) return undefined;
-  const frameCount = typeof config.frameCount === "number" && config.frameCount > 0
-    ? Math.min(72, Math.max(6, Math.round(config.frameCount)))
-    : 36;
-  const overlayGroupIds = (config.overlayGroupIds ?? []).filter((id) => validGroupIds.has(id));
-  return {
-    enabled: Boolean(config.enabled),
-    frameCount,
-    excludeZones: config.excludeZones ?? [],
-    ...(config.excludeSlotIds ? { excludeSlotIds: config.excludeSlotIds } : {}),
-    ...(overlayGroupIds.length > 0 ? { overlayGroupIds } : {}),
-  };
-}
-
 export function normalizeTemplateJSON(template: TemplateJSON): TemplateJSON {
   const normalizedSections = (template.formSections ?? [])
     .map((section) => normalizeFormSection(section))
@@ -180,7 +164,6 @@ export function normalizeTemplateJSON(template: TemplateJSON): TemplateJSON {
       }
       return normalizedField;
     }),
-    coverAutoConfig: normalizeCoverAutoConfig(template.coverAutoConfig, validGroupIds),
   };
 }
 

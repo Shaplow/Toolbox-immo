@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+// NOTE: this route intentionally keeps auth() direct instead of getUserContext().
+// getUserContext() reads the impersonation cookie to resolve the effective user,
+// so using it here to start/stop impersonation would create a circular dependency
+// (it would read the cookie being set/cleared in this very response).
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { IMPERSONATION_COOKIE_NAME } from "@/lib/userContext";

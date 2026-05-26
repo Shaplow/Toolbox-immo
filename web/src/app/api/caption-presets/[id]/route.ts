@@ -1,5 +1,5 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -10,11 +10,11 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
-  if (session.user.role !== "ADMIN") {
+  if (!userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -55,8 +55,8 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
@@ -67,12 +67,11 @@ export async function DELETE(
     return NextResponse.json({ error: "Preset introuvable" }, { status: 404 });
   }
 
-  const isAdmin = session.user.role === "ADMIN";
-  if (!isAdmin) {
+  if (!userContext.canAdminBypass) {
     if (preset.isBuiltin) {
       return NextResponse.json({ error: "Impossible de supprimer un preset builtin" }, { status: 403 });
     }
-    if (preset.userId !== session.user.id) {
+    if (preset.userId !== userContext.effectiveUser.id) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
   }
@@ -80,4 +79,3 @@ export async function DELETE(
   await prisma.captionPreset.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }
-

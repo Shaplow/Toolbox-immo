@@ -22,7 +22,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { isCaptionCompatibleFontAsset, listFontAssetsByFamilies } from "@/lib/fontAssets";
 import { normalizeCaptionConfig } from "@/lib/captionsEngine";
@@ -106,12 +106,12 @@ async function attachCaptionFontAssets(req: NextRequest, configData: Record<stri
 
 export async function POST(req: NextRequest) {
   // ─── Auth ─────────────────────────────────────────────────────────────────
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
-  const isAdmin = session.user.role === "ADMIN";
-  if (!isAdmin && !(await hasTool(session.user.id, TOOLS.CAPTIONS))) {
+  const isAdmin = userContext.canAdminBypass;
+  if (!isAdmin && !(await hasTool(userContext.effectiveUser.id, TOOLS.CAPTIONS))) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
 
     if (presetId && !isAdmin) {
       const presetAccess = await prisma.captionPresetAccess.findFirst({
-        where: { userId: session.user.id, presetId },
+        where: { userId: userContext.effectiveUser.id, presetId },
       });
       if (!presetAccess) {
         return NextResponse.json({ error: "Accès refusé à ce preset" }, { status: 403 });
@@ -186,9 +186,9 @@ export async function POST(req: NextRequest) {
     configData = normalizeCaptionConfig(configData);
 
     const jobTimestamp = Date.now();
-    const inputKey     = `inputs/captions/${session.user.id}/${jobTimestamp}/video.${ext}`;
+    const inputKey     = `inputs/captions/${userContext.effectiveUser.id}/${jobTimestamp}/video.${ext}`;
     const outputSuffix = previewMode ? "preview" : "full";
-    const outputKey    = `outputs/captions/${session.user.id}/${jobTimestamp}/${outputSuffix}.mp4`;
+    const outputKey    = `outputs/captions/${userContext.effectiveUser.id}/${jobTimestamp}/${outputSuffix}.mp4`;
 
     const mimeByExt: Record<string, string> = {
       mp4: "video/mp4", mov: "video/quicktime", mkv: "video/x-matroska",
@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
 
     const captionJob = await prisma.captionJob.create({
       data: {
-        userId:      session.user.id,
+        userId:      userContext.effectiveUser.id,
         status:      "QUEUED",
         inputUrl:    filename,
         inputKey,
@@ -236,7 +236,7 @@ export async function POST(req: NextRequest) {
 
   if (presetId && !isAdmin) {
     const presetAccess = await prisma.captionPresetAccess.findFirst({
-      where: { userId: session.user.id, presetId },
+      where: { userId: userContext.effectiveUser.id, presetId },
     });
     if (!presetAccess) {
       return NextResponse.json({ error: "Accès refusé à ce preset" }, { status: 403 });
@@ -269,7 +269,7 @@ export async function POST(req: NextRequest) {
 
     const captionJob = await prisma.captionJob.create({
       data: {
-        userId:     session.user.id,
+        userId:     userContext.effectiveUser.id,
         status:     "PROCESSING",
         inputUrl:   videoFile.name,
         config:     configPayload,
@@ -347,14 +347,14 @@ export async function POST(req: NextRequest) {
   }
   const jobTimestamp  = Date.now();
   const videoExt      = (videoFile.name.split(".").pop() ?? "mp4").toLowerCase();
-  const inputVideoKey = `inputs/captions/${session.user.id}/${jobTimestamp}/video.${videoExt}`;
+  const inputVideoKey = `inputs/captions/${userContext.effectiveUser.id}/${jobTimestamp}/video.${videoExt}`;
 
   const outputSuffix = previewMode ? "preview" : "full";
-  const outputKey    = `outputs/captions/${session.user.id}/${jobTimestamp}/${outputSuffix}.mp4`;
+  const outputKey    = `outputs/captions/${userContext.effectiveUser.id}/${jobTimestamp}/${outputSuffix}.mp4`;
 
   const captionJob = await prisma.captionJob.create({
     data: {
-      userId:    session.user.id,
+      userId:    userContext.effectiveUser.id,
       status:    "QUEUED",
       inputUrl:  videoFile.name,
       inputKey:  inputVideoKey,

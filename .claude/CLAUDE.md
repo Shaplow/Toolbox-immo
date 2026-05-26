@@ -40,14 +40,38 @@ L'app a pivoté d'une grille d'outils standalone vers un pipeline éditorial ave
 - Helpers publications : `web/src/lib/permissions/publications.ts` (`canSeePublication`, `canMarkPublished`, `canEditComment`).
 - **Impersonation** : utiliser `effectiveUser` (via `getUserContext`) pour les scopes de données, pas `auth()` direct.
 
+### API routes — règle d'auth (Phase 1.8)
+**Toujours utiliser `getUserContext()` dans les routes API. Ne jamais appeler `auth()` directement.**
+
+```typescript
+const userContext = await getUserContext();
+if (!userContext?.effectiveUser.id) { /* 401 */ }
+```
+
+Décision par usage :
+- **Auth basique** (route accessible à tout user connecté) → `effectiveUser.id`
+- **Scope data** (filtrer les entités par user) → `effectiveUser.id`
+- **Décision admin-only** (gate une action au rôle ADMIN) → `canAdminBypass` (true si ADMIN réel ET pas en impersonation)
+- **Audit log / traceability** (qui a vraiment déclenché l'action) → `actualUser.id`
+
+Exceptions intentionnelles :
+- `/api/admin/impersonation` — garde `auth()` direct : établit/détruit le cookie d'impersonation, donc `getUserContext()` créerait une dépendance circulaire.
+- `/api/webhooks/runpod/*` — routes publiques signées par `RUNPOD_WEBHOOK_SECRET`, pas de session.
+
 ### Modèles Prisma centraux
 - `PublicationSlot` (avec `assigneeMonteurId`, `assigneeCmId`, `patternId`, `currentVersionId`, `publishedUrl`, `publishedAt`, `description`)
 - `AccountPattern` (Phase 1.6 — remplace ContentRecipe + AccountPlan + OfferScheduleRule) : pattern de publication par compte IG avec planning intégré (`dayOfWeek`, `publishTime`), source (`auto_template | manual_rushes | external_upload`), cover config, needs* flags, assignations par défaut
+  - **`coverConfig`** : source de vérité unique pour la cover auto (Phase 1.8 — `Template.coverAutoConfig` droppé)
+  - **`libraryId`** : supprimé en Phase 1.8 (champ mort — jamais consommé par `generateRender.ts`)
 - `Client` → 1..N `InstagramAccount` → 1..N `AccountPattern`
 - `PublicationVersion` (versions livrées monteur, soft-delete)
 - `PublicationComment`, `PublicationActivity` (fil + log)
 
 **Modèles supprimés en Phase 1.6** (ne pas les recréer) : `ContentRecipe`, `AccountPlan`, `OfferScheduleRule`
+
+**Champs supprimés en Phase 1.8** (ne pas les recréer) :
+- `Template.coverAutoConfig` — migré vers `AccountPattern.coverConfig`
+- `AccountPattern.libraryId` — champ mort droppé
 
 ### Page fiche publication
 - Hub central : `/publications/[id]` (`web/src/app/(app)/publications/[id]/`)
@@ -92,12 +116,14 @@ CONFIGURATION — Ressources (hub 4 cards) / Utilisateurs
 
 ### Dette technique
 - Phase 1.2 : voir mémoire `phase-1-2-technical-debt.md`
-- Phase 1.6 : voir mémoire `project_phase_1_6_technical_debt.md` — items résolus en Phase 1.7 (C1-C4) :
-  - ~~Picker patterns dans `AddSlotModal`~~ → résolu C1
-  - ~~Badge pattern absent dans `SlotCard`~~ → résolu C2
-  - ~~`CloneDialog` ID CUID brut~~ → résolu C3
-  - ~~`computePublicationSteps` compat arg `recipe`~~ → résolu C4
-  - Reste : Drop `Template.coverAutoConfig` (28 usages, dépend Phase 1.5+), `CoverConfigEditor` zones avancées JSON
+- Phase 1.6 : voir mémoire `project_phase_1_6_technical_debt.md` — items résolus :
+  - ~~Picker patterns dans `AddSlotModal`~~ → résolu Phase 1.7 C1
+  - ~~Badge pattern absent dans `SlotCard`~~ → résolu Phase 1.7 C2
+  - ~~`CloneDialog` ID CUID brut~~ → résolu Phase 1.7 C3
+  - ~~`computePublicationSteps` compat arg `recipe`~~ → résolu Phase 1.7 C4
+  - ~~Drop `Template.coverAutoConfig`~~ → résolu Phase 1.8 C7 (migré vers `AccountPattern.coverConfig`)
+  - ~~Drop `AccountPattern.libraryId`~~ → résolu Phase 1.8 B1 (champ mort)
+  - Reste : `CoverConfigEditor` zones avancées JSON, `User.permissions[]` accepté pour USER role, `PublicationSlot.contentType` redondant avec pattern.label
 - Refacto UX **interne** du module Templates (builder Canvas, ergonomie éditeur) — chantier dédié Phase 1.5+
 - Migration `MediaAssetsPanel` (2440 LOC) aux primitives UI — split en sous-composants requis avant
 - Libraries sous-pages restantes (MediaLibrariesPanel, DataLibrariesPanel, etc.) à migrer aux primitives

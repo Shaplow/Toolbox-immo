@@ -24,7 +24,6 @@ export default async function AccountFichePage({ params }: Props) {
         orderBy: [{ dayOfWeek: "asc" }, { publishTime: "asc" }],
         include: {
           template: { select: { id: true, name: true } },
-          library: { select: { id: true, name: true } },
           defaultAssigneeMonteur: { select: { id: true, name: true } },
           defaultAssigneeCm: { select: { id: true, name: true } },
           _count: { select: { publicationSlots: true } },

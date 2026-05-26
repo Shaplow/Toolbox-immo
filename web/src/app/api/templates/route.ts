@@ -1,20 +1,18 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { emptyTemplate } from "@/types/template";
 import { serializeTemplateJSON } from "@/lib/templateNormalization";
 
 // GET /api/templates
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
-  const isAdmin = session.user.role === "ADMIN";
-
   let templates;
-  if (isAdmin) {
+  if (userContext.canAdminBypass) {
     // Admin voit toutes les templates
     templates = await prisma.template.findMany({
       orderBy: { updatedAt: "desc" },
@@ -23,7 +21,7 @@ export async function GET() {
   } else {
     // User voit uniquement les templates qui lui ont été assignés
     const accesses = await prisma.templateAccess.findMany({
-      where: { userId: session.user.id },
+      where: { userId: userContext.effectiveUser.id },
       include: {
         template: {
           select: { id: true, name: true, client: true, formats: true, contentType: true, createdAt: true, updatedAt: true },
@@ -41,11 +39,11 @@ export async function GET() {
 
 // POST /api/templates — ADMIN seulement
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
-  if (session.user.role !== "ADMIN") {
+  if (!userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -72,7 +70,7 @@ export async function POST(req: NextRequest) {
       client,
       formats: JSON.stringify([format]),
       jsonData: JSON.stringify(serializeTemplateJSON(json)),
-      userId: session.user.id,
+      userId: userContext.effectiveUser.id,
     },
   });
 

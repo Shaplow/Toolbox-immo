@@ -15,7 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { getR2PublicUrl, deleteFromR2, r2Configured } from "@/lib/r2";
 import { resolveRunpodJobPhase, runpodConfigured, isPodJobId } from "@/lib/runpod";
@@ -33,8 +33,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   // ─── Auth ────────────────────────────────────────────────────────────────
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
@@ -46,7 +46,7 @@ export async function GET(
   if (!job) {
     return NextResponse.json({ error: "Job introuvable" }, { status: 404 });
   }
-  if (job.userId !== session.user.id && session.user.role !== "ADMIN") {
+  if (job.userId !== userContext.effectiveUser.id && !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
@@ -145,17 +145,18 @@ export async function GET(
 
 // DELETE /api/render/captions/[id] — admin only
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
-  if (session.user.role !== "ADMIN") {
+  if (!userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
   const { id } = await params;
   const job = await prisma.captionJob.findUnique({ where: { id } });
   if (!job) return NextResponse.json({ error: "Job introuvable" }, { status: 404 });
   await prisma.captionJob.delete({ where: { id } });
-  console.warn(`[captions/DELETE] admin=${session.user.id} deleted captionJob=${id} status=${job.status}`);
+  // actualUser.id for audit: who actually performed the deletion (not the impersonated user)
+  console.warn(`[captions/DELETE] admin=${userContext.actualUser.id} deleted captionJob=${id} status=${job.status}`);
   return NextResponse.json({ ok: true });
 }

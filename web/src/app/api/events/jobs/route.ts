@@ -14,7 +14,7 @@
  */
 
 import { NextRequest } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { addSseConnection, removeSseConnection } from "@/lib/sseStore";
 
 export const dynamic = "force-dynamic";
@@ -22,12 +22,12 @@ export const dynamic = "force-dynamic";
 const encoder = new TextEncoder();
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const userId = session.user.id;
+  const userId = userContext.effectiveUser.id;
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {

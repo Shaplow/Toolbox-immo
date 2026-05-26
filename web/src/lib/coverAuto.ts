@@ -366,7 +366,7 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
 
   try {
     const templateJson = normalizeTemplateJSON(JSON.parse(pack.template.jsonData) as TemplateJSON);
-    const config = safeJson<CoverAutoConfig>(pack.config, templateJson.coverAutoConfig ?? { enabled: false, excludeZones: [] });
+    const config = safeJson<CoverAutoConfig>(pack.config, { enabled: false, excludeZones: [] });
     if (!config.enabled) return;
 
     const frameCount = normalizeFrameCount(config.frameCount ?? pack.frameCount);
@@ -459,18 +459,26 @@ export async function triggerAutoCoverPackForRender(
 ): Promise<void> {
   if (!templateId || !sourceVideoUrl) return;
 
-  const template = await prisma.template.findUnique({ where: { id: templateId } });
-  if (!template) return;
+  const templateExists = await prisma.template.findUnique({ where: { id: templateId }, select: { id: true } });
+  if (!templateExists) return;
 
-  let templateJson: TemplateJSON;
-  try {
-    templateJson = normalizeTemplateJSON(JSON.parse(template.jsonData) as TemplateJSON);
-  } catch (err) {
-    console.error(`[autoCover] Lecture template=${templateId} échouée : ${String(err)}`);
-    return;
-  }
+  // Lire Pattern.coverConfig — source de vérité Phase 1.8 (template.coverAutoConfig supprimé)
+  const renderSlot = await prisma.render.findUnique({
+    where: { id: renderId },
+    select: {
+      publicationSlot: {
+        select: {
+          pattern: { select: { coverMode: true, coverConfig: true } },
+        },
+      },
+    },
+  });
+  const slotPattern = renderSlot?.publicationSlot?.pattern;
+  const config: CoverAutoConfig | undefined =
+    slotPattern?.coverMode === "auto" && slotPattern.coverConfig
+      ? (slotPattern.coverConfig as unknown as CoverAutoConfig)
+      : undefined;
 
-  const config = templateJson.coverAutoConfig;
   if (!config?.enabled) return;
 
   const existing = await prisma.coverFramePack.findUnique({ where: { renderId } });
@@ -584,7 +592,6 @@ function buildCoverTemplate(
     groups: templateJson.groups.filter((group) => allowedGroups.has(group.id)),
     videoSequence: undefined,
     captionAutoConfig: undefined,
-    coverAutoConfig: undefined,
   };
 }
 
@@ -683,7 +690,6 @@ export async function buildCoverOverlayPreviewHtml(packId: string): Promise<stri
     groups: templateJson.groups.filter((group) => overlayGroupIds.includes(group.id)),
     videoSequence: undefined,
     captionAutoConfig: undefined,
-    coverAutoConfig: undefined,
   };
   const publicBase = "file://" + path.join(process.cwd(), "public").replace(/\\/g, "/");
   const html = await buildHTML(overlayTemplate, enrichedListing, { publicBase, overlayMode: true });

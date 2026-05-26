@@ -2,8 +2,6 @@
 import { notFound } from "next/navigation";
 import { RenderResult } from "@/components/renders/RenderResult";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
-import { normalizeTemplateJSON } from "@/lib/templateNormalization";
-import type { TemplateJSON } from "@/types/template";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -17,6 +15,11 @@ export default async function RenderPage({ params }: Props) {
     include: {
       listing: true,
       template: { select: { id: true, name: true, client: true, jsonData: true } },
+      publicationSlot: {
+        select: {
+          pattern: { select: { coverMode: true, coverConfig: true } },
+        },
+      },
     },
   });
 
@@ -26,14 +29,13 @@ export default async function RenderPage({ params }: Props) {
   const isAdmin = userContext.canAdminBypass;
   const userPerms = parsePermissions(userContext.effectiveUser.permissions);
   const hasCovers = isAdmin || userPerms.includes("covers");
-  let coverAutoEnabled = false;
-  if (render.template?.jsonData) {
-    try {
-      coverAutoEnabled = normalizeTemplateJSON(JSON.parse(render.template.jsonData) as TemplateJSON).coverAutoConfig?.enabled === true;
-    } catch {
-      coverAutoEnabled = false;
-    }
-  }
+
+  // Lire Pattern.coverConfig (source de vérité Phase 1.8 — template.coverAutoConfig supprimé)
+  const slotPattern = render.publicationSlot?.pattern;
+  const patternCoverConfig = slotPattern?.coverMode === "auto" && slotPattern.coverConfig
+    ? (slotPattern.coverConfig as { enabled?: boolean })
+    : null;
+  const coverAutoEnabled = patternCoverConfig?.enabled === true;
   if (!isAdmin) {
     const listing = await prisma.listing.findFirst({
       where: { id: render.listingId, userId: userContext.effectiveUser.id },

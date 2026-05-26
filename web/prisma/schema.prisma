@@ -309,15 +309,15 @@ model DescriptionJob {
 
 /// Bibliothèque de médias (vidéos rush ou musiques). Gérée par les admins.
 model MediaLibrary {
-  id              String                 @id @default(cuid())
-  name            String
+  id             String                 @id @default(cuid())
+  name           String
   /// "video" | "audio"
-  type            String
+  type           String
   /// JSON string[] — tags de type template : ["RPI","RTIPS","RPOD"]
-  tags            String                 @default("[]")
-  description     String?
+  tags           String                 @default("[]")
+  description    String?
   /// JSON string[] — ordre explicite des setTags pour la rotation : ["tenue1-set1","tenue2-set1","tenue1-set2"]
-  setSequence     String                 @default("[]")
+  setSequence    String                 @default("[]")
   /// JSON Record<string,string> — setTag → famille : {"tenue1-set1":"tenue1","tenue1-set2":"tenue1","tenue2-set1":"tenue2"}
   /// En mode auto, tous les setTags d'une même famille sont exclus ensemble après utilisation.
   /// Portée de la rotation :
@@ -325,17 +325,16 @@ model MediaLibrary {
   ///   dans la bibliothèque indépendamment des autres.
   /// - "shared" : un seul curseur partagé entre tous les comptes. Tous les comptes voient le
   ///   même contenu à chaque génération (utile pour une bibliothèque commune).
-  rotationScope   String                 @default("per_account")
+  rotationScope  String                 @default("per_account")
   /// JSON { key: string; label: string; type: "text" | "number" | "url" }[] — champs de
   /// métadonnées structurées pouvant être remplis sur chaque asset de cette bibliothèque.
-  metadataSchema  String                 @default("[]")
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  assets          MediaAsset[]
-  accountCursors  AccountLibraryCursor[]
-  autocutBatches  MediaAutocutBatch[]
-  autocutJobs     MediaAutocutJob[]
-  accountPatterns AccountPattern[]
+  metadataSchema String                 @default("[]")
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  assets         MediaAsset[]
+  accountCursors AccountLibraryCursor[]
+  autocutBatches MediaAutocutBatch[]
+  autocutJobs    MediaAutocutJob[]
 }
 
 /// Un fichier média dans une bibliothèque (stocké sur R2).
@@ -716,9 +715,7 @@ model AccountPattern {
   // Source du contenu
   source     String // "auto_template" | "manual_rushes" | "external_upload"
   templateId String?
-  template   Template?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  libraryId  String?
-  library    MediaLibrary? @relation(fields: [libraryId], references: [id], onDelete: SetNull)
+  template   Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
   // Cover config (déplacée depuis Template.coverAutoConfig)
   coverMode   String @default("none") // "auto" | "manualSelect" | "none"

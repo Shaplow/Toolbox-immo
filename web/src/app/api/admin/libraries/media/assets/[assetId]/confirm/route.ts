@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { objectExistsInR2, r2Configured } from "@/lib/r2";
 
@@ -23,8 +23,8 @@ const execFileAsync = promisify(execFile);
 type Params = { params: Promise<{ assetId: string }> };
 
 export async function PATCH(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

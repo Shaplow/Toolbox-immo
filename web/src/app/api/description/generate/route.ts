@@ -23,10 +23,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { hasTool } from "@/lib/permissions";
-import { IMPERSONATION_COOKIE_NAME, resolveUserContext } from "@/lib/userContext";
 
 const MAX_TRANSCRIPT_CHARS = 50_000;
 const MAX_PERSONALIZATION_CHARS = 2_000;
@@ -227,12 +226,11 @@ async function generateWithGPT(
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
-  const userContext = await resolveUserContext(session, req.cookies.get(IMPERSONATION_COOKIE_NAME)?.value ?? null);
   const effectiveUserId = userContext.effectiveUser.id;
 
   const hasAccess = userContext.canAdminBypass || await hasTool(effectiveUserId, "description");

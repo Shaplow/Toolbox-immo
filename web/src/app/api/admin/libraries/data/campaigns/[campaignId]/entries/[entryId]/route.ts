@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
 function adminOnly(role?: string) {
@@ -11,8 +11,8 @@ type Params = { params: Promise<{ campaignId: string; entryId: string }> };
 // PATCH /api/admin/libraries/data/campaigns/[campaignId]/entries/[entryId]
 // Champs acceptés : fields, setTag, category, accessAccountIds, resetUsage, resetUsageForAccount
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id || adminOnly(session.user.role)) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -117,8 +117,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 // DELETE /api/admin/libraries/data/campaigns/[campaignId]/entries/[entryId]
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id || adminOnly(session.user.role)) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

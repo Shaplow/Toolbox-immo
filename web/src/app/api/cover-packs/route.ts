@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { IMPERSONATION_COOKIE_NAME, resolveUserContext } from "@/lib/userContext";
+import { getUserContext } from "@/lib/userContext";
 
 function toBrowserMediaUrl(url: string | null): string | null {
   if (!url) return url;
@@ -30,19 +29,25 @@ function readTemplateCanvas(jsonData: string | null | undefined): { canvasWidth:
 }
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
-  const userContext = await resolveUserContext(session, req.cookies.get(IMPERSONATION_COOKIE_NAME)?.value ?? null);
   const isAdmin = userContext.canAdminBypass;
   if (!isAdmin && !(await hasTool(userContext.effectiveUser.id, TOOLS.COVERS))) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
+  // Filtre optionnel par slot (ex: depuis la fiche publication via ?slotId=xxx)
+  const url = new URL(req.url);
+  const slotId = url.searchParams.get("slotId") ?? undefined;
+
   const packs = await prisma.coverFramePack.findMany({
-    where: isAdmin ? {} : { userId: userContext.effectiveUser.id },
+    where: {
+      ...(isAdmin ? {} : { userId: userContext.effectiveUser.id }),
+      ...(slotId ? { render: { publicationSlotId: slotId } } : {}),
+    },
     orderBy: { createdAt: "desc" },
     take: 50,
     include: {

@@ -37,6 +37,9 @@ const RENDER_STATUS_COLORS: Record<string, string> = {
 };
 
 export function RenderSection({ slot, pattern, render, listingId, canEdit }: Props) {
+  // Si pas de pattern, pas de rendu possible — masquer la section
+  if (!pattern) return null;
+
   const templateId = pattern?.templateId ?? null;
   const builderHref = templateId
     ? `/builder/${templateId}${listingId ? `?listingId=${listingId}&slotId=${slot.id}` : `?slotId=${slot.id}`}`

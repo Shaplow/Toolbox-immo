@@ -2,21 +2,11 @@
 import { ListingsClient, type ListingRow, type CaptionJobRow, type TranscriptionJobRow, type DescriptionJobRow } from "@/components/listings/ListingsClient";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
-import { normalizeTemplateJSON } from "@/lib/templateNormalization";
-import type { TemplateJSON } from "@/types/template";
 import { toUserRole } from "@/lib/permissions/role";
 import { List } from "lucide-react";
 
-function templateHasCoverAuto(jsonData: string): boolean {
-  try {
-    return normalizeTemplateJSON(JSON.parse(jsonData) as TemplateJSON).coverAutoConfig?.enabled === true;
-  } catch {
-    return false;
-  }
-}
-
 const LISTING_INCLUDE = {
-  template: { select: { id: true, name: true, client: true, formats: true, jsonData: true } },
+  template: { select: { id: true, name: true, client: true, formats: true } },
   user: { select: { name: true, email: true } },
   renders: {
     orderBy: { createdAt: "asc" } as const,
@@ -28,6 +18,14 @@ const LISTING_INCLUDE = {
       errorMsg: true,
       createdAt: true,
       coverFramePack: { select: { id: true, status: true } },
+      // Phase 1.8 : la cover auto est désormais portée par le pattern du slot,
+      // pas par le template. On joint pattern.coverMode pour activer le bouton
+      // "Générer Cover" sur les renders dont le slot a un pattern coverMode=auto.
+      publicationSlot: {
+        select: {
+          pattern: { select: { coverMode: true } },
+        },
+      },
     },
   },
 } as const;
@@ -146,7 +144,7 @@ export default async function ListingsPage() {
     createdAt: l.createdAt.toISOString(),
     ownerName: isAdmin ? (l.user.name ?? l.user.email ?? "?") : null,
     template: l.template
-      ? { id: l.template.id, name: l.template.name, client: l.template.client, formats: l.template.formats, coverAutoEnabled: templateHasCoverAuto(l.template.jsonData) }
+      ? { id: l.template.id, name: l.template.name, client: l.template.client, formats: l.template.formats }
       : null,
     renders: l.renders.map((r) => ({
       id: r.id,
@@ -156,6 +154,8 @@ export default async function ListingsPage() {
       errorMsg: r.errorMsg ?? null,
       createdAt: r.createdAt.toISOString(),
       coverPack: r.coverFramePack ? { id: r.coverFramePack.id, status: r.coverFramePack.status } : null,
+      // Cover auto activée si le slot lié a un pattern coverMode=auto (Phase 1.8).
+      coverAutoEnabled: r.publicationSlot?.pattern?.coverMode === "auto",
     })),
   }));
 

@@ -37,7 +37,6 @@ const NEEDS_DESCRIPTION_LABELS: Record<string, string> = {
 
 type Pattern = AccountPatternRow & {
   template: { id: string; name: string } | null;
-  library: { id: string; name: string } | null;
   defaultAssigneeMonteur: { id: string; name: string | null } | null;
   defaultAssigneeCm: { id: string; name: string | null } | null;
   _count: { publicationSlots: number };
@@ -119,7 +118,6 @@ function PatternCard({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
         <Row label="Source" value={SOURCE_LABELS[pattern.source] ?? pattern.source} />
         <Row label="Template" value={pattern.template?.name ?? "—"} />
-        <Row label="Bibliothèque" value={pattern.library?.name ?? "—"} />
         <Row label="Cover" value={COVER_MODE_LABELS[pattern.coverMode] ?? pattern.coverMode} />
         <Row
           label="Description"

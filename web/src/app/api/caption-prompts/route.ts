@@ -45,7 +45,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const userContext = await getUserContext();
-  if (!userContext?.actualUser.id) {
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
   if (!userContext.canAdminBypass) {

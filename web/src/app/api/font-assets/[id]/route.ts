@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { unlink } from "fs/promises";
 import path from "path";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { deleteFontAssetById, getFontAssetById } from "@/lib/fontAssets";
 import { deleteFromR2, r2Configured } from "@/lib/r2";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 

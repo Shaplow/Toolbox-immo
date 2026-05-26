@@ -18,7 +18,7 @@ type RequestBody = {
 
 async function requireAdmin() {
   const userContext = await getUserContext();
-  if (!userContext?.actualUser.id) {
+  if (!userContext?.effectiveUser.id) {
     return { error: NextResponse.json({ error: "Non authentifié" }, { status: 401 }) };
   }
   if (!userContext.canAdminBypass) {

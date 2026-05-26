@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { isCaptionCompatibleFontAsset, listFontAssetsByFamilies } from "@/lib/fontAssets";
 import { normalizeCaptionConfig } from "@/lib/captionsEngine";
 
@@ -35,8 +35,8 @@ function isAllowedPath(targetPath: string): boolean {
  */
 
 async function proxyRequest(req: NextRequest, path: string[]): Promise<NextResponse> {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
@@ -60,7 +60,7 @@ async function proxyRequest(req: NextRequest, path: string[]): Promise<NextRespo
     headers.set("x-internal-key", process.env.INTERNAL_API_KEY);
   }
   // Identité de l'utilisateur loggué (pour logs côté Python)
-  headers.set("x-user-id", session.user.id);
+  headers.set("x-user-id", userContext.effectiveUser.id);
 
   try {
     let body: ArrayBuffer | undefined;
