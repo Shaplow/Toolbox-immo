@@ -75,6 +75,7 @@ model CaptionPreset {
   createdAt DateTime              @default(now())
   updatedAt DateTime              @updatedAt
   accesses  CaptionPresetAccess[]
+  accountPatterns AccountPattern[]
 }
 
 model CaptionPresetAccess {
@@ -303,6 +304,7 @@ model DescriptionPrompt {
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
   jobs      DescriptionJob[]
+  accountPatterns AccountPattern[]
 }
 
 /// Résultat d'une génération de description à partir d'un SRT/JSON
@@ -763,6 +765,12 @@ model AccountPattern {
   defaultAssigneeMonteur   User?   @relation("PatternDefaultMonteur", fields: [defaultAssigneeMonteurId], references: [id], onDelete: SetNull)
   defaultAssigneeCmId      String?
   defaultAssigneeCm        User?   @relation("PatternDefaultCm", fields: [defaultAssigneeCmId], references: [id], onDelete: SetNull)
+
+  // Presets par défaut pour la chaîne de production
+  captionPresetId     String?
+  captionPreset       CaptionPreset?     @relation(fields: [captionPresetId], references: [id], onDelete: SetNull)
+  descriptionPromptId String?
+  descriptionPrompt   DescriptionPrompt? @relation(fields: [descriptionPromptId], references: [id], onDelete: SetNull)
 
   notes     String?
   createdAt DateTime @default(now())

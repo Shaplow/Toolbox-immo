@@ -34,6 +34,8 @@ type PostBody = {
   isActive?: boolean;
   defaultAssigneeMonteurId?: string | null;
   defaultAssigneeCmId?: string | null;
+  captionPresetId?: string | null;
+  descriptionPromptId?: string | null;
   notes?: string | null;
 };
 
@@ -62,6 +64,12 @@ function validatePatternBody(body: PostBody, requireAll: boolean): string | null
   }
   if (body.publishTime !== undefined && !PUBLISH_TIME_RE.test(body.publishTime)) {
     return "publishTime doit être au format HH:MM";
+  }
+  if (body.captionPresetId !== undefined && body.captionPresetId !== null && typeof body.captionPresetId !== "string") {
+    return "captionPresetId doit être une chaîne ou null";
+  }
+  if (body.descriptionPromptId !== undefined && body.descriptionPromptId !== null && typeof body.descriptionPromptId !== "string") {
+    return "descriptionPromptId doit être une chaîne ou null";
   }
 
   return null;
@@ -127,6 +135,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         isActive: body.isActive ?? true,
         defaultAssigneeMonteurId: body.defaultAssigneeMonteurId ?? null,
         defaultAssigneeCmId: body.defaultAssigneeCmId ?? null,
+        captionPresetId: body.captionPresetId ?? null,
+        descriptionPromptId: body.descriptionPromptId ?? null,
         notes: body.notes ?? null,
       },
       include: patternIncludes,

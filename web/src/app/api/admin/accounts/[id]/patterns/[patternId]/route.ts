@@ -36,6 +36,8 @@ type PatchBody = {
   isActive?: boolean;
   defaultAssigneeMonteurId?: string | null;
   defaultAssigneeCmId?: string | null;
+  captionPresetId?: string | null;
+  descriptionPromptId?: string | null;
   notes?: string | null;
 };
 
@@ -55,6 +57,12 @@ function validatePatchBody(body: PatchBody): string | null {
   }
   if (body.publishTime !== undefined && !PUBLISH_TIME_RE.test(body.publishTime)) {
     return "publishTime doit être au format HH:MM";
+  }
+  if (body.captionPresetId !== undefined && body.captionPresetId !== null && typeof body.captionPresetId !== "string") {
+    return "captionPresetId doit être une chaîne ou null";
+  }
+  if (body.descriptionPromptId !== undefined && body.descriptionPromptId !== null && typeof body.descriptionPromptId !== "string") {
+    return "descriptionPromptId doit être une chaîne ou null";
   }
   return null;
 }
@@ -120,6 +128,8 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (body.isActive !== undefined) data.isActive = body.isActive;
   if ("defaultAssigneeMonteurId" in body) data.defaultAssigneeMonteur = body.defaultAssigneeMonteurId ? { connect: { id: body.defaultAssigneeMonteurId } } : { disconnect: true };
   if ("defaultAssigneeCmId" in body) data.defaultAssigneeCm = body.defaultAssigneeCmId ? { connect: { id: body.defaultAssigneeCmId } } : { disconnect: true };
+  if ("captionPresetId" in body) data.captionPreset = body.captionPresetId ? { connect: { id: body.captionPresetId } } : { disconnect: true };
+  if ("descriptionPromptId" in body) data.descriptionPrompt = body.descriptionPromptId ? { connect: { id: body.descriptionPromptId } } : { disconnect: true };
   if ("notes" in body) data.notes = body.notes ?? null;
 
   try {
