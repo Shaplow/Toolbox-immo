@@ -1,4 +1,5 @@
 import type { ShapeBlock, ShapeKind } from "@/types/template";
+import { Slider } from "@/components/ui/Slider";
 import { Section } from "./Section";
 
 export function ShapeBlockPropertiesPanel({
@@ -14,7 +15,7 @@ export function ShapeBlockPropertiesPanel({
         <select
           value={block.shape}
           onChange={(e) => onChange({ shape: e.target.value as ShapeKind })}
-          className="w-full border border-gray-200 rounded px-2 py-1"
+          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
         >
           <option value="rectangle">▬ Rectangle</option>
           <option value="circle">● Cercle / Ovale</option>
@@ -22,62 +23,58 @@ export function ShapeBlockPropertiesPanel({
           <option value="diamond">◆ Diamant</option>
         </select>
       </Section>
+
       <Section label="Couleurs">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-gray-400">Remplissage</label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-600">Remplissage</span>
             <input
               type="color"
               value={block.fillColor}
               onChange={(e) => onChange({ fillColor: e.target.value })}
-              className="w-8 h-6 cursor-pointer rounded border border-gray-200"
+              className="h-8 w-full cursor-pointer rounded-lg border border-gray-200"
             />
-          </div>
-          <div className="flex items-center justify-between">
-            <label className="text-gray-400">Contour</label>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-600">Contour</span>
             <input
               type="color"
               value={block.borderColor ?? "#000000"}
               onChange={(e) => onChange({ borderColor: e.target.value })}
-              className="w-8 h-6 cursor-pointer rounded border border-gray-200"
+              className="h-8 w-full cursor-pointer rounded-lg border border-gray-200"
             />
-          </div>
+          </label>
         </div>
       </Section>
+
       <Section label="Options">
-        <div className="space-y-2">
+        <div className="space-y-3">
           {block.shape === "rectangle" && (
-            <label className="flex flex-col gap-0.5">
-              <span className="text-gray-400">Arrondi (px)</span>
-              <input
-                type="number" min={0} max={500}
-                value={block.borderRadius ?? 0}
-                onChange={(e) => onChange({ borderRadius: Number(e.target.value) })}
-                className="border border-gray-200 rounded px-2 py-1"
-              />
-            </label>
-          )}
-          <label className="flex flex-col gap-0.5">
-            <span className="text-gray-400">Épaisseur contour (px)</span>
-            <input
-              type="number" min={0} max={50}
-              value={block.borderWidth ?? 0}
-              onChange={(e) => onChange({ borderWidth: Number(e.target.value) || undefined })}
-              className="border border-gray-200 rounded px-2 py-1"
+            <Slider
+              label="Arrondi"
+              value={block.borderRadius ?? 0}
+              onChange={(v) => onChange({ borderRadius: v })}
+              min={0}
+              max={100}
+              unit="px"
             />
-          </label>
-          <label className="flex flex-col gap-0.5">
-            <span className="text-gray-400">Opacité (0–1)</span>
-            <div className="flex items-center gap-2">
-              <input
-                type="range" min={0} max={1} step={0.05}
-                value={block.opacity ?? 1}
-                onChange={(e) => onChange({ opacity: Number(e.target.value) })}
-                className="flex-1"
-              />
-              <span className="text-gray-500 w-8 text-right">{((block.opacity ?? 1) * 100).toFixed(0)}%</span>
-            </div>
-          </label>
+          )}
+          <Slider
+            label="Épaisseur contour"
+            value={block.borderWidth ?? 0}
+            onChange={(v) => onChange({ borderWidth: v || undefined })}
+            min={0}
+            max={20}
+            unit="px"
+          />
+          <Slider
+            label="Opacité"
+            value={Math.round((block.opacity ?? 1) * 100)}
+            onChange={(v) => onChange({ opacity: v / 100 })}
+            min={0}
+            max={100}
+            unit="%"
+          />
         </div>
       </Section>
     </>

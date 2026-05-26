@@ -1,5 +1,43 @@
 import type { VideoBlock } from "@/types/template";
+import { Slider } from "@/components/ui/Slider";
 import { Section } from "./Section";
+
+function ToggleSwitch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="flex items-center gap-2 w-full text-left"
+    >
+      <span
+        className={[
+          "relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent",
+          "transition-colors duration-150",
+          checked ? "bg-indigo-600" : "bg-gray-200",
+        ].join(" ")}
+      >
+        <span
+          className={[
+            "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow",
+            "transition-transform duration-150",
+            checked ? "translate-x-4" : "translate-x-0",
+          ].join(" ")}
+        />
+      </span>
+      <span className="text-xs text-gray-600">{label}</span>
+    </button>
+  );
+}
 
 export function VideoBlockPropertiesPanel({
   block,
@@ -10,58 +48,60 @@ export function VideoBlockPropertiesPanel({
 }) {
   return (
     <Section label="Options vidéo">
-      <label className="flex flex-col gap-0.5">
-        <span className="text-gray-400">Redimensionnement</span>
-        <select
-          value={block.fit ?? "cover"}
-          onChange={(e) => onChange({ fit: e.target.value as "cover" | "contain" })}
-          className="border border-gray-200 rounded px-2 py-1 text-sm"
-        >
-          <option value="cover">Cover (remplir + recadrer)</option>
-          <option value="contain">Contain (letterbox)</option>
-        </select>
-      </label>
-      <label className="flex flex-col gap-0.5 mt-2">
-        <span className="text-gray-400">Border radius</span>
-        <input type="number" value={block.borderRadius ?? 0}
-          onChange={(e) => onChange({ borderRadius: Number(e.target.value) })}
-          className="border border-gray-200 rounded px-2 py-1"
+      <div className="space-y-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-600">Redimensionnement</span>
+          <select
+            value={block.fit ?? "cover"}
+            onChange={(e) => onChange({ fit: e.target.value as "cover" | "contain" })}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+          >
+            <option value="cover">Cover (remplir + recadrer)</option>
+            <option value="contain">Contain (letterbox)</option>
+          </select>
+        </label>
+
+        <Slider
+          label="Border radius"
+          value={block.borderRadius ?? 0}
+          onChange={(v) => onChange({ borderRadius: v })}
+          min={0}
+          max={100}
+          unit="px"
         />
-      </label>
-      <label className="flex flex-col gap-0.5 mt-2">
-        <span className="text-gray-400">Couleur placeholder (builder)</span>
-        <input type="color" value={block.placeholderColor ?? "#111827"}
-          onChange={(e) => onChange({ placeholderColor: e.target.value })}
-          className="h-8 w-full border border-gray-200 rounded"
-        />
-      </label>
-      <label className="flex items-center gap-2 mt-3 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={block.mute ?? false}
-          onChange={(e) => onChange({ mute: e.target.checked })}
-          className="rounded"
-        />
-        <span className="text-gray-600 text-[11px]">Couper l&apos;audio de cette vidéo</span>
-      </label>
-      {!block.mute && (
-        <label className="flex flex-col gap-1 mt-3">
-          <div className="flex justify-between text-[11px]">
-            <span className="text-gray-400">Volume audio</span>
-            <span className="text-gray-600">{Math.round((block.audioVolume ?? 1) * 100)}%</span>
-          </div>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-600">Couleur placeholder (builder)</span>
           <input
-            type="range" min={0} max={1} step={0.05}
-            value={block.audioVolume ?? 1}
-            onChange={(e) => onChange({ audioVolume: Number(e.target.value) })}
-            className="w-full"
+            type="color"
+            value={block.placeholderColor ?? "#111827"}
+            onChange={(e) => onChange({ placeholderColor: e.target.value })}
+            className="h-8 w-full border border-gray-200 rounded-lg cursor-pointer"
           />
         </label>
-      )}
-      <p className="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
-        🎬 Ce bloc est le fond vidéo du template.<br />
-        La source et la bibliothèque se configurent dans l&apos;onglet <strong>Séquence</strong>.
-      </p>
+
+        <ToggleSwitch
+          checked={block.mute ?? false}
+          onChange={(v) => onChange({ mute: v })}
+          label="Couper l'audio de cette vidéo"
+        />
+
+        {!block.mute && (
+          <Slider
+            label="Volume audio"
+            value={Math.round((block.audioVolume ?? 1) * 100)}
+            onChange={(v) => onChange({ audioVolume: v / 100 })}
+            min={0}
+            max={100}
+            unit="%"
+          />
+        )}
+
+        <p className="text-[10px] text-gray-400 leading-relaxed">
+          Ce bloc est le fond vidéo du template.<br />
+          La source et la bibliothèque se configurent dans l&apos;onglet <strong>Séquence</strong>.
+        </p>
+      </div>
     </Section>
   );
 }
