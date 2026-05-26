@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
+import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { Video, Database, Type, Library, Sparkles } from "lucide-react";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
@@ -9,6 +10,24 @@ export default async function LibrariesHubPage() {
   if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") {
     redirect("/tools/templates");
   }
+
+  // Compteurs côté serveur pour les 4 cards (Phase 1.9 B2)
+  const [mediaLibCount, mediaAssetCount, dataLibCount, dataEntryCount, fontCount, promptCount] =
+    await Promise.all([
+      prisma.mediaLibrary.count(),
+      prisma.mediaAsset.count(),
+      prisma.dataLibrary.count(),
+      prisma.dataEntry.count(),
+      prisma.fontAsset.count(),
+      // Compter tous les prompts IA (captions + descriptions)
+      (async () => {
+        const [cap, desc] = await Promise.all([
+          prisma.captionPrompt.count(),
+          prisma.descriptionPrompt.count(),
+        ]);
+        return cap + desc;
+      })(),
+    ]);
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
@@ -30,6 +49,10 @@ export default async function LibrariesHubPage() {
           <div>
             <p className="font-medium text-gray-900">Médias</p>
             <p className="text-sm text-gray-500 mt-0.5">Vidéos rush et musiques à lier aux templates</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {mediaLibCount} {mediaLibCount === 1 ? "bibliothèque" : "bibliothèques"}{" "}
+              · {mediaAssetCount} {mediaAssetCount === 1 ? "asset" : "assets"}
+            </p>
           </div>
         </Link>
 
@@ -43,6 +66,10 @@ export default async function LibrariesHubPage() {
           <div>
             <p className="font-medium text-gray-900">Données</p>
             <p className="text-sm text-gray-500 mt-0.5">Données texte RPI, RTIPS… importées depuis Excel</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {dataLibCount} {dataLibCount === 1 ? "bibliothèque" : "bibliothèques"}{" "}
+              · {dataEntryCount} {dataEntryCount === 1 ? "fiche" : "fiches"}
+            </p>
           </div>
         </Link>
 
@@ -56,6 +83,9 @@ export default async function LibrariesHubPage() {
           <div>
             <p className="font-medium text-gray-900">Typographies</p>
             <p className="text-sm text-gray-500 mt-0.5">Polices personnalisées chargées dans les templates</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {fontCount} {fontCount === 1 ? "police" : "polices"}
+            </p>
           </div>
         </Link>
 
@@ -69,6 +99,9 @@ export default async function LibrariesHubPage() {
           <div>
             <p className="font-medium text-gray-900">Prompts IA</p>
             <p className="text-sm text-gray-500 mt-0.5">Prompts pour la génération de sous-titres et descriptions</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {promptCount} {promptCount === 1 ? "prompt" : "prompts"}
+            </p>
           </div>
         </Link>
       </div>
