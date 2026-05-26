@@ -7,6 +7,13 @@ import {
   canCommentOnPublication,
   canMarkPublished,
   canEditComment,
+  canUploadRushes,
+  canDeleteRushes,
+  canUploadVersion,
+  canPromoteVersion,
+  canDeleteVersion,
+  canRestoreVersion,
+  canEditBrief,
 } from "@/lib/permissions/publications";
 import type { AppUserIdentity } from "@/lib/userContext";
 
@@ -196,5 +203,134 @@ describe("canEditComment", () => {
     expect(
       canEditComment({ id: OTHER_ID, role: "CM" }, { authorId: USER_ID })
     ).toBe(false);
+  });
+});
+
+// ─── Rushes ────────────────────────────────────────────────────────────────────
+
+describe("canUploadRushes", () => {
+  it("ADMIN peut uploader des rushes partout", () => {
+    expect(canUploadRushes({ id: OTHER_ID, role: "ADMIN" }, { assigneeCmId: USER_ID })).toBe(true);
+  });
+
+  it("CM assigné peut uploader des rushes", () => {
+    expect(canUploadRushes({ id: USER_ID, role: "CM" }, { assigneeCmId: USER_ID })).toBe(true);
+  });
+
+  it("CM non assigné ne peut pas uploader des rushes", () => {
+    expect(canUploadRushes({ id: USER_ID, role: "CM" }, { assigneeCmId: OTHER_ID })).toBe(false);
+  });
+
+  it("MONTEUR ne peut pas uploader des rushes", () => {
+    expect(canUploadRushes({ id: USER_ID, role: "MONTEUR" }, { assigneeCmId: USER_ID })).toBe(false);
+  });
+
+  it("USER ne peut pas uploader des rushes", () => {
+    expect(canUploadRushes({ id: USER_ID, role: "USER" }, { assigneeCmId: USER_ID })).toBe(false);
+  });
+});
+
+describe("canDeleteRushes", () => {
+  it("ADMIN peut supprimer n'importe quel rush", () => {
+    expect(canDeleteRushes({ id: OTHER_ID, role: "ADMIN" }, { uploadedByUserId: USER_ID })).toBe(true);
+  });
+
+  it("auteur du rush peut le supprimer", () => {
+    expect(canDeleteRushes({ id: USER_ID, role: "CM" }, { uploadedByUserId: USER_ID })).toBe(true);
+  });
+
+  it("non-auteur non-admin ne peut pas supprimer", () => {
+    expect(canDeleteRushes({ id: OTHER_ID, role: "CM" }, { uploadedByUserId: USER_ID })).toBe(false);
+    expect(canDeleteRushes({ id: OTHER_ID, role: "MONTEUR" }, { uploadedByUserId: USER_ID })).toBe(false);
+  });
+});
+
+// ─── Versions ──────────────────────────────────────────────────────────────────
+
+describe("canUploadVersion", () => {
+  it("ADMIN peut uploader une version partout", () => {
+    expect(canUploadVersion({ id: OTHER_ID, role: "ADMIN" }, { assigneeMonteurId: USER_ID })).toBe(true);
+  });
+
+  it("MONTEUR assigné peut uploader une version", () => {
+    expect(canUploadVersion({ id: USER_ID, role: "MONTEUR" }, { assigneeMonteurId: USER_ID })).toBe(true);
+  });
+
+  it("MONTEUR non assigné ne peut pas uploader une version", () => {
+    expect(canUploadVersion({ id: USER_ID, role: "MONTEUR" }, { assigneeMonteurId: OTHER_ID })).toBe(false);
+  });
+
+  it("CM ne peut pas uploader une version", () => {
+    expect(canUploadVersion({ id: USER_ID, role: "CM" }, { assigneeMonteurId: USER_ID })).toBe(false);
+  });
+
+  it("USER ne peut pas uploader une version", () => {
+    expect(canUploadVersion({ id: USER_ID, role: "USER" }, { assigneeMonteurId: USER_ID })).toBe(false);
+  });
+});
+
+describe("canPromoteVersion", () => {
+  it("ADMIN seul peut promouvoir une version", () => {
+    expect(canPromoteVersion({ role: "ADMIN" })).toBe(true);
+  });
+
+  it("MONTEUR ne peut pas promouvoir une version", () => {
+    expect(canPromoteVersion({ role: "MONTEUR" })).toBe(false);
+  });
+
+  it("CM ne peut pas promouvoir une version", () => {
+    expect(canPromoteVersion({ role: "CM" })).toBe(false);
+  });
+
+  it("USER ne peut pas promouvoir une version", () => {
+    expect(canPromoteVersion({ role: "USER" })).toBe(false);
+  });
+});
+
+describe("canDeleteVersion", () => {
+  it("ADMIN peut supprimer n'importe quelle version", () => {
+    expect(canDeleteVersion({ id: OTHER_ID, role: "ADMIN" }, { uploadedByUserId: USER_ID })).toBe(true);
+  });
+
+  it("auteur de la version peut la supprimer", () => {
+    expect(canDeleteVersion({ id: USER_ID, role: "MONTEUR" }, { uploadedByUserId: USER_ID })).toBe(true);
+  });
+
+  it("non-auteur non-admin ne peut pas supprimer", () => {
+    expect(canDeleteVersion({ id: OTHER_ID, role: "MONTEUR" }, { uploadedByUserId: USER_ID })).toBe(false);
+    expect(canDeleteVersion({ id: OTHER_ID, role: "CM" }, { uploadedByUserId: USER_ID })).toBe(false);
+  });
+});
+
+describe("canRestoreVersion", () => {
+  it("ADMIN seul peut restaurer une version", () => {
+    expect(canRestoreVersion({ role: "ADMIN" })).toBe(true);
+    expect(canRestoreVersion({ role: "MONTEUR" })).toBe(false);
+    expect(canRestoreVersion({ role: "CM" })).toBe(false);
+    expect(canRestoreVersion({ role: "USER" })).toBe(false);
+  });
+});
+
+// ─── Brief ─────────────────────────────────────────────────────────────────────
+
+describe("canEditBrief", () => {
+  it("ADMIN peut éditer le brief partout", () => {
+    expect(canEditBrief({ id: OTHER_ID, role: "ADMIN" }, { assigneeCmId: USER_ID })).toBe(true);
+  });
+
+  it("CM assigné peut éditer le brief", () => {
+    expect(canEditBrief({ id: USER_ID, role: "CM" }, { assigneeCmId: USER_ID })).toBe(true);
+  });
+
+  it("CM non assigné ne peut pas éditer le brief", () => {
+    expect(canEditBrief({ id: USER_ID, role: "CM" }, { assigneeCmId: OTHER_ID })).toBe(false);
+  });
+
+  it("MONTEUR ne peut pas éditer le brief", () => {
+    expect(canEditBrief({ id: USER_ID, role: "MONTEUR" }, { assigneeCmId: USER_ID })).toBe(false);
+  });
+
+  it("USER ne peut pas éditer le brief", () => {
+    expect(canEditBrief({ id: USER_ID, role: "USER" }, { assigneeCmId: USER_ID })).toBe(false);
   });
 });

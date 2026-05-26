@@ -22,7 +22,16 @@ export type ActivityType =
   | "CAPTIONS_COMPLETED"
   | "DESCRIPTION_COMPLETED"
   | "PUBLISHED"
-  | "COMMENT_ADDED";
+  | "COMMENT_ADDED"
+  // ── Rushes / versions / brief (Phase A3) ──────────────────────────────────
+  | "BRIEF_UPDATED"
+  | "RUSHES_UPLOADED"
+  | "RUSHES_DELETED"
+  | "VERSION_UPLOADED"
+  | "VERSION_PROMOTED"
+  | "VERSION_DELETED"
+  | "VERSION_RESTORED"
+  | "CURRENT_VERSION_CHANGED";
 
 export interface LogActivityInput {
   slotId: string;

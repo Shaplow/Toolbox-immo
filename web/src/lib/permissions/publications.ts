@@ -1,5 +1,5 @@
 /**
- * Helpers de visibilité et d'édition des PublicationSlots par rôle.
+ * Helpers de visibilité, d'édition et d'upload pour les PublicationSlots par rôle.
  *
  * Ces fonctions sont "dead code" en Phase 1.1 — elles seront consommées
  * par les routes API et les composants de worklist en Phase 1.2.
@@ -255,4 +255,112 @@ export function assertCanEditComment(
       `Accès refusé : l'utilisateur "${user.id}" (rôle "${user.role}") ne peut pas modifier le commentaire "${comment.id}".`
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Rushes
+// ---------------------------------------------------------------------------
+
+/**
+ * Permission d'uploader des rushes sur un slot.
+ *
+ * - ADMIN → toujours true.
+ * - CM    → true si le slot lui est assigné (coordonne la collecte des rushes).
+ * - MONTEUR / USER → false.
+ */
+export function canUploadRushes(
+  user: { id: string; role: UserRole },
+  slot: { assigneeCmId: string | null }
+): boolean {
+  if (user.role === "ADMIN") return true;
+  if (user.role === "CM") return slot.assigneeCmId === user.id;
+  return false;
+}
+
+/**
+ * Permission de supprimer un rush spécifique.
+ *
+ * - ADMIN   → toujours true.
+ * - Auteur du rush → true (peut supprimer son propre upload).
+ * - Autres  → false.
+ */
+export function canDeleteRushes(
+  user: { id: string; role: UserRole },
+  rush: { uploadedByUserId: string }
+): boolean {
+  if (user.role === "ADMIN") return true;
+  return rush.uploadedByUserId === user.id;
+}
+
+// ---------------------------------------------------------------------------
+// Versions (montage)
+// ---------------------------------------------------------------------------
+
+/**
+ * Permission d'uploader une version (montage) sur un slot.
+ *
+ * - ADMIN   → toujours true.
+ * - MONTEUR → true si le slot lui est assigné.
+ * - CM / USER → false.
+ */
+export function canUploadVersion(
+  user: { id: string; role: UserRole },
+  slot: { assigneeMonteurId: string | null }
+): boolean {
+  if (user.role === "ADMIN") return true;
+  if (user.role === "MONTEUR") return slot.assigneeMonteurId === user.id;
+  return false;
+}
+
+/**
+ * Permission de promouvoir une version en version courante.
+ *
+ * ADMIN seul — action à fort impact (change la version de référence publiée).
+ */
+export function canPromoteVersion(user: { role: UserRole }): boolean {
+  return user.role === "ADMIN";
+}
+
+/**
+ * Permission de supprimer (soft-delete) une version spécifique.
+ *
+ * - ADMIN   → toujours true.
+ * - Auteur de la version → true.
+ * - Autres  → false.
+ */
+export function canDeleteVersion(
+  user: { id: string; role: UserRole },
+  version: { uploadedByUserId: string }
+): boolean {
+  if (user.role === "ADMIN") return true;
+  return version.uploadedByUserId === user.id;
+}
+
+/**
+ * Permission de restaurer une version soft-deleted.
+ *
+ * ADMIN seul — même logique que canPromoteVersion.
+ */
+export function canRestoreVersion(user: { role: UserRole }): boolean {
+  return user.role === "ADMIN";
+}
+
+// ---------------------------------------------------------------------------
+// Brief
+// ---------------------------------------------------------------------------
+
+/**
+ * Permission d'éditer le brief d'un slot (description + pièces jointes).
+ *
+ * - ADMIN → toujours true.
+ * - CM    → true si le slot lui est assigné (le CM rédige le brief).
+ * - MONTEUR / USER → false.
+ */
+export function canEditBrief(
+  user: { id: string; role: UserRole },
+  slot: { assigneeCmId: string | null }
+): boolean {
+  if (user.role === "ADMIN") return true;
+  if (user.role === "CM") return slot.assigneeCmId === user.id;
+  return false;
 }

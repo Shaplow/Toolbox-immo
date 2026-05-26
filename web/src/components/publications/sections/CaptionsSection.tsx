@@ -15,9 +15,11 @@ interface Props {
   recipe: { needsCaptions: boolean } | null;
   /** true pour CM, MONTEUR, et ADMIN */
   canEdit: boolean;
+  /** Version courante promue par l'ADMIN (si needsRushes=true). */
+  currentVersion?: { versionNumber: number; fileName: string } | null;
 }
 
-export function CaptionsSection({ slot, renderId, recipe, canEdit }: Props) {
+export function CaptionsSection({ slot, renderId, recipe, canEdit, currentVersion }: Props) {
   // Si la recipe n'exige pas de captions, on masque la section
   if (recipe?.needsCaptions !== true) return null;
 
@@ -28,9 +30,16 @@ export function CaptionsSection({ slot, renderId, recipe, canEdit }: Props) {
   return (
     <section id="captions" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
       {/* En-tête section */}
-      <div className="flex items-center gap-2 mb-4">
-        <Subtitles size={16} className="text-gray-400" />
-        <h2 className="text-sm font-semibold text-gray-700">Sous-titres</h2>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Subtitles size={16} className="text-gray-400" />
+          <h2 className="text-sm font-semibold text-gray-700">Sous-titres</h2>
+        </div>
+        {currentVersion && (
+          <span className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full font-medium">
+            Lié à V{currentVersion.versionNumber} — {currentVersion.fileName}
+          </span>
+        )}
       </div>
 
       <div className="space-y-3">

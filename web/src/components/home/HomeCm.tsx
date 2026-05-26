@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { WorklistSection } from "./WorklistSection";
 import type { WorklistSlot } from "@/types/worklist";
 import type { SlotStatus } from "@/types/roles";
+import type { WorklistCmBadges } from "./WorklistSlotCard";
 import {
   getCmSection,
   isSlotOverdue,
@@ -99,6 +100,26 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
 
   const totalActive = overdue.length + toPrepare.length + toPublishThisWeek.length;
 
+  // ── Badges CM pour la section "À préparer" ───────────────────────────────────
+  const CM_STATUS_BADGES: Record<string, WorklistCmBadges> = {
+    EDIT_APPROVED: {
+      statusLabel: "À sous-titrer",
+      statusClasses: "bg-violet-100 text-violet-700 border border-violet-200",
+    },
+    CAPTIONS_PENDING: {
+      statusLabel: "Captions en cours",
+      statusClasses: "bg-blue-100 text-blue-600 border border-blue-200",
+    },
+    READY_FOR_CM: {
+      statusLabel: "Prêt à publier",
+      statusClasses: "bg-green-100 text-green-700 border border-green-200",
+    },
+  };
+
+  const cmBadgesMap = new Map<string, WorklistCmBadges>(
+    toPrepare.map((s) => [s.id, CM_STATUS_BADGES[s.status] ?? {}])
+  );
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
       {/* Header */}
@@ -133,6 +154,7 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
         mode="cm"
         tone="default"
         emptyMessage="Aucune publication à préparer."
+        cmBadgesMap={cmBadgesMap}
       />
 
       {/* Section À publier cette semaine */}

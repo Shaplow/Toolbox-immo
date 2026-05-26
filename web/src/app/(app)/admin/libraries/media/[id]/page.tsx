@@ -20,7 +20,7 @@ export default async function MediaLibraryDetailPage({ params }: Props) {
   return (
     <div className="p-8 max-w-5xl mx-auto">
       <Link href="/admin/libraries/media" className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 mb-6 transition-colors">
-        <ChevronLeft size={13} /> Bibliothèques médias
+        <ChevronLeft size={13} /> Ressources médias
       </Link>
       <MediaAssetsPanel library={{ id: library.id, name: library.name, type: library.type as "video" | "audio", setSequence: library.setSequence, metadataSchema: library.metadataSchema }} />
     </div>

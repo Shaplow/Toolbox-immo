@@ -22,6 +22,8 @@ function toEditableJson(recipe: RecipeRow | null): string {
         needsCover: "none",
         needsCaptions: false,
         needsClientValidation: false,
+        needsRushes: false,
+        needsBrief: false,
         defaultAssigneeMonteurId: null,
         defaultAssigneeCmId: null,
         notes: null,

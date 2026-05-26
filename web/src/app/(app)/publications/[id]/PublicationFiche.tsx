@@ -19,6 +19,10 @@ import { CaptionsSection } from "@/components/publications/sections/CaptionsSect
 import { DescriptionSection } from "@/components/publications/sections/DescriptionSection";
 import { CaptionIgSection } from "@/components/publications/sections/CaptionIgSection";
 import { PublishSection } from "@/components/publications/sections/PublishSection";
+import { RushesSection } from "@/components/publications/sections/RushesSection";
+import { BriefSection } from "@/components/publications/sections/BriefSection";
+import { VersionsSection } from "@/components/publications/sections/VersionsSection";
+import type { VersionItem } from "@/components/publications/sections/VersionsSection";
 import { CommentsSection } from "@/components/publications/CommentsSection";
 import { ActivityTimeline } from "@/components/publications/ActivityTimeline";
 import type { PublicationStep } from "@/lib/publications/steps";
@@ -62,6 +66,35 @@ interface RecipeInfo {
   needsCover: string;
   needsCaptions: boolean;
   needsDescription: string;
+  needsRushes: boolean;
+  needsBrief: boolean;
+}
+
+interface RushItem {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number | null;
+  durationSec: number | null;
+  uploadedAt: string;
+  uploadedByUserId: string;
+  uploadedBy?: { id: string; name: string | null; email: string | null } | null;
+}
+
+interface BriefItem {
+  id: string;
+  body: string | null;
+  updatedAt: string;
+  updatedByUserId: string | null;
+}
+
+interface BriefAttachmentItem {
+  id: string;
+  briefId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number | null;
+  createdAt: string;
 }
 
 interface RenderInfo {
@@ -93,6 +126,20 @@ export interface PublicationFicheProps {
   canEditCover: boolean;
   canEditCaptions: boolean;
   canEditDescription: boolean;
+  // Phase B2 — Rushes
+  rushes: RushItem[];
+  canUploadRushes: boolean;
+  canManageRushes: boolean;
+  // Phase B3 — Brief
+  brief: BriefItem | null;
+  briefAttachments: BriefAttachmentItem[];
+  canEditBrief: boolean;
+  canManageAttachments: boolean;
+  // Phase C1 — Versions
+  versions: VersionItem[];
+  currentVersionId: string | null;
+  canUploadVersion: boolean;
+  canPromoteVersion: boolean;
   // Phase 1.3.6
   comments: CommentData[];
   activities: ActivityItem[];
@@ -117,12 +164,28 @@ export function PublicationFiche({
   canEditCover,
   canEditCaptions,
   canEditDescription,
+  rushes,
+  canUploadRushes,
+  canManageRushes,
+  brief,
+  briefAttachments,
+  canEditBrief,
+  canManageAttachments,
+  versions,
+  currentVersionId,
+  canUploadVersion,
+  canPromoteVersion,
   comments,
   activities,
   activityHasMore,
   currentUserId,
   currentUserRole,
 }: PublicationFicheProps) {
+  // Résoudre la version courante pour CaptionsSection et CoverSection (C3)
+  const currentVersion = currentVersionId
+    ? (versions.find((v) => v.id === currentVersionId && v.deletedAt === null) ?? null)
+    : null;
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header sticky */}
@@ -143,6 +206,41 @@ export function PublicationFiche({
         {/* Chaîne de production */}
         <ProductionChain steps={steps} />
 
+        {/* Brief éditorial — Phase B3, conditionné par recipe.needsBrief */}
+        {recipe?.needsBrief && (
+          <BriefSection
+            slotId={slot.id}
+            brief={brief}
+            attachments={briefAttachments}
+            canEditBrief={canEditBrief}
+            canManageAttachments={canManageAttachments}
+          />
+        )}
+
+        {/* Rushes — Phase B2, conditionné par recipe.needsRushes */}
+        {recipe?.needsRushes && (
+          <RushesSection
+            slotId={slot.id}
+            rushes={rushes}
+            canUploadRushes={canUploadRushes}
+            canManageRushes={canManageRushes}
+            currentUserId={currentUserId}
+          />
+        )}
+
+        {/* Versions livrées — Phase C1, conditionné par recipe.needsRushes */}
+        {recipe?.needsRushes && (
+          <VersionsSection
+            slotId={slot.id}
+            versions={versions}
+            currentVersionId={currentVersionId}
+            canUploadVersion={canUploadVersion}
+            canPromoteVersion={canPromoteVersion}
+            isAdmin={currentUserRole === "ADMIN"}
+            currentUserId={currentUserId}
+          />
+        )}
+
         {/* Rendu vidéo */}
         <RenderSection
           slot={{ id: slot.id }}
@@ -158,6 +256,7 @@ export function PublicationFiche({
           recipe={recipe ? { needsCover: recipe.needsCover } : null}
           coverPack={coverPack}
           canEdit={canEditCover}
+          currentVersion={currentVersion}
         />
 
         {/* Sous-titres */}
@@ -166,6 +265,7 @@ export function PublicationFiche({
           renderId={render?.id ?? null}
           recipe={recipe ? { needsCaptions: recipe.needsCaptions } : null}
           canEdit={canEditCaptions}
+          currentVersion={currentVersion}
         />
 
         {/* Description de publication */}

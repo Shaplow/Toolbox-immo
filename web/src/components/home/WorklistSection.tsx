@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { WorklistSlotCard } from "./WorklistSlotCard";
+import type { WorklistSlotBadges, WorklistCmBadges } from "./WorklistSlotCard";
 import type { WorklistSlot } from "@/types/worklist";
 import type { SlotDetailPanelMode } from "@/components/calendar/SlotDetailPanel";
 
@@ -29,6 +30,16 @@ interface WorklistSectionProps {
    * `collapsible` est false. Si omis, un texte générique est utilisé.
    */
   emptyMessage?: string;
+  /**
+   * Map slotId → badges contextuels monteur.
+   * Utilisé par HomeMonteur pour enrichir les cards sans modifier WorklistSlot.
+   */
+  monteurBadgesMap?: Map<string, WorklistSlotBadges>;
+  /**
+   * Map slotId → badges contextuels CM.
+   * Utilisé par HomeCm pour distinguer les statuts dans la section "À préparer".
+   */
+  cmBadgesMap?: Map<string, WorklistCmBadges>;
 }
 
 const TONE_STYLES = {
@@ -57,6 +68,8 @@ export function WorklistSection({
   collapsible = false,
   defaultOpen = true,
   emptyMessage,
+  monteurBadgesMap,
+  cmBadgesMap,
 }: WorklistSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   const styles = TONE_STYLES[tone];
@@ -108,7 +121,13 @@ export function WorklistSection({
             )
           ) : (
             slots.map((slot) => (
-              <WorklistSlotCard key={slot.id} slot={slot} mode={mode} />
+              <WorklistSlotCard
+                key={slot.id}
+                slot={slot}
+                mode={mode}
+                monteurBadges={monteurBadgesMap?.get(slot.id)}
+                cmBadges={cmBadgesMap?.get(slot.id)}
+              />
             ))
           )}
         </div>

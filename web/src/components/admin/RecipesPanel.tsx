@@ -19,6 +19,8 @@ type RecipeRow = {
   needsCover: string;
   needsCaptions: boolean;
   needsClientValidation: boolean;
+  needsRushes: boolean;
+  needsBrief: boolean;
   defaultAssigneeMonteurId: string | null;
   defaultAssigneeCmId: string | null;
   notes: string | null;
@@ -89,15 +91,30 @@ export function RecipesPanel({ initialRecipes }: { initialRecipes: RecipeRow[] }
 
   async function handleSeed() {
     setSeeding(true);
-    const res = await fetch("/api/admin/recipes/seed-from-templates", { method: "POST" });
-    const data = await res.json() as { created?: number; skipped?: number; error?: string };
-    if (data.error) {
-      toast.error(`Erreur : ${data.error}`);
-    } else {
-      toast.success(`Seed terminé — ${data.created ?? 0} créée(s), ${data.skipped ?? 0} ignorée(s).`);
+    try {
+      const res = await fetch("/api/admin/recipes/seed-from-templates", { method: "POST" });
+      const data = await res.json() as {
+        created?: { code: string; id: string; templateId: string | null; ambiguous: boolean }[];
+        skipped?: string[];
+        error?: string;
+      };
+      if (!res.ok || data.error) {
+        toast.error(`Erreur : ${data.error ?? `HTTP ${res.status}`}`);
+      } else {
+        const createdCount = data.created?.length ?? 0;
+        const skippedCount = data.skipped?.length ?? 0;
+        if (createdCount === 0 && skippedCount === 0) {
+          toast.info("Aucun template à seeder (aucun template avec contentType).");
+        } else {
+          toast.success(`Seed terminé — ${createdCount} créée(s), ${skippedCount} ignorée(s).`);
+        }
+      }
+      await refresh();
+    } catch (err) {
+      toast.error(`Erreur réseau : ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSeeding(false);
     }
-    setSeeding(false);
-    await refresh();
   }
 
   return (
@@ -137,6 +154,8 @@ export function RecipesPanel({ initialRecipes }: { initialRecipes: RecipeRow[] }
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Desc.</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cover</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Caps.</th>
+                <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Rushes</th>
+                <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Brief</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Valid.</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Monteur</th>
                 <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">CM</th>
@@ -159,6 +178,8 @@ export function RecipesPanel({ initialRecipes }: { initialRecipes: RecipeRow[] }
                   <td className="px-4 py-3">{strTag(r.needsDescription)}</td>
                   <td className="px-4 py-3">{strTag(r.needsCover)}</td>
                   <td className="px-4 py-3">{boolTag(r.needsCaptions)}</td>
+                  <td className="px-4 py-3">{boolTag(r.needsRushes)}</td>
+                  <td className="px-4 py-3">{boolTag(r.needsBrief)}</td>
                   <td className="px-4 py-3">{boolTag(r.needsClientValidation)}</td>
                   <td className="px-4 py-3 text-xs text-gray-600">{r.defaultAssigneeMonteur?.name ?? <span className="text-gray-300">—</span>}</td>
                   <td className="px-4 py-3 text-xs text-gray-600">{r.defaultAssigneeCm?.name ?? <span className="text-gray-300">—</span>}</td>

@@ -2,7 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
-import { canMarkPublished } from "@/lib/permissions/publications";
+import { canMarkPublished, canUploadRushes, canEditBrief, canUploadVersion, canPromoteVersion } from "@/lib/permissions/publications";
 import { computePublicationSteps } from "@/lib/publications/steps";
 import { toUserRole } from "@/lib/permissions/role";
 import { PublicationFiche } from "./PublicationFiche";
@@ -44,6 +44,8 @@ export default async function PublicationPage({ params }: PageProps) {
           needsCaptions: true,
           needsDescription: true,
           needsClientValidation: true,
+          needsRushes: true,
+          needsBrief: true,
         },
       },
       assigneeMonteur: { select: { id: true, name: true, email: true } },
@@ -115,6 +117,82 @@ export default async function PublicationPage({ params }: PageProps) {
     actor: a.actor ? { id: a.actor.id, name: a.actor.name } : null,
   }));
 
+  // Fetch rushes (soft-delete exclu)
+  const rawRushes = await prisma.publicationRush.findMany({
+    where: { slotId: id, deletedAt: null },
+    orderBy: { uploadedAt: "desc" },
+    include: {
+      uploadedBy: { select: { id: true, name: true, email: true } },
+    },
+  });
+
+  const rushes = rawRushes.map((r) => ({
+    id: r.id,
+    fileName: r.fileName,
+    mimeType: r.mimeType,
+    sizeBytes: r.sizeBytes,
+    durationSec: r.durationSec,
+    uploadedAt: r.uploadedAt.toISOString(),
+    uploadedByUserId: r.uploadedByUserId,
+    uploadedBy: r.uploadedBy,
+  }));
+
+  // Fetch versions (ADMIN voit les soft-deleted)
+  const isAdmin = role === "ADMIN";
+  const rawVersions = await prisma.publicationVersion.findMany({
+    where: {
+      slotId: id,
+      ...(isAdmin ? {} : { deletedAt: null }),
+    },
+    orderBy: { versionNumber: "desc" },
+    include: {
+      uploadedBy: { select: { id: true, name: true, email: true } },
+    },
+  });
+
+  const versions = rawVersions.map((v) => ({
+    id: v.id,
+    versionNumber: v.versionNumber,
+    fileName: v.fileName,
+    mimeType: v.mimeType,
+    fileSizeBytes: v.fileSizeBytes,
+    durationSec: v.durationSec,
+    notes: v.notes,
+    deletedAt: v.deletedAt ? v.deletedAt.toISOString() : null,
+    createdAt: v.createdAt.toISOString(),
+    uploadedByUserId: v.uploadedByUserId,
+    uploadedBy: v.uploadedBy,
+  }));
+
+  // Fetch brief + attachments
+  const rawBrief = await prisma.publicationBrief.findUnique({
+    where: { slotId: id },
+    include: {
+      attachments: {
+        orderBy: { createdAt: "asc" },
+      },
+      updatedBy: { select: { id: true, name: true, email: true } },
+    },
+  });
+
+  const brief = rawBrief
+    ? {
+        id: rawBrief.id,
+        body: rawBrief.body,
+        updatedAt: rawBrief.updatedAt.toISOString(),
+        updatedByUserId: rawBrief.updatedByUserId,
+      }
+    : null;
+
+  const briefAttachments = rawBrief?.attachments.map((a) => ({
+    id: a.id,
+    briefId: a.briefId,
+    fileName: a.fileName,
+    mimeType: a.mimeType,
+    sizeBytes: a.sizeBytes,
+    createdAt: a.createdAt.toISOString(),
+  })) ?? [];
+
   // Calcul des steps
   const steps = computePublicationSteps({
     slot: { status: slot.status, caption: slot.caption },
@@ -123,6 +201,8 @@ export default async function PublicationPage({ params }: PageProps) {
     coverPack: slot.render?.coverFramePack ?? null,
     captionJob: null,
     descriptionJob: null,
+    versionsCount: rawVersions.filter((v) => v.deletedAt === null).length,
+    currentVersionId: slot.currentVersionId ?? null,
   });
 
   // Permissions UI
@@ -138,6 +218,13 @@ export default async function PublicationPage({ params }: PageProps) {
   const canEditCover = role === "ADMIN" || role === "CM";
   const canEditCaptions = role === "ADMIN" || role === "MONTEUR" || role === "CM";
   const canEditDescription = role === "ADMIN" || role === "CM";
+  const canUploadRushesFlag = canUploadRushes(userForPermission, slotForPermission);
+  // canManageRushes = peut supprimer tous les rushes (ADMIN) — auteur peut supprimer les siens dans le composant
+  const canManageRushes = role === "ADMIN";
+  const canEditBriefFlag = canEditBrief(userForPermission, slotForPermission);
+  const canManageAttachments = canEditBriefFlag;
+  const canUploadVersionFlag = canUploadVersion(userForPermission, slotForPermission);
+  const canPromoteVersionFlag = canPromoteVersion(userForPermission);
 
   return (
     <PublicationFiche
@@ -171,6 +258,8 @@ export default async function PublicationPage({ params }: PageProps) {
               needsCover: slot.recipe.needsCover,
               needsCaptions: slot.recipe.needsCaptions,
               needsDescription: slot.recipe.needsDescription,
+              needsRushes: slot.recipe.needsRushes,
+              needsBrief: slot.recipe.needsBrief,
             }
           : null
       }
@@ -194,6 +283,17 @@ export default async function PublicationPage({ params }: PageProps) {
       canEditCover={canEditCover}
       canEditCaptions={canEditCaptions}
       canEditDescription={canEditDescription}
+      rushes={rushes}
+      canUploadRushes={canUploadRushesFlag}
+      canManageRushes={canManageRushes}
+      brief={brief}
+      briefAttachments={briefAttachments}
+      canEditBrief={canEditBriefFlag}
+      canManageAttachments={canManageAttachments}
+      versions={versions}
+      currentVersionId={slot.currentVersionId ?? null}
+      canUploadVersion={canUploadVersionFlag}
+      canPromoteVersion={canPromoteVersionFlag}
       comments={comments}
       activities={activities}
       activityHasMore={activityHasMore}

@@ -21,6 +21,7 @@ import type {
 
 export type StepKey =
   | "render"
+  | "edit"
   | "cover"
   | "captions"
   | "description"
@@ -148,17 +149,24 @@ export function computePublicationSteps(input: {
     | "needsCaptions"
     | "needsDescription"
     | "needsClientValidation"
+    | "needsRushes"
+    | "needsBrief"
   > | null;
   renderJob?: Pick<Render, "status"> | null;
   coverPack?: Pick<CoverFramePack, "status" | "finalCoverUrl"> | null;
   captionJob?: Pick<CaptionJob, "status"> | null;
   descriptionJob?: Pick<DescriptionJob, "status" | "result"> | null;
+  /** Nombre de versions non supprimées (pour calculer le statut du step "edit"). */
+  versionsCount?: number;
+  /** ID de la version courante promue par l'ADMIN. */
+  currentVersionId?: string | null;
 }): PublicationStep[] {
-  const { slot, recipe, renderJob, coverPack, captionJob, descriptionJob } =
+  const { slot, recipe, renderJob, coverPack, captionJob, descriptionJob, versionsCount = 0, currentVersionId } =
     input;
 
   // ── Visibilité par recipe ──────────────────────────────────────────────────
   const renderVisible = recipe?.source === "auto_template";
+  const editVisible = recipe?.needsRushes === true || recipe?.needsBrief === true;
   const coverVisible =
     recipe != null && recipe.needsCover !== "none";
   const captionsVisible = recipe?.needsCaptions === true;
@@ -166,6 +174,16 @@ export function computePublicationSteps(input: {
     recipe != null && recipe.needsDescription !== "none";
   const validationVisible = recipe?.needsClientValidation === true;
   // publish : toujours visible
+
+  // ── Statut step "edit" ─────────────────────────────────────────────────────
+  let editStatus: StepStatus;
+  if (currentVersionId) {
+    editStatus = "done";
+  } else if (versionsCount > 0) {
+    editStatus = "processing"; // au moins une version déposée mais pas encore promue
+  } else {
+    editStatus = "todo";
+  }
 
   // ── Statut publish ─────────────────────────────────────────────────────────
   let publishStatus: StepStatus;
@@ -184,6 +202,12 @@ export function computePublicationSteps(input: {
       label: "Rendu vidéo",
       visible: renderVisible,
       status: renderVisible ? renderJobStatus(renderJob) : "todo",
+    },
+    {
+      key: "edit",
+      label: "Montage",
+      visible: editVisible,
+      status: editVisible ? editStatus : "todo",
     },
     {
       key: "cover",

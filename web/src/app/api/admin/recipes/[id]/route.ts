@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
 const VALID_SOURCES = ["auto_template", "manual_rushes", "external_upload"] as const;
@@ -10,8 +10,8 @@ type Params = { params: Promise<{ id: string }> };
 
 // GET /api/admin/recipes/[id] — détail d'une ContentRecipe
 export async function GET(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") {
+  const ctx = await getUserContext();
+  if (!ctx || ctx.actualUser.role !== "ADMIN") {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -24,6 +24,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       library: { select: { id: true, name: true } },
       defaultAssigneeMonteur: { select: { id: true, name: true } },
       defaultAssigneeCm: { select: { id: true, name: true } },
+      _count: { select: { publicationSlots: true } },
     },
   });
 
@@ -36,8 +37,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 // PATCH /api/admin/recipes/[id] — mise à jour partielle d'une ContentRecipe
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") {
+  const ctx = await getUserContext();
+  if (!ctx || ctx.actualUser.role !== "ADMIN") {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
@@ -54,6 +55,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     needsCover,
     needsCaptions,
     needsClientValidation,
+    needsRushes,
+    needsBrief,
     defaultAssigneeMonteurId,
     defaultAssigneeCmId,
     notes,
@@ -89,6 +92,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (needsCover !== undefined) data.needsCover = needsCover;
   if (needsCaptions !== undefined) data.needsCaptions = needsCaptions;
   if (needsClientValidation !== undefined) data.needsClientValidation = needsClientValidation;
+  if (needsRushes !== undefined) data.needsRushes = needsRushes;
+  if (needsBrief !== undefined) data.needsBrief = needsBrief;
   if (defaultAssigneeMonteurId !== undefined) data.defaultAssigneeMonteurId = defaultAssigneeMonteurId ?? null;
   if (defaultAssigneeCmId !== undefined) data.defaultAssigneeCmId = defaultAssigneeCmId ?? null;
   if (notes !== undefined) data.notes = notes ?? null;
@@ -102,6 +107,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         library: { select: { id: true, name: true } },
         defaultAssigneeMonteur: { select: { id: true, name: true } },
         defaultAssigneeCm: { select: { id: true, name: true } },
+        _count: { select: { publicationSlots: true } },
       },
     });
     return NextResponse.json(recipe);
@@ -122,8 +128,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 // DELETE /api/admin/recipes/[id] — suppression d'une ContentRecipe
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== "ADMIN") {
+  const ctx = await getUserContext();
+  if (!ctx || ctx.actualUser.role !== "ADMIN") {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 

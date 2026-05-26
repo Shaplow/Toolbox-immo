@@ -189,3 +189,42 @@ tail -f /var/log/nginx/error.log
 | `scripts/seed-presets.ts` | Crée les presets captions + template Vitrine |
 | `scripts/reset-db.ts` | Reset complet de la base + seed admin |
 | `ecosystem.config.js` | Config PM2 (2 processus : web + render-engine) |
+
+---
+
+## Cron jobs
+
+### R2 Cleanup — nettoyage des objets orphelins
+
+**Route** : `POST /api/cron/r2-cleanup`
+
+Supprime les objets R2 sous le prefix `publications/` créés il y a plus de 24h
+et non référencés dans les tables `PublicationRush`, `PublicationVersion` ou
+`PublicationBriefAttachment`. Utile pour nettoyer les uploads interrompus ou
+les multipart abandonnés.
+
+**Variable d'environnement requise** :
+
+```
+CRON_SECRET=<secret aléatoire fort — min 32 chars>
+```
+
+**Câblage (cron-job.org, Vercel cron, systemd timer, etc.)** :
+
+```bash
+# Exemple curl — chaque nuit à 4h00 UTC
+curl -X POST https://<votre-domaine>/api/cron/r2-cleanup \
+     -H "x-cron-secret: $CRON_SECRET"
+
+# Dry-run manuel (ne supprime rien, retourne juste les stats)
+curl -X POST "https://<votre-domaine>/api/cron/r2-cleanup?dryRun=true" \
+     -H "x-cron-secret: $CRON_SECRET"
+```
+
+**Réponse** :
+
+```json
+{ "scanned": 42, "orphans": 3, "deleted": 3, "dryRun": false }
+```
+
+**Schedule recommandé** : `0 4 * * *` (04:00 UTC tous les jours)

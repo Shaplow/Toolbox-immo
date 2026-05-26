@@ -33,6 +33,8 @@ model User {
   assignedAsCm             PublicationSlot[]     @relation("SlotCm")
   publicationComments      PublicationComment[]  @relation("PublicationCommentAuthor")
   publicationActivities    PublicationActivity[] @relation("PublicationActivityActor")
+  briefsUpdated            PublicationBrief[]    @relation("BriefUpdatedBy")
+  rushesUploaded           PublicationRush[]     @relation("RushUploadedBy")
 }
 
 model CaptionJob {
@@ -689,6 +691,8 @@ model PublicationSlot {
   versions          PublicationVersion[]  @relation("SlotVersions")
   comments          PublicationComment[]
   activities        PublicationActivity[]
+  brief             PublicationBrief?
+  rushes            PublicationRush[]
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
 
@@ -762,6 +766,8 @@ model ContentRecipe {
   needsCover               String            @default("none")
   needsCaptions            Boolean           @default(false)
   needsClientValidation    Boolean           @default(false)
+  needsRushes              Boolean           @default(false)
+  needsBrief               Boolean           @default(false)
   defaultAssigneeMonteurId String?
   defaultAssigneeMonteur   User?             @relation("RecipeDefaultMonteur", fields: [defaultAssigneeMonteurId], references: [id], onDelete: SetNull)
   defaultAssigneeCmId      String?
@@ -815,11 +821,59 @@ model PublicationVersion {
   uploadedBy       User             @relation("VersionUploader", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
   notes            String?
   createdAt        DateTime         @default(now())
+  deletedAt        DateTime?
   /// Slot qui pointe cette version comme courante (relation inverse de PublicationSlot.currentVersionId)
   currentForSlot   PublicationSlot? @relation("SlotCurrentVersion")
 
   @@unique([slotId, versionNumber])
   @@index([slotId])
+  @@index([slotId, deletedAt])
+}
+
+// ─── Publication Briefs & Rushes ─────────────────────────────────────────────
+
+/// Brief éditorial d'un slot (markdown, pièces jointes). 1-to-1 avec PublicationSlot.
+model PublicationBrief {
+  id              String                       @id @default(cuid())
+  slotId          String                       @unique
+  slot            PublicationSlot              @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  body            String?                      @db.Text
+  updatedAt       DateTime                     @updatedAt
+  updatedByUserId String?
+  updatedBy       User?                        @relation("BriefUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  attachments     PublicationBriefAttachment[]
+}
+
+/// Pièce jointe (PDF, image) liée à un brief de publication.
+model PublicationBriefAttachment {
+  id        String           @id @default(cuid())
+  briefId   String
+  brief     PublicationBrief @relation(fields: [briefId], references: [id], onDelete: Cascade)
+  r2Key     String           @unique
+  fileName  String
+  mimeType  String
+  sizeBytes Int?
+  createdAt DateTime         @default(now())
+
+  @@index([briefId])
+}
+
+/// Rush vidéo uploadé pour un slot (soft-deletable).
+model PublicationRush {
+  id               String          @id @default(cuid())
+  slotId           String
+  slot             PublicationSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  r2Key            String          @unique
+  fileName         String
+  mimeType         String
+  sizeBytes        Int?
+  durationSec      Float?
+  uploadedByUserId String
+  uploadedBy       User            @relation("RushUploadedBy", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+  uploadedAt       DateTime        @default(now())
+  deletedAt        DateTime?
+
+  @@index([slotId, deletedAt])
 }
 
 // ─── Pod On-Demand state ─────────────────────────────────────────────────────

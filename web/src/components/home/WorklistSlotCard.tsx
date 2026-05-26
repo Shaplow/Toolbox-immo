@@ -7,9 +7,40 @@ import type { SlotDetailPanelMode } from "@/components/calendar/SlotDetailPanel"
 import type { WorklistSlot } from "@/types/worklist";
 import { isSlotOverdue } from "@/types/worklist";
 
+/**
+ * Badges contextuels optionnels pour les monteurs.
+ * Passés depuis HomeMonteur lorsque les données de versions/rushes sont disponibles.
+ * Non inclus dans WorklistSlot (type partagé) pour éviter de polluer le type commun.
+ */
+export interface WorklistSlotBadges {
+  /** True si le slot vient de recevoir des nouveaux rushes (RUSHES_RECEIVED). */
+  hasNewRushes?: boolean;
+  /**
+   * Numéro de la dernière version livrée en attente de validation.
+   * Non null si le slot est en EDIT_REVIEW et le monteur est assigné.
+   */
+  versionPendingNumber?: number | null;
+}
+
+/**
+ * Badges contextuels optionnels pour les CM.
+ * Indiquent le statut spécifique d'un slot dans la section "À préparer"
+ * pour distinguer l'action requise (captions à faire vs prêt à publier).
+ */
+export interface WorklistCmBadges {
+  /** Label de statut affiché sur la card CM. */
+  statusLabel?: string;
+  /** Classes Tailwind pour le badge (bg + text + border). */
+  statusClasses?: string;
+}
+
 interface WorklistSlotCardProps {
   slot: WorklistSlot;
   mode: SlotDetailPanelMode;
+  /** Badges contextuels monteur — non affichés pour CM/ADMIN. */
+  monteurBadges?: WorklistSlotBadges;
+  /** Badges contextuels CM — non affichés pour monteur/ADMIN. */
+  cmBadges?: WorklistCmBadges;
 }
 
 /**
@@ -29,9 +60,12 @@ function formatScheduledAt(date: Date): string {
   return `${datePart} · ${timePart}`;
 }
 
-export function WorklistSlotCard({ slot }: WorklistSlotCardProps) {
+export function WorklistSlotCard({ slot, monteurBadges, cmBadges }: WorklistSlotCardProps) {
   const router = useRouter();
   const overdue = isSlotOverdue(slot);
+
+  const showNewRushes = monteurBadges?.hasNewRushes === true;
+  const versionPendingN = monteurBadges?.versionPendingNumber ?? null;
 
   return (
     <div
@@ -67,6 +101,31 @@ export function WorklistSlotCard({ slot }: WorklistSlotCardProps) {
           {formatScheduledAt(slot.scheduledAt)}
           {overdue && <span className="ml-1 font-semibold uppercase text-red-600 text-[10px]">EN RETARD</span>}
         </p>
+
+        {/* Badges contextuels monteur */}
+        {(showNewRushes || versionPendingN !== null) && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {showNewRushes && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700 border border-amber-200">
+                Nouveaux rushes
+              </span>
+            )}
+            {versionPendingN !== null && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                En révision admin
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Badge contextuel CM */}
+        {cmBadges?.statusLabel && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${cmBadges.statusClasses ?? "bg-gray-100 text-gray-600 border border-gray-200"}`}>
+              {cmBadges.statusLabel}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="shrink-0 flex flex-col items-end gap-2">
