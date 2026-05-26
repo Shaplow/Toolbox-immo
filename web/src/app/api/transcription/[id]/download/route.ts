@@ -13,7 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { getFromR2 } from "@/lib/r2";
 import path from "path";
@@ -29,8 +29,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
@@ -42,7 +42,7 @@ export async function GET(
   if (!job) {
     return NextResponse.json({ error: "Job introuvable" }, { status: 404 });
   }
-  if (job.userId !== session.user.id && session.user.role !== "ADMIN") {
+  if (job.userId !== userContext.effectiveUser.id && !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
   if (job.status !== "COMPLETED") {

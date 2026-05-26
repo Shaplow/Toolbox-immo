@@ -4,27 +4,26 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
-async function getSessionAdmin(): Promise<string | null> {
-  const session = await auth();
-  if (!session?.user?.id) return null;
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true },
-  });
-  return user?.role === "ADMIN" ? session.user.id : null;
+async function requireAdmin() {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
+    return { error: NextResponse.json({ error: "Non authentifié" }, { status: 401 }) };
+  }
+  if (!userContext.canAdminBypass) {
+    return { error: NextResponse.json({ error: "Accès refusé" }, { status: 403 }) };
+  }
+  return { userContext };
 }
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const adminId = await getSessionAdmin();
-  if (!adminId) {
-    return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
-  }
+  const authResult = await requireAdmin();
+  if (authResult.error) return authResult.error;
 
   const { id } = await params;
   const body = await req.json() as { name?: string; prompt?: string; isActive?: boolean };
@@ -50,10 +49,8 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const adminId = await getSessionAdmin();
-  if (!adminId) {
-    return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
-  }
+  const authResult = await requireAdmin();
+  if (authResult.error) return authResult.error;
 
   const { id } = await params;
   await prisma.descriptionPrompt.delete({ where: { id } });

@@ -13,7 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { deleteFromR2, r2Configured } from "@/lib/r2";
 import { resolveRunpodJobPhase, isPodJobId } from "@/lib/runpod";
@@ -61,8 +61,8 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
@@ -72,7 +72,7 @@ export async function GET(
   if (!job) {
     return NextResponse.json({ error: "Job introuvable" }, { status: 404 });
   }
-  if (job.userId !== session.user.id && session.user.role !== "ADMIN") {
+  if (job.userId !== userContext.effectiveUser.id && !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
@@ -163,8 +163,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
@@ -173,7 +173,7 @@ export async function PATCH(
   if (!job) {
     return NextResponse.json({ error: "Job introuvable" }, { status: 404 });
   }
-  if (job.userId !== session.user.id && session.user.role !== "ADMIN") {
+  if (job.userId !== userContext.effectiveUser.id && !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
   if (job.status !== "QUEUED") {
@@ -229,8 +229,8 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
@@ -239,7 +239,7 @@ export async function DELETE(
   if (!job) {
     return NextResponse.json({ error: "Job introuvable" }, { status: 404 });
   }
-  if (job.userId !== session.user.id && session.user.role !== "ADMIN") {
+  if (job.userId !== userContext.effectiveUser.id && !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
   if (job.status === "COMPLETED" || job.status === "FAILED") {
