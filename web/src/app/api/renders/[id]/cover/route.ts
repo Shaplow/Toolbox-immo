@@ -42,7 +42,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const slotPattern = render.publicationSlot?.pattern;
   let config: CoverAutoConfig | undefined;
   if (slotPattern?.coverMode === "auto" && slotPattern.coverConfig) {
-    config = slotPattern.coverConfig as CoverAutoConfig;
+    config = slotPattern.coverConfig as unknown as CoverAutoConfig;
   }
   if (!config?.enabled) {
     return NextResponse.json({ error: "Cover semi-auto non configurée sur ce pattern" }, { status: 400 });

@@ -476,7 +476,7 @@ export async function triggerAutoCoverPackForRender(
   const slotPattern = renderSlot?.publicationSlot?.pattern;
   const config: CoverAutoConfig | undefined =
     slotPattern?.coverMode === "auto" && slotPattern.coverConfig
-      ? (slotPattern.coverConfig as CoverAutoConfig)
+      ? (slotPattern.coverConfig as unknown as CoverAutoConfig)
       : undefined;
 
   if (!config?.enabled) return;
