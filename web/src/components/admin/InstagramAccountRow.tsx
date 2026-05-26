@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Instagram, RefreshCw, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import Link from "next/link";
+import { Instagram, RefreshCw, Trash2, ChevronDown, ChevronUp, Settings2 } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
@@ -105,6 +106,14 @@ export function InstagramAccountRow({ account, offers, onUpdated }: InstagramAcc
               <option value={account.offre}>{account.offre}</option>
             )}
           </select>
+          <Link
+            href={`/admin/accounts/${account.id}`}
+            className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+            title="Configurer les patterns de publication"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            Configurer
+          </Link>
           <button
             onClick={() => setIsExpanded((v) => !v)}
             className="rounded p-1 text-gray-400 hover:text-gray-600"
