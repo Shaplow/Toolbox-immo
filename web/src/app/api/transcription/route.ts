@@ -19,7 +19,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { uploadToR2, deleteFromR2, r2Configured, createPresignedUploadUrl } from "@/lib/r2";
@@ -64,12 +64,12 @@ function toBoolean(value: FormDataEntryValue | null, def = false): boolean {
 
 export async function POST(req: NextRequest) {
   // ─── Auth ────────────────────────────────────────────────────────────────
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
-  const isAdmin = session.user.role === "ADMIN";
-  if (!isAdmin && !(await hasTool(session.user.id, TOOLS.TRANSCRIPTION))) {
+  const isAdmin = userContext.canAdminBypass;
+  if (!isAdmin && !(await hasTool(userContext.effectiveUser.id, TOOLS.TRANSCRIPTION))) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
         { status: 503 }
       );
     }
-    const userId = session.user.id;
+    const userId = userContext.effectiveUser.id;
     const jobTimestamp = Date.now();
 
     // ── Mode local dev : R2 non configuré → stockage local ─────────────────
@@ -199,7 +199,7 @@ export async function POST(req: NextRequest) {
   }
 
   const jobTimestamp = Date.now();
-  const userId = session.user.id;
+  const userId = userContext.effectiveUser.id;
 
   // ─── Mode local (USE_RUNPOD=false) ────────────────────────────────────────
   if (!USE_RUNPOD) {
@@ -361,8 +361,8 @@ export async function POST(req: NextRequest) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
@@ -370,7 +370,7 @@ export async function GET(req: NextRequest) {
   const cursorParam = url.searchParams.get("cursor");
 
   const jobs = await prisma.transcriptionJob.findMany({
-    where: { userId: session.user.id },
+    where: { userId: userContext.effectiveUser.id },
     orderBy: { createdAt: "desc" },
     take: 50,
     ...(cursorParam ? { cursor: { id: cursorParam }, skip: 1 } : {}),
