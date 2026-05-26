@@ -17,6 +17,11 @@ export default async function RenderPage({ params }: Props) {
     include: {
       listing: true,
       template: { select: { id: true, name: true, client: true, jsonData: true } },
+      publicationSlot: {
+        select: {
+          pattern: { select: { coverMode: true, coverConfig: true } },
+        },
+      },
     },
   });
 
@@ -26,8 +31,14 @@ export default async function RenderPage({ params }: Props) {
   const isAdmin = userContext.canAdminBypass;
   const userPerms = parsePermissions(userContext.effectiveUser.permissions);
   const hasCovers = isAdmin || userPerms.includes("covers");
+
+  // Lire Pattern.coverConfig en priorité (Phase 1.8), fallback template.coverAutoConfig
   let coverAutoEnabled = false;
-  if (render.template?.jsonData) {
+  const slotPattern = render.publicationSlot?.pattern;
+  if (slotPattern?.coverMode === "auto" && slotPattern.coverConfig) {
+    const patternCoverConfig = slotPattern.coverConfig as { enabled?: boolean };
+    coverAutoEnabled = patternCoverConfig.enabled === true;
+  } else if (render.template?.jsonData) {
     try {
       coverAutoEnabled = normalizeTemplateJSON(JSON.parse(render.template.jsonData) as TemplateJSON).coverAutoConfig?.enabled === true;
     } catch {
