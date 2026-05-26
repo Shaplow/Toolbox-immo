@@ -91,15 +91,30 @@ export function RecipesPanel({ initialRecipes }: { initialRecipes: RecipeRow[] }
 
   async function handleSeed() {
     setSeeding(true);
-    const res = await fetch("/api/admin/recipes/seed-from-templates", { method: "POST" });
-    const data = await res.json() as { created?: number; skipped?: number; error?: string };
-    if (data.error) {
-      toast.error(`Erreur : ${data.error}`);
-    } else {
-      toast.success(`Seed terminé — ${data.created ?? 0} créée(s), ${data.skipped ?? 0} ignorée(s).`);
+    try {
+      const res = await fetch("/api/admin/recipes/seed-from-templates", { method: "POST" });
+      const data = await res.json() as {
+        created?: { code: string; id: string; templateId: string | null; ambiguous: boolean }[];
+        skipped?: string[];
+        error?: string;
+      };
+      if (!res.ok || data.error) {
+        toast.error(`Erreur : ${data.error ?? `HTTP ${res.status}`}`);
+      } else {
+        const createdCount = data.created?.length ?? 0;
+        const skippedCount = data.skipped?.length ?? 0;
+        if (createdCount === 0 && skippedCount === 0) {
+          toast.info("Aucun template à seeder (aucun template avec contentType).");
+        } else {
+          toast.success(`Seed terminé — ${createdCount} créée(s), ${skippedCount} ignorée(s).`);
+        }
+      }
+      await refresh();
+    } catch (err) {
+      toast.error(`Erreur réseau : ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSeeding(false);
     }
-    setSeeding(false);
-    await refresh();
   }
 
   return (
