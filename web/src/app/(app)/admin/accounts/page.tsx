@@ -12,11 +12,21 @@ export default async function AdminAccountsPage() {
   }
 
   const accounts = await prisma.instagramAccount.findMany({
-    include: {
+    select: {
+      id: true,
+      handle: true,
+      name: true,
+      offre: true,
       client: { select: { id: true, name: true } },
       accountPatterns: {
         where: { isActive: true },
         select: { id: true },
+      },
+      publicationSlots: {
+        where: { status: "PUBLISHED" },
+        orderBy: { publishedAt: "desc" },
+        take: 1,
+        select: { publishedAt: true },
       },
     },
     orderBy: [{ client: { name: "asc" } }, { handle: "asc" }],
@@ -26,7 +36,9 @@ export default async function AdminAccountsPage() {
     id: a.id,
     handle: a.handle,
     name: a.name,
+    offre: a.offre ?? "",
     activePatternCount: a.accountPatterns.length,
+    lastPublishedAt: a.publicationSlots[0]?.publishedAt?.toISOString() ?? null,
     client: a.client,
   }));
 

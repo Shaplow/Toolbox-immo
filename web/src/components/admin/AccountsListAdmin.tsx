@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Instagram, Settings2, ChevronRight } from "lucide-react";
+import { Instagram, Settings2 } from "lucide-react";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
@@ -11,75 +11,145 @@ interface AccountItem {
   id: string;
   handle: string;
   name: string;
+  offre: string;
   activePatternCount: number;
+  lastPublishedAt: string | null;
   client: { id: string; name: string } | null;
 }
 
-interface ClientGroup {
-  clientId: string | null;
-  clientName: string;
-  accounts: AccountItem[];
-}
+type PatternState = "all" | "active" | "none";
 
 interface Props {
   accounts: AccountItem[];
 }
 
+const SELECT_CLASS =
+  "text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300";
+
+function formatLastPublished(iso: string | null): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+}
+
 export function AccountsListAdmin({ accounts }: Props) {
   const [search, setSearch] = useState("");
+  const [clientFilter, setClientFilter] = useState<string>("");
+  const [patternState, setPatternState] = useState<PatternState>("all");
+  const [offreFilter, setOffreFilter] = useState<string>("");
 
-  const filtered = search.trim()
-    ? accounts.filter(
-        (a) =>
-          a.handle.toLowerCase().includes(search.toLowerCase()) ||
-          a.name.toLowerCase().includes(search.toLowerCase()) ||
-          (a.client?.name ?? "").toLowerCase().includes(search.toLowerCase()),
-      )
-    : accounts;
-
-  // Group by client
-  const groups: ClientGroup[] = [];
-  const groupMap = new Map<string, ClientGroup>();
-
-  for (const account of filtered) {
-    const key = account.client?.id ?? "__no_client__";
-    if (!groupMap.has(key)) {
-      const group: ClientGroup = {
-        clientId: account.client?.id ?? null,
-        clientName: account.client?.name ?? "Sans client",
-        accounts: [],
-      };
-      groupMap.set(key, group);
-      groups.push(group);
+  // Listes uniques pour les dropdowns
+  const clientOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of accounts) {
+      if (a.client) map.set(a.client.id, a.client.name);
     }
-    groupMap.get(key)!.accounts.push(account);
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  }, [accounts]);
+
+  const offreOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of accounts) {
+      if (a.offre) set.add(a.offre);
+    }
+    return Array.from(set).sort();
+  }, [accounts]);
+
+  // Filtrage combiné
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return accounts.filter((a) => {
+      if (q) {
+        const hay = `${a.handle} ${a.name} ${a.client?.name ?? ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      if (clientFilter && a.client?.id !== clientFilter) return false;
+      if (patternState === "active" && a.activePatternCount === 0) return false;
+      if (patternState === "none" && a.activePatternCount > 0) return false;
+      if (offreFilter && a.offre !== offreFilter) return false;
+      return true;
+    });
+  }, [accounts, search, clientFilter, patternState, offreFilter]);
+
+  const hasAnyFilter =
+    Boolean(search.trim()) || Boolean(clientFilter) || patternState !== "all" || Boolean(offreFilter);
+
+  function clearFilters() {
+    setSearch("");
+    setClientFilter("");
+    setPatternState("all");
+    setOffreFilter("");
   }
 
-  // Sort groups: clients with name first, then "Sans client"
-  groups.sort((a, b) => {
-    if (a.clientId === null) return 1;
-    if (b.clientId === null) return -1;
-    return a.clientName.localeCompare(b.clientName, "fr");
-  });
-
-  const totalClients = groups.filter((g) => g.clientId !== null).length;
-
   return (
-    <div className="p-8 max-w-4xl mx-auto">
+    <div className="p-8 max-w-6xl mx-auto">
       <ToolPageHeader
         icon={Instagram}
         iconColor="rose"
         title="Comptes Instagram"
-        subtitle={`${accounts.length} compte${accounts.length !== 1 ? "s" : ""} répartis sur ${totalClients} client${totalClients !== 1 ? "s" : ""}`}
+        subtitle={`${accounts.length} compte${accounts.length !== 1 ? "s" : ""} — vue de recherche transverse multi-clients`}
       />
 
-      {/* Search bar — Phase 1.9 B3 : migré vers primitif Input */}
-      <div className="mb-6 max-w-sm">
-        <Input
-          value={search}
-          onChange={setSearch}
-          placeholder="Rechercher par @handle, nom ou client…"
-        />
+      {/* Filtres */}
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        <div className="max-w-xs flex-1 min-w-[220px]">
+          <Input
+            value={search}
+            onChange={setSearch}
+            placeholder="Rechercher par @handle, nom ou client…"
+          />
+        </div>
+
+        <select
+          value={clientFilter}
+          onChange={(e) => setClientFilter(e.target.value)}
+          className={SELECT_CLASS}
+        >
+          <option value="">Tous les clients</option>
+          {clientOptions.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+
+        <select
+          value={patternState}
+          onChange={(e) => setPatternState(e.target.value as PatternState)}
+          className={SELECT_CLASS}
+        >
+          <option value="all">Tous patterns</option>
+          <option value="active">Avec patterns actifs</option>
+          <option value="none">Sans pattern</option>
+        </select>
+
+        {offreOptions.length > 0 && (
+          <select
+            value={offreFilter}
+            onChange={(e) => setOffreFilter(e.target.value)}
+            className={SELECT_CLASS}
+          >
+            <option value="">Toutes les offres</option>
+            {offreOptions.map((o) => (
+              <option key={o} value={o}>{o}</option>
+            ))}
+          </select>
+        )}
+
+        {hasAnyFilter && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors px-2 py-1"
+          >
+            Réinitialiser
+          </button>
+        )}
+
+        <span className="ml-auto text-xs text-gray-400">
+          {filtered.length} résultat{filtered.length !== 1 ? "s" : ""}
+        </span>
       </div>
 
       {filtered.length === 0 ? (
@@ -87,63 +157,84 @@ export function AccountsListAdmin({ accounts }: Props) {
           icon={Instagram}
           title="Aucun compte trouvé"
           description={
-            search
-              ? "Modifiez votre recherche pour voir d'autres comptes."
+            hasAnyFilter
+              ? "Modifiez les filtres pour voir d'autres comptes."
               : "Aucun compte Instagram configuré pour le moment."
           }
         />
       ) : (
-        <div className="space-y-6">
-          {groups.map((group) => (
-            <div key={group.clientId ?? "__no_client__"}>
-              {/* Client header */}
-              <div className="flex items-center gap-2 mb-2">
-                {group.clientId ? (
-                  <Link
-                    href={`/admin/clients/${group.clientId}`}
-                    className="text-sm font-semibold text-indigo-700 hover:text-indigo-900 flex items-center gap-1 transition-colors"
-                  >
-                    {group.clientName}
-                    <ChevronRight size={14} />
-                  </Link>
-                ) : (
-                  <span className="text-sm font-semibold text-gray-400 italic">
-                    {group.clientName}
-                  </span>
-                )}
-                <span className="text-xs text-gray-400">
-                  ({group.accounts.length} compte{group.accounts.length !== 1 ? "s" : ""})
-                </span>
-              </div>
-
-              {/* Accounts for this client */}
-              <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
-                {group.accounts.map((account) => (
-                  <div key={account.id} className="flex items-center gap-3 px-4 py-3">
-                    <Instagram className="h-4 w-4 shrink-0 text-pink-500" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900">{account.name}</p>
-                      <p className="text-xs text-gray-500">@{account.handle}</p>
+        <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+              <tr>
+                <th className="px-4 py-2.5 text-left font-medium">Compte</th>
+                <th className="px-4 py-2.5 text-left font-medium">Client</th>
+                <th className="px-4 py-2.5 text-left font-medium">Offre</th>
+                <th className="px-4 py-2.5 text-right font-medium">Patterns actifs</th>
+                <th className="px-4 py-2.5 text-right font-medium">Dernière publi</th>
+                <th className="px-4 py-2.5 text-right font-medium"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filtered.map((a) => (
+                <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <Instagram className="h-4 w-4 shrink-0 text-pink-500" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{a.name}</p>
+                        <p className="text-xs text-gray-500">@{a.handle}</p>
+                      </div>
                     </div>
-
-                    {/* Active patterns count */}
-                    <span className="shrink-0 text-xs text-gray-400">
-                      {account.activePatternCount} pattern{account.activePatternCount !== 1 ? "s" : ""}
+                  </td>
+                  <td className="px-4 py-3">
+                    {a.client ? (
+                      <Link
+                        href={`/admin/clients/${a.client.id}?tab=accounts`}
+                        className="text-sm text-indigo-700 hover:text-indigo-900 hover:underline"
+                      >
+                        {a.client.name}
+                      </Link>
+                    ) : (
+                      <span className="text-sm italic text-gray-400">Sans client</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {a.offre ? (
+                      <span className="inline-block text-xs font-medium bg-gray-100 text-gray-700 rounded-full px-2 py-0.5">
+                        {a.offre}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <span
+                      className={
+                        a.activePatternCount > 0
+                          ? "text-sm font-semibold text-gray-800"
+                          : "text-sm text-gray-400"
+                      }
+                    >
+                      {a.activePatternCount}
                     </span>
-
-                    {/* Configure link */}
+                  </td>
+                  <td className="px-4 py-3 text-right text-xs text-gray-500">
+                    {formatLastPublished(a.lastPublishedAt)}
+                  </td>
+                  <td className="px-4 py-3 text-right">
                     <Link
-                      href={`/admin/accounts/${account.id}`}
-                      className="shrink-0 inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+                      href={`/admin/accounts/${a.id}`}
+                      className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
                     >
                       <Settings2 className="h-3.5 w-3.5" />
                       Configurer
                     </Link>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
