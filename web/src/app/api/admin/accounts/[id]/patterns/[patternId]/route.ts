@@ -1,0 +1,169 @@
+/**
+ * GET    /api/admin/accounts/[id]/patterns/[patternId] — détail d'un pattern
+ * PATCH  /api/admin/accounts/[id]/patterns/[patternId] — mise à jour partielle
+ * DELETE /api/admin/accounts/[id]/patterns/[patternId] — suppression (si 0 slots liés)
+ */
+import { NextRequest, NextResponse } from "next/server";
+import { getUserContext } from "@/lib/userContext";
+import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
+
+const VALID_SOURCES = ["auto_template", "manual_rushes", "external_upload"] as const;
+const VALID_COVER_MODES = ["auto", "manualSelect", "none"] as const;
+const VALID_NEEDS_DESCRIPTION = ["preFilled", "autoGenerate", "manualWrite", "none"] as const;
+const PUBLISH_TIME_RE = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+
+const patternIncludes = {
+  template: { select: { id: true, name: true } },
+  library: { select: { id: true, name: true } },
+  defaultAssigneeMonteur: { select: { id: true, name: true } },
+  defaultAssigneeCm: { select: { id: true, name: true } },
+  _count: { select: { publicationSlots: true } },
+} as const;
+
+type PatchBody = {
+  label?: string;
+  source?: string;
+  templateId?: string | null;
+  libraryId?: string | null;
+  coverMode?: string;
+  coverConfig?: unknown;
+  needsDescription?: string;
+  needsCaptions?: boolean;
+  needsClientValidation?: boolean;
+  needsRushes?: boolean;
+  needsBrief?: boolean;
+  dayOfWeek?: number;
+  publishTime?: string;
+  isActive?: boolean;
+  defaultAssigneeMonteurId?: string | null;
+  defaultAssigneeCmId?: string | null;
+  notes?: string | null;
+};
+
+function validatePatchBody(body: PatchBody): string | null {
+  if (body.source !== undefined && !VALID_SOURCES.includes(body.source as (typeof VALID_SOURCES)[number])) {
+    return `source invalide. Valeurs acceptées : ${VALID_SOURCES.join(", ")}`;
+  }
+  if (body.coverMode !== undefined && !VALID_COVER_MODES.includes(body.coverMode as (typeof VALID_COVER_MODES)[number])) {
+    return `coverMode invalide. Valeurs acceptées : ${VALID_COVER_MODES.join(", ")}`;
+  }
+  if (body.needsDescription !== undefined && !VALID_NEEDS_DESCRIPTION.includes(body.needsDescription as (typeof VALID_NEEDS_DESCRIPTION)[number])) {
+    return `needsDescription invalide. Valeurs acceptées : ${VALID_NEEDS_DESCRIPTION.join(", ")}`;
+  }
+  if (body.dayOfWeek !== undefined) {
+    const d = Number(body.dayOfWeek);
+    if (!Number.isInteger(d) || d < 1 || d > 7) return "dayOfWeek doit être un entier entre 1 (lundi) et 7 (dimanche)";
+  }
+  if (body.publishTime !== undefined && !PUBLISH_TIME_RE.test(body.publishTime)) {
+    return "publishTime doit être au format HH:MM";
+  }
+  return null;
+}
+
+type RouteParams = { params: Promise<{ id: string; patternId: string }> };
+
+export async function GET(_req: NextRequest, { params }: RouteParams) {
+  const userContext = await getUserContext();
+  if (!userContext?.canAdminBypass) {
+    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
+  }
+
+  const { id, patternId } = await params;
+
+  const pattern = await prisma.accountPattern.findFirst({
+    where: { id: patternId, accountId: id },
+    include: patternIncludes,
+  });
+
+  if (!pattern) {
+    return NextResponse.json({ error: "Pattern introuvable" }, { status: 404 });
+  }
+
+  return NextResponse.json(pattern);
+}
+
+export async function PATCH(req: NextRequest, { params }: RouteParams) {
+  const userContext = await getUserContext();
+  if (!userContext?.canAdminBypass) {
+    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
+  }
+
+  const { id, patternId } = await params;
+
+  // Vérification d'appartenance anti-énumération
+  const existing = await prisma.accountPattern.findFirst({
+    where: { id: patternId, accountId: id },
+    select: { id: true },
+  });
+  if (!existing) {
+    return NextResponse.json({ error: "Pattern introuvable" }, { status: 404 });
+  }
+
+  const body = await req.json() as PatchBody;
+  const validationError = validatePatchBody(body);
+  if (validationError) {
+    return NextResponse.json({ error: validationError }, { status: 400 });
+  }
+
+  const data: Prisma.AccountPatternUpdateInput = {};
+  if (body.label !== undefined) data.label = body.label.trim();
+  if (body.source !== undefined) data.source = body.source;
+  if ("templateId" in body) data.template = body.templateId ? { connect: { id: body.templateId } } : { disconnect: true };
+  if ("libraryId" in body) data.library = body.libraryId ? { connect: { id: body.libraryId } } : { disconnect: true };
+  if (body.coverMode !== undefined) data.coverMode = body.coverMode;
+  if ("coverConfig" in body) data.coverConfig = body.coverConfig !== null && body.coverConfig !== undefined ? (body.coverConfig as Prisma.InputJsonValue) : Prisma.JsonNull;
+  if (body.needsDescription !== undefined) data.needsDescription = body.needsDescription;
+  if (body.needsCaptions !== undefined) data.needsCaptions = body.needsCaptions;
+  if (body.needsClientValidation !== undefined) data.needsClientValidation = body.needsClientValidation;
+  if (body.needsRushes !== undefined) data.needsRushes = body.needsRushes;
+  if (body.needsBrief !== undefined) data.needsBrief = body.needsBrief;
+  if (body.dayOfWeek !== undefined) data.dayOfWeek = Number(body.dayOfWeek);
+  if (body.publishTime !== undefined) data.publishTime = body.publishTime;
+  if (body.isActive !== undefined) data.isActive = body.isActive;
+  if ("defaultAssigneeMonteurId" in body) data.defaultAssigneeMonteur = body.defaultAssigneeMonteurId ? { connect: { id: body.defaultAssigneeMonteurId } } : { disconnect: true };
+  if ("defaultAssigneeCmId" in body) data.defaultAssigneeCm = body.defaultAssigneeCmId ? { connect: { id: body.defaultAssigneeCmId } } : { disconnect: true };
+  if ("notes" in body) data.notes = body.notes ?? null;
+
+  try {
+    const pattern = await prisma.accountPattern.update({
+      where: { id: patternId },
+      data,
+      include: patternIncludes,
+    });
+    return NextResponse.json(pattern);
+  } catch (err: unknown) {
+    console.error("[admin/accounts/[id]/patterns/[patternId]] PATCH error:", err);
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  }
+}
+
+export async function DELETE(_req: NextRequest, { params }: RouteParams) {
+  const userContext = await getUserContext();
+  if (!userContext?.canAdminBypass) {
+    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
+  }
+
+  const { id, patternId } = await params;
+
+  // Vérification d'appartenance anti-énumération + count slots
+  const pattern = await prisma.accountPattern.findFirst({
+    where: { id: patternId, accountId: id },
+    include: { _count: { select: { publicationSlots: true } } },
+  });
+
+  if (!pattern) {
+    return NextResponse.json({ error: "Pattern introuvable" }, { status: 404 });
+  }
+
+  const slotCount = pattern._count.publicationSlots;
+  if (slotCount > 0) {
+    return NextResponse.json(
+      { error: `Ce pattern a ${slotCount} slot${slotCount > 1 ? "s" : ""} associé${slotCount > 1 ? "s" : ""}. Supprimez-les d'abord.` },
+      { status: 400 }
+    );
+  }
+
+  await prisma.accountPattern.delete({ where: { id: patternId } });
+  return new NextResponse(null, { status: 204 });
+}
