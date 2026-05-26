@@ -28,8 +28,8 @@ interface Props {
 }
 
 export function DescriptionSection({ slot, pattern, initialDescription, canEdit, renderId }: Props) {
-  // Si le pattern indique que la description n'est pas nécessaire, on masque
-  if (pattern?.needsDescription === "none") return null;
+  // Si pas de pattern ou que le pattern indique que la description n'est pas nécessaire, on masque
+  if (!pattern || pattern.needsDescription === "none") return null;
 
   return <DescriptionSectionInner
     slot={slot}

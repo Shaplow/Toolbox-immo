@@ -39,8 +39,8 @@ const COVER_STATUS_COLORS: Record<string, string> = {
 };
 
 export function CoverSection({ slot, pattern, coverPack, canEdit, currentVersion }: Props) {
-  // Si le pattern indique que la cover n'est pas nécessaire, on masque la section
-  if (pattern?.coverMode === "none") return null;
+  // Si pas de pattern ou que le pattern indique que la cover n'est pas nécessaire, on masque la section
+  if (!pattern || pattern.coverMode === "none") return null;
 
   const coverToolHref = `/tools/cover?slotId=${slot.id}&returnTo=/publications/${slot.id}`;
 
