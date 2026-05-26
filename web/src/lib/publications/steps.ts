@@ -142,17 +142,6 @@ function descriptionJobStatus(
  */
 export function computePublicationSteps(input: {
   slot: Pick<PublicationSlot, "status" | "caption">;
-  /** @deprecated Use `pattern` instead. Kept for backwards compat during Wave A2 rename. */
-  recipe?: Pick<
-    AccountPattern,
-    | "source"
-    | "coverMode"
-    | "needsCaptions"
-    | "needsDescription"
-    | "needsClientValidation"
-    | "needsRushes"
-    | "needsBrief"
-  > | null;
   pattern?: Pick<
     AccountPattern,
     | "source"
@@ -174,8 +163,7 @@ export function computePublicationSteps(input: {
 }): PublicationStep[] {
   const { slot, renderJob, coverPack, captionJob, descriptionJob, versionsCount = 0, currentVersionId } =
     input;
-  // Support both legacy `recipe` and new `pattern` arg during transition
-  const pattern = input.pattern ?? input.recipe ?? null;
+  const pattern = input.pattern ?? null;
 
   // ── Visibilité par pattern ────────────────────────────────────────────────
   const renderVisible = pattern?.source === "auto_template";
