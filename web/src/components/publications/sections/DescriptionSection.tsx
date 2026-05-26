@@ -47,8 +47,8 @@ function DescriptionSectionInner({ slot, pattern, initialDescription, canEdit, r
   const [error, setError] = useState<string | null>(null);
 
   const descriptionToolHref = renderId
-    ? `/tools/description?slotId=${slot.id}&renderId=${renderId}&returnTo=/publications/${slot.id}`
-    : `/tools/description?slotId=${slot.id}&returnTo=/publications/${slot.id}`;
+    ? `/descriptions?slotId=${slot.id}&renderId=${renderId}&returnTo=/publications/${slot.id}`
+    : `/descriptions?slotId=${slot.id}&returnTo=/publications/${slot.id}`;
 
   async function handleSave() {
     setSaving(true);

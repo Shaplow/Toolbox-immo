@@ -465,7 +465,7 @@ export function ListingsClient({
               <p className="font-medium">Aucune description générée</p>
               <p className="text-sm mt-1">
                 Rendez-vous dans{" "}
-                <Link href="/tools/description" className="text-sky-600 hover:underline">Descriptions</Link>
+                <Link href="/descriptions" className="text-sky-600 hover:underline">Descriptions</Link>
               </p>
             </>
           )}
@@ -1190,7 +1190,7 @@ function DescriptionCard({
             </button>
           )}
           <Link
-            href="/tools/description"
+            href="/descriptions"
             className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 font-medium transition-colors"
           >
             Nouveau →
