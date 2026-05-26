@@ -1,21 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { deleteCoverCandidateAssets, queueCoverFramePackPreparation, toCoverSourceVideoUrl } from "@/lib/coverAuto";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
-import { IMPERSONATION_COOKIE_NAME, resolveUserContext } from "@/lib/userContext";
+import { getUserContext } from "@/lib/userContext";
 import type { CoverAutoConfig, TemplateJSON } from "@/types/template";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function POST(req: NextRequest, { params }: Params) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
-
-  const userContext = await resolveUserContext(session, req.cookies.get(IMPERSONATION_COOKIE_NAME)?.value ?? null);
   const isAdmin = userContext.canAdminBypass;
   if (!isAdmin && !(await hasTool(userContext.effectiveUser.id, TOOLS.COVERS))) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
@@ -28,6 +25,11 @@ export async function POST(req: NextRequest, { params }: Params) {
       listing: { select: { userId: true } },
       template: true,
       coverFramePack: true,
+      publicationSlot: {
+        select: {
+          pattern: { select: { coverMode: true, coverConfig: true } },
+        },
+      },
     },
   });
   if (!render || !render.template || (!isAdmin && render.listing.userId !== userContext.effectiveUser.id)) {
@@ -37,14 +39,21 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Le render vidéo doit être terminé" }, { status: 400 });
   }
 
+  // Lire Pattern.coverConfig en priorité (source de vérité Phase 1.8)
+  // Fallback sur template.coverAutoConfig pour les renders sans slot ou sans pattern configuré
   let config: CoverAutoConfig | undefined;
-  try {
-    config = normalizeTemplateJSON(JSON.parse(render.template.jsonData) as TemplateJSON).coverAutoConfig;
-  } catch {
-    return NextResponse.json({ error: "Template cover invalide" }, { status: 400 });
+  const slotPattern = render.publicationSlot?.pattern;
+  if (slotPattern?.coverMode === "auto" && slotPattern.coverConfig) {
+    config = slotPattern.coverConfig as CoverAutoConfig;
+  } else {
+    try {
+      config = normalizeTemplateJSON(JSON.parse(render.template.jsonData) as TemplateJSON).coverAutoConfig;
+    } catch {
+      return NextResponse.json({ error: "Template cover invalide" }, { status: 400 });
+    }
   }
   if (!config?.enabled) {
-    return NextResponse.json({ error: "Cover semi-auto désactivée sur cette template" }, { status: 400 });
+    return NextResponse.json({ error: "Cover semi-auto désactivée sur cette template ou ce pattern" }, { status: 400 });
   }
 
   const sourceVideoUrl = toCoverSourceVideoUrl(render.videoUrl);
