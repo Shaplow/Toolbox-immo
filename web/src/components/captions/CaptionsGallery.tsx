@@ -47,7 +47,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const dismissTranscription = useCallback(() => {
-    router.replace("/tools/captions");
+    router.replace("/captions");
   }, [router]);
 
   const slotId = searchParams?.get("slotId") ?? null;
@@ -59,9 +59,9 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
     if (returnTo) extra.set("returnTo", returnTo);
     const query = extra.toString();
     if (query) {
-      router.push(`/tools/captions/${presetId}/generate?${query}`);
+      router.push(`/captions/${presetId}/generate?${query}`);
     } else {
-      router.push(`/tools/captions/${presetId}/generate`);
+      router.push(`/captions/${presetId}/generate`);
     }
   }, [transcriptionPendingId, slotId, returnTo, router]);
 
@@ -106,7 +106,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
       const created = await res.json() as { id: string };
       setShowCreateForm(false);
       setCreateName("");
-      router.push(`/tools/captions/${created.id}/edit`);
+      router.push(`/captions/${created.id}/edit`);
     } catch {
       setCreateError("Impossible de créer le preset.");
     } finally {
@@ -328,7 +328,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                 <div className="flex gap-2">
                   {isAdmin && (
                     <Link
-                      href={`/tools/captions/${preset.id}/edit`}
+                      href={`/captions/${preset.id}/edit`}
                       className="flex-1 text-center text-xs bg-gray-900 text-white py-1.5 rounded-lg hover:bg-gray-700 transition-colors"
                     >
                       Éditer

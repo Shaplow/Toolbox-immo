@@ -698,7 +698,7 @@ export default function CaptionsGenerateForm({
         {/* Back + Header */}
         <div className="mb-8">
           <Link
-            href="/tools/captions"
+            href="/captions"
             className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 transition-colors mb-5"
           >
             <ChevronLeft size={14} />

@@ -447,7 +447,7 @@ export function ListingsClient({
               <p className="font-medium">Aucune vidéo caption</p>
               <p className="text-sm mt-1">
                 Rendez-vous dans{" "}
-                <Link href="/tools/captions" className="text-violet-600 hover:underline">Captions</Link>
+                <Link href="/captions" className="text-violet-600 hover:underline">Captions</Link>
               </p>
             </>
           ) : tab === "transcription" ? (
@@ -917,7 +917,7 @@ function CaptionGridCard({
           <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
             {job.presetId && (
               <Link
-                href={`/tools/captions/${job.presetId}/generate?captionJobId=${job.id}`}
+                href={`/captions/${job.presetId}/generate?captionJobId=${job.id}`}
                 title="Régénérer"
                 className="w-6 h-6 flex items-center justify-center rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-500 transition-colors"
               >
