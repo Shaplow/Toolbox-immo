@@ -29,7 +29,6 @@ export default async function PublicationPage({ params }: PageProps) {
           id: true,
           handle: true,
           name: true,
-          offre: true,
           client: { select: { name: true } },
         },
       },
@@ -243,7 +242,6 @@ export default async function PublicationPage({ params }: PageProps) {
         id: slot.account.id,
         handle: slot.account.handle,
         name: slot.account.name,
-        offre: slot.account.offre,
       }}
       listing={listing}
       pattern={

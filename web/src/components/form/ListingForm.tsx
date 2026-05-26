@@ -472,7 +472,7 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
             >
               <option value="">— Sélectionner un compte —</option>
               {libraryPrefillContext!.instagramAccounts!.map((a) => (
-                <option key={a.id} value={a.id}>@{a.handle} · {a.name} ({a.offre})</option>
+                <option key={a.id} value={a.id}>@{a.handle} · {a.name}</option>
               ))}
             </select>
           </div>

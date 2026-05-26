@@ -47,7 +47,7 @@ export default function AdminClientDetailPage() {
   const [igLoading, setIgLoading] = useState(false);
   const [igError, setIgError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [addForm, setAddForm] = useState({ name: "", handle: "", offre: "" });
+  const [addForm, setAddForm] = useState({ name: "", handle: "" });
   const [addFormError, setAddFormError] = useState<string | null>(null);
   const [addingAccount, setAddingAccount] = useState(false);
 
@@ -147,7 +147,6 @@ export default function AdminClientDetailPage() {
       body: JSON.stringify({
         name: addForm.name.trim(),
         handle: addForm.handle.trim(),
-        offre: addForm.offre,
         clientId,
       }),
     });
@@ -159,7 +158,7 @@ export default function AdminClientDetailPage() {
     }
     toast.success("Compte Instagram créé");
     setShowAddForm(false);
-    setAddForm({ name: "", handle: "", offre: "" });
+    setAddForm({ name: "", handle: "" });
     void fetchIgAccounts();
     // Mettre à jour la liste globale pour le picker de l'onglet Infos
     void fetchData();
@@ -394,15 +393,6 @@ export default function AdminClientDetailPage() {
                     value={addForm.handle}
                     onChange={(e) => setAddForm((f) => ({ ...f, handle: e.target.value }))}
                     placeholder="@marc_immo"
-                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Offre</label>
-                  <input
-                    value={addForm.offre}
-                    onChange={(e) => setAddForm((f) => ({ ...f, offre: e.target.value }))}
-                    placeholder="ex: ESSENTIEL"
                     className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   />
                 </div>

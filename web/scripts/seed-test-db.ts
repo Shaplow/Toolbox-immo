@@ -119,7 +119,6 @@ async function main() {
     create: {
       name: "Test Account",
       handle: "test_account",
-      offre: "ESSENTIEL",
       clientId: client.id,
     },
   });

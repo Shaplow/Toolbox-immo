@@ -50,7 +50,7 @@ export interface LibraryPrefillContext {
    * Instagram accounts to show in the account selector (only when at least one block
    * uses theme_sequence). Empty means no selector needed.
    */
-  instagramAccounts?: { id: string; name: string; handle: string; offre: string }[];
+  instagramAccounts?: { id: string; name: string; handle: string }[];
   /** ID of the currently selected Instagram account (from URL searchParam). */
   selectedAccountId?: string;
   /**

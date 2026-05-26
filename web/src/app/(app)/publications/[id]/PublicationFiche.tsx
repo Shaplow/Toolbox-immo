@@ -54,7 +54,6 @@ interface AccountInfo {
   id: string;
   handle: string;
   name: string;
-  offre: string;
 }
 
 interface PatternInfo {

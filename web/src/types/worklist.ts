@@ -24,7 +24,6 @@ export interface WorklistAccount {
   id: string;
   handle: string;
   name: string;
-  offre: string;
 }
 
 export interface WorklistPattern {

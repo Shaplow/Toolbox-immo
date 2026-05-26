@@ -51,7 +51,7 @@ export default async function AccountFichePage({ params }: Props) {
         icon={Instagram}
         iconColor="indigo"
         title={`@${account.handle}`}
-        subtitle={`${account.client?.name ?? "Sans client"} · Offre : ${account.offre}`}
+        subtitle={`${account.client?.name ?? "Sans client"}`}
       />
 
       {/* Section Patterns */}

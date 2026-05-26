@@ -23,7 +23,7 @@ export interface PublicationHeaderProps {
     scheduledAt: Date;
     contentType: string;
   };
-  account: { id: string; handle: string; name: string; offre: string };
+  account: { id: string; handle: string; name: string };
   listing: { id: string } | null;
   pattern: { id: string; label: string } | null;
   assigneeMonteur: {

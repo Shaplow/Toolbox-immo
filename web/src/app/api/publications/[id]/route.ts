@@ -4,7 +4,7 @@
  * Retourne le slot avec toutes les relations nécessaires au hub de publication :
  *   - slot (tous les champs)
  *   - pattern (infos pour computePublicationSteps)
- *   - account (id, handle, name, offre, client { name })
+ *   - account (id, handle, name, client { name })
  *   - listing (id, jsonData)
  *   - assigneeMonteur / assigneeCm (id, name, email)
  *   - render (le plus récent : id, status, videoUrl, pngUrl, createdAt)
@@ -51,7 +51,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
           id: true,
           handle: true,
           name: true,
-          offre: true,
           client: { select: { name: true } },
         },
       },

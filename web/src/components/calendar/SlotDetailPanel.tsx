@@ -148,7 +148,7 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
               {scheduledDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
             </h2>
             <p className="text-xs text-gray-400 mt-0.5">
-              @{slot.account.handle} · {slot.account.offre}
+              @{slot.account.handle}
             </p>
             <Link
               href={`/publications/${slot.id}`}

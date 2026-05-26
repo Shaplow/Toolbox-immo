@@ -14,15 +14,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
-  const body = await req.json() as { name?: string; handle?: string; offre?: string; clientId?: string | null };
-  const { name, handle, offre, clientId } = body;
+  const body = await req.json() as { name?: string; handle?: string; clientId?: string | null };
+  const { name, handle, clientId } = body;
 
-  const data: { name?: string; handle?: string; offre?: string; clientId?: string | null } = {};
+  const data: { name?: string; handle?: string; clientId?: string | null } = {};
   if (name?.trim()) data.name = name.trim();
   if (handle?.trim()) data.handle = handle.trim().replace(/^@/, "");
-  if (offre) {
-    data.offre = offre;
-  }
   if ("clientId" in body) {
     if (clientId === null) {
       data.clientId = null;

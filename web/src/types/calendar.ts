@@ -28,7 +28,7 @@ export type ContentType = "RPI" | "RVA4" | "RVA5" | "RTIPS" | "RPOD" | "REACT" |
 export interface PublicationSlot {
   id: string;
   accountId: string;
-  account: { id: string; name: string; handle: string; offre: string };
+  account: { id: string; name: string; handle: string };
   scheduledAt: string; // ISO
   contentType: string;
   status: SlotStatus;
@@ -53,19 +53,6 @@ export interface PublicationSlot {
   pattern?: { label: string } | null;
   assigneeMonteur?: { id: string; name: string | null } | null;
   assigneeCm?: { id: string; name: string | null } | null;
-}
-
-export interface OfferScheduleRule {
-  id: string;
-  offre: string;
-  dayOfWeek: number;
-  publishTime: string;
-  contentType: string;
-  templateId: string | null;
-  template: { id: string; name: string; contentType: string } | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
 }
 
 // Re-exported from the centralized source of truth — do not duplicate here.
