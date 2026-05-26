@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { deleteCoverCandidateAssets, queueCoverFramePackPreparation, toCoverSourceVideoUrl } from "@/lib/coverAuto";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import { getUserContext } from "@/lib/userContext";
-import type { CoverAutoConfig, TemplateJSON } from "@/types/template";
+import type { CoverAutoConfig } from "@/types/template";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -39,21 +38,14 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Le render vidéo doit être terminé" }, { status: 400 });
   }
 
-  // Lire Pattern.coverConfig en priorité (source de vérité Phase 1.8)
-  // Fallback sur template.coverAutoConfig pour les renders sans slot ou sans pattern configuré
-  let config: CoverAutoConfig | undefined;
+  // Lire Pattern.coverConfig (source de vérité Phase 1.8 — template.coverAutoConfig supprimé)
   const slotPattern = render.publicationSlot?.pattern;
+  let config: CoverAutoConfig | undefined;
   if (slotPattern?.coverMode === "auto" && slotPattern.coverConfig) {
     config = slotPattern.coverConfig as CoverAutoConfig;
-  } else {
-    try {
-      config = normalizeTemplateJSON(JSON.parse(render.template.jsonData) as TemplateJSON).coverAutoConfig;
-    } catch {
-      return NextResponse.json({ error: "Template cover invalide" }, { status: 400 });
-    }
   }
   if (!config?.enabled) {
-    return NextResponse.json({ error: "Cover semi-auto désactivée sur cette template ou ce pattern" }, { status: 400 });
+    return NextResponse.json({ error: "Cover semi-auto non configurée sur ce pattern" }, { status: 400 });
   }
 
   const sourceVideoUrl = toCoverSourceVideoUrl(render.videoUrl);

@@ -2,18 +2,8 @@
 import { ListingsClient, type ListingRow, type CaptionJobRow, type TranscriptionJobRow, type DescriptionJobRow } from "@/components/listings/ListingsClient";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
-import { normalizeTemplateJSON } from "@/lib/templateNormalization";
-import type { TemplateJSON } from "@/types/template";
 import { toUserRole } from "@/lib/permissions/role";
 import { List } from "lucide-react";
-
-function templateHasCoverAuto(jsonData: string): boolean {
-  try {
-    return normalizeTemplateJSON(JSON.parse(jsonData) as TemplateJSON).coverAutoConfig?.enabled === true;
-  } catch {
-    return false;
-  }
-}
 
 const LISTING_INCLUDE = {
   template: { select: { id: true, name: true, client: true, formats: true, jsonData: true } },

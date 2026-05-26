@@ -2,8 +2,6 @@
 import { notFound } from "next/navigation";
 import { RenderResult } from "@/components/renders/RenderResult";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
-import { normalizeTemplateJSON } from "@/lib/templateNormalization";
-import type { TemplateJSON } from "@/types/template";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -32,19 +30,12 @@ export default async function RenderPage({ params }: Props) {
   const userPerms = parsePermissions(userContext.effectiveUser.permissions);
   const hasCovers = isAdmin || userPerms.includes("covers");
 
-  // Lire Pattern.coverConfig en priorité (Phase 1.8), fallback template.coverAutoConfig
-  let coverAutoEnabled = false;
+  // Lire Pattern.coverConfig (source de vérité Phase 1.8 — template.coverAutoConfig supprimé)
   const slotPattern = render.publicationSlot?.pattern;
-  if (slotPattern?.coverMode === "auto" && slotPattern.coverConfig) {
-    const patternCoverConfig = slotPattern.coverConfig as { enabled?: boolean };
-    coverAutoEnabled = patternCoverConfig.enabled === true;
-  } else if (render.template?.jsonData) {
-    try {
-      coverAutoEnabled = normalizeTemplateJSON(JSON.parse(render.template.jsonData) as TemplateJSON).coverAutoConfig?.enabled === true;
-    } catch {
-      coverAutoEnabled = false;
-    }
-  }
+  const patternCoverConfig = slotPattern?.coverMode === "auto" && slotPattern.coverConfig
+    ? (slotPattern.coverConfig as { enabled?: boolean })
+    : null;
+  const coverAutoEnabled = patternCoverConfig?.enabled === true;
   if (!isAdmin) {
     const listing = await prisma.listing.findFirst({
       where: { id: render.listingId, userId: userContext.effectiveUser.id },
