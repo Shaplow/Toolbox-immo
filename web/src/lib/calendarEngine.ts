@@ -80,15 +80,21 @@ export async function generateCalendarSlots(
 
   for (let weekMs = startMondayMs; weekMs <= endMondayMs; weekMs += ONE_WEEK_MS) {
     for (const pattern of patterns) {
-      const targetDate = new Date(weekMs);
-      targetDate.setUTCDate(targetDate.getUTCDate() + (pattern.dayOfWeek - 1));
-      const [hours, minutes] = pattern.publishTime.split(":").map(Number);
-      targetDate.setUTCHours(hours, minutes, 0, 0);
+      if (pattern.dayOfWeek.length === 0) {
+        console.warn(`[calendarEngine] Pattern ${pattern.id} has empty dayOfWeek array — skipping`);
+        continue;
+      }
+      for (const dow of pattern.dayOfWeek) {
+        const targetDate = new Date(weekMs);
+        targetDate.setUTCDate(targetDate.getUTCDate() + (dow - 1));
+        const [hours, minutes] = pattern.publishTime.split(":").map(Number);
+        targetDate.setUTCHours(hours, minutes, 0, 0);
 
-      // Skip si en dehors de la plage demandée (utile aux bords semaine partielle)
-      if (targetDate < dateFrom || targetDate > dateTo) continue;
+        // Skip si en dehors de la plage demandée (utile aux bords semaine partielle)
+        if (targetDate < dateFrom || targetDate > dateTo) continue;
 
-      targets.push({ pattern, scheduledAt: targetDate });
+        targets.push({ pattern, scheduledAt: targetDate });
+      }
     }
   }
 
