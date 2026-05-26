@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { uploadToR2, r2Configured } from "@/lib/r2";
 import { upsertFontAsset, inferWeightFromFilename, inferStyleFromFilename } from "@/lib/fontAssets";
 import { writeFile, mkdir } from "fs/promises";
@@ -17,8 +17,8 @@ const MIME_BY_EXT: Record<string, string> = {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id || session.user.role !== "ADMIN") {
+    const userContext = await getUserContext();
+    if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
       return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
     }
 

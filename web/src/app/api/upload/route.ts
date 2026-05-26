@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { uploadToR2, r2Configured } from "@/lib/r2";
 import { createWriteStream, mkdir as mkdirCb } from "fs";
 import { promisify } from "util";
@@ -23,8 +23,8 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 

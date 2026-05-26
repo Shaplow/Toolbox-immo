@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
-import { auth } from "@/lib/auth";
+import { getUserContext } from "@/lib/userContext";
 import { createPresignedUploadUrl, getR2PublicUrl, r2Configured } from "@/lib/r2";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -12,8 +12,8 @@ const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024;
 const MAX_AUDIO_SIZE = 200 * 1024 * 1024;
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
