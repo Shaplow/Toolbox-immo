@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutList, Edit, Copy, Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
 import { FormField } from "@/components/ui/FormField";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DeleteButton } from "@/components/ui/DeleteButton";
@@ -203,6 +202,8 @@ function Row({ label, value }: { label: string; value: string }) {
 
 // ─── CloneDialog ──────────────────────────────────────────────────────────────
 
+type AccountOption = { id: string; handle: string; name: string; clientName: string | null };
+
 function CloneDialog({
   open,
   accountId,
@@ -216,6 +217,37 @@ function CloneDialog({
 }) {
   const [sourceAccountId, setSourceAccountId] = useState("");
   const [loading, setLoading] = useState(false);
+  const [accounts, setAccounts] = useState<AccountOption[]>([]);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
+
+  // Load accounts list when the dialog opens
+  useEffect(() => {
+    if (!open) return;
+    setLoadingAccounts(true);
+    fetch("/api/admin/accounts")
+      .then((r) => r.json())
+      .then((data: unknown) => {
+        const raw = Array.isArray(data) ? data : [];
+        const options: AccountOption[] = (raw as Array<{
+          id: string;
+          handle: string;
+          name: string;
+          client?: { name: string } | null;
+        }>)
+          .filter((a) => a.id !== accountId)
+          .map((a) => ({
+            id: a.id,
+            handle: a.handle,
+            name: a.name,
+            clientName: a.client?.name ?? null,
+          }));
+        setAccounts(options);
+      })
+      .catch(() => {
+        toast.error("Impossible de charger la liste des comptes");
+      })
+      .finally(() => setLoadingAccounts(false));
+  }, [open, accountId]);
 
   // ESC to close
   useEffect(() => {
@@ -228,8 +260,8 @@ function CloneDialog({
   }, [open, onClose]);
 
   async function handleClone() {
-    if (!sourceAccountId.trim()) {
-      toast.error("L'ID du compte source est requis");
+    if (!sourceAccountId) {
+      toast.error("Sélectionnez un compte source");
       return;
     }
     setLoading(true);
@@ -237,7 +269,7 @@ function CloneDialog({
       const res = await fetch(`/api/admin/accounts/${accountId}/patterns/clone-from`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceAccountId: sourceAccountId.trim() }),
+        body: JSON.stringify({ sourceAccountId }),
       });
       const data = await res.json() as { cloned?: number; error?: string };
       if (!res.ok) {
@@ -274,12 +306,25 @@ function CloneDialog({
             <p className="text-sm text-gray-500 mb-4">
               Tous les patterns du compte source seront copiés vers ce compte.
             </p>
-            <FormField label="ID du compte source" required>
-              <Input
-                value={sourceAccountId}
-                onChange={setSourceAccountId}
-                placeholder="cuid du compte Instagram source…"
-              />
+            <FormField label="Compte source" required>
+              {loadingAccounts ? (
+                <p className="text-sm text-gray-400">Chargement des comptes…</p>
+              ) : accounts.length === 0 ? (
+                <p className="text-sm text-gray-400">Aucun autre compte disponible.</p>
+              ) : (
+                <select
+                  value={sourceAccountId}
+                  onChange={(e) => setSourceAccountId(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                >
+                  <option value="">— Sélectionner un compte —</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      @{a.handle}{a.clientName ? ` (${a.clientName})` : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
             </FormField>
           </div>
           <div className="flex items-center justify-end gap-2 px-6 py-4 bg-gray-50 border-t border-gray-100">
