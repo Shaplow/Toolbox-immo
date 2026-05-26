@@ -97,8 +97,8 @@ export function WorklistSlotCard({ slot, monteurBadges }: WorklistSlotCardProps)
               </span>
             )}
             {versionPendingN !== null && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700 border border-blue-200">
-                V{versionPendingN} en attente validation
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                En révision admin
               </span>
             )}
           </div>
