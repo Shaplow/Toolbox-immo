@@ -55,7 +55,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
-  const effectiveUserId = userContext.effectiveUser.id;
+  // POST est admin-only. Le preset est rattaché à l'admin réel (actualUser),
+  // pas à l'identité impersonnée — sinon un admin qui impersonne un CM
+  // créerait des presets sous le compte du CM. Sémantique audit.
+  const ownerUserId = userContext.actualUser.id;
 
   const body = await req.json() as { name?: string; config?: unknown; isBuiltin?: boolean };
   const name = (body.name ?? "").trim();
@@ -67,9 +70,9 @@ export async function POST(req: NextRequest) {
   }
   const isBuiltin = body.isBuiltin === true;
 
-  // Upsert : si l'user a déjà un preset avec ce nom, on l'écrase
+  // Upsert : si l'admin a déjà un preset avec ce nom, on l'écrase
   const existing = await prisma.captionPreset.findFirst({
-    where: { userId: effectiveUserId, name },
+    where: { userId: ownerUserId, name },
   });
 
   let preset;
@@ -82,7 +85,7 @@ export async function POST(req: NextRequest) {
     preset = await prisma.captionPreset.create({
       data: {
         name,
-        userId: effectiveUserId,
+        userId: ownerUserId,
         isBuiltin,
         config: JSON.stringify(body.config),
       },
