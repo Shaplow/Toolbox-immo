@@ -22,11 +22,25 @@ export interface WorklistSlotBadges {
   versionPendingNumber?: number | null;
 }
 
+/**
+ * Badges contextuels optionnels pour les CM.
+ * Indiquent le statut spécifique d'un slot dans la section "À préparer"
+ * pour distinguer l'action requise (captions à faire vs prêt à publier).
+ */
+export interface WorklistCmBadges {
+  /** Label de statut affiché sur la card CM. */
+  statusLabel?: string;
+  /** Classes Tailwind pour le badge (bg + text + border). */
+  statusClasses?: string;
+}
+
 interface WorklistSlotCardProps {
   slot: WorklistSlot;
   mode: SlotDetailPanelMode;
   /** Badges contextuels monteur — non affichés pour CM/ADMIN. */
   monteurBadges?: WorklistSlotBadges;
+  /** Badges contextuels CM — non affichés pour monteur/ADMIN. */
+  cmBadges?: WorklistCmBadges;
 }
 
 /**
@@ -46,7 +60,7 @@ function formatScheduledAt(date: Date): string {
   return `${datePart} · ${timePart}`;
 }
 
-export function WorklistSlotCard({ slot, monteurBadges }: WorklistSlotCardProps) {
+export function WorklistSlotCard({ slot, monteurBadges, cmBadges }: WorklistSlotCardProps) {
   const router = useRouter();
   const overdue = isSlotOverdue(slot);
 
@@ -101,6 +115,15 @@ export function WorklistSlotCard({ slot, monteurBadges }: WorklistSlotCardProps)
                 En révision admin
               </span>
             )}
+          </div>
+        )}
+
+        {/* Badge contextuel CM */}
+        {cmBadges?.statusLabel && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${cmBadges.statusClasses ?? "bg-gray-100 text-gray-600 border border-gray-200"}`}>
+              {cmBadges.statusLabel}
+            </span>
           </div>
         )}
       </div>
