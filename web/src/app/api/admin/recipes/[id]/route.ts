@@ -24,6 +24,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       library: { select: { id: true, name: true } },
       defaultAssigneeMonteur: { select: { id: true, name: true } },
       defaultAssigneeCm: { select: { id: true, name: true } },
+      _count: { select: { publicationSlots: true } },
     },
   });
 
