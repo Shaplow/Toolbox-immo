@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { AlignLeft, Film, Pencil, Plus, Scissors, X } from "lucide-react";
+import { AlignLeft, ChevronLeft, Film, Pencil, Plus, Scissors, X } from "lucide-react";
 import { CaptionPresetActions } from "@/components/captions/CaptionPresetActions";
 import { ImportCaptionPresetButton } from "@/components/captions/ImportCaptionPresetButton";
 import { DEFAULT_CAPTION_CONFIG } from "@/lib/captionPresetConfig";
@@ -19,6 +19,23 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const transcriptionPendingId = searchParams?.get("transcriptionId");
+
+  /**
+   * Paramètre `returnTo` passé depuis CaptionsSection des fiches publication.
+   * Validé : URL relative interne uniquement (commence par "/") — anti open-redirect.
+   */
+  const rawReturnTo = searchParams?.get("returnTo") ?? null;
+  const returnTo =
+    rawReturnTo && rawReturnTo.startsWith("/") && !rawReturnTo.startsWith("//")
+      ? rawReturnTo
+      : null;
+
+  /** Label contextuel pour le breadcrumb retour. */
+  function getReturnLabel(path: string): string {
+    if (path.startsWith("/publications/")) return "Retour à la publication";
+    if (path.startsWith("/listings")) return "Retour aux annonces";
+    return "Retour";
+  }
   const [presets, setPresets] = useState<Preset[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -131,6 +148,19 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <div className="p-8">
+      {/* Breadcrumb retour vers la fiche source (ex. /publications/<id>) */}
+      {returnTo && (
+        <div className="mb-4">
+          <Link
+            href={returnTo}
+            className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800 hover:underline transition-colors"
+          >
+            <ChevronLeft size={15} />
+            {getReturnLabel(returnTo)}
+          </Link>
+        </div>
+      )}
+
       <ToolPageHeader
           icon={AlignLeft}
           iconColor="violet"
