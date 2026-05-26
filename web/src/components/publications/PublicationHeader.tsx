@@ -25,7 +25,7 @@ export interface PublicationHeaderProps {
   };
   account: { id: string; handle: string; name: string; offre: string };
   listing: { id: string } | null;
-  recipe: { id: string; code: string; label: string } | null;
+  pattern: { id: string; label: string } | null;
   assigneeMonteur: {
     id: string;
     name: string | null;
@@ -60,7 +60,7 @@ function formatTimeFR(date: Date): string {
 export function PublicationHeader({
   slot,
   account,
-  recipe,
+  pattern,
   assigneeMonteur,
   assigneeCm,
   canMarkPublished,
@@ -218,9 +218,9 @@ export function PublicationHeader({
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border bg-gray-50 text-gray-600 border-gray-200">
               {slot.contentType}
             </span>
-            {recipe && (
+            {pattern && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border bg-indigo-50 text-indigo-700 border-indigo-200">
-                {recipe.label}
+                {pattern.label}
               </span>
             )}
           </div>

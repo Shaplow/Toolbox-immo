@@ -10,7 +10,7 @@ import { ImageIcon, ExternalLink } from "lucide-react";
 
 interface Props {
   slot: { id: string };
-  recipe: { needsCover: string } | null;
+  pattern: { coverMode: string } | null;
   coverPack: {
     id: string;
     status: string;
@@ -38,9 +38,9 @@ const COVER_STATUS_COLORS: Record<string, string> = {
   FAILED: "bg-red-50 text-red-700 border-red-200",
 };
 
-export function CoverSection({ slot, recipe, coverPack, canEdit, currentVersion }: Props) {
-  // Si la recipe indique que la cover n'est pas nécessaire, on masque la section
-  if (recipe?.needsCover === "none") return null;
+export function CoverSection({ slot, pattern, coverPack, canEdit, currentVersion }: Props) {
+  // Si le pattern indique que la cover n'est pas nécessaire, on masque la section
+  if (pattern?.coverMode === "none") return null;
 
   const coverToolHref = `/tools/cover?slotId=${slot.id}&returnTo=/publications/${slot.id}`;
 

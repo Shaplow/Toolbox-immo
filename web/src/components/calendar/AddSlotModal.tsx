@@ -12,15 +12,6 @@ interface Account {
   offre: string;
 }
 
-/** Shape minimale d'une ContentRecipe telle que retournée par GET /api/admin/recipes */
-interface RecipeOption {
-  id: string;
-  code: string;
-  label: string;
-  defaultAssigneeMonteurId: string | null;
-  defaultAssigneeCmId: string | null;
-}
-
 /** Shape minimale d'un User telle que retournée par GET /api/admin/users */
 interface UserOption {
   id: string;
@@ -47,17 +38,14 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     date: today,
     time: "19:00",
     title: "",
-    // Legacy : utilisé uniquement si aucune recipe n'est sélectionnée
     contentType: "RPI",
   });
 
-  // --- Recipe + assignees (nouvelle mécanique 1.2.3) ---
-  const [recipeId, setRecipeId] = useState<string>("");
+  // --- Assignees ---
   const [assigneeMonteurId, setAssigneeMonteurId] = useState<string>("");
   const [assigneeCmId, setAssigneeCmId] = useState<string>("");
 
   // --- Données chargées au mount ---
-  const [recipes, setRecipes] = useState<RecipeOption[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [loadingMeta, setLoadingMeta] = useState(true);
 
@@ -68,26 +56,19 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  // Fetch recipes + users en parallèle au mount
+  // Fetch users au mount
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const [recipesRes, usersRes] = await Promise.all([
-          fetch("/api/admin/recipes"),
-          fetch("/api/admin/users"),
-        ]);
+        const usersRes = await fetch("/api/admin/users");
         if (cancelled) return;
-        if (recipesRes.ok) {
-          const data = await recipesRes.json() as RecipeOption[];
-          setRecipes(data);
-        }
         if (usersRes.ok) {
           const data = await usersRes.json() as UserOption[];
           setUsers(data);
         }
       } catch {
-        // silencieux — on tombe en mode legacy contentType si les données ne chargent pas
+        // silencieux
       } finally {
         if (!cancelled) setLoadingMeta(false);
       }
@@ -95,22 +76,6 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     void load();
     return () => { cancelled = true; };
   }, []);
-
-  // Préfill des assignees quand la recipe change
-  function handleRecipeChange(id: string) {
-    setRecipeId(id);
-    if (!id) {
-      // Pas de recipe → reset assignees (l'admin peut toujours les remplir manuellement)
-      setAssigneeMonteurId("");
-      setAssigneeCmId("");
-      return;
-    }
-    const recipe = recipes.find((r) => r.id === id);
-    if (!recipe) return;
-    // Préfill : le défaut de la recipe est appliqué, l'admin peut surcharger via les selects
-    setAssigneeMonteurId(recipe.defaultAssigneeMonteurId ?? "");
-    setAssigneeCmId(recipe.defaultAssigneeCmId ?? "");
-  }
 
   // Users filtrés par rôle pour les selects d'assignees
   const monteurs = users.filter((u) => u.role === "MONTEUR" || u.role === "ADMIN");
@@ -126,18 +91,11 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
       const payload: Record<string, unknown> = {
         accountId: form.accountId,
         scheduledAt,
+        contentType: form.contentType,
         title: form.title || null,
         assigneeMonteurId: assigneeMonteurId || null,
         assigneeCmId: assigneeCmId || null,
       };
-
-      if (recipeId) {
-        // Création via recipe : le serveur dérive le contentType depuis recipe.code
-        payload.recipeId = recipeId;
-      } else {
-        // Legacy : contentType fourni directement
-        payload.contentType = form.contentType;
-      }
 
       const res = await fetch("/api/calendar/slots", {
         method: "POST",
@@ -156,8 +114,6 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
       setSaving(false);
     }
   }
-
-  const selectedRecipe = recipes.find((r) => r.id === recipeId);
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -212,47 +168,19 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
             </div>
           </div>
 
-          {/* Recette de contenu */}
+          {/* Type de contenu */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Recette de contenu
-              {loadingMeta && <span className="text-gray-400 font-normal ml-1">(chargement…)</span>}
-            </label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Type de contenu</label>
             <select
-              value={recipeId}
-              onChange={(e) => handleRecipeChange(e.target.value)}
+              value={form.contentType}
+              onChange={(e) => set("contentType", e.target.value)}
               className={INPUT_CLS}
-              disabled={loadingMeta}
             >
-              <option value="">— Saisie manuelle —</option>
-              {recipes.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.label || r.code}
-                </option>
+              {CONTENT_TYPES.map((ct) => (
+                <option key={ct} value={ct}>{ct}</option>
               ))}
             </select>
-            {selectedRecipe && (
-              <p className="text-xs text-gray-400 mt-1">
-                Type dérivé : <span className="font-medium text-gray-600">{selectedRecipe.code}</span>
-              </p>
-            )}
           </div>
-
-          {/* Type de contenu (legacy — affiché uniquement si pas de recipe) */}
-          {!recipeId && (
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Type de contenu</label>
-              <select
-                value={form.contentType}
-                onChange={(e) => set("contentType", e.target.value)}
-                className={INPUT_CLS}
-              >
-                {CONTENT_TYPES.map((ct) => (
-                  <option key={ct} value={ct}>{ct}</option>
-                ))}
-              </select>
-            </div>
-          )}
 
           {/* Assignees */}
           <div className="grid grid-cols-2 gap-3">

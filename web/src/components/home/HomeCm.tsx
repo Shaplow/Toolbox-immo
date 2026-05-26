@@ -46,8 +46,8 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
       account: {
         select: { id: true, handle: true, name: true, offre: true },
       },
-      recipe: {
-        select: { code: true, label: true },
+      pattern: {
+        select: { label: true },
       },
     },
     orderBy: { scheduledAt: "asc" },
@@ -63,9 +63,9 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
     notes: s.notes,
     assigneeMonteurId: s.assigneeMonteurId,
     assigneeCmId: s.assigneeCmId,
-    recipeId: s.recipeId,
+    patternId: s.patternId,
     account: s.account,
-    recipe: s.recipe,
+    pattern: s.pattern,
   }));
 
   // ── Découpe en sections ────────────────────────────────────────────────────

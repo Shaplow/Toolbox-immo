@@ -12,16 +12,16 @@ import { Subtitles, ExternalLink } from "lucide-react";
 interface Props {
   slot: { id: string };
   renderId: string | null;
-  recipe: { needsCaptions: boolean } | null;
+  pattern: { needsCaptions: boolean } | null;
   /** true pour CM, MONTEUR, et ADMIN */
   canEdit: boolean;
   /** Version courante promue par l'ADMIN (si needsRushes=true). */
   currentVersion?: { versionNumber: number; fileName: string } | null;
 }
 
-export function CaptionsSection({ slot, renderId, recipe, canEdit, currentVersion }: Props) {
-  // Si la recipe n'exige pas de captions, on masque la section
-  if (recipe?.needsCaptions !== true) return null;
+export function CaptionsSection({ slot, renderId, pattern, canEdit, currentVersion }: Props) {
+  // Si le pattern n'exige pas de captions, on masque la section
+  if (pattern?.needsCaptions !== true) return null;
 
   const captionsHref = renderId
     ? `/tools/captions?slotId=${slot.id}&renderId=${renderId}&returnTo=/publications/${slot.id}`

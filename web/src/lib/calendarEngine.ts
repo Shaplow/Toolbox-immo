@@ -1,5 +1,3 @@
-import { prisma } from "@/lib/prisma";
-
 export interface GenerateCalendarOptions {
   /** Si omis, génère pour tous les comptes actifs */
   accountIds?: string[];
@@ -11,116 +9,23 @@ export interface GenerateCalendarResult {
   created: number;
   /** Slots déjà existants, ignorés */
   skipped: number;
+  note?: string;
 }
 
 /**
- * Génère des PublicationSlot pour les comptes et la plage de dates donnés,
- * en se basant sur les OfferScheduleRule actives.
- * Idempotent : ignore les slots qui existent déjà (même accountId + scheduledAt + contentType).
+ * STUB — Phase 1.6 patterns redesign.
+ *
+ * generateCalendarSlots était basé sur OfferScheduleRule (supprimé en Wave A1).
+ * Cette implémentation sera réécrite en Wave B pour s'appuyer sur AccountPattern.
  */
 export async function generateCalendarSlots(
-  options: GenerateCalendarOptions
+  _options: GenerateCalendarOptions
 ): Promise<GenerateCalendarResult> {
-  const { dateFrom, dateTo, accountIds } = options;
-
-  const accounts = await prisma.instagramAccount.findMany({
-    where: accountIds ? { id: { in: accountIds } } : undefined,
-    select: { id: true, offre: true },
-  });
-
-  if (accounts.length === 0) return { created: 0, skipped: 0 };
-
-  const rules = await prisma.offerScheduleRule.findMany({
-    where: { isActive: true },
-  });
-
-  if (rules.length === 0) return { created: 0, skipped: 0 };
-
-  // Index des règles par offre
-  const rulesByOffre = new Map<string, typeof rules>();
-  for (const rule of rules) {
-    const list = rulesByOffre.get(rule.offre) ?? [];
-    list.push(rule);
-    rulesByOffre.set(rule.offre, list);
-  }
-
-  const slotsToCreate: Array<{
-    accountId: string;
-    scheduledAt: Date;
-    contentType: string;
-    templateId?: string;
-    isAuto: boolean;
-  }> = [];
-
-  // All date arithmetic is UTC so the engine is timezone-agnostic regardless
-  // of the server's local timezone. publishTime ("HH:MM") is treated as UTC.
-  const current = new Date(dateFrom);
-  current.setUTCHours(0, 0, 0, 0);
-  const end = new Date(dateTo);
-  end.setUTCHours(23, 59, 59, 999);
-
-  while (current <= end) {
-    // getUTCDay(): 0=Dim, 1=Lun … 6=Sam → converti en ISO 1=Lun … 7=Dim
-    const jsDay = current.getUTCDay();
-    const isoDay = jsDay === 0 ? 7 : jsDay;
-
-    for (const account of accounts) {
-      const accountRules = rulesByOffre.get(account.offre) ?? [];
-      const dayRules = accountRules.filter((r) => r.dayOfWeek === isoDay);
-
-      for (const rule of dayRules) {
-        const [hours, minutes] = rule.publishTime.split(":").map(Number);
-        if (isNaN(hours!) || isNaN(minutes!)) {
-          console.warn(`[calendarEngine] publishTime invalide pour la règle ${rule.id}: "${rule.publishTime}" — ignorée`);
-          continue;
-        }
-        const scheduledAt = new Date(current);
-        scheduledAt.setUTCHours(hours!, minutes!, 0, 0);
-
-        slotsToCreate.push({
-          accountId: account.id,
-          scheduledAt: new Date(scheduledAt),
-          contentType: rule.contentType,
-          templateId: rule.templateId ?? undefined,
-          isAuto: true,
-        });
-      }
-    }
-
-    current.setUTCDate(current.getUTCDate() + 1);
-  }
-
-  if (slotsToCreate.length === 0) return { created: 0, skipped: 0 };
-
-  // Chargement des slots existants sur la même plage pour déduplication
-  const existingSlots = await prisma.publicationSlot.findMany({
-    where: {
-      accountId: { in: accounts.map((a) => a.id) },
-      scheduledAt: { gte: dateFrom, lte: dateTo },
-    },
-    select: { accountId: true, scheduledAt: true, contentType: true },
-  });
-
-  const existingKeys = new Set(
-    existingSlots.map(
-      (s) => `${s.accountId}|${s.scheduledAt.toISOString()}|${s.contentType}`
-    )
+  console.warn(
+    "[calendarEngine] generateCalendarSlots is disabled during Phase 1.6 patterns redesign. " +
+    "Slot auto-generation will be re-enabled in Wave B once AccountPattern integration is done."
   );
-
-  const newSlots = slotsToCreate.filter(
-    (s) =>
-      !existingKeys.has(
-        `${s.accountId}|${s.scheduledAt.toISOString()}|${s.contentType}`
-      )
-  );
-
-  const skipped = slotsToCreate.length - newSlots.length;
-
-  if (newSlots.length > 0) {
-    await prisma.publicationSlot.createMany({ data: newSlots });
-  }
-
-  return { created: newSlots.length, skipped };
+  return { created: 0, skipped: 0, note: "Disabled during patterns redesign" };
 }
 
 /** Retourne la plage [lundi, dimanche] de la semaine suivante (UTC) */

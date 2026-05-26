@@ -57,13 +57,12 @@ interface AccountInfo {
   offre: string;
 }
 
-interface RecipeInfo {
+interface PatternInfo {
   id: string;
-  code: string;
   label: string;
   source: string;
   templateId: string | null;
-  needsCover: string;
+  coverMode: string;
   needsCaptions: boolean;
   needsDescription: string;
   needsRushes: boolean;
@@ -114,7 +113,7 @@ export interface PublicationFicheProps {
   slot: SlotInfo;
   account: AccountInfo;
   listing: { id: string } | null;
-  recipe: RecipeInfo | null;
+  pattern: PatternInfo | null;
   render: RenderInfo | null;
   coverPack: CoverPackInfo | null;
   assigneeMonteur: AssigneeInfo | null;
@@ -152,7 +151,7 @@ export function PublicationFiche({
   slot,
   account,
   listing,
-  recipe,
+  pattern,
   render,
   coverPack,
   assigneeMonteur,
@@ -193,7 +192,7 @@ export function PublicationFiche({
         slot={slot}
         account={account}
         listing={listing}
-        recipe={recipe ? { id: recipe.id, code: recipe.code, label: recipe.label } : null}
+        pattern={pattern ? { id: pattern.id, label: pattern.label } : null}
         assigneeMonteur={assigneeMonteur}
         assigneeCm={assigneeCm}
         canMarkPublished={canMarkPublished}
@@ -206,8 +205,8 @@ export function PublicationFiche({
         {/* Chaîne de production */}
         <ProductionChain steps={steps} />
 
-        {/* Brief éditorial — Phase B3, conditionné par recipe.needsBrief */}
-        {recipe?.needsBrief && (
+        {/* Brief éditorial — Phase B3, conditionné par pattern.needsBrief */}
+        {pattern?.needsBrief && (
           <BriefSection
             slotId={slot.id}
             brief={brief}
@@ -217,8 +216,8 @@ export function PublicationFiche({
           />
         )}
 
-        {/* Rushes — Phase B2, conditionné par recipe.needsRushes */}
-        {recipe?.needsRushes && (
+        {/* Rushes — Phase B2, conditionné par pattern.needsRushes */}
+        {pattern?.needsRushes && (
           <RushesSection
             slotId={slot.id}
             rushes={rushes}
@@ -228,8 +227,8 @@ export function PublicationFiche({
           />
         )}
 
-        {/* Versions livrées — Phase C1, conditionné par recipe.needsRushes */}
-        {recipe?.needsRushes && (
+        {/* Versions livrées — Phase C1, conditionné par pattern.needsRushes */}
+        {pattern?.needsRushes && (
           <VersionsSection
             slotId={slot.id}
             versions={versions}
@@ -244,7 +243,7 @@ export function PublicationFiche({
         {/* Rendu vidéo */}
         <RenderSection
           slot={{ id: slot.id }}
-          recipe={recipe ? { source: recipe.source, templateId: recipe.templateId } : null}
+          pattern={pattern ? { source: pattern.source, templateId: pattern.templateId } : null}
           render={render}
           listingId={listing?.id ?? null}
           canEdit={canEditRender}
@@ -253,7 +252,7 @@ export function PublicationFiche({
         {/* Cover Instagram */}
         <CoverSection
           slot={{ id: slot.id }}
-          recipe={recipe ? { needsCover: recipe.needsCover } : null}
+          pattern={pattern ? { coverMode: pattern.coverMode } : null}
           coverPack={coverPack}
           canEdit={canEditCover}
           currentVersion={currentVersion}
@@ -263,7 +262,7 @@ export function PublicationFiche({
         <CaptionsSection
           slot={{ id: slot.id }}
           renderId={render?.id ?? null}
-          recipe={recipe ? { needsCaptions: recipe.needsCaptions } : null}
+          pattern={pattern ? { needsCaptions: pattern.needsCaptions } : null}
           canEdit={canEditCaptions}
           currentVersion={currentVersion}
         />
@@ -271,7 +270,7 @@ export function PublicationFiche({
         {/* Description de publication */}
         <DescriptionSection
           slot={{ id: slot.id }}
-          recipe={recipe ? { needsDescription: recipe.needsDescription } : null}
+          pattern={pattern ? { needsDescription: pattern.needsDescription } : null}
           initialDescription={slot.description ?? ""}
           canEdit={canEditDescription}
           renderId={render?.id ?? null}

@@ -8,9 +8,8 @@ test.describe("Admin navigation structure (Phase 1.4 + 1.4.6)", () => {
 
   test("nav admin has all expected items (Production / Clients / Configuration)", async ({ page }) => {
     // Vérification par hrefs (plus robuste que sélecteurs sur les labels uppercase).
-    // Production : Templates (Phase 1.4 B1) + Recettes + Planification
+    // Production : Templates (Phase 1.4 B1) + Planification (Recettes supprimées Phase 1.6)
     await expect(page.locator('a[href="/templates"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/admin/recipes"]').first()).toBeVisible();
     await expect(page.locator('a[href="/admin/offer-schedule"]').first()).toBeVisible();
     // Clients
     await expect(page.locator('a[href="/admin/clients"]').first()).toBeVisible();
@@ -37,10 +36,10 @@ test.describe("Admin navigation structure (Phase 1.4 + 1.4.6)", () => {
     await expect(page.locator('a[href="/admin/prompts"]')).toBeVisible();
   });
 
-  test("Planification page : 2 tabs (Règles + Offres)", async ({ page }) => {
+  test("Planification page : affiche OffersPanel (onglet Règles supprimé Phase 1.6)", async ({ page }) => {
+    // Phase 1.6 : OfferSchedulePanel (Règles) supprimé — la page n'affiche plus que OffersPanel
     await page.goto("/admin/offer-schedule");
-    await expect(page.locator("text=Règles").first()).toBeVisible();
-    await expect(page.locator("text=Offres").first()).toBeVisible();
+    await expect(page.locator("h1, h2, h3").filter({ hasText: /planification/i }).first()).toBeVisible();
   });
 
   test("Client detail : 2 tabs (Infos + Comptes Instagram)", async ({ page }) => {

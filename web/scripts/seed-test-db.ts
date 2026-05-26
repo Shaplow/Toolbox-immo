@@ -7,7 +7,7 @@
  * - 1 CM (cm@test.local / testpass)
  * - 1 user legacy avec permissions ["captions"] (user@test.local / testpass)
  * - 1 client + 1 InstagramAccount rattaché
- * - 1 ContentRecipe minimale ("RPI" auto_template)
+ * - 1 AccountPattern minimale ("RPI" auto_template)
  * - 1 PublicationSlot assigné au monteur ET au CM (pour tester les 2 rôles)
  *
  * Idempotent : utilise upsert sur les emails uniques + cuid déterministes
@@ -133,29 +133,31 @@ async function main() {
     create: { name: "ESSENTIEL" },
   });
 
-  // ── ContentRecipe minimale ────────────────────────────────────────────────
-  const recipe = await prisma.contentRecipe.upsert({
-    where: { code: "TEST_RPI" },
+  // ── AccountPattern minimale (remplace ContentRecipe) ────────────────────
+  const pattern = await prisma.accountPattern.upsert({
+    where: { id: "test-pattern-1" },
     update: {
       defaultAssigneeMonteurId: monteur.id,
       defaultAssigneeCmId: cm.id,
     },
     create: {
-      code: "TEST_RPI",
-      label: "Test RPI (E2E fixture)",
+      id: "test-pattern-1",
+      accountId: account.id,
+      label: "Test Pattern (E2E fixture)",
       source: "auto_template",
       needsDescription: "autoGenerate",
-      needsCover: "auto",
       needsCaptions: true,
       needsClientValidation: false,
       needsRushes: true,
       needsBrief: true,
+      dayOfWeek: 1,
+      publishTime: "09:00",
       defaultAssigneeMonteurId: monteur.id,
       defaultAssigneeCmId: cm.id,
     },
   });
 
-  console.log(`  ✓ Recipe : ${recipe.id}`);
+  console.log(`  ✓ Pattern : ${pattern.id}`);
 
   // ── PublicationSlot ───────────────────────────────────────────────────────
   // 1 slot ASSIGNÉ au monteur + au CM (les tests vérifient l'accès des 2)
@@ -168,13 +170,13 @@ async function main() {
     update: {
       assigneeMonteurId: monteur.id,
       assigneeCmId: cm.id,
-      recipeId: recipe.id,
+      patternId: pattern.id,
       accountId: account.id,
     },
     create: {
       id: "test-slot-1",
       accountId: account.id,
-      recipeId: recipe.id,
+      patternId: pattern.id,
       contentType: "TEST_RPI",
       scheduledAt,
       status: "PLANNED",
@@ -197,7 +199,7 @@ async function main() {
     create: {
       id: "test-slot-orphan",
       accountId: account.id,
-      recipeId: recipe.id,
+      patternId: pattern.id,
       contentType: "TEST_RPI",
       scheduledAt: orphanScheduled,
       status: "DRAFT",

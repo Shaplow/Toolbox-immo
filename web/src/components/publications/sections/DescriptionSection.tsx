@@ -19,7 +19,7 @@ import { FileText, ExternalLink, Save, Check } from "lucide-react";
 
 interface Props {
   slot: { id: string };
-  recipe: { needsDescription: string } | null;
+  pattern: { needsDescription: string } | null;
   /** Valeur initiale = slot.description ?? "" */
   initialDescription: string;
   /** true pour CM et ADMIN */
@@ -27,20 +27,20 @@ interface Props {
   renderId: string | null;
 }
 
-export function DescriptionSection({ slot, recipe, initialDescription, canEdit, renderId }: Props) {
-  // Si la recipe indique que la description n'est pas nécessaire, on masque
-  if (recipe?.needsDescription === "none") return null;
+export function DescriptionSection({ slot, pattern, initialDescription, canEdit, renderId }: Props) {
+  // Si le pattern indique que la description n'est pas nécessaire, on masque
+  if (pattern?.needsDescription === "none") return null;
 
   return <DescriptionSectionInner
     slot={slot}
-    recipe={recipe}
+    pattern={pattern}
     initialDescription={initialDescription}
     canEdit={canEdit}
     renderId={renderId}
   />;
 }
 
-function DescriptionSectionInner({ slot, recipe, initialDescription, canEdit, renderId }: Props) {
+function DescriptionSectionInner({ slot, pattern, initialDescription, canEdit, renderId }: Props) {
   const [value, setValue] = useState(initialDescription);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -82,8 +82,8 @@ function DescriptionSectionInner({ slot, recipe, initialDescription, canEdit, re
         <div className="flex items-center gap-2">
           <FileText size={16} className="text-gray-400" />
           <h2 className="text-sm font-semibold text-gray-700">Description</h2>
-          {recipe?.needsDescription && recipe.needsDescription !== "none" && (
-            <span className="text-xs text-gray-400 italic">({recipe.needsDescription})</span>
+          {pattern?.needsDescription && pattern.needsDescription !== "none" && (
+            <span className="text-xs text-gray-400 italic">({pattern.needsDescription})</span>
           )}
         </div>
 

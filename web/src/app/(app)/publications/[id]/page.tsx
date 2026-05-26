@@ -33,14 +33,13 @@ export default async function PublicationPage({ params }: PageProps) {
           client: { select: { name: true } },
         },
       },
-      recipe: {
+      pattern: {
         select: {
           id: true,
-          code: true,
           label: true,
           source: true,
           templateId: true,
-          needsCover: true,
+          coverMode: true,
           needsCaptions: true,
           needsDescription: true,
           needsClientValidation: true,
@@ -196,7 +195,7 @@ export default async function PublicationPage({ params }: PageProps) {
   // Calcul des steps
   const steps = computePublicationSteps({
     slot: { status: slot.status, caption: slot.caption },
-    recipe: slot.recipe ?? null,
+    pattern: slot.pattern ?? null,
     renderJob: slot.render ?? null,
     coverPack: slot.render?.coverFramePack ?? null,
     captionJob: null,
@@ -247,19 +246,18 @@ export default async function PublicationPage({ params }: PageProps) {
         offre: slot.account.offre,
       }}
       listing={listing}
-      recipe={
-        slot.recipe
+      pattern={
+        slot.pattern
           ? {
-              id: slot.recipe.id,
-              code: slot.recipe.code,
-              label: slot.recipe.label,
-              source: slot.recipe.source,
-              templateId: slot.recipe.templateId,
-              needsCover: slot.recipe.needsCover,
-              needsCaptions: slot.recipe.needsCaptions,
-              needsDescription: slot.recipe.needsDescription,
-              needsRushes: slot.recipe.needsRushes,
-              needsBrief: slot.recipe.needsBrief,
+              id: slot.pattern.id,
+              label: slot.pattern.label,
+              source: slot.pattern.source,
+              templateId: slot.pattern.templateId,
+              coverMode: slot.pattern.coverMode,
+              needsCaptions: slot.pattern.needsCaptions,
+              needsDescription: slot.pattern.needsDescription,
+              needsRushes: slot.pattern.needsRushes,
+              needsBrief: slot.pattern.needsBrief,
             }
           : null
       }

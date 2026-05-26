@@ -101,7 +101,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   );
 
   const { status, title, caption, description, templateId, scheduledAt, contentType, fields, fieldSchema,
-          assigneeMonteurId, assigneeCmId, recipeId, currentVersionId, isAuto } = body as Record<string, unknown>;
+          assigneeMonteurId, assigneeCmId, patternId, currentVersionId, isAuto } = body as Record<string, unknown>;
   // notes est mutable : peut être sanitisé avant l'update (H2).
   let { notes } = body as Record<string, unknown>;
 
@@ -179,7 +179,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(fieldSchema !== undefined ? { fieldSchema: JSON.stringify(fieldSchema) } : {}),
       ...(assigneeMonteurId !== undefined ? { assigneeMonteurId: assigneeMonteurId as string | null } : {}),
       ...(assigneeCmId !== undefined ? { assigneeCmId: assigneeCmId as string | null } : {}),
-      ...(recipeId !== undefined ? { recipeId: recipeId as string | null } : {}),
+      ...(patternId !== undefined ? { patternId: patternId as string | null } : {}),
       ...(currentVersionId !== undefined ? { currentVersionId: currentVersionId as string | null } : {}),
       ...(isAuto !== undefined ? { isAuto: isAuto as boolean } : {}),
     },
