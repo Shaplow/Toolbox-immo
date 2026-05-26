@@ -1,0 +1,102 @@
+"use client";
+
+import { useRef, useState } from "react";
+import type { ImageBlock } from "@/types/template";
+import { Section } from "./Section";
+
+export function ImageBlockPropertiesPanel({
+  block,
+  onChange,
+}: {
+  block: ImageBlock;
+  onChange: (c: Partial<ImageBlock>) => void;
+}) {
+  const staticInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleStaticUpload(file: File) {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (data.url) onChange({ staticSrc: data.url });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <Section label="Options image">
+      {/* Image statique (logo, fond fixe) */}
+      <div className="mb-3">
+        <p className="text-gray-400 mb-1">Image statique (logo, fond…)</p>
+        <input
+          ref={staticInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleStaticUpload(f);
+            e.target.value = "";
+          }}
+        />
+        {block.staticSrc ? (
+          <div className="flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={block.staticSrc} alt="" className="h-10 w-10 object-contain rounded border border-gray-200 bg-gray-50" />
+            <span className="text-[10px] text-gray-500 flex-1 truncate">{block.staticSrc.split("/").pop()}</span>
+            <button
+              type="button"
+              onClick={() => onChange({ staticSrc: undefined })}
+              className="text-[10px] text-red-400 hover:text-red-600"
+              title="Retirer l'image statique"
+            >✕</button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => staticInputRef.current?.click()}
+            disabled={uploading}
+            className="w-full text-xs py-1.5 border border-dashed border-gray-300 rounded text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {uploading ? "Upload…" : "+ Télécharger une image"}
+          </button>
+        )}
+        {block.staticSrc && (
+          <button
+            type="button"
+            onClick={() => staticInputRef.current?.click()}
+            disabled={uploading}
+            className="mt-1 w-full text-[10px] text-gray-400 hover:text-gray-600"
+          >
+            Remplacer
+          </button>
+        )}
+        <p className="text-[9px] text-gray-300 mt-1">
+          Si renseigné, cette image est toujours affichée (ignore le binding).
+        </p>
+      </div>
+
+      <label className="flex flex-col gap-0.5">
+        <span className="text-gray-400">Ajustement</span>
+        <select value={block.fit}
+          onChange={(e) => onChange({ fit: e.target.value as "cover" | "contain" })}
+          className="border border-gray-200 rounded px-2 py-1"
+        >
+          <option value="cover">Cover</option>
+          <option value="contain">Contain</option>
+        </select>
+      </label>
+      <label className="flex flex-col gap-0.5 mt-2">
+        <span className="text-gray-400">Border radius</span>
+        <input type="number" value={block.borderRadius ?? 0}
+          onChange={(e) => onChange({ borderRadius: Number(e.target.value) })}
+          className="border border-gray-200 rounded px-2 py-1"
+        />
+      </label>
+    </Section>
+  );
+}
