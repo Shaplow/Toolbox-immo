@@ -162,12 +162,9 @@ function VersionCard({
   }
 
   async function handleDelete(): Promise<void> {
-    if (isCurrent) {
-      toast.error(
-        "Impossible de supprimer la version courante. Promouvez d'abord une autre version."
-      );
-      return;
-    }
+    // Note: DeleteButton is only rendered when canDelete=true (i.e. !isCurrent),
+    // so this handler is never called for the current version.
+    // The API route enforces this check server-side as an additional guard.
     const res = await fetch(`/api/publications/${slotId}/versions/${version.id}`, {
       method: "DELETE",
     });
