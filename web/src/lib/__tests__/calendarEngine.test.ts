@@ -53,12 +53,12 @@ function expectedSlotDate(monday: Date, dayOfWeek: number, publishTime: string):
   return d;
 }
 
-/** Pattern minimal (actif, lundi 09:00) */
+/** Pattern minimal (actif, [lundi] 09:00) */
 function makePattern(overrides: Partial<{
   id: string;
   accountId: string;
   label: string;
-  dayOfWeek: number;
+  dayOfWeek: number[];
   publishTime: string;
   templateId: string | null;
   defaultAssigneeMonteurId: string | null;
@@ -69,7 +69,7 @@ function makePattern(overrides: Partial<{
     id: "pattern-1",
     accountId: "account-1",
     label: "Test Pattern",
-    dayOfWeek: 1, // Lundi
+    dayOfWeek: [1], // Lundi
     publishTime: "09:00",
     templateId: null,
     defaultAssigneeMonteurId: null,
@@ -139,8 +139,8 @@ describe("generateCalendarSlots", () => {
 
   it("2 patterns sur le même compte jours différents → 2 slots créés", async () => {
     mockPatternFindMany.mockResolvedValue([
-      makePattern({ id: "p1", dayOfWeek: 1, publishTime: "09:00" }),
-      makePattern({ id: "p2", dayOfWeek: 3, publishTime: "18:00" }), // Mercredi
+      makePattern({ id: "p1", dayOfWeek: [1], publishTime: "09:00" }),
+      makePattern({ id: "p2", dayOfWeek: [3], publishTime: "18:00" }), // Mercredi
     ]);
 
     const result = await generateCalendarSlots({
@@ -164,16 +164,67 @@ describe("generateCalendarSlots", () => {
     expect(second.scheduledAt.getUTCDate()).toBe(monday.getUTCDate() + 2);
   });
 
+  // ── Multi-jour : 1 pattern dayOfWeek=[1,3,5] → 3 slots par semaine ───────
+
+  it("1 pattern dayOfWeek=[1,3,5] → 3 slots créés dans la semaine (Lun, Mer, Ven)", async () => {
+    mockPatternFindMany.mockResolvedValue([
+      makePattern({ id: "p-multi", dayOfWeek: [1, 3, 5], publishTime: "10:00" }),
+    ]);
+
+    const result = await generateCalendarSlots({
+      dateFrom: monday,
+      dateTo: sunday,
+    });
+
+    expect(result.created).toBe(3);
+    expect(result.skipped).toBe(0);
+    expect(mockCreateMany).toHaveBeenCalledOnce();
+
+    const dataArr = mockCreateMany.mock.calls[0][0].data;
+    expect(dataArr).toHaveLength(3);
+
+    // Lundi (dow=1) → offset 0
+    expect(dataArr[0].scheduledAt.getUTCDate()).toBe(monday.getUTCDate());
+    // Mercredi (dow=3) → offset 2
+    expect(dataArr[1].scheduledAt.getUTCDate()).toBe(monday.getUTCDate() + 2);
+    // Vendredi (dow=5) → offset 4
+    expect(dataArr[2].scheduledAt.getUTCDate()).toBe(monday.getUTCDate() + 4);
+
+    // Tous à 10:00 UTC
+    for (const slot of dataArr) {
+      expect(slot.scheduledAt.getUTCHours()).toBe(10);
+      expect(slot.scheduledAt.getUTCMinutes()).toBe(0);
+    }
+  });
+
+  // ── Pattern dayOfWeek vide → warning + skip ───────────────────────────────
+
+  it("pattern dayOfWeek=[] (array vide) → 0 slot créé (warning console)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockPatternFindMany.mockResolvedValue([makePattern({ dayOfWeek: [] })]);
+
+    const result = await generateCalendarSlots({
+      dateFrom: monday,
+      dateTo: sunday,
+    });
+
+    expect(result.created).toBe(0);
+    expect(result.skipped).toBe(0);
+    expect(mockCreateMany).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("empty dayOfWeek"));
+    warnSpy.mockRestore();
+  });
+
   // ── Idempotence ───────────────────────────────────────────────────────────
 
   it("idempotence : slot déjà existant → skipped, pas de doublon", async () => {
     const pattern = makePattern();
     mockPatternFindMany.mockResolvedValue([pattern]);
-    // Simuler que le slot existe déjà
+    // Simuler que le slot existe déjà (dayOfWeek[0] = lundi)
     mockSlotFindMany.mockResolvedValue([
       {
         accountId: pattern.accountId,
-        scheduledAt: expectedSlotDate(monday, pattern.dayOfWeek, pattern.publishTime),
+        scheduledAt: expectedSlotDate(monday, pattern.dayOfWeek[0], pattern.publishTime),
         patternId: pattern.id,
       },
     ]);
@@ -201,7 +252,7 @@ describe("generateCalendarSlots", () => {
     mockSlotFindMany.mockResolvedValueOnce([
       {
         accountId: pattern.accountId,
-        scheduledAt: expectedSlotDate(monday, pattern.dayOfWeek, pattern.publishTime),
+        scheduledAt: expectedSlotDate(monday, pattern.dayOfWeek[0], pattern.publishTime),
         patternId: pattern.id,
       },
     ]);
@@ -274,8 +325,8 @@ describe("generateCalendarSlots", () => {
     const mondayEnd = new Date(monday);
     mondayEnd.setUTCHours(23, 59, 59, 999);
 
-    // dayOfWeek=7 → targetDate = lundi + 6 = dimanche → > mondayEnd → hors plage
-    mockPatternFindMany.mockResolvedValue([makePattern({ dayOfWeek: 7 })]);
+    // dayOfWeek=[7] → targetDate = lundi + 6 = dimanche → > mondayEnd → hors plage
+    mockPatternFindMany.mockResolvedValue([makePattern({ dayOfWeek: [7] })]);
 
     const result = await generateCalendarSlots({
       dateFrom: mondayOnly,
@@ -307,7 +358,7 @@ describe("generateCalendarSlots", () => {
   // ── Multi-semaine (régression du BLOCKER code review) ──────────────────────
 
   it("plage 2 semaines + 1 pattern → 2 slots créés (1 par semaine)", async () => {
-    const pattern = makePattern({ dayOfWeek: 1, publishTime: "09:00" });
+    const pattern = makePattern({ dayOfWeek: [1], publishTime: "09:00" });
     mockPatternFindMany.mockResolvedValue([pattern]);
 
     const dateFrom = new Date(monday);
@@ -333,10 +384,10 @@ describe("generateCalendarSlots", () => {
 
   it("performance : N patterns → 1 findMany existing + 1 createMany (pas de N+1)", async () => {
     const patterns = [
-      makePattern({ id: "p1", dayOfWeek: 1, publishTime: "09:00" }),
-      makePattern({ id: "p2", dayOfWeek: 2, publishTime: "10:00" }),
-      makePattern({ id: "p3", dayOfWeek: 3, publishTime: "11:00" }),
-      makePattern({ id: "p4", dayOfWeek: 4, publishTime: "12:00" }),
+      makePattern({ id: "p1", dayOfWeek: [1], publishTime: "09:00" }),
+      makePattern({ id: "p2", dayOfWeek: [2], publishTime: "10:00" }),
+      makePattern({ id: "p3", dayOfWeek: [3], publishTime: "11:00" }),
+      makePattern({ id: "p4", dayOfWeek: [4], publishTime: "12:00" }),
     ];
     mockPatternFindMany.mockResolvedValue(patterns);
 

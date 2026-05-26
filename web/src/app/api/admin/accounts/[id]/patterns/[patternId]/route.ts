@@ -31,7 +31,7 @@ type PatchBody = {
   needsClientValidation?: boolean;
   needsRushes?: boolean;
   needsBrief?: boolean;
-  dayOfWeek?: number;
+  dayOfWeek?: number[];
   publishTime?: string;
   isActive?: boolean;
   defaultAssigneeMonteurId?: string | null;
@@ -52,8 +52,13 @@ function validatePatchBody(body: PatchBody): string | null {
     return `needsDescription invalide. Valeurs acceptées : ${VALID_NEEDS_DESCRIPTION.join(", ")}`;
   }
   if (body.dayOfWeek !== undefined) {
-    const d = Number(body.dayOfWeek);
-    if (!Number.isInteger(d) || d < 1 || d > 7) return "dayOfWeek doit être un entier entre 1 (lundi) et 7 (dimanche)";
+    if (!Array.isArray(body.dayOfWeek) || body.dayOfWeek.length === 0) {
+      return "dayOfWeek doit être un tableau non vide";
+    }
+    const validDays = body.dayOfWeek.every(
+      (d: unknown) => typeof d === "number" && Number.isInteger(d) && d >= 1 && d <= 7
+    );
+    if (!validDays) return "Chaque jour doit être un entier entre 1 (lundi) et 7 (dimanche)";
   }
   if (body.publishTime !== undefined && !PUBLISH_TIME_RE.test(body.publishTime)) {
     return "publishTime doit être au format HH:MM";
@@ -123,7 +128,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (body.needsClientValidation !== undefined) data.needsClientValidation = body.needsClientValidation;
   if (body.needsRushes !== undefined) data.needsRushes = body.needsRushes;
   if (body.needsBrief !== undefined) data.needsBrief = body.needsBrief;
-  if (body.dayOfWeek !== undefined) data.dayOfWeek = Number(body.dayOfWeek);
+  if (body.dayOfWeek !== undefined) data.dayOfWeek = [...new Set(body.dayOfWeek)].sort((a, b) => a - b);
   if (body.publishTime !== undefined) data.publishTime = body.publishTime;
   if (body.isActive !== undefined) data.isActive = body.isActive;
   if ("defaultAssigneeMonteurId" in body) data.defaultAssigneeMonteur = body.defaultAssigneeMonteurId ? { connect: { id: body.defaultAssigneeMonteurId } } : { disconnect: true };

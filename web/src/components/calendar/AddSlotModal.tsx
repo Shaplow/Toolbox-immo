@@ -14,7 +14,7 @@ interface Account {
 interface PatternOption {
   id: string;
   label: string;
-  dayOfWeek: number;
+  dayOfWeek: number[];
   publishTime: string;
   isActive: boolean;
   defaultAssigneeMonteur: { id: string; name: string } | null;
@@ -252,7 +252,7 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
                 <option value="">— Saisie manuelle —</option>
                 {patterns.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {DAYS[p.dayOfWeek] ?? `Jour ${p.dayOfWeek}`} {p.publishTime} — {p.label}
+                    {p.dayOfWeek.map((d) => DAYS[d] ?? `J${d}`).join("/")} {p.publishTime} — {p.label}
                   </option>
                 ))}
               </select>

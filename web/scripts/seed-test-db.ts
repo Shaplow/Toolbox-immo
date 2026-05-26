@@ -142,7 +142,7 @@ async function main() {
       needsClientValidation: false,
       needsRushes: true,
       needsBrief: true,
-      dayOfWeek: 1,
+      dayOfWeek: [1],
       publishTime: "09:00",
       defaultAssigneeMonteurId: monteur.id,
       defaultAssigneeCmId: cm.id,
