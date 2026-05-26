@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { WorklistSection } from "./WorklistSection";
@@ -231,16 +230,6 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
       )}
         </>
       )}
-
-      {/* Lien vers tous les outils */}
-      <div className="pt-2 border-t border-gray-100">
-        <Link
-          href="/tools"
-          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors"
-        >
-          Accéder à tous les outils <ArrowRight size={12} />
-        </Link>
-      </div>
     </div>
   );
 }

@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { ShieldAlert, Wrench, ArrowRight } from "lucide-react";
+import { ShieldAlert, Wrench } from "lucide-react";
 import { parsePermissions } from "@/lib/userContext";
 
 interface HomeUserProps {
@@ -11,7 +10,8 @@ interface HomeUserProps {
  * Page d'accueil pour les utilisateurs dont le rôle n'est pas configuré
  * pour la pipeline éditoriale (rôle USER ou rôle inconnu).
  *
- * - Si l'user a au moins une permission outil : accueil neutre + lien vers /tools.
+ * - Si l'user a au moins une permission outil : accueil neutre + invite à
+ *   consulter la sidebar.
  * - Sinon : message "Rôle non configuré" avec recommandation admin.
  */
 export function HomeUser({ permissions }: HomeUserProps) {
@@ -28,18 +28,9 @@ export function HomeUser({ permissions }: HomeUserProps) {
         <div>
           <h1 className="text-xl font-bold text-gray-900 mb-2">Bienvenue</h1>
           <p className="text-sm text-gray-500 leading-relaxed">
-            Vos outils sont disponibles. Retrouvez vos accès en cliquant
-            ci-dessous.
+            Vos outils sont disponibles dans la barre latérale.
           </p>
         </div>
-
-        <Link
-          href="/tools"
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
-        >
-          Accéder à vos outils
-          <ArrowRight size={14} />
-        </Link>
       </div>
     );
   }
@@ -62,14 +53,6 @@ export function HomeUser({ permissions }: HomeUserProps) {
           aux publications qui vous sont assignées.
         </p>
       </div>
-
-      <Link
-        href="/tools"
-        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
-      >
-        Accéder aux outils
-        <ArrowRight size={14} />
-      </Link>
     </div>
   );
 }
