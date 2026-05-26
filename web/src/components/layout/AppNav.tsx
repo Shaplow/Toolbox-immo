@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState, type ReactNode } from "react";
-import { Home, List, Users, Library, LogOut, CalendarDays, Zap, Building2, LayoutGrid, LayoutTemplate } from "lucide-react";
+import { Home, List, Users, Library, LogOut, CalendarDays, Tag, Building2, LayoutGrid, LayoutTemplate } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { TOOL_META } from "@/lib/toolMeta";
 import { useWorklistCount } from "@/hooks/useWorklistCount";
@@ -89,7 +89,7 @@ export function AppNav({
           title: "Production",
           items: [
             { href: "/templates", label: "Templates", icon: <LayoutTemplate size={16} /> },
-            { href: "/admin/offer-schedule", label: "Planification", icon: <Zap size={16} /> },
+            { href: "/admin/offer-schedule", label: "Offres", icon: <Tag size={16} /> },
           ],
         },
         {
