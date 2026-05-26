@@ -67,7 +67,7 @@ L'app a pivoté d'une grille d'outils standalone vers un pipeline éditorial ave
 - `Toast` (`@/components/ui/Toast`) — `toast.success/error/info`. **Jamais d'`alert()` ni `confirm()` natif dans le code admin/UI.**
 
 ### Patterns admin
-- **Pattern d'onglets** : `state activeTab` + boutons toggle inline + support `?tab=X` via `useSearchParams`. Références : `/admin/clients/[id]/page.tsx`, `/admin/offer-schedule/page.tsx`.
+- **Pattern d'onglets** : `state activeTab` + boutons toggle inline + support `?tab=X` via `useSearchParams`. Référence : `/admin/clients/[id]/page.tsx`.
 - **Pattern hub avec cards** : grid responsive `grid-cols-1 sm:grid-cols-2 lg:grid-cols-N` + cards stack vertical (icône 40×40 dans wrapper colored + titre + description). Référence : `/admin/libraries/page.tsx` (hub "Ressources").
 - **Page admin avec panel client** : server component qui fetch via Prisma + passe initialData à un client component. Garde admin via `getUserContext` + `actualUser.role === "ADMIN"` (redirect si non).
 - **ToolPageHeader** partout en haut des pages admin (titre + subtitle + icône + actions optionnelles).
