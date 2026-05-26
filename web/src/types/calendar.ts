@@ -55,19 +55,6 @@ export interface PublicationSlot {
   assigneeCm?: { id: string; name: string | null } | null;
 }
 
-export interface OfferScheduleRule {
-  id: string;
-  offre: string;
-  dayOfWeek: number;
-  publishTime: string;
-  contentType: string;
-  templateId: string | null;
-  template: { id: string; name: string; contentType: string } | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
 // Re-exported from the centralized source of truth — do not duplicate here.
 export { STATUS_LABELS, STATUS_COLORS, STATUS_DOT, STATUS_GROUP } from "@/lib/slots/statusLabels";
 
