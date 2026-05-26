@@ -31,7 +31,7 @@ export type AccountPatternRow = {
   needsClientValidation: boolean;
   needsRushes: boolean;
   needsBrief: boolean;
-  dayOfWeek: number;
+  dayOfWeek: number[];
   publishTime: string;
   isActive: boolean;
   defaultAssigneeMonteurId?: string | null;
@@ -66,7 +66,7 @@ type FormValues = {
   needsClientValidation: boolean;
   needsRushes: boolean;
   needsBrief: boolean;
-  dayOfWeek: string;
+  daysOfWeek: number[];
   publishTime: string;
   defaultAssigneeMonteurId: string;
   defaultAssigneeCmId: string;
@@ -89,7 +89,7 @@ function defaultValues(initial?: AccountPatternRow | null): FormValues {
       needsClientValidation: false,
       needsRushes: false,
       needsBrief: false,
-      dayOfWeek: "1",
+      daysOfWeek: [1],
       publishTime: "09:00",
       defaultAssigneeMonteurId: "",
       defaultAssigneeCmId: "",
@@ -111,7 +111,7 @@ function defaultValues(initial?: AccountPatternRow | null): FormValues {
     needsClientValidation: initial.needsClientValidation,
     needsRushes: initial.needsRushes,
     needsBrief: initial.needsBrief,
-    dayOfWeek: String(initial.dayOfWeek),
+    daysOfWeek: Array.isArray(initial.dayOfWeek) ? initial.dayOfWeek : [initial.dayOfWeek],
     publishTime: initial.publishTime,
     defaultAssigneeMonteurId: initial.defaultAssigneeMonteurId ?? "",
     defaultAssigneeCmId: initial.defaultAssigneeCmId ?? "",
@@ -121,6 +121,18 @@ function defaultValues(initial?: AccountPatternRow | null): FormValues {
   };
 }
 
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const DAYS_OF_WEEK = [
+  { value: 1, label: "Lun" },
+  { value: 2, label: "Mar" },
+  { value: 3, label: "Mer" },
+  { value: 4, label: "Jeu" },
+  { value: 5, label: "Ven" },
+  { value: 6, label: "Sam" },
+  { value: 7, label: "Dim" },
+];
+
 // ─── Validation ───────────────────────────────────────────────────────────────
 
 const PUBLISH_TIME_RE = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
@@ -128,8 +140,7 @@ const PUBLISH_TIME_RE = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
 function validate(values: FormValues): Partial<Record<keyof FormValues, string>> {
   const errors: Partial<Record<keyof FormValues, string>> = {};
   if (!values.label.trim()) errors.label = "Le label est requis";
-  const dow = Number(values.dayOfWeek);
-  if (!Number.isInteger(dow) || dow < 1 || dow > 7) errors.dayOfWeek = "Jour invalide (1-7)";
+  if (values.daysOfWeek.length === 0) errors.daysOfWeek = "Sélectionnez au moins un jour";
   if (!PUBLISH_TIME_RE.test(values.publishTime)) errors.publishTime = "Format HH:MM requis";
   return errors;
 }
@@ -234,7 +245,7 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
         needsClientValidation: values.needsClientValidation,
         needsRushes: values.needsRushes,
         needsBrief: values.needsBrief,
-        dayOfWeek: Number(values.dayOfWeek),
+        dayOfWeek: values.daysOfWeek,
         publishTime: values.publishTime,
         defaultAssigneeMonteurId: values.defaultAssigneeMonteurId || null,
         defaultAssigneeCmId: values.defaultAssigneeCmId || null,
@@ -422,31 +433,48 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
 
               {/* ── Section 5 : Planning ── */}
               <Section title="Planning">
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField label="Jour de la semaine" required error={errors.dayOfWeek}>
-                    <select
-                      value={values.dayOfWeek}
-                      onChange={(e) => set("dayOfWeek", e.target.value)}
-                      className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 ${errors.dayOfWeek ? "border-red-300" : "border-gray-200"}`}
-                    >
-                      <option value="1">Lundi</option>
-                      <option value="2">Mardi</option>
-                      <option value="3">Mercredi</option>
-                      <option value="4">Jeudi</option>
-                      <option value="5">Vendredi</option>
-                      <option value="6">Samedi</option>
-                      <option value="7">Dimanche</option>
-                    </select>
-                  </FormField>
-                  <FormField label="Heure de publication" required error={errors.publishTime}>
-                    <input
-                      type="time"
-                      value={values.publishTime}
-                      onChange={(e) => set("publishTime", e.target.value)}
-                      className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 ${errors.publishTime ? "border-red-300" : "border-gray-200"}`}
-                    />
-                  </FormField>
-                </div>
+                <FormField label="Jours de publication" required error={errors.daysOfWeek}>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {DAYS_OF_WEEK.map((day) => {
+                      const checked = values.daysOfWeek.includes(day.value);
+                      return (
+                        <label
+                          key={day.value}
+                          className={`inline-flex items-center justify-center w-10 h-10 rounded-lg border text-xs font-medium cursor-pointer select-none transition-colors ${
+                            checked
+                              ? "bg-indigo-600 border-indigo-600 text-white"
+                              : "bg-white border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600"
+                          } ${errors.daysOfWeek ? "border-red-300" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                set("daysOfWeek", [...values.daysOfWeek, day.value].sort((a, b) => a - b));
+                              } else {
+                                set("daysOfWeek", values.daysOfWeek.filter((d) => d !== day.value));
+                              }
+                            }}
+                            className="sr-only"
+                          />
+                          {day.label}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {errors.daysOfWeek && (
+                    <p className="mt-1 text-xs text-red-600">{errors.daysOfWeek}</p>
+                  )}
+                </FormField>
+                <FormField label="Heure de publication" required error={errors.publishTime}>
+                  <input
+                    type="time"
+                    value={values.publishTime}
+                    onChange={(e) => set("publishTime", e.target.value)}
+                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 ${errors.publishTime ? "border-red-300" : "border-gray-200"}`}
+                  />
+                </FormField>
               </Section>
 
               {/* ── Section 6 : Assignations ── */}

@@ -107,7 +107,9 @@ function PatternCard({
             )}
           </div>
           <p className="text-xs text-gray-400 mt-0.5">
-            {DAY_LABELS[pattern.dayOfWeek] ?? `Jour ${pattern.dayOfWeek}`} · {pattern.publishTime}
+            {Array.isArray(pattern.dayOfWeek)
+              ? pattern.dayOfWeek.map((d) => DAY_LABELS[d] ?? `J${d}`).join(", ")
+              : (DAY_LABELS[pattern.dayOfWeek as unknown as number] ?? `Jour ${pattern.dayOfWeek}`)} · {pattern.publishTime}
           </p>
         </div>
         <span className="text-[10px] font-medium text-gray-400 bg-gray-50 border border-gray-100 rounded px-2 py-1 shrink-0">
