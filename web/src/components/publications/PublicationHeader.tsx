@@ -150,7 +150,17 @@ export function PublicationHeader({
               {title}
             </h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              @{account.handle}
+              {currentUserRole === "ADMIN" ? (
+                <Link
+                  href={`/admin/accounts/${account.id}`}
+                  className="hover:text-indigo-600 hover:underline transition-colors"
+                  title="Voir la fiche compte"
+                >
+                  @{account.handle}
+                </Link>
+              ) : (
+                <span>@{account.handle}</span>
+              )}
               <span className="mx-1.5 text-gray-300">·</span>
               <span
                 className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs border font-medium ${statusColor}`}
@@ -219,9 +229,19 @@ export function PublicationHeader({
               {slot.contentType}
             </span>
             {pattern && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border bg-indigo-50 text-indigo-700 border-indigo-200">
-                {pattern.label}
-              </span>
+              currentUserRole === "ADMIN" ? (
+                <Link
+                  href={`/admin/accounts/${account.id}`}
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 transition-colors"
+                  title="Voir la fiche compte"
+                >
+                  {pattern.label}
+                </Link>
+              ) : (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border bg-indigo-50 text-indigo-700 border-indigo-200">
+                  {pattern.label}
+                </span>
+              )
             )}
           </div>
 
