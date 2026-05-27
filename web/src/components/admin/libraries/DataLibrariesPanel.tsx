@@ -4,6 +4,10 @@ import { useEffect, useState, useCallback } from "react";
 import { Plus, Trash2, Database, ChevronRight, Search, Pencil, X, Check } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/useConfirm";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { FormField } from "@/components/ui/FormField";
+import { EmptyState } from "@/components/ui/EmptyState";
 import Link from "next/link";
 import { LibraryExportButton } from "./LibraryExportButton";
 
@@ -121,12 +125,9 @@ export function DataLibrariesPanel() {
           <h2 className="text-lg font-semibold text-gray-900">Bibliothèques de données</h2>
           <p className="text-xs text-gray-500 mt-0.5">{libraries.length} bibliothèque{libraries.length !== 1 ? "s" : ""}</p>
         </div>
-        <button
-          onClick={() => setCreating(true)}
-          className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700"
-        >
-          <Plus size={14} /> Nouvelle bibliothèque
-        </button>
+        <Button onClick={() => setCreating(true)} icon={Plus} size="sm">
+          Nouvelle bibliothèque
+        </Button>
       </div>
 
       {/* Create form */}
@@ -134,40 +135,41 @@ export function DataLibrariesPanel() {
         <form onSubmit={(e) => { void handleCreate(e); }} className="mb-6 p-5 border border-indigo-200 rounded-xl bg-indigo-50">
           <p className="text-sm font-semibold text-indigo-800 mb-4">Nouvelle bibliothèque de données</p>
           <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Nom *</label>
-              <input
+            <FormField label="Nom" required>
+              <Input
                 required
                 value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                onChange={(v) => setForm((f) => ({ ...f, name: v }))}
                 placeholder="Ex: Données RPI"
               />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Type de template *</label>
-              <input
+            </FormField>
+            <FormField
+              label="Type de template"
+              required
+              help="Identifiant métier (mis en majuscules automatiquement)"
+            >
+              <Input
                 required
                 value={form.templateType}
-                onChange={(e) => setForm((f) => ({ ...f, templateType: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                onChange={(v) => setForm((f) => ({ ...f, templateType: v }))}
                 placeholder="Ex: RPI, RTIPS, RPOD"
               />
-              <p className="text-[11px] text-gray-400 mt-1">Identifiant métier (mis en majuscules automatiquement)</p>
-            </div>
+            </FormField>
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-700 mb-1">Description (optionnel)</label>
-              <input
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
+              <FormField label="Description (optionnel)">
+                <Input
+                  value={form.description}
+                  onChange={(v) => setForm((f) => ({ ...f, description: v }))}
+                />
+              </FormField>
             </div>
           </div>
           {error && <p className="text-red-600 text-xs mb-3">{error}</p>}
           <div className="flex gap-2">
-            <button type="submit" className="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Créer</button>
-            <button type="button" onClick={() => setCreating(false)} className="px-4 py-1.5 border border-gray-200 text-sm rounded-lg hover:bg-gray-50">Annuler</button>
+            <Button type="submit" size="sm">Créer</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setCreating(false)}>
+              Annuler
+            </Button>
           </div>
         </form>
       )}
@@ -184,12 +186,12 @@ export function DataLibrariesPanel() {
       {/* Search */}
       {!loading && libraries.length > 0 && (
         <div className="relative mb-5">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
+          <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={setSearch}
             placeholder="Rechercher une bibliothèque…"
-            className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            className="pl-8"
           />
         </div>
       )}
@@ -200,11 +202,12 @@ export function DataLibrariesPanel() {
           <div className="w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : libraries.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <Database size={32} className="text-gray-300 mb-3" />
-          <p className="text-sm font-medium text-gray-500">Aucune bibliothèque de données</p>
-          <p className="text-xs text-gray-400 mt-1">Créez-en une pour importer vos données RPI, RTIPS…</p>
-        </div>
+        <EmptyState
+          icon={Database}
+          title="Aucune bibliothèque de données"
+          description="Créez-en une pour importer vos données RPI, RTIPS…"
+          cta={{ label: "Nouvelle bibliothèque", onClick: () => setCreating(true) }}
+        />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((lib) => (
@@ -221,36 +224,38 @@ export function DataLibrariesPanel() {
               <div className="flex-1 p-4">
                 {editingId === lib.id ? (
                   <form onSubmit={(e) => { void handleSaveEdit(e); }} className="space-y-2">
-                    <input
+                    <Input
                       required
                       autoFocus
                       value={editForm.name}
-                      onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-                      className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                      onChange={(v) => setEditForm((f) => ({ ...f, name: v }))}
                       placeholder="Nom"
                     />
-                    <input
+                    <Input
                       value={editForm.description}
-                      onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
-                      className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                      onChange={(v) => setEditForm((f) => ({ ...f, description: v }))}
                       placeholder="Description (optionnel)"
                     />
                     {editError && <p className="text-red-600 text-[10px]">{editError}</p>}
                     <div className="flex items-center gap-1 pt-0.5">
-                      <button
+                      <Button
                         type="submit"
-                        disabled={editSaving || !editForm.name.trim()}
-                        className="flex items-center gap-1 px-2.5 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700 disabled:opacity-50"
+                        size="sm"
+                        icon={Check}
+                        loading={editSaving}
+                        disabled={!editForm.name.trim()}
                       >
-                        <Check size={11} />{editSaving ? "…" : "Enregistrer"}
-                      </button>
-                      <button
+                        Enregistrer
+                      </Button>
+                      <Button
                         type="button"
+                        variant="secondary"
+                        size="sm"
+                        icon={X}
                         onClick={() => setEditingId(null)}
-                        className="flex items-center gap-1 px-2 py-1 border border-gray-200 text-xs rounded hover:bg-gray-50"
                       >
-                        <X size={11} /> Annuler
-                      </button>
+                        Annuler
+                      </Button>
                     </div>
                   </form>
                 ) : (

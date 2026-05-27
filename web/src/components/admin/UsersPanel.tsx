@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { ChevronDown, ChevronUp, X, Plus, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { TOOLS, TOOL_LABELS, TOOL_DESCRIPTIONS, type Tool } from "@/lib/permissions";
+import { TOOLS, TOOL_LABELS, TOOL_DESCRIPTIONS, USER_ALLOWED_TOOLS, type Tool } from "@/lib/permissions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { FormField } from "@/components/ui/FormField";
@@ -398,28 +398,63 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                       <>
                         {/* Tools section */}
                         <div className="px-5 py-4 space-y-3">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Outils</p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Outils</p>
+                            {user.role === "USER" && (
+                              <p className="text-[10px] text-gray-400 italic">
+                                Rôle USER : seuls {USER_ALLOWED_TOOLS.join(", ")} sont attribuables
+                              </p>
+                            )}
+                          </div>
                           <div className="flex flex-col gap-2">
                             {ALL_TOOLS.map((tool) => {
                               const active = userTools.includes(tool);
+                              // D4 étape 1 : USER ne peut pas se voir ajouter captions/transcription/description.
+                              // Les héritées (active && !allowed) restent décochables pour permettre le nettoyage.
+                              const isAllowedForRole = user.role !== "USER" || (USER_ALLOWED_TOOLS as readonly Tool[]).includes(tool);
+                              const isLegacy = active && !isAllowedForRole;
+                              const isBlocked = !active && !isAllowedForRole;
                               return (
                                 <label
                                   key={tool}
-                                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                                    active ? "bg-indigo-50 border-indigo-200" : "bg-white border-gray-100 hover:border-gray-200"
+                                  className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                                    isBlocked
+                                      ? "bg-gray-50 border-gray-100 cursor-not-allowed opacity-60"
+                                      : isLegacy
+                                        ? "bg-amber-50 border-amber-200 cursor-pointer"
+                                        : active
+                                          ? "bg-indigo-50 border-indigo-200 cursor-pointer"
+                                          : "bg-white border-gray-100 hover:border-gray-200 cursor-pointer"
                                   }`}
+                                  title={
+                                    isBlocked
+                                      ? "Non attribuable au rôle USER (générateur externe)"
+                                      : isLegacy
+                                        ? "Permission héritée — peut être retirée mais pas re-ajoutée pour ce rôle"
+                                        : undefined
+                                  }
                                 >
                                   <input
                                     type="checkbox"
                                     checked={active}
                                     onChange={() => handleToolToggle(user, tool)}
+                                    disabled={isBlocked}
                                     className="accent-indigo-600 shrink-0"
                                   />
                                   <div>
-                                    <p className={`text-xs font-semibold ${active ? "text-indigo-800" : "text-gray-700"}`}>
+                                    <p className={`text-xs font-semibold flex items-center gap-1.5 ${
+                                      isBlocked ? "text-gray-400" : isLegacy ? "text-amber-800" : active ? "text-indigo-800" : "text-gray-700"
+                                    }`}>
                                       {TOOL_LABELS[tool]}
+                                      {isLegacy && (
+                                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-200 text-amber-900">
+                                          legacy
+                                        </span>
+                                      )}
                                     </p>
-                                    <p className="text-[10px] text-gray-400 mt-0.5">{TOOL_DESCRIPTIONS[tool]}</p>
+                                    <p className={`text-[10px] mt-0.5 ${isBlocked ? "text-gray-300" : "text-gray-400"}`}>
+                                      {TOOL_DESCRIPTIONS[tool]}
+                                    </p>
                                   </div>
                                 </label>
                               );
