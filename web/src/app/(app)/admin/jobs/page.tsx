@@ -21,6 +21,7 @@ import { AlertTriangle, Clock, RotateCw, X } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 import { JobsActionButtons } from "./_components/JobsActionButtons";
 
 interface JobRow {
@@ -202,6 +203,7 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
         icon={RotateCw}
         title="Jobs actifs & bloqués"
         subtitle="Scanner les jobs RunPod en QUEUED/PROCESSING — relancer ou marquer FAILED si bloqués"
+        actions={<RefreshButton title="Rescanner les jobs" />}
       />
 
       {/* Stats cards */}
