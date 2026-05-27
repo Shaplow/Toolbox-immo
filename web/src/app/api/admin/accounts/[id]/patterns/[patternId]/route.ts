@@ -29,6 +29,7 @@ type PatchBody = {
   needsDescription?: string;
   needsCaptions?: boolean;
   needsClientValidation?: boolean;
+  allowsClientRevision?: boolean;
   needsRushes?: boolean;
   needsBrief?: boolean;
   dayOfWeek?: number[];
@@ -126,6 +127,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (body.needsDescription !== undefined) data.needsDescription = body.needsDescription;
   if (body.needsCaptions !== undefined) data.needsCaptions = body.needsCaptions;
   if (body.needsClientValidation !== undefined) data.needsClientValidation = body.needsClientValidation;
+  if (body.allowsClientRevision !== undefined) data.allowsClientRevision = body.allowsClientRevision;
   if (body.needsRushes !== undefined) data.needsRushes = body.needsRushes;
   if (body.needsBrief !== undefined) data.needsBrief = body.needsBrief;
   if (body.dayOfWeek !== undefined) data.dayOfWeek = [...new Set(body.dayOfWeek)].sort((a, b) => a - b);

@@ -29,6 +29,7 @@ export type AccountPatternRow = {
   needsDescription: string;
   needsCaptions: boolean;
   needsClientValidation: boolean;
+  allowsClientRevision: boolean;
   needsRushes: boolean;
   needsBrief: boolean;
   dayOfWeek: number[];
@@ -64,6 +65,7 @@ type FormValues = {
   needsCaptions: boolean;
   needsDescription: string;
   needsClientValidation: boolean;
+  allowsClientRevision: boolean;
   needsRushes: boolean;
   needsBrief: boolean;
   daysOfWeek: number[];
@@ -87,6 +89,7 @@ function defaultValues(initial?: AccountPatternRow | null): FormValues {
       needsCaptions: false,
       needsDescription: "none",
       needsClientValidation: false,
+      allowsClientRevision: false,
       needsRushes: false,
       needsBrief: false,
       daysOfWeek: [1],
@@ -109,6 +112,7 @@ function defaultValues(initial?: AccountPatternRow | null): FormValues {
     needsCaptions: initial.needsCaptions,
     needsDescription: initial.needsDescription,
     needsClientValidation: initial.needsClientValidation,
+    allowsClientRevision: initial.allowsClientRevision,
     needsRushes: initial.needsRushes,
     needsBrief: initial.needsBrief,
     daysOfWeek: Array.isArray(initial.dayOfWeek) ? initial.dayOfWeek : [initial.dayOfWeek],
@@ -243,6 +247,7 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
         needsCaptions: values.needsCaptions,
         needsDescription: values.needsDescription,
         needsClientValidation: values.needsClientValidation,
+        allowsClientRevision: values.allowsClientRevision,
         needsRushes: values.needsRushes,
         needsBrief: values.needsBrief,
         dayOfWeek: values.daysOfWeek,
@@ -419,6 +424,16 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
                   checked={values.needsClientValidation}
                   onChange={(v) => set("needsClientValidation", v)}
                 />
+                {values.needsClientValidation && (
+                  <div className="ml-4 pl-3 border-l-2 border-fuchsia-100">
+                    <ToggleField
+                      label="Autoriser révisions client"
+                      hint="Si désactivé : le client peut uniquement valider ou annuler complètement. Si activé : le client peut refuser avec un commentaire (ping-pong jusqu'à validation)."
+                      checked={values.allowsClientRevision}
+                      onChange={(v) => set("allowsClientRevision", v)}
+                    />
+                  </div>
+                )}
                 <ToggleField
                   label="Rushes"
                   checked={values.needsRushes}
@@ -585,31 +600,36 @@ function RadioGroup({
 
 function ToggleField({
   label,
+  hint,
   checked,
   onChange,
 }: {
   label: string;
+  hint?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="inline-flex items-center gap-3 cursor-pointer">
-      <div className="relative">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-          className="sr-only"
-        />
-        <div
-          className={`w-9 h-5 rounded-full transition-colors ${checked ? "bg-indigo-600" : "bg-gray-200"}`}
-        />
-        <div
-          className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0"}`}
-        />
-      </div>
-      <span className="text-sm text-gray-700">{label}</span>
-    </label>
+    <div className="flex flex-col gap-1">
+      <label className="inline-flex items-center gap-3 cursor-pointer">
+        <div className="relative">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={(e) => onChange(e.target.checked)}
+            className="sr-only"
+          />
+          <div
+            className={`w-9 h-5 rounded-full transition-colors ${checked ? "bg-indigo-600" : "bg-gray-200"}`}
+          />
+          <div
+            className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0"}`}
+          />
+        </div>
+        <span className="text-sm text-gray-700">{label}</span>
+      </label>
+      {hint && <p className="text-xs text-gray-500 ml-12">{hint}</p>}
+    </div>
   );
 }
 
