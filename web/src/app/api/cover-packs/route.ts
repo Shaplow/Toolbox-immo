@@ -71,6 +71,23 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const slotId = url.searchParams.get("slotId") ?? undefined;
 
+  // E7 — Stall detection lazy : avant de retourner la liste, on marque FAILED
+  // les packs en QUEUED/PROCESSING depuis >30 min (preparation fire-and-forget
+  // peut crasher silencieusement et laisser un pack zombie). Aligné sur le
+  // pattern existant pour les autres jobs (cf §16.1 / audit fiabilité).
+  const STALL_THRESHOLD_MS = 30 * 60 * 1000;
+  const stallCutoff = new Date(Date.now() - STALL_THRESHOLD_MS);
+  await prisma.coverFramePack.updateMany({
+    where: {
+      status: { in: ["QUEUED", "PROCESSING"] },
+      updatedAt: { lt: stallCutoff },
+    },
+    data: {
+      status: "FAILED",
+      errorMsg: "Préparation trop longue (>30 min) — pack marqué stalled automatiquement.",
+    },
+  });
+
   const packs = await prisma.coverFramePack.findMany({
     where: {
       ...(isAdmin ? {} : { userId: userContext.effectiveUser.id }),
