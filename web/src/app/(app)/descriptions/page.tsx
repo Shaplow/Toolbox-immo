@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { DescriptionTool, type DescriptionPromptRow, type DescriptionJobRow } from "@/components/description/DescriptionTool";
 import { FileText } from "lucide-react";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 
 export default async function DescriptionPage() {
   const userContext = await getUserContext();
@@ -66,6 +67,7 @@ export default async function DescriptionPage() {
         iconColor="amber"
         title="Générateur de descriptions"
         subtitle="Créez des descriptions à partir d'un fichier SRT/JSON, d'une transcription existante ou uniquement d'une image si besoin."
+        actions={<RefreshButton title="Rafraîchir les descriptions" />}
       />
 
       <DescriptionTool
