@@ -62,7 +62,9 @@ function isPrimaryForRole(section: SectionKey, role: UserRole): boolean {
 
   const primaryByRole: Record<Exclude<UserRole, "ADMIN">, SectionKey[]> = {
     MONTEUR: ["brief", "rushes", "versions", "comments"],
-    CM: ["render", "cover", "captions", "description", "captionIg", "publish", "comments"],
+    // F1.9 — Le CM a besoin de voir rushes + versions pour valider le matériel
+    // avant de préparer cover/captions/description. Section ouverte par défaut.
+    CM: ["render", "rushes", "versions", "cover", "captions", "description", "captionIg", "publish", "comments"],
     EXTERNAL_GENERATOR: [],
   };
 

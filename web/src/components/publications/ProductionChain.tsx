@@ -199,13 +199,18 @@ export function ProductionChain({ steps }: ProductionChainProps) {
         {visibleSteps.map((step, idx) => {
           const colors = getStepColors(step.status, step.nextAction);
 
+          // F1.11 — Le step validation est un placeholder Phase 2 : tooltip
+          // explicite "À venir" pour ne pas laisser croire à une action possible.
+          const tooltip = step.key === "validation"
+            ? `${step.label} — fonctionnalité à venir`
+            : `Aller à la section : ${step.label}`;
           return (
             <button
               key={step.key}
               type="button"
               onClick={() => scrollToSection(step.key)}
               className={`flex-shrink-0 sm:flex-shrink flex items-center gap-2 px-3 py-2 rounded-lg transition-all cursor-pointer text-left ${colors.card} hover:opacity-80`}
-              title={`Aller à la section : ${step.label}`}
+              title={tooltip}
             >
               {/* Numéro de position */}
               <span className="text-xs text-gray-400 font-mono w-4 text-center select-none">

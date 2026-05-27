@@ -96,6 +96,7 @@ export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
     }
     setCreating(false);
     setForm({ name: "", isActive: false, usagePolicy: "cycle" });
+    toast.success(`Campagne « ${form.name} » créée.`);
     void load();
   }
 

@@ -110,7 +110,9 @@ export function MediaLibrariesPanel() {
       return;
     }
     setCreating(false);
+    const createdName = form.name;
     setForm({ name: "", type: "video", tags: "", description: "" });
+    toast.success(`Bibliothèque « ${createdName} » créée.`);
     void load();
   }
 

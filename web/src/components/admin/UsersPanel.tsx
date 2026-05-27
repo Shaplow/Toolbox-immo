@@ -122,58 +122,91 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
   }
 
   async function handleRoleChange(user: User, newRole: string) {
-    await fetch(`/api/admin/users/${user.id}`, {
+    const res = await fetch(`/api/admin/users/${user.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: newRole }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({})) as { error?: string };
+      toast.error(d.error ?? "Erreur lors du changement de rôle");
+      return;
+    }
+    toast.success(`Rôle mis à jour pour ${user.name}.`);
     await fetchUsers();
   }
 
   async function handleToolToggle(user: User, tool: Tool) {
     const current: Tool[] = JSON.parse(user.permissions || "[]") as Tool[];
-    const next = current.includes(tool) ? current.filter((t) => t !== tool) : [...current, tool];
-    await fetch(`/api/admin/users/${user.id}`, {
+    const adding = !current.includes(tool);
+    const next = adding ? [...current, tool] : current.filter((t) => t !== tool);
+    const res = await fetch(`/api/admin/users/${user.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ permissions: next }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({})) as { error?: string };
+      toast.error(d.error ?? "Erreur lors de la modification de l'outil");
+      return;
+    }
+    toast.success(adding ? `Outil « ${tool} » ajouté.` : `Outil « ${tool} » retiré.`);
     await fetchUsers();
   }
 
   async function handleGrantTemplate(userId: string, templateId: string) {
-    await fetch(`/api/admin/users/${userId}/accesses`, {
+    const res = await fetch(`/api/admin/users/${userId}/accesses`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ templateId }),
     });
+    if (!res.ok) {
+      toast.error("Impossible d'attribuer ce template");
+      return;
+    }
+    toast.success("Template attribué.");
     await fetchUsers();
   }
 
   async function handleRevokeTemplate(userId: string, templateId: string) {
-    await fetch(`/api/admin/users/${userId}/accesses`, {
+    const res = await fetch(`/api/admin/users/${userId}/accesses`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ templateId }),
     });
+    if (!res.ok) {
+      toast.error("Impossible de retirer ce template");
+      return;
+    }
+    toast.success("Template retiré.");
     await fetchUsers();
   }
 
   async function handleGrantPreset(userId: string, presetId: string) {
-    await fetch(`/api/admin/users/${userId}/caption-preset-accesses`, {
+    const res = await fetch(`/api/admin/users/${userId}/caption-preset-accesses`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ presetId }),
     });
+    if (!res.ok) {
+      toast.error("Impossible d'attribuer ce preset");
+      return;
+    }
+    toast.success("Preset attribué.");
     await fetchUsers();
   }
 
   async function handleRevokePreset(userId: string, presetId: string) {
-    await fetch(`/api/admin/users/${userId}/caption-preset-accesses`, {
+    const res = await fetch(`/api/admin/users/${userId}/caption-preset-accesses`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ presetId }),
     });
+    if (!res.ok) {
+      toast.error("Impossible de retirer ce preset");
+      return;
+    }
+    toast.success("Preset retiré.");
     await fetchUsers();
   }
 

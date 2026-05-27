@@ -49,6 +49,8 @@ export function MediaAssetsPanel({ library }: Props) {
   const [editingAsset, setEditingAsset] = useState<MediaAsset | null>(null);
   const [showAtelier, setShowAtelier] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "grouped" | "rotation">("grid");
+  // F2.3 — Count des jobs autocut en attente de review (badge sur "Analyse auto").
+  const [autocutPendingCount, setAutocutPendingCount] = useState(0);
   // D4 — bulk edit extrait dans useBulkEdit hook. La sticky bar D8
   // (MediaAssetsBulkActionBar) consomme l'objet `bulk` complet. Le panel
   // garde l'accès à selectMode/selectedIds/toggleSelect pour les cards.
@@ -168,6 +170,28 @@ export function MediaAssetsPanel({ library }: Props) {
     const timer = setInterval(() => { if (hasPendingRef.current) void silentPoll(); }, 5000);
     return () => clearInterval(timer);
   }, [silentPoll]);
+
+  // F2.3 — Fetch le count des jobs autocut en attente de review (badge sur
+  // "Analyse auto"). Refresh à chaque fermeture de l'atelier (où l'admin
+  // peut avoir validé/passé des jobs). Pas de fetch pour les bibliothèques
+  // audio (pas d'autocut).
+  useEffect(() => {
+    if (library.type !== "video") return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/libraries/media/${library.id}/autocut-queue?reviewStatus=pending_review&pageSize=1&lean=1`,
+        );
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { total?: number };
+        if (!cancelled) setAutocutPendingCount(data.total ?? 0);
+      } catch {
+        // silent
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [library.id, library.type, showAtelier]);
 
   // ESC handler géré dans MediaAssetsUploadModal (D7).
 
@@ -544,6 +568,7 @@ export function MediaAssetsPanel({ library }: Props) {
         allTags={allTags}
         onOpenUpload={() => setShowUploadModal(true)}
         onOpenAtelier={() => setShowAtelier(true)}
+        autocutPendingCount={autocutPendingCount}
         resetError={resetError}
         search={search}
         setSearch={setSearch}

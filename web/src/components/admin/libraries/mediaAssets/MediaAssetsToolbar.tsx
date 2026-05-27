@@ -40,6 +40,8 @@ interface Props {
   // Modals
   onOpenUpload: () => void;
   onOpenAtelier: () => void;
+  /** F2.3 — Nombre de jobs autocut en attente de review (badge sur "Analyse auto"). */
+  autocutPendingCount?: number;
   // Error banner
   resetError: string | null;
   // Filters state
@@ -68,6 +70,7 @@ export function MediaAssetsToolbar({
   allTags,
   onOpenUpload,
   onOpenAtelier,
+  autocutPendingCount = 0,
   resetError,
   search,
   setSearch,
@@ -97,9 +100,18 @@ export function MediaAssetsToolbar({
           {isVideo && (
             <button
               onClick={onOpenAtelier}
-              className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700"
+              className="relative flex items-center gap-2 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700"
             >
               <Wand2 size={14} /> Analyse auto
+              {/* F2.3 — Badge count des jobs en attente de review */}
+              {autocutPendingCount > 0 && (
+                <span
+                  className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-orange-500 text-white text-[10px] font-semibold leading-none ring-2 ring-white"
+                  title={`${autocutPendingCount} analyse${autocutPendingCount > 1 ? "s" : ""} à valider`}
+                >
+                  {autocutPendingCount > 99 ? "99+" : autocutPendingCount}
+                </span>
+              )}
             </button>
           )}
           <button

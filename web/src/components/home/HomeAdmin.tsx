@@ -95,14 +95,16 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
         <p className="text-sm text-gray-500 mt-1 capitalize">{todayLabel}</p>
       </div>
 
-      {/* Métriques globales */}
+      {/* Métriques globales — F1.12/F1.13/B10 : cartes cliquables vers /calendar */}
       <div className="grid grid-cols-3 gap-4">
-        <div
-          className={`rounded-xl border p-4 flex flex-col gap-1 ${
+        <Link
+          href="/calendar"
+          className={`rounded-xl border p-4 flex flex-col gap-1 transition-colors hover:opacity-80 ${
             overdueCount > 0
-              ? "border-red-200 bg-red-50"
-              : "border-gray-200 bg-gray-50"
+              ? "border-red-200 bg-red-50 hover:border-red-300"
+              : "border-gray-200 bg-gray-50 hover:border-gray-300"
           }`}
+          title="Voir dans le calendrier"
         >
           <div className="flex items-center gap-2">
             <AlertTriangle
@@ -120,14 +122,16 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
           >
             {overdueCount}
           </p>
-        </div>
+        </Link>
 
-        <div
-          className={`rounded-xl border p-4 flex flex-col gap-1 ${
+        <Link
+          href="/calendar"
+          className={`rounded-xl border p-4 flex flex-col gap-1 transition-colors hover:opacity-80 ${
             noPatternCount > 0
-              ? "border-amber-200 bg-amber-50"
-              : "border-gray-200 bg-gray-50"
+              ? "border-amber-200 bg-amber-50 hover:border-amber-300"
+              : "border-gray-200 bg-gray-50 hover:border-gray-300"
           }`}
+          title="Voir dans le calendrier"
         >
           <div className="flex items-center gap-2">
             <FileQuestion
@@ -145,15 +149,17 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
           >
             {noPatternCount}
           </p>
-        </div>
+        </Link>
 
         {/* B10 — Slots sans monteur assigné (sinon invisibles côté monteur) */}
-        <div
-          className={`rounded-xl border p-4 flex flex-col gap-1 ${
+        <Link
+          href="/calendar"
+          className={`rounded-xl border p-4 flex flex-col gap-1 transition-colors hover:opacity-80 ${
             noMonteurCount > 0
-              ? "border-orange-200 bg-orange-50"
-              : "border-gray-200 bg-gray-50"
+              ? "border-orange-200 bg-orange-50 hover:border-orange-300"
+              : "border-gray-200 bg-gray-50 hover:border-gray-300"
           }`}
+          title="Voir dans le calendrier"
         >
           <div className="flex items-center gap-2">
             <UserX
@@ -171,7 +177,7 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
           >
             {noMonteurCount}
           </p>
-        </div>
+        </Link>
       </div>
 
       {/* Widget "Versions à valider" */}
