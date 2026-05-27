@@ -12,6 +12,7 @@ import { useMediaAssetsLoader } from "./mediaAssets/useMediaAssetsLoader";
 import { useInstagramAccounts } from "./mediaAssets/useInstagramAccounts";
 import { useBulkEdit } from "./mediaAssets/useBulkEdit";
 import { MediaAssetsUploadModal } from "./mediaAssets/MediaAssetsUploadModal";
+import { MediaAssetsBulkActionBar } from "./mediaAssets/MediaAssetsBulkActionBar";
 
 interface Props {
   library: MediaLibrary;
@@ -46,31 +47,11 @@ export function MediaAssetsPanel({ library }: Props) {
   const [setTagValue, setSetTagValue] = useState("");
   const [setTagError, setSetTagError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "grouped" | "rotation">("grid");
-  // D4 — bulk edit extrait dans useBulkEdit hook (sélection multi + 5 actions
-  // PATCH/DELETE + UI state apply/error/success). Le hook reçoit setAssets
-  // pour mettre à jour le state local après chaque mutation.
-  const {
-    selectMode,
-    setSelectMode,
-    selectedIds,
-    setSelectedIds,
-    bulkSetTagInput,
-    setBulkSetTagInput,
-    bulkTagsInput,
-    setBulkTagsInput,
-    bulkCategoryInput,
-    setBulkCategoryInput,
-    bulkApplying,
-    bulkError,
-    bulkSuccess,
-    toggleSelect,
-    exitSelectMode,
-    handleBulkApplySetTag,
-    handleBulkApplyTags,
-    handleBulkApplyAccess,
-    handleBulkApplyCategory,
-    handleBulkDelete,
-  } = useBulkEdit({ libraryId: library.id, setAssets, accounts });
+  // D4 — bulk edit extrait dans useBulkEdit hook. La sticky bar D8
+  // (MediaAssetsBulkActionBar) consomme l'objet `bulk` complet. Le panel
+  // garde l'accès à selectMode/selectedIds/toggleSelect pour les cards.
+  const bulk = useBulkEdit({ libraryId: library.id, setAssets, accounts });
+  const { selectMode, setSelectMode, selectedIds, toggleSelect } = bulk;
   const [editingLastUsedId, setEditingLastUsedId] = useState<string | null>(null);
   const [lastUsedInput, setLastUsedInput] = useState("");
   const [seqState, setSeqState] = useState<string[]>(() => {
@@ -1434,139 +1415,8 @@ export function MediaAssetsPanel({ library }: Props) {
         </div>
       )}
 
-      {/* Bulk action bar — sticky bottom, appears when selection active */}
-      {selectMode && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200 shadow-lg px-6 py-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          {/* Left: count + select-all */}
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => {
-                if (selectedIds.size === filtered.length) {
-                  setSelectedIds(new Set());
-                } else {
-                  setSelectedIds(new Set(filtered.map((a) => a.id)));
-                }
-              }}
-              className="flex items-center gap-1.5 text-xs text-indigo-700 hover:underline"
-            >
-              {selectedIds.size === filtered.length ? <CheckSquare size={12} /> : <Square size={12} />}
-              {selectedIds.size === filtered.length ? "Tout désélectionner" : "Tout sélectionner"}
-            </button>
-            {selectedIds.size > 0 && (
-              <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
-                {selectedIds.size} sélectionné{selectedIds.size > 1 ? "s" : ""}
-              </span>
-            )}
-          </div>
-          {/* Center: actions (only when items are selected) */}
-          {selectedIds.size > 0 && (
-            <div className="flex flex-wrap items-center gap-2 flex-1">
-              {/* Bulk category */}
-              <div className="flex items-center gap-1">
-                <input
-                  value={bulkCategoryInput}
-                  onChange={(e) => setBulkCategoryInput(e.target.value)}
-                  list="group-list"
-                  placeholder="Catégorie…"
-                  className="w-28 text-xs border border-violet-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-violet-400"
-                  onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplyCategory(); } }}
-                />
-                <button
-                  onClick={() => { void handleBulkApplyCategory(); }}
-                  disabled={bulkApplying}
-                  className={`px-2.5 py-1 text-white text-xs rounded disabled:opacity-50 ${
-                    bulkCategoryInput.trim() ? "bg-violet-600 hover:bg-violet-700" : "bg-gray-400 hover:bg-gray-500"
-                  }`}
-                  title={bulkCategoryInput.trim() ? "Appliquer la catégorie" : "Retirer la catégorie"}
-                >
-                  {bulkCategoryInput.trim() ? "Cat." : <X size={10} />}
-                </button>
-              </div>
-              {/* Bulk set tag */}
-              <div className="flex items-center gap-1">
-                <input
-                  value={bulkSetTagInput}
-                  onChange={(e) => setBulkSetTagInput(e.target.value)}
-                  list="bulk-set-tags-list"
-                  placeholder="Set…"
-                  className="w-28 text-xs border border-pink-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-pink-400"
-                  onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplySetTag(); } }}
-                />
-                <button
-                  onClick={() => { void handleBulkApplySetTag(); }}
-                  disabled={bulkApplying}
-                  className={`px-2.5 py-1 text-white text-xs rounded disabled:opacity-50 ${
-                    bulkSetTagInput.trim() ? "bg-pink-600 hover:bg-pink-700" : "bg-gray-400 hover:bg-gray-500"
-                  }`}
-                  title={bulkSetTagInput.trim() ? "Appliquer le set" : "Retirer le set"}
-                >
-                  {bulkSetTagInput.trim() ? "Set" : <X size={10} />}
-                </button>
-              </div>
-              {/* Bulk tags */}
-              <div className="flex items-center gap-1">
-                <input
-                  value={bulkTagsInput}
-                  onChange={(e) => setBulkTagsInput(e.target.value)}
-                  placeholder="Tags (virgule)…"
-                  className="w-36 text-xs border border-indigo-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                  onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplyTags(); } }}
-                />
-                <button
-                  onClick={() => { void handleBulkApplyTags(); }}
-                  disabled={bulkApplying}
-                  className={`px-2.5 py-1 text-white text-xs rounded disabled:opacity-50 ${
-                    bulkTagsInput.trim() ? "bg-indigo-600 hover:bg-indigo-700" : "bg-gray-400 hover:bg-gray-500"
-                  }`}
-                  title={bulkTagsInput.trim() ? "Appliquer les tags" : "Retirer les tags"}
-                >
-                  {bulkTagsInput.trim() ? "Tags" : <X size={10} />}
-                </button>
-              </div>
-              {/* Bulk access */}
-              {accounts.length > 0 && (
-                <div className="flex items-center gap-1">
-                  <select
-                    defaultValue=""
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      e.target.value = "";
-                      if (!val) return;
-                      if (val === "__global__") { void handleBulkApplyAccess("remove_all"); }
-                      else { void handleBulkApplyAccess("add", val); }
-                    }}
-                    disabled={bulkApplying}
-                    className="text-xs border border-blue-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 text-gray-600 disabled:opacity-50 max-w-[130px]"
-                  >
-                    <option value="">Compte IG…</option>
-                    <option value="__global__">🌍 Global (tous)</option>
-                    {accounts.map((a) => (
-                      <option key={a.id} value={a.id}>@{a.handle}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {/* Bulk delete */}
-              <button
-                onClick={() => { void handleBulkDelete(); }}
-                disabled={bulkApplying}
-                className="flex items-center gap-1 px-2.5 py-1 border border-red-200 text-red-600 text-xs rounded hover:bg-red-50 disabled:opacity-50"
-              >
-                <Trash2 size={11} /> Supprimer
-              </button>
-              {bulkError && <p className="text-xs text-red-500">{bulkError}</p>}
-              {bulkSuccess && <p className="text-xs text-green-600">{bulkSuccess}</p>}
-            </div>
-          )}
-          {/* Right: cancel */}
-          <button
-            onClick={exitSelectMode}
-            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 sm:ml-auto"
-          >
-            <X size={12} /> Annuler
-          </button>
-        </div>
-      )}
+      {/* D8 — bulk action bar extraite dans MediaAssetsBulkActionBar */}
+      {selectMode && <MediaAssetsBulkActionBar bulk={bulk} filtered={filtered} accounts={accounts} />}
 
       {/* Error */}
       {loadError && (
