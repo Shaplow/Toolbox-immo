@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   Upload,
@@ -111,6 +112,9 @@ export function DescriptionTool({
   isAdmin: boolean;
   aiConfig: { hasClaude: boolean; hasGPT: boolean };
 }) {
+  const searchParams = useSearchParams();
+  const slotIdFromUrl = searchParams?.get("slotId") ?? null;
+
   // Input
   const [inputTab, setInputTab] = useState<"upload" | "transcription">("upload");
   const [transcriptText, setTranscriptText] = useState("");
@@ -285,6 +289,7 @@ export function DescriptionTool({
           model,
           inputFilename: inputFilename ?? undefined,
           transcriptionId: inputTab === "transcription" ? transcriptionId ?? undefined : undefined,
+          slotId: slotIdFromUrl ?? undefined,
           referenceImage: referenceImage
             ? {
                 dataUrl: referenceImage.dataUrl,

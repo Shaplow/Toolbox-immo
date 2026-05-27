@@ -3,10 +3,11 @@ import { computePublicationSteps } from "@/lib/publications/steps";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function baseSlot(overrides?: Partial<{ status: string; caption: string | null }>) {
+function baseSlot(overrides?: Partial<{ status: string; caption: string | null; description: string | null }>) {
   return {
     status: "PLANNED" as string,
     caption: null,
+    description: null,
     ...overrides,
   };
 }
@@ -237,5 +238,90 @@ describe("computePublicationSteps — step 'captions' status", () => {
     });
     const captions = steps.find((s) => s.key === "captions");
     expect(captions?.visible).toBe(false);
+  });
+});
+
+// ── step "description" status (P0.2 — FK + fallback slot.description) ─────────
+
+describe("computePublicationSteps — step 'description' status", () => {
+  it("'todo' si aucun job et description vide", () => {
+    const steps = computePublicationSteps({
+      slot: baseSlot(),
+      pattern: recipeAutoTemplate,
+      descriptionJob: null,
+    });
+    const desc = steps.find((s) => s.key === "description");
+    expect(desc?.visible).toBe(true);
+    expect(desc?.status).toBe("todo");
+  });
+
+  it("'done' si job COMPLETED avec result", () => {
+    const steps = computePublicationSteps({
+      slot: baseSlot(),
+      pattern: recipeAutoTemplate,
+      descriptionJob: { status: "COMPLETED", result: "Texte généré" },
+    });
+    const desc = steps.find((s) => s.key === "description");
+    expect(desc?.status).toBe("done");
+  });
+
+  it("'todo' si job COMPLETED mais result vide", () => {
+    const steps = computePublicationSteps({
+      slot: baseSlot(),
+      pattern: recipeAutoTemplate,
+      descriptionJob: { status: "COMPLETED", result: null },
+    });
+    const desc = steps.find((s) => s.key === "description");
+    expect(desc?.status).toBe("todo");
+  });
+
+  it("'failed' si job FAILED", () => {
+    const steps = computePublicationSteps({
+      slot: baseSlot(),
+      pattern: recipeAutoTemplate,
+      descriptionJob: { status: "FAILED", result: null },
+    });
+    const desc = steps.find((s) => s.key === "description");
+    expect(desc?.status).toBe("failed");
+  });
+
+  it("'done' (fallback) si pas de job mais slot.description rempli", () => {
+    const steps = computePublicationSteps({
+      slot: baseSlot({ description: "Description rédigée à la main." }),
+      pattern: recipeAutoTemplate,
+      descriptionJob: null,
+    });
+    const desc = steps.find((s) => s.key === "description");
+    expect(desc?.status).toBe("done");
+  });
+
+  it("'todo' si slot.description = whitespace seulement", () => {
+    const steps = computePublicationSteps({
+      slot: baseSlot({ description: "   \n  " }),
+      pattern: recipeAutoTemplate,
+      descriptionJob: null,
+    });
+    const desc = steps.find((s) => s.key === "description");
+    expect(desc?.status).toBe("todo");
+  });
+
+  it("job FAILED prime sur fallback (le fallback n'écrase pas un échec)", () => {
+    const steps = computePublicationSteps({
+      slot: baseSlot({ description: "Texte fallback" }),
+      pattern: recipeAutoTemplate,
+      descriptionJob: { status: "FAILED", result: null },
+    });
+    const desc = steps.find((s) => s.key === "description");
+    expect(desc?.status).toBe("failed");
+  });
+
+  it("step non visible si needsDescription='none'", () => {
+    const steps = computePublicationSteps({
+      slot: baseSlot({ description: "Texte" }),
+      pattern: { ...recipeAutoTemplate, needsDescription: "none" as const },
+      descriptionJob: { status: "COMPLETED", result: "OK" },
+    });
+    const desc = steps.find((s) => s.key === "description");
+    expect(desc?.visible).toBe(false);
   });
 });

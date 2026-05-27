@@ -86,6 +86,16 @@ export default async function PublicationPage({ params }: PageProps) {
           createdAt: true,
         },
       },
+      // Dernier job description IA lié au slot (P0.2 — alimente la ProductionChain)
+      descriptionJobs: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          status: true,
+          result: true,
+        },
+      },
     },
   });
 
@@ -219,15 +229,17 @@ export default async function PublicationPage({ params }: PageProps) {
 
   // Phase 1.9 A2 — dernier job captions lié
   const latestCaptionJob = slot.captionJobs[0] ?? null;
+  // P0.2 — dernier job description IA lié (le step utilise aussi slot.description en fallback)
+  const latestDescriptionJob = slot.descriptionJobs[0] ?? null;
 
   // Calcul des steps
   const steps = computePublicationSteps({
-    slot: { status: slot.status, caption: slot.caption },
+    slot: { status: slot.status, caption: slot.caption, description: slot.description },
     pattern: slot.pattern ?? null,
     renderJob: slot.render ?? null,
     coverPack: slot.render?.coverFramePack ?? null,
     captionJob: latestCaptionJob,
-    descriptionJob: null,
+    descriptionJob: latestDescriptionJob,
     versionsCount: rawVersions.filter((v) => v.deletedAt === null).length,
     currentVersionId: slot.currentVersionId ?? null,
   });

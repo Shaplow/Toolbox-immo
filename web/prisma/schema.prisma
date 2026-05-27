@@ -330,8 +330,13 @@ model DescriptionJob {
   model           String             @default("claude") // "claude" | "gpt"
   result          String? // Texte généré
   errorMsg        String?
+  /// Slot de publication optionnellement lié (alimente la ProductionChain)
+  slotId          String?
+  slot            PublicationSlot?   @relation(fields: [slotId], references: [id], onDelete: SetNull)
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
+
+  @@index([slotId])
 }
 
 // ─── Content Library ─────────────────────────────────────────────────────────
@@ -680,6 +685,8 @@ model PublicationSlot {
   rushes            PublicationRush[]
   /// Jobs captions liés à ce slot (Phase 1.9 — A2)
   captionJobs       CaptionJob[]
+  /// Jobs description IA liés à ce slot (alimente la ProductionChain)
+  descriptionJobs   DescriptionJob[]
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
 
