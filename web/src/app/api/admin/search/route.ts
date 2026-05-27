@@ -7,6 +7,9 @@
  *   - Template (name)
  *   - CaptionPreset (name)
  *   - PublicationSlot récents (title, account.handle)
+ *   - MediaLibrary (name)
+ *   - DataLibrary (name)
+ *   - DataCampaign (name) + parent library
  *
  * Retourne max 5 résultats par catégorie. Query <2 chars → []. ADMIN-only.
  */
@@ -16,7 +19,15 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
 export type SearchResultItem = {
-  kind: "client" | "account" | "template" | "preset" | "slot";
+  kind:
+    | "client"
+    | "account"
+    | "template"
+    | "preset"
+    | "slot"
+    | "mediaLibrary"
+    | "dataLibrary"
+    | "dataCampaign";
   id: string;
   label: string;
   sublabel: string | null;
@@ -38,7 +49,16 @@ export async function GET(req: NextRequest) {
   const TAKE = 5;
   const contains = { contains: q, mode: "insensitive" as const };
 
-  const [clients, accounts, templates, presets, slots] = await Promise.all([
+  const [
+    clients,
+    accounts,
+    templates,
+    presets,
+    slots,
+    mediaLibraries,
+    dataLibraries,
+    dataCampaigns,
+  ] = await Promise.all([
     prisma.client.findMany({
       where: { name: contains },
       orderBy: { name: "asc" },
@@ -84,6 +104,29 @@ export async function GET(req: NextRequest) {
         account: { select: { handle: true } },
       },
     }),
+    prisma.mediaLibrary.findMany({
+      where: { name: contains },
+      orderBy: { name: "asc" },
+      take: TAKE,
+      select: { id: true, name: true, type: true },
+    }),
+    prisma.dataLibrary.findMany({
+      where: { name: contains },
+      orderBy: { name: "asc" },
+      take: TAKE,
+      select: { id: true, name: true, templateType: true },
+    }),
+    prisma.dataCampaign.findMany({
+      where: { name: contains },
+      orderBy: { createdAt: "desc" },
+      take: TAKE,
+      select: {
+        id: true,
+        name: true,
+        libraryId: true,
+        library: { select: { name: true } },
+      },
+    }),
   ]);
 
   const results: SearchResultItem[] = [
@@ -121,6 +164,27 @@ export async function GET(req: NextRequest) {
       label: s.title ?? `Publication du ${s.scheduledAt.toLocaleDateString("fr-FR")}`,
       sublabel: `@${s.account.handle}`,
       href: `/publications/${s.id}`,
+    })),
+    ...mediaLibraries.map((m) => ({
+      kind: "mediaLibrary" as const,
+      id: m.id,
+      label: m.name,
+      sublabel: `Bibliothèque médias · ${m.type === "audio" ? "audio" : "vidéo"}`,
+      href: `/admin/libraries/media/${m.id}`,
+    })),
+    ...dataLibraries.map((d) => ({
+      kind: "dataLibrary" as const,
+      id: d.id,
+      label: d.name,
+      sublabel: `Bibliothèque données · ${d.templateType}`,
+      href: `/admin/libraries/data/${d.id}`,
+    })),
+    ...dataCampaigns.map((c) => ({
+      kind: "dataCampaign" as const,
+      id: c.id,
+      label: c.name,
+      sublabel: c.library?.name ? `Campagne · ${c.library.name}` : "Campagne",
+      href: `/admin/libraries/data/${c.libraryId}/${c.id}`,
     })),
   ];
 

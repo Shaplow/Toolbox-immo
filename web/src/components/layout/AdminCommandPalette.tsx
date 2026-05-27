@@ -16,11 +16,22 @@ import {
   LayoutTemplate,
   Film,
   FileText,
+  Library,
+  Database,
+  Layers,
   Loader2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-type Kind = "client" | "account" | "template" | "preset" | "slot";
+type Kind =
+  | "client"
+  | "account"
+  | "template"
+  | "preset"
+  | "slot"
+  | "mediaLibrary"
+  | "dataLibrary"
+  | "dataCampaign";
 
 interface SearchResultItem {
   kind: Kind;
@@ -36,6 +47,9 @@ const KIND_ICON: Record<Kind, LucideIcon> = {
   template: LayoutTemplate,
   preset: Film,
   slot: FileText,
+  mediaLibrary: Library,
+  dataLibrary: Database,
+  dataCampaign: Layers,
 };
 
 const KIND_LABEL: Record<Kind, string> = {
@@ -44,9 +58,21 @@ const KIND_LABEL: Record<Kind, string> = {
   template: "Templates",
   preset: "Presets",
   slot: "Publications",
+  mediaLibrary: "Bibliothèques médias",
+  dataLibrary: "Bibliothèques données",
+  dataCampaign: "Campagnes",
 };
 
-const KIND_ORDER: Kind[] = ["slot", "account", "client", "template", "preset"];
+const KIND_ORDER: Kind[] = [
+  "slot",
+  "account",
+  "client",
+  "template",
+  "preset",
+  "mediaLibrary",
+  "dataLibrary",
+  "dataCampaign",
+];
 
 export function AdminCommandPalette() {
   const router = useRouter();
