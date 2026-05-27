@@ -1,13 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { Trash2, Upload, Clock, BarChart2, Search, Play, Music2, ArrowUpDown, Tag, X, RotateCcw, Scissors, LayoutGrid, Layers, Square, CheckSquare, ChevronUp, ChevronDown, ListOrdered, PlusCircle, MinusCircle, FolderOpen, Film, Globe, Lock, Users, Wand2, Loader2, EyeOff, AlertTriangle } from "lucide-react";
-import { toast } from "@/components/ui/Toast";
+import { Upload, Play, Music2 } from "lucide-react";
 import { MediaAssetEditModal } from "./MediaAssetEditModal";
 import { MediaBatchAutocutPanel } from "./MediaBatchAutocutPanel";
 import type { MediaAsset, MetadataField, MediaLibrary, SortKey } from "./mediaAssets/types";
-import { formatDuration, formatDate } from "./mediaAssets/helpers";
-import { LazyVideoThumb } from "./mediaAssets/LazyVideoThumb";
 import { useMediaAssetsLoader } from "./mediaAssets/useMediaAssetsLoader";
 import { useInstagramAccounts } from "./mediaAssets/useInstagramAccounts";
 import { useBulkEdit } from "./mediaAssets/useBulkEdit";
@@ -16,6 +13,12 @@ import { MediaAssetsBulkActionBar } from "./mediaAssets/MediaAssetsBulkActionBar
 import { MediaAssetsRotationView } from "./mediaAssets/MediaAssetsRotationView";
 import { MediaAssetsGroupedView } from "./mediaAssets/MediaAssetsGroupedView";
 import { MediaAssetsAudioList } from "./mediaAssets/MediaAssetsAudioList";
+import { useAssetInlineEdits } from "./mediaAssets/useAssetInlineEdits";
+import { MediaAssetsVideoCard } from "./mediaAssets/MediaAssetsVideoCard";
+import { MediaAssetsGroupColumn } from "./mediaAssets/MediaAssetsGroupColumn";
+import { MediaAssetsCompactCard } from "./mediaAssets/MediaAssetsCompactCard";
+import { MediaAssetsToolbar } from "./mediaAssets/MediaAssetsToolbar";
+import { useAssetSequence } from "./mediaAssets/useAssetSequence";
 
 interface Props {
   library: MediaLibrary;
@@ -39,29 +42,18 @@ export function MediaAssetsPanel({ library }: Props) {
   const [sort, setSort] = useState<SortKey>("date_desc");
   const [tagFilter, setTagFilter] = useState("");
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const [editingTagsId, setEditingTagsId] = useState<string | null>(null);
-  const [tagInput, setTagInput] = useState("");
-  const [resetError, setResetError] = useState<string | null>(null);
-  const [editingUsageId, setEditingUsageId] = useState<string | null>(null);
-  const [usageInput, setUsageInput] = useState("");
   const [editingAsset, setEditingAsset] = useState<MediaAsset | null>(null);
   const [showAtelier, setShowAtelier] = useState(false);
-  const [editingSetTagId, setEditingSetTagId] = useState<string | null>(null);
-  const [setTagValue, setSetTagValue] = useState("");
-  const [setTagError, setSetTagError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "grouped" | "rotation">("grid");
   // D4 — bulk edit extrait dans useBulkEdit hook. La sticky bar D8
   // (MediaAssetsBulkActionBar) consomme l'objet `bulk` complet. Le panel
   // garde l'accès à selectMode/selectedIds/toggleSelect pour les cards.
   const bulk = useBulkEdit({ libraryId: library.id, setAssets, accounts });
-  const { selectMode, setSelectMode, selectedIds, toggleSelect } = bulk;
-  const [editingLastUsedId, setEditingLastUsedId] = useState<string | null>(null);
-  const [lastUsedInput, setLastUsedInput] = useState("");
-  const [seqState, setSeqState] = useState<string[]>(() => {
-    try { return JSON.parse(library.setSequence) as string[]; } catch { return []; }
+  const { selectMode, setSelectMode, selectedIds, toggleSelect, exitSelectMode } = bulk;
+  const { seqState, saveSequence, moveSetTag, addToSequence, removeFromSequence } = useAssetSequence({
+    libraryId: library.id,
+    initialSequence: library.setSequence,
   });
-  const [editingFamilyKey, setEditingFamilyKey] = useState<string | null>(null);
-  const [familyInput, setFamilyInput] = useState("");
   // ── Infinite scroll ──
   const [visibleCount, setVisibleCount] = useState(48);
   const [visibleGroupCount, setVisibleGroupCount] = useState(20);
@@ -73,15 +65,38 @@ export function MediaAssetsPanel({ library }: Props) {
   const filteredLengthRef = useRef(0);
   const visibleGroupCountRef = useRef(0);
   const groupedLengthRef = useRef(0);
-  // ── Metadata editing ──
-  const [editingMetaKey, setEditingMetaKey] = useState<{ assetId: string; key: string } | null>(null);
-  const [metaInput, setMetaInput] = useState("");
-  const [savedMetaFlash, setSavedMetaFlash] = useState<{ assetId: string; key: string } | null>(null);
-  const [metaSaveError, setMetaSaveError] = useState<{ assetId: string; key: string } | null>(null);
 
   const metadataSchema = useMemo<MetadataField[]>(() => {
     try { return JSON.parse(library.metadataSchema ?? "[]") as MetadataField[]; } catch { return []; }
   }, [library.metadataSchema]);
+
+  // D9 — inline edits (setTag, category, tags, usage, lastUsedAt, metadata,
+  // access, disabled, delete) extraits dans useAssetInlineEdits hook.
+  // Destructuré pour garder les call sites historiques inchangés.
+  const inline = useAssetInlineEdits({
+    libraryId: library.id,
+    setAssets,
+    accountFilter,
+    metadataSchema,
+  });
+  // D9 — destructure réduit aux symboles encore consommés directement
+  // par le panel (audio list inline editing + group category bulk edit
+  // utilisé dans le wrapper renderColumn). Les cards/vues isolées
+  // consomment le hook complet via la prop `inline`.
+  const {
+    editingTagsId, setEditingTagsId,
+    tagInput, setTagInput,
+    editingUsageId, setEditingUsageId,
+    usageInput, setUsageInput,
+    editingFamilyKey, setEditingFamilyKey,
+    familyInput, setFamilyInput,
+    resetError,
+    handleSaveCategoryForGroup,
+    handleSaveUsage,
+    handleResetAssetUsage,
+    handleSaveTags,
+    handleDelete,
+  } = inline;
 
   // ─ Fetch des assets + accounts extrait dans les hooks
   //   useMediaAssetsLoader / useInstagramAccounts (D3 du split C1-v2).
@@ -424,999 +439,121 @@ export function MediaAssetsPanel({ library }: Props) {
     };
   }, [groupedBySetTag]);
 
-  async function saveSequence(newSeq: string[]) {
-    setSeqState(newSeq);
-    await fetch(`/api/admin/libraries/media/${library.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ setSequence: newSeq }),
-    });
-  }
+  // D9 — handleSaveCategory, handleToggleAccess, handleToggleDisabled,
+  // handleSaveMetadata, handleSaveCategoryForGroup extraits dans le hook
+  // useAssetInlineEdits (cf. const inline ci-dessus).
+  // D9 — saveSequence + moveSetTag + addToSequence + removeFromSequence
+  // extraits dans useAssetSequence (cf. ci-dessus).
 
-  async function handleSaveCategory(asset: MediaAsset, categoryValue: string) {
-    const val = categoryValue.trim() || null;
-    await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category: val }),
-    });
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, category: val } : a));
-  }
-
-  async function handleToggleAccess(asset: MediaAsset, accountId: string, addAccess: boolean) {
-    const current = asset.accessAccountIds;
-    const next = addAccess
-      ? [...current, accountId]
-      : current.filter((id) => id !== accountId);
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accessAccountIds: next }),
-    });
-    if (!res.ok) return;
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, accessAccountIds: next } : a));
-  }
-
-  async function handleToggleDisabled(asset: MediaAsset) {
-    const next = !asset.disabled;
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ disabled: next }),
-    });
-    if (!res.ok) return;
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, disabled: next } : a));
-  }
-
-  async function handleSaveMetadata(asset: MediaAsset, key: string, value: string) {
-    setEditingMetaKey(null);
-    const currentMeta = asset.metadata ?? {};
-    const schemaField = metadataSchema.find((f) => f.key === key);
-    const parsed: string | number | null = value.trim() === ""
-      ? null
-      : schemaField?.type === "number" ? (Number.isFinite(Number(value)) ? Number(value) : null) : value.trim();
-    const nextMeta = { ...currentMeta, [key]: parsed };
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, metadata: nextMeta } : a));
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ metadata: nextMeta }),
-    });
-    if (res.ok) {
-      setSavedMetaFlash({ assetId: asset.id, key });
-      setTimeout(() => setSavedMetaFlash(null), 1200);
-    } else {
-      setMetaSaveError({ assetId: asset.id, key });
-      setTimeout(() => setMetaSaveError(null), 3000);
-      // Rollback optimistic update
-      setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, metadata: currentMeta } : a));
-    }
-  }
-
-  async function handleSaveCategoryForGroup(groupAssets: MediaAsset[], categoryValue: string) {
-    const val = categoryValue.trim() || null;
-    await Promise.all(
-      groupAssets.map((a) =>
-        fetch(`/api/admin/libraries/media/assets/${a.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ category: val }),
-        })
-      )
-    );
-    setAssets((prev) => prev.map((a) => groupAssets.some((g) => g.id === a.id) ? { ...a, category: val } : a));
-  }
-
-  function moveSetTag(tag: string, direction: -1 | 1) {
-    const idx = seqState.indexOf(tag);
-    if (idx === -1) return;
-    const next = [...seqState];
-    const target = idx + direction;
-    if (target < 0 || target >= next.length) return;
-    [next[idx], next[target]] = [next[target]!, next[idx]!];
-    void saveSequence(next);
-  }
-
-  function addToSequence(tag: string) {
-    if (seqState.includes(tag)) return;
-    void saveSequence([...seqState, tag]);
-  }
-
-  function removeFromSequence(tag: string) {
-    void saveSequence(seqState.filter((t) => t !== tag));
-  }
-
-  async function handleSaveUsage(asset: MediaAsset, raw: string) {
-    const val = parseInt(raw, 10);
-    setEditingUsageId(null);
-    setUsageInput("");
-    if (isNaN(val) || val < 0 || val === asset.usageCount) return;
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ usageCount: val }),
-    });
-    if (!res.ok) {
-      const d = await res.json() as { error?: string };
-      setResetError(d.error ?? "Erreur lors de la mise à jour");
-      return;
-    }
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, usageCount: val, lastUsedAt: val === 0 ? null : new Date().toISOString() } : a));
-  }
-
-  async function handleResetAssetUsage(asset: MediaAsset) {
-    // When a per-account filter is active, reset only that account's usage record.
-    // When viewing globally, perform a full reset (global counters + all per-account records).
-    const body = accountFilter
-      ? { resetUsageForAccount: accountFilter }
-      : { resetUsage: true };
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const d = await res.json() as { error?: string };
-      setResetError(d.error ?? "Erreur lors du reset");
-      return;
-    }
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, usageCount: 0, lastUsedAt: null } : a));
-  }
-
-  async function handleSaveTags(asset: MediaAsset, newTags: string[]) {
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tags: newTags }),
-    });
-    if (!res.ok) return;
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, tags: newTags } : a));
-    setEditingTagsId(null);
-    setTagInput("");
-  }
-
-  async function handleSaveSetTag(asset: MediaAsset, raw: string) {
-    const value = raw.trim() || null;
-    // Skip if unchanged (null == null, or same string)
-    if (value === (asset.setTag ?? null)) {
-      setEditingSetTagId(null);
-      setSetTagValue("");
-      return;
-    }
-    setSetTagError(null);
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ setTag: value }),
-    });
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({})) as { error?: string };
-      setSetTagError(d.error ?? "Erreur lors de la sauvegarde");
-      return;
-    }
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, setTag: value } : a));
-    setEditingSetTagId(null);
-    setSetTagValue("");
-    setSetTagError(null);
-  }
-
+  // D9 — handleSaveUsage, handleResetAssetUsage, handleSaveTags,
+  // handleSaveSetTag, handleSaveLastUsed, handleDelete, toDateInputValue
+  // extraits dans le hook useAssetInlineEdits.
   // ─ Bulk edit handlers extraits dans useBulkEdit (D4 du split C1-v2).
-
-  async function handleSaveLastUsed(asset: MediaAsset, dateStr: string) {
-    setEditingLastUsedId(null);
-    setLastUsedInput("");
-    const lastUsedAt = dateStr ? new Date(dateStr).toISOString() : null;
-    if (lastUsedAt === asset.lastUsedAt) return;
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lastUsedAt }),
-    });
-    if (!res.ok) return;
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, lastUsedAt } : a));
-  }
-
-  function toDateInputValue(iso: string | null): string {
-    if (!iso) return "";
-    return new Date(iso).toISOString().split("T")[0] ?? "";
-  }
-
   // uploadFiles + handleFileSelect extraits dans MediaAssetsUploadModal (D7).
-
-  async function handleDelete(asset: MediaAsset) {
-    if (!confirm(`Supprimer "${asset.filename}" ?`)) return;
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, { method: "DELETE" });
-    if (!res.ok) {
-      const d = await res.json() as { error?: string };
-      toast.error(d.error ?? "Erreur lors de la suppression");
-      return;
-    }
-    setAssets((prev) => prev.filter((a) => a.id !== asset.id));
-  }
 
   const isVideo = library.type === "video";
 
-  // Compact single-row card used inside grouped/rotation views
+  // D9-step4 — renderCompactCard extrait dans MediaAssetsCompactCard.
+  // Wrapper closure stable pour le passer en callback aux vues grouped/rotation.
   function renderCompactCard(asset: MediaAsset, opts: { hideCategory?: boolean } = {}): React.ReactNode {
-    const isSelected = selectedIds.has(asset.id);
-    // Dim assets that are not accessible to the currently filtered account
-    const isAssetAccessible = !accountFilter ||
-      asset.accessAccountIds.length === 0 ||
-      asset.accessAccountIds.includes(accountFilter);
     return (
-      <div
+      <MediaAssetsCompactCard
         key={asset.id}
-        className={`group flex items-center gap-2 bg-white rounded-lg border px-2 py-1.5 transition-colors ${
-          !isAssetAccessible ? "opacity-50" : ""
-        } ${
-          selectMode && isSelected ? "border-indigo-400 ring-1 ring-indigo-200" : "border-gray-200 hover:border-indigo-300"
-        }`}
-        onClick={() => { if (selectMode) toggleSelect(asset.id); }}
-      >
-        {/* Tiny thumbnail */}
-        <a
-          href={selectMode ? undefined : asset.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => { if (selectMode) e.preventDefault(); else e.stopPropagation(); }}
-          className="relative w-8 h-12 rounded overflow-hidden shrink-0 bg-gray-100 block"
-        >
-          <LazyVideoThumb url={asset.url} className="w-full h-full object-cover" />
-          {asset.pendingEditJob && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10 pointer-events-none">
-              <Loader2 size={10} className="text-white animate-spin" />
-            </div>
-          )}
-          {selectMode && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-              {isSelected ? <CheckSquare size={12} className="text-white" /> : <Square size={12} className="text-white/70" />}
-            </div>
-          )}
-        </a>
-        {/* Info */}
-        <div className="flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
-          {/* breadcrumb pills — category hidden when inSection */}
-          <div className="flex items-center gap-1 mb-0.5 flex-wrap">
-            {!opts.hideCategory && (
-              editingFamilyKey === asset.id ? (
-                <input autoFocus value={familyInput} onChange={(e) => setFamilyInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { void handleSaveCategory(asset, familyInput); setEditingFamilyKey(null); } if (e.key === "Escape") setEditingFamilyKey(null); }}
-                  onBlur={() => { void handleSaveCategory(asset, familyInput); setEditingFamilyKey(null); }}
-                  list="group-list" placeholder="Catégorie…"
-                  className="w-20 text-[9px] border border-violet-300 rounded px-1 py-0.5 focus:outline-none" />
-              ) : (
-                <button onClick={() => { setEditingFamilyKey(asset.id); setFamilyInput(asset.category ?? ""); }}
-                  className={`flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded border ${
-                    asset.category ? "bg-violet-50 text-violet-600 border-violet-100 hover:bg-violet-100" : "bg-gray-50 text-gray-300 border-dashed border-gray-200 hover:text-violet-500"
-                  }`}>
-                  <FolderOpen size={7} /><span>{asset.category || "–"}</span>
-                </button>
-              )
-            )}
-            {!opts.hideCategory && asset.setTag && <span className="text-[9px] text-gray-300">›</span>}
-            {editingSetTagId === asset.id ? (
-              <input autoFocus value={setTagValue} onChange={(e) => setSetTagValue(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSaveSetTag(asset, setTagValue); } if (e.key === "Escape") { setEditingSetTagId(null); setSetTagValue(""); setSetTagError(null); } }}
-                onBlur={() => { void handleSaveSetTag(asset, setTagValue); }}
-                list="set-tags-list" placeholder="set…"
-                className="w-16 text-[9px] border border-pink-300 rounded px-1 py-0.5 focus:outline-none" />
-            ) : (
-              <button onClick={() => { setEditingSetTagId(asset.id); setSetTagValue(asset.setTag ?? ""); }}
-                className={`flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded border ${
-                  asset.setTag ? "bg-pink-50 text-pink-600 border-pink-100 hover:bg-pink-100" : "bg-gray-50 text-gray-300 border-dashed border-gray-200 hover:text-pink-500"
-                }`}>
-                <Layers size={7} /><span>{asset.setTag || "–"}</span>
-              </button>
-            )}
-          </div>
-          <a href={asset.url} target="_blank" rel="noopener noreferrer" className="text-[11px] font-medium text-gray-700 truncate hover:text-indigo-600 hover:underline block" title={asset.filename}>{asset.filename}</a>
-          {asset.tags.length > 0 && (
-            <div className="flex flex-wrap gap-0.5 mt-0.5">
-              {asset.tags.map((t) => <span key={t} className="text-[9px] bg-indigo-50 text-indigo-500 border border-indigo-100 px-1 rounded">{t}</span>)}
-            </div>
-          )}
-        </div>
-        {/* Metadata fields — compact read-only display */}
-        {metadataSchema.length > 0 && Object.keys(asset.metadata ?? {}).length > 0 && (
-          <div className="flex flex-col gap-0.5 shrink-0 text-[9px] text-gray-500 max-w-[80px]" onClick={(e) => e.stopPropagation()}>
-            {metadataSchema.map((field) => {
-              const value = asset.metadata?.[field.key];
-              if (value === null || value === undefined || value === "") return null;
-              return (
-                <span key={field.key} className="truncate" title={`${field.label} : ${String(value)}`}>
-                  <span className="text-gray-300">{field.label.slice(0, 6)}·</span>{String(value)}
-                </span>
-              );
-            })}
-          </div>
-        )}
-        {/* Stats + access indicator */}
-        <div className="flex flex-col items-end gap-0.5 shrink-0 text-[9px] text-gray-400">
-          <span className="flex items-center gap-0.5"><BarChart2 size={8} />{asset.usageCount}</span>
-          <span className="flex items-center gap-0.5"><Clock size={8} />{asset.lastUsedAt ? new Date(asset.lastUsedAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }) : "Jamais"}</span>
-          {asset.accessAccountIds.length === 0
-            ? <span className="flex items-center gap-0.5 text-gray-300" title="Accessible à tous"><Globe size={7} /></span>
-            : <span className="flex items-center gap-0.5 text-blue-400" title={`Accès restreint : ${asset.accessAccountIds.length} compte${asset.accessAccountIds.length > 1 ? "s" : ""}`}><Lock size={7} />{asset.accessAccountIds.length}</span>
-          }
-        </div>
-        {/* Delete */}
-        {!selectMode && (
-          <button onClick={(e) => { e.stopPropagation(); void handleDelete(asset); }}
-            className="opacity-0 group-hover:opacity-100 shrink-0 w-5 h-5 flex items-center justify-center text-gray-400 hover:text-red-500 transition">
-            <Trash2 size={11} />
-          </button>
-        )}
-      </div>
+        asset={asset}
+        accountFilter={accountFilter}
+        metadataSchema={metadataSchema}
+        selectMode={selectMode}
+        selectedIds={selectedIds}
+        toggleSelect={toggleSelect}
+        hideCategory={opts.hideCategory}
+        inline={inline}
+      />
     );
   }
 
+  // D9-step2 — renderVideoCard extrait dans MediaAssetsVideoCard.
+  // Le wrapper local fournit un closure stable des props (inline hook,
+  // bulk, accountFilter, etc.) sans propager 12+ props à chaque call site
+  // dans la vue grid (`.map((a) => renderVideoCard(a))`).
   function renderVideoCard(asset: MediaAsset) {
-    const isSelected = selectedIds.has(asset.id);
-    // Dim assets that are not accessible to the currently filtered account
-    const isAssetAccessible = !accountFilter ||
-      asset.accessAccountIds.length === 0 ||
-      asset.accessAccountIds.includes(accountFilter);
     return (
-      <div
+      <MediaAssetsVideoCard
         key={asset.id}
-        className={`group relative bg-gray-100 rounded-xl overflow-hidden border transition-colors ${
-          !isAssetAccessible ? "opacity-50" : ""
-        } ${
-          selectMode && isSelected
-            ? "border-indigo-500 ring-2 ring-indigo-200"
-            : "border-gray-200 hover:border-indigo-300"
-        }`}
-        onClick={() => { if (selectMode) toggleSelect(asset.id); }}
-      >
-        {/* Thumbnail / preview */}
-        <div className="relative aspect-[9/16] bg-gray-200">
-          {previewId === asset.id ? (
-            <video src={asset.url} controls autoPlay className="absolute inset-0 w-full h-full object-cover" />
-          ) : (
-            <>
-              <LazyVideoThumb url={asset.url} className="w-full h-full object-cover" />
-              {!selectMode && (
-                <button
-                  onClick={() => setPreviewId(asset.id)}
-                  className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <div className="w-8 h-8 bg-white/90 rounded-full flex items-center justify-center shadow">
-                    <Play size={14} className="text-gray-800 ml-0.5" />
-                  </div>
-                </button>
-              )}
-            </>
-          )}
-          {previewId === asset.id && (
-            <button
-              onClick={() => setPreviewId(null)}
-              className="absolute top-1 right-1 w-6 h-6 bg-black/60 text-white text-xs rounded-full flex items-center justify-center z-10"
-            >✕</button>
-          )}
-          {asset.duration && (
-            <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1 rounded">
-              {formatDuration(asset.duration)}
-            </span>
-          )}
-          {/* Replacement in-progress overlay */}
-          {asset.pendingEditJob && (
-            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 gap-1.5 pointer-events-none">
-              <Loader2 size={20} className="text-white animate-spin" />
-              <span className="text-[10px] text-white font-medium text-center px-2 leading-tight">Remplacement<br />en cours…</span>
-            </div>
-          )}
-          {/* Disabled overlay */}
-          {asset.disabled && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-amber-900/50 gap-1 pointer-events-none">
-              <EyeOff size={18} className="text-amber-200" />
-              <span className="text-[10px] text-amber-100 font-medium">Désactivé</span>
-            </div>
-          )}
-          {/* Select checkbox overlay */}
-          {selectMode && (
-            <div className="absolute top-1 right-1 z-10" onClick={(e) => { e.stopPropagation(); toggleSelect(asset.id); }}>
-              {isSelected
-                ? <CheckSquare size={16} className="text-indigo-600 drop-shadow" />
-                : <Square size={16} className="text-white/80 drop-shadow" />}
-            </div>
-          )}
-        </div>
-        {/* Info */}
-        <div className="p-2.5">
-          {/* ── Catégorie + Set ── breadcrumb, both always interactive */}
-          <div className="flex items-center gap-1 mb-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
-            {/* Category pill */}
-            {editingFamilyKey === asset.id ? (
-              <input
-                autoFocus
-                value={familyInput}
-                onChange={(e) => setFamilyInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { void handleSaveCategory(asset, familyInput); setEditingFamilyKey(null); }
-                  if (e.key === "Escape") setEditingFamilyKey(null);
-                }}
-                onBlur={() => { void handleSaveCategory(asset, familyInput); setEditingFamilyKey(null); }}
-                list="group-list"
-                placeholder="Catégorie…"
-                className="w-24 text-[9px] border border-violet-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400"
-              />
-            ) : (
-              <button
-                onClick={() => { setEditingFamilyKey(asset.id); setFamilyInput(asset.category ?? ""); }}
-                className={`flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
-                  asset.category
-                    ? "bg-violet-50 text-violet-600 border-violet-100 hover:bg-violet-100"
-                    : "bg-gray-50 text-gray-400 border-dashed border-gray-200 hover:text-violet-500 hover:border-violet-200"
-                }`}
-                title="Catégorie — cliquer pour modifier"
-              >
-                <FolderOpen size={8} className="shrink-0" />
-                <span>{asset.category || "Catégorie…"}</span>
-              </button>
-            )}
-            <span className="text-[9px] text-gray-300">›</span>
-            {/* Set pill */}
-            {editingSetTagId === asset.id ? (
-              <div className="flex flex-col gap-0.5">
-                <input
-                  autoFocus
-                  value={setTagValue}
-                  onChange={(e) => setSetTagValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") { e.preventDefault(); void handleSaveSetTag(asset, setTagValue); }
-                    if (e.key === "Escape") { setEditingSetTagId(null); setSetTagValue(""); setSetTagError(null); }
-                  }}
-                  onBlur={() => { void handleSaveSetTag(asset, setTagValue); }}
-                  list="set-tags-list"
-                  placeholder="set…"
-                  className="w-20 text-[9px] border border-pink-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-pink-400"
-                />
-                {setTagValue.trim() && setTagValue.trim() !== asset.setTag && (() => {
-                  const existingCategories = Array.from(new Set(
-                    assets.filter((a) => a.setTag === setTagValue.trim() && a.id !== asset.id && a.category).map((a) => a.category!)
-                  ));
-                  return existingCategories.length > 0 ? (
-                    <span className="text-[9px] flex items-center gap-0.5 font-medium text-orange-600">
-                      <FolderOpen size={8} /> Catégorie existante&nbsp;: {existingCategories[0]}
-                    </span>
-                  ) : null;
-                })()}
-                {setTagError && <span className="text-[9px] text-red-500">{setTagError}</span>}
-              </div>
-            ) : (
-              <button
-                onClick={() => { setEditingSetTagId(asset.id); setSetTagValue(asset.setTag ?? ""); }}
-                className={`flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
-                  asset.setTag
-                    ? "bg-pink-50 text-pink-600 border-pink-100 hover:bg-pink-100"
-                    : "bg-gray-50 text-gray-400 border-dashed border-gray-200 hover:text-pink-500 hover:border-pink-200"
-                }`}
-                title="Set — cliquer pour assigner"
-              >
-                <Layers size={8} className="shrink-0" />
-                <span>{asset.setTag || "Set…"}</span>
-              </button>
-            )}
-          </div>
-          <p className="text-xs font-medium text-gray-800 truncate mb-2" title={asset.filename}>{asset.filename}</p>
-
-          {/* ── Tags ── */}
-          {editingTagsId === asset.id ? (
-            <div className="mb-2" onClick={(e) => e.stopPropagation()}>
-              <input
-                autoFocus
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { void handleSaveTags(asset, tagInput.split(",").map((t) => t.trim()).filter(Boolean)); }
-                  if (e.key === "Escape") { setEditingTagsId(null); setTagInput(""); }
-                }}
-                onBlur={() => { void handleSaveTags(asset, tagInput.split(",").map((t) => t.trim()).filter(Boolean)); }}
-                placeholder="intro, outro, plan1…"
-                className="w-full text-xs border border-indigo-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-              />
-            </div>
-          ) : (
-            <div
-              className="flex flex-wrap gap-1 min-h-[26px] cursor-pointer -mx-1 px-1 py-1 rounded-lg hover:bg-gray-50 transition-colors mb-1"
-              onClick={(e) => { e.stopPropagation(); setEditingTagsId(asset.id); setTagInput(asset.tags.join(", ")); }}
-              title="Tags : cliquer pour éditer (intro, outro, rôle…)"
-            >
-              {asset.tags.length > 0 ? asset.tags.map((t) => (
-                <span key={t} className="text-[10px] bg-indigo-50 text-indigo-600 border border-indigo-200 px-1.5 py-0.5 rounded">{t}</span>
-              )) : (
-                <span className="text-[10px] text-gray-300 flex items-center gap-0.5"><Tag size={9} /> ajouter tags…</span>
-              )}
-            </div>
-          )}
-
-          {/* ── Métadonnées du bien ── */}
-          {metadataSchema.length > 0 && (
-            <div className="mt-1.5 mb-1 space-y-1" onClick={(e) => e.stopPropagation()}>
-              {metadataSchema.map((field) => {
-                const isEditing = editingMetaKey?.assetId === asset.id && editingMetaKey.key === field.key;
-                const value = asset.metadata?.[field.key];
-                const displayValue = value !== null && value !== undefined ? String(value) : "";
-                const isTextarea = field.type === "textarea";
-                const justSaved = savedMetaFlash?.assetId === asset.id && savedMetaFlash.key === field.key;
-                const hasError = metaSaveError?.assetId === asset.id && metaSaveError.key === field.key;
-                return (
-                  <div key={field.key} className={isTextarea ? "flex flex-col gap-0.5" : "flex items-center gap-1.5"}>
-                    <span className="text-[9px] text-gray-400 shrink-0 truncate" style={isTextarea ? undefined : { width: 68 }} title={field.label}>{field.label}</span>
-                    {isEditing ? (
-                      isTextarea ? (
-                        <textarea
-                          autoFocus
-                          rows={4}
-                          value={metaInput}
-                          onChange={(e) => setMetaInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            e.stopPropagation();
-                            if (e.key === "Escape") void handleSaveMetadata(asset, field.key, metaInput);
-                          }}
-                          onBlur={() => void handleSaveMetadata(asset, field.key, metaInput)}
-                          className="w-full min-w-0 text-[10px] border border-indigo-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white resize-y"
-                        />
-                      ) : (
-                        <input
-                          autoFocus
-                          type={field.type === "number" ? "number" : "text"}
-                          value={metaInput}
-                          onChange={(e) => setMetaInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") void handleSaveMetadata(asset, field.key, metaInput);
-                            if (e.key === "Escape") setEditingMetaKey(null);
-                          }}
-                          onBlur={() => void handleSaveMetadata(asset, field.key, metaInput)}
-                          className="flex-1 min-w-0 text-[10px] border border-indigo-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
-                        />
-                      )
-                    ) : (
-                      <button
-                        onClick={() => { setEditingMetaKey({ assetId: asset.id, key: field.key }); setMetaInput(displayValue); }}
-                        className={`${isTextarea ? "w-full text-left" : "flex-1 min-w-0 truncate text-left"} text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
-                          hasError
-                            ? "bg-red-50 text-red-600 border-red-300"
-                            : justSaved && displayValue
-                            ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                            : displayValue
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
-                            : "bg-gray-50 text-gray-300 border-dashed border-gray-200 hover:text-emerald-500 hover:border-emerald-200"
-                        }`}
-                        title={displayValue || `Saisir ${field.label}`}
-                      >
-                        {isTextarea && displayValue
-                          ? <span className="whitespace-pre-wrap break-words line-clamp-3">{displayValue}</span>
-                          : (displayValue || "—")}
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* ── Accès ── */}
-          <div className="flex items-center gap-1 flex-wrap mt-1 mb-1" onClick={(e) => e.stopPropagation()}>
-            {asset.accessAccountIds.length === 0 ? (
-              <span className="flex items-center gap-0.5 text-[9px] text-gray-300" title="Accessible à tous les comptes">
-                <Globe size={8} /> Global
-              </span>
-            ) : (
-              asset.accessAccountIds.map((id) => {
-                const acc = accounts.find((a) => a.id === id);
-                return acc ? (
-                  <button
-                    key={id}
-                    onClick={() => void handleToggleAccess(asset, id, false)}
-                    className="flex items-center gap-0.5 text-[9px] bg-blue-50 text-blue-600 border border-blue-100 px-1 py-0.5 rounded hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors"
-                    title={`Retirer l'accès à @${acc.handle}`}
-                  >
-                    <Lock size={7} />@{acc.handle}<X size={6} />
-                  </button>
-                ) : null;
-              })
-            )}
-            {accounts.filter((a) => !asset.accessAccountIds.includes(a.id)).length > 0 && (
-              <select
-                value=""
-                onChange={(e) => { if (e.target.value) void handleToggleAccess(asset, e.target.value, true); }}
-                className="text-[9px] text-gray-400 border border-dashed border-gray-200 rounded px-1 py-0.5 focus:outline-none hover:border-blue-300 hover:text-blue-500 max-w-[80px] cursor-pointer"
-                title="Restreindre l'accès à un compte"
-              >
-                <option value="">+ compte</option>
-                {accounts.filter((a) => !asset.accessAccountIds.includes(a.id)).map((a) => (
-                  <option key={a.id} value={a.id}>@{a.handle}</option>
-                ))}
-              </select>
-            )}
-          </div>
-          {/* ── Stats row ── */}
-          <div className="flex items-center justify-between gap-1">
-            {/* When a per-account filter is active, the displayed stats are per-account values —
-                editing them would incorrectly update global counters, so inline editing is disabled. */}
-            {!accountFilter && editingUsageId === asset.id ? (
-              <input
-                autoFocus
-                type="number"
-                min={0}
-                value={usageInput}
-                onChange={(e) => setUsageInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { void handleSaveUsage(asset, usageInput); }
-                  if (e.key === "Escape") { setEditingUsageId(null); setUsageInput(""); }
-                }}
-                onBlur={() => { void handleSaveUsage(asset, usageInput); }}
-                className="w-14 text-[10px] border border-indigo-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                onClick={(e) => e.stopPropagation()}
-              />
-            ) : accountFilter ? (
-              <span
-                className="flex items-center gap-0.5 text-[10px] text-gray-400"
-                title="Stats du compte (lecture seule — basculer en vue globale pour modifier)"
-              >
-                <BarChart2 size={10} /> {asset.usageCount} <span className="text-gray-300">(compte)</span>
-              </span>
-            ) : (
-              <button
-                onClick={(e) => { e.stopPropagation(); setEditingUsageId(asset.id); setUsageInput(String(asset.usageCount)); }}
-                className="flex items-center gap-0.5 text-[10px] text-gray-400 hover:text-indigo-600 hover:underline transition-colors"
-                title="Cliquer pour modifier"
-              >
-                <BarChart2 size={10} /> {asset.usageCount}
-              </button>
-            )}
-            {!accountFilter && editingLastUsedId === asset.id ? (
-              <input
-                autoFocus
-                type="date"
-                value={lastUsedInput}
-                onChange={(e) => setLastUsedInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { void handleSaveLastUsed(asset, lastUsedInput); }
-                  if (e.key === "Escape") { setEditingLastUsedId(null); setLastUsedInput(""); }
-                }}
-                onBlur={() => { void handleSaveLastUsed(asset, lastUsedInput); }}
-                className="w-full text-[10px] border border-orange-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
-                onClick={(e) => e.stopPropagation()}
-              />
-            ) : accountFilter ? (
-              <span
-                className="flex items-center gap-0.5 text-[10px] text-gray-400"
-                title="Dernière utilisation du compte (lecture seule)"
-              >
-                <Clock size={10} /> {formatDate(asset.lastUsedAt)}
-              </span>
-            ) : (
-              <button
-                onClick={(e) => { e.stopPropagation(); setEditingLastUsedId(asset.id); setLastUsedInput(toDateInputValue(asset.lastUsedAt)); }}
-                className="flex items-center gap-0.5 text-[10px] text-gray-400 hover:text-orange-600 hover:underline transition-colors"
-                title="Dernière utilisation : cliquer pour modifier"
-              >
-                <Clock size={10} /> {formatDate(asset.lastUsedAt)}
-              </button>
-            )}
-          </div>
-        </div>
-        {/* Action buttons — hidden in select mode */}
-        {!selectMode && (
-          <>
-            <button
-              onClick={(e) => { e.stopPropagation(); void handleDelete(asset); }}
-              className="absolute top-1.5 left-1.5 w-6 h-6 bg-white/80 hover:bg-red-50 text-gray-500 hover:text-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
-              title="Supprimer"
-            >
-              <Trash2 size={11} />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); setEditingAsset(asset); }}
-              className="absolute top-8 left-1.5 w-6 h-6 bg-white/80 hover:bg-violet-50 text-gray-500 hover:text-violet-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
-              title="Éditer (trim, audio)"
-            >
-              <Scissors size={11} />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); void handleToggleDisabled(asset); }}
-              className={`absolute top-14.5 left-1.5 w-6 h-6 bg-white/80 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow ${
-                asset.disabled
-                  ? "text-amber-500 hover:text-amber-700 hover:bg-amber-50"
-                  : "text-gray-500 hover:text-amber-500 hover:bg-amber-50"
-              }`}
-              title={asset.disabled ? "Réactiver dans la rotation" : "Désactiver de la rotation (garder dans la bibliothèque)"}
-            >
-              <EyeOff size={11} />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); void handleResetAssetUsage(asset); }}
-              className="absolute top-1.5 right-1.5 w-6 h-6 bg-white/80 hover:bg-orange-50 text-gray-500 hover:text-orange-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
-              title={accountFilter ? "Réinitialiser les stats de ce compte" : "Réinitialiser les compteurs"}
-            >
-              <RotateCcw size={11} />
-            </button>
-          </>
-        )}
-      </div>
+        asset={asset}
+        assets={assets}
+        accounts={accounts}
+        accountFilter={accountFilter}
+        metadataSchema={metadataSchema}
+        selectMode={selectMode}
+        selectedIds={selectedIds}
+        toggleSelect={toggleSelect}
+        previewId={previewId}
+        setPreviewId={setPreviewId}
+        onEditAsset={setEditingAsset}
+        inline={inline}
+      />
     );
   }
 
-  function renderColumn({ key, setTag, category, groupAssets, accessibleCount, lastUsed, autoRank, cycleSize, isAccessible = true, inSection = false, fluid = false }: { key: string; setTag: string | null; category: string | null; groupAssets: MediaAsset[]; accessibleCount?: number; lastUsed: string | null; autoRank: number | null; cycleSize?: number | null; isAccessible?: boolean; inSection?: boolean; fluid?: boolean }): React.ReactNode {
-    const isAutoMode = seqState.length === 0;
-    const seqIdx = setTag ? seqState.indexOf(setTag) : -1;
-    const isSequenced = seqIdx !== -1;
-
-    // Smart rush detection: a tag is a "role" if it appears on SOME but not ALL assets in the set.
-    const tagFreq = new Map<string, MediaAsset[]>();
-    for (const a of groupAssets) {
-      for (const t of a.tags) {
-        if (!tagFreq.has(t)) tagFreq.set(t, []);
-        tagFreq.get(t)!.push(a);
-      }
-    }
-    const roleTags = Array.from(tagFreq.entries())
-      .filter(([, tagged]) => tagged.length < groupAssets.length)
-      .sort(([a], [b]) => a.localeCompare(b));
-    const roleAssetIds = new Set(roleTags.flatMap(([, tagged]) => tagged.map((a) => a.id)));
-    const mainAssets = groupAssets.filter((a) => !roleAssetIds.has(a.id));
-    const hasRoles = roleTags.length > 0;
+  // D9-step3 — renderColumn extrait dans MediaAssetsGroupColumn.
+  // Le wrapper local fournit un closure stable des props (seqState +
+  // moveSetTag/addToSequence/removeFromSequence + inline editing
+  // catégorie group-level + renderVideoCard callback).
+  function renderColumn({ key, setTag, category, groupAssets, accessibleCount, lastUsed, autoRank, isAccessible = true, inSection = false, fluid = false }: { key: string; setTag: string | null; category: string | null; groupAssets: MediaAsset[]; accessibleCount?: number; lastUsed: string | null; autoRank: number | null; cycleSize?: number | null; isAccessible?: boolean; inSection?: boolean; fluid?: boolean }): React.ReactNode {
     return (
-      <div key={key || "__unset__"} className={`flex flex-col ${fluid ? "w-full" : "w-52 shrink-0"} ${!isAccessible && accountFilter ? "opacity-50" : ""}`}>
-        {/* Column header */}
-        <div className={`mb-2 p-2.5 rounded-xl border flex flex-col gap-1 ${!isAccessible && accountFilter ? "bg-gray-50 border-dashed border-gray-300" : "bg-gray-50 border-gray-200"}`}>
-          {!isAccessible && accountFilter && (
-            groupAssets.every((a) => a.disabled)
-              ? <span className="text-[9px] text-red-400 flex items-center gap-0.5 mb-0.5"><AlertTriangle size={8} /> Set désactivé — bloque la rotation</span>
-              : <span className="text-[9px] text-gray-400 flex items-center gap-0.5 mb-0.5"><Lock size={8} /> Hors accès pour ce compte</span>
-          )}
-          {/* Category — only shown when NOT inside a category section (avoids redundancy) */}
-          {(setTag || category) && !inSection && (
-            <div>
-              {editingFamilyKey === key ? (
-                <input
-                  autoFocus
-                  value={familyInput}
-                  onChange={(e) => setFamilyInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      void handleSaveCategoryForGroup(groupAssets, familyInput);
-                      setEditingFamilyKey(null);
-                    }
-                    if (e.key === "Escape") { setEditingFamilyKey(null); }
-                  }}
-                  onBlur={() => {
-                    void handleSaveCategoryForGroup(groupAssets, familyInput);
-                    setEditingFamilyKey(null);
-                  }}
-                  list="group-list"
-                  placeholder="ex: Tenue A, Plan Ext…"
-                  className="w-full text-[10px] border border-violet-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400"
-                />
-              ) : (
-                <button
-                  onClick={() => { setEditingFamilyKey(key); setFamilyInput(category ?? ""); }}
-                  className={`flex items-center gap-1 text-[10px] w-full text-left px-1.5 py-0.5 rounded border transition-colors ${
-                    category
-                      ? "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100 font-medium"
-                      : "text-gray-400 border-dashed border-gray-200 hover:border-violet-200 hover:text-violet-500"
-                  }`}
-                  title="Catégorie du set — deux sets de la même catégorie ne se suivent jamais dans la rotation"
-                >
-                  <FolderOpen size={10} className="shrink-0" />
-                  <span className="truncate">{category || "Catégorie…"}</span>
-                </button>
-              )}
-            </div>
-          )}
-          {/* Divider */}
-          {(setTag || category) && !inSection && <div className="h-px bg-gray-200" />}
-          {/* Set name */}
-          {setTag ? (
-            <div className="flex items-center gap-1.5">
-              <Layers size={11} className="text-pink-400 shrink-0" />
-              <span className="text-xs font-semibold text-gray-800 truncate" title={setTag}>{setTag}</span>
-            </div>
-          ) : category ? (
-            <span className="text-xs font-medium text-gray-500 italic">Pool catégorie</span>
-          ) : (
-            <span className="text-xs font-medium text-gray-400">Sans set</span>
-          )}
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="text-[10px] text-gray-400">{accessibleCount ?? groupAssets.length} rush{(accessibleCount ?? groupAssets.length) !== 1 ? "es" : ""}</span>
-            {(setTag || category) && (
-              isAutoMode ? (
-                autoRank === 1 ? (
-                  <span className="text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded flex items-center gap-1">
-                    <RotateCcw size={9} /> Prochain
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-gray-400 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-1">
-                    <RotateCcw size={9} /> {autoRank != null ? `Dans ${autoRank - 1} gén.` : "–"}
-                  </span>
-                )
-              ) : (
-                isSequenced ? (
-                  <div className="flex items-center gap-0.5">
-                    <span className="text-[10px] font-mono bg-indigo-100 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded flex items-center gap-1">
-                      <ListOrdered size={10} /> #{seqIdx + 1}
-                    </span>
-                    <button onClick={() => moveSetTag(setTag!, -1)} disabled={seqIdx === 0} className="p-0.5 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronUp size={12} className="text-gray-500" /></button>
-                    <button onClick={() => moveSetTag(setTag!, 1)} disabled={seqIdx === seqState.length - 1} className="p-0.5 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronDown size={12} className="text-gray-500" /></button>
-                    <button onClick={() => removeFromSequence(setTag!)} className="text-[10px] text-red-400 hover:text-red-600 px-0.5 flex items-center" title="Retirer de la rotation"><MinusCircle size={11} /></button>
-                  </div>
-                ) : (
-                  <button onClick={() => addToSequence(setTag!)} className="flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-700 border border-indigo-200 rounded-full px-2 py-0.5"><PlusCircle size={10} /> Fixer l&apos;ordre</button>
-                )
-              )
-            )}
-          </div>
-          {(setTag || category) && lastUsed && (
-            <span className="text-[10px] text-gray-400 flex items-center gap-0.5"><Clock size={9} /> {formatDate(lastUsed)}</span>
-          )}
-        </div>
-        {/* Rushes with defined roles */}
-        {hasRoles && (
-          <div className="border border-dashed border-amber-200 bg-amber-50/40 rounded-xl p-1.5 mb-2">
-            <span className="text-[9px] font-semibold text-amber-600 uppercase tracking-wide mb-1.5 flex items-center gap-1">
-              <Film size={9} /> Rushes
-            </span>
-            {roleTags.map(([tag, assets]) => (
-              <div key={tag} className="mb-1.5 last:mb-0">
-                <span className="text-[9px] text-amber-500 mb-1 block pl-0.5">{tag}</span>
-                <div className="flex flex-col gap-1.5">{assets.map((a) => renderVideoCard(a))}</div>
-              </div>
-            ))}
-          </div>
-        )}
-        {/* Main assets */}
-        {mainAssets.length > 0 && (
-          <div className="flex flex-col gap-2">
-            {mainAssets.map((a) => renderVideoCard(a))}
-          </div>
-        )}
-      </div>
+      <MediaAssetsGroupColumn
+        key={key || "__unset__"}
+        groupKey={key}
+        setTag={setTag}
+        category={category}
+        groupAssets={groupAssets}
+        accessibleCount={accessibleCount}
+        lastUsed={lastUsed}
+        autoRank={autoRank}
+        isAccessible={isAccessible}
+        inSection={inSection}
+        fluid={fluid}
+        seqState={seqState}
+        accountFilter={accountFilter}
+        editingFamilyKey={editingFamilyKey}
+        setEditingFamilyKey={setEditingFamilyKey}
+        familyInput={familyInput}
+        setFamilyInput={setFamilyInput}
+        handleSaveCategoryForGroup={handleSaveCategoryForGroup}
+        moveSetTag={moveSetTag}
+        addToSequence={addToSequence}
+        removeFromSequence={removeFromSequence}
+        renderVideoCard={renderVideoCard}
+      />
     );
   }
 
   return (
     <div className={`relative${selectMode ? " pb-20" : ""}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">{library.name}</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {assets.length} fichier{assets.length !== 1 ? "s" : ""} · {isVideo ? "Vidéos" : "Musiques"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {isVideo && (
-            <button
-              onClick={() => setShowAtelier(true)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700"
-            >
-              <Wand2 size={14} /> Analyse auto
-            </button>
-          )}
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
-          >
-            <Upload size={14} /> {isVideo ? "Ajouter des vidéos" : "Ajouter des musiques"}
-          </button>
-        </div>
-      </div>
-
-      {/* Reset error */}
-      {resetError && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{resetError}</div>
-      )}
-
-      {/* Filters bar */}
-      {!loading && assets.length > 0 && (
-        <div className="flex flex-col gap-2 mb-4">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative flex-1">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher un fichier…"
-                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <ArrowUpDown size={12} />
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortKey)}
-                className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              >
-                <option value="date_desc">Plus récents</option>
-                <option value="date_asc">Plus anciens</option>
-                <option value="usage_desc">Plus utilisés</option>
-                <option value="usage_asc">Moins utilisés</option>
-                <option value="name_asc">Nom (A-Z)</option>
-              </select>
-            </div>
-            {isVideo && (
-              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-                <button
-                  onClick={() => setViewMode("grid")}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors ${viewMode === "grid" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-                  title="Vue grille"
-                >
-                  <LayoutGrid size={13} /> Grille
-                </button>
-                <button
-                  onClick={() => setViewMode("rotation")}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors ${viewMode === "rotation" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-                  title="Vue rotation — ordre de passage des sets"
-                >
-                  <RotateCcw size={13} /> Rotation
-                </button>
-              </div>
-            )}
-            {isVideo && (
-              <>
-                <div className="w-px h-5 bg-gray-200 self-center" />
-                <button
-                  onClick={() => { if (selectMode) { exitSelectMode(); } else { setSelectMode(true); } }}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors ${
-                    selectMode
-                      ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                      : "border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"
-                  }`}
-                >
-                  <CheckSquare size={13} />
-                  {selectMode ? "Sélection active" : "Sélectionner"}
-                </button>
-              </>
-            )}
-          </div>
-          {isVideo && accounts.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-gray-400 flex items-center gap-1"><Users size={11} /> Compte :</span>
-              <select
-                value={accountFilter ?? ""}
-                onChange={(e) => setAccountFilter(e.target.value || null)}
-                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              >
-                <option value="">Tous (global)</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>@{a.handle} — {a.name}</option>
-                ))}
-              </select>
-              {accountFilter && (
-                <>
-                  <button onClick={() => setAccountFilter(null)} className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-0.5"><X size={10} /> Effacer</button>
-                  <span className="text-[10px] text-blue-500 flex items-center gap-0.5 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded"><Clock size={9} /> Stats par compte</span>
-                </>
-              )}
-            </div>
-          )}
-          {allTags.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-gray-400 flex items-center gap-1"><Tag size={11} /> Tags :</span>
-              {allTags.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTagFilter(tagFilter === t ? "" : t)}
-                  className={`px-2.5 py-0.5 rounded-full text-xs border transition-colors ${
-                    tagFilter === t
-                      ? "bg-indigo-600 text-white border-indigo-600"
-                      : "bg-gray-50 text-gray-600 border-gray-200 hover:border-indigo-300"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-              {tagFilter && (
-                <button onClick={() => setTagFilter("")} className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-0.5">
-                  <X size={10} /> Effacer
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      <MediaAssetsToolbar
+        library={library}
+        isVideo={isVideo}
+        loading={loading}
+        assetsCount={assets.length}
+        accounts={accounts}
+        allTags={allTags}
+        onOpenUpload={() => setShowUploadModal(true)}
+        onOpenAtelier={() => setShowAtelier(true)}
+        resetError={resetError}
+        search={search}
+        setSearch={setSearch}
+        sort={sort}
+        setSort={setSort}
+        tagFilter={tagFilter}
+        setTagFilter={setTagFilter}
+        accountFilter={accountFilter}
+        setAccountFilter={setAccountFilter}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        selectMode={selectMode}
+        setSelectMode={setSelectMode}
+        exitSelectMode={exitSelectMode}
+      />
 
       {/* D8 — bulk action bar extraite dans MediaAssetsBulkActionBar */}
       {selectMode && <MediaAssetsBulkActionBar bulk={bulk} filtered={filtered} accounts={accounts} />}
