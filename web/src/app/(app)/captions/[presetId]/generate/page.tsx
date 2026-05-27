@@ -7,6 +7,8 @@ import { readFile } from "fs/promises";
 import path from "path";
 import type { Segment } from "@/lib/transcriptionProcess";
 import { getUserContext } from "@/lib/userContext";
+import { canUserAccessSlot } from "@/lib/permissions/slotScope";
+import { toUserRole } from "@/lib/permissions/role";
 import {
   CaptionPromptStorageUnavailableError,
   getCaptionPromptStorageMessage,
@@ -43,6 +45,20 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
   }
 
   if (!preset) notFound();
+
+  // Validation perms slotId : si l'user invoque ?slotId=X, il doit pouvoir
+  // accéder au slot (ADMIN, ou MONTEUR/CM assigné). Sinon 404 anti-énumération
+  // (cohérent avec /api/calendar/slots/[id] qui retourne 404 si pas accès).
+  if (slotId) {
+    const slot = await prisma.publicationSlot.findUnique({
+      where: { id: slotId },
+      select: { id: true, assigneeMonteurId: true, assigneeCmId: true },
+    });
+    const role = toUserRole(userContext.effectiveUser.role);
+    if (!slot || !canUserAccessSlot(slot, role, effectiveUserId)) {
+      notFound();
+    }
+  }
 
   // Pre-load SRT from a previous job if captionJobId is provided
   let initialSrt: string | null = null;
