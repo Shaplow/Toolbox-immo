@@ -111,16 +111,35 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const trimmedBody = body.trim();
 
-  const comment = await prisma.publicationComment.create({
-    data: {
-      slotId,
-      authorId: userId,
-      body: trimmedBody,
-    },
-    include: {
-      author: { select: { id: true, name: true, email: true } },
-    },
-  });
+  // E2 — race condition fix : entre le check `canCommentOnPublication` et le
+  // create ci-dessous, le slot peut être supprimé par un autre process. Sans
+  // protection, on aurait un 500 (Prisma P2003 = FK violation). On catch et
+  // retourne 404 pour aligner avec le comportement "slot introuvable" du
+  // happy path.
+  let comment;
+  try {
+    comment = await prisma.publicationComment.create({
+      data: {
+        slotId,
+        authorId: userId,
+        body: trimmedBody,
+      },
+      include: {
+        author: { select: { id: true, name: true, email: true } },
+      },
+    });
+  } catch (err) {
+    // Prisma P2003 : FK violation (slotId ou authorId n'existe plus en base).
+    if (
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      (err as { code: string }).code === "P2003"
+    ) {
+      return NextResponse.json({ error: "Slot introuvable" }, { status: 404 });
+    }
+    throw err;
+  }
 
   // Log non bloquant : une erreur ici ne doit pas casser la réponse.
   await logActivity(prisma, {
