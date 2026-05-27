@@ -35,7 +35,7 @@ describe("canTransition — matrice pour rôles non-ADMIN", () => {
   });
 
   it("USER ne peut faire aucune transition", () => {
-    expect(canTransition("DRAFT", "PLANNED", "USER")).toBe(false);
+    expect(canTransition("DRAFT", "PLANNED", "EXTERNAL_GENERATOR")).toBe(false);
   });
 
   it("CANCELLED → [] (terminal) : impossible pour CM", () => {

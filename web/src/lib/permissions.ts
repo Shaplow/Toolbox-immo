@@ -3,10 +3,10 @@
 /**
  * Outils disponibles dans la Toolbox Immo.
  *
- * ADMIN -> tous les outils automatiquement.
- * USER  -> outils assignes individuellement par l'admin.
+ * ADMIN              -> tous les outils automatiquement.
+ * EXTERNAL_GENERATOR -> outils assignés individuellement par l'admin (anciennement USER).
  *
- * Stocke dans User.permissions (JSON array), ex: ["templates","captions"]
+ * Stocké dans User.permissions (JSON array), ex: ["templates","captions"]
  */
 export const TOOLS = {
   TEMPLATES:     "templates",
@@ -35,9 +35,9 @@ export const TOOL_DESCRIPTIONS: Record<Tool, string> = {
 };
 
 /**
- * Outils que le rôle USER (cadré comme "générateur externe" depuis Phase 1.2)
- * peut se voir attribuer. Le rôle USER n'est pas un membre d'équipe et n'a
- * donc pas vocation à générer captions/transcription/description.
+ * Outils que le rôle EXTERNAL_GENERATOR (client externe, anciennement USER)
+ * peut se voir attribuer. Ce rôle n'est pas un membre d'équipe et n'a donc
+ * pas vocation à générer captions/transcription/description.
  *
  * Utilisé par UsersPanel (filtre les checkboxes) et par PATCH
  * /api/admin/users/[id] (refuse d'ajouter une perm non-autorisée).
@@ -46,7 +46,7 @@ export const TOOL_DESCRIPTIONS: Record<Tool, string> = {
  * toggleables vers OFF (pour permettre le nettoyage manuel), mais on ne
  * peut plus en ajouter de nouvelles.
  */
-export const USER_ALLOWED_TOOLS: readonly Tool[] = [TOOLS.TEMPLATES, TOOLS.COVERS];
+export const EXTERNAL_GENERATOR_ALLOWED_TOOLS: readonly Tool[] = [TOOLS.TEMPLATES, TOOLS.COVERS];
 
 // -- Helpers -------------------------------------------------------------------
 

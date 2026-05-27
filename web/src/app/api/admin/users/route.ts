@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   }
 
   const roleFilter = req.nextUrl.searchParams.get("role");
-  if (roleFilter && ["ADMIN", "MONTEUR", "CM", "USER"].includes(roleFilter)) {
+  if (roleFilter && ["ADMIN", "MONTEUR", "CM", "EXTERNAL_GENERATOR"].includes(roleFilter)) {
     const users = await prisma.user.findMany({
       where: { role: roleFilter },
       orderBy: { name: "asc" },
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
-  const { username, name, email, password, role = "USER" } = await req.json();
+  const { username, name, email, password, role = "EXTERNAL_GENERATOR" } = await req.json();
   if (!username || !name || !password) {
     return NextResponse.json({ error: "username, name et password requis" }, { status: 400 });
   }

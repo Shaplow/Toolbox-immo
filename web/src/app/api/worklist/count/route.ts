@@ -26,7 +26,7 @@ export async function GET() {
   const userId = userContext.effectiveUser.id;
 
   // USER n'a pas de worklist — réponse immédiate
-  if (role === "USER") {
+  if (role === "EXTERNAL_GENERATOR") {
     return NextResponse.json({ count: 0 }, {
       headers: { "Cache-Control": "no-store" },
     });

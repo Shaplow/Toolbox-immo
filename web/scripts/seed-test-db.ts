@@ -5,7 +5,7 @@
  * - 1 admin (admin@test.local / testpass)
  * - 1 monteur (monteur@test.local / testpass)
  * - 1 CM (cm@test.local / testpass)
- * - 1 user legacy avec permissions ["captions"] (user@test.local / testpass)
+ * - 1 client externe (EXTERNAL_GENERATOR) avec permissions ["captions"] (user@test.local / testpass)
  * - 1 client + 1 InstagramAccount rattaché
  * - 1 AccountPattern minimale ("RPI" auto_template)
  * - 1 PublicationSlot assigné au monteur ET au CM (pour tester les 2 rôles)
@@ -87,13 +87,13 @@ async function main() {
 
   const user = await prisma.user.upsert({
     where: { email: "user@test.local" },
-    update: { role: "USER" },
+    update: { role: "EXTERNAL_GENERATOR" },
     create: {
       email: "user@test.local",
       username: "test_user",
       name: "Test User",
       passwordHash: TEST_PASSWORD_HASH,
-      role: "USER",
+      role: "EXTERNAL_GENERATOR",
       permissions: JSON.stringify(["captions"]),
     },
   });
@@ -280,7 +280,7 @@ async function main() {
   console.log("   - admin@test.local    (ADMIN)");
   console.log("   - monteur@test.local  (MONTEUR, assigné slot test-slot-1)");
   console.log("   - cm@test.local       (CM, assigné slot test-slot-1)");
-  console.log("   - user@test.local     (USER, permission captions)");
+  console.log("   - user@test.local     (EXTERNAL_GENERATOR, permission captions)");
 }
 
 main()

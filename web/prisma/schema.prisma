@@ -13,7 +13,7 @@ model User {
   email                     String?               @unique
   passwordHash              String
   name                      String
-  role                      String                @default("USER")
+  role                      String                @default("EXTERNAL_GENERATOR")
   /// JSON array of tool strings — ex: ["templates","captions"]
   permissions               String                @default("[]")
   createdAt                 DateTime              @default(now())

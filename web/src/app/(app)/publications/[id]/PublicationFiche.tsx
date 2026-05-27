@@ -63,7 +63,7 @@ function isPrimaryForRole(section: SectionKey, role: UserRole): boolean {
   const primaryByRole: Record<Exclude<UserRole, "ADMIN">, SectionKey[]> = {
     MONTEUR: ["brief", "rushes", "versions", "comments"],
     CM: ["render", "cover", "captions", "description", "captionIg", "publish", "comments"],
-    USER: [],
+    EXTERNAL_GENERATOR: [],
   };
 
   return primaryByRole[role]?.includes(section) ?? true;

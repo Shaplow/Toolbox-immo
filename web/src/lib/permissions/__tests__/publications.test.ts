@@ -18,7 +18,7 @@ import {
 import type { AppUserIdentity } from "@/lib/userContext";
 
 function makeUser(
-  role: "ADMIN" | "MONTEUR" | "CM" | "USER",
+  role: "ADMIN" | "MONTEUR" | "CM" | "EXTERNAL_GENERATOR",
   id = "user-123"
 ): AppUserIdentity {
   return {
@@ -66,7 +66,7 @@ describe("canSeePublication", () => {
 
   it("USER sees nothing", () => {
     expect(
-      canSeePublication(makeUser("USER"), {
+      canSeePublication(makeUser("EXTERNAL_GENERATOR"), {
         id: "s1",
         assigneeMonteurId: USER_ID,
         assigneeCmId: USER_ID,
@@ -80,12 +80,12 @@ describe("canAssignMonteur / canAssignCm", () => {
     expect(canAssignMonteur(makeUser("ADMIN"))).toBe(true);
     expect(canAssignMonteur(makeUser("MONTEUR"))).toBe(false);
     expect(canAssignMonteur(makeUser("CM"))).toBe(false);
-    expect(canAssignMonteur(makeUser("USER"))).toBe(false);
+    expect(canAssignMonteur(makeUser("EXTERNAL_GENERATOR"))).toBe(false);
 
     expect(canAssignCm(makeUser("ADMIN"))).toBe(true);
     expect(canAssignCm(makeUser("MONTEUR"))).toBe(false);
     expect(canAssignCm(makeUser("CM"))).toBe(false);
-    expect(canAssignCm(makeUser("USER"))).toBe(false);
+    expect(canAssignCm(makeUser("EXTERNAL_GENERATOR"))).toBe(false);
   });
 });
 
@@ -166,7 +166,7 @@ describe("canMarkPublished", () => {
   it("USER cannot mark published", () => {
     expect(
       canMarkPublished(
-        { id: USER_ID, role: "USER" },
+        { id: USER_ID, role: "EXTERNAL_GENERATOR" },
         { assigneeCmId: USER_ID }
       )
     ).toBe(false);
@@ -179,14 +179,14 @@ describe("canCommentOnPublication", () => {
     expect(canCommentOnPublication({ id: "x", role: "ADMIN" }, slot)).toBe(true);
     expect(canCommentOnPublication({ id: USER_ID, role: "MONTEUR" }, slot)).toBe(true);
     expect(canCommentOnPublication({ id: USER_ID, role: "CM" }, slot)).toBe(false);
-    expect(canCommentOnPublication({ id: USER_ID, role: "USER" }, slot)).toBe(false);
+    expect(canCommentOnPublication({ id: USER_ID, role: "EXTERNAL_GENERATOR" }, slot)).toBe(false);
   });
 });
 
 describe("canEditComment", () => {
   it("author can edit own comment", () => {
     expect(
-      canEditComment({ id: USER_ID, role: "USER" }, { authorId: USER_ID })
+      canEditComment({ id: USER_ID, role: "EXTERNAL_GENERATOR" }, { authorId: USER_ID })
     ).toBe(true);
   });
 
@@ -226,7 +226,7 @@ describe("canUploadRushes", () => {
   });
 
   it("USER ne peut pas uploader des rushes", () => {
-    expect(canUploadRushes({ id: USER_ID, role: "USER" }, { assigneeCmId: USER_ID })).toBe(false);
+    expect(canUploadRushes({ id: USER_ID, role: "EXTERNAL_GENERATOR" }, { assigneeCmId: USER_ID })).toBe(false);
   });
 });
 
@@ -265,7 +265,7 @@ describe("canUploadVersion", () => {
   });
 
   it("USER ne peut pas uploader une version", () => {
-    expect(canUploadVersion({ id: USER_ID, role: "USER" }, { assigneeMonteurId: USER_ID })).toBe(false);
+    expect(canUploadVersion({ id: USER_ID, role: "EXTERNAL_GENERATOR" }, { assigneeMonteurId: USER_ID })).toBe(false);
   });
 });
 
@@ -283,7 +283,7 @@ describe("canPromoteVersion", () => {
   });
 
   it("USER ne peut pas promouvoir une version", () => {
-    expect(canPromoteVersion({ role: "USER" })).toBe(false);
+    expect(canPromoteVersion({ role: "EXTERNAL_GENERATOR" })).toBe(false);
   });
 });
 
@@ -307,7 +307,7 @@ describe("canRestoreVersion", () => {
     expect(canRestoreVersion({ role: "ADMIN" })).toBe(true);
     expect(canRestoreVersion({ role: "MONTEUR" })).toBe(false);
     expect(canRestoreVersion({ role: "CM" })).toBe(false);
-    expect(canRestoreVersion({ role: "USER" })).toBe(false);
+    expect(canRestoreVersion({ role: "EXTERNAL_GENERATOR" })).toBe(false);
   });
 });
 
@@ -331,6 +331,6 @@ describe("canEditBrief", () => {
   });
 
   it("USER ne peut pas éditer le brief", () => {
-    expect(canEditBrief({ id: USER_ID, role: "USER" }, { assigneeCmId: USER_ID })).toBe(false);
+    expect(canEditBrief({ id: USER_ID, role: "EXTERNAL_GENERATOR" }, { assigneeCmId: USER_ID })).toBe(false);
   });
 });
