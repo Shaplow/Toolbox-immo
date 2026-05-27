@@ -6,7 +6,7 @@
  */
 
 import Link from "next/link";
-import { ImageIcon, ExternalLink } from "lucide-react";
+import { ImageIcon, ExternalLink, AlertTriangle } from "lucide-react";
 
 interface Props {
   slot: { id: string };
@@ -15,6 +15,17 @@ interface Props {
     id: string;
     status: string;
     finalCoverUrl: string | null;
+    errorMsg?: string | null;
+  } | null;
+  /**
+   * Warning de configuration cover : aucun pack créé alors qu'attendu
+   * (preset introuvable, coverPresetName manquant, etc.). Calculé côté server
+   * en lisant la dernière activity COVER_CONFIG_ERROR si pas de pack.
+   */
+  coverConfigError?: {
+    reason: string;
+    presetName?: string;
+    message: string;
   } | null;
   /** true pour CM et ADMIN */
   canEdit: boolean;
@@ -38,7 +49,7 @@ const COVER_STATUS_COLORS: Record<string, string> = {
   FAILED: "bg-red-50 text-red-700 border-red-200",
 };
 
-export function CoverSection({ slot, pattern, coverPack, canEdit, currentVersion }: Props) {
+export function CoverSection({ slot, pattern, coverPack, coverConfigError, canEdit, currentVersion }: Props) {
   // Si pas de pattern ou que le pattern indique que la cover n'est pas nécessaire, on masque la section
   if (!pattern || pattern.coverMode === "none") return null;
 
@@ -72,8 +83,33 @@ export function CoverSection({ slot, pattern, coverPack, canEdit, currentVersion
         )}
       </div>
 
-      {/* Pas de cover pack */}
-      {!coverPack && (
+      {/* Pas de cover pack — soit non démarré (config OK), soit config error */}
+      {!coverPack && coverConfigError && (
+        <div className="space-y-3">
+          <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <AlertTriangle size={15} className="text-amber-500 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-medium">Cover auto bloquée</p>
+              <p className="text-amber-700 mt-0.5">{coverConfigError.message}</p>
+              <p className="text-xs text-amber-600 mt-1">
+                Vérifiez la configuration cover du pattern lié à ce slot
+                (preset référencé manquant ou supprimé).
+              </p>
+            </div>
+          </div>
+          {canEdit && (
+            <Link
+              href={coverToolHref}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+            >
+              <ExternalLink size={14} />
+              Choisir une cover manuellement
+            </Link>
+          )}
+        </div>
+      )}
+
+      {!coverPack && !coverConfigError && (
         <div className="space-y-3">
           <p className="text-sm text-gray-500">Aucune cover sélectionnée pour ce slot.</p>
           {canEdit && (
@@ -85,6 +121,22 @@ export function CoverSection({ slot, pattern, coverPack, canEdit, currentVersion
               Choisir une cover
             </Link>
           )}
+        </div>
+      )}
+
+      {/* Cover pack FAILED — bandeau d'erreur d'extraction */}
+      {coverPack?.status === "FAILED" && (
+        <div className="flex items-start gap-2 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+          <AlertTriangle size={15} className="text-red-500 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-medium">Extraction des frames échouée</p>
+            {coverPack.errorMsg && (
+              <p className="text-red-700 mt-0.5">{coverPack.errorMsg}</p>
+            )}
+            <p className="text-xs text-red-600 mt-1">
+              Relancez la sélection ou choisissez une cover manuellement.
+            </p>
+          </div>
         </div>
       )}
 

@@ -164,6 +164,29 @@ function activityLabel(type: string, payload: Record<string, unknown> | null): s
       const round = typeof payload?.roundNumber === "number" ? ` (round ${payload.roundNumber})` : "";
       return `Client : annulé${round}`;
     }
+    // ── Cover lifecycle ───────────────────────────────────────────────────────
+    case "COVER_QUEUED": {
+      const preset = typeof payload?.presetName === "string" ? ` (preset "${payload.presetName}")` : "";
+      return `Cover auto démarrée${preset}`;
+    }
+    case "COVER_READY": {
+      const count = typeof payload?.frameCount === "number" ? ` (${payload.frameCount} frames)` : "";
+      return `Cover : frames prêtes${count} — en attente de sélection CM`;
+    }
+    case "COVER_FAILED": {
+      const msg = typeof payload?.errorMsg === "string"
+        ? ` — ${payload.errorMsg.slice(0, 80)}${payload.errorMsg.length > 80 ? "…" : ""}`
+        : "";
+      return `Cover : échec extraction${msg}`;
+    }
+    case "COVER_CONFIG_ERROR": {
+      const reason = payload?.reason === "preset_not_found"
+        ? ` (preset "${payload.presetName}" introuvable)`
+        : payload?.reason === "missing_preset_name"
+          ? " (aucun preset configuré)"
+          : "";
+      return `Cover : config invalide${reason}`;
+    }
     default:
       return type;
   }
@@ -221,6 +244,15 @@ function ActivityIcon({ type }: ActivityIconProps) {
       return <span className={`${base} bg-rose-100 text-rose-700`} title="Modifications demandées"><MessageSquare size={12} /></span>;
     case "CLIENT_VALIDATION_CANCELLED":
       return <span className={`${base} bg-red-100 text-red-700`} title="Annulé par client"><ShieldX size={12} /></span>;
+    // ── Cover lifecycle ───────────────────────────────────────────────────────
+    case "COVER_QUEUED":
+      return <span className={`${base} bg-pink-50 text-pink-600`} title="Cover lancée"><ImageIcon size={12} /></span>;
+    case "COVER_READY":
+      return <span className={`${base} bg-pink-100 text-pink-700`} title="Cover prête"><ImageIcon size={12} /></span>;
+    case "COVER_FAILED":
+      return <span className={`${base} bg-red-100 text-red-700`} title="Cover échouée"><Trash2 size={12} /></span>;
+    case "COVER_CONFIG_ERROR":
+      return <span className={`${base} bg-amber-100 text-amber-700`} title="Cover : config invalide"><Circle size={10} /></span>;
     default:
       return <span className={`${base} bg-gray-100 text-gray-500`} title={type}><Circle size={10} /></span>;
   }

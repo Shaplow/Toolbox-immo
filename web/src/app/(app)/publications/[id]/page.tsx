@@ -77,7 +77,7 @@ export default async function PublicationPage({ params }: PageProps) {
           pngUrl: true,
           createdAt: true,
           coverFramePack: {
-            select: { id: true, status: true, finalCoverUrl: true },
+            select: { id: true, status: true, finalCoverUrl: true, errorMsg: true },
           },
           listing: { select: { id: true } },
         },
@@ -299,6 +299,26 @@ export default async function PublicationPage({ params }: PageProps) {
     currentVersionId: slot.currentVersionId ?? null,
   });
 
+  // Cover config error : si pas de pack créé alors que pattern.coverMode=auto,
+  // chercher la dernière activity COVER_CONFIG_ERROR pour afficher un warning
+  // contextuel dans CoverSection.
+  let coverConfigError: { reason: string; presetName?: string; message: string } | null = null;
+  if (!slot.render?.coverFramePack && slot.pattern?.coverMode === "auto") {
+    const lastConfigError = await prisma.publicationActivity.findFirst({
+      where: { slotId: id, type: "COVER_CONFIG_ERROR" },
+      orderBy: { createdAt: "desc" },
+      select: { payload: true },
+    });
+    if (lastConfigError?.payload) {
+      const p = lastConfigError.payload as Record<string, unknown>;
+      coverConfigError = {
+        reason: typeof p.reason === "string" ? p.reason : "unknown",
+        presetName: typeof p.presetName === "string" ? p.presetName : undefined,
+        message: typeof p.message === "string" ? p.message : "Configuration cover invalide",
+      };
+    }
+  }
+
   // Permissions UI
   const userForPermission = { id: userId, role };
   const slotForPermission = {
@@ -367,6 +387,7 @@ export default async function PublicationPage({ params }: PageProps) {
           : null
       }
       coverPack={slot.render?.coverFramePack ?? null}
+      coverConfigError={coverConfigError}
       assigneeMonteur={slot.assigneeMonteur}
       assigneeCm={slot.assigneeCm}
       steps={steps}
