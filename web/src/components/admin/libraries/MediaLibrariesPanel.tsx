@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Plus, Trash2, Video, Music2, ChevronRight, Search, Pencil, Check, X } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/useConfirm";
 import Link from "next/link";
 import { LibraryExportButton } from "./LibraryExportButton";
 
@@ -32,6 +33,7 @@ type EditForm = {
 };
 
 export function MediaLibrariesPanel() {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [libraries, setLibraries] = useState<MediaLibrary[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -159,7 +161,13 @@ export function MediaLibrariesPanel() {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Supprimer la bibliothèque « ${name} » et tous ses assets ?`)) return;
+    const ok = await confirm({
+      title: `Supprimer la bibliothèque « ${name} » ?`,
+      description: "Tous les assets associés seront également supprimés. Cette action est irréversible.",
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
+    if (!ok) return;
     const res = await fetch(`/api/admin/libraries/media/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const d = await res.json() as { error?: string };
@@ -639,6 +647,7 @@ export function MediaLibrariesPanel() {
           )}
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }

@@ -14,6 +14,7 @@
 
 import { useState } from "react";
 import { Check, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { useConfirm } from "@/components/ui/useConfirm";
 import type { DescriptionPromptRow } from "./DescriptionTool";
 
 export function DescriptionPromptsManager({
@@ -23,6 +24,7 @@ export function DescriptionPromptsManager({
   prompts: DescriptionPromptRow[];
   onPromptsChange: (updated: DescriptionPromptRow[]) => void;
 }) {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formName, setFormName] = useState("");
@@ -87,7 +89,13 @@ export function DescriptionPromptsManager({
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Supprimer ce prompt ?")) return;
+    const ok = await confirm({
+      title: "Supprimer ce prompt ?",
+      description: "Cette action est irréversible.",
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
+    if (!ok) return;
     const res = await fetch(`/api/description/prompts/${id}`, { method: "DELETE" });
     if (res.ok) onPromptsChange(prompts.filter((p) => p.id !== id));
   };
@@ -167,6 +175,7 @@ export function DescriptionPromptsManager({
           </div>
         ))}
       </div>
+      {confirmDialog}
     </div>
   );
 }

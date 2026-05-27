@@ -16,11 +16,25 @@
 import { useCallback, useState } from "react";
 import type { MediaAsset, InstagramAccount } from "./types";
 
+/**
+ * Fonction de confirmation asynchrone fournie par le composant parent
+ * (via `useConfirm()`). Permet de garder le hook découplé de l'UI tout en
+ * remplaçant les `window.confirm()` natifs par un `ConfirmDialog` stylé.
+ */
+export type ConfirmFn = (options: {
+  title: string;
+  description: string;
+  confirmLabel?: string;
+  variant?: "default" | "danger";
+}) => Promise<boolean>;
+
 interface UseBulkEditArgs {
   libraryId: string;
   setAssets: React.Dispatch<React.SetStateAction<MediaAsset[]>>;
   /** Pour afficher le @handle dans le toast après bulk apply access. */
   accounts: InstagramAccount[];
+  /** Confirmation asynchrone (cf. useConfirm hook). */
+  confirm: ConfirmFn;
 }
 
 export interface UseBulkEditResult {
@@ -48,7 +62,7 @@ export interface UseBulkEditResult {
   handleBulkDelete: () => Promise<void>;
 }
 
-export function useBulkEdit({ libraryId, setAssets, accounts }: UseBulkEditArgs): UseBulkEditResult {
+export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulkEditArgs): UseBulkEditResult {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkSetTagInput, setBulkSetTagInput] = useState("");
@@ -181,7 +195,13 @@ export function useBulkEdit({ libraryId, setAssets, accounts }: UseBulkEditArgs)
 
   const handleBulkDelete = useCallback(async () => {
     const count = selectedIds.size;
-    if (!confirm(`Supprimer ${count} asset${count > 1 ? "s" : ""} ?`)) return;
+    const ok = await confirm({
+      title: `Supprimer ${count} asset${count > 1 ? "s" : ""} ?`,
+      description: "Cette action est irréversible.",
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
+    if (!ok) return;
     setBulkApplying(true);
     setBulkError(null);
     const res = await fetch(`/api/admin/libraries/media/${libraryId}/assets/bulk`, {
@@ -197,7 +217,7 @@ export function useBulkEdit({ libraryId, setAssets, accounts }: UseBulkEditArgs)
     }
     setAssets((prev) => prev.filter((a) => !selectedIds.has(a.id)));
     exitSelectMode();
-  }, [exitSelectMode, libraryId, selectedIds, setAssets]);
+  }, [exitSelectMode, libraryId, selectedIds, setAssets, confirm]);
 
   return {
     selectMode,

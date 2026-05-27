@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Trash2, ChevronRight, RotateCcw, Pencil, X, Check } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/useConfirm";
 import Link from "next/link";
 
 const USAGE_POLICIES = [
@@ -50,6 +51,7 @@ interface Props {
 }
 
 export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [campaigns, setCampaigns] = useState<DataCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -98,7 +100,13 @@ export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Supprimer la campagne "${name}" et toutes ses entrées ?`)) return;
+    const ok = await confirm({
+      title: `Supprimer la campagne « ${name} » ?`,
+      description: "Toutes les entrées associées seront également supprimées. Cette action est irréversible.",
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
+    if (!ok) return;
     const res = await fetch(`/api/admin/libraries/data/campaigns/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const d = await res.json() as { error?: string };
@@ -361,6 +369,7 @@ export function DataCampaignsPanel({ libraryId, libraryName }: Props) {
           })}
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }

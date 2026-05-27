@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { Upload, Play, Music2 } from "lucide-react";
+import { useConfirm } from "@/components/ui/useConfirm";
 import { MediaAssetEditModal } from "./MediaAssetEditModal";
 import { MediaBatchAutocutPanel } from "./MediaBatchAutocutPanel";
 import type { MediaAsset, MetadataField, MediaLibrary, SortKey } from "./mediaAssets/types";
@@ -25,6 +26,8 @@ interface Props {
 }
 
 export function MediaAssetsPanel({ library }: Props) {
+  // P1.1 — confirmation asynchrone partagée par useBulkEdit + useAssetInlineEdits.
+  const { confirm, dialog: confirmDialog } = useConfirm();
   // ── État global de la liste ──
   // accountFilter doit être déclaré avant le hook loader (dépendance).
   const [accountFilter, setAccountFilter] = useState<string | null>(null);
@@ -48,7 +51,7 @@ export function MediaAssetsPanel({ library }: Props) {
   // D4 — bulk edit extrait dans useBulkEdit hook. La sticky bar D8
   // (MediaAssetsBulkActionBar) consomme l'objet `bulk` complet. Le panel
   // garde l'accès à selectMode/selectedIds/toggleSelect pour les cards.
-  const bulk = useBulkEdit({ libraryId: library.id, setAssets, accounts });
+  const bulk = useBulkEdit({ libraryId: library.id, setAssets, accounts, confirm });
   const { selectMode, setSelectMode, selectedIds, toggleSelect, exitSelectMode } = bulk;
   const { seqState, saveSequence, moveSetTag, addToSequence, removeFromSequence } = useAssetSequence({
     libraryId: library.id,
@@ -78,6 +81,7 @@ export function MediaAssetsPanel({ library }: Props) {
     setAssets,
     accountFilter,
     metadataSchema,
+    confirm,
   });
   // D9 — destructure réduit aux symboles encore consommés directement
   // par le panel (audio list inline editing + group category bulk edit
@@ -674,6 +678,7 @@ export function MediaAssetsPanel({ library }: Props) {
         accounts={accounts}
         onUploaded={() => void load()}
       />
+      {confirmDialog}
     </div>
   );
 }

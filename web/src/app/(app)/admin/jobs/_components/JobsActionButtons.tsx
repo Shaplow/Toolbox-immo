@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/useConfirm";
 
 interface Props {
   type: "render" | "caption" | "transcription" | "description" | "cover-pack" | "autocut";
@@ -18,10 +19,17 @@ interface Props {
 
 export function JobsActionButtons({ type, id }: Props) {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [submitting, setSubmitting] = useState(false);
 
   async function markFailed() {
-    if (!confirm(`Marquer le job ${type} ${id.slice(0, 8)}… comme FAILED ?`)) return;
+    const ok = await confirm({
+      title: `Marquer le job ${type} ${id.slice(0, 8)}… comme FAILED ?`,
+      description: "Le job sera considéré comme échoué et n'occupera plus la file. Cette action est irréversible.",
+      confirmLabel: "Marquer FAILED",
+      variant: "danger",
+    });
+    if (!ok) return;
     setSubmitting(true);
     const res = await fetch("/api/admin/jobs/mark-failed", {
       method: "POST",
@@ -39,12 +47,15 @@ export function JobsActionButtons({ type, id }: Props) {
   }
 
   return (
-    <button
-      onClick={markFailed}
-      disabled={submitting}
-      className="text-xs px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
-    >
-      {submitting ? "…" : "Marquer FAILED"}
-    </button>
+    <>
+      <button
+        onClick={markFailed}
+        disabled={submitting}
+        className="text-xs px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+      >
+        {submitting ? "…" : "Marquer FAILED"}
+      </button>
+      {confirmDialog}
+    </>
   );
 }

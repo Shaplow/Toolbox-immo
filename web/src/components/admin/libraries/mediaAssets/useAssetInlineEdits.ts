@@ -25,11 +25,20 @@ import { toast } from "@/components/ui/Toast";
 import type { Dispatch, SetStateAction } from "react";
 import type { MediaAsset, MetadataField } from "./types";
 
+/** Confirmation asynchrone fournie par le composant parent (via `useConfirm`). */
+export type ConfirmFn = (options: {
+  title: string;
+  description: string;
+  confirmLabel?: string;
+  variant?: "default" | "danger";
+}) => Promise<boolean>;
+
 interface UseAssetInlineEditsParams {
   libraryId: string;
   setAssets: Dispatch<SetStateAction<MediaAsset[]>>;
   accountFilter: string | null;
   metadataSchema: MetadataField[];
+  confirm: ConfirmFn;
 }
 
 export interface UseAssetInlineEditsResult {
@@ -90,6 +99,7 @@ export function useAssetInlineEdits({
   setAssets,
   accountFilter,
   metadataSchema,
+  confirm,
 }: UseAssetInlineEditsParams): UseAssetInlineEditsResult {
   // ── States ────────────────────────────────────────────────────────────
   const [editingSetTagId, setEditingSetTagId] = useState<string | null>(null);
@@ -269,7 +279,13 @@ export function useAssetInlineEdits({
   }
 
   async function handleDelete(asset: MediaAsset) {
-    if (!confirm(`Supprimer "${asset.filename}" ?`)) return;
+    const ok = await confirm({
+      title: `Supprimer « ${asset.filename} » ?`,
+      description: "Cette action est irréversible.",
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
+    if (!ok) return;
     const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, { method: "DELETE" });
     if (!res.ok) {
       const d = await res.json() as { error?: string };

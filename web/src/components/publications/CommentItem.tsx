@@ -10,6 +10,8 @@
  */
 
 import { useState } from "react";
+import { useConfirm } from "@/components/ui/useConfirm";
+import { toast } from "@/components/ui/Toast";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,6 +72,7 @@ function initials(name: string | null, email: string | null): string {
 // ---------------------------------------------------------------------------
 
 export function CommentItem({ comment, canEdit, onUpdated, onDeleted, slotId }: CommentItemProps) {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState(comment.body);
   const [saving, setSaving] = useState(false);
@@ -114,19 +117,25 @@ export function CommentItem({ comment, canEdit, onUpdated, onDeleted, slotId }: 
   }
 
   async function handleDelete() {
-    if (!confirm("Supprimer ce commentaire ?")) return;
+    const ok = await confirm({
+      title: "Supprimer ce commentaire ?",
+      description: "Cette action est irréversible.",
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`/api/publications/${slotId}/comments/${comment.id}`, {
         method: "DELETE",
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        alert(data.error ?? "Erreur lors de la suppression");
+        toast.error(data.error ?? "Erreur lors de la suppression");
         return;
       }
       onDeleted(comment.id);
     } catch {
-      alert("Erreur réseau lors de la suppression");
+      toast.error("Erreur réseau lors de la suppression");
     }
   }
 
@@ -210,6 +219,7 @@ export function CommentItem({ comment, canEdit, onUpdated, onDeleted, slotId }: 
           </div>
         )}
       </div>
+      {confirmDialog}
     </div>
   );
 }
