@@ -190,8 +190,17 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
       setImportError(d.error ?? "Erreur lors de l'import");
     } else {
       const d = await res.json() as { imported: number };
-      setImportSuccess(`${d.imported} entrée${d.imported !== 1 ? "s" : ""} importée${d.imported !== 1 ? "s" : ""} avec succès`);
-      void load();
+      if (d.imported === 0) {
+        // B8 — Distinguer "0 importé" (= format invalide, fichier vide, colonnes
+        // qui ne matchent pas) du vrai succès. Avant, "0 entrées importées avec
+        // succès" était silencieux et trompeur.
+        setImportError(
+          "Aucune ligne importée. Vérifie que ton CSV contient au moins les colonnes 'set_tag' et 'category', et que le format est valide (séparateur virgule, encodage UTF-8)."
+        );
+      } else {
+        setImportSuccess(`${d.imported} entrée${d.imported !== 1 ? "s" : ""} importée${d.imported !== 1 ? "s" : ""} avec succès`);
+        void load();
+      }
     }
     setImporting(false);
   }
@@ -336,15 +345,22 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
           >
             <Upload size={14} /> Importer CSV
           </button>
-          {columns.length > 0 && (
-            <button
-              onClick={() => downloadCSVFromColumns(columns, campaign?.name ?? "campagne")}
-              className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 text-gray-600 text-sm rounded-md hover:bg-gray-50"
-              title="Télécharger le modèle CSV (en-têtes uniquement)"
-            >
-              <Download size={14} /> Modèle CSV
-            </button>
-          )}
+          {/* B9 — Modèle CSV toujours disponible. Si la campagne n'a pas
+               encore d'entries (columns vide), on télécharge au minimum
+               les colonnes obligatoires `set_tag` + `category` ; l'admin
+               ajoutera ses propres colonnes dynamiques (elles seront
+               créées au premier import). */}
+          <button
+            onClick={() => downloadCSVFromColumns(columns, campaign?.name ?? "campagne")}
+            className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 text-gray-600 text-sm rounded-md hover:bg-gray-50"
+            title={
+              columns.length === 0
+                ? "Télécharge un modèle minimal (set_tag, category). Ajoute ensuite tes propres colonnes — elles seront créées au premier import."
+                : "Télécharger le modèle CSV (en-têtes uniquement)"
+            }
+          >
+            <Download size={14} /> Modèle CSV
+          </button>
           {accountFilter && isPerAccountPolicy ? (
             <button
               onClick={() => { void handleResetForAccount(); }}
