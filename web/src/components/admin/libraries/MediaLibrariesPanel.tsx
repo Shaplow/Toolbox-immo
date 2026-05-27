@@ -4,6 +4,9 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { Plus, Trash2, Video, Music2, ChevronRight, Search, Pencil, Check, X } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/useConfirm";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { FormField } from "@/components/ui/FormField";
 import Link from "next/link";
 import { LibraryExportButton } from "./LibraryExportButton";
 
@@ -185,12 +188,9 @@ export function MediaLibrariesPanel() {
           <h2 className="text-lg font-semibold text-gray-900">Bibliothèques médias</h2>
           <p className="text-xs text-gray-500 mt-0.5">{libraries.length} bibliothèque{libraries.length !== 1 ? "s" : ""}</p>
         </div>
-        <button
-          onClick={() => setCreating(true)}
-          className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700"
-        >
-          <Plus size={14} /> Nouvelle bibliothèque
-        </button>
+        <Button onClick={() => setCreating(true)} icon={Plus} size="sm">
+          Nouvelle bibliothèque
+        </Button>
       </div>
 
       {/* Create form */}
@@ -198,25 +198,22 @@ export function MediaLibrariesPanel() {
         <form onSubmit={(e) => { void handleCreate(e); }} className="mb-6 p-5 border border-indigo-200 rounded-xl bg-indigo-50">
           <p className="text-sm font-semibold text-indigo-800 mb-4">Nouvelle bibliothèque</p>
           <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Nom *</label>
-              <input
+            <FormField label="Nom" required>
+              <Input
                 required
                 value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                onChange={(v) => setForm((f) => ({ ...f, name: v }))}
                 placeholder="Ex: Rush RPI Paris"
               />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Type *</label>
+            </FormField>
+            <FormField label="Type" required>
               <div className="flex gap-2">
                 {(["video", "audio"] as const).map((t) => (
                   <button
                     key={t}
                     type="button"
                     onClick={() => setForm((f) => ({ ...f, type: t }))}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg border text-sm transition-colors ${
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border text-sm transition-colors ${
                       form.type === t
                         ? "bg-indigo-600 text-white border-indigo-600"
                         : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"
@@ -227,29 +224,27 @@ export function MediaLibrariesPanel() {
                   </button>
                 ))}
               </div>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Tags (séparés par virgule)</label>
-              <input
+            </FormField>
+            <FormField label="Tags (séparés par virgule)">
+              <Input
                 value={form.tags}
-                onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                onChange={(v) => setForm((f) => ({ ...f, tags: v }))}
                 placeholder="RPI, RTIPS, RPOD"
               />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Description (optionnel)</label>
-              <input
+            </FormField>
+            <FormField label="Description (optionnel)">
+              <Input
                 value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                onChange={(v) => setForm((f) => ({ ...f, description: v }))}
               />
-            </div>
+            </FormField>
           </div>
           {error && <p className="text-red-600 text-xs mb-3">{error}</p>}
           <div className="flex gap-2">
-            <button type="submit" className="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">Créer</button>
-            <button type="button" onClick={() => setCreating(false)} className="px-4 py-1.5 border border-gray-200 text-sm rounded-lg hover:bg-gray-50">Annuler</button>
+            <Button type="submit" size="sm">Créer</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setCreating(false)}>
+              Annuler
+            </Button>
           </div>
         </form>
       )}
@@ -269,12 +264,12 @@ export function MediaLibrariesPanel() {
           {/* Search + type toggle */}
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
+              <Input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={setSearch}
                 placeholder="Rechercher une bibliothèque…"
-                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                className="pl-8"
               />
             </div>
             <div className="flex gap-1">
