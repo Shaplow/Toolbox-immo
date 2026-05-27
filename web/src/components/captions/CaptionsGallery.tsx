@@ -227,55 +227,75 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
           ) : undefined}
         />
 
+      {/* F3.6 — Create form en modal canonique (au lieu d'inline) */}
       {isAdmin && showCreateForm && (
-        <form
-          className="mb-6 rounded-2xl border border-violet-200 bg-violet-50 px-5 py-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleCreatePreset();
-          }}
-        >
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-            <label className="flex-1 min-w-0">
-              <span className="block text-xs font-semibold uppercase tracking-wide text-violet-700 mb-2">
-                Nom du preset
-              </span>
-              <input
-                autoFocus
-                value={createName}
-                onChange={(event) => setCreateName(event.target.value)}
-                placeholder="Ex. Premium doré"
-                className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-400"
-              />
-              <span className="block text-xs text-violet-700 mt-2">
+        <>
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+            onClick={() => {
+              setShowCreateForm(false);
+              setCreateName("");
+              setCreateError("");
+            }}
+            aria-hidden="true"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-preset-title"
+            className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none"
+          >
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleCreatePreset();
+              }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md pointer-events-auto p-6"
+            >
+              <h2 id="create-preset-title" className="text-base font-semibold text-gray-900 mb-1">
+                Nouveau preset
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">
                 Le preset est créé puis ouvert directement dans le builder pour édition.
-              </span>
-            </label>
-            <div className="flex gap-2 shrink-0">
-              <button
-                type="submit"
-                disabled={creating}
-                className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60 transition-colors"
-              >
-                {creating ? "Création…" : "Créer et éditer"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCreateForm(false);
-                  setCreateName("");
-                  setCreateError("");
-                }}
-                className="rounded-lg border border-violet-200 bg-white px-4 py-2 text-sm font-medium text-violet-700 hover:bg-violet-100 transition-colors"
-              >
-                Annuler
-              </button>
-            </div>
+              </p>
+              <label className="block">
+                <span className="block text-xs font-medium text-gray-600 mb-1">
+                  Nom du preset <span className="text-red-400">*</span>
+                </span>
+                <input
+                  autoFocus
+                  value={createName}
+                  onChange={(event) => setCreateName(event.target.value)}
+                  placeholder="Ex. Premium doré"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                />
+              </label>
+              {createError && (
+                <p className="mt-3 text-xs text-red-600">{createError}</p>
+              )}
+              <div className="flex gap-2 justify-end mt-5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateForm(false);
+                    setCreateName("");
+                    setCreateError("");
+                  }}
+                  className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60 transition-colors"
+                >
+                  {creating ? "Création…" : "Créer et éditer"}
+                </button>
+              </div>
+            </form>
           </div>
-          {createError && (
-            <p className="mt-3 text-sm text-red-600">{createError}</p>
-          )}
-        </form>
+        </>
       )}
 
       {/* Slot context banner — affiché quand on arrive depuis une fiche publication */}

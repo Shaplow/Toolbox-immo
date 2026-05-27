@@ -1,6 +1,8 @@
 ﻿import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
+import { LayoutTemplate } from "lucide-react";
 import { ListingForm } from "@/components/form/ListingForm";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { collectTemplateConditionValues, normalizeTemplateJSON } from "@/lib/templateNormalization";
 import type { TemplateJSON, VideoBlock } from "@/types/template";
 import { DPE_AUTO_FIELDS } from "@/lib/renderer/blocks/renderDPEBlock";
@@ -201,19 +203,19 @@ export default async function GeneratePage({ params, searchParams }: Props) {
       })
     : mergedSchema;
 
+  const subtitleParts: string[] = [`Template : ${template.name}`];
+  if (template.client) subtitleParts.push(template.client);
+  if (initialValues) subtitleParts.push("formulaire pré-rempli");
+  if (autoMode) subtitleParts.push("génération automatique");
+
   return (
     <div className="px-4 py-8 xl:px-8 max-w-[1680px] mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">
-          {initialValues ? "Nouvelle variante" : "Générer un visuel"}
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Template : <span className="text-indigo-700 font-medium">{template.name}</span>
-          {template.client && ` · ${template.client}`}
-          {initialValues && " · formulaire pré-rempli"}
-          {autoMode && " · génération automatique"}
-        </p>
-      </div>
+      <ToolPageHeader
+        icon={LayoutTemplate}
+        iconColor="indigo"
+        title={initialValues ? "Nouvelle variante" : "Générer un visuel"}
+        subtitle={subtitleParts.join(" · ")}
+      />
       <ListingForm
         key={accountId ?? ""}
         templateId={templateId}

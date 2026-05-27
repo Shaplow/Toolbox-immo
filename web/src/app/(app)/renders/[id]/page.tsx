@@ -2,8 +2,9 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { RenderResult } from "@/components/renders/RenderResult";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
 
 type Props = { params: Promise<{ id: string }> };
@@ -122,14 +123,18 @@ export default async function RenderPage({ params }: Props) {
         )}
       </div>
 
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900">Résultat</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {render.template
-            ? `${render.template.name}${render.template.client ? ` · ${render.template.client}` : ""}`
-            : "Template supprimé"}
-        </p>
-      </div>
+      <ToolPageHeader
+        icon={Sparkles}
+        iconColor="indigo"
+        title={render.template?.name ?? "Résultat"}
+        subtitle={
+          render.template?.client
+            ? `${render.template.client} · ${new Date(render.createdAt).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+            : render.template
+              ? `Généré le ${new Date(render.createdAt).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+              : "Template supprimé"
+        }
+      />
       <RenderResult
         renderId={render.id}
         initialStatus={render.status}
