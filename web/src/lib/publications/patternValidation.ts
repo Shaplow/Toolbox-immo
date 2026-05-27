@@ -49,31 +49,51 @@ export interface PatternValidationInput {
   descriptionPromptId: string | null;
 }
 
-/** Context du template référencé (pour valider que le coverPresetName existe). */
+/** Context du template référencé (pour valider que le preset cover existe). */
 export interface TemplateValidationContext {
   /** Liste des noms de TemplateCoverPreset définis sur le template courant. */
   coverPresetNames: string[];
+  /**
+   * Liste des IDs (Phase 3) — utilisée pour valider la nouvelle référence
+   * stable coverPresetId. Optionnel pour back-compat des callers existants.
+   */
+  coverPresetIds?: string[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function readCoverPresetName(coverConfig: unknown): string | null {
-  if (!coverConfig) return null;
+interface CoverConfigRefs {
+  /** ID stable (Phase 3 Cohérence Workflows) — priorité sur le nom. */
+  coverPresetId: string | null;
+  /** Nom legacy — conservé pour le fallback transitoire pendant la migration. */
+  coverPresetName: string | null;
+}
+
+function readCoverPresetRefs(coverConfig: unknown): CoverConfigRefs {
+  const empty: CoverConfigRefs = { coverPresetId: null, coverPresetName: null };
+  if (!coverConfig) return empty;
   // coverConfig peut être un objet déjà parsé (form) ou un JSON string (Prisma raw)
-  let obj: { coverPresetName?: unknown } | null = null;
+  let obj: { coverPresetId?: unknown; coverPresetName?: unknown } | null = null;
   if (typeof coverConfig === "string") {
     try {
-      obj = JSON.parse(coverConfig) as { coverPresetName?: unknown };
+      obj = JSON.parse(coverConfig) as typeof obj;
     } catch {
-      return null;
+      return empty;
     }
   } else if (typeof coverConfig === "object") {
-    obj = coverConfig as { coverPresetName?: unknown };
+    obj = coverConfig as typeof obj;
   }
-  if (!obj) return null;
-  return typeof obj.coverPresetName === "string" && obj.coverPresetName.trim()
-    ? obj.coverPresetName.trim()
-    : null;
+  if (!obj) return empty;
+  return {
+    coverPresetId:
+      typeof obj.coverPresetId === "string" && obj.coverPresetId.trim()
+        ? obj.coverPresetId.trim()
+        : null,
+    coverPresetName:
+      typeof obj.coverPresetName === "string" && obj.coverPresetName.trim()
+        ? obj.coverPresetName.trim()
+        : null,
+  };
 }
 
 // ─── validatePatternConfig ────────────────────────────────────────────────────
@@ -101,23 +121,36 @@ export function validatePatternConfig(
     });
   }
 
-  // C1 : coverMode=auto → coverPresetName requis
+  // C1 : coverMode=auto → référence preset requise (par ID en priorité, fallback nom)
   if (input.coverMode === "auto") {
-    const presetName = readCoverPresetName(input.coverConfig);
-    if (!presetName) {
+    const refs = readCoverPresetRefs(input.coverConfig);
+    if (!refs.coverPresetId && !refs.coverPresetName) {
       errors.push({
         field: "coverConfig",
         code: "MISSING_COVER_PRESET_NAME",
         message:
           "Le mode cover « auto » nécessite un preset cover défini dans le template.",
       });
-    } else if (template && !template.coverPresetNames.includes(presetName)) {
-      // C2 : le preset référencé doit exister sur le template
-      errors.push({
-        field: "coverConfig",
-        code: "COVER_PRESET_NOT_FOUND",
-        message: `Le preset cover « ${presetName} » n'existe plus sur le template lié. Choisissez-en un autre ou recréez-le dans le builder.`,
-      });
+    } else if (template) {
+      // C2 : le preset référencé doit exister sur le template (par ID ou nom)
+      const existsById =
+        refs.coverPresetId && template.coverPresetIds
+          ? template.coverPresetIds.includes(refs.coverPresetId)
+          : false;
+      const existsByName =
+        refs.coverPresetName
+          ? template.coverPresetNames.includes(refs.coverPresetName)
+          : false;
+      if (!existsById && !existsByName) {
+        const refLabel = refs.coverPresetId
+          ? `(id=${refs.coverPresetId})`
+          : `« ${refs.coverPresetName} »`;
+        errors.push({
+          field: "coverConfig",
+          code: "COVER_PRESET_NOT_FOUND",
+          message: `Le preset cover ${refLabel} n'existe plus sur le template lié. Choisissez-en un autre ou recréez-le dans le builder.`,
+        });
+      }
     }
   }
 

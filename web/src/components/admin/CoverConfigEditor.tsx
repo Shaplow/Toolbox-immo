@@ -15,6 +15,9 @@ type CoverPreset = {
 
 type PartialCoverConfig = {
   enabled?: boolean;
+  /** Référence stable par ID (Phase 3 Cohérence Workflows). Priorité sur coverPresetName. */
+  coverPresetId?: string | null;
+  /** Référence legacy par nom — conservée pour fallback transitoire. */
   coverPresetName?: string | null;
 };
 
@@ -72,7 +75,13 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
 
   // ── Template selected ─────────────────────────────────────────────────────
 
-  const selectedPreset = presets.find((p) => p.name === config.coverPresetName) ?? null;
+  // Résolution prioritaire par ID (Phase 3), fallback par nom pour legacy.
+  const selectedPreset =
+    (config.coverPresetId
+      ? presets.find((p) => p.id === config.coverPresetId)
+      : null) ??
+    presets.find((p) => p.name === config.coverPresetName) ??
+    null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -118,13 +127,22 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
           help="Sélectionne le preset cover à utiliser pour ce pattern."
         >
           <select
-            value={config.coverPresetName ?? ""}
-            onChange={(e) => patch({ coverPresetName: e.target.value || null })}
+            value={selectedPreset?.id ?? ""}
+            onChange={(e) => {
+              const newId = e.target.value || null;
+              const newPreset = newId ? presets.find((p) => p.id === newId) : null;
+              // On écrit l'ID + le nom (le nom reste pour fallback compat
+              // côté coverAuto.ts pendant la phase de transition).
+              patch({
+                coverPresetId: newId,
+                coverPresetName: newPreset?.name ?? null,
+              });
+            }}
             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
           >
             <option value="" disabled>Choisir un preset…</option>
             {presets.map((p) => (
-              <option key={p.id} value={p.name}>
+              <option key={p.id} value={p.id}>
                 {p.name}
               </option>
             ))}
@@ -148,11 +166,12 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
         </div>
       )}
 
-      {/* Warning if coverPresetName set but preset not found */}
-      {config.coverPresetName && !selectedPreset && presets.length > 0 && (
+      {/* Warning si référence preset (par ID ou nom) mais introuvable */}
+      {(config.coverPresetId || config.coverPresetName) && !selectedPreset && presets.length > 0 && (
         <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          Le preset &laquo;{config.coverPresetName}&raquo; est introuvable dans ce template.
-          Sélectionne-en un autre.
+          Le preset référencé{" "}
+          {config.coverPresetId ? `(id="${config.coverPresetId}")` : `«${config.coverPresetName}»`}
+          {" "}est introuvable dans ce template. Sélectionne-en un autre.
         </p>
       )}
 

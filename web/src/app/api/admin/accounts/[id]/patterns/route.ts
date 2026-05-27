@@ -104,9 +104,12 @@ export async function validatePatternCrossFields(
   if (fullInput.templateId) {
     const presets = await prisma.templateCoverPreset.findMany({
       where: { templateId: fullInput.templateId },
-      select: { name: true },
+      select: { id: true, name: true },
     });
-    templateContext = { coverPresetNames: presets.map((p) => p.name) };
+    templateContext = {
+      coverPresetNames: presets.map((p) => p.name),
+      coverPresetIds: presets.map((p) => p.id),
+    };
   }
   return validatePatternConfig(fullInput, templateContext);
 }
