@@ -47,6 +47,7 @@ export function CalendarFilters({ accounts, filters, onChange, monteurs, cms }: 
         value={filters.accountId}
         onChange={(e) => set("accountId", e.target.value)}
         className={SELECT_CLASS}
+        aria-label="Filtrer par compte Instagram"
       >
         <option value="">Tous les comptes</option>
         {accounts.map((a) => (
@@ -61,6 +62,7 @@ export function CalendarFilters({ accounts, filters, onChange, monteurs, cms }: 
         value={filters.status}
         onChange={(e) => set("status", e.target.value)}
         className={SELECT_CLASS}
+        aria-label="Filtrer par statut"
       >
         <option value="">Tous les statuts</option>
         {STATUSES.map(([key, label]) => (
@@ -74,6 +76,7 @@ export function CalendarFilters({ accounts, filters, onChange, monteurs, cms }: 
           value={filters.monteurId}
           onChange={(e) => set("monteurId", e.target.value)}
           className={SELECT_CLASS}
+          aria-label="Filtrer par monteur"
         >
           <option value="">Tous les monteurs</option>
           {monteurs.map((m) => (
@@ -88,6 +91,7 @@ export function CalendarFilters({ accounts, filters, onChange, monteurs, cms }: 
           value={filters.cmId}
           onChange={(e) => set("cmId", e.target.value)}
           className={SELECT_CLASS}
+          aria-label="Filtrer par CM"
         >
           <option value="">Tous les CM</option>
           {cms.map((c) => (

@@ -10,6 +10,24 @@
  */
 
 import { useState } from "react";
+import {
+  Activity,
+  UserCheck,
+  Sparkles,
+  Image as ImageIcon,
+  AlignLeft,
+  FileText,
+  Check,
+  MessageSquare,
+  ClipboardEdit,
+  Film,
+  Trash2,
+  Upload,
+  Star,
+  RotateCcw,
+  ArrowRight,
+  Circle,
+} from "lucide-react";
 import { STATUS_LABELS } from "@/lib/slots/statusLabels";
 import type { SlotStatus } from "@/types/calendar";
 
@@ -132,43 +150,46 @@ function activityLabel(type: string, payload: Record<string, unknown> | null): s
 type ActivityIconProps = { type: string };
 
 function ActivityIcon({ type }: ActivityIconProps) {
-  const base = "w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-medium";
+  const base = "w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0";
+  // Polish — Lucide icons distincts pour chaque type. Avant, des lettres
+  // ambigues (R = Render OU Rush, C = Cover OU Commentaire, V = 4 types
+  // de Version) rendaient l'historique difficile à scanner.
   switch (type) {
     case "STATUS_CHANGED":
-      return <span className={`${base} bg-sky-100 text-sky-700`} title="Statut">S</span>;
+      return <span className={`${base} bg-sky-100 text-sky-700`} title="Statut"><Activity size={12} /></span>;
     case "ASSIGNEE_CHANGED":
-      return <span className={`${base} bg-indigo-100 text-indigo-700`} title="Assignation">A</span>;
+      return <span className={`${base} bg-indigo-100 text-indigo-700`} title="Assignation"><UserCheck size={12} /></span>;
     case "RENDER_COMPLETED":
-      return <span className={`${base} bg-orange-100 text-orange-700`} title="Rendu">R</span>;
+      return <span className={`${base} bg-orange-100 text-orange-700`} title="Rendu"><Sparkles size={12} /></span>;
     case "COVER_COMPLETED":
-      return <span className={`${base} bg-pink-100 text-pink-700`} title="Cover">C</span>;
+      return <span className={`${base} bg-pink-100 text-pink-700`} title="Cover"><ImageIcon size={12} /></span>;
     case "CAPTIONS_COMPLETED":
-      return <span className={`${base} bg-purple-100 text-purple-700`} title="Sous-titres">ST</span>;
+      return <span className={`${base} bg-purple-100 text-purple-700`} title="Sous-titres"><AlignLeft size={12} /></span>;
     case "DESCRIPTION_COMPLETED":
-      return <span className={`${base} bg-teal-100 text-teal-700`} title="Description">D</span>;
+      return <span className={`${base} bg-teal-100 text-teal-700`} title="Description"><FileText size={12} /></span>;
     case "PUBLISHED":
-      return <span className={`${base} bg-green-100 text-green-700`} title="Publié">P</span>;
+      return <span className={`${base} bg-green-100 text-green-700`} title="Publié"><Check size={12} /></span>;
     case "COMMENT_ADDED":
-      return <span className={`${base} bg-gray-100 text-gray-600`} title="Commentaire">C</span>;
+      return <span className={`${base} bg-gray-100 text-gray-600`} title="Commentaire"><MessageSquare size={12} /></span>;
     // ── Rushes / versions / brief ──────────────────────────────────────────
     case "BRIEF_UPDATED":
-      return <span className={`${base} bg-violet-100 text-violet-700`} title="Brief">B</span>;
+      return <span className={`${base} bg-violet-100 text-violet-700`} title="Brief"><ClipboardEdit size={12} /></span>;
     case "RUSHES_UPLOADED":
-      return <span className={`${base} bg-amber-100 text-amber-700`} title="Rush">R</span>;
+      return <span className={`${base} bg-amber-100 text-amber-700`} title="Rush"><Film size={12} /></span>;
     case "RUSHES_DELETED":
-      return <span className={`${base} bg-red-100 text-red-600`} title="Rush supprimé">R</span>;
+      return <span className={`${base} bg-red-100 text-red-600`} title="Rush supprimé"><Trash2 size={12} /></span>;
     case "VERSION_UPLOADED":
-      return <span className={`${base} bg-blue-100 text-blue-700`} title="Version">V</span>;
+      return <span className={`${base} bg-blue-100 text-blue-700`} title="Version uploadée"><Upload size={12} /></span>;
     case "VERSION_PROMOTED":
-      return <span className={`${base} bg-green-100 text-green-700`} title="Promue">V</span>;
+      return <span className={`${base} bg-green-100 text-green-700`} title="Version promue"><Star size={12} /></span>;
     case "VERSION_DELETED":
-      return <span className={`${base} bg-red-100 text-red-600`} title="Supprimée">V</span>;
+      return <span className={`${base} bg-red-100 text-red-600`} title="Version supprimée"><Trash2 size={12} /></span>;
     case "VERSION_RESTORED":
-      return <span className={`${base} bg-teal-100 text-teal-700`} title="Restaurée">V</span>;
+      return <span className={`${base} bg-teal-100 text-teal-700`} title="Version restaurée"><RotateCcw size={12} /></span>;
     case "CURRENT_VERSION_CHANGED":
-      return <span className={`${base} bg-indigo-100 text-indigo-700`} title="Version courante">VC</span>;
+      return <span className={`${base} bg-indigo-100 text-indigo-700`} title="Version courante changée"><ArrowRight size={12} /></span>;
     default:
-      return <span className={`${base} bg-gray-100 text-gray-500`} title={type}>•</span>;
+      return <span className={`${base} bg-gray-100 text-gray-500`} title={type}><Circle size={10} /></span>;
   }
 }
 
