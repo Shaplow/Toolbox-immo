@@ -20,10 +20,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         actualUser={userContext.actualUser}
         effectiveUser={userContext.effectiveUser}
         isImpersonating={userContext.isImpersonating}
+        isRoleOverride={userContext.isRoleOverride}
       />
       <main className="flex-1 flex flex-col overflow-hidden">
         {userContext.isImpersonating && (
           <ImpersonationBanner effectiveUserLabel={effectiveUserLabel} />
+        )}
+        {userContext.isRoleOverride && (
+          <ImpersonationBanner
+            effectiveUserLabel={`Vue ${userContext.effectiveUser.role} (admin)`}
+            variant="roleOverride"
+          />
         )}
         <div className="flex-1 overflow-y-auto">
           <JobEventsProvider>

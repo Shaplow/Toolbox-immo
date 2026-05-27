@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState, type ReactNode } from "react";
-import { Home, List, Users, Library, LogOut, CalendarDays, Building2, LayoutTemplate, Instagram, RotateCw } from "lucide-react";
+import { Home, List, Users, Library, LogOut, CalendarDays, Building2, LayoutTemplate, Instagram, RotateCw, Eye, ChevronDown } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { TOOL_META } from "@/lib/toolMeta";
 import { useWorklistCount } from "@/hooks/useWorklistCount";
@@ -33,18 +33,38 @@ export function AppNav({
   actualUser,
   effectiveUser,
   isImpersonating,
+  isRoleOverride = false,
 }: {
   actualUser: AppUserIdentity;
   effectiveUser: AppUserIdentity;
   isImpersonating: boolean;
+  isRoleOverride?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [viewAsMenuOpen, setViewAsMenuOpen] = useState(false);
   const { count: worklistCount } = useWorklistCount();
   const canSeeAdmin = actualUser.role === "ADMIN";
-  const navUser = isImpersonating ? effectiveUser : actualUser;
-  const isAdminView = canSeeAdmin && !isImpersonating;
+  // Quand l'admin est en mode "view-as", on rend la nav comme le rôle visé
+  // (donc on utilise effectiveUser pour les checks de permissions).
+  const navUser = isImpersonating || isRoleOverride ? effectiveUser : actualUser;
+  // L'interface admin n'est visible QUE quand l'admin n'a aucun override actif.
+  const isAdminView = canSeeAdmin && !isImpersonating && !isRoleOverride;
+
+  async function setViewAsRole(role: "VIDEASTE" | "MONTEUR" | "CM" | null) {
+    setViewAsMenuOpen(false);
+    if (role === null) {
+      await fetch("/api/admin/view-as", { method: "DELETE" });
+    } else {
+      await fetch("/api/admin/view-as", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role }),
+      });
+    }
+    router.refresh();
+  }
 
   // Parse user permissions (JSON string array on the user object)
   const rawPerms = navUser.permissions ?? "[]";
@@ -164,6 +184,62 @@ export function AppNav({
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Switch de vue ADMIN — bascule entre interface admin et vues
+          d'autres rôles (VIDÉASTE/MONTEUR/CM) sur ses propres slots assignés.
+          Visible uniquement pour un ADMIN réel pas en impersonation. */}
+      {canSeeAdmin && !isImpersonating && !collapsed && (
+        <div className="px-3 py-3 border-b border-gray-100 relative">
+          <button
+            type="button"
+            onClick={() => setViewAsMenuOpen((o) => !o)}
+            className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-colors ${
+              isRoleOverride
+                ? "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-800 hover:bg-fuchsia-100"
+                : "border-gray-200 bg-white text-gray-700 hover:border-indigo-300 hover:text-indigo-700"
+            }`}
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              <Eye size={13} className="shrink-0" />
+              <span className="truncate">
+                Vue : {isRoleOverride ? effectiveUser.role : "Admin"}
+              </span>
+            </span>
+            <ChevronDown size={12} className="shrink-0" />
+          </button>
+          {viewAsMenuOpen && (
+            <div
+              className="absolute left-3 right-3 top-full mt-1 z-20 rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden"
+              onMouseLeave={() => setViewAsMenuOpen(false)}
+            >
+              <button
+                type="button"
+                onClick={() => void setViewAsRole(null)}
+                className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${!isRoleOverride ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-700"}`}
+              >
+                Admin <span className="text-gray-400 ml-1">(par défaut)</span>
+              </button>
+              {(["VIDEASTE", "MONTEUR", "CM"] as const).map((role) => (
+                <button
+                  key={role}
+                  type="button"
+                  onClick={() => void setViewAsRole(role)}
+                  className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-t border-gray-100 ${
+                    isRoleOverride && effectiveUser.role === role
+                      ? "bg-fuchsia-50 text-fuchsia-700 font-medium"
+                      : "text-gray-700"
+                  }`}
+                >
+                  Vue {role.charAt(0) + role.slice(1).toLowerCase()}
+                  <span className="text-gray-400 ml-1 text-[10px]">
+                    (mes slots assignés)
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

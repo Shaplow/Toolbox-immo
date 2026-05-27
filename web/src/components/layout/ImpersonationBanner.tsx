@@ -1,36 +1,61 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { UserCog } from "lucide-react";
+import { UserCog, Eye } from "lucide-react";
 
 interface ImpersonationBannerProps {
   effectiveUserLabel: string;
+  /** "impersonation" (par défaut, amber) | "roleOverride" (vue admin → autre rôle, fuchsia) */
+  variant?: "impersonation" | "roleOverride";
 }
 
-export function ImpersonationBanner({ effectiveUserLabel }: ImpersonationBannerProps) {
+export function ImpersonationBanner({
+  effectiveUserLabel,
+  variant = "impersonation",
+}: ImpersonationBannerProps) {
   const router = useRouter();
+  const isRoleOverride = variant === "roleOverride";
 
-  async function stopImpersonation() {
-    await fetch("/api/admin/impersonation", { method: "DELETE" });
-    router.push("/admin/users");
-    router.refresh();
+  async function stopActiveMode() {
+    if (isRoleOverride) {
+      await fetch("/api/admin/view-as", { method: "DELETE" });
+      router.refresh();
+    } else {
+      await fetch("/api/admin/impersonation", { method: "DELETE" });
+      router.push("/admin/users");
+      router.refresh();
+    }
   }
 
+  const wrapperClass = isRoleOverride
+    ? "bg-fuchsia-50 border-b border-fuchsia-200"
+    : "bg-amber-50 border-b border-amber-200";
+  const textClass = isRoleOverride ? "text-fuchsia-900" : "text-amber-900";
+  const iconClass = isRoleOverride ? "text-fuchsia-600" : "text-amber-600";
+  const btnClass = isRoleOverride
+    ? "text-xs font-medium text-fuchsia-800 hover:text-fuchsia-950 transition-colors shrink-0"
+    : "text-xs font-medium text-amber-800 hover:text-amber-950 transition-colors shrink-0";
+
   return (
-    <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between gap-4 text-sm">
-      <div className="flex items-center gap-2 min-w-0 text-amber-900">
-        <UserCog size={14} className="text-amber-600 shrink-0" />
+    <div className={`${wrapperClass} px-4 py-2 flex items-center justify-between gap-4 text-sm`}>
+      <div className={`flex items-center gap-2 min-w-0 ${textClass}`}>
+        {isRoleOverride ? (
+          <Eye size={14} className={`${iconClass} shrink-0`} />
+        ) : (
+          <UserCog size={14} className={`${iconClass} shrink-0`} />
+        )}
         <span className="truncate">
-          Vous êtes connecté en tant que{" "}
+          {isRoleOverride ? "Vue en mode " : "Vous êtes connecté en tant que "}
           <span className="font-semibold">{effectiveUserLabel}</span>
+          {isRoleOverride && " — vos actions admin sont désactivées."}
         </span>
       </div>
       <button
         type="button"
-        onClick={() => void stopImpersonation()}
-        className="text-xs font-medium text-amber-800 hover:text-amber-950 transition-colors shrink-0"
+        onClick={() => void stopActiveMode()}
+        className={btnClass}
       >
-        Quitter l&apos;impersonation
+        {isRoleOverride ? "Revenir en admin" : "Quitter l'impersonation"}
       </button>
     </div>
   );

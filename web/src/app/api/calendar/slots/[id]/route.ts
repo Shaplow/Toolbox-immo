@@ -83,7 +83,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const slot = await prisma.publicationSlot.findUnique({
     where: { id },
-    select: { id: true, status: true, assigneeMonteurId: true, assigneeCmId: true },
+    select: {
+      id: true,
+      status: true,
+      assigneeMonteurId: true,
+      assigneeCmId: true,
+      assigneeVideasteId: true,
+    },
   });
 
   // 404 systématique : slot inexistant OU pas accessible selon le rôle.
@@ -91,7 +97,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Slot introuvable" }, { status: 404 });
   }
 
-  const rawBody = (await req.json()) as Record<string, unknown>;
+  let rawBody: Record<string, unknown>;
+  try {
+    rawBody = (await req.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Body JSON invalide" }, { status: 400 });
+  }
 
   // Filtrer les champs du body selon ce que le rôle est autorisé à modifier.
   // Les champs non autorisés sont ignorés silencieusement (pas de 403).
@@ -203,50 +214,66 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
   }
 
-  const updated = await prisma.publicationSlot.update({
-    where: { id },
-    data: {
-      ...(status !== undefined ? { status: status as string } : {}),
-      ...(title !== undefined ? { title: title as string | null } : {}),
-      ...(caption !== undefined ? { caption: caption as string | null } : {}),
-      ...(description !== undefined ? { description: description as string | null } : {}),
-      ...(notes !== undefined ? { notes: notes as string | null } : {}),
-      ...(templateId !== undefined ? { templateId: templateId as string | null } : {}),
-      ...(scheduledAt !== undefined ? { scheduledAt: new Date(scheduledAt as string) } : {}),
-      ...(fields !== undefined ? { fields: JSON.stringify(fields) } : {}),
-      ...(fieldSchema !== undefined ? { fieldSchema: JSON.stringify(fieldSchema) } : {}),
-      ...(assigneeMonteurId !== undefined ? { assigneeMonteurId: assigneeMonteurId as string | null } : {}),
-      ...(assigneeCmId !== undefined ? { assigneeCmId: assigneeCmId as string | null } : {}),
-      ...(patternId !== undefined ? { patternId: patternId as string | null } : {}),
-      ...(currentVersionId !== undefined ? { currentVersionId: currentVersionId as string | null } : {}),
-      ...(isAuto !== undefined ? { isAuto: isAuto as boolean } : {}),
-      // W2 + Cohérence Workflows Phase 4 — overrides per-slot.
-      // null = hérite du pattern, true/false = écrase. needsDescription est un enum (string).
-      ...(needsClientValidationOverride !== undefined
-        ? { needsClientValidationOverride: needsClientValidationOverride as boolean | null }
-        : {}),
-      ...(allowsClientRevisionOverride !== undefined
-        ? { allowsClientRevisionOverride: allowsClientRevisionOverride as boolean | null }
-        : {}),
-      ...(needsCaptionsOverride !== undefined
-        ? { needsCaptionsOverride: needsCaptionsOverride as boolean | null }
-        : {}),
-      ...(needsDescriptionOverride !== undefined
-        ? { needsDescriptionOverride: needsDescriptionOverride as string | null }
-        : {}),
-      ...(needsRushesOverride !== undefined
-        ? { needsRushesOverride: needsRushesOverride as boolean | null }
-        : {}),
-      ...(needsBriefOverride !== undefined
-        ? { needsBriefOverride: needsBriefOverride as boolean | null }
-        : {}),
-    },
-    include: {
-      account: { select: { id: true, name: true, handle: true } },
-      template: { select: { id: true, name: true } },
-      render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
-    },
-  });
+  // Wrap update + log activity dans un try/catch global pour ne jamais
+  // remonter un HTML 500 au client (qui crasherait avec "unexpected JSON").
+  let updated: Awaited<ReturnType<typeof prisma.publicationSlot.update>>;
+  try {
+    updated = await prisma.publicationSlot.update({
+      where: { id },
+      data: {
+        ...(status !== undefined ? { status: status as string } : {}),
+        ...(title !== undefined ? { title: title as string | null } : {}),
+        ...(caption !== undefined ? { caption: caption as string | null } : {}),
+        ...(description !== undefined ? { description: description as string | null } : {}),
+        ...(notes !== undefined ? { notes: notes as string | null } : {}),
+        ...(templateId !== undefined ? { templateId: templateId as string | null } : {}),
+        ...(scheduledAt !== undefined ? { scheduledAt: new Date(scheduledAt as string) } : {}),
+        ...(fields !== undefined ? { fields: JSON.stringify(fields) } : {}),
+        ...(fieldSchema !== undefined ? { fieldSchema: JSON.stringify(fieldSchema) } : {}),
+        ...(assigneeMonteurId !== undefined ? { assigneeMonteurId: assigneeMonteurId as string | null } : {}),
+        ...(assigneeCmId !== undefined ? { assigneeCmId: assigneeCmId as string | null } : {}),
+        ...(patternId !== undefined ? { patternId: patternId as string | null } : {}),
+        ...(currentVersionId !== undefined ? { currentVersionId: currentVersionId as string | null } : {}),
+        ...(isAuto !== undefined ? { isAuto: isAuto as boolean } : {}),
+        // W2 + Cohérence Workflows Phase 4 — overrides per-slot.
+        // null = hérite du pattern, true/false = écrase. needsDescription est un enum (string).
+        ...(needsClientValidationOverride !== undefined
+          ? { needsClientValidationOverride: needsClientValidationOverride as boolean | null }
+          : {}),
+        ...(allowsClientRevisionOverride !== undefined
+          ? { allowsClientRevisionOverride: allowsClientRevisionOverride as boolean | null }
+          : {}),
+        ...(needsCaptionsOverride !== undefined
+          ? { needsCaptionsOverride: needsCaptionsOverride as boolean | null }
+          : {}),
+        ...(needsDescriptionOverride !== undefined
+          ? { needsDescriptionOverride: needsDescriptionOverride as string | null }
+          : {}),
+        ...(needsRushesOverride !== undefined
+          ? { needsRushesOverride: needsRushesOverride as boolean | null }
+          : {}),
+        ...(needsBriefOverride !== undefined
+          ? { needsBriefOverride: needsBriefOverride as boolean | null }
+          : {}),
+      },
+      include: {
+        account: { select: { id: true, name: true, handle: true } },
+        template: { select: { id: true, name: true } },
+        render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
+      },
+    });
+  } catch (err) {
+    console.error("[PATCH /api/calendar/slots/[id]] prisma update failed:", err);
+    return NextResponse.json(
+      {
+        error:
+          err instanceof Error
+            ? `Échec de la sauvegarde : ${err.message}`
+            : "Échec de la sauvegarde",
+      },
+      { status: 500 },
+    );
+  }
 
   // Log d'activité — STATUS_CHANGED si le statut a changé.
   if (status !== undefined && typeof status === "string" && status !== slot.status) {

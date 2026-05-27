@@ -282,6 +282,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                 onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
                 <option value="EXTERNAL_GENERATOR">Client externe</option>
+                <option value="VIDEASTE">Vidéaste</option>
                 <option value="MONTEUR">Monteur</option>
                 <option value="CM">CM</option>
                 <option value="ADMIN">Administrateur</option>
@@ -354,6 +355,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                     className="shrink-0 text-xs px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
                   >
                     <option value="EXTERNAL_GENERATOR">Client externe</option>
+                    <option value="VIDEASTE">Vidéaste</option>
                     <option value="MONTEUR">Monteur</option>
                     <option value="CM">CM</option>
                     <option value="ADMIN">Admin</option>

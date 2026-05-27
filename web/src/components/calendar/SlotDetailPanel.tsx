@@ -121,12 +121,24 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) {
-        const err = await res.json() as { error?: string };
-        throw new Error(err.error ?? "Erreur lors de la sauvegarde");
+      // Parse JSON safely — si la réponse n'est pas JSON (HTML d'erreur 500,
+      // body vide), on attrape l'erreur de parse et on remonte un message clair.
+      let parsed: unknown = null;
+      const rawText = await res.text();
+      if (rawText) {
+        try {
+          parsed = JSON.parse(rawText);
+        } catch {
+          throw new Error(
+            `Réponse serveur inattendue (status ${res.status}). Vérifie les logs serveur.`,
+          );
+        }
       }
-      const updated = await res.json() as PublicationSlot;
-      onUpdated(updated);
+      if (!res.ok) {
+        const errMsg = (parsed as { error?: string } | null)?.error ?? `Erreur ${res.status}`;
+        throw new Error(errMsg);
+      }
+      onUpdated(parsed as PublicationSlot);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
@@ -168,8 +180,8 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
           continuer à scroller le calendrier en arrière-plan et cliquer un
           autre slot pour le sélectionner. ESC ou bouton X pour fermer. */}
       <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white z-40 shadow-2xl border-l border-gray-200 flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        {/* Header — shrink-0 pour que le body scroll mais pas le header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
           <div>
             <h2 className="text-sm font-semibold text-gray-900">
               {scheduledDate.toLocaleDateString("fr-FR", {
@@ -384,8 +396,8 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
           )}
         </div>
 
-        {/* Footer */}
-        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-2">
+        {/* Footer — shrink-0 pour rester visible même quand le body est long */}
+        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-2 shrink-0 bg-white">
           {/* Bouton Supprimer — admin uniquement */}
           {!isRestricted && (
             <button
