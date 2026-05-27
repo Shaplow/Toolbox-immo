@@ -156,10 +156,23 @@ export async function applyAutoTransition(
 /**
  * Trigger côté pipeline RunPod (jobs asynchrones).
  *
+ * - RENDER_STARTED     : Render créé (POST /api/renders) — passage TO_DO → IN_PROGRESS.
  * - RENDER_COMPLETED   : webhook /api/webhooks/runpod/renders a passé Render.status=DONE.
  * - CAPTIONS_COMPLETED : webhook /api/webhooks/runpod/captions a passé CaptionJob.status=COMPLETED.
  */
-export type PipelineTrigger = "RENDER_COMPLETED" | "CAPTIONS_COMPLETED";
+export type PipelineTrigger =
+  | "RENDER_STARTED"
+  | "RENDER_COMPLETED"
+  | "CAPTIONS_COMPLETED";
+
+// ── Statuts "pilotés par le pipeline" : on peut écraser tant qu'on est ici. ──
+// Dès que l'utilisateur fait avancer manuellement (READY_FOR_CM est posé par
+// nous-mêmes, donc accepté ; les autres viennent d'actions humaines).
+const PIPELINE_DRIVEN_STATUSES = new Set<string>([
+  "TO_DO",
+  "IN_PROGRESS",
+  "READY_FOR_CM", // accepté car on peut y être passé puis vouloir reculer en IN_PROGRESS
+]);
 
 // ── Inputs minimaux pour la décision (pour tests unit purs sans mock Prisma) ──
 
@@ -174,28 +187,45 @@ interface SlotForAutoTransition {
  * Logique pure (testable sans DB) : calcule le statut cible d'un slot
  * auto_template selon l'état réel de ses jobs.
  *
- * Règles validées avec le user (cf. plan §2) :
+ * Règles (validées avec le user) :
  *  - Si pattern.source !== "auto_template" → null (les autres flows gèrent eux-mêmes)
- *  - Si slot.status !== "TO_DO" → null (idempotence : ne touche pas un slot déjà avancé manuellement)
- *  - Si render.status !== "DONE" → null (rien à faire)
- *  - Si needsCaptions === false → "READY_FOR_CM"
- *  - Si needsCaptions === true && latestCaption === "COMPLETED" → "READY_FOR_CM"
- *  - Sinon (captions pending) → null (on attend)
+ *  - Si slot.status n'est pas dans PIPELINE_DRIVEN_STATUSES → null
+ *    (CM/MONTEUR a déjà déplacé manuellement vers IN_EDIT, SCHEDULED, etc.)
+ *  - Render PENDING/PROCESSING → IN_PROGRESS
+ *  - Render ERROR → IN_PROGRESS (le CM verra l'erreur dans la fiche ; pas de READY_FOR_CM)
+ *  - Render DONE :
+ *    - needsCaptions = false → READY_FOR_CM
+ *    - needsCaptions = true && captions COMPLETED → READY_FOR_CM
+ *    - needsCaptions = true && captions QUEUED/PROCESSING/FAILED/null → IN_PROGRESS
+ *  - Si la cible calculée = statut actuel → null (idempotence, évite update inutile)
  */
 export function computeAutoTransitionTargetPure(
   slot: SlotForAutoTransition,
 ): SlotStatus | null {
-  // Idempotence : on ne touche que les slots en TO_DO (statut initial).
-  if (slot.status !== "TO_DO") return null;
-  // Seul auto_template a une logique de transition automatique côté pipeline.
+  if (!PIPELINE_DRIVEN_STATUSES.has(slot.status)) return null;
   if (!slot.pattern || slot.pattern.source !== "auto_template") return null;
-  // Si le render n'est pas DONE, on n'avance pas.
-  if (slot.render?.status !== "DONE") return null;
-  // Si pas besoin de captions → READY_FOR_CM dès que render DONE.
-  if (!slot.pattern.needsCaptions) return "READY_FOR_CM";
-  // Besoin de captions : on attend que le job soit COMPLETED.
-  if (slot.latestCaptionJobStatus === "COMPLETED") return "READY_FOR_CM";
-  return null;
+
+  const renderStatus = slot.render?.status ?? null;
+  if (renderStatus === null) return null; // pas de render encore → rien à automatiser
+
+  let target: SlotStatus;
+  if (renderStatus === "DONE") {
+    if (!slot.pattern.needsCaptions) {
+      target = "READY_FOR_CM";
+    } else if (slot.latestCaptionJobStatus === "COMPLETED") {
+      target = "READY_FOR_CM";
+    } else {
+      // captions pas encore prêtes (QUEUED/PROCESSING/FAILED/null)
+      target = "IN_PROGRESS" as SlotStatus;
+    }
+  } else {
+    // PENDING / PROCESSING / ERROR — render pas finalisé.
+    target = "IN_PROGRESS" as SlotStatus;
+  }
+
+  // Idempotence : pas d'update si déjà au bon statut.
+  if (slot.status === target) return null;
+  return target;
 }
 
 /**

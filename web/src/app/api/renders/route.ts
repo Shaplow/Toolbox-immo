@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { startRenderGeneration } from "@/lib/renderer/generateRender";
 import { advanceLibraryCursorsOnSubmit, advanceAudioUsageOnSubmit } from "@/lib/contentLibraryResolver";
+import { applyAutoTransitionFromPipeline } from "@/lib/publications/transitions";
 
 // POST /api/renders — déclenche une génération
 export async function POST(req: NextRequest) {
@@ -207,6 +208,17 @@ export async function POST(req: NextRequest) {
         ...(validatedSlotId ? { publicationSlotId: validatedSlotId } : {}),
       },
     });
+
+    // Si le render est lié à un slot auto_template en TO_DO, on bascule
+    // immédiatement le slot en IN_PROGRESS (badge "En cours") pour refléter
+    // l'avancement réel. Best-effort — n'échoue jamais le POST.
+    if (validatedSlotId) {
+      await applyAutoTransitionFromPipeline(
+        prisma,
+        validatedSlotId,
+        "RENDER_STARTED",
+      );
+    }
 
     const kickoff = await startRenderGeneration(render.id);
     if (kickoff === "missing") {

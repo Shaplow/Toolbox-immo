@@ -138,7 +138,7 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
   const autoTemplatePattern = { source: "auto_template", needsCaptions: false };
   const autoTemplateWithCaptions = { source: "auto_template", needsCaptions: true };
 
-  it("retourne null si render PENDING", () => {
+  it("retourne IN_PROGRESS si render PENDING (TO_DO → IN_PROGRESS)", () => {
     expect(
       computeAutoTransitionTargetPure({
         status: "TO_DO",
@@ -146,10 +146,10 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
         render: { status: "PENDING" },
         latestCaptionJobStatus: null,
       }),
-    ).toBeNull();
+    ).toBe("IN_PROGRESS");
   });
 
-  it("retourne null si render PROCESSING", () => {
+  it("retourne IN_PROGRESS si render PROCESSING (TO_DO → IN_PROGRESS)", () => {
     expect(
       computeAutoTransitionTargetPure({
         status: "TO_DO",
@@ -157,7 +157,18 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
         render: { status: "PROCESSING" },
         latestCaptionJobStatus: null,
       }),
-    ).toBeNull();
+    ).toBe("IN_PROGRESS");
+  });
+
+  it("retourne IN_PROGRESS si render ERROR (le CM verra l'erreur, pas READY_FOR_CM)", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "TO_DO",
+        pattern: autoTemplatePattern,
+        render: { status: "ERROR" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBe("IN_PROGRESS");
   });
 
   it("retourne READY_FOR_CM si render DONE et pas de captions à faire", () => {
@@ -171,7 +182,7 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
     ).toBe("READY_FOR_CM");
   });
 
-  it("retourne null si render DONE mais captions encore PROCESSING", () => {
+  it("retourne IN_PROGRESS si render DONE mais captions encore PROCESSING", () => {
     expect(
       computeAutoTransitionTargetPure({
         status: "TO_DO",
@@ -179,10 +190,21 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
         render: { status: "DONE" },
         latestCaptionJobStatus: "PROCESSING",
       }),
-    ).toBeNull();
+    ).toBe("IN_PROGRESS");
   });
 
-  it("retourne null si render DONE mais aucun captionJob encore créé", () => {
+  it("retourne IN_PROGRESS si render DONE mais captions QUEUED", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "TO_DO",
+        pattern: autoTemplateWithCaptions,
+        render: { status: "DONE" },
+        latestCaptionJobStatus: "QUEUED",
+      }),
+    ).toBe("IN_PROGRESS");
+  });
+
+  it("retourne IN_PROGRESS si render DONE mais aucun captionJob encore créé", () => {
     expect(
       computeAutoTransitionTargetPure({
         status: "TO_DO",
@@ -190,7 +212,7 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
         render: { status: "DONE" },
         latestCaptionJobStatus: null,
       }),
-    ).toBeNull();
+    ).toBe("IN_PROGRESS");
   });
 
   it("retourne READY_FOR_CM si render DONE + captions COMPLETED", () => {
@@ -204,7 +226,7 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
     ).toBe("READY_FOR_CM");
   });
 
-  it("retourne null si captions FAILED (on n'avance pas sur un échec)", () => {
+  it("retourne IN_PROGRESS si captions FAILED (on n'avance pas sur un échec)", () => {
     expect(
       computeAutoTransitionTargetPure({
         status: "TO_DO",
@@ -212,12 +234,12 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
         render: { status: "DONE" },
         latestCaptionJobStatus: "FAILED",
       }),
-    ).toBeNull();
+    ).toBe("IN_PROGRESS");
   });
 });
 
 describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
-  it("retourne null si slot.status n'est pas TO_DO (déjà avancé manuellement)", () => {
+  it("retourne null si slot.status n'est pas piloté pipeline (déjà avancé manuellement)", () => {
     expect(
       computeAutoTransitionTargetPure({
         status: "IN_EDIT",
@@ -228,12 +250,53 @@ describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
     ).toBeNull();
     expect(
       computeAutoTransitionTargetPure({
+        status: "SCHEDULED",
+        pattern: { source: "auto_template", needsCaptions: false },
+        render: { status: "DONE" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBeNull();
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "PUBLISHED",
+        pattern: { source: "auto_template", needsCaptions: false },
+        render: { status: "DONE" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("idempotence : retourne null si déjà IN_PROGRESS et render PROCESSING", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "IN_PROGRESS",
+        pattern: { source: "auto_template", needsCaptions: false },
+        render: { status: "PROCESSING" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("idempotence : retourne null si déjà READY_FOR_CM et render DONE", () => {
+    expect(
+      computeAutoTransitionTargetPure({
         status: "READY_FOR_CM",
         pattern: { source: "auto_template", needsCaptions: false },
         render: { status: "DONE" },
         latestCaptionJobStatus: null,
       }),
     ).toBeNull();
+  });
+
+  it("transitionne IN_PROGRESS → READY_FOR_CM quand render DONE + captions COMPLETED", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "IN_PROGRESS",
+        pattern: { source: "auto_template", needsCaptions: true },
+        render: { status: "DONE" },
+        latestCaptionJobStatus: "COMPLETED",
+      }),
+    ).toBe("READY_FOR_CM");
   });
 
   it("retourne null si pattern.source = manual_rushes (autre flow)", () => {
@@ -269,7 +332,7 @@ describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
     ).toBeNull();
   });
 
-  it("retourne null si render est null", () => {
+  it("retourne null si render est null (pas encore créé)", () => {
     expect(
       computeAutoTransitionTargetPure({
         status: "TO_DO",
