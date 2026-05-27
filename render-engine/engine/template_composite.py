@@ -247,19 +247,27 @@ def _build_audio_args(
             # Source has no audio stream at all — output no audio track
             return ([], None, [], [])
         if mute_source:
-            # Produce silent audio track
+            # Produce a silent audio track via lavfi rather than `[0:a]volume=0`.
+            # This is robust to inputs where ffprobe reports an audio stream but
+            # ffmpeg's filtergraph can't bind to it (corrupt/edge-case codecs,
+            # metadata-only "data" streams like mebx on iPhone exports). The
+            # anullsrc input lands at ``music_input_index`` (caller reserves the
+            # slot); ``-shortest`` stops at the video stream's duration.
+            mi = music_input_index
             return (
-                [],
-                "[0:a]volume=0[aout]",
-                ["-map", "[aout]"],
+                ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"],
+                None,
+                ["-map", f"{mi}:a", "-shortest"],
                 ["-c:a", audio_codec, *audio_codec_args],
             )
         if source_volume < 1.0:
-            af = f"[0:a]volume={source_volume}[aout]"
+            # Attenuated source audio. Use ``[0:a?]`` (optional stream specifier)
+            # so the filter is skipped if the source has no usable audio stream.
+            af = f"[0:a?]volume={source_volume}[aout]"
             return (
                 [],
                 af,
-                ["-map", "[aout]"],
+                ["-map", "[aout]?"],
                 ["-c:a", audio_codec, *audio_codec_args],
             )
         # Fully backward-compatible: passthrough source audio
