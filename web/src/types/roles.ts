@@ -4,18 +4,20 @@
  * User.role est stocké comme String en base (pas d'enum Postgres).
  * Les valeurs ci-dessous sont les seules valeurs légitimes.
  *
- * ADMIN   — Studio / superviseur : accès complet, configure tout.
- * MONTEUR — Reçoit des publications à produire, upload rushes/montages.
- * CM      — Community Manager : prépare légende/cover, publie sur Instagram.
- * USER    — Utilisateur standard, accès défini par permissions individuelles.
+ * ADMIN              — Studio / superviseur : accès complet, configure tout.
+ * MONTEUR            — Reçoit des publications à produire, upload rushes/montages.
+ * CM                 — Community Manager : prépare légende/cover, publie sur Instagram.
+ * EXTERNAL_GENERATOR — Client externe : accès limité (templates + covers) défini par
+ *                      permissions individuelles. Remplace l'ancien rôle "USER"
+ *                      depuis le renommage Vague 0 (2026-05-27).
  */
-export type UserRole = "ADMIN" | "MONTEUR" | "CM" | "USER";
+export type UserRole = "ADMIN" | "MONTEUR" | "CM" | "EXTERNAL_GENERATOR";
 
 export const USER_ROLES = {
   ADMIN: "ADMIN",
   MONTEUR: "MONTEUR",
   CM: "CM",
-  USER: "USER",
+  EXTERNAL_GENERATOR: "EXTERNAL_GENERATOR",
 } as const satisfies Record<UserRole, UserRole>;
 
 // ---------------------------------------------------------------------------

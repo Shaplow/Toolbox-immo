@@ -19,7 +19,7 @@ export default async function CalendarPage() {
   if (!userContext?.effectiveUser.id) redirect("/login");
 
   const role = toUserRole(userContext.effectiveUser.role);
-  if (role === "USER") redirect("/home");
+  if (role === "EXTERNAL_GENERATOR") redirect("/home");
 
   const userId = userContext.effectiveUser.id;
 

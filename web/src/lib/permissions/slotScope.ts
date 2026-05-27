@@ -82,7 +82,7 @@ export function whereClauseForUser(
     case "CM":
       return { assigneeCmId: userId };
 
-    case "USER":
+    case "EXTERNAL_GENERATOR":
     default:
       // USER n'a pas accès à la pipeline éditoriale.
       // On retourne une clause qui ne peut jamais matcher un cuid valide.
@@ -121,7 +121,7 @@ export function canUserAccessSlot(
     case "CM":
       return slot.assigneeCmId === userId;
 
-    case "USER":
+    case "EXTERNAL_GENERATOR":
     default:
       return false;
   }
@@ -171,5 +171,5 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
     ],
     MONTEUR: ["status", "notes", "description"],
     CM: ["status", "notes", "description"],
-    USER: [],
+    EXTERNAL_GENERATOR: [],
   } as const;

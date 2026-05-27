@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { ChevronDown, ChevronUp, X, Plus, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { TOOLS, TOOL_LABELS, TOOL_DESCRIPTIONS, USER_ALLOWED_TOOLS, type Tool } from "@/lib/permissions";
+import { TOOLS, TOOL_LABELS, TOOL_DESCRIPTIONS, EXTERNAL_GENERATOR_ALLOWED_TOOLS, type Tool } from "@/lib/permissions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { FormField } from "@/components/ui/FormField";
@@ -41,7 +41,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [newUser, setNewUser] = useState({ username: "", name: "", email: "", password: "", role: "USER" });
+  const [newUser, setNewUser] = useState({ username: "", name: "", email: "", password: "", role: "EXTERNAL_GENERATOR" });
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", username: "", email: "", password: "" });
@@ -75,7 +75,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
       });
       const data = await res.json() as { error?: string };
       if (data.error) { toast.error(data.error); return; }
-      setNewUser({ username: "", name: "", email: "", password: "", role: "USER" });
+      setNewUser({ username: "", name: "", email: "", password: "", role: "EXTERNAL_GENERATOR" });
       setCreating(false);
       toast.success("Utilisateur créé.");
       await fetchUsers();
@@ -248,7 +248,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
               <select value={newUser.role}
                 onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
-                <option value="USER">Utilisateur</option>
+                <option value="EXTERNAL_GENERATOR">Client externe</option>
                 <option value="ADMIN">Administrateur</option>
               </select>
             </FormField>
@@ -318,7 +318,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                     title="Rôle"
                     className="shrink-0 text-xs px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
                   >
-                    <option value="USER">Utilisateur</option>
+                    <option value="EXTERNAL_GENERATOR">Client externe</option>
                     <option value="MONTEUR">Monteur</option>
                     <option value="CM">CM</option>
                     <option value="ADMIN">Admin</option>
@@ -400,9 +400,9 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                         <div className="px-5 py-4 space-y-3">
                           <div className="flex items-center justify-between">
                             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Outils</p>
-                            {user.role === "USER" && (
+                            {user.role === "EXTERNAL_GENERATOR" && (
                               <p className="text-[10px] text-gray-400 italic">
-                                Rôle USER : seuls {USER_ALLOWED_TOOLS.join(", ")} sont attribuables
+                                Rôle Client externe : seuls {EXTERNAL_GENERATOR_ALLOWED_TOOLS.join(", ")} sont attribuables
                               </p>
                             )}
                           </div>
@@ -411,7 +411,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                               const active = userTools.includes(tool);
                               // D4 étape 1 : USER ne peut pas se voir ajouter captions/transcription/description.
                               // Les héritées (active && !allowed) restent décochables pour permettre le nettoyage.
-                              const isAllowedForRole = user.role !== "USER" || (USER_ALLOWED_TOOLS as readonly Tool[]).includes(tool);
+                              const isAllowedForRole = user.role !== "EXTERNAL_GENERATOR" || (EXTERNAL_GENERATOR_ALLOWED_TOOLS as readonly Tool[]).includes(tool);
                               const isLegacy = active && !isAllowedForRole;
                               const isBlocked = !active && !isAllowedForRole;
                               return (
@@ -428,7 +428,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                                   }`}
                                   title={
                                     isBlocked
-                                      ? "Non attribuable au rôle USER (générateur externe)"
+                                      ? "Non attribuable au rôle Client externe"
                                       : isLegacy
                                         ? "Permission héritée — peut être retirée mais pas re-ajoutée pour ce rôle"
                                         : undefined

@@ -42,7 +42,7 @@ const ROLE_DETAIL_MODE: Record<UserRole, SlotDetailPanelMode> = {
   ADMIN: "admin",
   MONTEUR: "monteur",
   CM: "cm",
-  USER: "cm",
+  EXTERNAL_GENERATOR: "cm",
 };
 
 /** Returns Monday of the week containing `date`. */

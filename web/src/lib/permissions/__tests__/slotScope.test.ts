@@ -26,7 +26,7 @@ describe("whereClauseForUser", () => {
   });
 
   it("USER → impossible id (no slot match)", () => {
-    expect(whereClauseForUser("USER", USER_ID)).toEqual({
+    expect(whereClauseForUser("EXTERNAL_GENERATOR", USER_ID)).toEqual({
       id: "__never__",
     });
   });
@@ -75,8 +75,8 @@ describe("canUserAccessSlot", () => {
   });
 
   it("USER → always false", () => {
-    expect(canUserAccessSlot(slotAssignedToUser, "USER", USER_ID)).toBe(false);
-    expect(canUserAccessSlot(slotAssignedToOther, "USER", USER_ID)).toBe(false);
+    expect(canUserAccessSlot(slotAssignedToUser, "EXTERNAL_GENERATOR", USER_ID)).toBe(false);
+    expect(canUserAccessSlot(slotAssignedToOther, "EXTERNAL_GENERATOR", USER_ID)).toBe(false);
   });
 
   it("cross-role isolation : MONTEUR assigned only as CM → no access", () => {
@@ -110,7 +110,7 @@ describe("ALLOWED_PATCH_FIELDS_BY_ROLE — security invariants", () => {
   });
 
   it("USER has no allowed fields", () => {
-    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.USER).toEqual([]);
+    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.EXTERNAL_GENERATOR).toEqual([]);
   });
 
   it("ADMIN can modify assignees and pattern (override capability)", () => {

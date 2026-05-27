@@ -49,7 +49,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as { role?: string }).role ?? "USER";
+        token.role = (user as { role?: string }).role ?? "EXTERNAL_GENERATOR";
         // Parse, validate and re-serialize permissions so the JWT always
         // carries a well-formed JSON array string, never a corrupt value.
         const rawPermissions = (user as { permissions?: string }).permissions ?? "[]";

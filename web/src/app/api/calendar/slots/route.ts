@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   const userId = userContext.effectiveUser.id;
 
   // ADMIN, MONTEUR, et CM peuvent lire. USER n'a pas accès à la pipeline éditoriale.
-  if (role === "USER") {
+  if (role === "EXTERNAL_GENERATOR") {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 

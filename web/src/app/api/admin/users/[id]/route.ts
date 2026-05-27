@@ -2,7 +2,7 @@
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { USER_ALLOWED_TOOLS, type Tool } from "@/lib/permissions";
+import { EXTERNAL_GENERATOR_ALLOWED_TOOLS, type Tool } from "@/lib/permissions";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -17,7 +17,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const body = await req.json();
   const { name, username, email, password, role, permissions } = body;
 
-  const VALID_ROLES = ["USER", "ADMIN", "MONTEUR", "CM"];
+  const VALID_ROLES = ["EXTERNAL_GENERATOR", "ADMIN", "MONTEUR", "CM"];
 
   const data: Record<string, unknown> = {};
   if (name) data.name = name;
@@ -46,20 +46,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       where: { id },
       select: { role: true, permissions: true },
     });
-    const futureRole = (role as string | undefined) ?? existing?.role ?? "USER";
+    const futureRole = (role as string | undefined) ?? existing?.role ?? "EXTERNAL_GENERATOR";
 
-    if (futureRole === "USER") {
+    if (futureRole === "EXTERNAL_GENERATOR") {
       const prevPerms: Tool[] = (() => {
         try { return JSON.parse(existing?.permissions ?? "[]") as Tool[]; }
         catch { return []; }
       })();
-      const allowed = new Set<Tool>(USER_ALLOWED_TOOLS);
+      const allowed = new Set<Tool>(EXTERNAL_GENERATOR_ALLOWED_TOOLS);
       const added = nextPerms.filter((p) => !prevPerms.includes(p));
       const forbiddenAdditions = added.filter((p) => !allowed.has(p));
       if (forbiddenAdditions.length > 0) {
         return NextResponse.json(
           {
-            error: `Le rôle USER ne peut pas se voir attribuer : ${forbiddenAdditions.join(", ")}. Seuls ${USER_ALLOWED_TOOLS.join(", ")} sont autorisés.`,
+            error: `Le rôle Client externe ne peut pas se voir attribuer : ${forbiddenAdditions.join(", ")}. Seuls ${EXTERNAL_GENERATOR_ALLOWED_TOOLS.join(", ")} sont autorisés.`,
           },
           { status: 400 },
         );

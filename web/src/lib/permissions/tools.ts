@@ -27,7 +27,7 @@ export const ROLE_TOOL_SCOPE: Record<UserRole, RoleToolScope> = {
   CM: ["captions", "transcription", "description", "cover"] as const,
   MONTEUR: ["captions", "transcription"] as const,
   // USER : pas de set de rôle — accès entièrement dirigé par User.permissions
-  USER: [] as const,
+  EXTERNAL_GENERATOR: [] as const,
 };
 
 // ---------------------------------------------------------------------------

@@ -55,7 +55,7 @@ export const STATUS_TRANSITIONS: Record<SlotStatus, SlotStatus[]> = {
 export function canTransition(from: string, to: string, role: UserRole): boolean {
   if (role === "ADMIN") return true;
   // USER n'a aucun accès à la pipeline éditoriale.
-  if (role === "USER") return false;
+  if (role === "EXTERNAL_GENERATOR") return false;
   if ((LEGACY_STATUSES as readonly string[]).includes(from)) return true;
   const allowed = STATUS_TRANSITIONS[from as SlotStatus];
   return Array.isArray(allowed) && allowed.includes(to as SlotStatus);

@@ -30,7 +30,7 @@ export const TEST_USERS = {
     email: "user@test.local",
     username: "test_user",
     password: "testpass",
-    role: "USER" as const,
+    role: "EXTERNAL_GENERATOR" as const,
   },
 } as const;
 

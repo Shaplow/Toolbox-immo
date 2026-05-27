@@ -30,7 +30,7 @@ type AppUserIdentity = {
 };
 
 function makeUser(
-  role: "ADMIN" | "MONTEUR" | "CM" | "USER",
+  role: "ADMIN" | "MONTEUR" | "CM" | "EXTERNAL_GENERATOR",
   permissions: string[] = []
 ): AppUserIdentity {
   return {
@@ -61,7 +61,7 @@ describe("ROLE_TOOL_SCOPE matrix", () => {
   });
 
   it("USER → empty (driven by individual permissions JSON)", () => {
-    expect(ROLE_TOOL_SCOPE.USER).toEqual([]);
+    expect(ROLE_TOOL_SCOPE.EXTERNAL_GENERATOR).toEqual([]);
   });
 });
 
@@ -92,13 +92,13 @@ describe("canAccessTool", () => {
   });
 
   it("USER without permissions → false for all", () => {
-    const user = makeUser("USER", []);
+    const user = makeUser("EXTERNAL_GENERATOR", []);
     expect(canAccessTool(user, "captions")).toBe(false);
     expect(canAccessTool(user, "templates")).toBe(false);
   });
 
   it("USER with permissions → true only for granted tools", () => {
-    const user = makeUser("USER", ["captions", "templates"]);
+    const user = makeUser("EXTERNAL_GENERATOR", ["captions", "templates"]);
     expect(canAccessTool(user, "captions")).toBe(true);
     expect(canAccessTool(user, "templates")).toBe(true);
     expect(canAccessTool(user, "transcription")).toBe(false);
@@ -119,7 +119,7 @@ describe("canAccessTool", () => {
       id: "u",
       name: "x",
       email: null,
-      role: "USER",
+      role: "EXTERNAL_GENERATOR",
       permissions: "{invalid json",
     };
     expect(canAccessTool(user, "captions")).toBe(false);
