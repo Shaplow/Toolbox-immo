@@ -2,10 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
-import {
-  FileText, X,
-  Mic, Check,
-} from "lucide-react";
+import { X } from "lucide-react";
 import {
   Caption,
   applyHighlightMarkersToCaptions,
@@ -36,6 +33,7 @@ import { CaptionsJobQueue } from "@/components/captions/CaptionsJobQueue";
 import { CaptionsVideoUploadBar } from "@/components/captions/CaptionsVideoUploadBar";
 import { CaptionsHeader } from "@/components/captions/CaptionsHeader";
 import { CaptionsGenerateButton } from "@/components/captions/CaptionsGenerateButton";
+import { CaptionsSourceStatus } from "@/components/captions/CaptionsSourceStatus";
 
 type TextTransform = "none" | "upper" | "lower" | "title";
 type AIModel = "claude" | "gpt";
@@ -725,49 +723,16 @@ export default function CaptionsGenerateForm({
             />
           )}
 
-          {/* Trim editor open — show source name as status */}
-          {showTrimEditor && (
-            <div className="px-4 py-3 flex items-center gap-3">
-              <div className="w-8 h-8 bg-violet-100 rounded-lg flex shrink-0 items-center justify-center">
-                {selectedTranscriptionId ? <Mic size={14} className="text-violet-600" /> : <FileText size={14} className="text-violet-600" />}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800">
-                  {selectedTranscriptionId
-                    ? (transcriptions.find((t) => t.id === selectedTranscriptionId)?.inputFilename ?? "Transcription")
-                    : (subsFile?.name ?? "Segments pré-chargés")}
-                </p>
-                <p className="text-xs text-gray-400">{pendingSegments?.length ?? 0} segments · édition en cours</p>
-              </div>
-            </div>
-          )}
-
-          {/* Captions ready — show summary */}
-          {!showTrimEditor && captions.length > 0 && (
-            <div className="px-4 py-3 flex items-center gap-3">
-              <div className="w-8 h-8 bg-violet-100 rounded-lg flex shrink-0 items-center justify-center">
-                <Check size={14} className="text-violet-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800">{captions.length} lignes</p>
-                <p className="text-xs text-gray-400">
-                  {selectedTranscriptionId
-                    ? (transcriptions.find((t) => t.id === selectedTranscriptionId)?.inputFilename ?? "Transcription")
-                    : (subsFile?.name ?? "Sous-titres chargés")}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* subsFile loaded but not yet in trim editor (edge case: plain SRT without trim) */}
-          {!showTrimEditor && captions.length === 0 && subsFile && (
-            <div className="px-4 py-3 flex items-center gap-3">
-              <div className="w-8 h-8 bg-violet-100 rounded-lg flex shrink-0 items-center justify-center">
-                <FileText size={14} className="text-violet-600" />
-              </div>
-              <p className="text-sm font-medium text-gray-800 truncate">{subsFile.name}</p>
-            </div>
-          )}
+          {/* F3-step9 — 3 status blocks (trim / captions ready / subsFile)
+              regroupés dans CaptionsSourceStatus */}
+          <CaptionsSourceStatus
+            showTrimEditor={showTrimEditor}
+            captionsCount={captions.length}
+            subsFile={subsFile}
+            selectedTranscriptionId={selectedTranscriptionId}
+            transcriptions={transcriptions}
+            pendingSegmentsCount={pendingSegments?.length ?? 0}
+          />
         </div>
 
         {/* Segment trim editor — shown after SRT or JSON import */}
