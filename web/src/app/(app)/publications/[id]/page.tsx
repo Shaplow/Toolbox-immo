@@ -7,6 +7,7 @@ import { canMarkPublished, canUploadRushes, canEditBrief, canUploadVersion, canP
 import { computePublicationSteps } from "@/lib/publications/steps";
 import { toUserRole } from "@/lib/permissions/role";
 import { syncSlotsPipelineStatuses } from "@/lib/publications/transitions";
+import { resolveClientValidationConfig } from "@/lib/publications/clientValidation";
 import { PublicationFiche } from "./PublicationFiche";
 import type { CommentData } from "@/components/publications/CommentItem";
 import type { ActivityItem } from "@/components/publications/ActivityTimeline";
@@ -61,6 +62,7 @@ export default async function PublicationPage({ params }: PageProps) {
           needsCaptions: true,
           needsDescription: true,
           needsClientValidation: true,
+          allowsClientRevision: true,
           needsRushes: true,
           needsBrief: true,
         },
@@ -257,6 +259,34 @@ export default async function PublicationPage({ params }: PageProps) {
   // P0.2 — dernier job description IA lié (le step utilise aussi slot.description en fallback)
   const latestDescriptionJob = slot.descriptionJobs[0] ?? null;
 
+  // W2 — Validation client : résolution config + token actif + rounds
+  const clientValidationConfig = resolveClientValidationConfig(
+    {
+      needsClientValidationOverride: slot.needsClientValidationOverride,
+      allowsClientRevisionOverride: slot.allowsClientRevisionOverride,
+    },
+    slot.pattern,
+  );
+
+  const [activeValidationToken, validationRounds] = await Promise.all([
+    prisma.clientValidationToken.findFirst({
+      where: { slotId: id, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        createdAt: true,
+        expiresAt: true,
+        createdBy: { select: { id: true, name: true, email: true } },
+      },
+    }),
+    prisma.clientValidationRound.findMany({
+      where: { slotId: id },
+      orderBy: { roundNumber: "desc" },
+      take: 20,
+      select: { roundNumber: true, action: true, comment: true, respondedAt: true },
+    }),
+  ]);
+
   // Calcul des steps
   const steps = computePublicationSteps({
     slot: { status: effectiveStatus, caption: slot.caption, description: slot.description },
@@ -319,6 +349,8 @@ export default async function PublicationPage({ params }: PageProps) {
               coverMode: slot.pattern.coverMode,
               needsCaptions: slot.pattern.needsCaptions,
               needsDescription: slot.pattern.needsDescription,
+              needsClientValidation: slot.pattern.needsClientValidation,
+              allowsClientRevision: slot.pattern.allowsClientRevision,
               needsRushes: slot.pattern.needsRushes,
               needsBrief: slot.pattern.needsBrief,
             }
@@ -368,6 +400,26 @@ export default async function PublicationPage({ params }: PageProps) {
             }
           : null
       }
+      clientValidation={{
+        needsClientValidation: clientValidationConfig.needsClientValidation,
+        allowsClientRevision: clientValidationConfig.allowsClientRevision,
+        needsClientValidationOverride: slot.needsClientValidationOverride,
+        allowsClientRevisionOverride: slot.allowsClientRevisionOverride,
+        activeToken: activeValidationToken
+          ? {
+              id: activeValidationToken.id,
+              createdAt: activeValidationToken.createdAt.toISOString(),
+              expiresAt: activeValidationToken.expiresAt.toISOString(),
+              createdBy: activeValidationToken.createdBy,
+            }
+          : null,
+        rounds: validationRounds.map((r) => ({
+          roundNumber: r.roundNumber,
+          action: r.action,
+          comment: r.comment,
+          respondedAt: r.respondedAt.toISOString(),
+        })),
+      }}
       comments={comments}
       commentsHasMore={commentsHasMore}
       activities={activities}
