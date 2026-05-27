@@ -589,9 +589,19 @@ export function ListingsClient({
         ))}
       </div>
 
+      {/* Pagination hint : si on a hit la limite serveur (50), avertir l'user
+          qu'il y a probablement d'autres items plus anciens. Vraie pagination
+          déferrée (chantier dédié — modif page.tsx server + URL params). */}
+      {!isEmpty && activeEntries.length >= 50 && (
+        <p className="mt-6 text-center text-[11px] text-amber-600">
+          Affichage des 50 plus récents — les éléments plus anciens ne sont pas
+          listés ici. Ouvrez la page détail d&apos;un élément pour la traçabilité complète.
+        </p>
+      )}
+
       {/* Bandeau "lecture seule" pour rappeler que les actions se font sur les pages détail */}
       {!isEmpty && (
-        <p className="mt-8 text-center text-[11px] text-gray-400">
+        <p className="mt-4 text-center text-[11px] text-gray-400">
           <ImageIcon size={11} className="inline-block mr-1 align-text-bottom" />
           Cliquez sur un élément pour ouvrir la page détail (regénération, suppression et actions y sont disponibles).
         </p>
