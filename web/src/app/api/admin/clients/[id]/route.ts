@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import { clientPatchSchema, validateBody } from "@/lib/validation/apiSchemas";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -37,14 +38,21 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const { id } = await params;
-  const body = await req.json() as { name?: string; contactName?: string; email?: string; phone?: string };
-  const { name, contactName, email, phone } = body;
+
+  // E5 — validation via Zod schema (clientPatchSchema). Le schema applique
+  // .strict() (rejette les clés inconnues) et z.string().email() pour valider
+  // le format de l'email.
+  const parsed = await validateBody(req, clientPatchSchema);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+  const body = parsed.data;
 
   const data: { name?: string; contactName?: string | null; email?: string | null; phone?: string | null } = {};
-  if (name?.trim()) data.name = name.trim();
-  if ("contactName" in body) data.contactName = contactName?.trim() || null;
-  if ("email" in body) data.email = email?.trim() || null;
-  if ("phone" in body) data.phone = phone?.trim() || null;
+  if (body.name) data.name = body.name;
+  if ("contactName" in body) data.contactName = body.contactName?.trim() || null;
+  if ("email" in body) data.email = body.email?.trim() || null;
+  if ("phone" in body) data.phone = body.phone?.trim() || null;
 
   try {
     const client = await prisma.client.update({
