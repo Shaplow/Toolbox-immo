@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 import { fmtDate, fmtDuration } from "@/lib/jobUtils";
 
 const AUDIO_ACCEPT = ".mp3,.wav,.m4a,.flac,.ogg,.aac,.mp4,.mov,.mkv,.webm";
@@ -548,6 +549,7 @@ export function TranscriptionList({
           iconColor="teal"
           title="Transcription"
           subtitle="Uploadez vos rushs, laissez-les en attente, ajustez la config puis lancez une ou plusieurs transcriptions quand vous êtes prêt."
+          actions={<RefreshButton title="Rafraîchir les jobs" />}
         />
         <div className="-mt-4 mb-2 flex flex-wrap gap-2 text-xs font-medium">
           <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
