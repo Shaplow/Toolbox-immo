@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
-function adminOnly(role?: string) {
-  return role !== "ADMIN";
-}
-
 // GET /api/admin/libraries/media — liste les MediaLibrary (+ asset count)
 // Supporte ?type=video|audio pour filtrer. Accessible aux admins seulement.
 export async function GET(req: NextRequest) {

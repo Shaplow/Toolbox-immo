@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
-function adminOnly(role?: string) {
-  return role !== "ADMIN";
-}
-
 // GET /api/admin/accounts — liste les comptes Instagram
 // Accepte ?clientId=<id> pour filtrer par client
 export async function GET(req: NextRequest) {

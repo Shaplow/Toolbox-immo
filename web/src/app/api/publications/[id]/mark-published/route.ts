@@ -113,6 +113,17 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (isNaN(parsed.getTime())) {
       return NextResponse.json({ error: "publishedAt invalide" }, { status: 400 });
     }
+    // E4 — fix L6 : borner publishedAt à une fenêtre raisonnable.
+    // Avant : dates futures lointaines ou très anciennes acceptées (data hygiene
+    // risque + tri/affichage cassé). Maintenant : 2020-01-01 ≤ publishedAt ≤ now + 1 an.
+    const minDate = new Date("2020-01-01T00:00:00Z");
+    const maxDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    if (parsed < minDate || parsed > maxDate) {
+      return NextResponse.json(
+        { error: "publishedAt hors fenêtre autorisée (2020 → +1 an)" },
+        { status: 400 }
+      );
+    }
     effectivePublishedAt = parsed;
   } else {
     effectivePublishedAt = new Date();

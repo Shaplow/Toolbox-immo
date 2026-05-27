@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
-function adminOnly(role?: string) {
-  return role !== "ADMIN";
-}
-
 type Params = { params: Promise<{ id: string }> };
 
 // PATCH /api/admin/libraries/media/[id]/assets/bulk

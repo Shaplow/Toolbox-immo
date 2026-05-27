@@ -3,10 +3,6 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { deleteFromR2, r2Configured } from "@/lib/r2";
 
-function adminOnly(role?: string) {
-  return role !== "ADMIN";
-}
-
 type Params = { params: Promise<{ id: string }> };
 
 // PATCH /api/admin/libraries/media/[id] — met à jour une MediaLibrary (name, description, setSequence, tags)

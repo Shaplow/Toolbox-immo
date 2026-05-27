@@ -133,6 +133,43 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "scheduledAt invalide" }, { status: 400 });
   }
 
+  // E3 — fix M4 mass-assignment : bornes sur les champs texte pour éviter le
+  // DoS storage et limiter les payloads XSS différé. Cohérent avec la dette
+  // technique active §15.2 (M4 1.3.3).
+  const MAX_TEXT_FIELD = 5000;
+  for (const [name, value] of [["title", title], ["caption", caption], ["description", description], ["notes", notes]] as const) {
+    if (typeof value === "string" && value.length > MAX_TEXT_FIELD) {
+      return NextResponse.json(
+        { error: `Le champ ${name} dépasse ${MAX_TEXT_FIELD} caractères` },
+        { status: 400 }
+      );
+    }
+  }
+
+  // Validation shape `fields` : Record<string, string> avec keys ≤100 chars
+  // et values ≤5000 chars. Empêche les structures arbitraires (objet, array,
+  // null) et les payloads démesurés.
+  if (fields !== undefined) {
+    if (typeof fields !== "object" || fields === null || Array.isArray(fields)) {
+      return NextResponse.json({ error: "fields doit être un objet" }, { status: 400 });
+    }
+    const fieldsObj = fields as Record<string, unknown>;
+    for (const [key, value] of Object.entries(fieldsObj)) {
+      if (key.length > 100) {
+        return NextResponse.json(
+          { error: `Clé fields trop longue (max 100): ${key.slice(0, 20)}…` },
+          { status: 400 }
+        );
+      }
+      if (typeof value !== "string" || value.length > MAX_TEXT_FIELD) {
+        return NextResponse.json(
+          { error: `Valeur fields["${key}"] doit être string ≤${MAX_TEXT_FIELD} chars` },
+          { status: 400 }
+        );
+      }
+    }
+  }
+
   // H2 — Défense en profondeur : sanitizer les notes pour les non-ADMIN.
   // Supprime toute ligne "PUBLISHED_URL:" que le body pourrait contenir,
   // afin d'éviter l'injection de l'ancienne donnée hack via le champ notes.
