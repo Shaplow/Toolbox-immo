@@ -17,7 +17,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const body = await req.json();
   const { name, username, email, password, role, permissions } = body;
 
-  const VALID_ROLES = ["EXTERNAL_GENERATOR", "ADMIN", "MONTEUR", "CM"];
+  const VALID_ROLES = ["EXTERNAL_GENERATOR", "ADMIN", "VIDEASTE", "MONTEUR", "CM"];
 
   const data: Record<string, unknown> = {};
   if (name) data.name = name;

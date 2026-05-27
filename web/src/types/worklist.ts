@@ -38,6 +38,8 @@ export interface WorklistSlot {
   notes: string | null;
   assigneeMonteurId: string | null;
   assigneeCmId: string | null;
+  /** Phase VIDÉASTE — assignation du shoot. null = pas de vidéaste assigné (slot legacy ou one-off sans shoot). */
+  assigneeVideasteId?: string | null;
   patternId: string | null;
   account: WorklistAccount;
   pattern: WorklistPattern | null;
@@ -60,8 +62,14 @@ export interface WorklistSlot {
 export type MonteurSection = "overdue" | "todo" | "in_progress" | "waiting";
 
 const MONTEUR_SECTION_MAP: Partial<Record<SlotStatus, MonteurSection>> = {
-  // À monter
+  // À monter — démarre quand les rushs sont livrés. PLANNED reste en "todo"
+  // pour les slots sans pattern (legacy ou one-off) où le monteur peut anticiper.
   PLANNED: "todo",
+  // Note Phase VIDÉASTE : RUSHES_EXPECTED appartient désormais au vidéaste.
+  // Mais on garde un fallback informatif "todo" pour les slots sans vidéaste assigné
+  // (slots historiques avant le rôle, ou one-off où aucun vidéaste n'est défini).
+  // Le fallback ne crée pas de doublon — getMonteurSection sera appelé uniquement
+  // si le slot est dans la worklist Monteur (assignéeMonteurId), donc déjà filtré.
   RUSHES_EXPECTED: "todo",
   RUSHES_RECEIVED: "todo",
   // En cours
@@ -125,6 +133,48 @@ const CM_SECTION_MAP: Partial<Record<SlotStatus, CmSection>> = {
  */
 export function getCmSection(status: SlotStatus): CmSection | null {
   return CM_SECTION_MAP[status] ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Sections Vidéaste (Phase VIDÉASTE)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sections possibles dans la worklist Vidéaste.
+ *
+ * - "overdue"        : EN RETARD — shoot dont scheduledAt < maintenant et rushs non livrés.
+ * - "to_shoot"       : À shooter — PLANNED, RUSHES_EXPECTED. Le vidéaste doit aller filmer.
+ * - "shooting_done"  : Shoot livré — RUSHES_RECEIVED. Rushs uploadés, le relais passe au monteur.
+ * - "in_edit"        : En montage (informatif) — IN_EDIT, EDIT_REVIEW, EDIT_APPROVED, etc.
+ *                      Le vidéaste voit ces slots en lecture seule pour suivi/référence.
+ * - null             : Statut exclu de la worklist Vidéaste.
+ */
+export type VideasteSection = "overdue" | "to_shoot" | "shooting_done" | "in_edit";
+
+const VIDEASTE_SECTION_MAP: Partial<Record<SlotStatus, VideasteSection>> = {
+  // À shooter (action requise)
+  PLANNED: "to_shoot",
+  RUSHES_EXPECTED: "to_shoot",
+  // Shoot livré (en attente du monteur)
+  RUSHES_RECEIVED: "shooting_done",
+  // En montage et au-delà (informatif — le vidéaste ne fait plus rien)
+  IN_EDIT: "in_edit",
+  EDIT_REVIEW: "in_edit",
+  EDIT_APPROVED: "in_edit",
+  CAPTIONS_PENDING: "in_edit",
+  READY_FOR_CM: "in_edit",
+  CLIENT_REVISION: "in_edit",
+  AWAITING_CLIENT: "in_edit",
+  SCHEDULED: "in_edit",
+  // Exclus : DRAFT, PUBLISHED, REJECTED, CANCELLED, BLOCKED, ARCHIVED
+};
+
+/**
+ * Retourne la section Vidéaste pour un statut donné.
+ * Retourne `null` si le statut est exclu de la worklist Vidéaste.
+ */
+export function getVideasteSection(status: SlotStatus): VideasteSection | null {
+  return VIDEASTE_SECTION_MAP[status] ?? null;
 }
 
 // ---------------------------------------------------------------------------

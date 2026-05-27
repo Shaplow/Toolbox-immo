@@ -21,6 +21,7 @@ const patternIncludes = {
   template: { select: { id: true, name: true } },
   defaultAssigneeMonteur: { select: { id: true, name: true } },
   defaultAssigneeCm: { select: { id: true, name: true } },
+  defaultAssigneeVideaste: { select: { id: true, name: true } },
   _count: { select: { publicationSlots: true } },
 } as const;
 
@@ -41,6 +42,7 @@ type PostBody = {
   isActive?: boolean;
   defaultAssigneeMonteurId?: string | null;
   defaultAssigneeCmId?: string | null;
+  defaultAssigneeVideasteId?: string | null;
   captionPresetId?: string | null;
   descriptionPromptId?: string | null;
   notes?: string | null;
@@ -190,6 +192,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         isActive: body.isActive ?? true,
         defaultAssigneeMonteurId: body.defaultAssigneeMonteurId ?? null,
         defaultAssigneeCmId: body.defaultAssigneeCmId ?? null,
+        defaultAssigneeVideasteId: body.defaultAssigneeVideasteId ?? null,
         captionPresetId: body.captionPresetId ?? null,
         descriptionPromptId: body.descriptionPromptId ?? null,
         notes: body.notes ?? null,

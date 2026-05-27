@@ -19,6 +19,7 @@ interface PatternOption {
   isActive: boolean;
   defaultAssigneeMonteur: { id: string; name: string } | null;
   defaultAssigneeCm: { id: string; name: string } | null;
+  defaultAssigneeVideaste?: { id: string; name: string } | null;
 }
 
 /** Shape minimale d'un User telle que retournée par GET /api/admin/users */
@@ -59,6 +60,7 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
   // --- Assignees ---
   const [assigneeMonteurId, setAssigneeMonteurId] = useState<string>("");
   const [assigneeCmId, setAssigneeCmId] = useState<string>("");
+  const [assigneeVideasteId, setAssigneeVideasteId] = useState<string>("");
 
   // --- Données chargées au mount ---
   const [users, setUsers] = useState<UserOption[]>([]);
@@ -100,6 +102,7 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     setSelectedPatternId("");
     setAssigneeMonteurId("");
     setAssigneeCmId("");
+    setAssigneeVideasteId("");
 
     async function loadPatterns() {
       try {
@@ -115,6 +118,7 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
             setSelectedPatternId(first.id);
             setAssigneeMonteurId(first.defaultAssigneeMonteur?.id ?? "");
             setAssigneeCmId(first.defaultAssigneeCm?.id ?? "");
+            setAssigneeVideasteId(first.defaultAssigneeVideaste?.id ?? "");
           }
         }
       } catch {
@@ -133,18 +137,21 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     if (!patternId) {
       setAssigneeMonteurId("");
       setAssigneeCmId("");
+      setAssigneeVideasteId("");
       return;
     }
     const pattern = patterns.find((p) => p.id === patternId);
     if (pattern) {
       setAssigneeMonteurId(pattern.defaultAssigneeMonteur?.id ?? "");
       setAssigneeCmId(pattern.defaultAssigneeCm?.id ?? "");
+      setAssigneeVideasteId(pattern.defaultAssigneeVideaste?.id ?? "");
     }
   }
 
   // Users filtrés par rôle pour les selects d'assignees
   const monteurs = users.filter((u) => u.role === "MONTEUR" || u.role === "ADMIN");
   const cms = users.filter((u) => u.role === "CM" || u.role === "ADMIN");
+  const videastes = users.filter((u) => u.role === "VIDEASTE" || u.role === "ADMIN");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -163,6 +170,7 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
         title: form.title || null,
         assigneeMonteurId: assigneeMonteurId || null,
         assigneeCmId: assigneeCmId || null,
+        assigneeVideasteId: assigneeVideasteId || null,
         patternId: selectedPatternId || null,
       };
 
@@ -280,6 +288,20 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
           {/* Assignees */}
           <div className="grid grid-cols-2 gap-3">
             <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Vidéaste</label>
+              <select
+                value={assigneeVideasteId}
+                onChange={(e) => setAssigneeVideasteId(e.target.value)}
+                className={INPUT_CLS}
+                disabled={loadingMeta}
+              >
+                <option value="">— Aucun —</option>
+                {videastes.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Monteur</label>
               <select
                 value={assigneeMonteurId}
@@ -293,7 +315,7 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
                 ))}
               </select>
             </div>
-            <div>
+            <div className="col-span-2">
               <label className="block text-xs font-medium text-gray-700 mb-1">CM</label>
               <select
                 value={assigneeCmId}

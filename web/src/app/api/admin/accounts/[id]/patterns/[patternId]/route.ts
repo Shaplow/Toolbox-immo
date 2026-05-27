@@ -18,6 +18,7 @@ const patternIncludes = {
   template: { select: { id: true, name: true } },
   defaultAssigneeMonteur: { select: { id: true, name: true } },
   defaultAssigneeCm: { select: { id: true, name: true } },
+  defaultAssigneeVideaste: { select: { id: true, name: true } },
   _count: { select: { publicationSlots: true } },
 } as const;
 
@@ -38,6 +39,7 @@ type PatchBody = {
   isActive?: boolean;
   defaultAssigneeMonteurId?: string | null;
   defaultAssigneeCmId?: string | null;
+  defaultAssigneeVideasteId?: string | null;
   captionPresetId?: string | null;
   descriptionPromptId?: string | null;
   notes?: string | null;
@@ -172,6 +174,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (body.isActive !== undefined) data.isActive = body.isActive;
   if ("defaultAssigneeMonteurId" in body) data.defaultAssigneeMonteur = body.defaultAssigneeMonteurId ? { connect: { id: body.defaultAssigneeMonteurId } } : { disconnect: true };
   if ("defaultAssigneeCmId" in body) data.defaultAssigneeCm = body.defaultAssigneeCmId ? { connect: { id: body.defaultAssigneeCmId } } : { disconnect: true };
+  if ("defaultAssigneeVideasteId" in body) data.defaultAssigneeVideaste = body.defaultAssigneeVideasteId ? { connect: { id: body.defaultAssigneeVideasteId } } : { disconnect: true };
   if ("captionPresetId" in body) data.captionPreset = body.captionPresetId ? { connect: { id: body.captionPresetId } } : { disconnect: true };
   if ("descriptionPromptId" in body) data.descriptionPrompt = body.descriptionPromptId ? { connect: { id: body.descriptionPromptId } } : { disconnect: true };
   if ("notes" in body) data.notes = body.notes ?? null;
