@@ -22,21 +22,23 @@ export function SlotCard({ slot, onClick }: SlotCardProps) {
       onClick={onClick}
       className="w-full text-left rounded-lg border border-gray-200 bg-white p-2.5 hover:border-indigo-300 hover:shadow-sm transition-all"
     >
-      {/* Time + type */}
+      {/* Time + label (pattern.label en priorité, sinon title, sinon "Publication") */}
       <div className="flex items-baseline gap-1.5 mb-1.5">
         <span className="text-xs text-gray-400 font-medium tabular-nums">{time}</span>
-        <span className="text-xs font-semibold text-gray-800 truncate">{slot.contentType}</span>
+        <span className="text-xs font-semibold text-gray-800 truncate">
+          {slot.pattern?.label ?? slot.title ?? "Publication"}
+        </span>
         {slot.isAuto && (
           <span className="ml-auto shrink-0 text-[10px] text-gray-400">auto</span>
         )}
       </div>
 
-      {/* Title */}
-      {slot.title && (
+      {/* Title (uniquement si distinct du label affiché ci-dessus) */}
+      {slot.title && slot.pattern?.label && slot.title !== slot.pattern.label && (
         <p className="text-xs text-gray-600 truncate mb-1.5">{slot.title}</p>
       )}
 
-      {/* Pattern badge — visible uniquement si le slot vient d'un pattern */}
+      {/* Pattern badge cliquable — vers fiche compte */}
       {slot.pattern?.label && (
         <div className="mb-1.5" onClick={(e) => e.stopPropagation()}>
           <Link

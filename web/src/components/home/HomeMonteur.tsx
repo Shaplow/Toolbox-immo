@@ -57,7 +57,6 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
     title: s.title,
     scheduledAt: s.scheduledAt,
     status: s.status as SlotStatus,
-    contentType: s.contentType,
     notes: s.notes,
     assigneeMonteurId: s.assigneeMonteurId,
     assigneeCmId: s.assigneeCmId,
@@ -216,7 +215,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
               >
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-gray-700 truncate">
-                    {slot.title ?? slot.contentType}
+                    {slot.pattern?.label ?? slot.title ?? "Publication"}
                   </p>
                   <p className="text-[11px] text-gray-400">@{slot.account.handle}</p>
                 </div>

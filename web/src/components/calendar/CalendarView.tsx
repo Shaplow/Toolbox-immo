@@ -94,7 +94,6 @@ export function CalendarView({
   const [filters, setFilters] = useState<CalendarFiltersState>({
     accountId: initialAccountId,
     status: "",
-    contentType: "",
     monteurId: "",
     cmId: "",
   });
@@ -124,7 +123,6 @@ export function CalendarView({
         dateTo: dateToEnd.toISOString(),
         ...(filters.accountId ? { accountId: filters.accountId } : {}),
         ...(filters.status ? { status: filters.status } : {}),
-        ...(filters.contentType ? { contentType: filters.contentType } : {}),
         ...(filters.monteurId ? { monteurId: filters.monteurId } : {}),
         ...(filters.cmId ? { cmId: filters.cmId } : {}),
       });

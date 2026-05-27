@@ -22,7 +22,6 @@ export interface PublicationHeaderProps {
     title: string | null;
     status: string;
     scheduledAt: Date;
-    contentType: string;
   };
   account: { id: string; handle: string; name: string };
   listing: { id: string } | null;
@@ -226,9 +225,6 @@ export function PublicationHeader({
         <div className="flex flex-wrap items-center gap-3 mt-3">
           {/* Tags */}
           <div className="flex flex-wrap gap-1.5">
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border bg-gray-50 text-gray-600 border-gray-200">
-              {slot.contentType}
-            </span>
             {pattern && (
               currentUserRole === "ADMIN" ? (
                 <Link

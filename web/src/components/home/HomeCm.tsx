@@ -59,7 +59,6 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
     title: s.title,
     scheduledAt: s.scheduledAt,
     status: s.status as SlotStatus,
-    contentType: s.contentType,
     notes: s.notes,
     assigneeMonteurId: s.assigneeMonteurId,
     assigneeCmId: s.assigneeCmId,

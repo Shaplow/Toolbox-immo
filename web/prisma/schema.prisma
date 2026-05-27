@@ -637,8 +637,6 @@ model PublicationSlot {
   account           InstagramAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
   /// Date et heure cible de publication (UTC)
   scheduledAt       DateTime
-  /// Type de contenu : "RPI" | "RVA4" | "RVA5" | "RTIPS" | "RPOD" | "REACT" | "RQR"
-  contentType       String
   /// "TO_DO" | "IN_PROGRESS" | "READY" | "CHECKING" | "DONE"
   status            String                @default("TO_DO")
   title             String?
@@ -692,7 +690,6 @@ model PublicationSlot {
 
   @@index([accountId, scheduledAt])
   @@index([status, scheduledAt])
-  @@index([contentType, scheduledAt])
   @@index([assigneeMonteurId])
   @@index([assigneeCmId])
   @@index([patternId])

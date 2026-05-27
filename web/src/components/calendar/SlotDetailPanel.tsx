@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { X, ExternalLink, Trash2, Check, Clapperboard } from "lucide-react";
-import { STATUS_LABELS, CONTENT_TYPES, type SlotStatus, type PublicationSlot } from "@/types/calendar";
+import { STATUS_LABELS, type SlotStatus, type PublicationSlot } from "@/types/calendar";
 import { FlexFieldsEditor } from "./FlexFieldsEditor";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
@@ -55,7 +55,6 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
     caption: slot.caption ?? "",
     notes: slot.notes ?? "",
     status: slot.status,
-    contentType: slot.contentType,
     fieldSchema: slot.fieldSchema,
     fields: slot.fields,
   });
@@ -87,7 +86,6 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
             caption: form.caption || null,
             notes: form.notes || null,
             status: form.status,
-            contentType: form.contentType,
             fields: form.fields,
             fieldSchema: form.fieldSchema,
           };
@@ -173,38 +171,19 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
-          {/* Status + type row */}
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Statut</label>
-              {/* status : éditable pour tous les modes */}
-              <select
-                value={form.status}
-                onChange={(e) => set("status", e.target.value as SlotStatus)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              >
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex-1">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
-              {/* contentType : éditable uniquement pour admin */}
-              {isRestricted ? (
-                <p className={READ_ONLY_INPUT_CLS}>{form.contentType}</p>
-              ) : (
-                <select
-                  value={form.contentType}
-                  onChange={(e) => set("contentType", e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                >
-                  {CONTENT_TYPES.map((ct) => (
-                    <option key={ct} value={ct}>{ct}</option>
-                  ))}
-                </select>
-              )}
-            </div>
+          {/* Status row */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Statut</label>
+            {/* status : éditable pour tous les modes */}
+            <select
+              value={form.status}
+              onChange={(e) => set("status", e.target.value as SlotStatus)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            >
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+              ))}
+            </select>
           </div>
 
           {/* Title — admin uniquement */}
