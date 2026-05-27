@@ -266,6 +266,14 @@ function DescriptionSectionInner({ slot, pattern, initialDescription, canEdit, r
                   Génération rapide via Claude. Pour utiliser une transcription
                   ou une image de référence, ouvrez la configuration avancée.
                 </p>
+                {/* F1.1 — Avertissement si une description existe déjà : la
+                     génération va écraser le texte courant. */}
+                {value.trim().length > 0 && (
+                  <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    Une description existe déjà — la génération va l&apos;écraser.
+                    Tu pourras toujours annuler en fermant la modale.
+                  </p>
+                )}
               </div>
               <div className="px-6 pb-4 space-y-3">
                 <FormField label="Prompt" required>

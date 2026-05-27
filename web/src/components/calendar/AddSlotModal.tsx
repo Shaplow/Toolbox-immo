@@ -347,7 +347,14 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
             </button>
             <button
               type="submit"
-              disabled={saving || loadingMeta || loadingPatterns}
+              disabled={
+                saving ||
+                loadingMeta ||
+                loadingPatterns ||
+                // F1.15 — Désactive si ni pattern ni titre (au lieu de laisser
+                // soumettre puis afficher l'erreur).
+                (!selectedPatternId && !form.title.trim())
+              }
               className="flex-1 px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-60 flex items-center justify-center gap-2"
             >
               <Plus size={14} />

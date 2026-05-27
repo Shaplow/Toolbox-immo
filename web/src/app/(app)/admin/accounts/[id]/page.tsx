@@ -69,17 +69,15 @@ export default async function AccountFichePage({ params }: Props) {
         patterns={account.accountPatterns}
       />
 
-      {/* Section Slots récents — placeholder */}
+      {/* F3.3 — Lien direct vers le calendrier filtré (la section "Slots récents"
+           placeholder a été retirée car elle donnait l'impression d'une feature
+           inachevée). */}
       <div className="mt-10 pt-6 border-t border-gray-100">
-        <h2 className="text-sm font-semibold text-gray-700 mb-2">Slots récents</h2>
-        <p className="text-xs text-gray-400 mb-3">
-          Aperçu des prochains slots planifiés pour ce compte.
-        </p>
         <Link
           href={`/calendar?accountId=${account.id}`}
-          className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
+          className="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
         >
-          Voir le calendrier filtré sur ce compte →
+          Voir les slots de ce compte dans le calendrier →
         </Link>
       </div>
     </div>
