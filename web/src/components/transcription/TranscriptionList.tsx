@@ -804,7 +804,7 @@ export function TranscriptionList({
 
                       <button
                         type="button"
-                        onClick={() => router.push(`/tools/transcription/${job.id}`)}
+                        onClick={() => router.push(`/transcriptions/${job.id}`)}
                         className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700"
                       >
                         Ouvrir le détail
@@ -855,7 +855,7 @@ export function TranscriptionList({
                     </div>
                     <button
                       type="button"
-                      onClick={() => router.push(`/tools/transcription/${job.id}`)}
+                      onClick={() => router.push(`/transcriptions/${job.id}`)}
                       className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700"
                     >
                       Ouvrir

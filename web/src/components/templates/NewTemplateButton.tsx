@@ -33,7 +33,7 @@ export function NewTemplateButton() {
     setLoading(false);
     setOpen(false);
     if (data.id) {
-      router.push(`/tools/templates/${data.id}/edit`);
+      router.push(`/templates/${data.id}/edit`);
     }
   }
 

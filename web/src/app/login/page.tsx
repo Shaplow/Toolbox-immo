@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
@@ -33,12 +33,22 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-10 w-full max-w-sm">
+    <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-violet-50 overflow-hidden">
+      {/* Halo décoratif discret */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-32 -right-32 w-96 h-96 bg-indigo-200/40 rounded-full blur-3xl"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -bottom-32 -left-32 w-96 h-96 bg-violet-200/40 rounded-full blur-3xl"
+      />
+
+      <div className="relative bg-white/90 backdrop-blur rounded-2xl shadow-xl shadow-indigo-100/40 border border-gray-100 p-10 w-full max-w-sm">
         {/* Logo / Titre */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-indigo-600 rounded-xl mb-4">
-            <span className="text-white text-xl font-bold">T</span>
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-2xl mb-4 shadow-lg shadow-indigo-300/50">
+            <span className="text-white text-2xl font-bold tracking-tight">T</span>
           </div>
           <h1 className="text-2xl font-semibold text-gray-900">Toolbox Immo</h1>
           <p className="text-sm text-gray-500 mt-1">Votre espace de création immobilière</p>
@@ -54,7 +64,7 @@ export default function LoginPage() {
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               required
-              placeholder="admin ou admin@exemple.fr"
+              placeholder="Identifiant ou email"
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
@@ -82,11 +92,15 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg text-sm transition-colors disabled:opacity-60"
+            className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-medium rounded-lg text-sm transition-colors disabled:opacity-60 shadow-sm shadow-indigo-200/40"
           >
             {loading ? "Connexion…" : "Se connecter"}
           </button>
         </form>
+
+        <p className="mt-6 text-center text-[11px] text-gray-400">
+          Pipeline éditorial pour agents immobiliers
+        </p>
       </div>
     </div>
   );

@@ -3,15 +3,23 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
-function adminOnly(role?: string) {
-  return role !== "ADMIN";
-}
-
 // GET /api/admin/users
-export async function GET() {
+// Optional ?role=MONTEUR|CM|ADMIN|USER filter — utile pour les pickers
+// d'assignation (renvoie alors un payload allégé : id/name/email seulement).
+export async function GET(req: NextRequest) {
   const userContext = await getUserContext();
   if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
+  }
+
+  const roleFilter = req.nextUrl.searchParams.get("role");
+  if (roleFilter && ["ADMIN", "MONTEUR", "CM", "USER"].includes(roleFilter)) {
+    const users = await prisma.user.findMany({
+      where: { role: roleFilter },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, email: true },
+    });
+    return NextResponse.json(users);
   }
 
   const users = await prisma.user.findMany({

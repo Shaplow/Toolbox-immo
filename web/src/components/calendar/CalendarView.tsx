@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus, RefreshCw, Calendar, X } from "lucide-react";
 import { DAY_LABELS, type PublicationSlot } from "@/types/calendar";
+import type { UserRole } from "@/types/roles";
 import { SlotCard } from "./SlotCard";
-import { SlotDetailPanel } from "./SlotDetailPanel";
+import { SlotDetailPanel, type SlotDetailPanelMode } from "./SlotDetailPanel";
 import { AddSlotModal } from "./AddSlotModal";
 import { CalendarFilters, type CalendarFiltersState } from "./CalendarFilters";
 import { toast } from "@/components/ui/Toast";
@@ -17,11 +18,32 @@ interface Account {
   handle: string;
 }
 
+interface AssigneeOption {
+  id: string;
+  label: string;
+}
+
 interface CalendarViewProps {
   accounts: Account[];
   /** ISO string of Monday for the initial week, computed server-side to avoid hydration mismatches. */
   initialWeekStart: string;
+  /**
+   * Rôle de l'utilisateur. ADMIN dispose de toutes les actions (drag/edit/generate/add).
+   * MONTEUR et CM consultent en lecture seule, filtrés sur leurs slots assignés.
+   */
+  currentUserRole: UserRole;
+  /** Liste des monteurs (ADMIN uniquement) — vide pour MONTEUR/CM. */
+  monteurs?: AssigneeOption[];
+  /** Liste des CM (ADMIN uniquement) — vide pour MONTEUR/CM. */
+  cms?: AssigneeOption[];
 }
+
+const ROLE_DETAIL_MODE: Record<UserRole, SlotDetailPanelMode> = {
+  ADMIN: "admin",
+  MONTEUR: "monteur",
+  CM: "cm",
+  USER: "cm",
+};
 
 /** Returns Monday of the week containing `date`. */
 function getMondayOf(date: Date): Date {
@@ -47,10 +69,18 @@ function isSameDay(a: Date, b: Date) {
   );
 }
 
-export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) {
+export function CalendarView({
+  accounts,
+  initialWeekStart,
+  currentUserRole,
+  monteurs = [],
+  cms = [],
+}: CalendarViewProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialAccountId = searchParams?.get("accountId") ?? "";
+  const isAdmin = currentUserRole === "ADMIN";
+  const detailMode = ROLE_DETAIL_MODE[currentUserRole];
 
   const [weekStart, setWeekStart] = useState<Date>(() => new Date(initialWeekStart));
   const [slots, setSlots] = useState<PublicationSlot[]>([]);
@@ -65,6 +95,8 @@ export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) 
     accountId: initialAccountId,
     status: "",
     contentType: "",
+    monteurId: "",
+    cmId: "",
   });
 
   /** Compte actif correspondant au filtre accountId, pour afficher le badge. */
@@ -93,6 +125,8 @@ export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) 
         ...(filters.accountId ? { accountId: filters.accountId } : {}),
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.contentType ? { contentType: filters.contentType } : {}),
+        ...(filters.monteurId ? { monteurId: filters.monteurId } : {}),
+        ...(filters.cmId ? { cmId: filters.cmId } : {}),
       });
       const res = await fetch(`/api/calendar/slots?${params.toString()}`);
       if (!res.ok) throw new Error(`Erreur ${res.status}`);
@@ -147,16 +181,19 @@ export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) 
   function handleSlotUpdated(updated: PublicationSlot) {
     setSlots((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     setSelectedSlot(updated);
+    toast.success("Slot mis à jour");
   }
 
   function handleSlotDeleted(id: string) {
     setSlots((prev) => prev.filter((s) => s.id !== id));
     setSelectedSlot(null);
+    toast.success("Slot supprimé");
   }
 
   function handleSlotCreated(slot: PublicationSlot) {
     setSlots((prev) => [...prev, slot]);
     setShowAdd(false);
+    toast.success("Slot créé");
   }
 
   const weekLabel = `${weekStart.toLocaleDateString("fr-FR", { day: "numeric", month: "long" })} – ${addDays(weekStart, 6).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}`;
@@ -209,7 +246,13 @@ export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) 
         )}
 
         <div className="ml-auto flex items-center gap-2 flex-wrap">
-          <CalendarFilters accounts={accounts} filters={filters} onChange={setFilters} />
+          <CalendarFilters
+            accounts={accounts}
+            filters={filters}
+            onChange={setFilters}
+            monteurs={monteurs}
+            cms={cms}
+          />
 
           <button
             type="button"
@@ -220,22 +263,26 @@ export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) 
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
 
-          <button
-            type="button"
-            onClick={() => setConfirmGenOpen(true)}
-            disabled={generating}
-            className="px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-          >
-            {generating ? "Génération…" : "Générer la semaine"}
-          </button>
+          {isAdmin && (
+            <>
+              <button
+                type="button"
+                onClick={() => setConfirmGenOpen(true)}
+                disabled={generating}
+                className="px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                {generating ? "Génération…" : "Générer la semaine"}
+              </button>
 
-          <button
-            type="button"
-            onClick={() => { setAddDefaultDate(undefined); setShowAdd(true); }}
-            className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 flex items-center gap-1.5"
-          >
-            <Plus size={13} /> Slot
-          </button>
+              <button
+                type="button"
+                onClick={() => { setAddDefaultDate(undefined); setShowAdd(true); }}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 flex items-center gap-1.5"
+              >
+                <Plus size={13} /> Slot
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -278,17 +325,19 @@ export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) 
                     />
                   ))}
 
-                  {/* Add button inline per day */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAddDefaultDate(day.toISOString().slice(0, 10));
-                      setShowAdd(true);
-                    }}
-                    className="w-full text-center text-xs text-gray-300 hover:text-indigo-400 py-1.5 border border-dashed border-gray-200 hover:border-indigo-200 rounded-lg transition-colors"
-                  >
-                    <Plus size={12} className="inline" />
-                  </button>
+                  {/* Add button inline per day — ADMIN uniquement */}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddDefaultDate(day.toISOString().slice(0, 10));
+                        setShowAdd(true);
+                      }}
+                      className="w-full text-center text-xs text-gray-300 hover:text-indigo-400 py-1.5 border border-dashed border-gray-200 hover:border-indigo-200 rounded-lg transition-colors"
+                    >
+                      <Plus size={12} className="inline" />
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -303,6 +352,7 @@ export function CalendarView({ accounts, initialWeekStart }: CalendarViewProps) 
           onUpdated={handleSlotUpdated}
           onDeleted={handleSlotDeleted}
           onClose={() => setSelectedSlot(null)}
+          mode={detailMode}
         />
       )}
 

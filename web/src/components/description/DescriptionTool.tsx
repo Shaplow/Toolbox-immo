@@ -424,7 +424,7 @@ export function DescriptionTool({
               ) : transcriptions.length === 0 ? (
                 <div className="text-sm text-gray-400 text-center py-4">
                   Aucune transcription terminée. <br />
-                  <Link href="/tools/transcription" className="text-teal-600 hover:underline">
+                  <Link href="/transcriptions" className="text-teal-600 hover:underline">
                     Lancer une transcription →
                   </Link>
                 </div>

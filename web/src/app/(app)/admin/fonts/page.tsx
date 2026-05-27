@@ -6,7 +6,7 @@ import { Type } from "lucide-react";
 
 export default async function AdminFontsPage() {
   const userContext = await getUserContext();
-  if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") redirect("/tools/templates");
+  if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") redirect("/templates");
 
   return (
     <div className="p-8 max-w-5xl mx-auto">

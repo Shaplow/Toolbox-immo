@@ -8,21 +8,35 @@ interface Account {
   handle: string;
 }
 
+interface AssigneeOption {
+  id: string;
+  label: string;
+}
+
 export interface CalendarFiltersState {
   accountId: string;
   status: string;
   contentType: string;
+  monteurId: string;
+  cmId: string;
 }
 
 interface CalendarFiltersProps {
   accounts: Account[];
   filters: CalendarFiltersState;
   onChange: (filters: CalendarFiltersState) => void;
+  /** Liste des monteurs disponibles (ADMIN uniquement). */
+  monteurs?: AssigneeOption[];
+  /** Liste des CM disponibles (ADMIN uniquement). */
+  cms?: AssigneeOption[];
 }
 
 const STATUSES = Object.entries(STATUS_LABELS) as [SlotStatus, string][];
 
-export function CalendarFilters({ accounts, filters, onChange }: CalendarFiltersProps) {
+const SELECT_CLASS =
+  "text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300";
+
+export function CalendarFilters({ accounts, filters, onChange, monteurs, cms }: CalendarFiltersProps) {
   function set(key: keyof CalendarFiltersState, value: string) {
     onChange({ ...filters, [key]: value });
   }
@@ -33,7 +47,7 @@ export function CalendarFilters({ accounts, filters, onChange }: CalendarFilters
       <select
         value={filters.accountId}
         onChange={(e) => set("accountId", e.target.value)}
-        className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        className={SELECT_CLASS}
       >
         <option value="">Tous les comptes</option>
         {accounts.map((a) => (
@@ -47,7 +61,7 @@ export function CalendarFilters({ accounts, filters, onChange }: CalendarFilters
       <select
         value={filters.status}
         onChange={(e) => set("status", e.target.value)}
-        className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        className={SELECT_CLASS}
       >
         <option value="">Tous les statuts</option>
         {STATUSES.map(([key, label]) => (
@@ -59,13 +73,41 @@ export function CalendarFilters({ accounts, filters, onChange }: CalendarFilters
       <select
         value={filters.contentType}
         onChange={(e) => set("contentType", e.target.value)}
-        className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        className={SELECT_CLASS}
       >
         <option value="">Tous les types</option>
         {CONTENT_TYPES.map((ct) => (
           <option key={ct} value={ct}>{ct}</option>
         ))}
       </select>
+
+      {/* Monteur filter (ADMIN only) */}
+      {monteurs && monteurs.length > 0 && (
+        <select
+          value={filters.monteurId}
+          onChange={(e) => set("monteurId", e.target.value)}
+          className={SELECT_CLASS}
+        >
+          <option value="">Tous les monteurs</option>
+          {monteurs.map((m) => (
+            <option key={m.id} value={m.id}>{m.label}</option>
+          ))}
+        </select>
+      )}
+
+      {/* CM filter (ADMIN only) */}
+      {cms && cms.length > 0 && (
+        <select
+          value={filters.cmId}
+          onChange={(e) => set("cmId", e.target.value)}
+          className={SELECT_CLASS}
+        >
+          <option value="">Tous les CM</option>
+          {cms.map((c) => (
+            <option key={c.id} value={c.id}>{c.label}</option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }

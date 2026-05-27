@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function AccountFichePage({ params }: Props) {
   const userContext = await getUserContext();
   if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") {
-    redirect("/tools/templates");
+    redirect("/templates");
   }
 
   const { id } = await params;

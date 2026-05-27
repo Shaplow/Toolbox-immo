@@ -8,7 +8,7 @@ import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 export default async function LibrariesHubPage() {
   const userContext = await getUserContext();
   if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") {
-    redirect("/tools/templates");
+    redirect("/templates");
   }
 
   // Compteurs côté serveur pour les 4 cards (Phase 1.9 B2)

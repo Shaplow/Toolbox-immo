@@ -1,4 +1,4 @@
-﻿export default function TemplatesLoading() {
+export default function TemplatesLoading() {
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
@@ -10,8 +10,8 @@
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+        {Array.from({ length: 8 }).map((_, index) => (
+          <div key={index} className="bg-white border border-gray-100 rounded-xl overflow-hidden">
             <div className="h-36 bg-gray-100 animate-pulse" />
             <div className="p-4 space-y-2">
               <div className="h-5 w-3/4 bg-gray-200 rounded animate-pulse" />

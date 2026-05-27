@@ -698,7 +698,7 @@ export default function CaptionsGenerateForm({
         {/* Back + Header */}
         <div className="mb-8">
           <Link
-            href="/tools/captions"
+            href="/captions"
             className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 transition-colors mb-5"
           >
             <ChevronLeft size={14} />
@@ -808,7 +808,7 @@ export default function CaptionsGenerateForm({
                     ) : transcriptions.length === 0 ? (
                       <div className="text-sm text-gray-400 text-center py-4">
                         Aucune transcription terminée.<br />
-                        <Link href="/tools/transcription" className="text-teal-600 hover:underline">
+                        <Link href="/transcriptions" className="text-teal-600 hover:underline">
                           Lancer une transcription →
                         </Link>
                       </div>

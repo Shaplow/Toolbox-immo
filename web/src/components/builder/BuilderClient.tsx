@@ -42,8 +42,8 @@ interface Props {
   templateClient: string;
   initialJSON: TemplateJSON;
   initialFormats: string[];
-  /** Phase 1.9 A3 — Lien retour contextuel (ex: "/tools/templates") */
   backUrl?: string;
+  backLabel?: string;
 }
 
 export function BuilderClient({
@@ -51,6 +51,7 @@ export function BuilderClient({
   templateName,
   initialJSON,
   backUrl,
+  backLabel = "Templates",
 }: Props) {
   const { template, setTemplate, isSaving, setSaving, undo, redo, past, future } =
     useBuilderStore();
@@ -238,15 +239,14 @@ export function BuilderClient({
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <header className="flex items-center gap-1.5 bg-white border-b border-gray-200 px-3 h-10 shrink-0">
-        {/* Lien retour — Phase 1.9 A3 */}
         {backUrl && (
           <Link
             href={backUrl}
             className="inline-flex items-center gap-0.5 text-xs text-gray-400 hover:text-gray-700 transition-colors mr-1 shrink-0"
-            title="Retour à la galerie templates"
+            title={`Retour vers ${backLabel}`}
           >
             <ChevronLeft size={13} />
-            Templates
+            {backLabel}
           </Link>
         )}
 

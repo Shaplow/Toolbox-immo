@@ -334,6 +334,45 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
     });
   }, [visibleFieldKeys]);
 
+  // Auto-save brouillon localStorage. Évite la perte de saisie quand l'user
+  // ferme l'onglet par inadvertance avant de générer. On stocke uniquement
+  // les valeurs texte/select remplies — pas les fichiers en upload.
+  // Skip en mode régénération (initialValues fourni par le serveur).
+  const draftKey = `listingDraft:${templateId}`;
+  const skipDraftRef = useRef(!!initialValues);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || skipDraftRef.current) return;
+    try {
+      const saved = localStorage.getItem(draftKey);
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as Record<string, unknown>;
+      setValues((prev) => ({ ...prev, ...parsed }));
+    } catch {
+      // Silent : draft corrompu, on l'ignore.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || skipDraftRef.current) return;
+    const handle = setTimeout(() => {
+      try {
+        const filled = Object.fromEntries(
+          Object.entries(values).filter(([, v]) => isFilledValue(v) && typeof v !== "object"),
+        );
+        if (Object.keys(filled).length === 0) {
+          localStorage.removeItem(draftKey);
+        } else {
+          localStorage.setItem(draftKey, JSON.stringify(filled));
+        }
+      } catch {
+        // Silent : quota dépassé.
+      }
+    }, 500);
+    return () => clearTimeout(handle);
+  }, [values, draftKey]);
+
   function scrollToSection(sectionId: string) {
     const node = document.getElementById(`form-section-${sectionId}`);
     if (!node) return;
@@ -382,6 +421,12 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
         }
         listingId = listing.id;
         listingIdRef.current = listingId;
+        // Listing créé → le draft est obsolète, on le purge.
+        try {
+          if (typeof window !== "undefined") localStorage.removeItem(draftKey);
+        } catch {
+          // Silent
+        }
       } else {
         // Subsequent generates: update the existing listing with current form data
         await fetch(`/api/listings/${listingId}`, {
@@ -838,6 +883,11 @@ function FieldInput({
           {field.label || field.key}
           {field.required && <span className="text-red-500 ml-1">*</span>}
         </label>
+        {!field.required && !isConditional && (
+          <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-500">
+            optionnel
+          </span>
+        )}
         {isConditional && (
           <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
             <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />

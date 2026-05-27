@@ -1,6 +1,6 @@
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { WorklistSection } from "./WorklistSection";
 import type { WorklistSlot } from "@/types/worklist";
 import type { SlotStatus } from "@/types/roles";
@@ -99,6 +99,7 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
   );
 
   const totalActive = overdue.length + toPrepare.length + toPublishThisWeek.length;
+  const isFullyEmpty = totalActive === 0 && publishedRecently.length === 0;
 
   // ── Badges CM pour la section "À préparer" ───────────────────────────────────
   const CM_STATUS_BADGES: Record<string, WorklistCmBadges> = {
@@ -137,6 +138,14 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
 
       </div>
 
+      {isFullyEmpty ? (
+        <EmptyState
+          icon={CheckCircle2}
+          title="Rien à publier pour le moment"
+          description="Aucune publication ne t'attend. Reviens plus tard ou consulte le calendrier pour anticiper la suite."
+        />
+      ) : (
+        <>
       {/* Section En retard */}
       {overdue.length > 0 && (
         <WorklistSection
@@ -177,16 +186,8 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
           defaultOpen={false}
         />
       )}
-
-      {/* Lien vers tous les outils */}
-      <div className="pt-2 border-t border-gray-100">
-        <Link
-          href="/tools"
-          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors"
-        >
-          Accéder à tous les outils <ArrowRight size={12} />
-        </Link>
-      </div>
+        </>
+      )}
     </div>
   );
 }

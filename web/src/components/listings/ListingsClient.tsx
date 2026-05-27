@@ -438,7 +438,7 @@ export function ListingsClient({
               <p className="font-medium">Aucun template pour l&apos;instant</p>
               <p className="text-sm mt-1">
                 Choisissez un template depuis la page{" "}
-                <Link href="/tools/templates" className="text-indigo-600 hover:underline">Templates</Link>
+                <Link href="/templates" className="text-indigo-600 hover:underline">Templates</Link>
               </p>
             </>
           ) : tab === "captions" ? (
@@ -447,7 +447,7 @@ export function ListingsClient({
               <p className="font-medium">Aucune vidéo caption</p>
               <p className="text-sm mt-1">
                 Rendez-vous dans{" "}
-                <Link href="/tools/captions" className="text-violet-600 hover:underline">Captions</Link>
+                <Link href="/captions" className="text-violet-600 hover:underline">Captions</Link>
               </p>
             </>
           ) : tab === "transcription" ? (
@@ -456,7 +456,7 @@ export function ListingsClient({
               <p className="font-medium">Aucune transcription</p>
               <p className="text-sm mt-1">
                 Rendez-vous dans{" "}
-                <Link href="/tools/transcription" className="text-teal-600 hover:underline">Transcription</Link>
+                <Link href="/transcriptions" className="text-teal-600 hover:underline">Transcription</Link>
               </p>
             </>
           ) : (
@@ -465,7 +465,7 @@ export function ListingsClient({
               <p className="font-medium">Aucune description générée</p>
               <p className="text-sm mt-1">
                 Rendez-vous dans{" "}
-                <Link href="/tools/description" className="text-sky-600 hover:underline">Descriptions</Link>
+                <Link href="/descriptions" className="text-sky-600 hover:underline">Descriptions</Link>
               </p>
             </>
           )}
@@ -917,7 +917,7 @@ function CaptionGridCard({
           <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
             {job.presetId && (
               <Link
-                href={`/tools/captions/${job.presetId}/generate?captionJobId=${job.id}`}
+                href={`/captions/${job.presetId}/generate?captionJobId=${job.id}`}
                 title="Régénérer"
                 className="w-6 h-6 flex items-center justify-center rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-500 transition-colors"
               >
@@ -1056,7 +1056,7 @@ function TranscriptionCard({
             </a>
           )}
           <Link
-            href={`/tools/transcription/${job.id}`}
+            href={`/transcriptions/${job.id}`}
             className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 font-medium transition-colors"
           >
             Détails →
@@ -1190,7 +1190,7 @@ function DescriptionCard({
             </button>
           )}
           <Link
-            href="/tools/description"
+            href="/descriptions"
             className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 font-medium transition-colors"
           >
             Nouveau →

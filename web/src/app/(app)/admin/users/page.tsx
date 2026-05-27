@@ -7,7 +7,7 @@ import { Users } from "lucide-react";
 
 export default async function AdminUsersPage() {
   const userContext = await getUserContext();
-  if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") redirect("/tools/templates");
+  if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") redirect("/templates");
 
   const templates = await prisma.template.findMany({
     orderBy: { name: "asc" },

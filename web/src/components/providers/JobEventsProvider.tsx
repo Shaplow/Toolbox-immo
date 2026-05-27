@@ -1,18 +1,38 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { dispatchJobEvent, type JobEventPayload } from "@/lib/hooks/jobEventBus";
 
 /**
- * Opens a single SSE connection to /api/events/jobs for the authenticated user.
- * Dispatches all received events to the module-level jobBus so any component
- * can subscribe via useJobEvent / useAllJobEvents without duplicating the connection.
- *
- * Mount once inside the authenticated app layout (app/(app)/layout.tsx).
- * EventSource auto-reconnects on transient errors — no manual retry needed.
+ * Routes qui consomment réellement des jobs en temps réel (renders, covers,
+ * captions, transcriptions, descriptions). Les pages admin pures (clients,
+ * libraries, users, fonts, prompts) n'ont pas besoin d'ouvrir un SSE.
  */
+const PIPELINE_PATH_PREFIXES = [
+  "/home",
+  "/calendar",
+  "/publications",
+  "/generate",
+  "/renders",
+  "/listings",
+  "/captions",
+  "/transcriptions",
+  "/descriptions",
+];
+
+function shouldOpenJobEvents(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return PIPELINE_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
 export function JobEventsProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const shouldSubscribe = shouldOpenJobEvents(pathname);
+
   useEffect(() => {
+    if (!shouldSubscribe) return;
+
     const es = new EventSource("/api/events/jobs");
 
     es.onmessage = (e) => {
@@ -24,9 +44,8 @@ export function JobEventsProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    // EventSource handles reconnection automatically on network errors
     return () => es.close();
-  }, []);
+  }, [shouldSubscribe]);
 
   return <>{children}</>;
 }

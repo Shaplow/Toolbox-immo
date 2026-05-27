@@ -27,7 +27,7 @@ export type ToolMeta = {
 
 export const TOOL_META: Record<ToolKey, ToolMeta> = {
   templates: {
-    href: "/tools/templates",
+    href: "/templates",
     navLabel: "Templates",
     cardLabel: "Générateur de templates",
     description:
@@ -37,7 +37,7 @@ export const TOOL_META: Record<ToolKey, ToolMeta> = {
     badge: null,
   },
   captions: {
-    href: "/tools/captions",
+    href: "/captions",
     navLabel: "Sous-titres",
     cardLabel: "Sous-titres",
     description:
@@ -57,7 +57,7 @@ export const TOOL_META: Record<ToolKey, ToolMeta> = {
     badge: null,
   },
   transcription: {
-    href: "/tools/transcription",
+    href: "/transcriptions",
     navLabel: "Transcription",
     cardLabel: "Transcription",
     description:
@@ -67,7 +67,7 @@ export const TOOL_META: Record<ToolKey, ToolMeta> = {
     badge: null,
   },
   description: {
-    href: "/tools/description",
+    href: "/descriptions",
     navLabel: "Descriptions",
     cardLabel: "Descriptions IA",
     description:

@@ -14,6 +14,7 @@ import { STATUS_LABELS, STATUS_COLORS } from "@/lib/slots/statusLabels";
 import type { SlotStatus, UserRole } from "@/types/roles";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { toast } from "@/components/ui/Toast";
+import { AssigneeInlineEdit } from "./AssigneeInlineEdit";
 
 export interface PublicationHeaderProps {
   slot: {
@@ -248,19 +249,27 @@ export function PublicationHeader({
           {/* Séparateur visuel */}
           <div className="hidden sm:block h-3 w-px bg-gray-200" />
 
-          {/* Assignations */}
+          {/* Assignations — inline edit pour ADMIN, lecture seule sinon */}
           <div className="flex flex-wrap gap-3 text-xs text-gray-500">
-            <span>
+            <span className="flex items-center gap-1">
               <span className="font-medium text-gray-600">Monteur :</span>{" "}
-              {assigneeMonteur
-                ? (assigneeMonteur.name ?? assigneeMonteur.email ?? assigneeMonteur.id)
-                : <span className="text-gray-400 italic">Non assigné</span>}
+              {currentUserRole === "ADMIN" ? (
+                <AssigneeInlineEdit slotId={slot.id} role="MONTEUR" current={assigneeMonteur} />
+              ) : assigneeMonteur ? (
+                <span>{assigneeMonteur.name ?? assigneeMonteur.email ?? assigneeMonteur.id}</span>
+              ) : (
+                <span className="text-gray-400 italic">Non assigné</span>
+              )}
             </span>
-            <span>
+            <span className="flex items-center gap-1">
               <span className="font-medium text-gray-600">CM :</span>{" "}
-              {assigneeCm
-                ? (assigneeCm.name ?? assigneeCm.email ?? assigneeCm.id)
-                : <span className="text-gray-400 italic">Non assigné</span>}
+              {currentUserRole === "ADMIN" ? (
+                <AssigneeInlineEdit slotId={slot.id} role="CM" current={assigneeCm} />
+              ) : assigneeCm ? (
+                <span>{assigneeCm.name ?? assigneeCm.email ?? assigneeCm.id}</span>
+              ) : (
+                <span className="text-gray-400 italic">Non assigné</span>
+              )}
             </span>
           </div>
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { X, ExternalLink, Trash2, Check, Clapperboard } from "lucide-react";
 import { STATUS_LABELS, CONTENT_TYPES, type SlotStatus, type PublicationSlot } from "@/types/calendar";
@@ -39,6 +39,16 @@ const READ_ONLY_INPUT_CLS =
 export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "admin" }: SlotDetailPanelProps) {
   /** true pour MONTEUR et CM — pilote toutes les restrictions d'affichage */
   const isRestricted = mode !== "admin";
+
+  // ESC pour fermer le panel (pas d'overlay cliquable depuis R10 — il faut
+  // garder une voie de sortie clavier en plus du bouton X).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
 
   const [form, setForm] = useState({
     title: slot.title ?? "",
@@ -130,11 +140,10 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
         onCancel={() => setConfirmDeleteOpen(false)}
       />
 
-      {/* Overlay */}
-      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
-
-      {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white z-50 shadow-2xl flex flex-col overflow-hidden">
+      {/* Side panel persistant — pas d'overlay bloquant, l'utilisateur peut
+          continuer à scroller le calendrier en arrière-plan et cliquer un
+          autre slot pour le sélectionner. ESC ou bouton X pour fermer. */}
+      <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white z-40 shadow-2xl border-l border-gray-200 flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div>

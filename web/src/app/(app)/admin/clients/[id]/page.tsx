@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Building2, ChevronLeft, Check, Plus, Instagram } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "@/components/ui/Toast";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Button } from "@/components/ui/Button";
+import { FormField } from "@/components/ui/FormField";
+import { Input } from "@/components/ui/Input";
 import { InstagramAccountRow, type InstagramAccountData } from "@/components/admin/InstagramAccountRow";
 
 type AccountStub = {
@@ -50,6 +53,19 @@ export default function AdminClientDetailPage() {
   const [addForm, setAddForm] = useState({ name: "", handle: "" });
   const [addFormError, setAddFormError] = useState<string | null>(null);
   const [addingAccount, setAddingAccount] = useState(false);
+
+  // Search dans le picker de comptes (onglet Infos)
+  const [accountSearch, setAccountSearch] = useState("");
+
+  const filteredPickerAccounts = useMemo(() => {
+    const q = accountSearch.trim().toLowerCase();
+    if (!q) return allAccounts;
+    return allAccounts.filter(
+      (a) =>
+        a.handle.toLowerCase().includes(q) ||
+        a.name.toLowerCase().includes(q),
+    );
+  }, [allAccounts, accountSearch]);
 
   // Chargement de base (client + tous comptes pour le picker)
   const fetchData = useCallback(async () => {
@@ -234,61 +250,48 @@ export default function AdminClientDetailPage() {
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Informations</p>
             <form onSubmit={(e) => void handleSave(e)} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-gray-500">Nom <span className="text-red-400">*</span></span>
-                  <input
+                <FormField label="Nom" required error={saveError || undefined}>
+                  <Input
                     type="text"
                     required
                     value={form.name}
-                    onChange={(e) => { setForm({ ...form, name: e.target.value }); setSaveOk(false); }}
-                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    onChange={(v) => { setForm({ ...form, name: v }); setSaveOk(false); }}
                   />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-gray-500">Contact</span>
-                  <input
+                </FormField>
+                <FormField label="Contact" help="Optionnel">
+                  <Input
                     type="text"
                     value={form.contactName}
-                    onChange={(e) => { setForm({ ...form, contactName: e.target.value }); setSaveOk(false); }}
+                    onChange={(v) => { setForm({ ...form, contactName: v }); setSaveOk(false); }}
                     placeholder="Jean Martin"
-                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-gray-500">Email</span>
-                  <input
+                </FormField>
+                <FormField label="Email" help="Optionnel">
+                  <Input
                     type="email"
                     value={form.email}
-                    onChange={(e) => { setForm({ ...form, email: e.target.value }); setSaveOk(false); }}
+                    onChange={(v) => { setForm({ ...form, email: v }); setSaveOk(false); }}
                     placeholder="jean@agence.fr"
-                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-gray-500">Téléphone</span>
-                  <input
+                </FormField>
+                <FormField label="Téléphone" help="Optionnel">
+                  <Input
                     type="tel"
                     value={form.phone}
-                    onChange={(e) => { setForm({ ...form, phone: e.target.value }); setSaveOk(false); }}
+                    onChange={(v) => { setForm({ ...form, phone: v }); setSaveOk(false); }}
                     placeholder="06 00 00 00 00"
-                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
-                </label>
+                </FormField>
               </div>
-              {saveError && <p className="text-xs text-red-500">{saveError}</p>}
               <div className="flex items-center justify-end gap-3">
                 {saveOk && (
                   <span className="flex items-center gap-1 text-xs text-emerald-600">
                     <Check size={12} /> Enregistré
                   </span>
                 )}
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium disabled:opacity-60 transition-colors"
-                >
-                  {saving ? "Enregistrement..." : "Enregistrer"}
-                </button>
+                <Button type="submit" variant="primary" loading={saving}>
+                  Enregistrer
+                </Button>
               </div>
             </form>
           </div>
@@ -301,46 +304,63 @@ export default function AdminClientDetailPage() {
             {allAccounts.length === 0 ? (
               <p className="text-xs text-gray-400">Aucun compte Instagram créé.</p>
             ) : (
-              <div className="space-y-2">
-                {allAccounts.map((account) => {
-                  const isAttached = attachedIds.has(account.id);
-                  const isOtherClient = account.clientId !== null && account.clientId !== clientId;
-                  const toggling = togglingAccountId === account.id;
+              <>
+                {allAccounts.length > 10 && (
+                  <div className="mb-3 max-w-xs">
+                    <Input
+                      value={accountSearch}
+                      onChange={setAccountSearch}
+                      placeholder="Rechercher un compte…"
+                    />
+                  </div>
+                )}
+                <div className="space-y-2">
+                  {filteredPickerAccounts.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic py-2">
+                      Aucun compte ne correspond à votre recherche.
+                    </p>
+                  ) : (
+                    filteredPickerAccounts.map((account) => {
+                      const isAttached = attachedIds.has(account.id);
+                      const isOtherClient = account.clientId !== null && account.clientId !== clientId;
+                      const toggling = togglingAccountId === account.id;
 
-                  return (
-                    <label
-                      key={account.id}
-                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                        isAttached
-                          ? "bg-indigo-50 border-indigo-200"
-                          : "bg-white border-gray-100 hover:border-gray-200"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isAttached}
-                        disabled={toggling}
-                        onChange={() => void handleAccountToggle(account)}
-                        className="accent-indigo-600 shrink-0"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-xs font-semibold ${isAttached ? "text-indigo-800" : "text-gray-700"}`}>
-                          {account.name}
-                        </p>
-                        <p className="text-[11px] text-gray-400">@{account.handle}</p>
-                      </div>
-                      {isOtherClient && (
-                        <span className="text-[11px] text-gray-400 italic shrink-0">
-                          rattaché à {account.client?.name ?? "un autre client"}
-                        </span>
-                      )}
-                      {toggling && (
-                        <div className="w-3 h-3 border border-indigo-400 border-t-transparent rounded-full animate-spin shrink-0" />
-                      )}
-                    </label>
-                  );
-                })}
-              </div>
+                      return (
+                        <label
+                          key={account.id}
+                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                            isAttached
+                              ? "bg-indigo-50 border-indigo-200"
+                              : "bg-white border-gray-100 hover:border-gray-200"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isAttached}
+                            disabled={toggling}
+                            onChange={() => void handleAccountToggle(account)}
+                            className="accent-indigo-600 shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-xs font-semibold ${isAttached ? "text-indigo-800" : "text-gray-700"}`}>
+                              {account.name}
+                            </p>
+                            <p className="text-[11px] text-gray-400">@{account.handle}</p>
+                          </div>
+                          {isOtherClient && (
+                            <span className="text-[11px] text-gray-400 italic shrink-0">
+                              rattaché à {account.client?.name ?? "un autre client"}
+                            </span>
+                          )}
+                          {toggling && (
+                            <div className="w-3 h-3 border border-indigo-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                          )}
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -375,44 +395,38 @@ export default function AdminClientDetailPage() {
               className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3"
             >
               <h3 className="text-sm font-semibold">Nouveau compte Instagram</h3>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Nom</label>
-                  <input
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Nom" required>
+                  <Input
+                    type="text"
                     required
                     value={addForm.name}
-                    onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))}
+                    onChange={(v) => setAddForm((f) => ({ ...f, name: v }))}
                     placeholder="Marc"
-                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Handle Instagram</label>
-                  <input
+                </FormField>
+                <FormField label="Handle Instagram" required>
+                  <Input
+                    type="text"
                     required
                     value={addForm.handle}
-                    onChange={(e) => setAddForm((f) => ({ ...f, handle: e.target.value }))}
+                    onChange={(v) => setAddForm((f) => ({ ...f, handle: v }))}
                     placeholder="@marc_immo"
-                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                   />
-                </div>
+                </FormField>
               </div>
               {addFormError && <p className="text-xs text-red-500">{addFormError}</p>}
-              <div className="flex gap-2">
-                <button
-                  type="submit"
-                  disabled={addingAccount}
-                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors"
-                >
-                  {addingAccount ? "Création..." : "Créer"}
-                </button>
-                <button
+              <div className="flex gap-2 justify-end">
+                <Button
                   type="button"
+                  variant="secondary"
                   onClick={() => { setShowAddForm(false); setAddFormError(null); }}
-                  className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-100"
                 >
                   Annuler
-                </button>
+                </Button>
+                <Button type="submit" variant="primary" loading={addingAccount}>
+                  Créer
+                </Button>
               </div>
             </form>
           )}

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState, type ReactNode } from "react";
-import { Home, List, Users, Library, LogOut, CalendarDays, Building2, LayoutGrid, LayoutTemplate, Instagram } from "lucide-react";
+import { Home, List, Users, Library, LogOut, CalendarDays, Building2, LayoutTemplate, Instagram } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { TOOL_META } from "@/lib/toolMeta";
 import { useWorklistCount } from "@/hooks/useWorklistCount";
@@ -73,12 +73,6 @@ export function AppNav({
           items: [{ href: "/home", label: "Accueil", icon: <Home size={16} /> }],
         },
         {
-          title: "Outils",
-          items: [
-            { href: "/tools", label: "Tous les outils", icon: <LayoutGrid size={16} />, exact: true },
-          ],
-        },
-        {
           title: "Suivi",
           items: [
             { href: "/listings", label: "Mes générations", icon: <List size={16} /> },
@@ -113,7 +107,6 @@ export function AppNav({
         {
           title: "Outils",
           items: [
-            { href: "/tools", label: "Tous les outils", icon: <LayoutGrid size={16} />, exact: true },
             ...(hasTemplates ? [toolNavItem("templates")] : []),
             ...(hasTranscription ? [toolNavItem("transcription")] : []),
             ...(hasCaptions ? [toolNavItem("captions")] : []),

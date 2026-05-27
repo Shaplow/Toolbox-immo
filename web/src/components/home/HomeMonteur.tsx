@@ -1,6 +1,6 @@
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { WorklistSection } from "./WorklistSection";
 import type { WorklistSlotBadges } from "./WorklistSlotCard";
 import type { WorklistSlot } from "@/types/worklist";
@@ -135,6 +135,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
   const waiting = slots.filter((s) => getMonteurSection(s.status) === "waiting");
 
   const totalActive = overdue.length + thisWeekTodo.length + upcoming.length;
+  const isFullyEmpty = totalActive === 0 && waiting.length === 0;
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
@@ -153,6 +154,14 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
 
       </div>
 
+      {isFullyEmpty ? (
+        <EmptyState
+          icon={CheckCircle2}
+          title="Rien à monter pour le moment"
+          description="Ta file est vide. Bonne pause — les prochaines publications arriveront via le calendrier."
+        />
+      ) : (
+        <>
       {/* Section En retard */}
       {overdue.length > 0 && (
         <WorklistSection
@@ -219,16 +228,8 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
           </div>
         </div>
       )}
-
-      {/* Lien vers tous les outils */}
-      <div className="pt-2 border-t border-gray-100">
-        <Link
-          href="/tools"
-          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors"
-        >
-          Accéder à tous les outils <ArrowRight size={12} />
-        </Link>
-      </div>
+        </>
+      )}
     </div>
   );
 }

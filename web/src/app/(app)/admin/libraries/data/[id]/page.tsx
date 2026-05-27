@@ -10,7 +10,7 @@ type Props = { params: Promise<{ id: string }> };
 export default async function DataLibraryDetailPage({ params }: Props) {
   const userContext = await getUserContext();
   if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") {
-    redirect("/tools/templates");
+    redirect("/templates");
   }
 
   const { id } = await params;

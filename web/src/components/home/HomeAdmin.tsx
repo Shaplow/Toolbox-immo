@@ -24,14 +24,13 @@ interface HomeAdminProps {
 }
 
 /**
- * Tableau de bord Admin simplifié pour Phase 1.2.
+ * Tableau de bord Admin.
  *
- * Affiche deux métriques globales utiles pour l'orchestrateur :
- *  - Slots en retard (scheduledAt < now, statut non-terminal)
- *  - Slots sans pattern (patternId null, statut actif)
- *
- * La version complète avec worklist riche viendra lors d'une phase ultérieure.
- * L'Admin reste principalement sur /calendar pour l'orchestration détaillée.
+ * Affiche des métriques globales utiles pour l'orchestrateur (slots en
+ * retard, slots sans pattern, versions à valider) avec liens directs vers
+ * /calendar, /admin/clients, /admin/accounts. L'Admin reste principalement
+ * sur /calendar pour l'orchestration détaillée — utiliser Cmd+K pour la
+ * recherche transverse.
  */
 export async function HomeAdmin({ userName }: HomeAdminProps) {
   const now = new Date();

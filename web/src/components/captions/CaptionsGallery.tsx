@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { AlignLeft, ChevronLeft, Film, Pencil, Plus, Scissors, X } from "lucide-react";
+import { AlignLeft, ChevronLeft, FileText, Film, Pencil, Plus, Scissors, X } from "lucide-react";
 import { CaptionPresetActions } from "@/components/captions/CaptionPresetActions";
 import { ImportCaptionPresetButton } from "@/components/captions/ImportCaptionPresetButton";
 import { DEFAULT_CAPTION_CONFIG } from "@/lib/captionPresetConfig";
@@ -47,10 +47,44 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const dismissTranscription = useCallback(() => {
-    router.replace("/tools/captions");
+    router.replace("/captions");
   }, [router]);
 
   const slotId = searchParams?.get("slotId") ?? null;
+
+  // Contexte de la publication source (si on arrive depuis la fiche pub).
+  const [slotContext, setSlotContext] = useState<{
+    id: string;
+    title: string | null;
+    handle: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!slotId) {
+      setSlotContext(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/calendar/slots/${slotId}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          id: string;
+          title: string | null;
+          account: { handle: string };
+        };
+        if (!cancelled) {
+          setSlotContext({ id: data.id, title: data.title, handle: data.account.handle });
+        }
+      } catch {
+        // Silent : la galerie reste fonctionnelle sans bandeau si le fetch rate.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [slotId]);
 
   const handleGenerateClick = useCallback((presetId: string) => {
     const extra = new URLSearchParams();
@@ -59,9 +93,9 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
     if (returnTo) extra.set("returnTo", returnTo);
     const query = extra.toString();
     if (query) {
-      router.push(`/tools/captions/${presetId}/generate?${query}`);
+      router.push(`/captions/${presetId}/generate?${query}`);
     } else {
-      router.push(`/tools/captions/${presetId}/generate`);
+      router.push(`/captions/${presetId}/generate`);
     }
   }, [transcriptionPendingId, slotId, returnTo, router]);
 
@@ -106,7 +140,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
       const created = await res.json() as { id: string };
       setShowCreateForm(false);
       setCreateName("");
-      router.push(`/tools/captions/${created.id}/edit`);
+      router.push(`/admin/captions/presets/${created.id}/edit`);
     } catch {
       setCreateError("Impossible de créer le preset.");
     } finally {
@@ -242,6 +276,24 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
         </form>
       )}
 
+      {/* Slot context banner — affiché quand on arrive depuis une fiche publication */}
+      {slotContext && (
+        <div className="mb-6 flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-5 py-4">
+          <FileText size={18} className="text-indigo-600 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-indigo-800">
+              Sélectionnez un preset pour la publication{" "}
+              <span className="font-bold">
+                {slotContext.title ?? `@${slotContext.handle}`}
+              </span>
+            </p>
+            <p className="text-xs text-indigo-600 mt-0.5">
+              Le preset choisi sera utilisé pour générer les sous-titres de ce slot.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Transcription pending banner */}
       {transcriptionPendingId && (
         <div className="mb-6 flex items-center gap-3 bg-teal-50 border border-teal-200 rounded-xl px-5 py-4">
@@ -328,7 +380,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                 <div className="flex gap-2">
                   {isAdmin && (
                     <Link
-                      href={`/tools/captions/${preset.id}/edit`}
+                      href={`/admin/captions/presets/${preset.id}/edit`}
                       className="flex-1 text-center text-xs bg-gray-900 text-white py-1.5 rounded-lg hover:bg-gray-700 transition-colors"
                     >
                       Éditer

@@ -42,8 +42,8 @@ export function CaptionsSection({
   if (pattern?.needsCaptions !== true) return null;
 
   const captionsHref = renderId
-    ? `/tools/captions?slotId=${slot.id}&renderId=${renderId}&returnTo=/publications/${slot.id}`
-    : `/tools/captions?slotId=${slot.id}&returnTo=/publications/${slot.id}`;
+    ? `/captions?slotId=${slot.id}&renderId=${renderId}&returnTo=/publications/${slot.id}`
+    : `/captions?slotId=${slot.id}&returnTo=/publications/${slot.id}`;
 
   const isInProgress =
     latestCaptionJob?.status === "QUEUED" || latestCaptionJob?.status === "PROCESSING";

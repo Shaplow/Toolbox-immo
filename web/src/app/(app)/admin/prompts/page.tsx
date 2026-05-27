@@ -10,7 +10,7 @@ import { Sparkles } from "lucide-react";
 export default async function AdminPromptsPage() {
   const userContext = await getUserContext();
   if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") {
-    redirect("/tools/templates");
+    redirect("/templates");
   }
 
   const [captionPromptRecords, descriptionPromptRecords] = await Promise.all([
