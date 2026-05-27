@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { Upload, Clock, Search, Play, Music2, ArrowUpDown, Tag, X, RotateCcw, LayoutGrid, CheckSquare, Users, Wand2 } from "lucide-react";
+import { Upload, Play, Music2 } from "lucide-react";
 import { MediaAssetEditModal } from "./MediaAssetEditModal";
 import { MediaBatchAutocutPanel } from "./MediaBatchAutocutPanel";
 import type { MediaAsset, MetadataField, MediaLibrary, SortKey } from "./mediaAssets/types";
@@ -17,6 +17,7 @@ import { useAssetInlineEdits } from "./mediaAssets/useAssetInlineEdits";
 import { MediaAssetsVideoCard } from "./mediaAssets/MediaAssetsVideoCard";
 import { MediaAssetsGroupColumn } from "./mediaAssets/MediaAssetsGroupColumn";
 import { MediaAssetsCompactCard } from "./mediaAssets/MediaAssetsCompactCard";
+import { MediaAssetsToolbar } from "./mediaAssets/MediaAssetsToolbar";
 
 interface Props {
   library: MediaLibrary;
@@ -47,7 +48,7 @@ export function MediaAssetsPanel({ library }: Props) {
   // (MediaAssetsBulkActionBar) consomme l'objet `bulk` complet. Le panel
   // garde l'accès à selectMode/selectedIds/toggleSelect pour les cards.
   const bulk = useBulkEdit({ libraryId: library.id, setAssets, accounts });
-  const { selectMode, setSelectMode, selectedIds, toggleSelect } = bulk;
+  const { selectMode, setSelectMode, selectedIds, toggleSelect, exitSelectMode } = bulk;
   const [seqState, setSeqState] = useState<string[]>(() => {
     try { return JSON.parse(library.setSequence) as string[]; } catch { return []; }
   });
@@ -553,145 +554,30 @@ export function MediaAssetsPanel({ library }: Props) {
 
   return (
     <div className={`relative${selectMode ? " pb-20" : ""}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">{library.name}</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {assets.length} fichier{assets.length !== 1 ? "s" : ""} · {isVideo ? "Vidéos" : "Musiques"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {isVideo && (
-            <button
-              onClick={() => setShowAtelier(true)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700"
-            >
-              <Wand2 size={14} /> Analyse auto
-            </button>
-          )}
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
-          >
-            <Upload size={14} /> {isVideo ? "Ajouter des vidéos" : "Ajouter des musiques"}
-          </button>
-        </div>
-      </div>
-
-      {/* Reset error */}
-      {resetError && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{resetError}</div>
-      )}
-
-      {/* Filters bar */}
-      {!loading && assets.length > 0 && (
-        <div className="flex flex-col gap-2 mb-4">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative flex-1">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher un fichier…"
-                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <ArrowUpDown size={12} />
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortKey)}
-                className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              >
-                <option value="date_desc">Plus récents</option>
-                <option value="date_asc">Plus anciens</option>
-                <option value="usage_desc">Plus utilisés</option>
-                <option value="usage_asc">Moins utilisés</option>
-                <option value="name_asc">Nom (A-Z)</option>
-              </select>
-            </div>
-            {isVideo && (
-              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-                <button
-                  onClick={() => setViewMode("grid")}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors ${viewMode === "grid" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-                  title="Vue grille"
-                >
-                  <LayoutGrid size={13} /> Grille
-                </button>
-                <button
-                  onClick={() => setViewMode("rotation")}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors ${viewMode === "rotation" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-                  title="Vue rotation — ordre de passage des sets"
-                >
-                  <RotateCcw size={13} /> Rotation
-                </button>
-              </div>
-            )}
-            {isVideo && (
-              <>
-                <div className="w-px h-5 bg-gray-200 self-center" />
-                <button
-                  onClick={() => { if (selectMode) { exitSelectMode(); } else { setSelectMode(true); } }}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors ${
-                    selectMode
-                      ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                      : "border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"
-                  }`}
-                >
-                  <CheckSquare size={13} />
-                  {selectMode ? "Sélection active" : "Sélectionner"}
-                </button>
-              </>
-            )}
-          </div>
-          {isVideo && accounts.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-gray-400 flex items-center gap-1"><Users size={11} /> Compte :</span>
-              <select
-                value={accountFilter ?? ""}
-                onChange={(e) => setAccountFilter(e.target.value || null)}
-                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              >
-                <option value="">Tous (global)</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>@{a.handle} — {a.name}</option>
-                ))}
-              </select>
-              {accountFilter && (
-                <>
-                  <button onClick={() => setAccountFilter(null)} className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-0.5"><X size={10} /> Effacer</button>
-                  <span className="text-[10px] text-blue-500 flex items-center gap-0.5 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded"><Clock size={9} /> Stats par compte</span>
-                </>
-              )}
-            </div>
-          )}
-          {allTags.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-gray-400 flex items-center gap-1"><Tag size={11} /> Tags :</span>
-              {allTags.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTagFilter(tagFilter === t ? "" : t)}
-                  className={`px-2.5 py-0.5 rounded-full text-xs border transition-colors ${
-                    tagFilter === t
-                      ? "bg-indigo-600 text-white border-indigo-600"
-                      : "bg-gray-50 text-gray-600 border-gray-200 hover:border-indigo-300"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-              {tagFilter && (
-                <button onClick={() => setTagFilter("")} className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-0.5">
-                  <X size={10} /> Effacer
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      <MediaAssetsToolbar
+        library={library}
+        isVideo={isVideo}
+        loading={loading}
+        assetsCount={assets.length}
+        accounts={accounts}
+        allTags={allTags}
+        onOpenUpload={() => setShowUploadModal(true)}
+        onOpenAtelier={() => setShowAtelier(true)}
+        resetError={resetError}
+        search={search}
+        setSearch={setSearch}
+        sort={sort}
+        setSort={setSort}
+        tagFilter={tagFilter}
+        setTagFilter={setTagFilter}
+        accountFilter={accountFilter}
+        setAccountFilter={setAccountFilter}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        selectMode={selectMode}
+        setSelectMode={setSelectMode}
+        exitSelectMode={exitSelectMode}
+      />
 
       {/* D8 — bulk action bar extraite dans MediaAssetsBulkActionBar */}
       {selectMode && <MediaAssetsBulkActionBar bulk={bulk} filtered={filtered} accounts={accounts} />}
