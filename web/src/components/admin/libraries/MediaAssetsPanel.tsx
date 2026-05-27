@@ -10,6 +10,7 @@ import { formatDuration, formatDate } from "./mediaAssets/helpers";
 import { LazyVideoThumb } from "./mediaAssets/LazyVideoThumb";
 import { useMediaAssetsLoader } from "./mediaAssets/useMediaAssetsLoader";
 import { useInstagramAccounts } from "./mediaAssets/useInstagramAccounts";
+import { useBulkEdit } from "./mediaAssets/useBulkEdit";
 
 interface Props {
   library: MediaLibrary;
@@ -50,13 +51,31 @@ export function MediaAssetsPanel({ library }: Props) {
   const [setTagValue, setSetTagValue] = useState("");
   const [setTagError, setSetTagError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "grouped" | "rotation">("grid");
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkSetTagInput, setBulkSetTagInput] = useState("");
-  const [bulkTagsInput, setBulkTagsInput] = useState("");
-  const [bulkApplying, setBulkApplying] = useState(false);
-  const [bulkError, setBulkError] = useState<string | null>(null);
-  const [bulkSuccess, setBulkSuccess] = useState<string | null>(null);
+  // D4 — bulk edit extrait dans useBulkEdit hook (sélection multi + 5 actions
+  // PATCH/DELETE + UI state apply/error/success). Le hook reçoit setAssets
+  // pour mettre à jour le state local après chaque mutation.
+  const {
+    selectMode,
+    setSelectMode,
+    selectedIds,
+    setSelectedIds,
+    bulkSetTagInput,
+    setBulkSetTagInput,
+    bulkTagsInput,
+    setBulkTagsInput,
+    bulkCategoryInput,
+    setBulkCategoryInput,
+    bulkApplying,
+    bulkError,
+    bulkSuccess,
+    toggleSelect,
+    exitSelectMode,
+    handleBulkApplySetTag,
+    handleBulkApplyTags,
+    handleBulkApplyAccess,
+    handleBulkApplyCategory,
+    handleBulkDelete,
+  } = useBulkEdit({ libraryId: library.id, setAssets, accounts });
   const [editingLastUsedId, setEditingLastUsedId] = useState<string | null>(null);
   const [lastUsedInput, setLastUsedInput] = useState("");
   const [seqState, setSeqState] = useState<string[]>(() => {
@@ -76,8 +95,6 @@ export function MediaAssetsPanel({ library }: Props) {
   const filteredLengthRef = useRef(0);
   const visibleGroupCountRef = useRef(0);
   const groupedLengthRef = useRef(0);
-  // ── Bulk ──
-  const [bulkCategoryInput, setBulkCategoryInput] = useState("");
   // ── Metadata editing ──
   const [editingMetaKey, setEditingMetaKey] = useState<{ assetId: string; key: string } | null>(null);
   const [metaInput, setMetaInput] = useState("");
@@ -600,122 +617,7 @@ export function MediaAssetsPanel({ library }: Props) {
     setSetTagError(null);
   }
 
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
-
-  function exitSelectMode() {
-    setSelectMode(false);
-    setSelectedIds(new Set());
-    setBulkSetTagInput("");
-    setBulkTagsInput("");
-    setBulkError(null);
-  }
-
-  async function handleBulkApplySetTag() {
-    if (selectedIds.size === 0) return;
-    const value = bulkSetTagInput.trim() || null;
-    setBulkApplying(true);
-    setBulkError(null);
-    setBulkSuccess(null);
-    const res = await fetch(`/api/admin/libraries/media/${library.id}/assets/bulk`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assetIds: Array.from(selectedIds), setTag: value }),
-    });
-    setBulkApplying(false);
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({})) as { error?: string };
-      setBulkError(d.error ?? "Erreur lors de l'application");
-      return;
-    }
-    setAssets((prev) => prev.map((a) => selectedIds.has(a.id) ? { ...a, setTag: value } : a));
-    setBulkSuccess(value ? `Set « ${value} » appliqué` : "Set retiré");
-    setTimeout(() => setBulkSuccess(null), 2500);
-  }
-
-  async function handleBulkApplyTags() {
-    if (selectedIds.size === 0) return;
-    const newTags = bulkTagsInput.split(",").map((t) => t.trim()).filter(Boolean);
-    setBulkApplying(true);
-    setBulkError(null);
-    setBulkSuccess(null);
-    const res = await fetch(`/api/admin/libraries/media/${library.id}/assets/bulk`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assetIds: Array.from(selectedIds), tags: newTags }),
-    });
-    setBulkApplying(false);
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({})) as { error?: string };
-      setBulkError(d.error ?? "Erreur lors de l'application");
-      return;
-    }
-    setAssets((prev) => prev.map((a) => selectedIds.has(a.id) ? { ...a, tags: newTags } : a));
-    setBulkSuccess(newTags.length > 0 ? `Tags appliqués` : "Tags retirés");
-    setTimeout(() => setBulkSuccess(null), 2500);
-  }
-
-  async function handleBulkApplyAccess(action: "add" | "remove_all", accountId?: string) {
-    if (selectedIds.size === 0) return;
-    setBulkApplying(true);
-    setBulkError(null);
-    setBulkSuccess(null);
-    const body: Record<string, unknown> = { assetIds: Array.from(selectedIds), accessAction: action };
-    if (accountId) body.accountId = accountId;
-    const res = await fetch(`/api/admin/libraries/media/${library.id}/assets/bulk`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    setBulkApplying(false);
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({})) as { error?: string };
-      setBulkError(d.error ?? "Erreur lors de l'application");
-      return;
-    }
-    if (action === "add" && accountId) {
-      setAssets((prev) => prev.map((a) =>
-        selectedIds.has(a.id)
-          ? { ...a, accessAccountIds: Array.from(new Set([...a.accessAccountIds, accountId])) }
-          : a
-      ));
-      const acc = accounts.find((a) => a.id === accountId);
-      setBulkSuccess(`Accès ajouté : @${acc?.handle ?? accountId}`);
-    } else {
-      setAssets((prev) => prev.map((a) =>
-        selectedIds.has(a.id) ? { ...a, accessAccountIds: [] } : a
-      ));
-      setBulkSuccess("Accès réinitialisé (global)");
-    }
-    setTimeout(() => setBulkSuccess(null), 2500);
-  }
-
-  async function handleBulkApplyCategory() {
-    if (selectedIds.size === 0) return;
-    const value = bulkCategoryInput.trim() || null;
-    setBulkApplying(true);
-    setBulkError(null);
-    setBulkSuccess(null);
-    const res = await fetch(`/api/admin/libraries/media/${library.id}/assets/bulk`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assetIds: Array.from(selectedIds), category: value }),
-    });
-    setBulkApplying(false);
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({})) as { error?: string };
-      setBulkError(d.error ?? "Erreur lors de l'application");
-      return;
-    }
-    setAssets((prev) => prev.map((a) => selectedIds.has(a.id) ? { ...a, category: value } : a));
-    setBulkSuccess(value ? `Catégorie « ${value} » appliquée` : "Catégorie retirée");
-    setTimeout(() => setBulkSuccess(null), 2500);
-  }
+  // ─ Bulk edit handlers extraits dans useBulkEdit (D4 du split C1-v2).
 
   async function handleSaveLastUsed(asset: MediaAsset, dateStr: string) {
     setEditingLastUsedId(null);
@@ -823,26 +725,6 @@ export function MediaAssetsPanel({ library }: Props) {
       return;
     }
     setAssets((prev) => prev.filter((a) => a.id !== asset.id));
-  }
-
-  async function handleBulkDelete() {
-    const count = selectedIds.size;
-    if (!confirm(`Supprimer ${count} asset${count > 1 ? "s" : ""} ?`)) return;
-    setBulkApplying(true);
-    setBulkError(null);
-    const res = await fetch(`/api/admin/libraries/media/${library.id}/assets/bulk`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assetIds: Array.from(selectedIds) }),
-    });
-    setBulkApplying(false);
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({})) as { error?: string };
-      setBulkError(d.error ?? "Erreur lors de la suppression");
-      return;
-    }
-    setAssets((prev) => prev.filter((a) => !selectedIds.has(a.id)));
-    exitSelectMode();
   }
 
   const isVideo = library.type === "video";
