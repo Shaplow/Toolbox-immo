@@ -3,10 +3,9 @@
 import { useState, useEffect } from "react";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import {
-  Film, FileText, X, ChevronLeft,
+  Film, FileText, X,
   Mic, Check,
 } from "lucide-react";
-import Link from "next/link";
 import {
   Caption,
   applyHighlightMarkersToCaptions,
@@ -35,6 +34,7 @@ import { CaptionsAIPanel } from "@/components/captions/CaptionsAIPanel";
 import { CaptionsSourcePicker } from "@/components/captions/CaptionsSourcePicker";
 import { CaptionsJobQueue } from "@/components/captions/CaptionsJobQueue";
 import { CaptionsVideoUploadBar } from "@/components/captions/CaptionsVideoUploadBar";
+import { CaptionsHeader } from "@/components/captions/CaptionsHeader";
 
 type TextTransform = "none" | "upper" | "lower" | "title";
 type AIModel = "claude" | "gpt";
@@ -682,27 +682,8 @@ export default function CaptionsGenerateForm({
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-2xl mx-auto px-6 py-10">
 
-        {/* Back + Header */}
-        <div className="mb-8">
-          <Link
-            href="/captions"
-            className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 transition-colors mb-5"
-          >
-            <ChevronLeft size={14} />
-            Captions
-          </Link>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-violet-100 rounded-xl flex items-center justify-center shrink-0">
-              <Film size={18} className="text-violet-600" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">{preset.name}</h1>
-              <p className="text-sm text-gray-500 mt-0.5">
-                {initialSrt ? "Sous-titres pré-chargés depuis la génération précédente" : "Générez une vidéo avec des sous-titres brûlés"}
-              </p>
-            </div>
-          </div>
-        </div>
+        {/* F3-step7 — header extrait dans CaptionsHeader */}
+        <CaptionsHeader presetName={preset.name} isRegen={Boolean(initialSrt)} />
 
         {/* F3-step6 — video upload extrait dans CaptionsVideoUploadBar */}
         <CaptionsVideoUploadBar videoFile={videoFile} setVideoFile={setVideoFile} />
