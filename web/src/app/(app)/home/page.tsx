@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { getUserContext } from "@/lib/userContext";
+import { prisma } from "@/lib/prisma";
 import { HomeAdmin } from "@/components/home/HomeAdmin";
 import { HomeMonteur } from "@/components/home/HomeMonteur";
 import { HomeCm } from "@/components/home/HomeCm";
@@ -31,6 +32,28 @@ export default async function HomePage() {
     return <HomeCm userId={effectiveUser.id} userName={effectiveUser.name} />;
   }
 
-  // Fallback USER (ou rôle inconnu) : page d'accueil + lien vers /tools
-  return <HomeUser permissions={effectiveUser.permissions} />;
+  // Fallback USER (ou rôle inconnu) — accès "générateur externe" : on liste
+  // les ressources qui lui ont été attribuées (templates, presets, outils).
+  const [templateAccesses, presetAccesses] = await Promise.all([
+    prisma.templateAccess.findMany({
+      where: { userId: effectiveUser.id },
+      include: { template: { select: { id: true, name: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.captionPresetAccess.findMany({
+      where: { userId: effectiveUser.id },
+      include: { preset: { select: { id: true, name: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+
+  return (
+    <HomeUser
+      permissions={effectiveUser.permissions}
+      access={{
+        templates: templateAccesses.map((a) => ({ id: a.template.id, name: a.template.name })),
+        captionPresets: presetAccesses.map((a) => ({ id: a.preset.id, name: a.preset.name })),
+      }}
+    />
+  );
 }

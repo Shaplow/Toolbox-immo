@@ -54,12 +54,7 @@ export function AppNav({
   const hasCovers = userPerms.includes("covers");
   const hasTranscription = userPerms.includes("transcription");
   const hasDescription = userPerms.includes("description");
-  const hasTemplates =
-    userPerms.includes("templates") ||
-    userPerms.includes("templates:view") ||
-    userPerms.includes("templates:generate") ||
-    userPerms.includes("templates:edit") ||
-    userPerms.includes("templates:manage");
+  const hasTemplates = userPerms.includes("templates");
 
   async function stopImpersonation() {
     await fetch("/api/admin/impersonation", { method: "DELETE" });
