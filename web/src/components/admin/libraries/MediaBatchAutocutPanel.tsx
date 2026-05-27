@@ -44,7 +44,10 @@ function fmt(s: number | null): string {
 
 const POLL_INTERVAL_MS = 5000;
 
+import { useConfirm } from "@/components/ui/useConfirm";
+
 export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [view, setView] = useState<"select" | "review">("select");
 
   // ── Vue 1 : sélection ─────────────────────────────────────────────────────
@@ -228,7 +231,13 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
   };
 
   const handleReset = async () => {
-    if (!confirm(`Supprimer toutes les analyses non-appliquées de cette bibliothèque ? Les fichiers déjà coupés ne seront pas affectés.`)) return;
+    const ok = await confirm({
+      title: "Supprimer toutes les analyses non-appliquées ?",
+      description: "Les fichiers déjà coupés ne seront pas affectés. Cette action est irréversible.",
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
+    if (!ok) return;
     setResetting(true);
     setResetResult(null);
     try {
@@ -721,6 +730,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
           </div>
         )}
       </div>
+      {confirmDialog}
     </div>
   );
 }

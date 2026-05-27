@@ -143,6 +143,7 @@ function DescriptionSectionInner({ slot, pattern, initialDescription, canEdit, r
           promptId: selectedPromptId,
           personalization: aiPersonalization.trim() || undefined,
           model: "claude",
+          slotId: slot.id,
         }),
       });
       const data = (await res.json()) as { result?: string; error?: string };

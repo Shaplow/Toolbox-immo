@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Trash2, Database, ChevronRight, Search, Pencil, X, Check } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/useConfirm";
 import Link from "next/link";
 import { LibraryExportButton } from "./LibraryExportButton";
 
@@ -16,6 +17,7 @@ interface DataLibrary {
 }
 
 export function DataLibrariesPanel() {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [libraries, setLibraries] = useState<DataLibrary[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -95,7 +97,13 @@ export function DataLibrariesPanel() {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Supprimer la bibliothèque « ${name} » et toutes ses données ?`)) return;
+    const ok = await confirm({
+      title: `Supprimer la bibliothèque « ${name} » ?`,
+      description: "Toutes les données associées seront également supprimées. Cette action est irréversible.",
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
+    if (!ok) return;
     const res = await fetch(`/api/admin/libraries/data/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const d = await res.json() as { error?: string };
@@ -301,6 +309,7 @@ export function DataLibrariesPanel() {
           )}
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }

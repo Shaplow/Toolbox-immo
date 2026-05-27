@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { getR2PublicUrl, deleteFromR2, r2Configured } from "@/lib/r2";
 import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runpod";
 import { notifyUser } from "@/lib/sseStore";
+import { logActivity } from "@/lib/publications/activity";
 
 type CaptionOutput = {
   video_url?: string;
@@ -63,6 +64,15 @@ export async function POST(req: NextRequest) {
 
     notifyUser(job.userId, { jobType: "captions", jobId: job.id, status: "COMPLETED", videoUrl: videoUrl ?? null });
     console.info(`[webhook/captions] job=${job.id} done, videoUrl=${videoUrl}`);
+
+    if (job.slotId) {
+      await logActivity(prisma, {
+        slotId: job.slotId,
+        actorId: null,
+        type: "CAPTIONS_COMPLETED",
+        payload: { captionJobId: job.id, videoUrl },
+      });
+    }
   } else {
     const errorMsg = output?.error ?? error ?? `RunPod status: ${status}`;
 

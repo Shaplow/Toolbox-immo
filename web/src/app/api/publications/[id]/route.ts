@@ -83,6 +83,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
           listing: { select: { id: true, jsonData: true } },
         },
       },
+      captionJobs: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { status: true },
+      },
+      descriptionJobs: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { status: true, result: true },
+      },
     },
   });
 
@@ -93,14 +103,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   // Calcul des steps côté serveur pour que le client n'ait pas à les dériver.
   const steps = computePublicationSteps({
-    slot: { status: slot.status, caption: slot.caption },
+    slot: { status: slot.status, caption: slot.caption, description: slot.description },
     pattern: slot.pattern ?? null,
     renderJob: slot.render ?? null,
     coverPack: slot.render?.coverFramePack ?? null,
-    // captionJob et descriptionJob ne sont pas liés directement au slot via FK.
-    // Ils seront passés dans une logique séparée si nécessaire (Phase 1.4+).
-    captionJob: null,
-    descriptionJob: null,
+    captionJob: slot.captionJobs[0] ?? null,
+    descriptionJob: slot.descriptionJobs[0] ?? null,
     versionsCount: 0,
     currentVersionId: slot.currentVersionId ?? null,
   });

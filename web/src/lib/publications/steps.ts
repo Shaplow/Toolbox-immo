@@ -121,12 +121,15 @@ function descriptionJobStatus(
   descriptionJob:
     | Pick<DescriptionJob, "status" | "result">
     | null
-    | undefined
+    | undefined,
+  /** Fallback : description rédigée à la main (sans passer par un job IA). */
+  fallbackText?: string | null
 ): StepStatus {
-  if (!descriptionJob) return "todo";
-  if (descriptionJob.status === "COMPLETED" && descriptionJob.result)
-    return "done";
-  if (descriptionJob.status === "FAILED") return "failed";
+  if (descriptionJob) {
+    if (descriptionJob.status === "COMPLETED" && descriptionJob.result) return "done";
+    if (descriptionJob.status === "FAILED") return "failed";
+  }
+  if (fallbackText && fallbackText.trim().length > 0) return "done";
   return "todo";
 }
 
@@ -141,7 +144,7 @@ function descriptionJobStatus(
  * @returns Liste ordonnée de PublicationStep avec `nextAction` résolu.
  */
 export function computePublicationSteps(input: {
-  slot: Pick<PublicationSlot, "status" | "caption">;
+  slot: Pick<PublicationSlot, "status" | "caption" | "description">;
   pattern?: Pick<
     AccountPattern,
     | "source"
@@ -226,7 +229,9 @@ export function computePublicationSteps(input: {
       key: "description",
       label: "Description",
       visible: descriptionVisible,
-      status: descriptionVisible ? descriptionJobStatus(descriptionJob) : "todo",
+      status: descriptionVisible
+        ? descriptionJobStatus(descriptionJob, slot.description)
+        : "todo",
     },
     {
       key: "validation",

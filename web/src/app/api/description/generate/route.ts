@@ -26,6 +26,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { hasTool } from "@/lib/permissions";
+import { canUserAccessSlot } from "@/lib/permissions/slotScope";
+import { toUserRole } from "@/lib/permissions/role";
+import { logActivity } from "@/lib/publications/activity";
 
 const MAX_TRANSCRIPT_CHARS = 50_000;
 const MAX_PERSONALIZATION_CHARS = 2_000;
@@ -245,6 +248,7 @@ export async function POST(req: NextRequest) {
     model?: string;
     inputFilename?: string;
     transcriptionId?: string;
+    slotId?: string;
     referenceImage?: ReferenceImageInput;
   };
 
@@ -256,6 +260,7 @@ export async function POST(req: NextRequest) {
       model?: string;
       inputFilename?: string;
       transcriptionId?: string;
+      slotId?: string;
       referenceImage?: ReferenceImageInput;
     };
   } catch {
@@ -269,6 +274,7 @@ export async function POST(req: NextRequest) {
     model,
     inputFilename,
     transcriptionId,
+    slotId,
     referenceImage: referenceImageInput,
   } = body;
 
@@ -293,6 +299,20 @@ export async function POST(req: NextRequest) {
     if (!txJob || txJob.userId !== effectiveUserId) {
       return NextResponse.json({ error: "Transcription introuvable" }, { status: 404 });
     }
+  }
+
+  // Validate slotId access (404 anti-énumération si non accessible).
+  let resolvedSlotId: string | null = null;
+  if (slotId) {
+    const slot = await prisma.publicationSlot.findUnique({
+      where: { id: slotId },
+      select: { id: true, assigneeMonteurId: true, assigneeCmId: true },
+    });
+    const role = toUserRole(userContext.effectiveUser.role);
+    if (!slot || !canUserAccessSlot(slot, role, effectiveUserId)) {
+      return NextResponse.json({ error: "Publication introuvable" }, { status: 404 });
+    }
+    resolvedSlotId = slot.id;
   }
 
   let referenceImage: ValidatedReferenceImage | null;
@@ -356,6 +376,7 @@ export async function POST(req: NextRequest) {
         inputType: transcriptionId ? "transcription" : "upload",
         inputFilename: normalizedInputFilename,
         transcriptionId: transcriptionId ?? null,
+        slotId: resolvedSlotId,
         promptId,
         promptSnapshot: prompt.prompt,
         personalization: personalization ?? null,
@@ -374,6 +395,7 @@ export async function POST(req: NextRequest) {
       inputType: transcriptionId ? "transcription" : "upload",
       inputFilename: normalizedInputFilename,
       transcriptionId: transcriptionId ?? null,
+      slotId: resolvedSlotId,
       promptId,
       promptSnapshot: prompt.prompt,
       personalization: personalization ?? null,
@@ -381,6 +403,15 @@ export async function POST(req: NextRequest) {
       result,
     },
   });
+
+  if (resolvedSlotId) {
+    await logActivity(prisma, {
+      slotId: resolvedSlotId,
+      actorId: userContext.actualUser.id,
+      type: "DESCRIPTION_COMPLETED",
+      payload: { descriptionJobId: job.id, model, promptId },
+    });
+  }
 
   return NextResponse.json({ jobId: job.id, result });
 }

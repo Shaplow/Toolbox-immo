@@ -60,7 +60,10 @@ export interface SetGroup {
   lastUsedAt: string | null;
 }
 
+import { useConfirm } from "@/components/ui/useConfirm";
+
 export function DataEntriesPanel({ campaignId, libraryId }: Props) {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [campaign, setCampaign] = useState<DataCampaign | null>(null);
   const [entries, setEntries] = useState<DataEntry[]>([]);
   const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
@@ -194,7 +197,13 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
   }
 
   async function handleReset() {
-    if (!confirm("Remettre à zéro le cycle pour toutes les entrées ? Cette opération est irréversible.")) return;
+    const ok = await confirm({
+      title: "Remettre à zéro le cycle ?",
+      description: "Tous les usages seront effacés pour toutes les entrées. Cette opération est irréversible.",
+      confirmLabel: "Réinitialiser",
+      variant: "danger",
+    });
+    if (!ok) return;
     setResetting(true);
     setResetSuccess(null);
     setResetError(null);
@@ -213,7 +222,13 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
   async function handleResetForAccount() {
     if (!accountFilter) return;
     const accountName = accounts.find((a) => a.id === accountFilter)?.handle ?? accountFilter;
-    if (!confirm(`Réinitialiser le cycle pour @${accountName} ? Les usages de ce compte seront effacés.`)) return;
+    const ok = await confirm({
+      title: `Réinitialiser le cycle pour @${accountName} ?`,
+      description: "Les usages de ce compte seront effacés. Cette opération est irréversible.",
+      confirmLabel: "Réinitialiser",
+      variant: "danger",
+    });
+    if (!ok) return;
     setResettingAccount(true);
     setResetSuccess(null);
     setResetError(null);
@@ -422,6 +437,7 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
       ) : (
         <FlatTable entries={entries} columns={columns} accountFilter={accountFilter} usagePolicy={campaign?.usagePolicy ?? "cycle"} isAccessible={isAccessible} accounts={accounts} onToggleAccess={handleToggleAccess} onEditEntry={handleSaveEntry} onDeleteEntry={handleDeleteEntry} />
       )}
+      {confirmDialog}
     </div>
   );
 }

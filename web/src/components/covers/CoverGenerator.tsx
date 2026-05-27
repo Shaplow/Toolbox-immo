@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { Film, Upload, Download, RefreshCw, Check, X, Image as ImageIcon, Layers } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/useConfirm";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 
 // Espace minimum entre deux timestamps distincts.
@@ -79,6 +80,7 @@ function pickFromCandidates(candidates: number[], count: number): number[] {
 }
 
 export function CoverGenerator() {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   // ── Tab ────────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"packs" | "manual">("packs");
 
@@ -233,9 +235,12 @@ export function CoverGenerator() {
   const regeneratePack = useCallback(async (packId: string) => {
     const pack = packs.find((p) => p.id === packId);
     if (pack?.status === "SELECTED") {
-      const confirmed = window.confirm(
-        "Cela supprimera la cover actuelle et relancera l'extraction. Continuer ?"
-      );
+      const confirmed = await confirm({
+        title: "Régénérer un nouveau tirage ?",
+        description: "Cela supprimera la cover actuelle et relancera l'extraction des frames.",
+        confirmLabel: "Régénérer",
+        variant: "danger",
+      });
       if (!confirmed) return;
     }
     setPackBusyId(packId);
@@ -249,14 +254,16 @@ export function CoverGenerator() {
     } finally {
       setPackBusyId(null);
     }
-  }, [loadPacks, packs]);
+  }, [confirm, loadPacks, packs]);
 
   const selectPackCover = useCallback(async (packId: string) => {
     const candidateId = selectedCandidateByPack[packId];
     if (!candidateId) return;
-    const confirmed = window.confirm(
-      "Valider cette cover ? Les autres frames candidates seront supprimées. Cette action est irréversible."
-    );
+    const confirmed = await confirm({
+      title: "Valider cette cover ?",
+      description: "Les autres frames candidates seront supprimées. Cette action est irréversible.",
+      confirmLabel: "Valider",
+    });
     if (!confirmed) return;
     const offset = overlayOffsetByPack[packId] ?? { x: 0, y: 0 };
     setPackBusyId(packId);
@@ -278,7 +285,7 @@ export function CoverGenerator() {
     } finally {
       setPackBusyId(null);
     }
-  }, [loadPacks, overlayOffsetByPack, selectedCandidateByPack]);
+  }, [confirm, loadPacks, overlayOffsetByPack, selectedCandidateByPack]);
 
   const patchPackOverlayGroups = useCallback(async (packId: string, groupIds: string[]) => {
     // Optimistic update
@@ -1063,6 +1070,7 @@ export function CoverGenerator() {
         </div>
       </div>
       )}
+      {confirmDialog}
     </div>
   );
 }

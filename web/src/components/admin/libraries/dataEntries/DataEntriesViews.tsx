@@ -13,6 +13,7 @@
 
 import React, { useState } from "react";
 import { BarChart2, Check, ChevronDown, ChevronRight, Clock, Globe, Lock, Pencil, Trash2, X } from "lucide-react";
+import { useConfirm } from "@/components/ui/useConfirm";
 import type { DataEntry, InstagramAccount, SetGroup } from "@/components/admin/libraries/DataEntriesPanel";
 
 function formatDate(d: string | null): string {
@@ -64,6 +65,7 @@ export function FlatTable({
   onEditEntry?: (entryId: string, fields: Record<string, string>, setTag: string | null, category: string | null) => Promise<void>;
   onDeleteEntry?: (entryId: string) => Promise<void>;
 }) {
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<{ fields: Record<string, string>; setTag: string; category: string }>({ fields: {}, setTag: "", category: "" });
   const [saving, setSaving] = useState(false);
@@ -104,7 +106,13 @@ export function FlatTable({
 
   const handleDelete = async (entryId: string) => {
     if (!onDeleteEntry) return;
-    if (!confirm("Supprimer cette entrée ? Cette action est irréversible.")) return;
+    const ok = await confirm({
+      title: "Supprimer cette entrée ?",
+      description: "Cette action est irréversible.",
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
+    if (!ok) return;
     setDeletingId(entryId);
     try {
       await onDeleteEntry(entryId);
@@ -271,6 +279,7 @@ export function FlatTable({
           })}
         </tbody>
       </table>
+      {confirmDialog}
     </div>
   );
 }
