@@ -865,6 +865,16 @@ export function TranscriptionList({
               </li>
             ))}
           </ul>
+
+          {/* Hint pagination : la page server fetch take: 50 ; on avertit si
+              on atteint cette limite (heuristique : on inclut aussi les jobs
+              en cours dans le compteur côté serveur, donc à 50 c'est plein). */}
+          {jobs.length >= 50 && (
+            <p className="text-center text-[11px] text-amber-600 pt-2">
+              Affichage des 50 plus récents — d&apos;anciennes transcriptions
+              ne sont pas listées ici.
+            </p>
+          )}
         </section>
       )}
     </div>
