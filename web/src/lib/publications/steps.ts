@@ -237,8 +237,12 @@ export function computePublicationSteps(input: {
       key: "validation",
       label: "Validation client",
       visible: validationVisible,
-      // Phase 1.3 placeholder — statut toujours "todo" (logique Phase 2)
-      status: "todo",
+      // F1.11 — Step en placeholder Phase 2 : statut "blocked" (violet, tooltip
+      // "À venir") au lieu de "todo" pour ne pas être le nextAction de la
+      // ProductionChain en permanence. Quand la feature sera implémentée,
+      // remplacer par le statut réel calculé depuis le validationJob/validation
+      // table.
+      status: "blocked",
     },
     {
       key: "publish",
