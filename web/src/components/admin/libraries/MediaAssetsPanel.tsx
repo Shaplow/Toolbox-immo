@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { Trash2, Upload, Clock, BarChart2, Search, Play, Music2, ArrowUpDown, Tag, X, RotateCcw, LayoutGrid, Layers, Square, CheckSquare, ChevronUp, ChevronDown, ListOrdered, PlusCircle, MinusCircle, FolderOpen, Film, Globe, Lock, Users, Wand2, Loader2, AlertTriangle } from "lucide-react";
+import { Trash2, Upload, Clock, BarChart2, Search, Play, Music2, ArrowUpDown, Tag, X, RotateCcw, LayoutGrid, Layers, Square, CheckSquare, FolderOpen, Globe, Lock, Users, Wand2, Loader2 } from "lucide-react";
 import { MediaAssetEditModal } from "./MediaAssetEditModal";
 import { MediaBatchAutocutPanel } from "./MediaBatchAutocutPanel";
 import type { MediaAsset, MetadataField, MediaLibrary, SortKey } from "./mediaAssets/types";
-import { formatDate } from "./mediaAssets/helpers";
 import { LazyVideoThumb } from "./mediaAssets/LazyVideoThumb";
 import { useMediaAssetsLoader } from "./mediaAssets/useMediaAssetsLoader";
 import { useInstagramAccounts } from "./mediaAssets/useInstagramAccounts";
@@ -17,6 +16,7 @@ import { MediaAssetsGroupedView } from "./mediaAssets/MediaAssetsGroupedView";
 import { MediaAssetsAudioList } from "./mediaAssets/MediaAssetsAudioList";
 import { useAssetInlineEdits } from "./mediaAssets/useAssetInlineEdits";
 import { MediaAssetsVideoCard } from "./mediaAssets/MediaAssetsVideoCard";
+import { MediaAssetsGroupColumn } from "./mediaAssets/MediaAssetsGroupColumn";
 
 interface Props {
   library: MediaLibrary;
@@ -619,140 +619,36 @@ export function MediaAssetsPanel({ library }: Props) {
     );
   }
 
-  function renderColumn({ key, setTag, category, groupAssets, accessibleCount, lastUsed, autoRank, cycleSize, isAccessible = true, inSection = false, fluid = false }: { key: string; setTag: string | null; category: string | null; groupAssets: MediaAsset[]; accessibleCount?: number; lastUsed: string | null; autoRank: number | null; cycleSize?: number | null; isAccessible?: boolean; inSection?: boolean; fluid?: boolean }): React.ReactNode {
-    const isAutoMode = seqState.length === 0;
-    const seqIdx = setTag ? seqState.indexOf(setTag) : -1;
-    const isSequenced = seqIdx !== -1;
-
-    // Smart rush detection: a tag is a "role" if it appears on SOME but not ALL assets in the set.
-    const tagFreq = new Map<string, MediaAsset[]>();
-    for (const a of groupAssets) {
-      for (const t of a.tags) {
-        if (!tagFreq.has(t)) tagFreq.set(t, []);
-        tagFreq.get(t)!.push(a);
-      }
-    }
-    const roleTags = Array.from(tagFreq.entries())
-      .filter(([, tagged]) => tagged.length < groupAssets.length)
-      .sort(([a], [b]) => a.localeCompare(b));
-    const roleAssetIds = new Set(roleTags.flatMap(([, tagged]) => tagged.map((a) => a.id)));
-    const mainAssets = groupAssets.filter((a) => !roleAssetIds.has(a.id));
-    const hasRoles = roleTags.length > 0;
+  // D9-step3 — renderColumn extrait dans MediaAssetsGroupColumn.
+  // Le wrapper local fournit un closure stable des props (seqState +
+  // moveSetTag/addToSequence/removeFromSequence + inline editing
+  // catégorie group-level + renderVideoCard callback).
+  function renderColumn({ key, setTag, category, groupAssets, accessibleCount, lastUsed, autoRank, isAccessible = true, inSection = false, fluid = false }: { key: string; setTag: string | null; category: string | null; groupAssets: MediaAsset[]; accessibleCount?: number; lastUsed: string | null; autoRank: number | null; cycleSize?: number | null; isAccessible?: boolean; inSection?: boolean; fluid?: boolean }): React.ReactNode {
     return (
-      <div key={key || "__unset__"} className={`flex flex-col ${fluid ? "w-full" : "w-52 shrink-0"} ${!isAccessible && accountFilter ? "opacity-50" : ""}`}>
-        {/* Column header */}
-        <div className={`mb-2 p-2.5 rounded-xl border flex flex-col gap-1 ${!isAccessible && accountFilter ? "bg-gray-50 border-dashed border-gray-300" : "bg-gray-50 border-gray-200"}`}>
-          {!isAccessible && accountFilter && (
-            groupAssets.every((a) => a.disabled)
-              ? <span className="text-[9px] text-red-400 flex items-center gap-0.5 mb-0.5"><AlertTriangle size={8} /> Set désactivé — bloque la rotation</span>
-              : <span className="text-[9px] text-gray-400 flex items-center gap-0.5 mb-0.5"><Lock size={8} /> Hors accès pour ce compte</span>
-          )}
-          {/* Category — only shown when NOT inside a category section (avoids redundancy) */}
-          {(setTag || category) && !inSection && (
-            <div>
-              {editingFamilyKey === key ? (
-                <input
-                  autoFocus
-                  value={familyInput}
-                  onChange={(e) => setFamilyInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      void handleSaveCategoryForGroup(groupAssets, familyInput);
-                      setEditingFamilyKey(null);
-                    }
-                    if (e.key === "Escape") { setEditingFamilyKey(null); }
-                  }}
-                  onBlur={() => {
-                    void handleSaveCategoryForGroup(groupAssets, familyInput);
-                    setEditingFamilyKey(null);
-                  }}
-                  list="group-list"
-                  placeholder="ex: Tenue A, Plan Ext…"
-                  className="w-full text-[10px] border border-violet-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400"
-                />
-              ) : (
-                <button
-                  onClick={() => { setEditingFamilyKey(key); setFamilyInput(category ?? ""); }}
-                  className={`flex items-center gap-1 text-[10px] w-full text-left px-1.5 py-0.5 rounded border transition-colors ${
-                    category
-                      ? "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100 font-medium"
-                      : "text-gray-400 border-dashed border-gray-200 hover:border-violet-200 hover:text-violet-500"
-                  }`}
-                  title="Catégorie du set — deux sets de la même catégorie ne se suivent jamais dans la rotation"
-                >
-                  <FolderOpen size={10} className="shrink-0" />
-                  <span className="truncate">{category || "Catégorie…"}</span>
-                </button>
-              )}
-            </div>
-          )}
-          {/* Divider */}
-          {(setTag || category) && !inSection && <div className="h-px bg-gray-200" />}
-          {/* Set name */}
-          {setTag ? (
-            <div className="flex items-center gap-1.5">
-              <Layers size={11} className="text-pink-400 shrink-0" />
-              <span className="text-xs font-semibold text-gray-800 truncate" title={setTag}>{setTag}</span>
-            </div>
-          ) : category ? (
-            <span className="text-xs font-medium text-gray-500 italic">Pool catégorie</span>
-          ) : (
-            <span className="text-xs font-medium text-gray-400">Sans set</span>
-          )}
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="text-[10px] text-gray-400">{accessibleCount ?? groupAssets.length} rush{(accessibleCount ?? groupAssets.length) !== 1 ? "es" : ""}</span>
-            {(setTag || category) && (
-              isAutoMode ? (
-                autoRank === 1 ? (
-                  <span className="text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded flex items-center gap-1">
-                    <RotateCcw size={9} /> Prochain
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-gray-400 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-1">
-                    <RotateCcw size={9} /> {autoRank != null ? `Dans ${autoRank - 1} gén.` : "–"}
-                  </span>
-                )
-              ) : (
-                isSequenced ? (
-                  <div className="flex items-center gap-0.5">
-                    <span className="text-[10px] font-mono bg-indigo-100 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded flex items-center gap-1">
-                      <ListOrdered size={10} /> #{seqIdx + 1}
-                    </span>
-                    <button onClick={() => moveSetTag(setTag!, -1)} disabled={seqIdx === 0} className="p-0.5 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronUp size={12} className="text-gray-500" /></button>
-                    <button onClick={() => moveSetTag(setTag!, 1)} disabled={seqIdx === seqState.length - 1} className="p-0.5 rounded hover:bg-gray-100 disabled:opacity-30"><ChevronDown size={12} className="text-gray-500" /></button>
-                    <button onClick={() => removeFromSequence(setTag!)} className="text-[10px] text-red-400 hover:text-red-600 px-0.5 flex items-center" title="Retirer de la rotation"><MinusCircle size={11} /></button>
-                  </div>
-                ) : (
-                  <button onClick={() => addToSequence(setTag!)} className="flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-700 border border-indigo-200 rounded-full px-2 py-0.5"><PlusCircle size={10} /> Fixer l&apos;ordre</button>
-                )
-              )
-            )}
-          </div>
-          {(setTag || category) && lastUsed && (
-            <span className="text-[10px] text-gray-400 flex items-center gap-0.5"><Clock size={9} /> {formatDate(lastUsed)}</span>
-          )}
-        </div>
-        {/* Rushes with defined roles */}
-        {hasRoles && (
-          <div className="border border-dashed border-amber-200 bg-amber-50/40 rounded-xl p-1.5 mb-2">
-            <span className="text-[9px] font-semibold text-amber-600 uppercase tracking-wide mb-1.5 flex items-center gap-1">
-              <Film size={9} /> Rushes
-            </span>
-            {roleTags.map(([tag, assets]) => (
-              <div key={tag} className="mb-1.5 last:mb-0">
-                <span className="text-[9px] text-amber-500 mb-1 block pl-0.5">{tag}</span>
-                <div className="flex flex-col gap-1.5">{assets.map((a) => renderVideoCard(a))}</div>
-              </div>
-            ))}
-          </div>
-        )}
-        {/* Main assets */}
-        {mainAssets.length > 0 && (
-          <div className="flex flex-col gap-2">
-            {mainAssets.map((a) => renderVideoCard(a))}
-          </div>
-        )}
-      </div>
+      <MediaAssetsGroupColumn
+        key={key || "__unset__"}
+        groupKey={key}
+        setTag={setTag}
+        category={category}
+        groupAssets={groupAssets}
+        accessibleCount={accessibleCount}
+        lastUsed={lastUsed}
+        autoRank={autoRank}
+        isAccessible={isAccessible}
+        inSection={inSection}
+        fluid={fluid}
+        seqState={seqState}
+        accountFilter={accountFilter}
+        editingFamilyKey={editingFamilyKey}
+        setEditingFamilyKey={setEditingFamilyKey}
+        familyInput={familyInput}
+        setFamilyInput={setFamilyInput}
+        handleSaveCategoryForGroup={handleSaveCategoryForGroup}
+        moveSetTag={moveSetTag}
+        addToSequence={addToSequence}
+        removeFromSequence={removeFromSequence}
+        renderVideoCard={renderVideoCard}
+      />
     );
   }
 
