@@ -16,7 +16,6 @@ export default async function AdminAccountsPage() {
       id: true,
       handle: true,
       name: true,
-      offre: true,
       client: { select: { id: true, name: true } },
       accountPatterns: {
         where: { isActive: true },
@@ -36,7 +35,6 @@ export default async function AdminAccountsPage() {
     id: a.id,
     handle: a.handle,
     name: a.name,
-    offre: a.offre ?? "",
     activePatternCount: a.accountPatterns.length,
     lastPublishedAt: a.publicationSlots[0]?.publishedAt?.toISOString() ?? null,
     client: a.client,

@@ -11,7 +11,6 @@ interface AccountItem {
   id: string;
   handle: string;
   name: string;
-  offre: string;
   activePatternCount: number;
   lastPublishedAt: string | null;
   client: { id: string; name: string } | null;
@@ -37,7 +36,6 @@ export function AccountsListAdmin({ accounts }: Props) {
   const [search, setSearch] = useState("");
   const [clientFilter, setClientFilter] = useState<string>("");
   const [patternState, setPatternState] = useState<PatternState>("all");
-  const [offreFilter, setOffreFilter] = useState<string>("");
 
   // Listes uniques pour les dropdowns
   const clientOptions = useMemo(() => {
@@ -48,14 +46,6 @@ export function AccountsListAdmin({ accounts }: Props) {
     return Array.from(map.entries())
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name, "fr"));
-  }, [accounts]);
-
-  const offreOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const a of accounts) {
-      if (a.offre) set.add(a.offre);
-    }
-    return Array.from(set).sort();
   }, [accounts]);
 
   // Filtrage combiné
@@ -69,19 +59,17 @@ export function AccountsListAdmin({ accounts }: Props) {
       if (clientFilter && a.client?.id !== clientFilter) return false;
       if (patternState === "active" && a.activePatternCount === 0) return false;
       if (patternState === "none" && a.activePatternCount > 0) return false;
-      if (offreFilter && a.offre !== offreFilter) return false;
       return true;
     });
-  }, [accounts, search, clientFilter, patternState, offreFilter]);
+  }, [accounts, search, clientFilter, patternState]);
 
   const hasAnyFilter =
-    Boolean(search.trim()) || Boolean(clientFilter) || patternState !== "all" || Boolean(offreFilter);
+    Boolean(search.trim()) || Boolean(clientFilter) || patternState !== "all";
 
   function clearFilters() {
     setSearch("");
     setClientFilter("");
     setPatternState("all");
-    setOffreFilter("");
   }
 
   return (
@@ -124,19 +112,6 @@ export function AccountsListAdmin({ accounts }: Props) {
           <option value="none">Sans pattern</option>
         </select>
 
-        {offreOptions.length > 0 && (
-          <select
-            value={offreFilter}
-            onChange={(e) => setOffreFilter(e.target.value)}
-            className={SELECT_CLASS}
-          >
-            <option value="">Toutes les offres</option>
-            {offreOptions.map((o) => (
-              <option key={o} value={o}>{o}</option>
-            ))}
-          </select>
-        )}
-
         {hasAnyFilter && (
           <button
             type="button"
@@ -169,7 +144,6 @@ export function AccountsListAdmin({ accounts }: Props) {
               <tr>
                 <th className="px-4 py-2.5 text-left font-medium">Compte</th>
                 <th className="px-4 py-2.5 text-left font-medium">Client</th>
-                <th className="px-4 py-2.5 text-left font-medium">Offre</th>
                 <th className="px-4 py-2.5 text-right font-medium">Patterns actifs</th>
                 <th className="px-4 py-2.5 text-right font-medium">Dernière publi</th>
                 <th className="px-4 py-2.5 text-right font-medium"></th>
@@ -197,15 +171,6 @@ export function AccountsListAdmin({ accounts }: Props) {
                       </Link>
                     ) : (
                       <span className="text-sm italic text-gray-400">Sans client</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {a.offre ? (
-                      <span className="inline-block text-xs font-medium bg-gray-100 text-gray-700 rounded-full px-2 py-0.5">
-                        {a.offre}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-gray-400">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
