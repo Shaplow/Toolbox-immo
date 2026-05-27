@@ -13,6 +13,9 @@ import { useInstagramAccounts } from "./mediaAssets/useInstagramAccounts";
 import { useBulkEdit } from "./mediaAssets/useBulkEdit";
 import { MediaAssetsUploadModal } from "./mediaAssets/MediaAssetsUploadModal";
 import { MediaAssetsBulkActionBar } from "./mediaAssets/MediaAssetsBulkActionBar";
+import { MediaAssetsRotationView } from "./mediaAssets/MediaAssetsRotationView";
+import { MediaAssetsGroupedView } from "./mediaAssets/MediaAssetsGroupedView";
+import { MediaAssetsAudioList } from "./mediaAssets/MediaAssetsAudioList";
 
 interface Props {
   library: MediaLibrary;
@@ -1458,298 +1461,29 @@ export function MediaAssetsPanel({ library }: Props) {
             {allSetTags.map((t) => <option key={t} value={t} />)}
           </datalist>
           {viewMode === "rotation" ? (
-            /* ─── Rotation view ─── ordered flat list by autoRank, colored by category */
-            <div className="space-y-1.5">
-              {(() => {
-                const allNamed = groupedBySetTag.filter((g) => g.setTag || g.category);
-                const inaccessibleCount = accountFilter ? allNamed.filter((g) => !g.isAccessible).length : 0;
-                const cycleSize = seqState.length === 0
-                  ? (allNamed.find((g) => g.cycleSize != null)?.cycleSize ?? null)
-                  : null;
-                const nextGroup = seqState.length === 0
-                  ? (allNamed.find((g) => g.isAccessible && g.autoRank === 1) ?? allNamed.find((g) => g.autoRank === 1))
-                  : groupedBySetTag.find((g) => g.setTag === seqState[0]);
-                const nextLabel = nextGroup
-                  ? [nextGroup.category, nextGroup.setTag].filter(Boolean).join(" › ") || null
-                  : null;
-                return (
-                  <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-xl border bg-gray-50 border-gray-200 mb-3">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {seqState.length === 0 ? (
-                          <>
-                            <span className="flex items-center gap-1 text-xs font-semibold text-emerald-700">
-                              <RotateCcw size={12} className="text-emerald-500" /> Rotation auto
-                            </span>
-                            <span className="text-gray-300 text-xs">·</span>
-                            <span className="text-xs text-gray-500">{allNamed.length} groupe{allNamed.length !== 1 ? "s" : ""}</span>
-                            {cycleSize != null && cycleSize > 0 && (
-                              <>
-                                <span className="text-gray-300 text-xs">·</span>
-                                <span className="text-xs text-gray-500">Cycle : <span className="font-medium text-gray-700">{cycleSize} gén.</span></span>
-                              </>
-                            )}
-                            {nextLabel && (
-                              <>
-                                <span className="text-gray-300 text-xs">·</span>
-                                <span className="text-xs text-gray-500">Prochain : <span className="font-semibold text-gray-700">{nextLabel}</span></span>
-                              </>
-                            )}
-                          </>
-                        ) : (
-                          <>
-                            <span className="flex items-center gap-1 text-xs font-semibold text-indigo-700">
-                              <ListOrdered size={12} className="text-indigo-500" /> Ordre personnalisé
-                            </span>
-                            <span className="text-gray-300 text-xs">·</span>
-                            <span className="text-xs text-gray-500">{seqState.length} set{seqState.length !== 1 ? "s" : ""} fixés</span>
-                            {nextLabel && (
-                              <>
-                                <span className="text-gray-300 text-xs">·</span>
-                                <span className="text-xs text-gray-500">Prochain : <span className="font-semibold text-gray-700">{nextLabel}</span></span>
-                              </>
-                            )}
-                          </>
-                        )}
-                      </div>
-                      {seqState.length > 0 && (
-                        <button onClick={() => { void saveSequence([]); }} className="text-[11px] text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-200 rounded px-2 py-0.5 transition-colors">Passer en auto</button>
-                      )}
-                    </div>
-                    {inaccessibleCount > 0 && (
-                      <span className="flex items-center gap-1 text-[11px] text-amber-600">
-                        <AlertTriangle size={10} className="shrink-0" />
-                        {inaccessibleCount} groupe{inaccessibleCount !== 1 ? "s" : ""} hors accès pour ce compte
-                      </span>
-                    )}
-                  </div>
-                );
-              })()}
-              {(() => {
-                // Build palette: one distinct color per category
-                const categories = Array.from(new Set(groupedBySetTag.map((g) => g.category).filter(Boolean))) as string[];
-                const palette = ["violet", "blue", "amber", "emerald", "rose", "cyan", "orange", "teal"];
-                const catColor: Record<string, string> = {};
-                categories.forEach((c, i) => { catColor[c] = palette[i % palette.length]!; });
-                const colorClasses: Record<string, { bg: string; text: string; border: string }> = {
-                  violet: { bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-200" },
-                  blue:   { bg: "bg-blue-50",   text: "text-blue-700",   border: "border-blue-200" },
-                  amber:  { bg: "bg-amber-50",  text: "text-amber-700",  border: "border-amber-200" },
-                  emerald:{ bg: "bg-emerald-50",text: "text-emerald-700",border: "border-emerald-200" },
-                  rose:   { bg: "bg-rose-50",   text: "text-rose-700",   border: "border-rose-200" },
-                  cyan:   { bg: "bg-cyan-50",   text: "text-cyan-700",   border: "border-cyan-200" },
-                  orange: { bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200" },
-                  teal:   { bg: "bg-teal-50",   text: "text-teal-700",   border: "border-teal-200" },
-                };
-                const namedGroups = groupedBySetTag.filter((g) => g.setTag || g.category);
-                const unnamedGroups = groupedBySetTag.filter((g) => !g.setTag && !g.category);
-                return (
-                  <>
-                    {namedGroups.slice(0, visibleGroupCount).map((g) => {
-                      const color = g.category ? (catColor[g.category] ?? "violet") : "";
-                      const cls = color ? colorClasses[color] : null;
-                      const dimmed = !g.isAccessible && !!accountFilter;
-                      const cs = g.cycleSize;
-                      return (
-                        <div key={g.key} className={`flex items-start gap-3 p-2.5 rounded-xl border transition-opacity ${
-                          dimmed
-                            ? "opacity-50 border-dashed border-gray-300 bg-gray-50"
-                            : cls ? `${cls.bg} ${cls.border}` : "bg-gray-50 border-gray-200"
-                        }`}>
-                          {/* Rank badge */}
-                          <div className="shrink-0 flex flex-col items-center gap-0.5 min-w-[60px]">
-                            {dimmed ? (
-                              <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 bg-gray-100 text-gray-400 border-gray-300">
-                                <Lock size={10} />
-                              </div>
-                            ) : g.autoRank === 1 ? (
-                              <span className="px-2 py-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold whitespace-nowrap">
-                                Prochain
-                              </span>
-                            ) : g.autoRank != null ? (
-                              <>
-                                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 ${
-                                  cls ? `bg-white ${cls.text} ${cls.border}` : "bg-white text-gray-500 border-gray-300"
-                                }`}>
-                                  {g.autoRank}
-                                </div>
-                                <span className="text-[9px] text-gray-400 whitespace-nowrap leading-none">
-                                  {seqState.length === 0 ? `Dans ${g.autoRank - 1} gén.` : `#${g.autoRank}`}
-                                </span>
-                              </>
-                            ) : (
-                              <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 bg-white text-gray-300 border-gray-200">
-                                –
-                              </div>
-                            )}
-                          </div>
-                          {/* Set + category info */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 mb-1.5">
-                              {g.category && cls && !dimmed && (
-                                <span className={`flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded border ${cls.bg} ${cls.text} ${cls.border}`}>
-                                  <FolderOpen size={9} />{g.category}
-                                </span>
-                              )}
-                              {dimmed ? (
-                                <span className="text-[9px] text-gray-400 border border-dashed border-gray-300 rounded px-1.5 py-0.5 flex items-center gap-0.5">
-                                  <Lock size={8} /> Hors accès
-                                </span>
-                              ) : null}
-                              {g.setTag ? (
-                                <>
-                                  <span className="text-[10px] text-gray-300">›</span>
-                                  <span className="flex items-center gap-0.5 text-[10px] font-semibold bg-pink-50 text-pink-700 border border-pink-100 px-1.5 py-0.5 rounded">
-                                    <Layers size={9} />{g.setTag}
-                                  </span>
-                                </>
-                              ) : (
-                                <span className="text-[10px] text-gray-400 italic">pool</span>
-                              )}
-                              <span className="text-[10px] text-gray-400 ml-1">{g.accessibleCount} rush{g.accessibleCount !== 1 ? "es" : ""}</span>
-                              {g.lastUsed && <span className="text-[10px] text-gray-400 flex items-center gap-0.5 ml-1"><Clock size={9} />{formatDate(g.lastUsed)}</span>}
-                            </div>
-                            {/* Compact cards */}
-                            <div className="flex flex-col gap-1">
-                              {(accountFilter ? g.groupAssets.filter((a) => !a.disabled && (a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))) : g.groupAssets).map((a) => renderCompactCard(a, { hideCategory: true }))}
-                            </div>
-                          </div>
-                          {/* Sequence controls */}
-                          {seqState.length > 0 && g.setTag && (() => {
-                            const idx = seqState.indexOf(g.setTag!);
-                            return (
-                              <div className="flex flex-col items-center gap-0.5 shrink-0">
-                                {idx !== -1 ? (
-                                  <>
-                                    <button onClick={() => moveSetTag(g.setTag!, -1)} disabled={idx === 0} className="p-0.5 rounded hover:bg-white disabled:opacity-30"><ChevronUp size={13} /></button>
-                                    <button onClick={() => moveSetTag(g.setTag!, 1)} disabled={idx === seqState.length - 1} className="p-0.5 rounded hover:bg-white disabled:opacity-30"><ChevronDown size={13} /></button>
-                                    <button onClick={() => removeFromSequence(g.setTag!)} className="p-0.5 text-red-400 hover:text-red-600" title="Retirer"><MinusCircle size={12} /></button>
-                                  </>
-                                ) : (
-                                  <button onClick={() => addToSequence(g.setTag!)} className="p-0.5 text-indigo-400 hover:text-indigo-600" title="Fixer"><PlusCircle size={12} /></button>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      );
-                    })}
-                    {unnamedGroups.map((g) => (
-                      <div key={g.key || "__unset__"} className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-400">
-                        <span className="font-medium">Sans set</span>
-                        <span>— {g.accessibleCount} rush{g.accessibleCount !== 1 ? "es" : ""}</span>
-                      </div>
-                    ))}
-                    {visibleGroupCount < namedGroups.length && (
-                      <div ref={groupSentinelRef} className="h-4" />
-                    )}
-                  </>
-                );
-              })()}
-            </div>
+            <MediaAssetsRotationView
+              groupedBySetTag={groupedBySetTag}
+              seqState={seqState}
+              accountFilter={accountFilter}
+              visibleGroupCount={visibleGroupCount}
+              groupSentinelRef={groupSentinelRef}
+              saveSequence={saveSequence}
+              moveSetTag={moveSetTag}
+              addToSequence={addToSequence}
+              removeFromSequence={removeFromSequence}
+              renderCompactCard={renderCompactCard}
+            />
           ) : viewMode === "grouped" ? (
-            <div className="space-y-5">
-              {/* Rotation mode banner */}
-              <div className="flex items-center justify-between px-3 py-2 rounded-lg border bg-gray-50 border-gray-200">
-                {seqState.length === 0 ? (
-                  <span className="text-xs text-gray-600 flex items-center gap-1.5">
-                    <RotateCcw size={12} className="text-emerald-500" />
-                    <span className="font-medium text-emerald-700">Rotation auto</span>
-                    <span className="text-gray-400">— les groupes les moins récemment utilisés passent en premier</span>
-                  </span>
-                ) : (
-                  <span className="text-xs text-gray-600 flex items-center gap-1.5">
-                    <ListOrdered size={12} className="text-indigo-500" />
-                    <span className="font-medium text-indigo-700">Ordre personnalisé</span>
-                    <span className="text-gray-400">— {seqState.length} groupe{seqState.length !== 1 ? "s" : ""} dans la rotation</span>
-                  </span>
-                )}
-                {seqState.length > 0 && (
-                  <button
-                    onClick={() => { void saveSequence([]); }}
-                    className="text-[11px] text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-200 rounded px-2 py-0.5 transition-colors"
-                    title="Revenir à la rotation automatique"
-                  >
-                    Passer en auto
-                  </button>
-                )}
-              </div>
-              {groupedBySetTag.length === 0 ? (
-                <p className="text-sm text-gray-400 py-8 text-center">Aucun résultat.</p>
-              ) : (
-                <div>
-                  <datalist id="group-list">
-                    {Array.from(new Set(assets.map((a) => a.category).filter(Boolean))).map((t) => <option key={t!} value={t!} />)}
-                  </datalist>
-                  {sectionsByGroup.hasGroups ? (
-                    <div className="space-y-8">
-                      {sectionsByGroup.sections.map(({ name, groups }) => (
-                        <div key={name} className="rounded-2xl border border-violet-100 bg-violet-50/30 p-4">
-                          <div className="flex items-center gap-2 mb-4">
-                            <FolderOpen size={14} className="text-violet-500 shrink-0" />
-                            <span className="text-sm font-semibold text-violet-800">{name}</span>
-                            <span className="text-xs text-violet-400 font-medium">{groups.reduce((n, g) => n + g.groupAssets.length, 0)} rush{groups.reduce((n, g) => n + g.groupAssets.length, 0) !== 1 ? "es" : ""}</span>
-                          </div>
-                          <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
-                            {groups.map((g) => (
-                              <div key={g.key} className={`${!g.isAccessible && accountFilter ? "opacity-50" : ""}`}>
-                                {/* Set column header */}
-                                <div className={`mb-2 px-2.5 py-2 rounded-xl border flex flex-col gap-1 ${!g.isAccessible && accountFilter ? "bg-gray-50 border-dashed border-gray-300" : "bg-white border-pink-100"}`}>
-                                  <div className="flex items-center gap-1.5">
-                                    <Layers size={11} className="text-pink-400 shrink-0" />
-                                    <span className="text-xs font-semibold text-gray-800 truncate">{g.setTag}</span>
-                                    <span className="text-[10px] text-gray-400 ml-auto">{g.accessibleCount} rush{g.accessibleCount !== 1 ? "es" : ""}</span>
-                                  </div>
-                                  <div className="flex items-center gap-1 flex-wrap">
-                                    {!g.isAccessible && accountFilter ? (
-                                      <span className="text-[9px] text-gray-400 border border-dashed border-gray-300 rounded px-1.5 py-0.5 flex items-center gap-0.5">
-                                        <Lock size={8} /> Hors accès
-                                      </span>
-                                    ) : seqState.length === 0 ? (
-                                      g.autoRank === 1 ? (
-                                        <span className="text-[9px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                                          <RotateCcw size={8} /> Prochain
-                                        </span>
-                                      ) : g.autoRank ? (
-                                        <span className="text-[9px] text-gray-400 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                                          <RotateCcw size={8} /> Dans {g.autoRank - 1} gén.
-                                        </span>
-                                      ) : null
-                                    ) : null}
-                                    {g.lastUsed && <span className="text-[9px] text-gray-400 flex items-center gap-0.5"><Clock size={8} />{formatDate(g.lastUsed)}</span>}
-                                  </div>
-                                </div>
-                                <div className="flex flex-col gap-1.5">
-                                  {(accountFilter ? g.groupAssets.filter((a) => !a.disabled && (a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))) : g.groupAssets).map((a) => renderCompactCard(a, { hideCategory: true }))}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                      {sectionsByGroup.unassigned.filter((g) => g.key !== "").length > 0 && (
-                        <div>
-                          <div className="flex items-center gap-2 mb-3">
-                            <span className="text-xs text-gray-400 font-medium">Sets sans catégorie</span>
-                            <div className="flex-1 h-px bg-gray-100" />
-                          </div>
-                          <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
-                            {sectionsByGroup.unassigned.filter((g) => g.key !== "").map((g) => renderColumn({ ...g, fluid: true }))}
-                          </div>
-                        </div>
-                      )}
-                      {sectionsByGroup.unassigned.filter((g) => g.key === "").map((g) => renderColumn({ ...g, fluid: true }))}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
-                      {groupedBySetTag.map((g) => renderColumn({ ...g, fluid: true }))}
-                    </div>
-                  )}
-
-
-                </div>
-              )}
-            </div>
+            <MediaAssetsGroupedView
+              groupedBySetTag={groupedBySetTag}
+              sectionsByGroup={sectionsByGroup}
+              seqState={seqState}
+              accountFilter={accountFilter}
+              assets={assets}
+              saveSequence={saveSequence}
+              renderColumn={renderColumn}
+              renderCompactCard={renderCompactCard}
+            />
           ) : (
             <>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
@@ -1760,88 +1494,22 @@ export function MediaAssetsPanel({ library }: Props) {
           )}
         </>
       ) : (
-        /* ─── Audio list ─── */
-        <div className="space-y-1.5">
-          {visibleFiltered.map((asset) => (
-            <div key={asset.id} className="group flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl hover:border-indigo-300 transition-colors">
-              <div className="w-9 h-9 bg-indigo-50 rounded-lg flex items-center justify-center shrink-0">
-                <Music2 size={16} className="text-indigo-400" />
-              </div>
-                <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800 truncate">{asset.filename}</p>
-                <div className="flex items-center gap-2 text-[11px] text-gray-400">
-                  {asset.duration ? <span>{formatDuration(asset.duration)}</span> : null}
-                  {editingUsageId === asset.id ? (
-                    <input
-                      autoFocus
-                      type="number"
-                      min={0}
-                      value={usageInput}
-                      onChange={(e) => setUsageInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") { void handleSaveUsage(asset, usageInput); }
-                        if (e.key === "Escape") { setEditingUsageId(null); setUsageInput(""); }
-                      }}
-                      onBlur={() => { void handleSaveUsage(asset, usageInput); }}
-                      className="w-16 text-[10px] border border-indigo-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                    />
-                  ) : (
-                    <button
-                      onClick={() => { setEditingUsageId(asset.id); setUsageInput(String(asset.usageCount)); }}
-                      className="flex items-center gap-0.5 hover:text-indigo-600 hover:underline transition-colors"
-                      title="Cliquer pour modifier"
-                    >
-                      {asset.usageCount} usage{asset.usageCount !== 1 ? "s" : ""}
-                    </button>
-                  )}
-                  <span>· Dernier : {formatDate(asset.lastUsedAt)}</span>
-                </div>
-                {/* Tags */}
-                {editingTagsId === asset.id ? (
-                  <input
-                    autoFocus
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") { void handleSaveTags(asset, tagInput.split(",").map((t) => t.trim()).filter(Boolean)); }
-                      if (e.key === "Escape") { setEditingTagsId(null); setTagInput(""); }
-                    }}
-                    onBlur={() => { void handleSaveTags(asset, tagInput.split(",").map((t) => t.trim()).filter(Boolean)); }}
-                    placeholder="tag1, tag2"
-                    className="mt-1 w-full text-[10px] border border-indigo-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                  />
-                ) : (
-                  <div
-                    className="mt-1 flex flex-wrap gap-1 cursor-pointer min-h-[16px]"
-                    onClick={() => { setEditingTagsId(asset.id); setTagInput(asset.tags.join(", ")); }}
-                    title="Cliquer pour éditer les tags"
-                  >
-                    {asset.tags.length > 0 ? asset.tags.map((t) => (
-                      <span key={t} className="text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-200 px-1 rounded">{t}</span>
-                    )) : (
-                      <span className="text-[9px] text-gray-300 flex items-center gap-0.5"><Tag size={8} /> ajouter tags</span>
-                    )}
-                  </div>
-                )}
-              </div>
-              <audio controls src={asset.url} className="h-8 w-36 sm:w-48 shrink-0" preload="none" />
-              <button
-                onClick={() => { void handleResetAssetUsage(asset); }}
-                className="p-1.5 text-gray-300 hover:text-orange-500 rounded transition-colors opacity-0 group-hover:opacity-100"
-                title={accountFilter ? "Réinitialiser les stats de ce compte" : "Réinitialiser les compteurs"}
-              >
-                <RotateCcw size={14} />
-              </button>
-              <button
-                onClick={() => { void handleDelete(asset); }}
-                className="p-1.5 text-gray-300 hover:text-red-500 rounded transition-colors opacity-0 group-hover:opacity-100"
-                title="Supprimer"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-        </div>
+        <MediaAssetsAudioList
+          assets={visibleFiltered}
+          accountFilter={accountFilter}
+          editingUsageId={editingUsageId}
+          usageInput={usageInput}
+          setEditingUsageId={setEditingUsageId}
+          setUsageInput={setUsageInput}
+          handleSaveUsage={handleSaveUsage}
+          editingTagsId={editingTagsId}
+          tagInput={tagInput}
+          setEditingTagsId={setEditingTagsId}
+          setTagInput={setTagInput}
+          handleSaveTags={handleSaveTags}
+          handleResetAssetUsage={handleResetAssetUsage}
+          handleDelete={handleDelete}
+        />
       )}
       {editingAsset && (
         <MediaAssetEditModal
