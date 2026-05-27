@@ -42,7 +42,10 @@ export function CoverSection({ slot, pattern, coverPack, canEdit, currentVersion
   // Si pas de pattern ou que le pattern indique que la cover n'est pas nécessaire, on masque la section
   if (!pattern || pattern.coverMode === "none") return null;
 
-  const coverToolHref = `/tools/cover?slotId=${slot.id}&returnTo=/publications/${slot.id}`;
+  // B2-v2 : la sous-route /publications/[id]/cover résout la "cassure de
+  // retour" qui faisait que /tools/cover ignorait slotId/returnTo. Le path
+  // est désormais hiérarchisé et le breadcrumb retour fonctionne.
+  const coverToolHref = `/publications/${slot.id}/cover`;
 
   return (
     <section id="cover" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
