@@ -187,6 +187,11 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
       "needsDescriptionOverride",
       "needsRushesOverride",
       "needsBriefOverride",
+      // Slots one-off Phase 5 — overrides des ressources (preset/prompt)
+      "coverModeOverride",
+      "coverPresetIdOverride",
+      "captionPresetIdOverride",
+      "descriptionPromptIdOverride",
     ],
     MONTEUR: ["status", "notes", "description"],
     // CM édite la légende IG (caption) en plus de notes/description.

@@ -89,6 +89,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       assigneeMonteurId: true,
       assigneeCmId: true,
       assigneeVideasteId: true,
+      // Champs nécessaires pour la validation cross-field Phase 5
+      needsCaptionsOverride: true,
+      needsDescriptionOverride: true,
+      captionPresetIdOverride: true,
+      descriptionPromptIdOverride: true,
+      coverModeOverride: true,
+      coverPresetIdOverride: true,
+      pattern: {
+        select: {
+          captionPresetId: true,
+          descriptionPromptId: true,
+          needsCaptions: true,
+          needsDescription: true,
+          coverMode: true,
+          coverConfig: true,
+        },
+      },
     },
   });
 
@@ -112,9 +129,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   );
 
   const { status, title, caption, description, templateId, scheduledAt, fields, fieldSchema,
-          assigneeMonteurId, assigneeCmId, patternId, currentVersionId, isAuto,
+          assigneeMonteurId, assigneeCmId, assigneeVideasteId, patternId, currentVersionId, isAuto,
           needsClientValidationOverride, allowsClientRevisionOverride,
-          needsCaptionsOverride, needsDescriptionOverride, needsRushesOverride, needsBriefOverride } = body as Record<string, unknown>;
+          needsCaptionsOverride, needsDescriptionOverride, needsRushesOverride, needsBriefOverride,
+          coverModeOverride, coverPresetIdOverride, captionPresetIdOverride, descriptionPromptIdOverride
+        } = body as Record<string, unknown>;
   // notes est mutable : peut être sanitisé avant l'update (H2).
   let { notes } = body as Record<string, unknown>;
 
@@ -213,6 +232,77 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "CM assignee invalide" }, { status: 400 });
     }
   }
+  if (typeof assigneeVideasteId === "string") {
+    const videaste = await prisma.user.findUnique({
+      where: { id: assigneeVideasteId },
+      select: { role: true },
+    });
+    if (!videaste || !["VIDEASTE", "ADMIN"].includes(videaste.role ?? "")) {
+      return NextResponse.json({ error: "Vidéaste assignee invalide" }, { status: 400 });
+    }
+  }
+
+  // ── Validation cross-field Phase 5 ─────────────────────────────────────────
+  // On simule l'état post-update (slot actuel ∪ body diff) puis on résout
+  // via resolveSlotConfig pour vérifier la cohérence toggles ↔ presets.
+  // Évite que l'admin sauvegarde un slot où la cover auto est activée sans
+  // preset défini (sinon trigger-cover plus tard refuse cryptiquement).
+  const postUpdateNeedsCaptions =
+    needsCaptionsOverride !== undefined
+      ? (needsCaptionsOverride as boolean | null)
+      : slot.needsCaptionsOverride;
+  const postUpdateCaptionPresetId =
+    captionPresetIdOverride !== undefined
+      ? (captionPresetIdOverride as string | null)
+      : slot.captionPresetIdOverride;
+  // Si needsCaptions devient effectivement true ET pas de preset résolu (override ni pattern), 400.
+  const resolvedNeedsCaptions = postUpdateNeedsCaptions ?? slot.pattern?.needsCaptions ?? false;
+  const resolvedCaptionPresetId = postUpdateCaptionPresetId ?? slot.pattern?.captionPresetId ?? null;
+  if (resolvedNeedsCaptions === true && !resolvedCaptionPresetId) {
+    return NextResponse.json(
+      { error: "Sous-titres auto activés mais aucun preset captions défini (ni au slot, ni au pattern)" },
+      { status: 400 },
+    );
+  }
+
+  const postUpdateNeedsDescription =
+    needsDescriptionOverride !== undefined
+      ? (needsDescriptionOverride as string | null)
+      : slot.needsDescriptionOverride;
+  const postUpdateDescriptionPromptId =
+    descriptionPromptIdOverride !== undefined
+      ? (descriptionPromptIdOverride as string | null)
+      : slot.descriptionPromptIdOverride;
+  const resolvedNeedsDescription = postUpdateNeedsDescription ?? slot.pattern?.needsDescription ?? "none";
+  const resolvedDescriptionPromptId = postUpdateDescriptionPromptId ?? slot.pattern?.descriptionPromptId ?? null;
+  if (resolvedNeedsDescription === "autoGenerate" && !resolvedDescriptionPromptId) {
+    return NextResponse.json(
+      { error: "Description auto activée mais aucun prompt IA défini (ni au slot, ni au pattern)" },
+      { status: 400 },
+    );
+  }
+
+  const postUpdateCoverMode =
+    coverModeOverride !== undefined
+      ? (coverModeOverride as string | null)
+      : slot.coverModeOverride;
+  const postUpdateCoverPresetId =
+    coverPresetIdOverride !== undefined
+      ? (coverPresetIdOverride as string | null)
+      : slot.coverPresetIdOverride;
+  const resolvedCoverMode = postUpdateCoverMode ?? slot.pattern?.coverMode ?? "none";
+  const patternCoverPresetIdRaw = slot.pattern?.coverConfig;
+  const patternCoverPresetId =
+    patternCoverPresetIdRaw && typeof patternCoverPresetIdRaw === "object" && !Array.isArray(patternCoverPresetIdRaw)
+      ? (patternCoverPresetIdRaw as { coverPresetId?: string }).coverPresetId ?? null
+      : null;
+  const resolvedCoverPresetId = postUpdateCoverPresetId ?? patternCoverPresetId;
+  if (resolvedCoverMode === "auto" && !resolvedCoverPresetId) {
+    return NextResponse.json(
+      { error: "Cover mode auto activé mais aucun preset cover défini (ni au slot, ni au pattern)" },
+      { status: 400 },
+    );
+  }
 
   // Wrap update + log activity dans un try/catch global pour ne jamais
   // remonter un HTML 500 au client (qui crasherait avec "unexpected JSON").
@@ -254,6 +344,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           : {}),
         ...(needsBriefOverride !== undefined
           ? { needsBriefOverride: needsBriefOverride as boolean | null }
+          : {}),
+        // Phase 5 slots one-off — ressources (preset/prompt) overrides
+        ...(coverModeOverride !== undefined
+          ? { coverModeOverride: coverModeOverride as string | null }
+          : {}),
+        ...(coverPresetIdOverride !== undefined
+          ? { coverPresetIdOverride: coverPresetIdOverride as string | null }
+          : {}),
+        ...(captionPresetIdOverride !== undefined
+          ? { captionPresetIdOverride: captionPresetIdOverride as string | null }
+          : {}),
+        ...(descriptionPromptIdOverride !== undefined
+          ? { descriptionPromptIdOverride: descriptionPromptIdOverride as string | null }
+          : {}),
+        // Phase VIDÉASTE — assignation vidéaste (déjà whitelisté pour ADMIN)
+        ...(assigneeVideasteId !== undefined
+          ? { assigneeVideasteId: assigneeVideasteId as string | null }
           : {}),
       },
       include: {
