@@ -162,6 +162,29 @@ interface CoverPackInfo {
   finalCoverUrl: string | null;
 }
 
+/**
+ * F4 — Permissions regroupées pour la fiche publication.
+ *
+ * Avant : 12 props canXxx propagées une par une à PublicationFiche.
+ * Après : 1 prop `permissions` typée — plus lisible, plus testable
+ * (création de fixtures plus simple), et regroupement sémantique
+ * cohérent (toutes les décisions d'autorisation viennent du même endroit).
+ */
+export interface PublicationFichePermissions {
+  canMarkPublished: boolean;
+  canDelete: boolean;
+  canEditRender: boolean;
+  canEditCover: boolean;
+  canEditCaptions: boolean;
+  canEditDescription: boolean;
+  canUploadRushes: boolean;
+  canManageRushes: boolean;
+  canEditBrief: boolean;
+  canManageAttachments: boolean;
+  canUploadVersion: boolean;
+  canPromoteVersion: boolean;
+}
+
 export interface PublicationFicheProps {
   slot: SlotInfo;
   account: AccountInfo;
@@ -172,26 +195,15 @@ export interface PublicationFicheProps {
   assigneeMonteur: AssigneeInfo | null;
   assigneeCm: AssigneeInfo | null;
   steps: PublicationStep[];
-  canMarkPublished: boolean;
-  canDelete: boolean;
-  canEditRender: boolean;
-  canEditCover: boolean;
-  canEditCaptions: boolean;
-  canEditDescription: boolean;
+  permissions: PublicationFichePermissions;
   // Phase B2 — Rushes
   rushes: RushItem[];
-  canUploadRushes: boolean;
-  canManageRushes: boolean;
   // Phase B3 — Brief
   brief: BriefItem | null;
   briefAttachments: BriefAttachmentItem[];
-  canEditBrief: boolean;
-  canManageAttachments: boolean;
   // Phase C1 — Versions
   versions: VersionItem[];
   currentVersionId: string | null;
-  canUploadVersion: boolean;
-  canPromoteVersion: boolean;
   // Phase 1.9 A2 — Dernier job captions lié
   latestCaptionJob: {
     id: string;
@@ -219,23 +231,12 @@ export function PublicationFiche({
   assigneeMonteur,
   assigneeCm,
   steps,
-  canMarkPublished,
-  canDelete,
-  canEditRender,
-  canEditCover,
-  canEditCaptions,
-  canEditDescription,
+  permissions,
   rushes,
-  canUploadRushes,
-  canManageRushes,
   brief,
   briefAttachments,
-  canEditBrief,
-  canManageAttachments,
   versions,
   currentVersionId,
-  canUploadVersion,
-  canPromoteVersion,
   latestCaptionJob,
   comments,
   commentsHasMore,
@@ -244,6 +245,16 @@ export function PublicationFiche({
   currentUserId,
   currentUserRole,
 }: PublicationFicheProps) {
+  // F4 — Destructure local des permissions pour garder les call sites
+  // historiques inchangés (`{canEditRender}` etc.). Le grouping est dans
+  // la signature externe pour les consumers (page.tsx) ; à l'intérieur
+  // on reste sur l'API plate.
+  const {
+    canMarkPublished, canDelete, canEditRender, canEditCover,
+    canEditCaptions, canEditDescription, canUploadRushes, canManageRushes,
+    canEditBrief, canManageAttachments, canUploadVersion, canPromoteVersion,
+  } = permissions;
+
   // Résoudre la version courante pour CaptionsSection et CoverSection (C3)
   const currentVersion = currentVersionId
     ? (versions.find((v) => v.id === currentVersionId && v.deletedAt === null) ?? null)

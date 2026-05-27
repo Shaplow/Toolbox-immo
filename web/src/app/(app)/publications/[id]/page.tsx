@@ -302,23 +302,25 @@ export default async function PublicationPage({ params }: PageProps) {
       assigneeMonteur={slot.assigneeMonteur}
       assigneeCm={slot.assigneeCm}
       steps={steps}
-      canMarkPublished={canPublish}
-      canDelete={canDelete}
-      canEditRender={canEditRender}
-      canEditCover={canEditCover}
-      canEditCaptions={canEditCaptions}
-      canEditDescription={canEditDescription}
+      permissions={{
+        canMarkPublished: canPublish,
+        canDelete,
+        canEditRender,
+        canEditCover,
+        canEditCaptions,
+        canEditDescription,
+        canUploadRushes: canUploadRushesFlag,
+        canManageRushes,
+        canEditBrief: canEditBriefFlag,
+        canManageAttachments,
+        canUploadVersion: canUploadVersionFlag,
+        canPromoteVersion: canPromoteVersionFlag,
+      }}
       rushes={rushes}
-      canUploadRushes={canUploadRushesFlag}
-      canManageRushes={canManageRushes}
       brief={brief}
       briefAttachments={briefAttachments}
-      canEditBrief={canEditBriefFlag}
-      canManageAttachments={canManageAttachments}
       versions={versions}
       currentVersionId={slot.currentVersionId ?? null}
-      canUploadVersion={canUploadVersionFlag}
-      canPromoteVersion={canPromoteVersionFlag}
       latestCaptionJob={
         latestCaptionJob
           ? {
