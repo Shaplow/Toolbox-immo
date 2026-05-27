@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import {
-  Film, FileText, X,
+  FileText, X,
   Mic, Check,
 } from "lucide-react";
 import {
@@ -35,6 +35,7 @@ import { CaptionsSourcePicker } from "@/components/captions/CaptionsSourcePicker
 import { CaptionsJobQueue } from "@/components/captions/CaptionsJobQueue";
 import { CaptionsVideoUploadBar } from "@/components/captions/CaptionsVideoUploadBar";
 import { CaptionsHeader } from "@/components/captions/CaptionsHeader";
+import { CaptionsGenerateButton } from "@/components/captions/CaptionsGenerateButton";
 
 type TextTransform = "none" | "upper" | "lower" | "title";
 type AIModel = "claude" | "gpt";
@@ -851,55 +852,19 @@ export default function CaptionsGenerateForm({
           </div>
         )}
 
-        {/* Generate button — only visible when not in trim editor */}
+        {/* F3-step8 — generate button + hint + progress + status extraits */}
         {!showTrimEditor && <>
-        <button
-          disabled={!canGenerate || busy}
-          onClick={handleGenerate}
-          className="w-full flex items-center justify-center gap-2 py-4 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-2xl font-semibold text-sm transition-colors"
-        >
-          {busy ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              {message}
-            </>
-          ) : (
-            <>
-              <Film size={16} />
-              Générer
-            </>
-          )}
-        </button>
+          <CaptionsGenerateButton
+            canGenerate={canGenerate}
+            busy={busy}
+            message={message}
+            renderProgress={renderProgress}
+            hasVideoFile={Boolean(videoFile)}
+            onGenerate={() => void handleGenerate()}
+          />
 
-        {!canGenerate && !busy && (
-          <p className="text-xs text-center text-gray-400 mt-2">
-            {!videoFile ? "Ajoutez une vidéo" : "Sélectionnez une source de sous-titres"}
-          </p>
-        )}
-
-        {/* Progress bar */}
-        {renderProgress >= 0 && (
-          <div className="mt-4 w-full bg-gray-100 rounded-full h-1 overflow-hidden">
-            <div
-              className="bg-violet-500 h-1 rounded-full transition-all duration-500"
-              style={{ width: `${Math.round(renderProgress * 100)}%` }}
-            />
-          </div>
-        )}
-
-        {/* Status (non-busy) */}
-        {message && !busy && (
-          <p
-            className={`text-sm text-center mt-3 ${
-              message.startsWith("Erreur") ? "text-red-500" : "text-gray-500"
-            }`}
-          >
-            {message}
-          </p>
-        )}
-
-        {/* F3-step5 — queue + lien retour extraits dans CaptionsJobQueue */}
-        <CaptionsJobQueue jobs={jobs} returnTo={returnTo} busy={busy} />
+          {/* F3-step5 — queue + lien retour extraits dans CaptionsJobQueue */}
+          <CaptionsJobQueue jobs={jobs} returnTo={returnTo} busy={busy} />
         </>}
       </div>
     </div>
