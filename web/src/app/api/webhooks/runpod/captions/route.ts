@@ -12,6 +12,7 @@ import { getR2PublicUrl, deleteFromR2, r2Configured } from "@/lib/r2";
 import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runpod";
 import { notifyUser } from "@/lib/sseStore";
 import { logActivity } from "@/lib/publications/activity";
+import { applyAutoTransitionFromPipeline } from "@/lib/publications/transitions";
 
 type CaptionOutput = {
   video_url?: string;
@@ -72,6 +73,14 @@ export async function POST(req: NextRequest) {
         type: "CAPTIONS_COMPLETED",
         payload: { captionJobId: job.id, videoUrl },
       });
+
+      // Auto-transition pipeline : si auto_template + render DONE + captions COMPLETED
+      // (cas typique : render fini avant captions) → READY_FOR_CM.
+      await applyAutoTransitionFromPipeline(
+        prisma,
+        job.slotId,
+        "CAPTIONS_COMPLETED",
+      );
     }
   } else {
     const errorMsg = output?.error ?? error ?? `RunPod status: ${status}`;

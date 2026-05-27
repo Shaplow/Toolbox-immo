@@ -17,6 +17,14 @@ interface Props {
     videoUrl: string | null;
     pngUrl: string | null;
   } | null;
+  /**
+   * URL "finale" de la vidéo (avec captions incrustées si dispo, sinon vidéo brute
+   * du render). Calculée par le caller via `getSlotFinalVideoUrl`. Si fournie,
+   * remplace `render.videoUrl` pour l'affichage. Si null, on retombe sur le render.
+   */
+  finalVideoUrl?: string | null;
+  /** true si `finalVideoUrl` est la version sous-titrée (vs version brute). */
+  isCaptioned?: boolean;
   listingId: string | null;
   /** true pour les admins uniquement (re-render, lancer render) */
   canEdit: boolean;
@@ -36,7 +44,9 @@ const RENDER_STATUS_COLORS: Record<string, string> = {
   ERROR: "bg-red-50 text-red-700 border-red-200",
 };
 
-export function RenderSection({ slot, pattern, render, listingId, canEdit }: Props) {
+export function RenderSection({ slot, pattern, render, finalVideoUrl, isCaptioned, listingId, canEdit }: Props) {
+  // URL effectivement affichée : version finale (avec captions si dispo), fallback render brut.
+  const displayVideoUrl = finalVideoUrl ?? render?.videoUrl ?? null;
   // Si pas de pattern, pas de rendu possible — masquer la section
   if (!pattern) return null;
 
@@ -97,14 +107,21 @@ export function RenderSection({ slot, pattern, render, listingId, canEdit }: Pro
       )}
 
       {/* Cas : render présent avec vidéo */}
-      {render?.videoUrl && (
+      {displayVideoUrl && (
         <div className="space-y-4">
+          {isCaptioned && (
+            <p className="inline-flex items-center gap-1.5 text-xs text-violet-700 bg-violet-50 border border-violet-200 px-2 py-1 rounded-md">
+              <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
+              Version avec sous-titres incrustés
+            </p>
+          )}
           <video
+            key={displayVideoUrl}
             controls
             className="w-full max-w-xl rounded-lg border border-gray-100"
             style={{ maxHeight: 360 }}
           >
-            <source src={render.videoUrl} />
+            <source src={displayVideoUrl} />
             Votre navigateur ne supporte pas la lecture vidéo.
           </video>
 
