@@ -1,11 +1,36 @@
-﻿"use client";
+"use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
-import { useRouter } from "next/navigation";
+/**
+ * ListingsClient — "Mon historique" en lecture seule.
+ *
+ * Refonte B6-v2 (2026-05-27) : timeline uniforme par onglet, retrait des
+ * contrôles row-level (delete, regenerate, revert, cover gen, copy/expand
+ * description) qui doublonnaient les pages détail (/renders/[id],
+ * /captions/[id]/generate, /transcriptions/[id], /descriptions/[id]).
+ *
+ * Live updates conservés :
+ *  - SSE jobBus pour captions/transcription (statuts en temps réel).
+ *  - Polling toutes les 5s pour les renders PENDING/PROCESSING.
+ *
+ * Le filtre Admin par utilisateur reste, et chaque onglet expose un
+ * compteur d'éléments filtrés.
+ */
+
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
-import { Film, RefreshCw, Download, LayoutTemplate, Mic, AlignLeft, Copy, Check, X, RotateCcw, Image as ImageIcon } from "lucide-react";
+import {
+  Film,
+  LayoutTemplate,
+  Mic,
+  AlignLeft,
+  Image as ImageIcon,
+  ChevronRight,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+} from "lucide-react";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
-import { toast } from "@/components/ui/Toast";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -111,20 +136,180 @@ function groupByDate<T extends { createdAt: string }>(items: T[]): Record<string
 
 const GROUP_ORDER = ["Aujourd'hui", "Cette semaine", "Plus tôt"];
 
-function isStale(createdAt: string, thresholdMs = 60 * 60 * 1000): boolean {
-  return Date.now() - new Date(createdAt).getTime() > thresholdMs;
+// ── Timeline entry shape ──────────────────────────────────────────────────────
+
+type Tone = "indigo" | "violet" | "teal" | "sky";
+
+interface TimelineEntry {
+  id: string;
+  icon: typeof Film;
+  iconTone: Tone;
+  title: string;
+  sublabel: string | null;
+  status: string;
+  createdAt: string;
+  href: string;
+  ownerName?: string | null;
 }
 
-function staleDuration(createdAt: string): string {
-  const ms = Date.now() - new Date(createdAt).getTime();
-  const h = Math.floor(ms / 3_600_000);
-  const d = Math.floor(h / 24);
-  if (d >= 1) return `${d}j`;
-  if (h >= 1) return `${h}h`;
-  return "<1h";
+const TONE_BG: Record<Tone, string> = {
+  indigo: "bg-indigo-50 text-indigo-600",
+  violet: "bg-violet-50 text-violet-600",
+  teal: "bg-teal-50 text-teal-600",
+  sky: "bg-sky-50 text-sky-600",
+};
+
+// Tab badge styles — classes statiques explicites (Tailwind purge ne supporte
+// pas les interpolations dynamiques bg-${tone}-100).
+const TAB_BADGE_ACTIVE: Record<Tone, string> = {
+  indigo: "bg-indigo-100 text-indigo-600",
+  violet: "bg-violet-100 text-violet-600",
+  teal: "bg-teal-100 text-teal-600",
+  sky: "bg-sky-100 text-sky-600",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  PENDING: "En attente",
+  QUEUED: "En file",
+  PROCESSING: "En cours",
+  RUNNING: "En cours",
+  COMPLETED: "Terminé",
+  DONE: "Terminé",
+  FAILED: "Échec",
+  ERROR: "Échec",
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const label = STATUS_LABEL[status] ?? status;
+  const isInProgress = ["PENDING", "QUEUED", "PROCESSING", "RUNNING"].includes(status);
+  const isDone = ["COMPLETED", "DONE"].includes(status);
+  const isError = ["FAILED", "ERROR"].includes(status);
+
+  const Icon = isInProgress ? Loader2 : isDone ? CheckCircle2 : isError ? AlertCircle : Clock;
+  const cls = isInProgress
+    ? "bg-amber-50 text-amber-700 border-amber-200"
+    : isDone
+    ? "bg-green-50 text-green-700 border-green-200"
+    : isError
+    ? "bg-red-50 text-red-700 border-red-200"
+    : "bg-gray-50 text-gray-600 border-gray-200";
+
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${cls}`}>
+      <Icon size={10} className={isInProgress ? "animate-spin" : ""} />
+      {label}
+    </span>
+  );
+}
+
+function TimelineRow({ entry }: { entry: TimelineEntry }) {
+  const Icon = entry.icon;
+  return (
+    <Link
+      href={entry.href}
+      className="group flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 hover:border-indigo-200 hover:shadow-sm transition-all"
+    >
+      <div className={`shrink-0 flex items-center justify-center w-9 h-9 rounded-lg ${TONE_BG[entry.iconTone]}`}>
+        <Icon size={16} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-sm font-medium text-gray-900 truncate">{entry.title}</p>
+          <StatusBadge status={entry.status} />
+        </div>
+        <p className="text-xs text-gray-400 mt-0.5 truncate">
+          {entry.sublabel ?? "—"}
+          {entry.ownerName && <span className="ml-1.5">· {entry.ownerName}</span>}
+        </p>
+      </div>
+      <div className="shrink-0 flex items-center gap-2 text-xs text-gray-400">
+        <span className="hidden sm:inline">{formatDate(entry.createdAt)}</span>
+        <ChevronRight size={14} className="text-gray-300 group-hover:text-indigo-400 transition-colors" />
+      </div>
+    </Link>
+  );
+}
+
+// ── Mapping data → timeline entries ───────────────────────────────────────────
+
+function listingToEntry(item: GridItem): TimelineEntry {
+  const template = item.listing.template;
+  const titleBase = template?.name ?? "Template supprimé";
+  const sublabelParts: string[] = [];
+  if (template?.client) sublabelParts.push(template.client);
+  if (item.render && template) {
+    try {
+      const formats = JSON.parse(template.formats) as string[];
+      if (formats.length > 0) sublabelParts.push(formats.join(" · "));
+    } catch {
+      // Silent : formats parsing optionnel.
+    }
+  }
+  return {
+    id: item.id,
+    icon: LayoutTemplate,
+    iconTone: "indigo",
+    title: titleBase,
+    sublabel: sublabelParts.join(" · ") || null,
+    status: item.render?.status ?? "PENDING",
+    createdAt: item.createdAt,
+    href: item.render ? `/renders/${item.render.id}` : `/templates`,
+    ownerName: item.listing.ownerName,
+  };
+}
+
+function captionToEntry(job: CaptionJobRow): TimelineEntry {
+  return {
+    id: job.id,
+    icon: Film,
+    iconTone: "violet",
+    title: job.inputName ?? "Caption sans nom",
+    sublabel: job.presetId ? `Preset ${job.presetId.slice(0, 8)}…` : null,
+    status: job.status,
+    createdAt: job.createdAt,
+    href: job.presetId ? `/captions/${job.presetId}/generate?captionJobId=${job.id}` : "/captions",
+    ownerName: job.ownerName,
+  };
+}
+
+function transcriptionToEntry(job: TranscriptionJobRow): TimelineEntry {
+  const parts: string[] = [job.model];
+  if (job.language) parts.push(job.language);
+  if (job.duration != null) parts.push(`${Math.round(job.duration)}s`);
+  if (job.hasDiarization) parts.push("diarisation");
+  return {
+    id: job.id,
+    icon: Mic,
+    iconTone: "teal",
+    title: job.inputFilename ?? "Transcription sans nom",
+    sublabel: parts.join(" · ") || null,
+    status: job.status,
+    createdAt: job.createdAt,
+    href: `/transcriptions/${job.id}`,
+    ownerName: job.ownerName,
+  };
+}
+
+function descriptionToEntry(job: DescriptionJobRow): TimelineEntry {
+  const parts: string[] = [job.model];
+  if (job.inputType) parts.push(job.inputType);
+  if (job.prompt?.name) parts.push(job.prompt.name);
+  return {
+    id: job.id,
+    icon: AlignLeft,
+    iconTone: "sky",
+    title: job.inputFilename ?? job.prompt?.name ?? "Description sans titre",
+    sublabel: parts.join(" · ") || null,
+    status: job.status,
+    createdAt: job.createdAt,
+    href: "/descriptions",
+    ownerName: job.ownerName,
+  };
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
+
+type TabKey = "templates" | "captions" | "transcription" | "description";
 
 export function ListingsClient({
   initialListings,
@@ -135,7 +320,6 @@ export function ListingsClient({
   hasCaptions = false,
   hasTranscription = false,
   hasDescription = false,
-  hasCovers = false,
 }: {
   initialListings: ListingRow[];
   initialCaptionJobs: CaptionJobRow[];
@@ -145,12 +329,13 @@ export function ListingsClient({
   hasCaptions?: boolean;
   hasTranscription?: boolean;
   hasDescription?: boolean;
+  /** Conservé pour compat de prop (B6 partiel) — non utilisé en v2 (cover gen retiré). */
   hasCovers?: boolean;
 }) {
-  const [tab, setTab] = useState<"templates" | "captions" | "transcription" | "description">("templates");
+  const [tab, setTab] = useState<TabKey>("templates");
   const [userFilter, setUserFilter] = useState<string | null>(null);
-  const router = useRouter();
-  // Flat map of render states keyed by renderId
+
+  // ── Render states (live polling) ─────────────────────────────────────────
   const [renderStates, setRenderStates] = useState<Record<string, RenderRow>>(() => {
     const m: Record<string, RenderRow> = {};
     for (const l of initialListings) for (const r of l.renders) m[r.id] = r;
@@ -161,57 +346,30 @@ export function ListingsClient({
     renderStatesRef.current = renderStates;
   }, [renderStates]);
 
-  const [deletedRenderIds, setDeletedRenderIds] = useState<Set<string>>(new Set());
-  const [deletedCaptionJobIds, setDeletedCaptionJobIds] = useState<Set<string>>(new Set());
-  const [deletedTranscriptionJobIds, setDeletedTranscriptionJobIds] = useState<Set<string>>(new Set());
-  const [deletedDescriptionJobIds, setDeletedDescriptionJobIds] = useState<Set<string>>(new Set());
-  const [coverBusyRenderId, setCoverBusyRenderId] = useState<string | null>(null);
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      const pendingRenders = Object.values(renderStatesRef.current).filter(
+        (r) => r.status === "PROCESSING" || r.status === "PENDING",
+      );
+      await Promise.all(
+        pendingRenders.map(async (r) => {
+          try {
+            const res = await fetch(`/api/renders/${r.id}`);
+            if (!res.ok) return;
+            const data = (await res.json()) as Partial<RenderRow> & { status: string };
+            if (data.status !== renderStatesRef.current[r.id]?.status) {
+              setRenderStates((prev) => ({ ...prev, [r.id]: { ...prev[r.id], ...data } }));
+            }
+          } catch {
+            // Silent : polling tolérant
+          }
+        }),
+      );
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
 
-  const handleDeleteRender = async (renderId: string) => {
-    await fetch(`/api/renders/${renderId}`, { method: "DELETE" });
-    setDeletedRenderIds((prev) => new Set([...prev, renderId]));
-    router.refresh();
-  };
-
-  const handleRevertRenderUsage = async (renderId: string): Promise<{ warnings: string[]; cursors: { libraryId: string; reverted: boolean; skippedReason?: string }[] }> => {
-    const res = await fetch(`/api/admin/renders/${renderId}/revert-usage`, { method: "POST" });
-    const data = await res.json() as { assets?: unknown[]; cursors?: { libraryId: string; reverted: boolean; skippedReason?: string }[]; warnings?: string[]; error?: string };
-    if (!res.ok) throw new Error((data as { error?: string }).error ?? "Erreur inconnue");
-    return { warnings: data.warnings ?? [], cursors: data.cursors ?? [] };
-  };
-
-  const handleGenerateCover = async (renderId: string) => {
-    setCoverBusyRenderId(renderId);
-    try {
-      const res = await fetch(`/api/renders/${renderId}/cover`, { method: "POST" });
-      const data = await res.json().catch(() => ({})) as { error?: string; packId?: string };
-      if (!res.ok) throw new Error(data.error ?? "Erreur génération cover");
-      toast.success("Préparation cover lancée.");
-      router.push("/tools/cover");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur génération cover");
-    } finally {
-      setCoverBusyRenderId(null);
-    }
-  };
-
-  const handleDeleteCaptionJob = async (jobId: string) => {
-    await fetch(`/api/render/captions/${jobId}`, { method: "DELETE" });
-    setDeletedCaptionJobIds((prev) => new Set([...prev, jobId]));
-    router.refresh();
-  };
-
-  const handleDeleteTranscriptionJob = async (jobId: string) => {
-    await fetch(`/api/transcription/${jobId}`, { method: "DELETE" });
-    setDeletedTranscriptionJobIds((prev) => new Set([...prev, jobId]));
-    router.refresh();
-  };
-
-  const handleDeleteDescriptionJob = async (jobId: string) => {
-    setDeletedDescriptionJobIds((prev) => new Set([...prev, jobId]));
-    router.refresh();
-  };
-
+  // ── Caption / Transcription states (SSE live) ────────────────────────────
   const [captionStates, setCaptionStates] = useState<Record<string, CaptionJobRow>>(() => {
     const m: Record<string, CaptionJobRow> = {};
     for (const j of initialCaptionJobs) m[j.id] = j;
@@ -224,7 +382,6 @@ export function ListingsClient({
     return m;
   });
 
-  // SSE fast path — captions and transcription updated instantly via webhook
   useAllJobEvents((event) => {
     if (event.jobType === "captions") {
       setCaptionStates((prev) => {
@@ -246,28 +403,7 @@ export function ListingsClient({
     }
   });
 
-  useEffect(() => {
-    const timer = setInterval(async () => {
-      const pendingRenders = Object.values(renderStatesRef.current).filter(
-        (r) => r.status === "PROCESSING" || r.status === "PENDING"
-      );
-      await Promise.all(
-        pendingRenders.map(async (r) => {
-          try {
-            const res = await fetch(`/api/renders/${r.id}`);
-            if (!res.ok) return;
-            const data = await res.json() as Partial<RenderRow> & { status: string };
-            if (data.status !== renderStatesRef.current[r.id]?.status) {
-              setRenderStates((prev) => ({ ...prev, [r.id]: { ...prev[r.id], ...data } }));
-            }
-          } catch { /* ignore */ }
-        })
-      );
-    }, 5000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // Admin: unique user names for filter pills
+  // ── Filtres ──────────────────────────────────────────────────────────────
   const allUsers = useMemo(() => {
     const names = new Set<string>();
     for (const l of initialListings) if (l.ownerName) names.add(l.ownerName);
@@ -279,41 +415,26 @@ export function ListingsClient({
 
   const filteredListings = useMemo(
     () => (userFilter ? initialListings.filter((l) => l.ownerName === userFilter) : initialListings),
-    [initialListings, userFilter]
+    [initialListings, userFilter],
   );
-
   const filteredCaptions = useMemo(
-    () =>
-      (userFilter ? initialCaptionJobs.filter((j) => j.ownerName === userFilter) : initialCaptionJobs).filter(
-        (j) => !deletedCaptionJobIds.has(j.id)
-      ),
-    [initialCaptionJobs, userFilter, deletedCaptionJobIds]
+    () => (userFilter ? initialCaptionJobs.filter((j) => j.ownerName === userFilter) : initialCaptionJobs),
+    [initialCaptionJobs, userFilter],
   );
-
   const filteredTranscriptions = useMemo(
-    () =>
-      (userFilter ? initialTranscriptionJobs.filter((j) => j.ownerName === userFilter) : initialTranscriptionJobs).filter(
-        (j) => !deletedTranscriptionJobIds.has(j.id)
-      ),
-    [initialTranscriptionJobs, userFilter, deletedTranscriptionJobIds]
+    () => (userFilter ? initialTranscriptionJobs.filter((j) => j.ownerName === userFilter) : initialTranscriptionJobs),
+    [initialTranscriptionJobs, userFilter],
   );
-
   const filteredDescriptions = useMemo(
-    () =>
-      (userFilter ? initialDescriptionJobs.filter((j) => j.ownerName === userFilter) : initialDescriptionJobs).filter(
-        (j) => !deletedDescriptionJobIds.has(j.id)
-      ),
-    [initialDescriptionJobs, userFilter, deletedDescriptionJobIds]
+    () => (userFilter ? initialDescriptionJobs.filter((j) => j.ownerName === userFilter) : initialDescriptionJobs),
+    [initialDescriptionJobs, userFilter],
   );
 
-  const descriptionGroups = useMemo(() => groupByDate(filteredDescriptions), [filteredDescriptions]);
-
-  const listingGridItems = useMemo((): GridItem[] => {
+  // ── Build flat lists of entries (one timeline entry per item) ────────────
+  const listingEntries = useMemo<TimelineEntry[]>(() => {
     const items: GridItem[] = [];
     for (const listing of filteredListings) {
-      const renders = listing.renders
-        .map((r) => renderStates[r.id] ?? r)
-        .filter((r) => !deletedRenderIds.has(r.id));
+      const renders = listing.renders.map((r) => renderStates[r.id] ?? r);
       if (renders.length === 0) {
         items.push({ id: `listing-${listing.id}`, createdAt: listing.createdAt, listing, render: null });
       } else {
@@ -322,88 +443,95 @@ export function ListingsClient({
         }
       }
     }
-    return items;
-  }, [filteredListings, renderStates, deletedRenderIds]);
+    return items
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map(listingToEntry);
+  }, [filteredListings, renderStates]);
 
-  const listingGridGroups = useMemo(() => groupByDate(listingGridItems), [listingGridItems]);
-  const captionGroups = useMemo(() => groupByDate(filteredCaptions), [filteredCaptions]);
-  const transcriptionGroups = useMemo(() => groupByDate(filteredTranscriptions), [filteredTranscriptions]);
+  const captionEntries = useMemo<TimelineEntry[]>(
+    () =>
+      filteredCaptions
+        .map((j) => captionStates[j.id] ?? j)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .map(captionToEntry),
+    [filteredCaptions, captionStates],
+  );
 
-  const activeGroups =
-    tab === "templates" ? listingGridGroups :
-    tab === "captions" ? captionGroups :
-    tab === "transcription" ? transcriptionGroups :
-    descriptionGroups;
+  const transcriptionEntries = useMemo<TimelineEntry[]>(
+    () =>
+      filteredTranscriptions
+        .map((j) => transcriptionStates[j.id] ?? j)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .map(transcriptionToEntry),
+    [filteredTranscriptions, transcriptionStates],
+  );
+
+  const descriptionEntries = useMemo<TimelineEntry[]>(
+    () =>
+      filteredDescriptions
+        .slice()
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .map(descriptionToEntry),
+    [filteredDescriptions],
+  );
+
+  const activeEntries: TimelineEntry[] =
+    tab === "templates"
+      ? listingEntries
+      : tab === "captions"
+      ? captionEntries
+      : tab === "transcription"
+      ? transcriptionEntries
+      : descriptionEntries;
+
+  const activeGroups = useMemo(() => groupByDate(activeEntries), [activeEntries]);
   const isEmpty = GROUP_ORDER.every((g) => !activeGroups[g]?.length);
+
+  // ── Tab definitions ──────────────────────────────────────────────────────
+  const tabs: { id: TabKey; label: string; count: number; tone: Tone; show: boolean }[] = [
+    { id: "templates", label: "Générations", count: filteredListings.length, tone: "indigo", show: true },
+    { id: "captions", label: "Captions", count: filteredCaptions.length, tone: "violet", show: hasCaptions },
+    { id: "transcription", label: "Transcriptions", count: filteredTranscriptions.length, tone: "teal", show: hasTranscription },
+    { id: "description", label: "Descriptions", count: filteredDescriptions.length, tone: "sky", show: hasDescription },
+  ].filter((t) => t.show) as { id: TabKey; label: string; count: number; tone: Tone; show: boolean }[];
+
+  const emptyConfig = {
+    templates: { icon: LayoutTemplate, label: "Aucune génération pour l'instant", linkHref: "/templates", linkLabel: "Templates" },
+    captions: { icon: Film, label: "Aucun caption généré", linkHref: "/captions", linkLabel: "Captions" },
+    transcription: { icon: Mic, label: "Aucune transcription", linkHref: "/transcriptions", linkLabel: "Transcriptions" },
+    description: { icon: AlignLeft, label: "Aucune description générée", linkHref: "/descriptions", linkLabel: "Descriptions" },
+  } as const;
+  const empty = emptyConfig[tab];
+  const EmptyIcon = empty.icon;
 
   return (
     <div>
       {/* Tabs */}
       <div className="flex items-center gap-1 mb-6 bg-gray-100 p-1 rounded-xl w-fit">
-        <button
-          onClick={() => setTab("templates")}
-          className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-            tab === "templates" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          Générations
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-            tab === "templates" ? "bg-indigo-100 text-indigo-600" : "bg-gray-200 text-gray-500"
-          }`}>
-            {filteredListings.length}
-          </span>
-        </button>
-        {hasCaptions && (
-        <button
-          onClick={() => setTab("captions")}
-          className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-            tab === "captions" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          Captions
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-            tab === "captions" ? "bg-violet-100 text-violet-600" : "bg-gray-200 text-gray-500"
-          }`}>
-            {filteredCaptions.length}
-          </span>
-        </button>
-        )}
-        {hasTranscription && (
-          <button
-            onClick={() => setTab("transcription")}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              tab === "transcription" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            Transcription
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-              tab === "transcription" ? "bg-teal-100 text-teal-600" : "bg-gray-200 text-gray-500"
-            }`}>
-              {filteredTranscriptions.length}
-            </span>
-          </button>
-        )}
-        {hasDescription && (
-          <button
-            onClick={() => setTab("description")}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              tab === "description" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            Descriptions
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-              tab === "description" ? "bg-sky-100 text-sky-600" : "bg-gray-200 text-gray-500"
-            }`}>
-              {filteredDescriptions.length}
-            </span>
-          </button>
-        )}
+        {tabs.map((t) => {
+          const active = tab === t.id;
+          const badgeBg = active ? TAB_BADGE_ACTIVE[t.tone] : "bg-gray-200 text-gray-500";
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                active ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {t.label}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${badgeBg}`}>{t.count}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Admin user filter pills */}
       {isAdmin && allUsers.length > 1 && (
         <div className="flex items-center gap-2 mb-5 flex-wrap">
           <button
+            type="button"
             onClick={() => setUserFilter(null)}
             className={`text-xs px-3 py-1 rounded-full border transition-colors ${
               userFilter === null
@@ -416,6 +544,7 @@ export function ListingsClient({
           {allUsers.map((name) => (
             <button
               key={name}
+              type="button"
               onClick={() => setUserFilter(userFilter === name ? null : name)}
               className={`text-xs px-3 py-1 rounded-full border transition-colors ${
                 userFilter === name
@@ -432,782 +561,41 @@ export function ListingsClient({
       {/* Empty state */}
       {isEmpty && (
         <div className="text-center py-24 text-gray-400">
-          {tab === "templates" ? (
-            <>
-              <LayoutTemplate size={40} className="mx-auto mb-4 opacity-30" />
-              <p className="font-medium">Aucun template pour l&apos;instant</p>
-              <p className="text-sm mt-1">
-                Choisissez un template depuis la page{" "}
-                <Link href="/templates" className="text-indigo-600 hover:underline">Templates</Link>
-              </p>
-            </>
-          ) : tab === "captions" ? (
-            <>
-              <Film size={40} className="mx-auto mb-4 opacity-30" />
-              <p className="font-medium">Aucune vidéo caption</p>
-              <p className="text-sm mt-1">
-                Rendez-vous dans{" "}
-                <Link href="/captions" className="text-violet-600 hover:underline">Captions</Link>
-              </p>
-            </>
-          ) : tab === "transcription" ? (
-            <>
-              <Mic size={40} className="mx-auto mb-4 opacity-30" />
-              <p className="font-medium">Aucune transcription</p>
-              <p className="text-sm mt-1">
-                Rendez-vous dans{" "}
-                <Link href="/transcriptions" className="text-teal-600 hover:underline">Transcription</Link>
-              </p>
-            </>
-          ) : (
-            <>
-              <AlignLeft size={40} className="mx-auto mb-4 opacity-30" />
-              <p className="font-medium">Aucune description générée</p>
-              <p className="text-sm mt-1">
-                Rendez-vous dans{" "}
-                <Link href="/descriptions" className="text-sky-600 hover:underline">Descriptions</Link>
-              </p>
-            </>
-          )}
+          <EmptyIcon size={40} className="mx-auto mb-4 opacity-30" />
+          <p className="font-medium">{empty.label}</p>
+          <p className="text-sm mt-1">
+            Rendez-vous dans{" "}
+            <Link href={empty.linkHref} className="text-indigo-600 hover:underline">
+              {empty.linkLabel}
+            </Link>
+          </p>
         </div>
       )}
 
-      {/* Date groups */}
+      {/* Date groups — uniform timeline */}
       <div className="space-y-10">
         {GROUP_ORDER.filter((g) => activeGroups[g]?.length).map((group) => (
           <section key={group}>
-            <div className="flex items-center gap-3 mb-4">
-              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide shrink-0">
-                {group}
-              </h2>
+            <div className="flex items-center gap-3 mb-3">
+              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide shrink-0">{group}</h2>
               <div className="flex-1 border-t border-gray-100" />
             </div>
-
-            {tab === "templates" ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                {(activeGroups[group] as GridItem[]).map((item) => (
-                  <RenderGridCard
-                    key={item.id}
-                    item={item}
-                    isAdmin={isAdmin}
-                    hasCovers={hasCovers}
-                    coverBusy={item.render ? coverBusyRenderId === item.render.id : false}
-                    onDeleteRender={item.render ? () => handleDeleteRender(item.render!.id) : undefined}
-                    onRevertUsage={item.render?.status === "DONE" ? () => handleRevertRenderUsage(item.render!.id) : undefined}
-                    onGenerateCover={item.render ? () => handleGenerateCover(item.render!.id) : undefined}
-                  />
-                ))}
-              </div>
-            ) : tab === "captions" ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {(activeGroups[group] as CaptionJobRow[]).map((job) => (
-                  <CaptionGridCard
-                    key={job.id}
-                    job={captionStates[job.id] ?? job}
-                    isAdmin={isAdmin}
-                    onDelete={() => handleDeleteCaptionJob(job.id)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {tab === "transcription" &&
-                  (activeGroups[group] as TranscriptionJobRow[]).map((job) => (
-                    <TranscriptionCard
-                      key={job.id}
-                      job={transcriptionStates[job.id] ?? job}
-                      isAdmin={isAdmin}
-                      onDelete={() => handleDeleteTranscriptionJob(job.id)}
-                    />
-                  ))}
-                {tab === "description" &&
-                  (activeGroups[group] as DescriptionJobRow[]).map((job) => (
-                    <DescriptionCard
-                      key={job.id}
-                      job={job}
-                      isAdmin={isAdmin}
-                      onDelete={() => handleDeleteDescriptionJob(job.id)}
-                    />
-                  ))}
-              </div>
-            )}
+            <div className="space-y-2">
+              {activeGroups[group]!.map((entry) => (
+                <TimelineRow key={entry.id} entry={entry} />
+              ))}
+            </div>
           </section>
         ))}
       </div>
-    </div>
-  );
-}
 
-// ── RenderGridCard ────────────────────────────────────────────────────────────
-
-const FORMAT_ASPECT: Record<string, string> = {
-  A3_LANDSCAPE:  "1587/1123",
-  A4_PORTRAIT:   "794/1123",
-  IG_1080x1350:  "4/5",
-  IG_1080x1920:  "9/16",
-  CUSTOM:        "16/9",
-};
-
-function getAspectFromFormats(formatsJson: string | undefined | null): string {
-  if (!formatsJson) return "16/9";
-  try {
-    const arr = JSON.parse(formatsJson) as string[];
-    const first = arr[0];
-    if (first && first in FORMAT_ASPECT) return FORMAT_ASPECT[first]!;
-  } catch { /* ignore */ }
-  return "16/9";
-}
-
-type RevertResult = {
-  warnings: string[];
-  cursors: { libraryId: string; reverted: boolean; skippedReason?: string }[];
-};
-
-function RenderGridCard({
-  item,
-  isAdmin,
-  hasCovers,
-  coverBusy,
-  onDeleteRender,
-  onRevertUsage,
-  onGenerateCover,
-}: {
-  item: GridItem;
-  isAdmin: boolean;
-  hasCovers: boolean;
-  coverBusy: boolean;
-  onDeleteRender?: () => Promise<void>;
-  onRevertUsage?: () => Promise<RevertResult>;
-  onGenerateCover?: () => Promise<void>;
-}) {
-  const { listing, render } = item;
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [confirmRevert, setConfirmRevert] = useState(false);
-  const [reverting, setReverting] = useState(false);
-  const [revertDone, setRevertDone] = useState(false);
-  const [revertWarnings, setRevertWarnings] = useState<string[]>([]);
-
-  const isPending = render?.status === "PROCESSING" || render?.status === "PENDING";
-  const isError   = render?.status === "ERROR";
-  const isDone    = render?.status === "DONE";
-  const canGenerateCover = Boolean(hasCovers && isDone && render?.videoUrl && render?.coverAutoEnabled && onGenerateCover);
-
-  const aspectRatio = getAspectFromFormats(listing.template?.formats);
-
-  const handleDeleteConfirm = async () => {
-    setDeleting(true);
-    await onDeleteRender?.();
-  };
-
-  const handleRevertConfirm = async () => {
-    if (!onRevertUsage) return;
-    setReverting(true);
-    try {
-      const result = await onRevertUsage();
-      const warnings: string[] = [
-        ...result.warnings,
-        ...result.cursors
-          .filter((c) => !c.reverted)
-          .map((c) => `Curseur bibliothèque non revert : ${c.skippedReason ?? "déjà avancé"}`),
-      ];
-      setRevertWarnings(warnings);
-      setRevertDone(true);
-    } catch (err) {
-      setRevertWarnings([err instanceof Error ? err.message : "Erreur inconnue"]);
-      setRevertDone(true);
-    } finally {
-      setReverting(false);
-      setConfirmRevert(false);
-    }
-  };
-
-  return (
-    <div className="group relative bg-white rounded-xl overflow-hidden border border-gray-100 hover:border-indigo-200 hover:shadow-md transition-all duration-150">
-      {/* ── Media area ── */}
-      <div className="relative bg-gray-50 overflow-hidden" style={{ aspectRatio }}>
-        {isDone && render?.pngUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={render.pngUrl}
-            alt={listing.template?.name ?? ""}
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-        )}
-        {isDone && !render?.pngUrl && render?.videoUrl && (
-          <video
-            src={render.videoUrl}
-            className="absolute inset-0 w-full h-full object-cover"
-            muted
-            playsInline
-          />
-        )}
-        {isPending && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-            <span className="text-[10px] text-gray-400">En cours…</span>
-          </div>
-        )}
-        {isError && (
-          <div className="absolute inset-0 flex items-center justify-center text-red-300 text-2xl">⚠</div>
-        )}
-        {!render && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <LayoutTemplate size={28} className="text-gray-200" />
-            {listing.templateId && (
-              <Link
-                href={`/generate/${listing.templateId}?listingId=${listing.id}`}
-                className="text-[11px] px-3 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
-              >
-                Générer
-              </Link>
-            )}
-          </div>
-        )}
-
-        {/* Hover overlay — dark tint */}
-        {isDone && (
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-        )}
-
-        {/* Download badges */}
-        {isDone && (render?.videoUrl ?? render?.pngUrl) && (
-          <div className="absolute bottom-2 left-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {render?.videoUrl && (
-              <a
-                href={render.videoUrl}
-                download
-                onClick={(e) => e.stopPropagation()}
-                className="text-[10px] px-2 py-1 bg-white/90 text-gray-900 rounded font-semibold hover:bg-white transition"
-              >
-                MP4
-              </a>
-            )}
-            {render?.pngUrl && (
-              <a
-                href={render.pngUrl}
-                download
-                onClick={(e) => e.stopPropagation()}
-                className="text-[10px] px-2 py-1 bg-white/90 text-gray-900 rounded font-semibold hover:bg-white transition"
-              >
-                PNG
-              </a>
-            )}
-          </div>
-        )}
-
-        {/* Admin delete render */}
-        {isAdmin && onDeleteRender && !confirmDelete && !confirmRevert && (
-          <button
-            onClick={(e) => { e.preventDefault(); setConfirmDelete(true); }}
-            aria-label="Supprimer le rendu"
-            className="absolute top-2 right-2 w-6 h-6 bg-white/80 backdrop-blur-sm rounded-full text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center"
-          >
-            <X size={12} />
-          </button>
-        )}
-        {isAdmin && confirmDelete && (
-          <div className="absolute top-2 right-2 flex gap-1">
-            <button
-              onClick={() => void handleDeleteConfirm()}
-              disabled={deleting}
-              className="text-[10px] px-2 py-1 bg-red-500 text-white rounded font-medium hover:bg-red-600 disabled:opacity-50"
-            >
-              {deleting ? "…" : "✓"}
-            </button>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              className="text-[10px] px-2 py-1 bg-white/80 text-gray-600 rounded"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* Admin revert usage */}
-        {isAdmin && onRevertUsage && !revertDone && !confirmRevert && !confirmDelete && (
-          <button
-            onClick={(e) => { e.preventDefault(); setConfirmRevert(true); }}
-            aria-label="Réinitialiser l'usage bibliothèque"
-            title="Réinitialiser l'usage bibliothèque"
-            className="absolute top-2 left-2 w-6 h-6 bg-white/80 backdrop-blur-sm rounded-full text-gray-400 hover:text-amber-500 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center"
-          >
-            <RotateCcw size={11} />
-          </button>
-        )}
-        {isAdmin && confirmRevert && (
-          <div className="absolute top-2 left-2 flex gap-1 items-center">
-            <span className="text-[9px] text-white bg-black/60 rounded px-1.5 py-0.5 whitespace-nowrap">Réinitialiser ?</span>
-            <button
-              onClick={() => void handleRevertConfirm()}
-              disabled={reverting}
-              className="text-[10px] px-2 py-1 bg-amber-500 text-white rounded font-medium hover:bg-amber-600 disabled:opacity-50"
-            >
-              {reverting ? "…" : "✓"}
-            </button>
-            <button
-              onClick={() => setConfirmRevert(false)}
-              className="text-[10px] px-2 py-1 bg-white/80 text-gray-600 rounded"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-        {isAdmin && revertDone && (
-          <div
-            className="absolute top-2 left-2 flex items-center gap-1 cursor-pointer"
-            onClick={() => { setRevertDone(false); setRevertWarnings([]); }}
-            title="Cliquer pour fermer"
-          >
-            {revertWarnings.length === 0 ? (
-              <span className="text-[9px] text-white bg-green-600/90 rounded px-1.5 py-0.5">Revert OK</span>
-            ) : (
-              <span
-                className="text-[9px] text-white bg-amber-600/90 rounded px-1.5 py-0.5 max-w-[120px] truncate"
-                title={revertWarnings.join(" | ")}
-              >
-                ⚠ {revertWarnings[0]}
-              </span>
-            )}
-          </div>
-        )}
-
-        {canGenerateCover && (
-          <button
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); void onGenerateCover?.(); }}
-            disabled={coverBusy}
-            title={render?.coverPack ? "Régénérer une cover" : "Générer une cover"}
-            className="absolute bottom-2 right-2 h-6 px-2 bg-white/90 backdrop-blur-sm rounded text-[10px] font-semibold text-indigo-700 hover:bg-white transition-all flex items-center gap-1 disabled:opacity-60"
-          >
-            {coverBusy ? (
-              <span className="w-3 h-3 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
-            ) : (
-              <ImageIcon size={11} />
-            )}
-            Cover
-          </button>
-        )}
-      </div>
-
-      {/* ── Footer ── */}
-      <div className="px-3 py-2.5">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-gray-900 truncate leading-tight">
-              {listing.template?.name ?? "Sans template"}
-            </p>
-            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              {listing.template?.client && (
-                <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-wide">
-                  {listing.template.client}
-                </span>
-              )}
-              {isAdmin && listing.ownerName && (
-                <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 rounded-full">
-                  {listing.ownerName}
-                </span>
-              )}
-              <span className="text-[10px] text-gray-400">{formatDate(item.createdAt)}</span>
-            </div>
-          </div>
-          {listing.templateId && (
-            <Link
-              href={`/generate/${listing.templateId}?listingId=${listing.id}`}
-              title="Régénérer"
-              className="shrink-0 w-6 h-6 flex items-center justify-center rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-500 transition-colors mt-0.5"
-            >
-              <RefreshCw size={11} />
-            </Link>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── CaptionGridCard ───────────────────────────────────────────────────────────
-
-function CaptionGridCard({
-  job,
-  isAdmin,
-  onDelete,
-}: {
-  job: CaptionJobRow;
-  isAdmin: boolean;
-  onDelete: () => Promise<void>;
-}) {
-  const isInProgress = job.status === "PROCESSING" || job.status === "QUEUED";
-  const isDone       = job.status === "DONE" || job.status === "COMPLETED";
-  const isFailed     = job.status === "FAILED";
-  const stale        = isInProgress && isStale(job.createdAt);
-  const name         = job.inputName ?? "Vidéo";
-
-  return (
-    <div className={`group bg-white rounded-xl overflow-hidden border transition-all ${
-      stale ? "border-amber-200 bg-amber-50/30" : "border-gray-100 hover:border-violet-200 hover:shadow-md"
-    }`}>
-      {/* ── Media area ── */}
-      <div className="relative aspect-video bg-gray-50">
-        {isDone && job.outputUrl && (
-          <video
-            src={job.outputUrl}
-            className="absolute inset-0 w-full h-full object-cover"
-            muted
-            playsInline
-          />
-        )}
-        {isInProgress && !stale && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <div className="w-5 h-5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
-            <span className="text-[10px] text-gray-400">Génération en cours…</span>
-          </div>
-        )}
-        {stale && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
-            <span className="text-amber-400 text-xl">⚠</span>
-            <span className="text-[10px] text-amber-600">Bloqué · {staleDuration(job.createdAt)}</span>
-          </div>
-        )}
-        {isFailed && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
-            <span className="text-red-300 text-xl">⚠</span>
-            <span className="text-[10px] text-red-400">Génération échouée</span>
-          </div>
-        )}
-
-        {/* Hover overlay + download */}
-        {isDone && job.outputUrl && (
-          <>
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-            <div className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              <a
-                href={job.outputUrl}
-                download
-                className="text-[10px] px-2 py-1 bg-white/90 text-gray-900 rounded font-semibold hover:bg-white transition"
-              >
-                MP4
-              </a>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* ── Footer ── */}
-      <div className="px-3 py-2.5">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-gray-900 truncate leading-tight">{name}</p>
-            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                isDone   ? "bg-green-50 text-green-600"   :
-                isFailed ? "bg-red-50 text-red-500"        :
-                stale    ? "bg-amber-50 text-amber-600"   :
-                           "bg-violet-50 text-violet-600"
-              }`}>
-                {isDone ? "Terminé" : isFailed ? "Erreur" : stale ? "Bloqué" : "En cours…"}
-              </span>
-              {isAdmin && job.ownerName && (
-                <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">
-                  {job.ownerName}
-                </span>
-              )}
-              <span className="text-[10px] text-gray-400">{formatDate(job.createdAt)}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
-            {job.presetId && (
-              <Link
-                href={`/captions/${job.presetId}/generate?captionJobId=${job.id}`}
-                title="Régénérer"
-                className="w-6 h-6 flex items-center justify-center rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-500 transition-colors"
-              >
-                <RefreshCw size={11} />
-              </Link>
-            )}
-            <DeleteCaptionJobButton jobId={job.id} onDelete={onDelete} />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── DeleteCaptionJobButton ────────────────────────────────────────────────────
-
-function DeleteCaptionJobButton({ jobId, onDelete }: { jobId: string; onDelete: () => Promise<void> }) {
-  const [confirming, setConfirming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  if (confirming) {
-    return (
-      <div className="flex items-center gap-1 shrink-0">
-        <button onClick={async () => { setDeleting(true); await onDelete(); }} disabled={deleting}
-          className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 transition-colors">
-          {deleting ? "…" : "Confirmer"}
-        </button>
-        <button onClick={() => setConfirming(false)}
-          className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors">
-          Annuler
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <button onClick={() => setConfirming(true)} title={`Supprimer le job ${jobId}`}
-      aria-label="Supprimer"
-      className="shrink-0 text-gray-300 hover:text-red-400 transition-colors">
-      <X size={14} />
-    </button>
-  );
-}
-
-// ── TranscriptionCard ─────────────────────────────────────────────────────────
-
-function TranscriptionCard({
-  job,
-  isAdmin,
-  onDelete,
-}: {
-  job: TranscriptionJobRow;
-  isAdmin: boolean;
-  onDelete: () => Promise<void>;
-}) {
-  const isInProgress = job.status === "PROCESSING" || job.status === "QUEUED";
-  const isDone       = job.status === "COMPLETED";
-  const isFailed     = job.status === "FAILED";
-  const stale        = isInProgress && isStale(job.createdAt);
-  const name = job.inputFilename ?? "Fichier audio";
-
-  const durationLabel = job.duration
-    ? job.duration >= 60
-      ? `${Math.floor(job.duration / 60)}min${Math.round(job.duration % 60)}s`
-      : `${Math.round(job.duration)}s`
-    : null;
-
-  return (
-    <div className={`bg-white border rounded-xl px-4 py-3.5 transition-colors ${
-      stale ? "border-amber-200 bg-amber-50/20" : "border-gray-100 hover:border-gray-200"
-    }`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-2.5 min-w-0 flex-1">
-          <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${
-            stale ? "bg-amber-400" :
-            isDone ? "bg-green-400" :
-            isFailed ? "bg-red-400" :
-            "bg-teal-400 animate-pulse"
-          }`} />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-medium text-gray-900 truncate">{name}</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
-                isDone  ? "bg-green-50 text-green-600"  :
-                isFailed? "bg-red-50 text-red-500"       :
-                stale   ? "bg-amber-50 text-amber-600"  :
-                isInProgress ? "bg-teal-50 text-teal-600" :
-                               "bg-gray-100 text-gray-500"
-              }`}>
-                {isDone ? "Terminé" : isFailed ? "Erreur" : stale ? `Bloqué · ${staleDuration(job.createdAt)}` : "En cours…"}
-              </span>
-              {isDone && job.segmentCount != null && (
-                <span className="text-[10px] text-gray-400 shrink-0">{job.segmentCount} segments</span>
-              )}
-              {isDone && durationLabel && (
-                <span className="text-[10px] text-gray-400 shrink-0">{durationLabel}</span>
-              )}
-              {isDone && job.hasDiarization && (
-                <span className="text-[10px] bg-teal-50 text-teal-600 px-1.5 py-0.5 rounded-full font-medium shrink-0">
-                  Diarisation
-                </span>
-              )}
-              {isAdmin && job.ownerName && (
-                <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium shrink-0">
-                  {job.ownerName}
-                </span>
-              )}
-            </div>
-
-            {stale ? (
-              <p className="text-xs text-amber-600 mt-1">Job bloqué depuis {staleDuration(job.createdAt)} — supprimer pour relancer.</p>
-            ) : isInProgress ? (
-              <div className="flex items-center gap-1.5 text-xs text-teal-500 mt-1">
-                <div className="w-3 h-3 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
-                Transcription en cours…
-              </div>
-            ) : isFailed ? (
-              <p className="text-xs text-red-400 mt-1">La transcription a échoué.</p>
-            ) : isDone ? (
-              <div className="flex items-center gap-3 text-xs text-gray-400 mt-1">
-                <span>Modèle : {job.model}</span>
-                {job.language && <span>Langue : {job.language}</span>}
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {isDone && (
-            <a
-              href={`/api/transcription/${job.id}/download?format=srt`}
-              download
-              className="inline-flex items-center gap-1 text-[11px] text-teal-500 hover:text-teal-700 font-medium transition-colors"
-            >
-              <Download size={10} /> SRT
-            </a>
-          )}
-          <Link
-            href={`/transcriptions/${job.id}`}
-            className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 font-medium transition-colors"
-          >
-            Détails →
-          </Link>
-          <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
-          <DeleteTranscriptionJobButton jobId={job.id} onDelete={onDelete} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── DeleteTranscriptionJobButton ──────────────────────────────────────────────
-
-function DeleteTranscriptionJobButton({ jobId, onDelete }: { jobId: string; onDelete: () => Promise<void> }) {
-  const [confirming, setConfirming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  if (confirming) {
-    return (
-      <div className="flex items-center gap-1 shrink-0">
-        <button onClick={async () => { setDeleting(true); await onDelete(); }} disabled={deleting}
-          className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 transition-colors">
-          {deleting ? "…" : "Confirmer"}
-        </button>
-        <button onClick={() => setConfirming(false)}
-          className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors">
-          Annuler
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <button onClick={() => setConfirming(true)} title={`Supprimer la transcription ${jobId}`}
-      aria-label="Supprimer"
-      className="shrink-0 text-gray-300 hover:text-red-400 transition-colors">
-      <X size={14} />
-    </button>
-  );
-}
-
-// ── DescriptionCard ───────────────────────────────────────────────────────────
-
-function DescriptionCard({
-  job,
-  isAdmin,
-  onDelete,
-}: {
-  job: DescriptionJobRow;
-  isAdmin: boolean;
-  onDelete: () => Promise<void>;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const isDone = job.status === "COMPLETED";
-  const isFailed = job.status === "FAILED";
-  const isInProgress = !isDone && !isFailed;
-  const name = job.inputFilename ?? (job.inputType === "transcription" ? "Transcription" : "Sans nom");
-
-  const handleCopy = () => {
-    if (!job.result) return;
-    void navigator.clipboard.writeText(job.result);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="bg-white border border-gray-100 rounded-xl px-4 py-3.5 hover:border-gray-200 transition-colors">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-2.5 min-w-0 flex-1">
-          <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${
-            isDone ? "bg-green-400" :
-            isFailed ? "bg-red-400" :
-            "bg-sky-400 animate-pulse"
-          }`} />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-medium text-gray-900 truncate">{name}</span>
-              {job.prompt && (
-                <span className="text-[10px] text-gray-400 shrink-0">— {job.prompt.name}</span>
-              )}
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
-                isDone   ? "bg-green-50 text-green-600" :
-                isFailed ? "bg-red-50 text-red-500"    :
-                           "bg-sky-50 text-sky-600"
-              }`}>
-                {isDone ? "Terminé" : isFailed ? "Erreur" : "En cours…"}
-              </span>
-              {isAdmin && job.ownerName && (
-                <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full font-medium shrink-0">
-                  {job.ownerName}
-                </span>
-              )}
-            </div>
-
-            {isDone && job.result ? (
-              <div className="mt-2">
-                <p className={`text-xs text-gray-600 leading-relaxed whitespace-pre-wrap ${expanded ? "" : "line-clamp-2"}`}>
-                  {job.result}
-                </p>
-                {job.result.length > 120 && (
-                  <button
-                    onClick={() => setExpanded((v) => !v)}
-                    className="text-[11px] text-sky-500 hover:text-sky-700 mt-1"
-                  >
-                    {expanded ? "Réduire ↑" : "Voir tout ↓"}
-                  </button>
-                )}
-              </div>
-            ) : isFailed ? (
-              <p className="text-xs text-red-400 mt-1">La génération a échoué.</p>
-            ) : isInProgress ? (
-              <div className="flex items-center gap-1.5 text-xs text-sky-500 mt-1">
-                <div className="w-3 h-3 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
-                Génération en cours…
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {isDone && job.result && (
-            <button
-              onClick={handleCopy}
-              className="inline-flex items-center gap-1 text-[11px] text-sky-500 hover:text-sky-700 font-medium transition-colors"
-              title="Copier la description"
-            >
-              {copied ? <Check size={10} /> : <Copy size={10} />}
-              {copied ? "Copié" : "Copier"}
-            </button>
-          )}
-          <Link
-            href="/descriptions"
-            className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 font-medium transition-colors"
-          >
-            Nouveau →
-          </Link>
-          <span className="text-[11px] text-gray-400">{formatDate(job.createdAt)}</span>
-          {isAdmin && (
-            <button
-              onClick={() => void onDelete()}
-              className="shrink-0 text-gray-300 hover:text-red-400 transition-colors"
-              title="Supprimer"
-              aria-label="Supprimer"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
-      </div>
+      {/* Bandeau "lecture seule" pour rappeler que les actions se font sur les pages détail */}
+      {!isEmpty && (
+        <p className="mt-8 text-center text-[11px] text-gray-400">
+          <ImageIcon size={11} className="inline-block mr-1 align-text-bottom" />
+          Cliquez sur un élément pour ouvrir la page détail (regénération, suppression et actions y sont disponibles).
+        </p>
+      )}
     </div>
   );
 }

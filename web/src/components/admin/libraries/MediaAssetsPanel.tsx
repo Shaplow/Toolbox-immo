@@ -5,74 +5,12 @@ import { Trash2, Upload, Clock, BarChart2, Search, Play, Music2, ArrowUpDown, Ch
 import { toast } from "@/components/ui/Toast";
 import { MediaAssetEditModal } from "./MediaAssetEditModal";
 import { MediaBatchAutocutPanel } from "./MediaBatchAutocutPanel";
-
-interface MediaAsset {
-  id: string;
-  filename: string;
-  url: string;
-  mimeType: string;
-  duration: number | null;
-  tags: string[];
-  setTag: string | null;
-  category: string | null;
-  usageCount: number;
-  lastUsedAt: string | null;
-  createdAt: string;
-  accessAccountIds: string[];
-  pendingEditJob: { id: string; status: string } | null;
-  disabled: boolean;
-  metadata?: Record<string, string | number | null>;
-}
-
-interface InstagramAccount {
-  id: string;
-  name: string;
-  handle: string;
-}
-
-type MetadataField = { key: string; label: string; type: "text" | "number" | "url" | "textarea" };
-
-interface MediaLibrary {
-  id: string;
-  name: string;
-  type: "video" | "audio";
-  setSequence: string; // JSON string[]
-  metadataSchema?: string; // JSON MetadataField[]
-}
+import type { MediaAsset, InstagramAccount, MetadataField, MediaLibrary, SortKey } from "./mediaAssets/types";
+import { formatDuration, formatDate } from "./mediaAssets/helpers";
+import { LazyVideoThumb } from "./mediaAssets/LazyVideoThumb";
 
 interface Props {
   library: MediaLibrary;
-}
-
-function formatDuration(s: number | null): string {
-  if (s === null) return "";
-  const m = Math.floor(s / 60);
-  const sec = Math.round(s % 60);
-  return `${m}:${sec.toString().padStart(2, "0")}`;
-}
-
-function formatDate(d: string | null): string {
-  if (!d) return "Jamais";
-  return new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-type SortKey = "date_desc" | "date_asc" | "usage_desc" | "usage_asc" | "name_asc";
-
-/** Miniature vidéo chargée uniquement quand elle entre dans le viewport */
-function LazyVideoThumb({ url, className }: { url: string; className: string }) {
-  const ref = useRef<HTMLVideoElement>(null);
-  const [src, setSrc] = useState<string | undefined>(undefined);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) { setSrc(`${url}#t=0.5`); observer.disconnect(); } },
-      { rootMargin: "200px" }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [url]);
-  return <video ref={ref} src={src} muted preload="metadata" className={className} />;
 }
 
 export function MediaAssetsPanel({ library }: Props) {
