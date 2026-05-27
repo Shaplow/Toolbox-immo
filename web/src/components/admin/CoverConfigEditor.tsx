@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { FormField } from "@/components/ui/FormField";
+import { CoverPresetThumbnail } from "@/components/builder/CoverPresetThumbnail";
+import type { TemplateJSON } from "@/types/template";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,21 +37,36 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
   const config = (value ?? {}) as PartialCoverConfig;
 
   const [presets, setPresets] = useState<CoverPreset[]>([]);
+  const [template, setTemplate] = useState<TemplateJSON | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Fetch available presets when templateId changes
+  // Fetch available presets + template (pour le thumbnail) when templateId changes
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       if (!templateId) {
-        if (!cancelled) { setPresets([]); setLoading(false); }
+        if (!cancelled) { setPresets([]); setTemplate(null); setLoading(false); }
         return;
       }
       if (!cancelled) setLoading(true);
       try {
-        const r = await fetch(`/api/templates/${templateId}/cover-presets`);
-        const data: CoverPreset[] = r.ok ? await (r.json() as Promise<CoverPreset[]>) : [];
-        if (!cancelled) setPresets(data);
+        const [presetsRes, tplRes] = await Promise.all([
+          fetch(`/api/templates/${templateId}/cover-presets`),
+          fetch(`/api/templates/${templateId}`),
+        ]);
+        if (cancelled) return;
+        const presetsData: CoverPreset[] = presetsRes.ok
+          ? await (presetsRes.json() as Promise<CoverPreset[]>)
+          : [];
+        setPresets(presetsData);
+        if (tplRes.ok) {
+          const tplData = (await tplRes.json()) as { jsonData: string };
+          try {
+            setTemplate(JSON.parse(tplData.jsonData) as TemplateJSON);
+          } catch {
+            // ignore parse errors
+          }
+        }
       } catch {
         // Non-fatal
       } finally {
@@ -150,19 +167,28 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
         </FormField>
       )}
 
-      {/* Summary of selected preset */}
+      {/* Summary + thumbnail du preset sélectionné */}
       {selectedPreset && (
-        <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 text-xs text-indigo-700 space-y-0.5">
-          <p className="font-medium">{selectedPreset.name}</p>
-          <p>
-            {Array.isArray((selectedPreset.config as { overlayGroupIds?: unknown[] }).overlayGroupIds)
-              ? `${(selectedPreset.config as { overlayGroupIds: unknown[] }).overlayGroupIds.length} groupe(s) overlay`
-              : "—"}{" "}
-            &middot;{" "}
-            {typeof (selectedPreset.config as { frameCount?: number }).frameCount === "number"
-              ? `${(selectedPreset.config as { frameCount: number }).frameCount} frames`
-              : "36 frames"}
-          </p>
+        <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 flex items-center gap-3">
+          {template && (
+            <CoverPresetThumbnail
+              template={template}
+              config={selectedPreset.config as Record<string, unknown>}
+              width={56}
+            />
+          )}
+          <div className="text-xs text-indigo-700 space-y-0.5 flex-1 min-w-0">
+            <p className="font-medium truncate">{selectedPreset.name}</p>
+            <p>
+              {Array.isArray((selectedPreset.config as { overlayGroupIds?: unknown[] }).overlayGroupIds)
+                ? `${(selectedPreset.config as { overlayGroupIds: unknown[] }).overlayGroupIds.length} overlay(s)`
+                : "—"}{" "}
+              &middot;{" "}
+              {typeof (selectedPreset.config as { frameCount?: number }).frameCount === "number"
+                ? `${(selectedPreset.config as { frameCount: number }).frameCount} frames`
+                : "36 frames"}
+            </p>
+          </div>
         </div>
       )}
 

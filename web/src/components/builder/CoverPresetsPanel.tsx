@@ -7,6 +7,8 @@ import { DeleteButton } from "@/components/ui/DeleteButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { toast } from "@/components/ui/Toast";
 import { CoverPresetEditDialog } from "./CoverPresetEditDialog";
+import { CoverPresetThumbnail } from "./CoverPresetThumbnail";
+import type { TemplateJSON } from "@/types/template";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,6 +32,7 @@ export function CoverPresetsPanel({ templateId }: Props) {
   const [presets, setPresets] = useState<CoverPresetRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [template, setTemplate] = useState<TemplateJSON | null>(null);
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -44,8 +47,25 @@ export function CoverPresetsPanel({ templateId }: Props) {
       .finally(() => setLoading(false));
   }
 
+  function fetchTemplate() {
+    fetch(`/api/templates/${templateId}`)
+      .then((r) => (r.ok ? (r.json() as Promise<{ jsonData: string }>) : null))
+      .then((data) => {
+        if (!data) return;
+        try {
+          setTemplate(JSON.parse(data.jsonData) as TemplateJSON);
+        } catch {
+          // ignore
+        }
+      })
+      .catch(() => {});
+  }
+
   useEffect(() => {
-    if (templateId) fetchPresets();
+    if (templateId) {
+      fetchPresets();
+      fetchTemplate();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId]);
 
@@ -104,56 +124,71 @@ export function CoverPresetsPanel({ templateId }: Props) {
           cta={{ label: "Ajouter un preset", onClick: openCreate }}
         />
       ) : (
-        <div className="flex flex-col gap-1">
-          {presets.map((preset) => (
-            <div
-              key={preset.id}
-              className="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-gray-100 bg-white hover:bg-gray-50 transition-colors"
-            >
-              {/* Sort order */}
-              <span className="text-[10px] text-gray-300 w-5 text-center shrink-0">
-                {preset.sortOrder}
-              </span>
-
-              {/* Name — click to edit */}
-              <button
-                type="button"
-                className="flex-1 text-left text-xs font-medium text-gray-700 hover:text-indigo-700 truncate"
-                onClick={() => openEdit(preset)}
+        <div className="flex flex-col gap-2">
+          {presets.map((preset) => {
+            const cfg = preset.config as {
+              overlayGroupIds?: unknown[];
+              excludeZones?: unknown[];
+              frameCount?: number;
+            };
+            const overlayCount = Array.isArray(cfg.overlayGroupIds) ? cfg.overlayGroupIds.length : 0;
+            const excludeCount = Array.isArray(cfg.excludeZones) ? cfg.excludeZones.length : 0;
+            const frameCount = typeof cfg.frameCount === "number" ? cfg.frameCount : 36;
+            return (
+              <div
+                key={preset.id}
+                className="flex items-center gap-3 px-2 py-2 rounded-lg border border-gray-100 bg-white hover:bg-gray-50 transition-colors"
               >
-                {preset.name}
-              </button>
+                {/* Mini thumbnail SVG (réutilisable depuis le dialog) */}
+                {template ? (
+                  <button
+                    type="button"
+                    onClick={() => openEdit(preset)}
+                    className="shrink-0 rounded overflow-hidden hover:ring-2 hover:ring-indigo-300 transition-all"
+                    title="Modifier ce preset"
+                  >
+                    <CoverPresetThumbnail template={template} config={preset.config} width={36} />
+                  </button>
+                ) : (
+                  <div className="bg-gray-100 rounded shrink-0" style={{ width: 36, height: 64 }} />
+                )}
 
-              {/* Config summary */}
-              <span className="text-[10px] text-gray-400 shrink-0">
-                {Array.isArray((preset.config as { overlayGroupIds?: unknown[] }).overlayGroupIds)
-                  ? `${(preset.config as { overlayGroupIds: unknown[] }).overlayGroupIds.length} overlay(s)`
-                  : "—"}
-              </span>
+                {/* Infos preset */}
+                <div className="flex-1 min-w-0">
+                  <button
+                    type="button"
+                    className="block text-left text-xs font-medium text-gray-700 hover:text-indigo-700 truncate"
+                    onClick={() => openEdit(preset)}
+                  >
+                    {preset.name}
+                    <span className="ml-1.5 text-[10px] text-gray-300 font-normal">#{preset.sortOrder}</span>
+                  </button>
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    {frameCount} frames · {overlayCount} overlay{overlayCount > 1 ? "s" : ""}
+                    {excludeCount > 0 && ` · ${excludeCount} zone${excludeCount > 1 ? "s" : ""} exclue${excludeCount > 1 ? "s" : ""}`}
+                  </p>
+                </div>
 
-              {/* Edit */}
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={Pencil}
-                onClick={() => openEdit(preset)}
-                className="text-gray-400 hover:text-indigo-600 shrink-0"
-                title="Modifier ce preset"
-              >
-                <span className="sr-only">Modifier</span>
-              </Button>
-
-              {/* Delete */}
-              <DeleteButton
-                itemLabel={`le preset "${preset.name}"`}
-                description={
-                  `Cette action est irréversible. Si des patterns référencent ce preset, la suppression sera refusée.`
-                }
-                onConfirm={() => handleDelete(preset)}
-                loading={deletingId === preset.id}
-              />
-            </div>
-          ))}
+                {/* Actions */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={Pencil}
+                  onClick={() => openEdit(preset)}
+                  className="text-gray-400 hover:text-indigo-600 shrink-0"
+                  title="Modifier ce preset"
+                >
+                  <span className="sr-only">Modifier</span>
+                </Button>
+                <DeleteButton
+                  itemLabel={`le preset "${preset.name}"`}
+                  description="Cette action est irréversible. Si des patterns référencent ce preset, la suppression sera refusée."
+                  onConfirm={() => handleDelete(preset)}
+                  loading={deletingId === preset.id}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
 
