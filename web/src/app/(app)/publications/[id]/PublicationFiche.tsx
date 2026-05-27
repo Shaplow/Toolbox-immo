@@ -249,11 +249,17 @@ export function PublicationFiche({
     ? (versions.find((v) => v.id === currentVersionId && v.deletedAt === null) ?? null)
     : null;
 
-  // Helper pour wrap conditionnel selon le rôle
+  // Helper pour wrap conditionnel selon le rôle.
+  // Le storageKey persiste l'état open/closed par slot + key dans
+  // localStorage, donc l'user qui réduit "Render" sur une fiche A
+  // retrouve "Render" réduit la prochaine fois qu'il ouvre la même
+  // fiche A. La préférence est par-slot (pas globale) pour ne pas
+  // surprendre quand on change de publication.
   const wrap = (key: SectionKey, node: React.ReactNode) => (
     <CollapsibleSection
       title={SECTION_LABELS[key]}
       defaultOpen={isPrimaryForRole(key, currentUserRole)}
+      storageKey={`pub-section:${slot.id}:${key}`}
     >
       {node}
     </CollapsibleSection>
