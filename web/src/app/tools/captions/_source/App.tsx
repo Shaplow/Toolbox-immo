@@ -121,14 +121,24 @@ export default function App() {
   }
 
   const loadPreset = (p: Preset) => {
-    // Deep-merge with emptyConfig so old presets without new fields still work
+    // Deep-merge with emptyConfig so old presets without new fields still work.
+    // Les casts vers Record<string, unknown> couvrent les vieux presets dont le
+    // type Config a évolué (champs highlight2 / shadow_targets / glow_targets
+    // ajoutés ultérieurement et absents du JSON stocké).
+    const legacyConfig = p.config as unknown as Record<string, Record<string, unknown>>;
+    const legacyEffects = (p.config.effects ?? {}) as unknown as Record<string, Record<string, unknown>>;
     setConfig({
       ...emptyConfig,
       ...p.config,
       base:       { ...emptyConfig.base,       ...p.config.base },
       highlight:  { ...emptyConfig.highlight,  ...p.config.highlight },
-      highlight2: { ...emptyConfig.highlight2, ...(p.config as any).highlight2 },
-      effects: { ...emptyConfig.effects, ...p.config.effects, shadow_targets: { ...emptyConfig.effects.shadow_targets, ...(p.config.effects as any).shadow_targets }, glow_targets: { ...emptyConfig.effects.glow_targets, ...(p.config.effects as any).glow_targets } },
+      highlight2: { ...emptyConfig.highlight2, ...legacyConfig.highlight2 },
+      effects: {
+        ...emptyConfig.effects,
+        ...p.config.effects,
+        shadow_targets: { ...emptyConfig.effects.shadow_targets, ...legacyEffects.shadow_targets },
+        glow_targets:   { ...emptyConfig.effects.glow_targets,   ...legacyEffects.glow_targets },
+      },
       layout:     { ...emptyConfig.layout,     ...p.config.layout },
     })
   }

@@ -98,15 +98,26 @@ export function SchemaOrganizerModal({
     };
   }, [onClose, open]);
 
+  // Pattern "reset state when external data changes" : si la section sélectionnée
+  // disparaît de formSections (suppression depuis l'extérieur), on bascule sur
+  // la première dispo. React Docs autorise setState conditionnel dans useEffect
+  // pour synchroniser un state avec des props externes — la règle ESLint
+  // react-hooks/set-state-in-effect est trop stricte pour ce cas.
   useEffect(() => {
     if (!open) return;
     if (selectedSectionId === UNSECTIONED_BUCKET_ID) return;
     if (formSections.some((section) => section.id === selectedSectionId)) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedSectionId(formSections[0]?.id ?? UNSECTIONED_BUCKET_ID);
   }, [formSections, open, selectedSectionId]);
 
+  // Pattern "merge derived state" : previewValues est édité par l'utilisateur
+  // (input preview) ET dérivé du schema (champs ajoutés/retirés). On merge
+  // basePreview avec current pour conserver les saisies user sur les champs
+  // toujours présents. Idem : pattern React valide, règle custom trop stricte.
   useEffect(() => {
     const basePreview = buildSchemaPreviewData(effectiveSchema);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPreviewValues((current) => {
       const next: Record<string, unknown> = { ...basePreview };
       for (const key of Object.keys(basePreview)) {
@@ -942,7 +953,7 @@ export function SchemaOrganizerModal({
                   </div>
 
                   {previewConditionFields.length === 0 ? (
-                    <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">Aucun champ n'est actuellement utilisé comme pilote de condition.</p>
+                    <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">Aucun champ n&apos;est actuellement utilisé comme pilote de condition.</p>
                   ) : (
                     <div className="mt-4 grid grid-cols-1 gap-3 2xl:grid-cols-2">
                       {previewConditionFields.map((field) => (
@@ -1047,7 +1058,7 @@ export function SchemaOrganizerModal({
                 <div className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
                   <p className="text-xs font-medium text-slate-500">Layout</p>
                   <p className="text-xs text-slate-500">
-                    `Pleine largeur` / `Demi largeur` place les sections entre elles. `Colonnes internes` répartit automatiquement les champs a l'intérieur de cette section.
+                    `Pleine largeur` / `Demi largeur` place les sections entre elles. `Colonnes internes` répartit automatiquement les champs a l&apos;intérieur de cette section.
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     <button
@@ -1124,7 +1135,7 @@ export function SchemaOrganizerModal({
                     Reinitialiser le plan
                   </button>
                   <p className="text-[11px] text-slate-400">
-                    Au-dessus de 2 colonnes, l'effet se voit surtout en aperçu `Desktop`. En `Mobile`, les champs restent empilés, et en `Tablette` ils montent au maximum a 2 colonnes.
+                    Au-dessus de 2 colonnes, l&apos;effet se voit surtout en aperçu `Desktop`. En `Mobile`, les champs restent empilés, et en `Tablette` ils montent au maximum a 2 colonnes.
                   </p>
                 </div>
 
@@ -1156,7 +1167,7 @@ export function SchemaOrganizerModal({
                     />
                     <div>
                       <p className="text-sm font-medium text-slate-700">Debloquer apres la section precedente</p>
-                      <p className="mt-1 text-xs text-slate-500">La section s'affiche seulement quand la section visible juste avant est completement remplie. Si tu actives ca sur la premiere section, elle lance un workflow progressif pour les sections suivantes.</p>
+                      <p className="mt-1 text-xs text-slate-500">La section s&apos;affiche seulement quand la section visible juste avant est completement remplie. Si tu actives ca sur la premiere section, elle lance un workflow progressif pour les sections suivantes.</p>
                     </div>
                   </label>
 
