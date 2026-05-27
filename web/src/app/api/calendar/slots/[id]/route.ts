@@ -102,7 +102,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { status, title, caption, description, templateId, scheduledAt, fields, fieldSchema,
           assigneeMonteurId, assigneeCmId, patternId, currentVersionId, isAuto,
-          needsClientValidationOverride, allowsClientRevisionOverride } = body as Record<string, unknown>;
+          needsClientValidationOverride, allowsClientRevisionOverride,
+          needsCaptionsOverride, needsDescriptionOverride, needsRushesOverride, needsBriefOverride } = body as Record<string, unknown>;
   // notes est mutable : peut être sanitisé avant l'update (H2).
   let { notes } = body as Record<string, unknown>;
 
@@ -219,12 +220,25 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(patternId !== undefined ? { patternId: patternId as string | null } : {}),
       ...(currentVersionId !== undefined ? { currentVersionId: currentVersionId as string | null } : {}),
       ...(isAuto !== undefined ? { isAuto: isAuto as boolean } : {}),
-      // W2 — override per-slot validation client. null = hérite du pattern.
+      // W2 + Cohérence Workflows Phase 4 — overrides per-slot.
+      // null = hérite du pattern, true/false = écrase. needsDescription est un enum (string).
       ...(needsClientValidationOverride !== undefined
         ? { needsClientValidationOverride: needsClientValidationOverride as boolean | null }
         : {}),
       ...(allowsClientRevisionOverride !== undefined
         ? { allowsClientRevisionOverride: allowsClientRevisionOverride as boolean | null }
+        : {}),
+      ...(needsCaptionsOverride !== undefined
+        ? { needsCaptionsOverride: needsCaptionsOverride as boolean | null }
+        : {}),
+      ...(needsDescriptionOverride !== undefined
+        ? { needsDescriptionOverride: needsDescriptionOverride as string | null }
+        : {}),
+      ...(needsRushesOverride !== undefined
+        ? { needsRushesOverride: needsRushesOverride as boolean | null }
+        : {}),
+      ...(needsBriefOverride !== undefined
+        ? { needsBriefOverride: needsBriefOverride as boolean | null }
         : {}),
     },
     include: {

@@ -171,6 +171,11 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
       // W2 — override per-slot de la config validation client
       "needsClientValidationOverride",
       "allowsClientRevisionOverride",
+      // Cohérence Workflows Phase 4 — overrides per-slot des autres needs*
+      "needsCaptionsOverride",
+      "needsDescriptionOverride",
+      "needsRushesOverride",
+      "needsBriefOverride",
     ],
     MONTEUR: ["status", "notes", "description"],
     // CM édite la légende IG (caption) en plus de notes/description.

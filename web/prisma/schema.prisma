@@ -678,6 +678,15 @@ model PublicationSlot {
   needsClientValidationOverride Boolean?
   /// Override per-slot de allowsClientRevision du pattern. null = hérite du pattern.
   allowsClientRevisionOverride  Boolean?
+  /// Override per-slot de needsCaptions du pattern. null = hérite.
+  needsCaptionsOverride         Boolean?
+  /// Override per-slot de needsDescription du pattern (enum String). null = hérite.
+  /// Valeurs : "preFilled" | "autoGenerate" | "manualWrite" | "none".
+  needsDescriptionOverride      String?
+  /// Override per-slot de needsRushes du pattern. null = hérite.
+  needsRushesOverride           Boolean?
+  /// Override per-slot de needsBrief du pattern. null = hérite.
+  needsBriefOverride            Boolean?
   /// Tokens magic link pour validation client (un seul actif via clause unique conditionnelle)
   clientValidationTokens        ClientValidationToken[]
   /// Historique des rounds de validation client (un round = une action client)

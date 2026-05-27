@@ -3,6 +3,8 @@ import {
   hashToken,
   compareHashes,
   resolveClientValidationConfig,
+  resolveOverride,
+  resolveSlotConfig,
 } from "@/lib/publications/clientValidation";
 
 // ─── hashToken ────────────────────────────────────────────────────────────────
@@ -120,5 +122,142 @@ describe("resolveClientValidationConfig", () => {
     expect(cfg.needsClientValidation).toBe(true);
     expect(cfg.allowsClientRevision).toBe(false);
     expect(cfg.source.needsClientValidation).toBe("override");
+  });
+});
+
+// ─── resolveOverride (helper générique) ───────────────────────────────────────
+
+describe("resolveOverride", () => {
+  it("override défini (true) → override prime", () => {
+    expect(resolveOverride(true, false, false)).toEqual({ value: true, source: "override" });
+  });
+
+  it("override défini (false) → override prime (désactivation explicite)", () => {
+    expect(resolveOverride(false, true, true)).toEqual({ value: false, source: "override" });
+  });
+
+  it("override null + pattern défini → valeur du pattern", () => {
+    expect(resolveOverride(null, "autoGenerate", "none")).toEqual({
+      value: "autoGenerate",
+      source: "pattern",
+    });
+  });
+
+  it("override null + pattern undefined → default", () => {
+    expect(resolveOverride(null, undefined, "fallback")).toEqual({
+      value: "fallback",
+      source: "default",
+    });
+  });
+
+  it("override undefined comporte comme null → pattern prime", () => {
+    expect(resolveOverride(undefined, "x", "default")).toEqual({
+      value: "x",
+      source: "pattern",
+    });
+  });
+});
+
+// ─── resolveSlotConfig (config résolue exhaustive) ────────────────────────────
+
+describe("resolveSlotConfig", () => {
+  const pattern = {
+    needsClientValidation: true,
+    allowsClientRevision: true,
+    needsCaptions: true,
+    needsDescription: "autoGenerate",
+    needsRushes: true,
+    needsBrief: false,
+  };
+
+  it("aucun override → héritage complet du pattern", () => {
+    const cfg = resolveSlotConfig(
+      {
+        needsClientValidationOverride: null,
+        allowsClientRevisionOverride: null,
+        needsCaptionsOverride: null,
+        needsDescriptionOverride: null,
+        needsRushesOverride: null,
+        needsBriefOverride: null,
+      },
+      pattern,
+    );
+    expect(cfg.needsClientValidation).toBe(true);
+    expect(cfg.needsCaptions).toBe(true);
+    expect(cfg.needsDescription).toBe("autoGenerate");
+    expect(cfg.needsRushes).toBe(true);
+    expect(cfg.needsBrief).toBe(false);
+    expect(cfg.source.needsCaptions).toBe("pattern");
+  });
+
+  it("override needsCaptions=false → désactive captions pour ce slot uniquement", () => {
+    const cfg = resolveSlotConfig(
+      {
+        needsClientValidationOverride: null,
+        allowsClientRevisionOverride: null,
+        needsCaptionsOverride: false,
+        needsDescriptionOverride: null,
+        needsRushesOverride: null,
+        needsBriefOverride: null,
+      },
+      pattern,
+    );
+    expect(cfg.needsCaptions).toBe(false);
+    expect(cfg.source.needsCaptions).toBe("override");
+    // Les autres champs restent hérités du pattern
+    expect(cfg.needsDescription).toBe("autoGenerate");
+    expect(cfg.source.needsDescription).toBe("pattern");
+  });
+
+  it("override needsDescription=none → force désactivation, pattern dit autoGenerate", () => {
+    const cfg = resolveSlotConfig(
+      {
+        needsClientValidationOverride: null,
+        allowsClientRevisionOverride: null,
+        needsCaptionsOverride: null,
+        needsDescriptionOverride: "none",
+        needsRushesOverride: null,
+        needsBriefOverride: null,
+      },
+      pattern,
+    );
+    expect(cfg.needsDescription).toBe("none");
+    expect(cfg.source.needsDescription).toBe("override");
+  });
+
+  it("pas de pattern → defaults false + needsDescription='none'", () => {
+    const cfg = resolveSlotConfig(
+      {
+        needsClientValidationOverride: null,
+        allowsClientRevisionOverride: null,
+        needsCaptionsOverride: null,
+        needsDescriptionOverride: null,
+        needsRushesOverride: null,
+        needsBriefOverride: null,
+      },
+      null,
+    );
+    expect(cfg.needsCaptions).toBe(false);
+    expect(cfg.needsDescription).toBe("none");
+    expect(cfg.source.needsCaptions).toBe("default");
+  });
+
+  it("override total : tous les champs surchargés, pattern ignoré", () => {
+    const cfg = resolveSlotConfig(
+      {
+        needsClientValidationOverride: false,
+        allowsClientRevisionOverride: false,
+        needsCaptionsOverride: false,
+        needsDescriptionOverride: "none",
+        needsRushesOverride: false,
+        needsBriefOverride: true,
+      },
+      pattern,
+    );
+    expect(cfg.needsClientValidation).toBe(false);
+    expect(cfg.needsCaptions).toBe(false);
+    expect(cfg.needsBrief).toBe(true);
+    expect(cfg.source.needsClientValidation).toBe("override");
+    expect(cfg.source.needsBrief).toBe("override");
   });
 });
