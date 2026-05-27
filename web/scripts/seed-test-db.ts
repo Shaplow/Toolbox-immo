@@ -115,11 +115,11 @@ async function main() {
 
   const account = await prisma.instagramAccount.upsert({
     where: { handle: "test_account" },
-    update: { clientId: client.id },
+    update: { client: { connect: { id: client.id } } },
     create: {
       name: "Test Account",
       handle: "test_account",
-      clientId: client.id,
+      client: { connect: { id: client.id } },
     },
   });
 
@@ -201,6 +201,81 @@ async function main() {
   });
 
   console.log(`  ✓ Slots : assigné=${slot.id}, orphelin=test-slot-orphan`);
+
+  // ─── MediaLibrary + MediaAsset (pour Playwright screenshots D-SETUP) ──────
+  // Library vidéo "Test Videos" avec 3 assets fictifs (URLs locales, jamais
+  // chargées par les screenshot tests — preview désactivée via LazyVideoThumb
+  // IntersectionObserver) + library audio "Test Audio" avec 2 musiques.
+
+  const videoLib = await prisma.mediaLibrary.upsert({
+    where: { id: "test-media-lib-video" },
+    update: {},
+    create: {
+      id: "test-media-lib-video",
+      name: "Test Videos",
+      type: "video",
+      setSequence: JSON.stringify(["INTRO", "OUTRO"]),
+      metadataSchema: JSON.stringify([]),
+    },
+  });
+
+  const audioLib = await prisma.mediaLibrary.upsert({
+    where: { id: "test-media-lib-audio" },
+    update: {},
+    create: {
+      id: "test-media-lib-audio",
+      name: "Test Audio",
+      type: "audio",
+      setSequence: JSON.stringify([]),
+      metadataSchema: JSON.stringify([]),
+    },
+  });
+
+  // Assets vidéo : 3 fichiers avec set tags + tags + categories différents
+  for (const [i, spec] of [
+    { setTag: "INTRO", category: "Tenue 1", tags: ["intro", "extérieur"] },
+    { setTag: "OUTRO", category: "Tenue 1", tags: ["outro", "extérieur"] },
+    { setTag: "INTRO", category: "Tenue 2", tags: ["intro", "intérieur"] },
+  ].entries()) {
+    await prisma.mediaAsset.upsert({
+      where: { id: `test-media-asset-video-${i}` },
+      update: {},
+      create: {
+        id: `test-media-asset-video-${i}`,
+        libraryId: videoLib.id,
+        filename: `test_video_${i}.mp4`,
+        r2Key: `test-fixtures/video_${i}.mp4`,
+        url: `/test-fixtures/video_${i}.mp4`,
+        mimeType: "video/mp4",
+        duration: 5.0 + i,
+        tags: JSON.stringify(spec.tags),
+        setTag: spec.setTag,
+        category: spec.category,
+        usageCount: i,
+      },
+    });
+  }
+
+  // Assets audio : 2 musiques
+  for (const i of [0, 1]) {
+    await prisma.mediaAsset.upsert({
+      where: { id: `test-media-asset-audio-${i}` },
+      update: {},
+      create: {
+        id: `test-media-asset-audio-${i}`,
+        libraryId: audioLib.id,
+        filename: `test_audio_${i}.mp3`,
+        r2Key: `test-fixtures/audio_${i}.mp3`,
+        url: `/test-fixtures/audio_${i}.mp3`,
+        mimeType: "audio/mpeg",
+        duration: 30.0 + i * 10,
+        tags: JSON.stringify([]),
+        usageCount: 0,
+      },
+    });
+  }
+
+  console.log(`  ✓ MediaLibraries : video=${videoLib.id}, audio=${audioLib.id}`);
 
   console.log("\n✅ Seed test DB terminé.");
   console.log("\n   Credentials (tous : password=testpass) :");
