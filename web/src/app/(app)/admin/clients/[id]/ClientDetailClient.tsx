@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Building2, ChevronLeft, Check, Plus, Instagram } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "@/components/ui/Toast";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
@@ -38,8 +38,13 @@ interface Props {
 
 export function ClientDetailClient({ clientId, initialClient, initialAccounts }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState<Tab>("info");
+  // B3 — Lit ?tab=accounts depuis l'URL (utilisé par les liens depuis
+  // /admin/accounts vers la fiche client onglet comptes). Valeurs invalides
+  // tombent sur "info" par défaut.
+  const initialTab: Tab = searchParams?.get("tab") === "accounts" ? "accounts" : "info";
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [client, setClient] = useState<ClientDetailData | null>(initialClient);
   const [allAccounts, setAllAccounts] = useState<ClientDetailAccountStub[]>(initialAccounts);
   const [form, setForm] = useState({

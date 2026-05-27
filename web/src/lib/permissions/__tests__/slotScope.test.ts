@@ -109,6 +109,11 @@ describe("ALLOWED_PATCH_FIELDS_BY_ROLE — security invariants", () => {
     }
   });
 
+  it("CM can modify caption (B1 — légende Instagram)", () => {
+    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.CM).toContain("caption");
+    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.CM).toContain("title");
+  });
+
   it("USER has no allowed fields", () => {
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.EXTERNAL_GENERATOR).toEqual([]);
   });

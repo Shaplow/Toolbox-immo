@@ -309,6 +309,17 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
             </div>
           </div>
 
+          {/* B10 — Avertissement si pas de monteur assigné (slot invisible côté monteur) */}
+          {!assigneeMonteurId && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <AlertCircle size={14} className="mt-0.5 shrink-0" />
+              <span>
+                Sans monteur assigné, ce slot n&apos;apparaîtra dans la worklist
+                d&apos;aucun monteur. Tu pourras toujours l&apos;assigner plus tard.
+              </span>
+            </div>
+          )}
+
           {/* Titre — optionnel si un pattern est sélectionné, sinon requis */}
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">

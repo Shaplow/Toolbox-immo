@@ -17,6 +17,7 @@ import {
   ArrowUpDown,
   CheckSquare,
   Clock,
+  Columns3,
   LayoutGrid,
   RotateCcw,
   Search,
@@ -151,9 +152,19 @@ export function MediaAssetsToolbar({
                 >
                   <LayoutGrid size={13} /> Grille
                 </button>
+                {/* B7 — Vue groupée (colonnes par setTag) : feature qui existait
+                     dans le code (viewMode="grouped") mais sans bouton pour y
+                     accéder. Maintenant exposée comme 3e option. */}
+                <button
+                  onClick={() => setViewMode("grouped")}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs border-l border-gray-200 transition-colors ${viewMode === "grouped" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
+                  title="Vue groupée — colonnes par set, drag-and-drop pour la séquence"
+                >
+                  <Columns3 size={13} /> Groupé
+                </button>
                 <button
                   onClick={() => setViewMode("rotation")}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors ${viewMode === "rotation" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs border-l border-gray-200 transition-colors ${viewMode === "rotation" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
                   title="Vue rotation — ordre de passage des sets"
                 >
                   <RotateCcw size={13} /> Rotation

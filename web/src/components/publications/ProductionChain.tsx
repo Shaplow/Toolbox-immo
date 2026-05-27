@@ -150,14 +150,42 @@ function StepIcon({ status }: { status: StepStatus }) {
 // ProductionChain
 // ---------------------------------------------------------------------------
 
+// B5 — Mapping step.key → SectionKey utilisé par CollapsibleSection.
+// `edit` n'a pas de section DOM dédiée (le step couvre les rushes+versions),
+// on scroll vers "versions". `validation` n'a pas encore de section (placeholder
+// Phase 2), donc cliquer dessus n'a aucun effet — c'est intentionnel.
+const STEP_TO_SECTION: Record<string, string> = {
+  render: "render",
+  edit: "versions",
+  cover: "cover",
+  captions: "captions",
+  description: "description",
+  publish: "publish",
+};
+
 export function ProductionChain({ steps }: ProductionChainProps) {
   const visibleSteps = steps.filter((s) => s.visible);
 
-  function scrollToSection(key: string) {
-    const el = document.getElementById(key);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
+  function scrollToSection(stepKey: string) {
+    const sectionId = STEP_TO_SECTION[stepKey];
+    if (!sectionId) return; // step sans section dédiée (ex: "validation")
+
+    // B5 — Force d'abord l'ouverture de la CollapsibleSection cible (event
+    // intercepté par CollapsibleSection.tsx) avant de scroller, pour éviter
+    // que le scroll arrive sur un bandeau replié.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("pub:open-section", { detail: { sectionId } }),
+      );
     }
+
+    // Petit délai pour laisser le state React se propager avant scroll.
+    setTimeout(() => {
+      const el = document.getElementById(sectionId);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 50);
   }
 
   return (
