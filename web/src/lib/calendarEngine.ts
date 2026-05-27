@@ -1,4 +1,34 @@
 import { prisma } from "@/lib/prisma";
+import type { SlotStatus } from "@/types/roles";
+
+/**
+ * Détermine le statut initial d'un slot fraîchement créé selon le mode de
+ * production défini par le pattern.
+ *
+ * - `auto_template`   → `PLANNED` : l'auto-transition pipeline prendra le relais
+ *                       dès qu'un render sera lancé (TO_DO → IN_PROGRESS → READY_FOR_CM)
+ * - `manual_rushes`   → `RUSHES_EXPECTED` : visible immédiatement chez le MONTEUR
+ *                       qui doit uploader des rushes
+ * - `external_upload` → `READY_FOR_CM` : pas de montage attendu, le CM prend le relais
+ *
+ * Si `source` est inconnu (donnée corrompue ou évolution future non gérée), on
+ * retombe sur `PLANNED` avec un warn console — pas de cassure.
+ */
+export function mapSourceToInitialStatus(source: string): SlotStatus {
+  switch (source) {
+    case "auto_template":
+      return "PLANNED";
+    case "manual_rushes":
+      return "RUSHES_EXPECTED";
+    case "external_upload":
+      return "READY_FOR_CM";
+    default:
+      console.warn(
+        `[calendarEngine] Source pattern inconnue "${source}" — fallback sur PLANNED`,
+      );
+      return "PLANNED";
+  }
+}
 
 export interface GenerateCalendarOptions {
   /** Si omis, génère pour tous les comptes actifs */
@@ -56,6 +86,7 @@ export async function generateCalendarSlots(
       id: true,
       accountId: true,
       label: true,
+      source: true,
       dayOfWeek: true,
       publishTime: true,
       templateId: true,
@@ -130,7 +161,9 @@ export async function generateCalendarSlots(
         accountId: pattern.accountId,
         scheduledAt,
         patternId: pattern.id,
-        status: "TO_DO",
+        // Statut initial dérivé de la source (voir mapSourceToInitialStatus)
+        // — garantit que le slot apparaît immédiatement dans la worklist du bon rôle.
+        status: mapSourceToInitialStatus(pattern.source),
         templateId: pattern.templateId ?? null,
         assigneeMonteurId: pattern.defaultAssigneeMonteurId ?? null,
         assigneeCmId: pattern.defaultAssigneeCmId ?? null,

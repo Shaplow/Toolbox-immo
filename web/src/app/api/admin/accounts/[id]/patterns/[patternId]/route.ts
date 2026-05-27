@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { validatePatternCrossFields } from "@/app/api/admin/accounts/[id]/patterns/route";
 
 const VALID_SOURCES = ["auto_template", "manual_rushes", "external_upload"] as const;
 const VALID_COVER_MODES = ["auto", "manualSelect", "none"] as const;
@@ -103,10 +104,23 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
   const { id, patternId } = await params;
 
-  // Vérification d'appartenance anti-énumération
+  // Charge l'existant pour : 1) vérification d'appartenance anti-énumération,
+  // 2) merge avec le PATCH partiel avant validation cross-field.
   const existing = await prisma.accountPattern.findFirst({
     where: { id: patternId, accountId: id },
-    select: { id: true },
+    select: {
+      id: true,
+      source: true,
+      templateId: true,
+      coverMode: true,
+      coverConfig: true,
+      needsCaptions: true,
+      needsDescription: true,
+      needsClientValidation: true,
+      allowsClientRevision: true,
+      captionPresetId: true,
+      descriptionPromptId: true,
+    },
   });
   if (!existing) {
     return NextResponse.json({ error: "Pattern introuvable" }, { status: 404 });
@@ -116,6 +130,29 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const validationError = validatePatchBody(body);
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
+  }
+
+  // Validation cross-field après merge body + existant (PATCH partiel)
+  const merged = {
+    source: body.source ?? existing.source,
+    templateId: body.templateId !== undefined ? body.templateId : existing.templateId,
+    coverMode: body.coverMode ?? existing.coverMode,
+    coverConfig: body.coverConfig !== undefined ? body.coverConfig : existing.coverConfig,
+    needsCaptions: body.needsCaptions ?? existing.needsCaptions,
+    needsDescription: body.needsDescription ?? existing.needsDescription,
+    needsClientValidation: body.needsClientValidation ?? existing.needsClientValidation,
+    allowsClientRevision: body.allowsClientRevision ?? existing.allowsClientRevision,
+    captionPresetId:
+      body.captionPresetId !== undefined ? body.captionPresetId : existing.captionPresetId,
+    descriptionPromptId:
+      body.descriptionPromptId !== undefined ? body.descriptionPromptId : existing.descriptionPromptId,
+  };
+  const xfieldErrors = await validatePatternCrossFields(merged);
+  if (xfieldErrors.length > 0) {
+    return NextResponse.json(
+      { error: "Pattern incohérent — corrigez les conflits avant de sauvegarder.", validationErrors: xfieldErrors },
+      { status: 422 },
+    );
   }
 
   const data: Prisma.AccountPatternUpdateInput = {};

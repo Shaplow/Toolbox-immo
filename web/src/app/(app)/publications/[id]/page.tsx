@@ -7,7 +7,7 @@ import { canMarkPublished, canUploadRushes, canEditBrief, canUploadVersion, canP
 import { computePublicationSteps } from "@/lib/publications/steps";
 import { toUserRole } from "@/lib/permissions/role";
 import { syncSlotsPipelineStatuses } from "@/lib/publications/transitions";
-import { resolveClientValidationConfig } from "@/lib/publications/clientValidation";
+import { resolveSlotConfig } from "@/lib/publications/clientValidation";
 import { PublicationFiche } from "./PublicationFiche";
 import type { CommentData } from "@/components/publications/CommentItem";
 import type { ActivityItem } from "@/components/publications/ActivityTimeline";
@@ -77,7 +77,7 @@ export default async function PublicationPage({ params }: PageProps) {
           pngUrl: true,
           createdAt: true,
           coverFramePack: {
-            select: { id: true, status: true, finalCoverUrl: true },
+            select: { id: true, status: true, finalCoverUrl: true, errorMsg: true },
           },
           listing: { select: { id: true } },
         },
@@ -259,14 +259,33 @@ export default async function PublicationPage({ params }: PageProps) {
   // P0.2 — dernier job description IA lié (le step utilise aussi slot.description en fallback)
   const latestDescriptionJob = slot.descriptionJobs[0] ?? null;
 
-  // W2 — Validation client : résolution config + token actif + rounds
-  const clientValidationConfig = resolveClientValidationConfig(
+  // Cohérence Workflows Phase 4 — Résolution exhaustive (pattern + overrides slot)
+  // Couvre validation client + needsCaptions/Description/Rushes/Brief en un seul appel.
+  const resolvedConfig = resolveSlotConfig(
     {
       needsClientValidationOverride: slot.needsClientValidationOverride,
       allowsClientRevisionOverride: slot.allowsClientRevisionOverride,
+      needsCaptionsOverride: slot.needsCaptionsOverride,
+      needsDescriptionOverride: slot.needsDescriptionOverride,
+      needsRushesOverride: slot.needsRushesOverride,
+      needsBriefOverride: slot.needsBriefOverride,
     },
     slot.pattern,
   );
+  // Pattern "effectif" : pattern parent enrichi des valeurs résolues — utilisé
+  // par computePublicationSteps + sections enfant qui lisent pattern.needs*.
+  // Les overrides sont ainsi transparents pour la couche d'affichage.
+  const effectivePattern = slot.pattern
+    ? {
+        ...slot.pattern,
+        needsCaptions: resolvedConfig.needsCaptions,
+        needsDescription: resolvedConfig.needsDescription,
+        needsClientValidation: resolvedConfig.needsClientValidation,
+        allowsClientRevision: resolvedConfig.allowsClientRevision,
+        needsRushes: resolvedConfig.needsRushes,
+        needsBrief: resolvedConfig.needsBrief,
+      }
+    : null;
 
   const [activeValidationToken, validationRounds] = await Promise.all([
     prisma.clientValidationToken.findFirst({
@@ -287,10 +306,10 @@ export default async function PublicationPage({ params }: PageProps) {
     }),
   ]);
 
-  // Calcul des steps
+  // Calcul des steps — utilise le pattern effectif (overrides résolus)
   const steps = computePublicationSteps({
     slot: { status: effectiveStatus, caption: slot.caption, description: slot.description },
-    pattern: slot.pattern ?? null,
+    pattern: effectivePattern,
     renderJob: slot.render ?? null,
     coverPack: slot.render?.coverFramePack ?? null,
     captionJob: latestCaptionJob,
@@ -298,6 +317,26 @@ export default async function PublicationPage({ params }: PageProps) {
     versionsCount: rawVersions.filter((v) => v.deletedAt === null).length,
     currentVersionId: slot.currentVersionId ?? null,
   });
+
+  // Cover config error : si pas de pack créé alors que pattern.coverMode=auto,
+  // chercher la dernière activity COVER_CONFIG_ERROR pour afficher un warning
+  // contextuel dans CoverSection.
+  let coverConfigError: { reason: string; presetName?: string; message: string } | null = null;
+  if (!slot.render?.coverFramePack && slot.pattern?.coverMode === "auto") {
+    const lastConfigError = await prisma.publicationActivity.findFirst({
+      where: { slotId: id, type: "COVER_CONFIG_ERROR" },
+      orderBy: { createdAt: "desc" },
+      select: { payload: true },
+    });
+    if (lastConfigError?.payload) {
+      const p = lastConfigError.payload as Record<string, unknown>;
+      coverConfigError = {
+        reason: typeof p.reason === "string" ? p.reason : "unknown",
+        presetName: typeof p.presetName === "string" ? p.presetName : undefined,
+        message: typeof p.message === "string" ? p.message : "Configuration cover invalide",
+      };
+    }
+  }
 
   // Permissions UI
   const userForPermission = { id: userId, role };
@@ -340,19 +379,20 @@ export default async function PublicationPage({ params }: PageProps) {
       }}
       listing={listing}
       pattern={
-        slot.pattern
+        effectivePattern
           ? {
-              id: slot.pattern.id,
-              label: slot.pattern.label,
-              source: slot.pattern.source,
-              templateId: slot.pattern.templateId,
-              coverMode: slot.pattern.coverMode,
-              needsCaptions: slot.pattern.needsCaptions,
-              needsDescription: slot.pattern.needsDescription,
-              needsClientValidation: slot.pattern.needsClientValidation,
-              allowsClientRevision: slot.pattern.allowsClientRevision,
-              needsRushes: slot.pattern.needsRushes,
-              needsBrief: slot.pattern.needsBrief,
+              id: effectivePattern.id,
+              label: effectivePattern.label,
+              source: effectivePattern.source,
+              templateId: effectivePattern.templateId,
+              coverMode: effectivePattern.coverMode,
+              // Toutes les valeurs needs* sont déjà résolues (overrides appliqués)
+              needsCaptions: effectivePattern.needsCaptions,
+              needsDescription: effectivePattern.needsDescription,
+              needsClientValidation: effectivePattern.needsClientValidation,
+              allowsClientRevision: effectivePattern.allowsClientRevision,
+              needsRushes: effectivePattern.needsRushes,
+              needsBrief: effectivePattern.needsBrief,
             }
           : null
       }
@@ -367,6 +407,7 @@ export default async function PublicationPage({ params }: PageProps) {
           : null
       }
       coverPack={slot.render?.coverFramePack ?? null}
+      coverConfigError={coverConfigError}
       assigneeMonteur={slot.assigneeMonteur}
       assigneeCm={slot.assigneeCm}
       steps={steps}
@@ -401,8 +442,8 @@ export default async function PublicationPage({ params }: PageProps) {
           : null
       }
       clientValidation={{
-        needsClientValidation: clientValidationConfig.needsClientValidation,
-        allowsClientRevision: clientValidationConfig.allowsClientRevision,
+        needsClientValidation: resolvedConfig.needsClientValidation,
+        allowsClientRevision: resolvedConfig.allowsClientRevision,
         needsClientValidationOverride: slot.needsClientValidationOverride,
         allowsClientRevisionOverride: slot.allowsClientRevisionOverride,
         activeToken: activeValidationToken

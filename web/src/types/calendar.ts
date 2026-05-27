@@ -54,12 +54,21 @@ export interface PublicationSlot {
     // W2 — config validation client héritée du pattern (peut être null si pas chargé)
     needsClientValidation?: boolean;
     allowsClientRevision?: boolean;
+    // Cohérence Workflows Phase 4 — autres needs* hérités du pattern
+    needsCaptions?: boolean;
+    needsDescription?: string;
+    needsRushes?: boolean;
+    needsBrief?: boolean;
   } | null;
   assigneeMonteur?: { id: string; name: string | null } | null;
   assigneeCm?: { id: string; name: string | null } | null;
-  // W2 — overrides per-slot (null = hérite du pattern)
+  // W2 + Cohérence Workflows Phase 4 — overrides per-slot (null = hérite du pattern)
   needsClientValidationOverride?: boolean | null;
   allowsClientRevisionOverride?: boolean | null;
+  needsCaptionsOverride?: boolean | null;
+  needsDescriptionOverride?: string | null;
+  needsRushesOverride?: boolean | null;
+  needsBriefOverride?: boolean | null;
 }
 
 // Re-exported from the centralized source of truth — do not duplicate here.

@@ -6,6 +6,7 @@ import { buildHTML } from "@/lib/renderer/buildHTML";
 import { renderPNG } from "@/lib/renderer/renderPNG";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import { resolveSlotExcludeZones, resolveZone } from "@/lib/triggerAutoCaptionFromTranscription";
+import { logActivity, type ActivityType } from "@/lib/publications/activity";
 import type { ListingData } from "@/types/listing";
 import type { AnyBlock, CoverAutoConfig, ImageBlock, SchemaField, TemplateJSON, TextBlock, VideoBlock, VideoSequenceSlot } from "@/types/template";
 
@@ -27,6 +28,23 @@ function safeJson<T>(raw: string | null | undefined, fallback: T): T {
     return JSON.parse(raw) as T;
   } catch {
     return fallback;
+  }
+}
+
+/**
+ * Best-effort logActivity dédié au cycle cover. Avale les erreurs car le
+ * pipeline cover ne doit jamais être bloqué par un problème de log.
+ */
+async function logCoverActivity(
+  slotId: string | null | undefined,
+  type: Extract<ActivityType, "COVER_QUEUED" | "COVER_READY" | "COVER_FAILED" | "COVER_CONFIG_ERROR">,
+  payload?: Record<string, unknown>,
+): Promise<void> {
+  if (!slotId) return;
+  try {
+    await logActivity(prisma, { slotId, actorId: null, type, payload });
+  } catch (err) {
+    console.warn(`[coverAuto] logActivity(${type}) failed for slot=${slotId}:`, err);
   }
 }
 
@@ -347,10 +365,19 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
     where: { id: packId },
     include: {
       template: true,
-      render: { select: { usedAssets: true, slotDurations: true, listing: { select: { jsonData: true } } } },
+      render: {
+        select: {
+          usedAssets: true,
+          slotDurations: true,
+          listing: { select: { jsonData: true } },
+          // slotId pour pouvoir logger les activities READY/FAILED sur la fiche.
+          publicationSlot: { select: { id: true } },
+        },
+      },
     },
   });
   if (!pack?.template || !pack.sourceVideoUrl) return;
+  const slotId = pack.render.publicationSlot?.id ?? null;
 
   let slotDurations: Record<string, number> | undefined;
   if (pack.render.slotDurations) {
@@ -453,10 +480,19 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
         errorMsg: null,
       },
     });
+    await logCoverActivity(slotId, "COVER_READY", {
+      coverFramePackId: pack.id,
+      frameCount: persisted.length,
+    });
   } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
     await prisma.coverFramePack.update({
       where: { id: packId },
-      data: { status: "FAILED", errorMsg: err instanceof Error ? err.message : String(err) },
+      data: { status: "FAILED", errorMsg },
+    });
+    await logCoverActivity(slotId, "COVER_FAILED", {
+      coverFramePackId: packId,
+      errorMsg,
     });
     throw err;
   }
@@ -480,16 +516,19 @@ export async function triggerAutoCoverPackForRender(
   if (!templateExists) return;
 
   // Lire Pattern.coverConfig — source de vérité Phase 1.8 (template.coverAutoConfig supprimé)
+  // + slot.id pour pouvoir logger les activities cover sur la fiche.
   const renderSlot = await prisma.render.findUnique({
     where: { id: renderId },
     select: {
       publicationSlot: {
         select: {
+          id: true,
           pattern: { select: { id: true, coverMode: true, coverConfig: true, templateId: true } },
         },
       },
     },
   });
+  const slotId = renderSlot?.publicationSlot?.id ?? null;
   const slotPattern = renderSlot?.publicationSlot?.pattern;
 
   if (slotPattern?.coverMode !== "auto") return;
@@ -504,6 +543,11 @@ export async function triggerAutoCoverPackForRender(
     console.warn(
       `[autoCover] Pattern ${slotPattern.id} has coverMode=auto but no coverPresetName — skip (configure un preset dans le template)`,
     );
+    await logCoverActivity(slotId, "COVER_CONFIG_ERROR", {
+      patternId: slotPattern.id,
+      reason: "missing_preset_name",
+      message: "coverMode=auto mais aucun preset configuré dans le pattern",
+    });
     return;
   }
 
@@ -516,6 +560,13 @@ export async function triggerAutoCoverPackForRender(
     console.warn(
       `[autoCover] Preset "${presetName}" introuvable pour template ${patternTemplateId} — skip (Cover config invalide)`,
     );
+    await logCoverActivity(slotId, "COVER_CONFIG_ERROR", {
+      patternId: slotPattern.id,
+      reason: "preset_not_found",
+      presetName,
+      templateId: patternTemplateId,
+      message: `Preset cover "${presetName}" introuvable sur le template`,
+    });
     return;
   }
 
@@ -547,6 +598,12 @@ export async function triggerAutoCoverPackForRender(
     console.warn(`[autoCover] Création pack ignorée pour render=${renderId} : ${String(err)}`);
     return;
   }
+
+  await logCoverActivity(slotId, "COVER_QUEUED", {
+    coverFramePackId: pack.id,
+    presetName,
+    frameCount,
+  });
 
   queueCoverFramePackPreparation(pack.id);
   console.info(`[autoCover] Pack ${pack.id} lancé pour render=${renderId} (preset="${presetName}")`);

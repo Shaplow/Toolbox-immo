@@ -167,6 +167,13 @@ interface CoverPackInfo {
   id: string;
   status: string;
   finalCoverUrl: string | null;
+  errorMsg?: string | null;
+}
+
+interface CoverConfigError {
+  reason: string;
+  presetName?: string;
+  message: string;
 }
 
 /**
@@ -199,6 +206,7 @@ export interface PublicationFicheProps {
   pattern: PatternInfo | null;
   render: RenderInfo | null;
   coverPack: CoverPackInfo | null;
+  coverConfigError: CoverConfigError | null;
   assigneeMonteur: AssigneeInfo | null;
   assigneeCm: AssigneeInfo | null;
   steps: PublicationStep[];
@@ -254,6 +262,7 @@ export function PublicationFiche({
   pattern,
   render,
   coverPack,
+  coverConfigError,
   assigneeMonteur,
   assigneeCm,
   steps,
@@ -403,6 +412,7 @@ export function PublicationFiche({
                 slot={{ id: slot.id }}
                 pattern={pattern ? { coverMode: pattern.coverMode } : null}
                 coverPack={coverPack}
+                coverConfigError={coverConfigError}
                 canEdit={canEditCover}
                 currentVersion={currentVersion}
               />

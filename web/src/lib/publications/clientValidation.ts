@@ -40,6 +40,30 @@ export function compareHashes(a: string, b: string): boolean {
 
 // ─── Resolve config (pattern + override slot) ─────────────────────────────────
 
+/**
+ * Résout une valeur effective override/pattern selon le contrat :
+ *  - override !== null/undefined → override prime (source "override")
+ *  - sinon pattern existe → valeur du pattern (source "pattern")
+ *  - sinon → valeur par défaut (source "default")
+ *
+ * Helper générique réutilisable pour TOUS les champs `needs*Override` du slot.
+ */
+export type ResolveSource = "pattern" | "override" | "default";
+
+export function resolveOverride<T>(
+  overrideValue: T | null | undefined,
+  patternValue: T | null | undefined,
+  defaultValue: T,
+): { value: T; source: ResolveSource } {
+  if (overrideValue !== null && overrideValue !== undefined) {
+    return { value: overrideValue, source: "override" };
+  }
+  if (patternValue !== null && patternValue !== undefined) {
+    return { value: patternValue, source: "pattern" };
+  }
+  return { value: defaultValue, source: "default" };
+}
+
 interface PatternForValidation {
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
@@ -62,8 +86,8 @@ export interface ClientValidationConfig {
    * - "default" : pas de pattern (slot orphelin), valeur false par défaut
    */
   source: {
-    needsClientValidation: "pattern" | "override" | "default";
-    allowsClientRevision: "pattern" | "override" | "default";
+    needsClientValidation: ResolveSource;
+    allowsClientRevision: ResolveSource;
   };
 }
 
@@ -77,26 +101,99 @@ export function resolveClientValidationConfig(
   slot: SlotForValidation,
   pattern: PatternForValidation | null,
 ): ClientValidationConfig {
-  const needsResolved =
-    slot.needsClientValidationOverride !== null
-      ? { value: slot.needsClientValidationOverride, source: "override" as const }
-      : pattern
-        ? { value: pattern.needsClientValidation, source: "pattern" as const }
-        : { value: false, source: "default" as const };
-
-  const allowsResolved =
-    slot.allowsClientRevisionOverride !== null
-      ? { value: slot.allowsClientRevisionOverride, source: "override" as const }
-      : pattern
-        ? { value: pattern.allowsClientRevision, source: "pattern" as const }
-        : { value: false, source: "default" as const };
-
+  const needs = resolveOverride(
+    slot.needsClientValidationOverride,
+    pattern?.needsClientValidation,
+    false,
+  );
+  const allows = resolveOverride(
+    slot.allowsClientRevisionOverride,
+    pattern?.allowsClientRevision,
+    false,
+  );
   return {
-    needsClientValidation: needsResolved.value,
-    allowsClientRevision: allowsResolved.value,
+    needsClientValidation: needs.value,
+    allowsClientRevision: allows.value,
     source: {
-      needsClientValidation: needsResolved.source,
-      allowsClientRevision: allowsResolved.source,
+      needsClientValidation: needs.source,
+      allowsClientRevision: allows.source,
+    },
+  };
+}
+
+// ─── Resolve étendu pour tous les needs* (Cohérence Workflows Phase 4) ────────
+
+interface SlotForAllOverrides {
+  needsClientValidationOverride: boolean | null;
+  allowsClientRevisionOverride: boolean | null;
+  needsCaptionsOverride: boolean | null;
+  needsDescriptionOverride: string | null;
+  needsRushesOverride: boolean | null;
+  needsBriefOverride: boolean | null;
+}
+
+interface PatternForAllNeeds {
+  needsClientValidation: boolean;
+  allowsClientRevision: boolean;
+  needsCaptions: boolean;
+  needsDescription: string;
+  needsRushes: boolean;
+  needsBrief: boolean;
+}
+
+/**
+ * Config résolue exhaustive des `needs*` (et `allows*`) pour un slot.
+ * Inclut la source de chaque valeur (pattern/override/default) pour permettre
+ * à l'UI d'indiquer "ce champ est surchargé".
+ */
+export interface SlotResolvedConfig {
+  needsClientValidation: boolean;
+  allowsClientRevision: boolean;
+  needsCaptions: boolean;
+  needsDescription: string;
+  needsRushes: boolean;
+  needsBrief: boolean;
+  source: {
+    needsClientValidation: ResolveSource;
+    allowsClientRevision: ResolveSource;
+    needsCaptions: ResolveSource;
+    needsDescription: ResolveSource;
+    needsRushes: ResolveSource;
+    needsBrief: ResolveSource;
+  };
+}
+
+/**
+ * Calcule la config effective d'un slot pour tous les `needs*` (et `allows*`),
+ * en appliquant les overrides per-slot par-dessus la config du pattern.
+ *
+ * Utilisé par : computePublicationSteps (page.tsx fiche), triggerAutoCaption,
+ * SlotDetailPanel (lecture seule pour afficher les valeurs effectives).
+ */
+export function resolveSlotConfig(
+  slot: SlotForAllOverrides,
+  pattern: PatternForAllNeeds | null,
+): SlotResolvedConfig {
+  const ncv = resolveOverride(slot.needsClientValidationOverride, pattern?.needsClientValidation, false);
+  const acr = resolveOverride(slot.allowsClientRevisionOverride, pattern?.allowsClientRevision, false);
+  const nc = resolveOverride(slot.needsCaptionsOverride, pattern?.needsCaptions, false);
+  const nd = resolveOverride(slot.needsDescriptionOverride, pattern?.needsDescription, "none");
+  const nr = resolveOverride(slot.needsRushesOverride, pattern?.needsRushes, false);
+  const nb = resolveOverride(slot.needsBriefOverride, pattern?.needsBrief, false);
+  return {
+    needsClientValidation: ncv.value,
+    allowsClientRevision: acr.value,
+    needsCaptions: nc.value,
+    needsDescription: nd.value,
+    needsRushes: nr.value,
+    needsBrief: nb.value,
+    source: {
+      needsClientValidation: ncv.source,
+      allowsClientRevision: acr.source,
+      needsCaptions: nc.source,
+      needsDescription: nd.source,
+      needsRushes: nr.source,
+      needsBrief: nb.source,
     },
   };
 }

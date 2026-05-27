@@ -58,9 +58,13 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
     status: slot.status,
     fieldSchema: slot.fieldSchema,
     fields: slot.fields,
-    // W2 — overrides per-slot. null = hérite du pattern.
+    // W2 + Cohérence Workflows Phase 4 — overrides per-slot. null = hérite.
     needsClientValidationOverride: slot.needsClientValidationOverride ?? null,
     allowsClientRevisionOverride: slot.allowsClientRevisionOverride ?? null,
+    needsCaptionsOverride: slot.needsCaptionsOverride ?? null,
+    needsDescriptionOverride: slot.needsDescriptionOverride ?? null,
+    needsRushesOverride: slot.needsRushesOverride ?? null,
+    needsBriefOverride: slot.needsBriefOverride ?? null,
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -106,6 +110,10 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
             fieldSchema: form.fieldSchema,
             needsClientValidationOverride: form.needsClientValidationOverride,
             allowsClientRevisionOverride: form.allowsClientRevisionOverride,
+            needsCaptionsOverride: form.needsCaptionsOverride,
+            needsDescriptionOverride: form.needsDescriptionOverride,
+            needsRushesOverride: form.needsRushesOverride,
+            needsBriefOverride: form.needsBriefOverride,
           };
 
       const res = await fetch(`/api/calendar/slots/${slot.id}`, {
@@ -280,33 +288,69 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
             />
           </div>
 
-          {/* W2 — Validation client (overrides per-slot, ADMIN uniquement) */}
+          {/* Overrides per-slot (ADMIN uniquement) — repliable par défaut */}
           {!isRestricted && (
-            <div className="rounded-lg border border-fuchsia-100 bg-fuchsia-50/30 p-3 space-y-2">
-              <p className="text-xs font-medium text-fuchsia-900">Validation client</p>
-              <p className="text-xs text-fuchsia-700/80">
-                Override la config du pattern pour ce slot spécifique. Laissez sur
-                « Hériter » pour utiliser la valeur du pattern parent.
-              </p>
-              <OverrideSelect
-                label="Validation client requise"
-                value={form.needsClientValidationOverride}
-                inheritedValue={slot.pattern?.needsClientValidation ?? false}
-                onChange={(v) => set("needsClientValidationOverride", v)}
-              />
-              <OverrideSelect
-                label="Autoriser révisions"
-                value={form.allowsClientRevisionOverride}
-                inheritedValue={slot.pattern?.allowsClientRevision ?? false}
-                onChange={(v) => set("allowsClientRevisionOverride", v)}
-                disabled={
-                  // Si la validation est désactivée (override = false ou pattern false sans override), pas de sens
-                  (form.needsClientValidationOverride === false) ||
-                  (form.needsClientValidationOverride === null &&
-                    slot.pattern?.needsClientValidation === false)
-                }
-              />
-            </div>
+            <details className="rounded-lg border border-fuchsia-100 bg-fuchsia-50/30 p-3 group">
+              <summary className="cursor-pointer text-xs font-medium text-fuchsia-900 select-none flex items-center gap-1.5">
+                <span>Cette publication uniquement</span>
+                <span className="text-fuchsia-700/70 font-normal">
+                  · overrider la config du pattern
+                </span>
+              </summary>
+              <div className="mt-3 space-y-2.5">
+                <p className="text-xs text-fuchsia-700/80">
+                  Laissez sur « Hériter » pour utiliser la valeur du pattern parent.
+                  Forcer Oui/Non écrase pour ce slot uniquement.
+                </p>
+                <OverrideSelect
+                  label="Validation client requise"
+                  value={form.needsClientValidationOverride}
+                  inheritedValue={slot.pattern?.needsClientValidation ?? false}
+                  onChange={(v) => set("needsClientValidationOverride", v)}
+                />
+                <OverrideSelect
+                  label="Autoriser révisions client"
+                  value={form.allowsClientRevisionOverride}
+                  inheritedValue={slot.pattern?.allowsClientRevision ?? false}
+                  onChange={(v) => set("allowsClientRevisionOverride", v)}
+                  disabled={
+                    (form.needsClientValidationOverride === false) ||
+                    (form.needsClientValidationOverride === null &&
+                      slot.pattern?.needsClientValidation === false)
+                  }
+                />
+                <OverrideSelect
+                  label="Sous-titres auto"
+                  value={form.needsCaptionsOverride}
+                  inheritedValue={slot.pattern?.needsCaptions ?? false}
+                  onChange={(v) => set("needsCaptionsOverride", v)}
+                />
+                <OverrideEnumSelect
+                  label="Description"
+                  value={form.needsDescriptionOverride}
+                  inheritedValue={slot.pattern?.needsDescription ?? "none"}
+                  onChange={(v) => set("needsDescriptionOverride", v)}
+                  options={[
+                    { value: "none", label: "Aucune" },
+                    { value: "preFilled", label: "Pré-remplie" },
+                    { value: "autoGenerate", label: "Auto-générée" },
+                    { value: "manualWrite", label: "Manuelle" },
+                  ]}
+                />
+                <OverrideSelect
+                  label="Rushes attendus"
+                  value={form.needsRushesOverride}
+                  inheritedValue={slot.pattern?.needsRushes ?? false}
+                  onChange={(v) => set("needsRushesOverride", v)}
+                />
+                <OverrideSelect
+                  label="Brief éditorial"
+                  value={form.needsBriefOverride}
+                  inheritedValue={slot.pattern?.needsBrief ?? false}
+                  onChange={(v) => set("needsBriefOverride", v)}
+                />
+              </div>
+            </details>
           )}
 
           {/* Render link */}
@@ -413,9 +457,17 @@ function OverrideSelect({
   disabled?: boolean;
 }) {
   const selectValue = value === null ? "inherit" : value ? "true" : "false";
+  const isOverridden = value !== null;
   return (
     <label className="block">
-      <span className="text-xs text-gray-600">{label}</span>
+      <span className="text-xs text-gray-600 flex items-center gap-1">
+        {label}
+        {isOverridden && (
+          <span className="text-[10px] font-semibold text-fuchsia-700 bg-fuchsia-100 px-1 rounded">
+            ✎ override
+          </span>
+        )}
+      </span>
       <select
         value={selectValue}
         onChange={(e) => {
@@ -430,6 +482,54 @@ function OverrideSelect({
         </option>
         <option value="true">Forcer : Oui</option>
         <option value="false">Forcer : Non</option>
+      </select>
+    </label>
+  );
+}
+
+/**
+ * Variante OverrideSelect pour les champs enum (ex: needsDescription qui a
+ * 4 valeurs). Même contrat : null = hérite ; sinon écrase avec la valeur.
+ */
+function OverrideEnumSelect({
+  label,
+  value,
+  inheritedValue,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string | null;
+  inheritedValue: string;
+  onChange: (v: string | null) => void;
+  options: { value: string; label: string }[];
+}) {
+  const isOverridden = value !== null;
+  const inheritedLabel = options.find((o) => o.value === inheritedValue)?.label ?? inheritedValue;
+  return (
+    <label className="block">
+      <span className="text-xs text-gray-600 flex items-center gap-1">
+        {label}
+        {isOverridden && (
+          <span className="text-[10px] font-semibold text-fuchsia-700 bg-fuchsia-100 px-1 rounded">
+            ✎ override
+          </span>
+        )}
+      </span>
+      <select
+        value={value ?? "__inherit__"}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(v === "__inherit__" ? null : v);
+        }}
+        className="mt-1 w-full border border-fuchsia-200 rounded px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-fuchsia-300"
+      >
+        <option value="__inherit__">Hériter du pattern ({inheritedLabel})</option>
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            Forcer : {opt.label}
+          </option>
+        ))}
       </select>
     </label>
   );

@@ -87,7 +87,8 @@ export async function GET(req: NextRequest) {
       // pattern.source + needsCaptions sont nécessaires pour le rattrapage
       // opportuniste des statuts (syncSlotsPipelineStatuses) — rattrape les
       // slots créés avant l'introduction des auto-transitions pipeline.
-      // needsClientValidation + allowsClientRevision pour l'override per-slot UI.
+      // needs* + allows* pour l'affichage des valeurs héritées dans les
+      // OverrideSelect du SlotDetailPanel (Cohérence Workflows Phase 4).
       pattern: {
         select: {
           label: true,
@@ -95,6 +96,9 @@ export async function GET(req: NextRequest) {
           needsCaptions: true,
           needsClientValidation: true,
           allowsClientRevision: true,
+          needsDescription: true,
+          needsRushes: true,
+          needsBrief: true,
         },
       },
       captionJobs: {

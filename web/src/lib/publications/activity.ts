@@ -37,7 +37,12 @@ export type ActivityType =
   | "CLIENT_VALIDATION_TOKEN_REVOKED"
   | "CLIENT_VALIDATION_APPROVED"
   | "CLIENT_VALIDATION_REJECTED"
-  | "CLIENT_VALIDATION_CANCELLED";
+  | "CLIENT_VALIDATION_CANCELLED"
+  // ── Cover frame pack lifecycle (Cohérence Workflows Phase 2) ──────────────
+  | "COVER_QUEUED"
+  | "COVER_READY"
+  | "COVER_FAILED"
+  | "COVER_CONFIG_ERROR";
 
 export interface LogActivityInput {
   slotId: string;

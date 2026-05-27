@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
+import {
+  validatePatternConfig,
+  type PatternValidationError,
+} from "@/lib/publications/patternValidation";
 
 function parseCoverConfig(json: string): object | null {
   if (!json.trim()) return null;
@@ -149,6 +154,28 @@ function validate(values: FormValues): Partial<Record<keyof FormValues, string>>
   return errors;
 }
 
+/**
+ * Mapping code d'erreur cross-field (helper centralisé) → clé FormValues
+ * pour pouvoir afficher l'erreur sous le bon champ.
+ */
+function mapXfieldCodeToFormKey(code: string): keyof FormValues | null {
+  switch (code) {
+    case "MISSING_TEMPLATE":
+      return "templateId";
+    case "MISSING_COVER_PRESET_NAME":
+    case "COVER_PRESET_NOT_FOUND":
+      return "coverConfigJson";
+    case "MISSING_CAPTION_PRESET":
+      return "captionPresetId";
+    case "MISSING_DESCRIPTION_PROMPT":
+      return "descriptionPromptId";
+    case "ALLOWS_REVISION_WITHOUT_VALIDATION":
+      return "allowsClientRevision";
+    default:
+      return null;
+  }
+}
+
 // ─── AccountPatternForm ───────────────────────────────────────────────────────
 
 export function AccountPatternForm({ accountId, initialValues, open, onClose, onSaved }: Props) {
@@ -222,11 +249,53 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }));
   }
 
+  // ── Validation cross-field (recalcul à chaque changement) ────────────────
+  // C2 (preset cover orphelin) ne peut pas être vérifié côté client sans charger
+  // les TemplateCoverPreset du template sélectionné — on le délègue au backend
+  // qui retournera 422 si le preset référencé n'existe pas. Les 5 autres règles
+  // sont vérifiées ici en temps réel pour feedback immédiat.
+  const xfieldErrors = useMemo<PatternValidationError[]>(() => {
+    const parsedCoverConfig = values.coverConfigJson.trim()
+      ? (parseCoverConfig(values.coverConfigJson) as unknown)
+      : null;
+    return validatePatternConfig(
+      {
+        source: values.source,
+        templateId: values.templateId || null,
+        coverMode: values.coverMode,
+        coverConfig: parsedCoverConfig,
+        needsCaptions: values.needsCaptions,
+        needsDescription: values.needsDescription,
+        needsClientValidation: values.needsClientValidation,
+        allowsClientRevision: values.allowsClientRevision,
+        captionPresetId: values.captionPresetId || null,
+        descriptionPromptId: values.descriptionPromptId || null,
+      },
+      null, // template context : skip C2 côté client, le backend tranche
+    );
+  }, [values]);
+
+  /** Erreurs xfield projetées sur les champs du formulaire (pour affichage inline). */
+  const xfieldErrorsByField = useMemo<Partial<Record<keyof FormValues, string>>>(() => {
+    const map: Partial<Record<keyof FormValues, string>> = {};
+    for (const err of xfieldErrors) {
+      const field = mapXfieldCodeToFormKey(err.code);
+      if (field && !map[field]) map[field] = err.message;
+    }
+    return map;
+  }, [xfieldErrors]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const newErrors = validate(values);
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
+      return;
+    }
+
+    // Bloquer si erreurs cross-field détectées côté client
+    if (xfieldErrors.length > 0) {
+      toast.error("Corrigez les conflits de configuration avant de sauvegarder.");
       return;
     }
 
@@ -271,7 +340,19 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
       });
 
       if (!res.ok) {
-        const data = await res.json() as { error?: string };
+        const data = await res.json() as {
+          error?: string;
+          validationErrors?: PatternValidationError[];
+        };
+        // 422 = erreurs xfield backend (C2 — preset cover orphelin), reporter inline
+        if (res.status === 422 && Array.isArray(data.validationErrors)) {
+          const fieldErrors: Partial<Record<keyof FormValues, string>> = {};
+          for (const err of data.validationErrors) {
+            const field = mapXfieldCodeToFormKey(err.code);
+            if (field && !fieldErrors[field]) fieldErrors[field] = err.message;
+          }
+          if (Object.keys(fieldErrors).length > 0) setErrors((prev) => ({ ...prev, ...fieldErrors }));
+        }
         toast.error(data.error ?? "Erreur lors de l'enregistrement");
         return;
       }
@@ -317,6 +398,23 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
           <form onSubmit={(e) => void handleSubmit(e)} className="overflow-y-auto flex-1">
             <div className="px-6 py-5 flex flex-col gap-6">
 
+              {/* Bandeau warning xfield (cohérence config) */}
+              {xfieldErrors.length > 0 && (
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <AlertTriangle size={16} className="text-amber-500 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-amber-900">
+                      Configuration incohérente ({xfieldErrors.length} problème{xfieldErrors.length > 1 ? "s" : ""})
+                    </p>
+                    <ul className="mt-1 space-y-0.5 text-xs text-amber-800 list-disc list-inside">
+                      {xfieldErrors.map((err) => (
+                        <li key={err.code}>{err.message}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
               {/* ── Section 1 : Identité ── */}
               <Section title="Identité">
                 <FormField label="Label" required error={errors.label}>
@@ -348,7 +446,7 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
                   ]}
                 />
                 {values.source === "auto_template" && (
-                  <FormField label="Template">
+                  <FormField label="Template" error={xfieldErrorsByField.templateId}>
                     <SelectField
                       value={values.templateId}
                       onChange={(v) => set("templateId", v)}
@@ -372,11 +470,13 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
                   ]}
                 />
                 {values.coverMode === "auto" && (
-                  <CoverConfigEditor
-                    templateId={values.templateId || null}
-                    value={parseCoverConfig(values.coverConfigJson)}
-                    onChange={(cfg) => set("coverConfigJson", JSON.stringify(cfg, null, 2))}
-                  />
+                  <FormField label="" error={xfieldErrorsByField.coverConfigJson}>
+                    <CoverConfigEditor
+                      templateId={values.templateId || null}
+                      value={parseCoverConfig(values.coverConfigJson)}
+                      onChange={(cfg) => set("coverConfigJson", JSON.stringify(cfg, null, 2))}
+                    />
+                  </FormField>
                 )}
               </Section>
 
@@ -387,13 +487,21 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
                   checked={values.needsCaptions}
                   onChange={(v) => set("needsCaptions", v)}
                 />
-                {values.needsCaptions && captionPresets.length > 0 && (
-                  <FormField label="Preset captions par défaut">
+                {values.needsCaptions && (
+                  <FormField
+                    label="Preset captions par défaut"
+                    required
+                    error={xfieldErrorsByField.captionPresetId}
+                  >
                     <SelectField
                       value={values.captionPresetId}
                       onChange={(v) => set("captionPresetId", v)}
                       options={captionPresets}
-                      placeholder="— Hérité du formulaire de génération —"
+                      placeholder={
+                        captionPresets.length === 0
+                          ? "Aucun preset disponible — créez-en un dans /tools/captions"
+                          : "— Choisir un preset —"
+                      }
                     />
                   </FormField>
                 )}
@@ -409,13 +517,21 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
                     <option value="manualWrite">Manuelle</option>
                   </select>
                 </FormField>
-                {values.needsDescription !== "none" && descriptionPrompts.length > 0 && (
-                  <FormField label="Prompt description par défaut">
+                {values.needsDescription !== "none" && (
+                  <FormField
+                    label="Prompt description par défaut"
+                    required={values.needsDescription === "autoGenerate"}
+                    error={xfieldErrorsByField.descriptionPromptId}
+                  >
                     <SelectField
                       value={values.descriptionPromptId}
                       onChange={(v) => set("descriptionPromptId", v)}
                       options={descriptionPrompts}
-                      placeholder="— Hérité du formulaire de génération —"
+                      placeholder={
+                        descriptionPrompts.length === 0
+                          ? "Aucun prompt disponible — créez-en un dans /admin/libraries/prompts"
+                          : "— Choisir un prompt —"
+                      }
                     />
                   </FormField>
                 )}
@@ -539,6 +655,7 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
               variant="primary"
               size="md"
               loading={loading}
+              disabled={xfieldErrors.length > 0}
               onClick={(e) => void handleSubmit(e as unknown as React.FormEvent)}
             >
               Enregistrer

@@ -21,7 +21,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 // Import APRÈS le mock
-import { generateCalendarSlots, nextWeekRange } from "@/lib/calendarEngine";
+import { generateCalendarSlots, nextWeekRange, mapSourceToInitialStatus } from "@/lib/calendarEngine";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -58,6 +58,7 @@ function makePattern(overrides: Partial<{
   id: string;
   accountId: string;
   label: string;
+  source: string;
   dayOfWeek: number[];
   publishTime: string;
   templateId: string | null;
@@ -69,6 +70,7 @@ function makePattern(overrides: Partial<{
     id: "pattern-1",
     accountId: "account-1",
     label: "Test Pattern",
+    source: "auto_template",
     dayOfWeek: [1], // Lundi
     publishTime: "09:00",
     templateId: null,
@@ -126,7 +128,8 @@ describe("generateCalendarSlots", () => {
     const slot = dataArr[0];
     expect(slot.accountId).toBe("account-1");
     expect(slot.patternId).toBe("pattern-1");
-    expect(slot.status).toBe("TO_DO");
+    // Default makePattern() uses source="auto_template" → PLANNED
+    expect(slot.status).toBe("PLANNED");
     expect(slot.isAuto).toBe(true);
 
     // Vérifier la date : lundi 09:00 UTC
@@ -400,6 +403,51 @@ describe("generateCalendarSlots", () => {
 
     // createMany reçoit toutes les insertions en un seul array
     expect(mockCreateMany.mock.calls[0][0].data).toHaveLength(4);
+  });
+
+  // ── Statut initial dérivé de pattern.source ─────────────────────────────
+
+  it("source=auto_template → slot créé en PLANNED (auto-transitions prend le relais)", async () => {
+    mockPatternFindMany.mockResolvedValue([makePattern({ source: "auto_template" })]);
+    await generateCalendarSlots({ dateFrom: monday, dateTo: sunday });
+    expect(mockCreateMany.mock.calls[0][0].data[0].status).toBe("PLANNED");
+  });
+
+  it("source=manual_rushes → slot créé en RUSHES_EXPECTED (visible monteur immédiatement)", async () => {
+    mockPatternFindMany.mockResolvedValue([makePattern({ source: "manual_rushes" })]);
+    await generateCalendarSlots({ dateFrom: monday, dateTo: sunday });
+    expect(mockCreateMany.mock.calls[0][0].data[0].status).toBe("RUSHES_EXPECTED");
+  });
+
+  it("source=external_upload → slot créé en READY_FOR_CM (pas de montage attendu)", async () => {
+    mockPatternFindMany.mockResolvedValue([makePattern({ source: "external_upload" })]);
+    await generateCalendarSlots({ dateFrom: monday, dateTo: sunday });
+    expect(mockCreateMany.mock.calls[0][0].data[0].status).toBe("READY_FOR_CM");
+  });
+});
+
+// ── mapSourceToInitialStatus (helper pur) ────────────────────────────────────
+
+describe("mapSourceToInitialStatus", () => {
+  it("auto_template → PLANNED", () => {
+    expect(mapSourceToInitialStatus("auto_template")).toBe("PLANNED");
+  });
+
+  it("manual_rushes → RUSHES_EXPECTED", () => {
+    expect(mapSourceToInitialStatus("manual_rushes")).toBe("RUSHES_EXPECTED");
+  });
+
+  it("external_upload → READY_FOR_CM", () => {
+    expect(mapSourceToInitialStatus("external_upload")).toBe("READY_FOR_CM");
+  });
+
+  it("source inconnue → fallback PLANNED + warn console", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(mapSourceToInitialStatus("ufo_source")).toBe("PLANNED");
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("ufo_source"),
+    );
+    warnSpy.mockRestore();
   });
 });
 
