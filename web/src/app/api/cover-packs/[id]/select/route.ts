@@ -3,6 +3,7 @@ import { getUserContext } from "@/lib/userContext";
 import { deleteCoverCandidateAssets, renderFinalCover } from "@/lib/coverAuto";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { logActivity } from "@/lib/publications/activity";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -61,6 +62,20 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     await deleteCoverCandidateAssets(id);
     await prisma.coverFrameCandidate.deleteMany({ where: { packId: id } });
+
+    // Log d'activité si le pack est rattaché à une publication.
+    const render = await prisma.render.findUnique({
+      where: { id: pack.renderId },
+      select: { publicationSlotId: true },
+    });
+    if (render?.publicationSlotId) {
+      await logActivity(prisma, {
+        slotId: render.publicationSlotId,
+        actorId: userContext.actualUser.id,
+        type: "COVER_COMPLETED",
+        payload: { coverFramePackId: pack.id, finalCoverUrl: final.url },
+      });
+    }
 
     return NextResponse.json({ ok: true, finalCoverUrl: final.url });
   } catch (err) {

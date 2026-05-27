@@ -15,6 +15,7 @@ import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsa
 import { RENDER_STAGE } from "@/lib/renderer/renderWorkflow";
 import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
 import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
+import { logActivity } from "@/lib/publications/activity";
 
 type RenderOutput = {
   video_url?: string;
@@ -36,12 +37,12 @@ export async function POST(req: NextRequest) {
 
   let render = await prisma.render.findFirst({
     where: { runpodJobId },
-    include: { listing: { select: { userId: true } } },
+    include: { listing: { select: { userId: true } }, publicationSlot: { select: { id: true } } },
   });
   if (!render && output?.render_id) {
     render = await prisma.render.findFirst({
       where: { id: output.render_id },
-      include: { listing: { select: { userId: true } } },
+      include: { listing: { select: { userId: true } }, publicationSlot: { select: { id: true } } },
     });
     if (render && !render.runpodJobId) {
       await prisma.render.update({ where: { id: render.id }, data: { runpodJobId } });
@@ -89,6 +90,15 @@ export async function POST(req: NextRequest) {
       videoUrl: videoUrl ?? null,
     });
     console.info(`[webhook/renders] render=${render.id} done, videoUrl=${videoUrl}`);
+
+    if (render.publicationSlot) {
+      await logActivity(prisma, {
+        slotId: render.publicationSlot.id,
+        actorId: null,
+        type: "RENDER_COMPLETED",
+        payload: { renderId: render.id, videoUrl },
+      });
+    }
 
     // ── Pipeline sous-titres automatique ──────────────────────────────────
     // Non bloquant : les erreurs internes ne doivent pas faire échouer le webhook.

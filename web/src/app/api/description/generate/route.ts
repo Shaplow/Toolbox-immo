@@ -28,6 +28,7 @@ import { prisma } from "@/lib/prisma";
 import { hasTool } from "@/lib/permissions";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
+import { logActivity } from "@/lib/publications/activity";
 
 const MAX_TRANSCRIPT_CHARS = 50_000;
 const MAX_PERSONALIZATION_CHARS = 2_000;
@@ -402,6 +403,15 @@ export async function POST(req: NextRequest) {
       result,
     },
   });
+
+  if (resolvedSlotId) {
+    await logActivity(prisma, {
+      slotId: resolvedSlotId,
+      actorId: userContext.actualUser.id,
+      type: "DESCRIPTION_COMPLETED",
+      payload: { descriptionJobId: job.id, model, promptId },
+    });
+  }
 
   return NextResponse.json({ jobId: job.id, result });
 }
