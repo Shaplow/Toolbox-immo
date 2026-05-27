@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { RenderResult } from "@/components/renders/RenderResult";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
+import { getSlotFinalVideoUrl } from "@/lib/publications/finalVideo";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -35,6 +36,13 @@ export default async function RenderPage({ params }: Props) {
           title: true,
           account: { select: { handle: true } },
           pattern: { select: { coverMode: true, coverConfig: true } },
+          // Charge le dernier CaptionJob du slot pour résoudre la version finale
+          // (captions incrustées si dispo, sinon vidéo brute).
+          captionJobs: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { status: true, outputUrl: true },
+          },
         },
       },
     },
@@ -139,7 +147,14 @@ export default async function RenderPage({ params }: Props) {
         renderId={render.id}
         initialStatus={render.status}
         pngUrl={render.pngUrl}
-        videoUrl={render.videoUrl}
+        videoUrl={
+          // Si ce render est lié à un slot avec captions COMPLETED, on affiche
+          // la version sous-titrée. Sinon, vidéo brute du render.
+          getSlotFinalVideoUrl({
+            render: { videoUrl: render.videoUrl },
+            latestCaptionJob: render.publicationSlot?.captionJobs[0] ?? null,
+          })
+        }
         errorMsg={render.errorMsg}
         templateId={render.template?.id ?? ""}
         listingId={render.listingId}

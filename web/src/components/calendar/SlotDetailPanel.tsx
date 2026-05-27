@@ -73,8 +73,11 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
   // B6 — Statuts proposés au select pour MONTEUR/CM : statut courant + transitions
   // autorisées depuis ce statut (matrice STATUS_TRANSITIONS). Évite que MONTEUR/CM
   // puissent "sauter" des étapes du pipeline via l'UI. Pour ADMIN, voir STATUSES global.
+  // Note : slot.status peut être un legacy status (TO_DO, IN_PROGRESS, etc.) qui
+  // n'est pas dans STATUS_TRANSITIONS — on fallback sur tableau vide dans ce cas.
   const availableStatuses: SlotStatus[] = (() => {
-    const allowed = STATUS_TRANSITIONS[slot.status as SlotStatus] ?? [];
+    const transitions = STATUS_TRANSITIONS as Record<string, SlotStatus[]>;
+    const allowed = transitions[slot.status] ?? [];
     const set = new Set<SlotStatus>([slot.status as SlotStatus, ...allowed]);
     return STATUSES.filter((s) => set.has(s));
   })();

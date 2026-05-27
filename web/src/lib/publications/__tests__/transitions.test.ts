@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { canTransition, computeAutoTransition, STATUS_TRANSITIONS } from "@/lib/publications/transitions";
+import {
+  canTransition,
+  computeAutoTransition,
+  computeAutoTransitionTargetPure,
+  STATUS_TRANSITIONS,
+} from "@/lib/publications/transitions";
 import type { SlotStatus } from "@/types/roles";
 
 // ─── canTransition ─────────────────────────────────────────────────────────────
@@ -124,5 +129,154 @@ describe("computeAutoTransition", () => {
       expect(computeAutoTransition("EDIT_REVIEW", "VERSION_PROMOTED")).toBe("EDIT_APPROVED");
       expect(computeAutoTransition("CAPTIONS_PENDING", "VERSION_PROMOTED")).toBe("EDIT_APPROVED");
     });
+  });
+});
+
+// ─── computeAutoTransitionTargetPure (pipeline RunPod) ────────────────────────
+
+describe("computeAutoTransitionTargetPure — règles auto_template", () => {
+  const autoTemplatePattern = { source: "auto_template", needsCaptions: false };
+  const autoTemplateWithCaptions = { source: "auto_template", needsCaptions: true };
+
+  it("retourne null si render PENDING", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "TO_DO",
+        pattern: autoTemplatePattern,
+        render: { status: "PENDING" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("retourne null si render PROCESSING", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "TO_DO",
+        pattern: autoTemplatePattern,
+        render: { status: "PROCESSING" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("retourne READY_FOR_CM si render DONE et pas de captions à faire", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "TO_DO",
+        pattern: autoTemplatePattern,
+        render: { status: "DONE" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBe("READY_FOR_CM");
+  });
+
+  it("retourne null si render DONE mais captions encore PROCESSING", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "TO_DO",
+        pattern: autoTemplateWithCaptions,
+        render: { status: "DONE" },
+        latestCaptionJobStatus: "PROCESSING",
+      }),
+    ).toBeNull();
+  });
+
+  it("retourne null si render DONE mais aucun captionJob encore créé", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "TO_DO",
+        pattern: autoTemplateWithCaptions,
+        render: { status: "DONE" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("retourne READY_FOR_CM si render DONE + captions COMPLETED", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "TO_DO",
+        pattern: autoTemplateWithCaptions,
+        render: { status: "DONE" },
+        latestCaptionJobStatus: "COMPLETED",
+      }),
+    ).toBe("READY_FOR_CM");
+  });
+
+  it("retourne null si captions FAILED (on n'avance pas sur un échec)", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "TO_DO",
+        pattern: autoTemplateWithCaptions,
+        render: { status: "DONE" },
+        latestCaptionJobStatus: "FAILED",
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
+  it("retourne null si slot.status n'est pas TO_DO (déjà avancé manuellement)", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "IN_EDIT",
+        pattern: { source: "auto_template", needsCaptions: false },
+        render: { status: "DONE" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBeNull();
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "READY_FOR_CM",
+        pattern: { source: "auto_template", needsCaptions: false },
+        render: { status: "DONE" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("retourne null si pattern.source = manual_rushes (autre flow)", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "TO_DO",
+        pattern: { source: "manual_rushes", needsCaptions: false },
+        render: { status: "DONE" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("retourne null si pattern.source = external_upload", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "TO_DO",
+        pattern: { source: "external_upload", needsCaptions: false },
+        render: { status: "DONE" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("retourne null si pattern est null", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "TO_DO",
+        pattern: null,
+        render: { status: "DONE" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("retourne null si render est null", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "TO_DO",
+        pattern: { source: "auto_template", needsCaptions: false },
+        render: null,
+        latestCaptionJobStatus: null,
+      }),
+    ).toBeNull();
   });
 });

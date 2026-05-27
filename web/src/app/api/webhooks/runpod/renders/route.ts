@@ -16,6 +16,7 @@ import { RENDER_STAGE } from "@/lib/renderer/renderWorkflow";
 import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
 import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
 import { logActivity } from "@/lib/publications/activity";
+import { applyAutoTransitionFromPipeline } from "@/lib/publications/transitions";
 
 type RenderOutput = {
   video_url?: string;
@@ -98,6 +99,14 @@ export async function POST(req: NextRequest) {
         type: "RENDER_COMPLETED",
         payload: { renderId: render.id, videoUrl },
       });
+
+      // Auto-transition pipeline : si auto_template + render DONE + (pas de captions
+      // OU captions déjà COMPLETED) → READY_FOR_CM. Idempotent (no-op si déjà avancé).
+      await applyAutoTransitionFromPipeline(
+        prisma,
+        render.publicationSlot.id,
+        "RENDER_COMPLETED",
+      );
     }
 
     // ── Pipeline sous-titres automatique ──────────────────────────────────

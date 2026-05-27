@@ -15,6 +15,7 @@
 import { PublicationHeader } from "@/components/publications/PublicationHeader";
 import { ProductionChain } from "@/components/publications/ProductionChain";
 import { RenderSection } from "@/components/publications/sections/RenderSection";
+import { getSlotFinalVideoUrl, isFinalVideoCaptioned } from "@/lib/publications/finalVideo";
 import { CoverSection } from "@/components/publications/sections/CoverSection";
 import { CaptionsSection } from "@/components/publications/sections/CaptionsSection";
 import { DescriptionSection } from "@/components/publications/sections/DescriptionSection";
@@ -346,13 +347,25 @@ export function PublicationFiche({
                 />
               )}
 
-            {/* Rendu vidéo */}
+            {/* Rendu vidéo — version finale (avec captions incrustées si dispo) */}
             {wrap(
               "render",
               <RenderSection
                 slot={{ id: slot.id }}
                 pattern={pattern ? { source: pattern.source, templateId: pattern.templateId } : null}
                 render={render}
+                finalVideoUrl={getSlotFinalVideoUrl({
+                  render,
+                  latestCaptionJob: latestCaptionJob
+                    ? { status: latestCaptionJob.status, outputUrl: latestCaptionJob.outputUrl }
+                    : null,
+                })}
+                isCaptioned={isFinalVideoCaptioned({
+                  render,
+                  latestCaptionJob: latestCaptionJob
+                    ? { status: latestCaptionJob.status, outputUrl: latestCaptionJob.outputUrl }
+                    : null,
+                })}
                 listingId={listing?.id ?? null}
                 canEdit={canEditRender}
               />
