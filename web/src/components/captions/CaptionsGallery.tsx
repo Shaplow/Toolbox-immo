@@ -8,6 +8,7 @@ import { CaptionPresetActions } from "@/components/captions/CaptionPresetActions
 import { ImportCaptionPresetButton } from "@/components/captions/ImportCaptionPresetButton";
 import { DEFAULT_CAPTION_CONFIG } from "@/lib/captionPresetConfig";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { toast } from "@/components/ui/Toast";
 
 type Preset = {
   id: string;
@@ -140,6 +141,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
       const created = await res.json() as { id: string };
       setShowCreateForm(false);
       setCreateName("");
+      toast.success(`Preset « ${name} » créé.`);
       router.push(`/admin/captions/presets/${created.id}/edit`);
     } catch {
       setCreateError("Impossible de créer le preset.");
