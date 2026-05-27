@@ -1001,6 +1001,12 @@ function HistoryItem({ job }: { job: DescriptionJobRow }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Preview inline du résultat (~120 premiers chars) — visible même quand
+  // l'item est collapsed pour donner un aperçu immédiat sans avoir à cliquer.
+  const excerpt = isDone && job.result
+    ? job.result.length > 120 ? job.result.slice(0, 120).trim() + "…" : job.result
+    : null;
+
   return (
     <div className="px-5 py-3">
       <div className="flex items-center gap-2">
@@ -1038,6 +1044,19 @@ function HistoryItem({ job }: { job: DescriptionJobRow }) {
           {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </button>
       </div>
+
+      {/* Excerpt inline visible quand collapsed — donne un aperçu immédiat
+          du résultat sans nécessiter l'expand. Click sur l'excerpt expand
+          le détail complet. */}
+      {!open && excerpt && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="mt-1 block text-left w-full text-[11px] text-gray-500 line-clamp-2 hover:text-gray-700 transition-colors"
+        >
+          {excerpt}
+        </button>
+      )}
 
       {open && (
         <div className="mt-2">
