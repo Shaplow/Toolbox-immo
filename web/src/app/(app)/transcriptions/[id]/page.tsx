@@ -1,6 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, FileText, Video } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -36,11 +36,26 @@ export default async function TranscriptionJobPage({
       errorMsg: true,
       outputJsonKey: true,
       userId: true,
+      render: {
+        select: {
+          id: true,
+          publicationSlot: {
+            select: {
+              id: true,
+              title: true,
+              account: { select: { handle: true } },
+            },
+          },
+        },
+      },
     },
   });
 
   if (!job) notFound();
   if (job.userId !== userContext.effectiveUser.id && !isAdmin) redirect("/home");
+
+  const sourceRender = job.render;
+  const sourceSlot = sourceRender?.publicationSlot ?? null;
 
   return (
     <div className="p-8 max-w-2xl mx-auto">
@@ -51,6 +66,37 @@ export default async function TranscriptionJobPage({
         <ChevronLeft size={13} />
         Transcriptions
       </Link>
+
+      {/* Bandeau source : render parent + publication si liée */}
+      {sourceRender && (
+        <div className="mb-6 flex items-center gap-3 bg-teal-50 border border-teal-200 rounded-xl px-5 py-3 text-sm">
+          <Video size={16} className="text-teal-600 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-teal-900">
+              Issue du{" "}
+              <Link
+                href={`/renders/${sourceRender.id}`}
+                className="font-semibold text-teal-700 hover:text-teal-900 hover:underline"
+              >
+                render
+              </Link>
+              {sourceSlot && (
+                <>
+                  {" "}de la publication{" "}
+                  <Link
+                    href={`/publications/${sourceSlot.id}`}
+                    className="font-semibold text-teal-700 hover:text-teal-900 hover:underline inline-flex items-center gap-1"
+                  >
+                    <FileText size={12} />
+                    {sourceSlot.title ?? `@${sourceSlot.account.handle}`}
+                  </Link>
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
       <TranscriptionDetail
         job={{
           id: job.id,
