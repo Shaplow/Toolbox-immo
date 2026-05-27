@@ -21,6 +21,14 @@ interface CollapsibleSectionProps {
   /** Clé localStorage pour persister l'état open/closed (e.g.
    *  "pub-section:{slotId}:{key}"). Sans cette clé, le state est éphémère. */
   storageKey?: string;
+  /**
+   * Identifiant de section utilisé pour le force-open externe (B5).
+   * Quand un autre composant (ex: ProductionChain) dispatche l'event
+   * `pub:open-section` avec ce même `sectionId`, la section s'ouvre
+   * automatiquement. Permet à la ProductionChain de scroller vers une
+   * section repliée sans laisser l'user devant un bandeau vide.
+   */
+  sectionId?: string;
   children: React.ReactNode;
 }
 
@@ -28,6 +36,7 @@ export function CollapsibleSection({
   title,
   defaultOpen = true,
   storageKey,
+  sectionId,
   children,
 }: CollapsibleSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
@@ -56,6 +65,17 @@ export function CollapsibleSection({
       // localStorage indispo → ignore.
     }
   }, [open, storageKey]);
+
+  // B5 — écoute `pub:open-section` pour s'ouvrir sur demande externe.
+  useEffect(() => {
+    if (!sectionId || typeof window === "undefined") return;
+    function handler(e: Event) {
+      const detail = (e as CustomEvent<{ sectionId?: string }>).detail;
+      if (detail?.sectionId === sectionId) setOpen(true);
+    }
+    window.addEventListener("pub:open-section", handler);
+    return () => window.removeEventListener("pub:open-section", handler);
+  }, [sectionId]);
 
   if (open) {
     return (

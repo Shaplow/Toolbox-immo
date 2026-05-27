@@ -270,6 +270,7 @@ export function PublicationFiche({
       title={SECTION_LABELS[key]}
       defaultOpen={isPrimaryForRole(key, currentUserRole)}
       storageKey={`pub-section:${slot.id}:${key}`}
+      sectionId={key}
     >
       {node}
     </CollapsibleSection>

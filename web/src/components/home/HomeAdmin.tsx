@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, AlertTriangle, FileQuestion, ArrowRight, CalendarClock, Building2, Film } from "lucide-react";
+import { CalendarDays, AlertTriangle, FileQuestion, UserX, ArrowRight, CalendarClock, Building2, Film } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import type { SlotStatus } from "@/types/roles";
 import { TERMINAL_STATUSES } from "@/types/worklist";
@@ -35,7 +35,7 @@ interface HomeAdminProps {
 export async function HomeAdmin({ userName }: HomeAdminProps) {
   const now = new Date();
 
-  const [overdueCount, noPatternCount, editReviewSlots] = await Promise.all([
+  const [overdueCount, noPatternCount, noMonteurCount, editReviewSlots] = await Promise.all([
     prisma.publicationSlot.count({
       where: {
         scheduledAt: { lt: now },
@@ -46,6 +46,15 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
       where: {
         patternId: null,
         status: { in: ACTIVE_STATUSES },
+      },
+    }),
+    // B10 — Slots actifs sans monteur assigné. Sans cette assignation, ils
+    // n'apparaissent dans la worklist d'aucun monteur (filtrage par
+    // assigneeMonteurId) → invisibles tant que l'ADMIN ne les voit pas ici.
+    prisma.publicationSlot.count({
+      where: {
+        assigneeMonteurId: null,
+        status: { in: ACTIVE_STATUSES.filter((s) => !(TERMINAL_STATUSES as readonly string[]).includes(s)) },
       },
     }),
     // Slots en EDIT_REVIEW = version livrée, attend validation admin
@@ -87,7 +96,7 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
       </div>
 
       {/* Métriques globales */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div
           className={`rounded-xl border p-4 flex flex-col gap-1 ${
             overdueCount > 0
@@ -135,6 +144,32 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
             }`}
           >
             {noPatternCount}
+          </p>
+        </div>
+
+        {/* B10 — Slots sans monteur assigné (sinon invisibles côté monteur) */}
+        <div
+          className={`rounded-xl border p-4 flex flex-col gap-1 ${
+            noMonteurCount > 0
+              ? "border-orange-200 bg-orange-50"
+              : "border-gray-200 bg-gray-50"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <UserX
+              size={15}
+              className={noMonteurCount > 0 ? "text-orange-500" : "text-gray-400"}
+            />
+            <span className="text-xs font-medium text-gray-600">
+              Sans monteur
+            </span>
+          </div>
+          <p
+            className={`text-3xl font-bold mt-1 ${
+              noMonteurCount > 0 ? "text-orange-700" : "text-gray-400"
+            }`}
+          >
+            {noMonteurCount}
           </p>
         </div>
       </div>
