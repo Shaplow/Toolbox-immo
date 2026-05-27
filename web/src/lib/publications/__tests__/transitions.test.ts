@@ -204,7 +204,9 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
     ).toBe("IN_PROGRESS");
   });
 
-  it("retourne IN_PROGRESS si render DONE mais aucun captionJob encore créé", () => {
+  it("retourne READY_FOR_CM si render DONE et aucun captionJob (pipeline jamais lancé)", () => {
+    // Le pipeline captions n'a jamais été déclenché (vieux render, ou trigger
+    // qui a fail silencieusement) — on ne bloque pas le CM.
     expect(
       computeAutoTransitionTargetPure({
         status: "TO_DO",
@@ -212,7 +214,7 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
         render: { status: "DONE" },
         latestCaptionJobStatus: null,
       }),
-    ).toBe("IN_PROGRESS");
+    ).toBe("READY_FOR_CM");
   });
 
   it("retourne READY_FOR_CM si render DONE + captions COMPLETED", () => {
@@ -226,7 +228,7 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
     ).toBe("READY_FOR_CM");
   });
 
-  it("retourne IN_PROGRESS si captions FAILED (on n'avance pas sur un échec)", () => {
+  it("retourne READY_FOR_CM si captions FAILED (pipeline KO, le CM gère manuellement)", () => {
     expect(
       computeAutoTransitionTargetPure({
         status: "TO_DO",
@@ -234,7 +236,7 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
         render: { status: "DONE" },
         latestCaptionJobStatus: "FAILED",
       }),
-    ).toBe("IN_PROGRESS");
+    ).toBe("READY_FOR_CM");
   });
 });
 

@@ -187,17 +187,21 @@ interface SlotForAutoTransition {
  * Logique pure (testable sans DB) : calcule le statut cible d'un slot
  * auto_template selon l'état réel de ses jobs.
  *
- * Règles (validées avec le user) :
- *  - Si pattern.source !== "auto_template" → null (les autres flows gèrent eux-mêmes)
+ * Règles :
+ *  - Si pattern.source !== "auto_template" → null (autres flows gèrent eux-mêmes)
  *  - Si slot.status n'est pas dans PIPELINE_DRIVEN_STATUSES → null
  *    (CM/MONTEUR a déjà déplacé manuellement vers IN_EDIT, SCHEDULED, etc.)
  *  - Render PENDING/PROCESSING → IN_PROGRESS
- *  - Render ERROR → IN_PROGRESS (le CM verra l'erreur dans la fiche ; pas de READY_FOR_CM)
+ *  - Render ERROR → IN_PROGRESS (le CM verra l'erreur dans la fiche)
  *  - Render DONE :
- *    - needsCaptions = false → READY_FOR_CM
- *    - needsCaptions = true && captions COMPLETED → READY_FOR_CM
- *    - needsCaptions = true && captions QUEUED/PROCESSING/FAILED/null → IN_PROGRESS
- *  - Si la cible calculée = statut actuel → null (idempotence, évite update inutile)
+ *    - !needsCaptions → READY_FOR_CM
+ *    - needsCaptions :
+ *      - captions COMPLETED → READY_FOR_CM
+ *      - captions QUEUED/PROCESSING → IN_PROGRESS (en attente active)
+ *      - captions FAILED ou null → READY_FOR_CM (le pipeline est définitivement
+ *        KO ou n'a jamais tourné ; on ne bloque pas le CM qui peut publier la
+ *        vidéo brute ou relancer manuellement)
+ *  - Si la cible calculée = statut actuel → null (idempotence)
  */
 export function computeAutoTransitionTargetPure(
   slot: SlotForAutoTransition,
@@ -210,13 +214,17 @@ export function computeAutoTransitionTargetPure(
 
   let target: SlotStatus;
   if (renderStatus === "DONE") {
+    const captionStatus = slot.latestCaptionJobStatus;
     if (!slot.pattern.needsCaptions) {
       target = "READY_FOR_CM";
-    } else if (slot.latestCaptionJobStatus === "COMPLETED") {
+    } else if (captionStatus === "COMPLETED") {
       target = "READY_FOR_CM";
-    } else {
-      // captions pas encore prêtes (QUEUED/PROCESSING/FAILED/null)
+    } else if (captionStatus === "QUEUED" || captionStatus === "PROCESSING") {
+      // Attente active du job captions.
       target = "IN_PROGRESS" as SlotStatus;
+    } else {
+      // FAILED ou null : pipeline captions inopérant. Ne pas bloquer le CM.
+      target = "READY_FOR_CM";
     }
   } else {
     // PENDING / PROCESSING / ERROR — render pas finalisé.
