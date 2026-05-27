@@ -35,6 +35,7 @@ model User {
   publicationActivities     PublicationActivity[] @relation("PublicationActivityActor")
   briefsUpdated             PublicationBrief[]    @relation("BriefUpdatedBy")
   rushesUploaded            PublicationRush[]     @relation("RushUploadedBy")
+  clientValidationTokensCreated ClientValidationToken[] @relation("ClientValidationTokenCreator")
 }
 
 model CaptionJob {
@@ -672,6 +673,15 @@ model PublicationSlot {
   /// Pattern de contenu associé à ce slot
   patternId         String?
   pattern           AccountPattern?       @relation(fields: [patternId], references: [id], onDelete: SetNull)
+
+  /// Override per-slot de needsClientValidation du pattern. null = hérite du pattern.
+  needsClientValidationOverride Boolean?
+  /// Override per-slot de allowsClientRevision du pattern. null = hérite du pattern.
+  allowsClientRevisionOverride  Boolean?
+  /// Tokens magic link pour validation client (un seul actif via clause unique conditionnelle)
+  clientValidationTokens        ClientValidationToken[]
+  /// Historique des rounds de validation client (un round = une action client)
+  clientValidationRounds        ClientValidationRound[]
   /// Version courante sélectionnée (parmi les versions uploadées)
   currentVersionId  String?               @unique
   currentVersion    PublicationVersion?   @relation("SlotCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
@@ -760,6 +770,9 @@ model AccountPattern {
   needsDescription      String  @default("none") // "preFilled" | "autoGenerate" | "manualWrite" | "none"
   needsCaptions         Boolean @default(false)
   needsClientValidation Boolean @default(false)
+  /// Si true, le client peut refuser avec commentaire (CLIENT_REVISION → ping-pong).
+  /// Si false, le client peut seulement valider ou annuler complètement.
+  allowsClientRevision  Boolean @default(false)
   needsRushes           Boolean @default(false)
   needsBrief            Boolean @default(false)
 
@@ -788,6 +801,44 @@ model AccountPattern {
 
   @@index([accountId])
   @@index([accountId, isActive])
+}
+
+// ─── Client Validation (W2) ───────────────────────────────────────────────────
+
+/// Magic link token pour qu'un client externe valide un slot sans compte sur l'app.
+/// Un seul token actif (non révoqué) par slot via clause unique conditionnelle.
+/// Le tokenHash est un sha256 ; le rawToken n'est jamais stocké.
+model ClientValidationToken {
+  id               String          @id @default(cuid())
+  slotId           String
+  slot             PublicationSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  /// sha256(rawToken). Permet lookup safe (timing-safe equal côté code).
+  tokenHash        String          @unique
+  createdAt        DateTime        @default(now())
+  expiresAt        DateTime
+  /// Si non null, le token est révoqué et ne doit plus matcher.
+  revokedAt        DateTime?
+  /// ADMIN qui a généré ce token (audit).
+  createdByUserId  String
+  createdBy        User            @relation("ClientValidationTokenCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([slotId, revokedAt])
+}
+
+/// Round de validation client : une action (approve/reject/cancel) effectuée par le client
+/// via le magic link. roundNumber = 1 pour le premier round, incrémenté à chaque renvoi.
+model ClientValidationRound {
+  id           String          @id @default(cuid())
+  slotId       String
+  slot         PublicationSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  roundNumber  Int
+  /// "approved" | "rejected" (avec comment, allowsClientRevision=true) | "cancelled"
+  action       String
+  comment      String?
+  respondedAt  DateTime        @default(now())
+
+  @@unique([slotId, roundNumber])
+  @@index([slotId, respondedAt])
 }
 
 // ─── Publication Versions ─────────────────────────────────────────────────────

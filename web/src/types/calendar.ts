@@ -10,6 +10,8 @@ export type SlotStatus =
   | "EDIT_APPROVED"
   | "CAPTIONS_PENDING"
   | "READY_FOR_CM"
+  | "AWAITING_CLIENT"
+  | "CLIENT_REVISION"
   | "SCHEDULED"
   | "PUBLISHED"
   | "REJECTED"

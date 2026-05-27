@@ -25,12 +25,17 @@ export const USER_ROLES = {
 // ---------------------------------------------------------------------------
 
 /**
- * Les 15 statuts possibles d'un PublicationSlot dans la pipeline éditoriale.
+ * Les 17 statuts possibles d'un PublicationSlot dans la pipeline éditoriale.
  *
  * Cycle nominal :
  *   DRAFT → PLANNED → RUSHES_EXPECTED → RUSHES_RECEIVED → IN_EDIT
  *     → EDIT_REVIEW → EDIT_APPROVED → CAPTIONS_PENDING → READY_FOR_CM
- *     → SCHEDULED → PUBLISHED
+ *     [→ AWAITING_CLIENT → (CLIENT_REVISION ↻) ] → SCHEDULED → PUBLISHED
+ *
+ * Validation client externe (W2) :
+ *   AWAITING_CLIENT   — lien magique envoyé au client, en attente de réponse
+ *   CLIENT_REVISION   — client a refusé avec commentaire (allowsClientRevision=true)
+ *                       → MONTEUR/CM corrige puis ADMIN renvoie pour validation
  *
  * Sorties de cycle :
  *   REJECTED, CANCELLED, BLOCKED, ARCHIVED
@@ -45,6 +50,8 @@ export type SlotStatus =
   | "EDIT_APPROVED"
   | "CAPTIONS_PENDING"
   | "READY_FOR_CM"
+  | "AWAITING_CLIENT"
+  | "CLIENT_REVISION"
   | "SCHEDULED"
   | "PUBLISHED"
   | "REJECTED"
@@ -62,6 +69,8 @@ export const SLOT_STATUSES = {
   EDIT_APPROVED: "EDIT_APPROVED",
   CAPTIONS_PENDING: "CAPTIONS_PENDING",
   READY_FOR_CM: "READY_FOR_CM",
+  AWAITING_CLIENT: "AWAITING_CLIENT",
+  CLIENT_REVISION: "CLIENT_REVISION",
   SCHEDULED: "SCHEDULED",
   PUBLISHED: "PUBLISHED",
   REJECTED: "REJECTED",
