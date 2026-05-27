@@ -174,15 +174,18 @@ export function AccountsListAdmin({ accounts }: Props) {
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <span
-                      className={
-                        a.activePatternCount > 0
-                          ? "text-sm font-semibold text-gray-800"
-                          : "text-sm text-gray-400"
-                      }
-                    >
-                      {a.activePatternCount}
-                    </span>
+                    {a.activePatternCount > 0 ? (
+                      <span className="text-sm font-semibold text-gray-800">
+                        {a.activePatternCount}
+                      </span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200"
+                        title="Aucun pattern actif — ce compte ne génère pas de slots"
+                      >
+                        Sans pattern
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right text-xs text-gray-500">
                     {formatLastPublished(a.lastPublishedAt)}

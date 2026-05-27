@@ -81,7 +81,9 @@ export function PublicationHeader({
       ? STATUS_COLORS[status]
       : "bg-gray-100 text-gray-600 border-gray-200";
 
-  const title = slot.title ?? "Publication sans titre";
+  // Priorité d'affichage du titre : titre custom > label du pattern > fallback générique.
+  // Cohérent avec les worklists et SlotCard qui affichent pattern.label en priorité.
+  const title = slot.title ?? pattern?.label ?? "Publication sans titre";
 
   function handleDeleteClick() {
     setMenuOpen(false);

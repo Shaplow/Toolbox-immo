@@ -126,7 +126,7 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            Bonjour{userName ? `, ${userName.split(" ")[0]}` : ""} 👋
+            Bonjour{userName ? `, ${userName.split(" ")[0]}` : ""}
           </h1>
           <p className="text-sm text-gray-500 mt-1">
             {totalActive === 0
