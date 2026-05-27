@@ -34,6 +34,20 @@ export const TOOL_DESCRIPTIONS: Record<Tool, string> = {
   description:   "Génération de descriptions texte à partir d'un fichier SRT ou d'une transcription",
 };
 
+/**
+ * Outils que le rôle USER (cadré comme "générateur externe" depuis Phase 1.2)
+ * peut se voir attribuer. Le rôle USER n'est pas un membre d'équipe et n'a
+ * donc pas vocation à générer captions/transcription/description.
+ *
+ * Utilisé par UsersPanel (filtre les checkboxes) et par PATCH
+ * /api/admin/users/[id] (refuse d'ajouter une perm non-autorisée).
+ *
+ * Note : les perms déjà actives héritées d'avant cette restriction restent
+ * toggleables vers OFF (pour permettre le nettoyage manuel), mais on ne
+ * peut plus en ajouter de nouvelles.
+ */
+export const USER_ALLOWED_TOOLS: readonly Tool[] = [TOOLS.TEMPLATES, TOOLS.COVERS];
+
 // -- Helpers -------------------------------------------------------------------
 
 /** Retourne les outils d'un user. ADMIN -> tous les outils. */

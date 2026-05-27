@@ -2,6 +2,7 @@
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { USER_ALLOWED_TOOLS, type Tool } from "@/lib/permissions";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -31,9 +32,41 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (password) data.passwordHash = await bcrypt.hash(password, 12);
   // permissions est un tableau JSON sérialisé en string ou directement un array
   if (permissions !== undefined) {
-    data.permissions = Array.isArray(permissions)
-      ? JSON.stringify(permissions)
-      : permissions;
+    const nextPerms: Tool[] = Array.isArray(permissions)
+      ? (permissions as Tool[])
+      : (() => {
+          try { return JSON.parse(permissions as string) as Tool[]; }
+          catch { return []; }
+        })();
+
+    // D4 étape 1 — Si le user (existant ou après update) sera USER, valider
+    // qu'on n'AJOUTE pas de perms non-autorisées. Les perms héritées peuvent
+    // être retirées librement, mais pas étendues.
+    const existing = await prisma.user.findUnique({
+      where: { id },
+      select: { role: true, permissions: true },
+    });
+    const futureRole = (role as string | undefined) ?? existing?.role ?? "USER";
+
+    if (futureRole === "USER") {
+      const prevPerms: Tool[] = (() => {
+        try { return JSON.parse(existing?.permissions ?? "[]") as Tool[]; }
+        catch { return []; }
+      })();
+      const allowed = new Set<Tool>(USER_ALLOWED_TOOLS);
+      const added = nextPerms.filter((p) => !prevPerms.includes(p));
+      const forbiddenAdditions = added.filter((p) => !allowed.has(p));
+      if (forbiddenAdditions.length > 0) {
+        return NextResponse.json(
+          {
+            error: `Le rôle USER ne peut pas se voir attribuer : ${forbiddenAdditions.join(", ")}. Seuls ${USER_ALLOWED_TOOLS.join(", ")} sont autorisés.`,
+          },
+          { status: 400 },
+        );
+      }
+    }
+
+    data.permissions = JSON.stringify(nextPerms);
   }
 
   const user = await prisma.user.update({
