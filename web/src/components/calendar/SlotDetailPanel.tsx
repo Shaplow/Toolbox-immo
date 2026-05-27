@@ -58,6 +58,9 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
     status: slot.status,
     fieldSchema: slot.fieldSchema,
     fields: slot.fields,
+    // W2 — overrides per-slot. null = hérite du pattern.
+    needsClientValidationOverride: slot.needsClientValidationOverride ?? null,
+    allowsClientRevisionOverride: slot.allowsClientRevisionOverride ?? null,
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -101,6 +104,8 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
             status: form.status,
             fields: form.fields,
             fieldSchema: form.fieldSchema,
+            needsClientValidationOverride: form.needsClientValidationOverride,
+            allowsClientRevisionOverride: form.allowsClientRevisionOverride,
           };
 
       const res = await fetch(`/api/calendar/slots/${slot.id}`, {
@@ -275,6 +280,35 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
             />
           </div>
 
+          {/* W2 — Validation client (overrides per-slot, ADMIN uniquement) */}
+          {!isRestricted && (
+            <div className="rounded-lg border border-fuchsia-100 bg-fuchsia-50/30 p-3 space-y-2">
+              <p className="text-xs font-medium text-fuchsia-900">Validation client</p>
+              <p className="text-xs text-fuchsia-700/80">
+                Override la config du pattern pour ce slot spécifique. Laissez sur
+                « Hériter » pour utiliser la valeur du pattern parent.
+              </p>
+              <OverrideSelect
+                label="Validation client requise"
+                value={form.needsClientValidationOverride}
+                inheritedValue={slot.pattern?.needsClientValidation ?? false}
+                onChange={(v) => set("needsClientValidationOverride", v)}
+              />
+              <OverrideSelect
+                label="Autoriser révisions"
+                value={form.allowsClientRevisionOverride}
+                inheritedValue={slot.pattern?.allowsClientRevision ?? false}
+                onChange={(v) => set("allowsClientRevisionOverride", v)}
+                disabled={
+                  // Si la validation est désactivée (override = false ou pattern false sans override), pas de sens
+                  (form.needsClientValidationOverride === false) ||
+                  (form.needsClientValidationOverride === null &&
+                    slot.pattern?.needsClientValidation === false)
+                }
+              />
+            </div>
+          )}
+
           {/* Render link */}
           {slot.render && (
             <div className="rounded-lg border border-gray-200 p-3">
@@ -354,5 +388,49 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
         </div>
       </div>
     </>
+  );
+}
+
+// ─── OverrideSelect (W2 — validation client) ─────────────────────────────────
+
+/**
+ * Select à 3 valeurs pour les overrides nullable :
+ * - "inherit" (value=null) : hérite du pattern, affiche la valeur héritée
+ * - "true"    : override = true (forcer activé)
+ * - "false"   : override = false (forcer désactivé)
+ */
+function OverrideSelect({
+  label,
+  value,
+  inheritedValue,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: boolean | null;
+  inheritedValue: boolean;
+  onChange: (v: boolean | null) => void;
+  disabled?: boolean;
+}) {
+  const selectValue = value === null ? "inherit" : value ? "true" : "false";
+  return (
+    <label className="block">
+      <span className="text-xs text-gray-600">{label}</span>
+      <select
+        value={selectValue}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(v === "inherit" ? null : v === "true");
+        }}
+        disabled={disabled}
+        className="mt-1 w-full border border-fuchsia-200 rounded px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-fuchsia-300 disabled:opacity-50 disabled:bg-gray-50"
+      >
+        <option value="inherit">
+          Hériter du pattern ({inheritedValue ? "Oui" : "Non"})
+        </option>
+        <option value="true">Forcer : Oui</option>
+        <option value="false">Forcer : Non</option>
+      </select>
+    </label>
   );
 }

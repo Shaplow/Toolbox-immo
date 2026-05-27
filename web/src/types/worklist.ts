@@ -67,10 +67,13 @@ const MONTEUR_SECTION_MAP: Partial<Record<SlotStatus, MonteurSection>> = {
   // En cours
   IN_EDIT: "in_progress",
   EDIT_REVIEW: "in_progress",
-  // En attente client (informatif)
+  // W2 — le client a demandé des corrections, le monteur doit agir
+  CLIENT_REVISION: "in_progress",
+  // En attente (informatif — le monteur ne peut rien faire de plus)
   EDIT_APPROVED: "waiting",
   CAPTIONS_PENDING: "waiting",
   READY_FOR_CM: "waiting",
+  AWAITING_CLIENT: "waiting",
   // Exclus : DRAFT, SCHEDULED, PUBLISHED, REJECTED, CANCELLED, BLOCKED, ARCHIVED
 };
 
@@ -102,6 +105,11 @@ const CM_SECTION_MAP: Partial<Record<SlotStatus, CmSection>> = {
   EDIT_APPROVED: "to_prepare",
   CAPTIONS_PENDING: "to_prepare",
   READY_FOR_CM: "to_prepare",
+  // W2 — le CM peut continuer cover/desc pendant la validation client (le user
+  // a dit : "elle peut evidemment finir la cover et la desc pendant la
+  // validation du client ça ça gene pas").
+  AWAITING_CLIENT: "to_prepare",
+  CLIENT_REVISION: "to_prepare",
   // À publier et publié — la logique temporelle est appliquée dans HomeCm
   SCHEDULED: "to_publish",
   PUBLISHED: "published",

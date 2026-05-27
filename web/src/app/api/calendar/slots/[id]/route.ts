@@ -101,7 +101,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   );
 
   const { status, title, caption, description, templateId, scheduledAt, fields, fieldSchema,
-          assigneeMonteurId, assigneeCmId, patternId, currentVersionId, isAuto } = body as Record<string, unknown>;
+          assigneeMonteurId, assigneeCmId, patternId, currentVersionId, isAuto,
+          needsClientValidationOverride, allowsClientRevisionOverride } = body as Record<string, unknown>;
   // notes est mutable : peut être sanitisé avant l'update (H2).
   let { notes } = body as Record<string, unknown>;
 
@@ -218,6 +219,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(patternId !== undefined ? { patternId: patternId as string | null } : {}),
       ...(currentVersionId !== undefined ? { currentVersionId: currentVersionId as string | null } : {}),
       ...(isAuto !== undefined ? { isAuto: isAuto as boolean } : {}),
+      // W2 — override per-slot validation client. null = hérite du pattern.
+      ...(needsClientValidationOverride !== undefined
+        ? { needsClientValidationOverride: needsClientValidationOverride as boolean | null }
+        : {}),
+      ...(allowsClientRevisionOverride !== undefined
+        ? { allowsClientRevisionOverride: allowsClientRevisionOverride as boolean | null }
+        : {}),
     },
     include: {
       account: { select: { id: true, name: true, handle: true } },

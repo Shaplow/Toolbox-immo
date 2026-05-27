@@ -38,7 +38,12 @@ export const STATUS_TRANSITIONS: Record<SlotStatus, SlotStatus[]> = {
   EDIT_REVIEW: ["EDIT_APPROVED", "IN_EDIT", "CANCELLED"],
   EDIT_APPROVED: ["CAPTIONS_PENDING", "READY_FOR_CM", "SCHEDULED", "CANCELLED"],
   CAPTIONS_PENDING: ["READY_FOR_CM", "EDIT_APPROVED", "CANCELLED"],
-  READY_FOR_CM: ["SCHEDULED", "PUBLISHED", "CANCELLED"],
+  // READY_FOR_CM → AWAITING_CLIENT seulement si needsClientValidation est actif.
+  // L'enforcement métier (ne pas envoyer pour validation si non requis) se fait côté
+  // route /send-for-validation, pas dans cette matrice générique.
+  READY_FOR_CM: ["AWAITING_CLIENT", "SCHEDULED", "PUBLISHED", "CANCELLED"],
+  AWAITING_CLIENT: ["SCHEDULED", "CLIENT_REVISION", "READY_FOR_CM", "CANCELLED"],
+  CLIENT_REVISION: ["AWAITING_CLIENT", "IN_EDIT", "READY_FOR_CM", "CANCELLED"],
   SCHEDULED: ["PUBLISHED", "READY_FOR_CM", "CANCELLED"],
   PUBLISHED: ["ARCHIVED"],
   REJECTED: ["IN_EDIT", "CANCELLED"],

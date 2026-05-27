@@ -10,6 +10,8 @@ export type SlotStatus =
   | "EDIT_APPROVED"
   | "CAPTIONS_PENDING"
   | "READY_FOR_CM"
+  | "AWAITING_CLIENT"
+  | "CLIENT_REVISION"
   | "SCHEDULED"
   | "PUBLISHED"
   | "REJECTED"
@@ -47,9 +49,17 @@ export interface PublicationSlot {
   assigneeCmId?: string | null;
   patternId?: string | null;
   currentVersionId?: string | null;
-  pattern?: { label: string } | null;
+  pattern?: {
+    label: string;
+    // W2 — config validation client héritée du pattern (peut être null si pas chargé)
+    needsClientValidation?: boolean;
+    allowsClientRevision?: boolean;
+  } | null;
   assigneeMonteur?: { id: string; name: string | null } | null;
   assigneeCm?: { id: string; name: string | null } | null;
+  // W2 — overrides per-slot (null = hérite du pattern)
+  needsClientValidationOverride?: boolean | null;
+  allowsClientRevisionOverride?: boolean | null;
 }
 
 // Re-exported from the centralized source of truth — do not duplicate here.

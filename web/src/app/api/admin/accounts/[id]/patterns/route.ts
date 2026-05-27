@@ -27,6 +27,7 @@ type PostBody = {
   needsDescription?: string;
   needsCaptions?: boolean;
   needsClientValidation?: boolean;
+  allowsClientRevision?: boolean;
   needsRushes?: boolean;
   needsBrief?: boolean;
   dayOfWeek?: number[];
@@ -133,6 +134,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         needsDescription: body.needsDescription!,
         needsCaptions: body.needsCaptions ?? false,
         needsClientValidation: body.needsClientValidation ?? false,
+        allowsClientRevision: body.allowsClientRevision ?? false,
         needsRushes: body.needsRushes ?? false,
         needsBrief: body.needsBrief ?? false,
         dayOfWeek: [...new Set(body.dayOfWeek!)].sort((a, b) => a - b),

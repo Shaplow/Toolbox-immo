@@ -7,6 +7,8 @@ interface ConfirmDialogProps {
   open: boolean;
   title: string;
   description: string;
+  /** Contenu additionnel rendu entre la description et les boutons (ex: textarea). */
+  children?: React.ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: "default" | "danger";
@@ -19,6 +21,7 @@ export function ConfirmDialog({
   open,
   title,
   description,
+  children,
   confirmLabel = "Confirmer",
   cancelLabel = "Annuler",
   variant = "default",
@@ -65,6 +68,7 @@ export function ConfirmDialog({
               {title}
             </h2>
             <p className="text-sm text-gray-600">{description}</p>
+            {children}
           </div>
           <div className="flex items-center justify-end gap-2 px-6 py-4 bg-gray-50 border-t border-gray-100">
             <Button

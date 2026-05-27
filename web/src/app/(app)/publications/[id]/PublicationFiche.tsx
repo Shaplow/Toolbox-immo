@@ -20,6 +20,7 @@ import { CoverSection } from "@/components/publications/sections/CoverSection";
 import { CaptionsSection } from "@/components/publications/sections/CaptionsSection";
 import { DescriptionSection } from "@/components/publications/sections/DescriptionSection";
 import { CaptionIgSection } from "@/components/publications/sections/CaptionIgSection";
+import { ClientValidationSection } from "@/components/publications/sections/ClientValidationSection";
 import { PublishSection } from "@/components/publications/sections/PublishSection";
 import { RushesSection } from "@/components/publications/sections/RushesSection";
 import { BriefSection } from "@/components/publications/sections/BriefSection";
@@ -46,6 +47,7 @@ type SectionKey =
   | "captions"
   | "description"
   | "captionIg"
+  | "clientValidation"
   | "publish"
   | "comments"
   | "activity";
@@ -65,7 +67,7 @@ function isPrimaryForRole(section: SectionKey, role: UserRole): boolean {
     MONTEUR: ["brief", "rushes", "versions", "comments"],
     // F1.9 — Le CM a besoin de voir rushes + versions pour valider le matériel
     // avant de préparer cover/captions/description. Section ouverte par défaut.
-    CM: ["render", "rushes", "versions", "cover", "captions", "description", "captionIg", "publish", "comments"],
+    CM: ["render", "rushes", "versions", "cover", "captions", "description", "captionIg", "clientValidation", "publish", "comments"],
     EXTERNAL_GENERATOR: [],
   };
 
@@ -82,6 +84,7 @@ const SECTION_LABELS: Record<SectionKey, string> = {
   captions: "Sous-titres",
   description: "Description",
   captionIg: "Légende Instagram",
+  clientValidation: "Validation client",
   publish: "Publication",
   comments: "Commentaires",
   activity: "Historique d'activité",
@@ -120,6 +123,8 @@ interface PatternInfo {
   coverMode: string;
   needsCaptions: boolean;
   needsDescription: string;
+  needsClientValidation: boolean;
+  allowsClientRevision: boolean;
   needsRushes: boolean;
   needsBrief: boolean;
 }
@@ -214,6 +219,25 @@ export interface PublicationFicheProps {
     errorMsg: string | null;
     createdAt: string;
   } | null;
+  // W2 — Validation client (résolu pattern + override)
+  clientValidation: {
+    needsClientValidation: boolean;
+    allowsClientRevision: boolean;
+    needsClientValidationOverride: boolean | null;
+    allowsClientRevisionOverride: boolean | null;
+    activeToken: {
+      id: string;
+      createdAt: string;
+      expiresAt: string;
+      createdBy: { id: string; name: string | null; email: string | null } | null;
+    } | null;
+    rounds: Array<{
+      roundNumber: number;
+      action: string;
+      comment: string | null;
+      respondedAt: string;
+    }>;
+  };
   // Phase 1.3.6
   comments: CommentData[];
   commentsHasMore: boolean;
@@ -240,6 +264,7 @@ export function PublicationFiche({
   versions,
   currentVersionId,
   latestCaptionJob,
+  clientValidation,
   comments,
   commentsHasMore,
   activities,
@@ -416,6 +441,20 @@ export function PublicationFiche({
                 slot={{ id: slot.id, caption: slot.caption }}
                 description={slot.description}
                 canEdit={canMarkPublished || canEditDescription}
+              />
+            )}
+
+            {/* Validation client externe (W2) — masquée si needsClientValidation false */}
+            {wrap(
+              "clientValidation",
+              <ClientValidationSection
+                slotId={slot.id}
+                slotStatus={slot.status}
+                needsClientValidation={clientValidation.needsClientValidation}
+                allowsClientRevision={clientValidation.allowsClientRevision}
+                initialActiveToken={clientValidation.activeToken}
+                rounds={clientValidation.rounds}
+                currentUserRole={currentUserRole}
               />
             )}
 

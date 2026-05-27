@@ -56,6 +56,7 @@ describe("STATUS_TRANSITIONS — cohérence de la matrice", () => {
   const allStatuses: SlotStatus[] = [
     "DRAFT", "PLANNED", "RUSHES_EXPECTED", "RUSHES_RECEIVED", "IN_EDIT",
     "EDIT_REVIEW", "EDIT_APPROVED", "CAPTIONS_PENDING", "READY_FOR_CM",
+    "AWAITING_CLIENT", "CLIENT_REVISION",
     "SCHEDULED", "PUBLISHED", "REJECTED", "CANCELLED", "BLOCKED", "ARCHIVED",
   ];
 
@@ -79,6 +80,36 @@ describe("STATUS_TRANSITIONS — cohérence de la matrice", () => {
 
   it("BLOCKED est terminal (aucune transition)", () => {
     expect(STATUS_TRANSITIONS.BLOCKED).toHaveLength(0);
+  });
+
+  // ─── W2 — Validation client externe ────────────────────────────────────────
+
+  it("READY_FOR_CM → AWAITING_CLIENT (envoi pour validation client)", () => {
+    expect(STATUS_TRANSITIONS.READY_FOR_CM).toContain("AWAITING_CLIENT");
+  });
+
+  it("AWAITING_CLIENT → SCHEDULED (client valide)", () => {
+    expect(STATUS_TRANSITIONS.AWAITING_CLIENT).toContain("SCHEDULED");
+  });
+
+  it("AWAITING_CLIENT → CLIENT_REVISION (client refuse avec commentaire)", () => {
+    expect(STATUS_TRANSITIONS.AWAITING_CLIENT).toContain("CLIENT_REVISION");
+  });
+
+  it("AWAITING_CLIENT → CANCELLED (client annule)", () => {
+    expect(STATUS_TRANSITIONS.AWAITING_CLIENT).toContain("CANCELLED");
+  });
+
+  it("CLIENT_REVISION → AWAITING_CLIENT (renvoi après corrections)", () => {
+    expect(STATUS_TRANSITIONS.CLIENT_REVISION).toContain("AWAITING_CLIENT");
+  });
+
+  it("CLIENT_REVISION → IN_EDIT (retour montage si gros changement)", () => {
+    expect(STATUS_TRANSITIONS.CLIENT_REVISION).toContain("IN_EDIT");
+  });
+
+  it("CLIENT_REVISION → CANCELLED (annulation complète)", () => {
+    expect(STATUS_TRANSITIONS.CLIENT_REVISION).toContain("CANCELLED");
   });
 });
 

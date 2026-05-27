@@ -31,7 +31,13 @@ export type ActivityType =
   | "VERSION_PROMOTED"
   | "VERSION_DELETED"
   | "VERSION_RESTORED"
-  | "CURRENT_VERSION_CHANGED";
+  | "CURRENT_VERSION_CHANGED"
+  // ── Client validation (W2) ────────────────────────────────────────────────
+  | "CLIENT_VALIDATION_TOKEN_GENERATED"
+  | "CLIENT_VALIDATION_TOKEN_REVOKED"
+  | "CLIENT_VALIDATION_APPROVED"
+  | "CLIENT_VALIDATION_REJECTED"
+  | "CLIENT_VALIDATION_CANCELLED";
 
 export interface LogActivityInput {
   slotId: string;

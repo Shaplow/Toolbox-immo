@@ -151,11 +151,11 @@ export function TemplatesGallery({ templates, isAdmin }: Props) {
                           <EditTemplateInfoButton
                             id={template.id}
                             initialName={template.name}
-                            initialClient={template.client}
+                            initialClient={template.client ?? ""}
                           />
                         )}
                       </div>
-                      {(!showGroupHeaders || sortMode === "recent") && template.client && (
+                      {!showGroupHeaders && template.client && (
                         <p className="text-xs text-indigo-700 mt-0.5">{template.client}</p>
                       )}
                       <div className="flex gap-1 mt-2 flex-wrap">

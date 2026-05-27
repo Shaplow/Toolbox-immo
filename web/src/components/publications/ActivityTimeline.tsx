@@ -26,6 +26,8 @@ import {
   Star,
   RotateCcw,
   ArrowRight,
+  ShieldCheck,
+  ShieldX,
   Circle,
 } from "lucide-react";
 import { STATUS_LABELS } from "@/lib/slots/statusLabels";
@@ -142,6 +144,26 @@ function activityLabel(type: string, payload: Record<string, unknown> | null): s
       const next = typeof payload?.versionNumber === "number" ? `V${payload.versionNumber}` : "V?";
       return `Version courante : ${prev} → ${next}`;
     }
+    // ── Client validation (W2) ────────────────────────────────────────────────
+    case "CLIENT_VALIDATION_TOKEN_GENERATED":
+      return "Lien de validation client envoyé";
+    case "CLIENT_VALIDATION_TOKEN_REVOKED":
+      return "Lien de validation client révoqué";
+    case "CLIENT_VALIDATION_APPROVED": {
+      const round = typeof payload?.roundNumber === "number" ? ` (round ${payload.roundNumber})` : "";
+      return `Client : validé${round}`;
+    }
+    case "CLIENT_VALIDATION_REJECTED": {
+      const round = typeof payload?.roundNumber === "number" ? ` (round ${payload.roundNumber})` : "";
+      const comment = typeof payload?.comment === "string" && payload.comment
+        ? ` — « ${payload.comment.slice(0, 80)}${payload.comment.length > 80 ? "…" : ""} »`
+        : "";
+      return `Client : modifications demandées${round}${comment}`;
+    }
+    case "CLIENT_VALIDATION_CANCELLED": {
+      const round = typeof payload?.roundNumber === "number" ? ` (round ${payload.roundNumber})` : "";
+      return `Client : annulé${round}`;
+    }
     default:
       return type;
   }
@@ -188,6 +210,17 @@ function ActivityIcon({ type }: ActivityIconProps) {
       return <span className={`${base} bg-teal-100 text-teal-700`} title="Version restaurée"><RotateCcw size={12} /></span>;
     case "CURRENT_VERSION_CHANGED":
       return <span className={`${base} bg-indigo-100 text-indigo-700`} title="Version courante changée"><ArrowRight size={12} /></span>;
+    // ── Client validation (W2) ────────────────────────────────────────────────
+    case "CLIENT_VALIDATION_TOKEN_GENERATED":
+      return <span className={`${base} bg-fuchsia-100 text-fuchsia-700`} title="Lien envoyé"><ShieldCheck size={12} /></span>;
+    case "CLIENT_VALIDATION_TOKEN_REVOKED":
+      return <span className={`${base} bg-gray-100 text-gray-600`} title="Lien révoqué"><ShieldX size={12} /></span>;
+    case "CLIENT_VALIDATION_APPROVED":
+      return <span className={`${base} bg-emerald-100 text-emerald-700`} title="Client a validé"><Check size={12} /></span>;
+    case "CLIENT_VALIDATION_REJECTED":
+      return <span className={`${base} bg-rose-100 text-rose-700`} title="Modifications demandées"><MessageSquare size={12} /></span>;
+    case "CLIENT_VALIDATION_CANCELLED":
+      return <span className={`${base} bg-red-100 text-red-700`} title="Annulé par client"><ShieldX size={12} /></span>;
     default:
       return <span className={`${base} bg-gray-100 text-gray-500`} title={type}><Circle size={10} /></span>;
   }
