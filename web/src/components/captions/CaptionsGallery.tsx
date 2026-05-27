@@ -320,7 +320,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
           <Film size={40} className="mx-auto mb-4 opacity-30" />
           <p className="font-medium">Aucun preset disponible</p>
           <p className="text-sm mt-1">
-            {isAdmin ? "Creez ou importez votre premier preset pour ouvrir directement le builder." : "Contactez votre administrateur"}
+            {isAdmin ? "Créez ou importez votre premier preset pour ouvrir directement le builder." : "Contactez votre administrateur"}
           </p>
         </div>
       ) : (
@@ -348,7 +348,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                       disabled={savingId === preset.id}
                       className="text-xs px-2 py-1 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-60 shrink-0"
                     >
-                      {savingId === preset.id ? "…" : "OK"}
+                      {savingId === preset.id ? "…" : "Renommer"}
                     </button>
                     <button
                       type="button"
