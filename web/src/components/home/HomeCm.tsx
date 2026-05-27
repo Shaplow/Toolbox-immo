@@ -139,7 +139,10 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
 
       {isFullyEmpty ? (
         <EmptyState
-          icon={CheckCircle2}
+          // Pré-rendu requis : HomeCm est un Server Component, on ne peut pas
+          // passer le composant Lucide directement (Next.js refuse de
+          // sérialiser les fonctions à travers la frontière server→client).
+          icon={<CheckCircle2 size={20} className="text-gray-400" />}
           title="Rien à publier pour le moment"
           description="Aucune publication ne t'attend. Reviens plus tard ou consulte le calendrier pour anticiper la suite."
         />

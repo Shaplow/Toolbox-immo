@@ -155,7 +155,8 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
 
       {isFullyEmpty ? (
         <EmptyState
-          icon={CheckCircle2}
+          // Pré-rendu requis : HomeMonteur est un Server Component.
+          icon={<CheckCircle2 size={20} className="text-gray-400" />}
           title="Rien à monter pour le moment"
           description="Ta file est vide. Bonne pause — les prochaines publications arriveront via le calendrier."
         />
