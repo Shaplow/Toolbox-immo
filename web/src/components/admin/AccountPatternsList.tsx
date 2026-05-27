@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LayoutList, Edit, Copy, Trash2, Plus } from "lucide-react";
+import { LayoutList, Edit, Copy, Trash2, Plus, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { toast } from "@/components/ui/Toast";
 import { AccountPatternForm, type AccountPatternRow } from "./AccountPatternForm";
+import { detectOrphanedPatternConfig } from "@/lib/publications/patternValidation";
 
 // ─── Labels FR ────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,25 @@ function PatternCard({
   const [deleting, setDeleting] = useState(false);
   const hasSlots = pattern._count.publicationSlots > 0;
 
+  // Détection config orpheline (preset cover supprimé, preset/prompt manquant…)
+  // template=null car on n'a pas la liste des coverPresetNames côté liste :
+  // on signale uniquement les erreurs détectables sans template (C1, C3, C4, C5, C10).
+  const orphanedConfig = detectOrphanedPatternConfig(
+    {
+      source: pattern.source,
+      templateId: pattern.templateId,
+      coverMode: pattern.coverMode,
+      coverConfig: pattern.coverConfig ?? null,
+      needsCaptions: pattern.needsCaptions,
+      needsDescription: pattern.needsDescription,
+      needsClientValidation: pattern.needsClientValidation,
+      allowsClientRevision: pattern.allowsClientRevision,
+      captionPresetId: pattern.captionPresetId ?? null,
+      descriptionPromptId: pattern.descriptionPromptId ?? null,
+    },
+    null,
+  );
+
   const flags: { label: string; value: boolean | string }[] = [
     { label: "Captions", value: pattern.needsCaptions },
     { label: "Rushes", value: pattern.needsRushes },
@@ -103,6 +123,15 @@ function PatternCard({
             {!pattern.isActive && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500 shrink-0">
                 Inactif
+              </span>
+            )}
+            {orphanedConfig && (
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 border border-amber-200 shrink-0"
+                title={`${orphanedConfig.count} conflit${orphanedConfig.count > 1 ? "s" : ""} de configuration — éditer pour corriger`}
+              >
+                <AlertTriangle size={10} />
+                Config invalide
               </span>
             )}
           </div>

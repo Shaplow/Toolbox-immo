@@ -5,6 +5,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import {
+  validatePatternConfig,
+  type PatternValidationInput,
+  type PatternValidationError,
+  type TemplateValidationContext,
+} from "@/lib/publications/patternValidation";
 
 const VALID_SOURCES = ["auto_template", "manual_rushes", "external_upload"] as const;
 const VALID_COVER_MODES = ["auto", "manualSelect", "none"] as const;
@@ -81,6 +87,28 @@ function validatePatternBody(body: PostBody, requireAll: boolean): string | null
   return null;
 }
 
+/**
+ * Charge le contexte template (liste des coverPresets) puis applique
+ * la validation cross-field via le helper centralisé. Retourne `[]` si OK.
+ *
+ * Le caller doit s'assurer que tous les champs du body sont déjà remplis
+ * (utiliser après validatePatternBody(body, requireAll=true) pour POST,
+ * ou après merge avec l'existant pour PATCH).
+ */
+export async function validatePatternCrossFields(
+  fullInput: PatternValidationInput,
+): Promise<PatternValidationError[]> {
+  let templateContext: TemplateValidationContext | null = null;
+  if (fullInput.templateId) {
+    const presets = await prisma.templateCoverPreset.findMany({
+      where: { templateId: fullInput.templateId },
+      select: { name: true },
+    });
+    templateContext = { coverPresetNames: presets.map((p) => p.name) };
+  }
+  return validatePatternConfig(fullInput, templateContext);
+}
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const userContext = await getUserContext();
   if (!userContext?.canAdminBypass) {
@@ -120,6 +148,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const validationError = validatePatternBody(body, true);
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
+  }
+
+  // Validation cross-field (cohérence métier — règles C1-C5 + C10)
+  const xfieldErrors = await validatePatternCrossFields({
+    source: body.source!,
+    templateId: body.templateId ?? null,
+    coverMode: body.coverMode!,
+    coverConfig: body.coverConfig ?? null,
+    needsCaptions: body.needsCaptions ?? false,
+    needsDescription: body.needsDescription!,
+    needsClientValidation: body.needsClientValidation ?? false,
+    allowsClientRevision: body.allowsClientRevision ?? false,
+    captionPresetId: body.captionPresetId ?? null,
+    descriptionPromptId: body.descriptionPromptId ?? null,
+  });
+  if (xfieldErrors.length > 0) {
+    return NextResponse.json(
+      { error: "Pattern incohérent — corrigez les conflits avant de sauvegarder.", validationErrors: xfieldErrors },
+      { status: 422 },
+    );
   }
 
   try {
