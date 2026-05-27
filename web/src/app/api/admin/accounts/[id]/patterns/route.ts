@@ -21,6 +21,7 @@ const patternIncludes = {
   template: { select: { id: true, name: true } },
   defaultAssigneeMonteur: { select: { id: true, name: true } },
   defaultAssigneeCm: { select: { id: true, name: true } },
+  defaultAssigneeVideaste: { select: { id: true, name: true } },
   _count: { select: { publicationSlots: true } },
 } as const;
 
@@ -41,6 +42,7 @@ type PostBody = {
   isActive?: boolean;
   defaultAssigneeMonteurId?: string | null;
   defaultAssigneeCmId?: string | null;
+  defaultAssigneeVideasteId?: string | null;
   captionPresetId?: string | null;
   descriptionPromptId?: string | null;
   notes?: string | null;
@@ -102,9 +104,12 @@ export async function validatePatternCrossFields(
   if (fullInput.templateId) {
     const presets = await prisma.templateCoverPreset.findMany({
       where: { templateId: fullInput.templateId },
-      select: { name: true },
+      select: { id: true, name: true },
     });
-    templateContext = { coverPresetNames: presets.map((p) => p.name) };
+    templateContext = {
+      coverPresetNames: presets.map((p) => p.name),
+      coverPresetIds: presets.map((p) => p.id),
+    };
   }
   return validatePatternConfig(fullInput, templateContext);
 }
@@ -190,6 +195,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         isActive: body.isActive ?? true,
         defaultAssigneeMonteurId: body.defaultAssigneeMonteurId ?? null,
         defaultAssigneeCmId: body.defaultAssigneeCmId ?? null,
+        defaultAssigneeVideasteId: body.defaultAssigneeVideasteId ?? null,
         captionPresetId: body.captionPresetId ?? null,
         descriptionPromptId: body.descriptionPromptId ?? null,
         notes: body.notes ?? null,

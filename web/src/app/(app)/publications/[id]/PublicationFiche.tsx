@@ -21,6 +21,7 @@ import { CaptionsSection } from "@/components/publications/sections/CaptionsSect
 import { DescriptionSection } from "@/components/publications/sections/DescriptionSection";
 import { CaptionIgSection } from "@/components/publications/sections/CaptionIgSection";
 import { ClientValidationSection } from "@/components/publications/sections/ClientValidationSection";
+import { OneOffTriggerButtons } from "@/components/publications/sections/OneOffTriggerButtons";
 import { PublishSection } from "@/components/publications/sections/PublishSection";
 import { RushesSection } from "@/components/publications/sections/RushesSection";
 import { BriefSection } from "@/components/publications/sections/BriefSection";
@@ -64,6 +65,9 @@ function isPrimaryForRole(section: SectionKey, role: UserRole): boolean {
   if (role === "ADMIN") return true;
 
   const primaryByRole: Record<Exclude<UserRole, "ADMIN">, SectionKey[]> = {
+    // VIDÉASTE : travaille uniquement sur le brief + rushes (upload). Les
+    // autres sections sont en lecture seule (informatif, replié par défaut).
+    VIDEASTE: ["brief", "rushes", "comments"],
     MONTEUR: ["brief", "rushes", "versions", "comments"],
     // F1.9 — Le CM a besoin de voir rushes + versions pour valider le matériel
     // avant de préparer cover/captions/description. Section ouverte par défaut.
@@ -467,6 +471,16 @@ export function PublicationFiche({
                 currentUserRole={currentUserRole}
               />
             )}
+
+            {/* Phase 6 — Boutons triggers manuels pour slots one-off (ADMIN only) */}
+            <OneOffTriggerButtons
+              slotId={slot.id}
+              isAdmin={currentUserRole === "ADMIN"}
+              hasCurrentVersion={!!currentVersion}
+              hasNoRender={!render}
+              needsCoverAuto={pattern?.coverMode === "auto"}
+              needsCaptions={pattern?.needsCaptions ?? false}
+            />
 
             {/* Publication */}
             {wrap(

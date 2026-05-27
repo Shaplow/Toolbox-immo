@@ -42,6 +42,7 @@ export type AccountPatternRow = {
   isActive: boolean;
   defaultAssigneeMonteurId?: string | null;
   defaultAssigneeCmId?: string | null;
+  defaultAssigneeVideasteId?: string | null;
   captionPresetId?: string | null;
   descriptionPromptId?: string | null;
   notes?: string | null;
@@ -77,6 +78,7 @@ type FormValues = {
   publishTime: string;
   defaultAssigneeMonteurId: string;
   defaultAssigneeCmId: string;
+  defaultAssigneeVideasteId: string;
   captionPresetId: string;
   descriptionPromptId: string;
   notes: string;
@@ -101,6 +103,7 @@ function defaultValues(initial?: AccountPatternRow | null): FormValues {
       publishTime: "09:00",
       defaultAssigneeMonteurId: "",
       defaultAssigneeCmId: "",
+      defaultAssigneeVideasteId: "",
       captionPresetId: "",
       descriptionPromptId: "",
       notes: "",
@@ -124,6 +127,7 @@ function defaultValues(initial?: AccountPatternRow | null): FormValues {
     publishTime: initial.publishTime,
     defaultAssigneeMonteurId: initial.defaultAssigneeMonteurId ?? "",
     defaultAssigneeCmId: initial.defaultAssigneeCmId ?? "",
+    defaultAssigneeVideasteId: initial.defaultAssigneeVideasteId ?? "",
     captionPresetId: initial.captionPresetId ?? "",
     descriptionPromptId: initial.descriptionPromptId ?? "",
     notes: initial.notes ?? "",
@@ -188,6 +192,7 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [monteurs, setMonteurs] = useState<UserOption[]>([]);
   const [cms, setCms] = useState<UserOption[]>([]);
+  const [videastes, setVideastes] = useState<UserOption[]>([]);
   const [captionPresets, setCaptionPresets] = useState<{ id: string; name: string }[]>([]);
   const [descriptionPrompts, setDescriptionPrompts] = useState<{ id: string; name: string }[]>([]);
 
@@ -221,6 +226,9 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
         const users = await usersRes.json() as UserOption[];
         setMonteurs(users.filter((u) => u.role === "MONTEUR" || u.role === "ADMIN"));
         setCms(users.filter((u) => u.role === "CM" || u.role === "ADMIN"));
+        // VIDÉASTE : seuls les rôles dédiés (un ADMIN peut filmer mais on n'élargit
+        // pas pour éviter d'avoir 5 admins dans la liste de pickers terrain).
+        setVideastes(users.filter((u) => u.role === "VIDEASTE" || u.role === "ADMIN"));
       }
       if (presetsRes.ok) {
         setCaptionPresets(await presetsRes.json() as { id: string; name: string }[]);
@@ -323,6 +331,7 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
         publishTime: values.publishTime,
         defaultAssigneeMonteurId: values.defaultAssigneeMonteurId || null,
         defaultAssigneeCmId: values.defaultAssigneeCmId || null,
+        defaultAssigneeVideasteId: values.defaultAssigneeVideasteId || null,
         captionPresetId: values.captionPresetId || null,
         descriptionPromptId: values.descriptionPromptId || null,
         notes: values.notes.trim() || null,
@@ -611,6 +620,14 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
               {/* ── Section 6 : Assignations ── */}
               <Section title="Assignations (optionnel)">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField label="Vidéaste par défaut">
+                    <SelectField
+                      value={values.defaultAssigneeVideasteId}
+                      onChange={(v) => set("defaultAssigneeVideasteId", v)}
+                      options={videastes.map((u) => ({ id: u.id, name: u.name ?? u.id }))}
+                      placeholder="— Aucun —"
+                    />
+                  </FormField>
                   <FormField label="Monteur par défaut">
                     <SelectField
                       value={values.defaultAssigneeMonteurId}

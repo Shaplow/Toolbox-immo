@@ -4,6 +4,7 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { HomeAdmin } from "@/components/home/HomeAdmin";
 import { HomeMonteur } from "@/components/home/HomeMonteur";
+import { HomeVideaste } from "@/components/home/HomeVideaste";
 import { HomeCm } from "@/components/home/HomeCm";
 import { HomeUser } from "@/components/home/HomeUser";
 
@@ -26,6 +27,10 @@ export default async function HomePage() {
 
   if (role === "MONTEUR") {
     return <HomeMonteur userId={effectiveUser.id} userName={effectiveUser.name} />;
+  }
+
+  if (role === "VIDEASTE") {
+    return <HomeVideaste userId={effectiveUser.id} userName={effectiveUser.name} />;
   }
 
   if (role === "CM") {

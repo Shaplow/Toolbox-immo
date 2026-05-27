@@ -42,6 +42,8 @@ const ROLE_DETAIL_MODE: Record<UserRole, SlotDetailPanelMode> = {
   ADMIN: "admin",
   MONTEUR: "monteur",
   CM: "cm",
+  // VIDÉASTE : même mode restreint que MONTEUR (lecture + status/notes éditables)
+  VIDEASTE: "monteur",
   EXTERNAL_GENERATOR: "cm",
 };
 

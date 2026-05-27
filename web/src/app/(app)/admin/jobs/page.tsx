@@ -115,7 +115,7 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
     }),
     prisma.coverFramePack.findMany({
       where: { status: { in: ["QUEUED", "PROCESSING"] } },
-      select: { id: true, status: true, userId: true, renderId: true, createdAt: true, updatedAt: true },
+      select: { id: true, status: true, userId: true, renderId: true, publicationVersionId: true, createdAt: true, updatedAt: true },
       orderBy: { createdAt: "asc" },
       take: 200,
     }),
@@ -171,7 +171,9 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
       userId: p.userId,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
-      label: `Render ${p.renderId.slice(0, 8)}…`,
+      label: p.renderId
+        ? `Render ${p.renderId.slice(0, 8)}…`
+        : `Version ${(p.publicationVersionId ?? "?").slice(0, 8)}…`,
     })),
     ...autocuts.map((a): JobRow => ({
       type: "autocut",

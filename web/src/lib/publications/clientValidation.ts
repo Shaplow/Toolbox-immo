@@ -130,6 +130,11 @@ interface SlotForAllOverrides {
   needsDescriptionOverride: string | null;
   needsRushesOverride: boolean | null;
   needsBriefOverride: boolean | null;
+  // Phase 5 — overrides one-off (référence directe aux ressources)
+  coverModeOverride?: string | null;
+  coverPresetIdOverride?: string | null;
+  captionPresetIdOverride?: string | null;
+  descriptionPromptIdOverride?: string | null;
 }
 
 interface PatternForAllNeeds {
@@ -139,6 +144,12 @@ interface PatternForAllNeeds {
   needsDescription: string;
   needsRushes: boolean;
   needsBrief: boolean;
+  // Phase 5 — valeurs héritées pour les overrides one-off
+  coverMode?: string;
+  /** coverConfig contient le coverPresetId (Phase 3) — passé en string nullable. */
+  coverPresetId?: string | null;
+  captionPresetId?: string | null;
+  descriptionPromptId?: string | null;
 }
 
 /**
@@ -153,6 +164,11 @@ export interface SlotResolvedConfig {
   needsDescription: string;
   needsRushes: boolean;
   needsBrief: boolean;
+  // Phase 5 — config one-off résolue (référence aux ressources)
+  coverMode: string;
+  coverPresetId: string | null;
+  captionPresetId: string | null;
+  descriptionPromptId: string | null;
   source: {
     needsClientValidation: ResolveSource;
     allowsClientRevision: ResolveSource;
@@ -160,6 +176,10 @@ export interface SlotResolvedConfig {
     needsDescription: ResolveSource;
     needsRushes: ResolveSource;
     needsBrief: ResolveSource;
+    coverMode: ResolveSource;
+    coverPresetId: ResolveSource;
+    captionPresetId: ResolveSource;
+    descriptionPromptId: ResolveSource;
   };
 }
 
@@ -180,6 +200,11 @@ export function resolveSlotConfig(
   const nd = resolveOverride(slot.needsDescriptionOverride, pattern?.needsDescription, "none");
   const nr = resolveOverride(slot.needsRushesOverride, pattern?.needsRushes, false);
   const nb = resolveOverride(slot.needsBriefOverride, pattern?.needsBrief, false);
+  // Phase 5 — overrides one-off
+  const cm = resolveOverride(slot.coverModeOverride, pattern?.coverMode, "none");
+  const cpId = resolveOverride(slot.coverPresetIdOverride, pattern?.coverPresetId, null);
+  const captPId = resolveOverride(slot.captionPresetIdOverride, pattern?.captionPresetId, null);
+  const descPId = resolveOverride(slot.descriptionPromptIdOverride, pattern?.descriptionPromptId, null);
   return {
     needsClientValidation: ncv.value,
     allowsClientRevision: acr.value,
@@ -187,6 +212,10 @@ export function resolveSlotConfig(
     needsDescription: nd.value,
     needsRushes: nr.value,
     needsBrief: nb.value,
+    coverMode: cm.value,
+    coverPresetId: cpId.value,
+    captionPresetId: captPId.value,
+    descriptionPromptId: descPId.value,
     source: {
       needsClientValidation: ncv.source,
       allowsClientRevision: acr.source,
@@ -194,6 +223,10 @@ export function resolveSlotConfig(
       needsDescription: nd.source,
       needsRushes: nr.source,
       needsBrief: nb.source,
+      coverMode: cm.source,
+      coverPresetId: cpId.source,
+      captionPresetId: captPId.source,
+      descriptionPromptId: descPId.source,
     },
   };
 }

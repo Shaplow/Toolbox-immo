@@ -25,6 +25,12 @@ describe("whereClauseForUser", () => {
     });
   });
 
+  it("VIDEASTE → scoped on assigneeVideasteId", () => {
+    expect(whereClauseForUser("VIDEASTE", USER_ID)).toEqual({
+      assigneeVideasteId: USER_ID,
+    });
+  });
+
   it("USER → impossible id (no slot match)", () => {
     expect(whereClauseForUser("EXTERNAL_GENERATOR", USER_ID)).toEqual({
       id: "__never__",
@@ -74,6 +80,16 @@ describe("canUserAccessSlot", () => {
     expect(canUserAccessSlot(slotUnassigned, "CM", USER_ID)).toBe(false);
   });
 
+  it("VIDEASTE → true only when assigneeVideasteId matches", () => {
+    expect(
+      canUserAccessSlot({ ...slotAssignedToUser, assigneeVideasteId: USER_ID }, "VIDEASTE", USER_ID),
+    ).toBe(true);
+    expect(
+      canUserAccessSlot({ ...slotAssignedToUser, assigneeVideasteId: OTHER_USER_ID }, "VIDEASTE", USER_ID),
+    ).toBe(false);
+    expect(canUserAccessSlot(slotUnassigned, "VIDEASTE", USER_ID)).toBe(false);
+  });
+
   it("USER → always false", () => {
     expect(canUserAccessSlot(slotAssignedToUser, "EXTERNAL_GENERATOR", USER_ID)).toBe(false);
     expect(canUserAccessSlot(slotAssignedToOther, "EXTERNAL_GENERATOR", USER_ID)).toBe(false);
@@ -121,7 +137,14 @@ describe("ALLOWED_PATCH_FIELDS_BY_ROLE — security invariants", () => {
   it("ADMIN can modify assignees and pattern (override capability)", () => {
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("assigneeMonteurId");
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("assigneeCmId");
+    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("assigneeVideasteId");
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("patternId");
+  });
+
+  it("VIDEASTE can modify status + notes only (rapport de shoot)", () => {
+    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.VIDEASTE).toEqual(["status", "notes"]);
+    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.VIDEASTE).not.toContain("assigneeVideasteId");
+    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.VIDEASTE).not.toContain("caption");
   });
 });
 

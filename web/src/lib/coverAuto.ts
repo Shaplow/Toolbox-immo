@@ -365,22 +365,32 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
     where: { id: packId },
     include: {
       template: true,
+      // Phase 5 : render est nullable (slots one-off → publicationVersion).
+      // Si render est null, on utilise publicationVersion pour récupérer le slotId.
       render: {
         select: {
           usedAssets: true,
           slotDurations: true,
           listing: { select: { jsonData: true } },
-          // slotId pour pouvoir logger les activities READY/FAILED sur la fiche.
           publicationSlot: { select: { id: true } },
         },
+      },
+      publicationVersion: {
+        select: { slot: { select: { id: true } } },
       },
     },
   });
   if (!pack?.template || !pack.sourceVideoUrl) return;
-  const slotId = pack.render.publicationSlot?.id ?? null;
+  // slotId : priorité render → fallback publicationVersion (slot one-off)
+  const slotId =
+    pack.render?.publicationSlot?.id ??
+    pack.publicationVersion?.slot?.id ??
+    null;
 
+  // Données spécifiques au render (usedAssets, slotDurations) : null pour les
+  // packs créés sur une PublicationVersion. resolveNativeCoverSources sait gérer.
   let slotDurations: Record<string, number> | undefined;
-  if (pack.render.slotDurations) {
+  if (pack.render?.slotDurations) {
     try {
       slotDurations = JSON.parse(pack.render.slotDurations) as Record<string, number>;
     } catch {
@@ -403,8 +413,8 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
     const nativeSources = await resolveNativeCoverSources(
       templateJson,
       config,
-      pack.render.usedAssets,
-      pack.render.listing.jsonData,
+      pack.render?.usedAssets ?? null,
+      pack.render?.listing?.jsonData ?? null,
     );
     let duration = pack.duration;
     let framePicks: CoverFramePick[] = [];
@@ -534,38 +544,64 @@ export async function triggerAutoCoverPackForRender(
   if (slotPattern?.coverMode !== "auto") return;
   if (!slotPattern.coverConfig) return;
 
-  // Phase 2.0 — résolution via coverPresetName → TemplateCoverPreset
-  const coverConfigJson = slotPattern.coverConfig as { enabled?: boolean; coverPresetName?: string } | null;
+  // Phase 3 Cohérence Workflows — résolution par ID stable (coverPresetId)
+  // avec fallback sur nom (coverPresetName) pendant 1 release de compat,
+  // le temps que tous les patterns soient migrés via le script
+  // scripts/migrate-cover-preset-name-to-id.ts
+  const coverConfigJson = slotPattern.coverConfig as {
+    enabled?: boolean;
+    coverPresetId?: string;
+    coverPresetName?: string;
+  } | null;
   if (!coverConfigJson?.enabled) return;
 
+  const presetId = coverConfigJson.coverPresetId;
   const presetName = coverConfigJson.coverPresetName;
-  if (!presetName) {
+  if (!presetId && !presetName) {
     console.warn(
-      `[autoCover] Pattern ${slotPattern.id} has coverMode=auto but no coverPresetName — skip (configure un preset dans le template)`,
+      `[autoCover] Pattern ${slotPattern.id} has coverMode=auto but no preset reference — skip`,
     );
     await logCoverActivity(slotId, "COVER_CONFIG_ERROR", {
       patternId: slotPattern.id,
-      reason: "missing_preset_name",
+      reason: "missing_preset_reference",
       message: "coverMode=auto mais aucun preset configuré dans le pattern",
     });
     return;
   }
 
   const patternTemplateId = slotPattern.templateId ?? templateId;
-  const preset = await prisma.templateCoverPreset.findUnique({
-    where: { templateId_name: { templateId: patternTemplateId, name: presetName } },
-  });
+  let preset: { id: string; config: unknown; name: string } | null = null;
+
+  if (presetId) {
+    // Lookup primaire par ID (stable au renommage)
+    preset = await prisma.templateCoverPreset.findUnique({
+      where: { id: presetId },
+      select: { id: true, config: true, name: true },
+    });
+  }
+  if (!preset && presetName) {
+    // Fallback compat : pattern non migré → lookup par nom
+    console.warn(
+      `[autoCover] Pattern ${slotPattern.id} utilise encore coverPresetName ("${presetName}") — exécuter le script de migration`,
+    );
+    preset = await prisma.templateCoverPreset.findUnique({
+      where: { templateId_name: { templateId: patternTemplateId, name: presetName } },
+      select: { id: true, config: true, name: true },
+    });
+  }
 
   if (!preset) {
+    const refLabel = presetId ? `id="${presetId}"` : `name="${presetName}"`;
     console.warn(
-      `[autoCover] Preset "${presetName}" introuvable pour template ${patternTemplateId} — skip (Cover config invalide)`,
+      `[autoCover] Preset ${refLabel} introuvable pour template ${patternTemplateId} — skip`,
     );
     await logCoverActivity(slotId, "COVER_CONFIG_ERROR", {
       patternId: slotPattern.id,
       reason: "preset_not_found",
-      presetName,
+      presetId: presetId ?? null,
+      presetName: presetName ?? null,
       templateId: patternTemplateId,
-      message: `Preset cover "${presetName}" introuvable sur le template`,
+      message: `Preset cover introuvable sur le template (${refLabel})`,
     });
     return;
   }
@@ -601,12 +637,13 @@ export async function triggerAutoCoverPackForRender(
 
   await logCoverActivity(slotId, "COVER_QUEUED", {
     coverFramePackId: pack.id,
-    presetName,
+    presetId: preset.id,
+    presetName: preset.name,
     frameCount,
   });
 
   queueCoverFramePackPreparation(pack.id);
-  console.info(`[autoCover] Pack ${pack.id} lancé pour render=${renderId} (preset="${presetName}")`);
+  console.info(`[autoCover] Pack ${pack.id} lancé pour render=${renderId} (preset="${preset.name}" id=${preset.id})`);
 }
 
 function buildMetadataByLibrary(assets: Array<{ libraryId: string; metadata: string }>): Map<string, Record<string, string | number | null>> {
@@ -706,7 +743,15 @@ export async function renderFinalCover(
       candidates: true,
     },
   });
-  if (!pack?.render.template) throw new Error("Pack cover introuvable");
+  if (!pack?.render?.template) {
+    // Phase 5 : packs créés sur publicationVersion (slot one-off sans render)
+    // ne supportent pas encore le rendu final composite avec overlays + listing.
+    // Le CM peut voir/sélectionner les frames mais pas générer la cover finale
+    // ici — utiliser /tools/cover dédié pour le finaliser à la main.
+    throw new Error(
+      "Pack cover sans render lié — le rendu final compositionnel n'est pas encore supporté pour les slots one-off (Phase 5). Utiliser /tools/cover ou ajouter le support via une itération suivante.",
+    );
+  }
   const candidate = pack.candidates.find((item) => item.id === candidateId);
   if (!candidate) throw new Error("Frame candidate introuvable");
 
@@ -746,10 +791,15 @@ export async function renderFinalCover(
 export async function getCoverOverlayCanvasDimensions(packId: string): Promise<{ width: number; height: number }> {
   const pack = await prisma.coverFramePack.findUnique({
     where: { id: packId },
-    select: { render: { select: { template: { select: { jsonData: true } } } } },
+    select: {
+      render: { select: { template: { select: { jsonData: true } } } },
+      template: { select: { jsonData: true } }, // fallback pour packs one-off
+    },
   });
   try {
-    const tpl = JSON.parse(pack?.render.template?.jsonData ?? "{}") as { canvas?: { width?: number; height?: number } };
+    // Priorité render.template, fallback pack.template (slots one-off)
+    const jsonData = pack?.render?.template?.jsonData ?? pack?.template?.jsonData ?? "{}";
+    const tpl = JSON.parse(jsonData) as { canvas?: { width?: number; height?: number } };
     return { width: tpl.canvas?.width ?? 1080, height: tpl.canvas?.height ?? 1920 };
   } catch {
     return { width: 1080, height: 1920 };
@@ -763,7 +813,12 @@ export async function buildCoverOverlayPreviewHtml(packId: string): Promise<stri
       render: { include: { listing: true, template: true } },
     },
   });
-  if (!pack?.render.template) throw new Error("Pack cover introuvable");
+  if (!pack?.render?.template) {
+    // Phase 5 : pas encore supporté pour slots one-off (sans render).
+    throw new Error(
+      "Cover overlay preview non supportée pour les packs one-off (sans render lié).",
+    );
+  }
 
   let templateJson = normalizeTemplateJSON(JSON.parse(pack.render.template.jsonData) as TemplateJSON);
   const listingData = safeJson<ListingData>(pack.render.listing.jsonData, {} as ListingData);

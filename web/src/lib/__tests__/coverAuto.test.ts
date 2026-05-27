@@ -168,14 +168,14 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     expect(mockTemplateCoverPresetFindUnique).not.toHaveBeenCalled();
   });
 
-  it("warn + skip si coverPresetName est absent (pattern non migré)", async () => {
+  it("warn + skip si aucune référence preset (id ou nom) — pattern incohérent", async () => {
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
         pattern: {
           id: "pat-unmigrated",
           coverMode: "auto",
-          coverConfig: { enabled: true }, // pas de coverPresetName
+          coverConfig: { enabled: true }, // ni coverPresetId ni coverPresetName
           templateId: "tpl-1",
         },
       },
@@ -185,7 +185,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
 
     expect(mockCoverFramePackCreate).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("no coverPresetName"));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("no preset reference"));
     warnSpy.mockRestore();
   });
 
@@ -252,8 +252,39 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
 
     await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
 
+    // Phase 3 : fallback par nom (PATTERN_CONFIG_WITH_PRESET n'a pas coverPresetId)
+    // → lookup via templateId_name avec templateId du pattern, pas du render
     expect(mockTemplateCoverPresetFindUnique).toHaveBeenCalledWith({
       where: { templateId_name: { templateId: "tpl-pattern", name: "Default" } },
+      select: { id: true, config: true, name: true },
+    });
+    expect(mockCoverFramePackCreate).toHaveBeenCalledOnce();
+  });
+
+  it("Phase 3 : résolution prioritaire via coverPresetId (lookup par id, pas par nom)", async () => {
+    mockTemplateExists();
+    mockRenderFindUnique.mockResolvedValueOnce({
+      publicationSlot: {
+        pattern: {
+          id: "pat-migrated",
+          coverMode: "auto",
+          coverConfig: {
+            enabled: true,
+            coverPresetId: "preset-1",
+            coverPresetName: "Default", // ignoré car ID prioritaire
+          },
+          templateId: "tpl-1",
+        },
+      },
+    });
+    mockPresetExists();
+
+    await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
+
+    // findUnique appelé par ID (priorité Phase 3)
+    expect(mockTemplateCoverPresetFindUnique).toHaveBeenCalledWith({
+      where: { id: "preset-1" },
+      select: { id: true, config: true, name: true },
     });
     expect(mockCoverFramePackCreate).toHaveBeenCalledOnce();
   });

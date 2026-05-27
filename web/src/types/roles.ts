@@ -5,16 +5,18 @@
  * Les valeurs ci-dessous sont les seules valeurs légitimes.
  *
  * ADMIN              — Studio / superviseur : accès complet, configure tout.
- * MONTEUR            — Reçoit des publications à produire, upload rushes/montages.
+ * VIDEASTE           — Filmeur : reçoit les missions de shoot et upload les rushs.
+ * MONTEUR            — Reçoit les rushs livrés, monte les versions vidéo.
  * CM                 — Community Manager : prépare légende/cover, publie sur Instagram.
  * EXTERNAL_GENERATOR — Client externe : accès limité (templates + covers) défini par
  *                      permissions individuelles. Remplace l'ancien rôle "USER"
- *                      depuis le renommage Vague 0 (2026-05-27).
+ *                      depuis le renommage Vague 0.
  */
-export type UserRole = "ADMIN" | "MONTEUR" | "CM" | "EXTERNAL_GENERATOR";
+export type UserRole = "ADMIN" | "VIDEASTE" | "MONTEUR" | "CM" | "EXTERNAL_GENERATOR";
 
 export const USER_ROLES = {
   ADMIN: "ADMIN",
+  VIDEASTE: "VIDEASTE",
   MONTEUR: "MONTEUR",
   CM: "CM",
   EXTERNAL_GENERATOR: "EXTERNAL_GENERATOR",

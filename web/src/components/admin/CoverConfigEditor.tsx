@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { FormField } from "@/components/ui/FormField";
+import { CoverPresetThumbnail } from "@/components/builder/CoverPresetThumbnail";
+import type { TemplateJSON } from "@/types/template";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,6 +17,9 @@ type CoverPreset = {
 
 type PartialCoverConfig = {
   enabled?: boolean;
+  /** Référence stable par ID (Phase 3 Cohérence Workflows). Priorité sur coverPresetName. */
+  coverPresetId?: string | null;
+  /** Référence legacy par nom — conservée pour fallback transitoire. */
   coverPresetName?: string | null;
 };
 
@@ -32,21 +37,36 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
   const config = (value ?? {}) as PartialCoverConfig;
 
   const [presets, setPresets] = useState<CoverPreset[]>([]);
+  const [template, setTemplate] = useState<TemplateJSON | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Fetch available presets when templateId changes
+  // Fetch available presets + template (pour le thumbnail) when templateId changes
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       if (!templateId) {
-        if (!cancelled) { setPresets([]); setLoading(false); }
+        if (!cancelled) { setPresets([]); setTemplate(null); setLoading(false); }
         return;
       }
       if (!cancelled) setLoading(true);
       try {
-        const r = await fetch(`/api/templates/${templateId}/cover-presets`);
-        const data: CoverPreset[] = r.ok ? await (r.json() as Promise<CoverPreset[]>) : [];
-        if (!cancelled) setPresets(data);
+        const [presetsRes, tplRes] = await Promise.all([
+          fetch(`/api/templates/${templateId}/cover-presets`),
+          fetch(`/api/templates/${templateId}`),
+        ]);
+        if (cancelled) return;
+        const presetsData: CoverPreset[] = presetsRes.ok
+          ? await (presetsRes.json() as Promise<CoverPreset[]>)
+          : [];
+        setPresets(presetsData);
+        if (tplRes.ok) {
+          const tplData = (await tplRes.json()) as { jsonData: string };
+          try {
+            setTemplate(JSON.parse(tplData.jsonData) as TemplateJSON);
+          } catch {
+            // ignore parse errors
+          }
+        }
       } catch {
         // Non-fatal
       } finally {
@@ -72,7 +92,13 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
 
   // ── Template selected ─────────────────────────────────────────────────────
 
-  const selectedPreset = presets.find((p) => p.name === config.coverPresetName) ?? null;
+  // Résolution prioritaire par ID (Phase 3), fallback par nom pour legacy.
+  const selectedPreset =
+    (config.coverPresetId
+      ? presets.find((p) => p.id === config.coverPresetId)
+      : null) ??
+    presets.find((p) => p.name === config.coverPresetName) ??
+    null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -118,13 +144,22 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
           help="Sélectionne le preset cover à utiliser pour ce pattern."
         >
           <select
-            value={config.coverPresetName ?? ""}
-            onChange={(e) => patch({ coverPresetName: e.target.value || null })}
+            value={selectedPreset?.id ?? ""}
+            onChange={(e) => {
+              const newId = e.target.value || null;
+              const newPreset = newId ? presets.find((p) => p.id === newId) : null;
+              // On écrit l'ID + le nom (le nom reste pour fallback compat
+              // côté coverAuto.ts pendant la phase de transition).
+              patch({
+                coverPresetId: newId,
+                coverPresetName: newPreset?.name ?? null,
+              });
+            }}
             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
           >
             <option value="" disabled>Choisir un preset…</option>
             {presets.map((p) => (
-              <option key={p.id} value={p.name}>
+              <option key={p.id} value={p.id}>
                 {p.name}
               </option>
             ))}
@@ -132,27 +167,37 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
         </FormField>
       )}
 
-      {/* Summary of selected preset */}
+      {/* Summary + thumbnail du preset sélectionné */}
       {selectedPreset && (
-        <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 text-xs text-indigo-700 space-y-0.5">
-          <p className="font-medium">{selectedPreset.name}</p>
-          <p>
-            {Array.isArray((selectedPreset.config as { overlayGroupIds?: unknown[] }).overlayGroupIds)
-              ? `${(selectedPreset.config as { overlayGroupIds: unknown[] }).overlayGroupIds.length} groupe(s) overlay`
-              : "—"}{" "}
-            &middot;{" "}
-            {typeof (selectedPreset.config as { frameCount?: number }).frameCount === "number"
-              ? `${(selectedPreset.config as { frameCount: number }).frameCount} frames`
-              : "36 frames"}
-          </p>
+        <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 flex items-center gap-3">
+          {template && (
+            <CoverPresetThumbnail
+              template={template}
+              config={selectedPreset.config as Record<string, unknown>}
+              width={56}
+            />
+          )}
+          <div className="text-xs text-indigo-700 space-y-0.5 flex-1 min-w-0">
+            <p className="font-medium truncate">{selectedPreset.name}</p>
+            <p>
+              {Array.isArray((selectedPreset.config as { overlayGroupIds?: unknown[] }).overlayGroupIds)
+                ? `${(selectedPreset.config as { overlayGroupIds: unknown[] }).overlayGroupIds.length} overlay(s)`
+                : "—"}{" "}
+              &middot;{" "}
+              {typeof (selectedPreset.config as { frameCount?: number }).frameCount === "number"
+                ? `${(selectedPreset.config as { frameCount: number }).frameCount} frames`
+                : "36 frames"}
+            </p>
+          </div>
         </div>
       )}
 
-      {/* Warning if coverPresetName set but preset not found */}
-      {config.coverPresetName && !selectedPreset && presets.length > 0 && (
+      {/* Warning si référence preset (par ID ou nom) mais introuvable */}
+      {(config.coverPresetId || config.coverPresetName) && !selectedPreset && presets.length > 0 && (
         <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          Le preset &laquo;{config.coverPresetName}&raquo; est introuvable dans ce template.
-          Sélectionne-en un autre.
+          Le preset référencé{" "}
+          {config.coverPresetId ? `(id="${config.coverPresetId}")` : `«${config.coverPresetName}»`}
+          {" "}est introuvable dans ce template. Sélectionne-en un autre.
         </p>
       )}
 

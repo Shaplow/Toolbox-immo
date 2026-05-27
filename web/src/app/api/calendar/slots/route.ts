@@ -159,11 +159,19 @@ export async function POST(req: NextRequest) {
     // Les assignees peuvent être fournis explicitement (override) ou déduits depuis le pattern
     assigneeMonteurId: rawAssigneeMonteurId,
     assigneeCmId: rawAssigneeCmId,
+    assigneeVideasteId: rawAssigneeVideasteId,
+    // Phase 6 — overrides one-off (uniquement si pattern=null)
+    needsCaptionsOverride,
+    needsDescriptionOverride,
+    needsRushesOverride,
+    needsBriefOverride,
+    coverModeOverride,
   } = body;
 
   // --- Résolution du pattern si fourni ---
   let resolvedAssigneeMonteurId: string | null = rawAssigneeMonteurId ?? null;
   let resolvedAssigneeCmId: string | null = rawAssigneeCmId ?? null;
+  let resolvedAssigneeVideasteId: string | null = rawAssigneeVideasteId ?? null;
 
   if (patternId) {
     const pattern = await prisma.accountPattern.findUnique({ where: { id: patternId } });
@@ -176,6 +184,9 @@ export async function POST(req: NextRequest) {
     }
     if (!resolvedAssigneeCmId && pattern.defaultAssigneeCmId) {
       resolvedAssigneeCmId = pattern.defaultAssigneeCmId;
+    }
+    if (!resolvedAssigneeVideasteId && pattern.defaultAssigneeVideasteId) {
+      resolvedAssigneeVideasteId = pattern.defaultAssigneeVideasteId;
     }
   }
 
@@ -209,6 +220,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "assigneeCmId : utilisateur introuvable" }, { status: 400 });
     }
   }
+  if (resolvedAssigneeVideasteId) {
+    const videaste = await prisma.user.findUnique({ where: { id: resolvedAssigneeVideasteId } });
+    if (!videaste) {
+      return NextResponse.json({ error: "assigneeVideasteId : utilisateur introuvable" }, { status: 400 });
+    }
+  }
 
   const slot = await prisma.publicationSlot.create({
     data: {
@@ -224,6 +241,23 @@ export async function POST(req: NextRequest) {
       patternId: patternId ?? null,
       assigneeMonteurId: resolvedAssigneeMonteurId,
       assigneeCmId: resolvedAssigneeCmId,
+      assigneeVideasteId: resolvedAssigneeVideasteId,
+      // Phase 6 — overrides one-off (uniquement si fournis dans le body)
+      ...(needsCaptionsOverride !== undefined
+        ? { needsCaptionsOverride: needsCaptionsOverride as boolean | null }
+        : {}),
+      ...(needsDescriptionOverride !== undefined
+        ? { needsDescriptionOverride: needsDescriptionOverride as string | null }
+        : {}),
+      ...(needsRushesOverride !== undefined
+        ? { needsRushesOverride: needsRushesOverride as boolean | null }
+        : {}),
+      ...(needsBriefOverride !== undefined
+        ? { needsBriefOverride: needsBriefOverride as boolean | null }
+        : {}),
+      ...(coverModeOverride !== undefined
+        ? { coverModeOverride: coverModeOverride as string | null }
+        : {}),
     },
     include: {
       account: { select: { id: true, name: true, handle: true } },

@@ -4,8 +4,8 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
 // GET /api/admin/users
-// Optional ?role=MONTEUR|CM|ADMIN|USER filter — utile pour les pickers
-// d'assignation (renvoie alors un payload allégé : id/name/email seulement).
+// Optional ?role=ADMIN|VIDEASTE|MONTEUR|CM|EXTERNAL_GENERATOR filter
+// — utile pour les pickers d'assignation (renvoie alors un payload allégé).
 export async function GET(req: NextRequest) {
   const userContext = await getUserContext();
   if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   }
 
   const roleFilter = req.nextUrl.searchParams.get("role");
-  if (roleFilter && ["ADMIN", "MONTEUR", "CM", "EXTERNAL_GENERATOR"].includes(roleFilter)) {
+  if (roleFilter && ["ADMIN", "VIDEASTE", "MONTEUR", "CM", "EXTERNAL_GENERATOR"].includes(roleFilter)) {
     const users = await prisma.user.findMany({
       where: { role: roleFilter },
       orderBy: { name: "asc" },
@@ -54,6 +54,9 @@ export async function POST(req: NextRequest) {
   const { username, name, email, password, role = "EXTERNAL_GENERATOR" } = await req.json();
   if (!username || !name || !password) {
     return NextResponse.json({ error: "username, name et password requis" }, { status: 400 });
+  }
+  if (!["ADMIN", "VIDEASTE", "MONTEUR", "CM", "EXTERNAL_GENERATOR"].includes(role)) {
+    return NextResponse.json({ error: "Rôle invalide" }, { status: 400 });
   }
 
   const existingUsername = await prisma.user.findUnique({ where: { username } });

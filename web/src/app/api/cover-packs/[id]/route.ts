@@ -19,11 +19,16 @@ function safeJson<T>(raw: string | null | undefined, fallback: T): T {
 async function resolveTemplateGroupIds(packId: string): Promise<Set<string>> {
   const pack = await prisma.coverFramePack.findUnique({
     where: { id: packId },
-    select: { render: { select: { template: { select: { jsonData: true } } } } },
+    select: {
+      render: { select: { template: { select: { jsonData: true } } } },
+      template: { select: { jsonData: true } }, // fallback pour packs one-off (sans render)
+    },
   });
-  if (!pack?.render.template?.jsonData) return new Set();
+  // Priorité render.template, fallback pack.template (Phase 5 — slots one-off)
+  const jsonData = pack?.render?.template?.jsonData ?? pack?.template?.jsonData ?? null;
+  if (!jsonData) return new Set();
   try {
-    const tpl = JSON.parse(pack.render.template.jsonData) as TemplateJSON;
+    const tpl = JSON.parse(jsonData) as TemplateJSON;
     return new Set((tpl.groups ?? []).map((g) => g.id));
   } catch {
     return new Set();
