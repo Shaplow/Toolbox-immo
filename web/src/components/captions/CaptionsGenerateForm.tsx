@@ -26,14 +26,19 @@ import {
 } from "@/lib/captionWordTiming";
 import {
   DEFAULT_CAPTION_AUTO_HIGHLIGHT,
-  type AutoHighlightMode,
-  type AutoHighlightPlacement,
   type CaptionPromptRow,
 } from "@/lib/captionPrompt";
 import { getNextHighlightGroup } from "@/lib/captionHighlightCycle";
 import CaptionEditor from "@/components/captions/CaptionEditor";
 import { SegmentTrimEditor } from "@/components/captions/SegmentTrimEditor";
 import { buildSubtitlesFromWords, type Segment } from "@/lib/transcriptionProcess";
+import {
+  formatDate,
+  srtTimeToSeconds,
+  formatAutoHighlightModeLabel,
+  formatAutoHighlightPlacementLabel,
+  nested,
+} from "@/components/captions/utils";
 
 type TextTransform = "none" | "upper" | "lower" | "title";
 type AIModel = "claude" | "gpt";
@@ -44,15 +49,6 @@ type TranscriptionItem = {
   createdAt: string;
   status: string;
 };
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString("fr-FR", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 type PresetData = {
   id: string;
@@ -69,31 +65,8 @@ type QueuedJob = {
   createdAt: Date;
 };
 
-function srtTimeToSeconds(t: string): number {
-  // Handles "HH:MM:SS,mmm" and "HH:MM:SS.mmm"
-  const m = t.match(/(\d+):(\d+):(\d+)[,.](\d+)/);
-  if (!m) return 0;
-  return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000;
-}
-
-function formatAutoHighlightModeLabel(mode: AutoHighlightMode): string {
-  if (mode === "highlight1") return "HL1";
-  if (mode === "highlight2") return "HL2";
-  return "HL1 + HL2";
-}
-
-function formatAutoHighlightPlacementLabel(placement: AutoHighlightPlacement): string {
-  return placement === "before" ? "avant le prompt" : "après le prompt";
-}
-
-function nested(obj: Record<string, unknown>, ...keys: string[]): unknown {
-  let cur: unknown = obj;
-  for (const k of keys) {
-    if (cur && typeof cur === "object") cur = (cur as Record<string, unknown>)[k];
-    else return undefined;
-  }
-  return cur;
-}
+// F3-step1 : formatDate, srtTimeToSeconds, formatAutoHighlightModeLabel,
+// formatAutoHighlightPlacementLabel, nested extraits dans ./utils.ts.
 
 export default function CaptionsGenerateForm({
   preset,
