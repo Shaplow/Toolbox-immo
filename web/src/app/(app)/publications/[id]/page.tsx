@@ -97,17 +97,18 @@ export default async function PublicationPage({ params }: PageProps) {
   // Dériver le listing depuis le render si présent
   const listing = slot.render?.listing ?? null;
 
-  // Fetch commentaires (50 premiers, oldest first)
+  // Fetch commentaires (50 premiers, oldest first). +1 pour détecter hasMore.
   const rawComments = await prisma.publicationComment.findMany({
     where: { slotId: id },
     orderBy: { createdAt: "asc" },
-    take: 50,
+    take: 51,
     include: {
       author: { select: { id: true, name: true, email: true } },
     },
   });
 
-  const comments: CommentData[] = rawComments.map((c) => ({
+  const commentsHasMore = rawComments.length > 50;
+  const comments: CommentData[] = rawComments.slice(0, 50).map((c) => ({
     id: c.id,
     body: c.body,
     createdAt: c.createdAt.toISOString(),
@@ -330,6 +331,7 @@ export default async function PublicationPage({ params }: PageProps) {
           : null
       }
       comments={comments}
+      commentsHasMore={commentsHasMore}
       activities={activities}
       activityHasMore={activityHasMore}
       currentUserId={userId}
