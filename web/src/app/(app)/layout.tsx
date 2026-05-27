@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { AppNav } from "@/components/layout/AppNav";
 import { ImpersonationBanner } from "@/components/layout/ImpersonationBanner";
+import { AdminCommandPalette } from "@/components/layout/AdminCommandPalette";
 import { getUserContext } from "@/lib/userContext";
 import { JobEventsProvider } from "@/components/providers/JobEventsProvider";
 
@@ -30,6 +31,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </JobEventsProvider>
         </div>
       </main>
+      {userContext.canAdminBypass && <AdminCommandPalette />}
     </div>
   );
 }
