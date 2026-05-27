@@ -217,6 +217,7 @@ export default async function GeneratePage({ params, searchParams }: Props) {
       <ListingForm
         key={accountId ?? ""}
         templateId={templateId}
+        currentUserId={userId}
         schema={finalSchema}
         formSections={json.formSections ?? []}
         mediaFieldAspectRatios={mediaFieldAspectRatios}

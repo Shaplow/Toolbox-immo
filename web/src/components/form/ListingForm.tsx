@@ -10,6 +10,9 @@ import type { JobEventPayload } from "@/lib/sseStore";
 
 interface Props {
   templateId: string;
+  /** ID effectif de l'utilisateur — utilisé pour scoper le draft localStorage afin
+   *  d'éviter le partage de brouillons entre comptes sur un poste partagé. */
+  currentUserId: string;
   schema: SchemaField[];
   formSections: TemplateFormSection[];
   mediaFieldAspectRatios?: Record<string, number>;
@@ -74,7 +77,7 @@ function buildUsedAssets(
   };
 }
 
-export function ListingForm({ templateId, schema, formSections, mediaFieldAspectRatios = {}, initialValues, libraryPrefillContext, autoSubmit }: Props) {
+export function ListingForm({ templateId, currentUserId, schema, formSections, mediaFieldAspectRatios = {}, initialValues, libraryPrefillContext, autoSubmit }: Props) {
   // Keys of data fields pre-filled from a DataEntry (drives badge display)
   const libraryPrefilledKeys = useMemo(
     () => new Set(libraryPrefillContext?.prefilledDataKeys ?? []),
@@ -338,7 +341,9 @@ export function ListingForm({ templateId, schema, formSections, mediaFieldAspect
   // ferme l'onglet par inadvertance avant de générer. On stocke uniquement
   // les valeurs texte/select remplies — pas les fichiers en upload.
   // Skip en mode régénération (initialValues fourni par le serveur).
-  const draftKey = `listingDraft:${templateId}`;
+  // Scoped par userId pour ne pas partager les brouillons entre comptes sur
+  // un poste partagé (R7-fix audit post-merge 2026-05-27).
+  const draftKey = `listingDraft:${currentUserId}:${templateId}`;
   const skipDraftRef = useRef(!!initialValues);
 
   useEffect(() => {
