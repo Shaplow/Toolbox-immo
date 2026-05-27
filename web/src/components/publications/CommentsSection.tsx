@@ -17,6 +17,9 @@ import type { UserRole } from "@/types/roles";
 interface CommentsSectionProps {
   slotId: string;
   initialComments: CommentData[];
+  /** True si le serveur a tronqué la liste à 50 (rawComments.length > 50).
+   *  Affiche un hint pagination en haut de la liste pour informer l'user. */
+  initialHasMore?: boolean;
   currentUserId: string;
   currentUserRole: UserRole;
 }
@@ -24,6 +27,7 @@ interface CommentsSectionProps {
 export function CommentsSection({
   slotId,
   initialComments,
+  initialHasMore = false,
   currentUserId,
   currentUserRole,
 }: CommentsSectionProps) {
@@ -52,6 +56,17 @@ export function CommentsSection({
       className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm"
     >
       <h2 className="text-sm font-semibold text-gray-700 mb-1">Conversation</h2>
+
+      {/* Hint pagination — affiché au-dessus de la liste si le serveur a
+          tronqué (slot avec > 50 commentaires). On affiche seulement les
+          50 plus anciens ; les plus récents apparaîtraient avec une vraie
+          pagination, reportée. */}
+      {initialHasMore && (
+        <p className="mb-3 text-[11px] text-amber-600">
+          Affichage des 50 plus anciens commentaires — il en existe d&apos;autres
+          non listés ici.
+        </p>
+      )}
 
       {comments.length === 0 ? (
         <p className="text-sm text-gray-400 italic mt-2">

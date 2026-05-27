@@ -202,6 +202,7 @@ export interface PublicationFicheProps {
   } | null;
   // Phase 1.3.6
   comments: CommentData[];
+  commentsHasMore: boolean;
   activities: ActivityItem[];
   activityHasMore: boolean;
   currentUserId: string;
@@ -237,6 +238,7 @@ export function PublicationFiche({
   canPromoteVersion,
   latestCaptionJob,
   comments,
+  commentsHasMore,
   activities,
   activityHasMore,
   currentUserId,
@@ -408,6 +410,7 @@ export function PublicationFiche({
                 <CommentsSection
                   slotId={slot.id}
                   initialComments={comments}
+                  initialHasMore={commentsHasMore}
                   currentUserId={currentUserId}
                   currentUserRole={currentUserRole}
                 />
