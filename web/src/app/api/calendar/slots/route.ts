@@ -87,7 +87,16 @@ export async function GET(req: NextRequest) {
       // pattern.source + needsCaptions sont nécessaires pour le rattrapage
       // opportuniste des statuts (syncSlotsPipelineStatuses) — rattrape les
       // slots créés avant l'introduction des auto-transitions pipeline.
-      pattern: { select: { label: true, source: true, needsCaptions: true } },
+      // needsClientValidation + allowsClientRevision pour l'override per-slot UI.
+      pattern: {
+        select: {
+          label: true,
+          source: true,
+          needsCaptions: true,
+          needsClientValidation: true,
+          allowsClientRevision: true,
+        },
+      },
       captionJobs: {
         orderBy: { createdAt: "desc" },
         take: 1,
