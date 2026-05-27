@@ -82,6 +82,9 @@ export function whereClauseForUser(
     case "CM":
       return { assigneeCmId: userId };
 
+    case "VIDEASTE":
+      return { assigneeVideasteId: userId };
+
     case "EXTERNAL_GENERATOR":
     default:
       // USER n'a pas accès à la pipeline éditoriale.
@@ -107,7 +110,11 @@ export function whereClauseForUser(
  * - USER    → toujours false.
  */
 export function canUserAccessSlot(
-  slot: { assigneeMonteurId: string | null; assigneeCmId: string | null },
+  slot: {
+    assigneeMonteurId: string | null;
+    assigneeCmId: string | null;
+    assigneeVideasteId?: string | null;
+  },
   role: UserRole,
   userId: string
 ): boolean {
@@ -120,6 +127,9 @@ export function canUserAccessSlot(
 
     case "CM":
       return slot.assigneeCmId === userId;
+
+    case "VIDEASTE":
+      return slot.assigneeVideasteId === userId;
 
     case "EXTERNAL_GENERATOR":
     default:
@@ -165,6 +175,7 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
       "fieldSchema",
       "assigneeMonteurId",
       "assigneeCmId",
+      "assigneeVideasteId",
       "patternId",
       "currentVersionId",
       "isAuto",
@@ -181,5 +192,8 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
     // CM édite la légende IG (caption) en plus de notes/description.
     // Sans ce champ, CaptionIgSection donne une fausse confirmation de succès (B1).
     CM: ["status", "title", "caption", "notes", "description"],
+    // VIDEASTE : peut changer le statut (ex: shoot annulé) et écrire des notes
+    // (compte-rendu sur place). Ne touche pas aux assignations ni au planning.
+    VIDEASTE: ["status", "notes"],
     EXTERNAL_GENERATOR: [],
   } as const;

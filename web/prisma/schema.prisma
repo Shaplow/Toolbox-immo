@@ -36,6 +36,8 @@ model User {
   briefsUpdated             PublicationBrief[]    @relation("BriefUpdatedBy")
   rushesUploaded            PublicationRush[]     @relation("RushUploadedBy")
   clientValidationTokensCreated ClientValidationToken[] @relation("ClientValidationTokenCreator")
+  assignedAsVideaste        PublicationSlot[]     @relation("SlotVideaste")
+  defaultVideasteForPatterns AccountPattern[]     @relation("PatternDefaultVideaste")
 }
 
 model CaptionJob {
@@ -670,6 +672,9 @@ model PublicationSlot {
   /// Community manager assigné à ce slot
   assigneeCmId      String?
   assigneeCm        User?                 @relation("SlotCm", fields: [assigneeCmId], references: [id], onDelete: SetNull)
+  /// Vidéaste assigné au shoot (celui qui filme + upload les rushs)
+  assigneeVideasteId String?
+  assigneeVideaste  User?                 @relation("SlotVideaste", fields: [assigneeVideasteId], references: [id], onDelete: SetNull)
   /// Pattern de contenu associé à ce slot
   patternId         String?
   pattern           AccountPattern?       @relation(fields: [patternId], references: [id], onDelete: SetNull)
@@ -711,6 +716,7 @@ model PublicationSlot {
   @@index([status, scheduledAt])
   @@index([assigneeMonteurId])
   @@index([assigneeCmId])
+  @@index([assigneeVideasteId])
   @@index([patternId])
 }
 
@@ -795,6 +801,8 @@ model AccountPattern {
   defaultAssigneeMonteur   User?   @relation("PatternDefaultMonteur", fields: [defaultAssigneeMonteurId], references: [id], onDelete: SetNull)
   defaultAssigneeCmId      String?
   defaultAssigneeCm        User?   @relation("PatternDefaultCm", fields: [defaultAssigneeCmId], references: [id], onDelete: SetNull)
+  defaultAssigneeVideasteId String?
+  defaultAssigneeVideaste   User?   @relation("PatternDefaultVideaste", fields: [defaultAssigneeVideasteId], references: [id], onDelete: SetNull)
 
   // Presets par défaut pour la chaîne de production
   captionPresetId     String?

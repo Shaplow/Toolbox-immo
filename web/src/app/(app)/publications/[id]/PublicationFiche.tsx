@@ -64,6 +64,9 @@ function isPrimaryForRole(section: SectionKey, role: UserRole): boolean {
   if (role === "ADMIN") return true;
 
   const primaryByRole: Record<Exclude<UserRole, "ADMIN">, SectionKey[]> = {
+    // VIDÉASTE : travaille uniquement sur le brief + rushes (upload). Les
+    // autres sections sont en lecture seule (informatif, replié par défaut).
+    VIDEASTE: ["brief", "rushes", "comments"],
     MONTEUR: ["brief", "rushes", "versions", "comments"],
     // F1.9 — Le CM a besoin de voir rushes + versions pour valider le matériel
     // avant de préparer cover/captions/description. Section ouverte par défaut.

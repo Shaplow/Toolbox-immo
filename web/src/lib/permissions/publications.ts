@@ -31,6 +31,8 @@ export type PublicationSlotForPermission = {
   assigneeMonteurId: string | null;
   /** ID du CM assigné à ce slot (null si non assigné). */
   assigneeCmId: string | null;
+  /** ID du Vidéaste assigné au shoot (null si non assigné). Optionnel pour back-compat. */
+  assigneeVideasteId?: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -54,6 +56,7 @@ export function canSeePublication(
   if (role === "ADMIN") return true;
   if (role === "MONTEUR") return slot.assigneeMonteurId === user.id;
   if (role === "CM") return slot.assigneeCmId === user.id;
+  if (role === "VIDEASTE") return slot.assigneeVideasteId === user.id;
 
   // USER et tout rôle inconnu
   return false;
@@ -168,11 +171,16 @@ export function assertCanEditPublicationVersion(
  */
 export function canCommentOnPublication(
   user: { id: string; role: UserRole },
-  slot: { assigneeMonteurId: string | null; assigneeCmId: string | null }
+  slot: {
+    assigneeMonteurId: string | null;
+    assigneeCmId: string | null;
+    assigneeVideasteId?: string | null;
+  }
 ): boolean {
   if (user.role === "ADMIN") return true;
   if (user.role === "MONTEUR") return slot.assigneeMonteurId === user.id;
   if (user.role === "CM") return slot.assigneeCmId === user.id;
+  if (user.role === "VIDEASTE") return slot.assigneeVideasteId === user.id;
   return false;
 }
 
@@ -181,7 +189,12 @@ export function canCommentOnPublication(
  */
 export function assertCanCommentOnPublication(
   user: { id: string; role: UserRole },
-  slot: { id: string; assigneeMonteurId: string | null; assigneeCmId: string | null }
+  slot: {
+    id: string;
+    assigneeMonteurId: string | null;
+    assigneeCmId: string | null;
+    assigneeVideasteId?: string | null;
+  }
 ): void {
   if (!canCommentOnPublication(user, slot)) {
     throw new Error(
@@ -264,15 +277,17 @@ export function assertCanEditComment(
 /**
  * Permission d'uploader des rushes sur un slot.
  *
- * - ADMIN → toujours true.
- * - CM    → true si le slot lui est assigné (coordonne la collecte des rushes).
- * - MONTEUR / USER → false.
+ * - ADMIN    → toujours true.
+ * - VIDEASTE → true si assigné au slot (c'est sa mission principale : filmer + uploader).
+ * - CM       → true si assigné (fallback historique pour les slots sans vidéaste).
+ * - MONTEUR / EXTERNAL_GENERATOR → false.
  */
 export function canUploadRushes(
   user: { id: string; role: UserRole },
-  slot: { assigneeCmId: string | null }
+  slot: { assigneeCmId: string | null; assigneeVideasteId?: string | null }
 ): boolean {
   if (user.role === "ADMIN") return true;
+  if (user.role === "VIDEASTE") return slot.assigneeVideasteId === user.id;
   if (user.role === "CM") return slot.assigneeCmId === user.id;
   return false;
 }

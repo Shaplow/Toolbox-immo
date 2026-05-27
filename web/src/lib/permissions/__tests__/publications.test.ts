@@ -228,6 +228,33 @@ describe("canUploadRushes", () => {
   it("USER ne peut pas uploader des rushes", () => {
     expect(canUploadRushes({ id: USER_ID, role: "EXTERNAL_GENERATOR" }, { assigneeCmId: USER_ID })).toBe(false);
   });
+
+  it("VIDEASTE assigné peut uploader des rushes (son rôle principal)", () => {
+    expect(
+      canUploadRushes(
+        { id: USER_ID, role: "VIDEASTE" },
+        { assigneeCmId: null, assigneeVideasteId: USER_ID },
+      ),
+    ).toBe(true);
+  });
+
+  it("VIDEASTE non assigné ne peut pas uploader des rushes", () => {
+    expect(
+      canUploadRushes(
+        { id: USER_ID, role: "VIDEASTE" },
+        { assigneeCmId: null, assigneeVideasteId: OTHER_ID },
+      ),
+    ).toBe(false);
+  });
+
+  it("VIDEASTE sans champ assigneeVideasteId défini (slot legacy) → false", () => {
+    expect(
+      canUploadRushes(
+        { id: USER_ID, role: "VIDEASTE" },
+        { assigneeCmId: USER_ID }, // legacy slot sans champ vidéaste — undefined
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("canDeleteRushes", () => {

@@ -26,6 +26,9 @@ export const ROLE_TOOL_SCOPE: Record<UserRole, RoleToolScope> = {
   ADMIN: "*",
   CM: ["captions", "transcription", "description", "cover"] as const,
   MONTEUR: ["captions", "transcription"] as const,
+  // VIDEASTE : pas d'outils standalone. Son workflow passe par les pages
+  // /home (worklist) et /publications/[id] (upload rushs). Aucun /tools/* requis.
+  VIDEASTE: [] as const,
   // USER : pas de set de rôle — accès entièrement dirigé par User.permissions
   EXTERNAL_GENERATOR: [] as const,
 };
