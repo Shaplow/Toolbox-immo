@@ -177,9 +177,9 @@ export default async function GeneratePage({ params, searchParams }: Props) {
       json,
       mergedSchema,
       initialValues,
-      accountId,
-      slotId,
-      listingId,
+      accountId: accountId ?? null,
+      slotId: slotId ?? null,
+      listingId: listingId ?? null,
     });
   initialValues = updatedInitialValues;
 

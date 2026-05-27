@@ -381,8 +381,8 @@ export async function buildLibraryPrefillContext({
     usedCategoryByLibrary,
     prevDataEntryState,
     instagramAccounts,
-    selectedAccountId: accountId,
-    slotId,
+    selectedAccountId: accountId ?? undefined,
+    slotId: slotId ?? undefined,
     metadataDrivenLinks: buildMetadataDrivenLinks(json),
   };
 
