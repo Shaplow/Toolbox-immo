@@ -7,6 +7,7 @@ import type { SchemaField, TemplateFormSection } from "@/types/template";
 import type { LibraryPrefillContext, LibraryAssetOption, MetadataDrivenLink } from "@/types/libraryPrefill";
 import { LibraryFieldInput } from "@/components/form/LibraryPicker";
 import { FieldInput } from "@/components/form/FieldInputs";
+import { toast } from "@/components/ui/Toast";
 import type { JobEventPayload } from "@/lib/sseStore";
 
 interface Props {
@@ -474,10 +475,33 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
       };
       setVariants((prev) => [newVariant, ...prev]);
       startPolling(render.id);
+      // F2-step2 — feedback toast au submit success.
+      // Sans toast l'user voit juste la card "polling" apparaître, mais
+      // visuellement c'est subtil et le feedback était implicite.
+      toast.success(
+        variantCountRef.current === 1
+          ? "Render lancé — suivi en cours"
+          : `Variante n°${variantCountRef.current} lancée`,
+      );
     } finally {
       setGenerating(false);
     }
   }
+
+  // F2-step2 — beforeunload guard : avertir avant de quitter la page si
+  // des changements non sauvegardés sont en cours. On compare values vs
+  // initialValues + on ignore quand generating (le polling continue ok)
+  // ou quand variants existent déjà (succès → l'user peut quitter).
+  useEffect(() => {
+    const hasUserChanges = JSON.stringify(values) !== JSON.stringify(initialValues ?? {});
+    if (!hasUserChanges || generating || variants.length > 0) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [values, initialValues, generating, variants.length]);
 
   const doneVariants = variants.filter((v) => v.status === "done");
 
