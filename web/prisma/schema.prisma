@@ -79,6 +79,8 @@ model CaptionPreset {
   updatedAt       DateTime              @updatedAt
   accesses        CaptionPresetAccess[]
   accountPatterns AccountPattern[]
+  /// Slots one-off référençant ce preset via override (Phase 5 Workflows).
+  slotsOverride   PublicationSlot[]     @relation("SlotCaptionPresetOverride")
 }
 
 model CaptionPresetAccess {
@@ -137,6 +139,9 @@ model TemplateCoverPreset {
   sortOrder  Int      @default(0)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  /// Slots one-off référencant ce preset via override (Phase 5 Workflows).
+  slotsOverride PublicationSlot[] @relation("SlotCoverPresetOverride")
 
   @@unique([templateId, name])
   @@index([templateId])
@@ -258,8 +263,13 @@ model CoverFramePack {
   id                  String                @id @default(cuid())
   userId              String
   user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  renderId            String                @unique
-  render              Render                @relation(fields: [renderId], references: [id], onDelete: Cascade)
+  /// Render lié au pack — null pour les packs créés manuellement sur une
+  /// version uploadée (slot one-off sans render auto, ex: rush externe monté).
+  renderId            String?               @unique
+  render              Render?               @relation(fields: [renderId], references: [id], onDelete: SetNull)
+  /// PublicationVersion lié (alternative à renderId pour les packs manuels).
+  publicationVersionId String?              @unique
+  publicationVersion  PublicationVersion?   @relation("VersionCoverFramePack", fields: [publicationVersionId], references: [id], onDelete: SetNull)
   templateId          String?
   template            Template?             @relation(fields: [templateId], references: [id], onDelete: SetNull)
   status              String                @default("QUEUED") // QUEUED | PROCESSING | READY | SELECTED | FAILED
@@ -312,6 +322,8 @@ model DescriptionPrompt {
   updatedAt       DateTime         @updatedAt
   jobs            DescriptionJob[]
   accountPatterns AccountPattern[]
+  /// Slots one-off référençant ce prompt via override (Phase 5 Workflows).
+  slotsOverride   PublicationSlot[] @relation("SlotDescriptionPromptOverride")
 }
 
 /// Résultat d'une génération de description à partir d'un SRT/JSON
@@ -692,6 +704,17 @@ model PublicationSlot {
   needsRushesOverride           Boolean?
   /// Override per-slot de needsBrief du pattern. null = hérite.
   needsBriefOverride            Boolean?
+  /// Override per-slot du mode cover ("auto" | "manualSelect" | "none"). null = hérite.
+  coverModeOverride             String?
+  /// Override per-slot de l'ID du preset cover utilisé. null = hérite.
+  coverPresetIdOverride         String?
+  coverPresetOverride           TemplateCoverPreset? @relation("SlotCoverPresetOverride", fields: [coverPresetIdOverride], references: [id], onDelete: SetNull)
+  /// Override per-slot de l'ID du preset captions utilisé. null = hérite.
+  captionPresetIdOverride       String?
+  captionPresetOverride         CaptionPreset?     @relation("SlotCaptionPresetOverride", fields: [captionPresetIdOverride], references: [id], onDelete: SetNull)
+  /// Override per-slot de l'ID du prompt description IA. null = hérite.
+  descriptionPromptIdOverride   String?
+  descriptionPromptOverride     DescriptionPrompt? @relation("SlotDescriptionPromptOverride", fields: [descriptionPromptIdOverride], references: [id], onDelete: SetNull)
   /// Tokens magic link pour validation client (un seul actif via clause unique conditionnelle)
   clientValidationTokens        ClientValidationToken[]
   /// Historique des rounds de validation client (un round = une action client)
@@ -881,6 +904,8 @@ model PublicationVersion {
   deletedAt        DateTime?
   /// Slot qui pointe cette version comme courante (relation inverse de PublicationSlot.currentVersionId)
   currentForSlot   PublicationSlot? @relation("SlotCurrentVersion")
+  /// CoverFramePack créé manuellement sur cette version (Phase 5 slots one-off).
+  coverFramePack   CoverFramePack?  @relation("VersionCoverFramePack")
 
   @@unique([slotId, versionNumber])
   @@index([slotId])

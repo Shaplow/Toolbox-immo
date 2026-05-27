@@ -365,22 +365,32 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
     where: { id: packId },
     include: {
       template: true,
+      // Phase 5 : render est nullable (slots one-off → publicationVersion).
+      // Si render est null, on utilise publicationVersion pour récupérer le slotId.
       render: {
         select: {
           usedAssets: true,
           slotDurations: true,
           listing: { select: { jsonData: true } },
-          // slotId pour pouvoir logger les activities READY/FAILED sur la fiche.
           publicationSlot: { select: { id: true } },
         },
+      },
+      publicationVersion: {
+        select: { slot: { select: { id: true } } },
       },
     },
   });
   if (!pack?.template || !pack.sourceVideoUrl) return;
-  const slotId = pack.render.publicationSlot?.id ?? null;
+  // slotId : priorité render → fallback publicationVersion (slot one-off)
+  const slotId =
+    pack.render?.publicationSlot?.id ??
+    pack.publicationVersion?.slot?.id ??
+    null;
 
+  // Données spécifiques au render (usedAssets, slotDurations) : null pour les
+  // packs créés sur une PublicationVersion. resolveNativeCoverSources sait gérer.
   let slotDurations: Record<string, number> | undefined;
-  if (pack.render.slotDurations) {
+  if (pack.render?.slotDurations) {
     try {
       slotDurations = JSON.parse(pack.render.slotDurations) as Record<string, number>;
     } catch {
@@ -403,8 +413,8 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
     const nativeSources = await resolveNativeCoverSources(
       templateJson,
       config,
-      pack.render.usedAssets,
-      pack.render.listing.jsonData,
+      pack.render?.usedAssets ?? null,
+      pack.render?.listing?.jsonData ?? null,
     );
     let duration = pack.duration;
     let framePicks: CoverFramePick[] = [];
@@ -733,7 +743,15 @@ export async function renderFinalCover(
       candidates: true,
     },
   });
-  if (!pack?.render.template) throw new Error("Pack cover introuvable");
+  if (!pack?.render?.template) {
+    // Phase 5 : packs créés sur publicationVersion (slot one-off sans render)
+    // ne supportent pas encore le rendu final composite avec overlays + listing.
+    // Le CM peut voir/sélectionner les frames mais pas générer la cover finale
+    // ici — utiliser /tools/cover dédié pour le finaliser à la main.
+    throw new Error(
+      "Pack cover sans render lié — le rendu final compositionnel n'est pas encore supporté pour les slots one-off (Phase 5). Utiliser /tools/cover ou ajouter le support via une itération suivante.",
+    );
+  }
   const candidate = pack.candidates.find((item) => item.id === candidateId);
   if (!candidate) throw new Error("Frame candidate introuvable");
 
@@ -773,10 +791,15 @@ export async function renderFinalCover(
 export async function getCoverOverlayCanvasDimensions(packId: string): Promise<{ width: number; height: number }> {
   const pack = await prisma.coverFramePack.findUnique({
     where: { id: packId },
-    select: { render: { select: { template: { select: { jsonData: true } } } } },
+    select: {
+      render: { select: { template: { select: { jsonData: true } } } },
+      template: { select: { jsonData: true } }, // fallback pour packs one-off
+    },
   });
   try {
-    const tpl = JSON.parse(pack?.render.template?.jsonData ?? "{}") as { canvas?: { width?: number; height?: number } };
+    // Priorité render.template, fallback pack.template (slots one-off)
+    const jsonData = pack?.render?.template?.jsonData ?? pack?.template?.jsonData ?? "{}";
+    const tpl = JSON.parse(jsonData) as { canvas?: { width?: number; height?: number } };
     return { width: tpl.canvas?.width ?? 1080, height: tpl.canvas?.height ?? 1920 };
   } catch {
     return { width: 1080, height: 1920 };
@@ -790,7 +813,12 @@ export async function buildCoverOverlayPreviewHtml(packId: string): Promise<stri
       render: { include: { listing: true, template: true } },
     },
   });
-  if (!pack?.render.template) throw new Error("Pack cover introuvable");
+  if (!pack?.render?.template) {
+    // Phase 5 : pas encore supporté pour slots one-off (sans render).
+    throw new Error(
+      "Cover overlay preview non supportée pour les packs one-off (sans render lié).",
+    );
+  }
 
   let templateJson = normalizeTemplateJSON(JSON.parse(pack.render.template.jsonData) as TemplateJSON);
   const listingData = safeJson<ListingData>(pack.render.listing.jsonData, {} as ListingData);
