@@ -16,6 +16,7 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { whereClauseForUser } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
+import { syncSlotsPipelineStatuses } from "@/lib/publications/transitions";
 
 /** Safely parse a JSON string. Returns `fallback` if the string is falsy or invalid. */
 function safeJSON<T>(str: string | null | undefined, fallback: T): T {
@@ -83,13 +84,38 @@ export async function GET(req: NextRequest) {
       account: { select: { id: true, name: true, handle: true } },
       template: { select: { id: true, name: true } },
       render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
-      pattern: { select: { label: true } },
+      // pattern.source + needsCaptions sont nécessaires pour le rattrapage
+      // opportuniste des statuts (syncSlotsPipelineStatuses) — rattrape les
+      // slots créés avant l'introduction des auto-transitions pipeline.
+      pattern: { select: { label: true, source: true, needsCaptions: true } },
+      captionJobs: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { status: true },
+      },
     },
   });
+
+  // Rattrapage opportuniste : un slot dont le render est PROCESSING/DONE
+  // doit passer en IN_PROGRESS/READY_FOR_CM. Best-effort, non bloquant.
+  const updates = await syncSlotsPipelineStatuses(
+    prisma,
+    slots.map((s) => ({
+      id: s.id,
+      status: s.status,
+      pattern: s.pattern
+        ? { source: s.pattern.source, needsCaptions: s.pattern.needsCaptions }
+        : null,
+      render: s.render ? { status: s.render.status } : null,
+      captionJobs: s.captionJobs.map((c) => ({ status: c.status })),
+    })),
+  );
 
   return NextResponse.json({
     slots: slots.map((s) => ({
       ...s,
+      // Reflet immédiat des transitions appliquées dans la réponse
+      status: updates.get(s.id) ?? s.status,
       fields: safeJSON<Record<string, string>>(s.fields, {}),
       fieldSchema: safeJSON<string[]>(s.fieldSchema, []),
     })),

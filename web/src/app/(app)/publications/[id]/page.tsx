@@ -6,6 +6,7 @@ import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canMarkPublished, canUploadRushes, canEditBrief, canUploadVersion, canPromoteVersion } from "@/lib/permissions/publications";
 import { computePublicationSteps } from "@/lib/publications/steps";
 import { toUserRole } from "@/lib/permissions/role";
+import { syncSlotsPipelineStatuses } from "@/lib/publications/transitions";
 import { PublicationFiche } from "./PublicationFiche";
 import type { CommentData } from "@/components/publications/CommentItem";
 import type { ActivityItem } from "@/components/publications/ActivityTimeline";
@@ -108,6 +109,22 @@ export default async function PublicationPage({ params }: PageProps) {
   if (!slot || !canUserAccessSlot(slot, role, userId)) {
     notFound();
   }
+
+  // Rattrapage opportuniste : si le render existe (PROCESSING/DONE) mais le
+  // slot est resté en TO_DO/IN_PROGRESS, on applique la bonne transition.
+  // Couvre les slots créés avant l'intro des auto-transitions pipeline.
+  const pipelineUpdates = await syncSlotsPipelineStatuses(prisma, [
+    {
+      id: slot.id,
+      status: slot.status,
+      pattern: slot.pattern
+        ? { source: slot.pattern.source, needsCaptions: slot.pattern.needsCaptions }
+        : null,
+      render: slot.render ? { status: slot.render.status } : null,
+      captionJobs: slot.captionJobs.map((c) => ({ status: c.status })),
+    },
+  ]);
+  const effectiveStatus = pipelineUpdates.get(slot.id) ?? slot.status;
 
   // Dériver le listing depuis le render si présent
   const listing = slot.render?.listing ?? null;
@@ -242,7 +259,7 @@ export default async function PublicationPage({ params }: PageProps) {
 
   // Calcul des steps
   const steps = computePublicationSteps({
-    slot: { status: slot.status, caption: slot.caption, description: slot.description },
+    slot: { status: effectiveStatus, caption: slot.caption, description: slot.description },
     pattern: slot.pattern ?? null,
     renderJob: slot.render ?? null,
     coverPack: slot.render?.coverFramePack ?? null,
@@ -278,7 +295,7 @@ export default async function PublicationPage({ params }: PageProps) {
       slot={{
         id: slot.id,
         title: slot.title,
-        status: slot.status,
+        status: effectiveStatus,
         scheduledAt: slot.scheduledAt,
         caption: slot.caption,
         description: slot.description,

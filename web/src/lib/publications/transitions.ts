@@ -262,6 +262,71 @@ export async function computeAutoTransitionTarget(
 }
 
 /**
+ * Rattrapage opportuniste : prend une liste de slots déjà chargés (avec
+ * pattern + render + dernier captionJob inclus), calcule les transitions
+ * applicables en mémoire, applique en parallèle et retourne un Map des
+ * nouveaux statuts par slot ID.
+ *
+ * Best-effort : un échec individuel ne bloque pas les autres.
+ *
+ * @param slots Slots préchargés. Le caller doit inclure pattern (source +
+ *   needsCaptions), render (status), et captionJobs (orderBy createdAt desc,
+ *   take 1, select status).
+ * @returns Map<slotId, newStatus> pour les slots ayant réellement changé.
+ */
+export async function syncSlotsPipelineStatuses(
+  prisma: PrismaClient,
+  slots: Array<{
+    id: string;
+    status: string;
+    pattern: { source: string; needsCaptions: boolean } | null;
+    render: { status: string } | null;
+    captionJobs?: Array<{ status: string }>;
+  }>,
+): Promise<Map<string, SlotStatus>> {
+  const updates = new Map<string, SlotStatus>();
+
+  const targets = slots
+    .map((s) => {
+      const target = computeAutoTransitionTargetPure({
+        status: s.status,
+        pattern: s.pattern,
+        render: s.render,
+        latestCaptionJobStatus: s.captionJobs?.[0]?.status ?? null,
+      });
+      return target ? { id: s.id, from: s.status, to: target } : null;
+    })
+    .filter((x): x is { id: string; from: string; to: SlotStatus } => x !== null);
+
+  if (targets.length === 0) return updates;
+
+  await Promise.all(
+    targets.map(async (t) => {
+      try {
+        await prisma.publicationSlot.update({
+          where: { id: t.id },
+          data: { status: t.to },
+        });
+        await logActivity(prisma, {
+          slotId: t.id,
+          actorId: null,
+          type: "STATUS_CHANGED",
+          payload: { from: t.from, to: t.to, trigger: "BACKFILL_SYNC" },
+        });
+        updates.set(t.id, t.to);
+      } catch (err) {
+        console.warn(
+          `[syncSlotsPipelineStatuses] échec slot=${t.id} ${t.from}→${t.to}:`,
+          err,
+        );
+      }
+    }),
+  );
+
+  return updates;
+}
+
+/**
  * Applique l'auto-transition pipeline si la logique le permet.
  * Best-effort : log un warning et continue si l'update échoue (le webhook
  * ne doit pas être bloqué par une transition qui rate).
