@@ -195,60 +195,76 @@ export function MediaLibrariesPanel() {
         </Button>
       </div>
 
-      {/* Create form */}
+      {/* F2.1 — Create form en modal canonique (au lieu d'inline en haut de page) */}
       {creating && (
-        <form onSubmit={(e) => { void handleCreate(e); }} className="mb-6 p-5 border border-indigo-200 rounded-xl bg-indigo-50">
-          <p className="text-sm font-semibold text-indigo-800 mb-4">Nouvelle bibliothèque</p>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <FormField label="Nom" required>
-              <Input
-                required
-                value={form.name}
-                onChange={(v) => setForm((f) => ({ ...f, name: v }))}
-                placeholder="Ex: Rush RPI Paris"
-              />
-            </FormField>
-            <FormField label="Type" required>
-              <div className="flex gap-2">
-                {(["video", "audio"] as const).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setForm((f) => ({ ...f, type: t }))}
-                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border text-sm transition-colors ${
-                      form.type === t
-                        ? "bg-indigo-600 text-white border-indigo-600"
-                        : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"
-                    }`}
-                  >
-                    {t === "video" ? <Video size={14} /> : <Music2 size={14} />}
-                    {t === "video" ? "Vidéo" : "Audio"}
-                  </button>
-                ))}
+        <>
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+            onClick={() => setCreating(false)}
+            aria-hidden="true"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none"
+          >
+            <form
+              onSubmit={(e) => { void handleCreate(e); }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl pointer-events-auto p-6"
+            >
+              <h2 className="text-base font-semibold text-gray-900 mb-4">Nouvelle bibliothèque</h2>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <FormField label="Nom" required>
+                  <Input
+                    required
+                    value={form.name}
+                    onChange={(v) => setForm((f) => ({ ...f, name: v }))}
+                    placeholder="Ex: Rush RPI Paris"
+                  />
+                </FormField>
+                <FormField label="Type" required>
+                  <div className="flex gap-2">
+                    {(["video", "audio"] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, type: t }))}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border text-sm transition-colors ${
+                          form.type === t
+                            ? "bg-indigo-600 text-white border-indigo-600"
+                            : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"
+                        }`}
+                      >
+                        {t === "video" ? <Video size={14} /> : <Music2 size={14} />}
+                        {t === "video" ? "Vidéo" : "Audio"}
+                      </button>
+                    ))}
+                  </div>
+                </FormField>
+                <FormField label="Tags (séparés par virgule)">
+                  <Input
+                    value={form.tags}
+                    onChange={(v) => setForm((f) => ({ ...f, tags: v }))}
+                    placeholder="RPI, RTIPS, RPOD"
+                  />
+                </FormField>
+                <FormField label="Description (optionnel)">
+                  <Input
+                    value={form.description}
+                    onChange={(v) => setForm((f) => ({ ...f, description: v }))}
+                  />
+                </FormField>
               </div>
-            </FormField>
-            <FormField label="Tags (séparés par virgule)">
-              <Input
-                value={form.tags}
-                onChange={(v) => setForm((f) => ({ ...f, tags: v }))}
-                placeholder="RPI, RTIPS, RPOD"
-              />
-            </FormField>
-            <FormField label="Description (optionnel)">
-              <Input
-                value={form.description}
-                onChange={(v) => setForm((f) => ({ ...f, description: v }))}
-              />
-            </FormField>
+              {error && <p className="text-red-600 text-xs mb-3">{error}</p>}
+              <div className="flex gap-2 justify-end">
+                <Button type="button" variant="secondary" onClick={() => setCreating(false)}>
+                  Annuler
+                </Button>
+                <Button type="submit">Créer</Button>
+              </div>
+            </form>
           </div>
-          {error && <p className="text-red-600 text-xs mb-3">{error}</p>}
-          <div className="flex gap-2">
-            <Button type="submit" size="sm">Créer</Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setCreating(false)}>
-              Annuler
-            </Button>
-          </div>
-        </form>
+        </>
       )}
 
       {/* Error */}

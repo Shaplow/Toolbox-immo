@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ChevronLeft, Info } from "lucide-react";
+import { ChevronLeft, Info, Image as ImageIcon } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { CoverGenerator } from "@/components/covers/CoverGenerator";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 
 interface PageProps {
   searchParams: Promise<{ slotId?: string; returnTo?: string }>;
@@ -71,7 +72,15 @@ export default async function CoverPage({ searchParams }: PageProps) {
           </div>
         </div>
       )}
-      <CoverGenerator />
+      <div className="p-8 max-w-6xl mx-auto">
+        <ToolPageHeader
+          icon={ImageIcon}
+          iconColor="emerald"
+          title="Extraction de cover"
+          subtitle="Génère des frames depuis une vidéo pour choisir la cover idéale."
+        />
+        <CoverGenerator />
+      </div>
     </div>
   );
 }
