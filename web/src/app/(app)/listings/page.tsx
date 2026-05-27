@@ -2,6 +2,7 @@
 import { ListingsClient, type ListingRow, type CaptionJobRow, type TranscriptionJobRow, type DescriptionJobRow } from "@/components/listings/ListingsClient";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 import { toUserRole } from "@/lib/permissions/role";
 import { List } from "lucide-react";
 
@@ -222,6 +223,7 @@ export default async function ListingsPage() {
         iconColor="indigo"
         title={isAdmin ? "Historique des générations" : "Mon historique"}
         subtitle={subtitleParts.join(" · ")}
+        actions={<RefreshButton title="Rafraîchir la liste" />}
       />
 
       <ListingsClient
