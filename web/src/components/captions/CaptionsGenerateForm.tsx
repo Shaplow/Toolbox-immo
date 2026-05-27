@@ -158,6 +158,24 @@ export default function CaptionsGenerateForm({
     }
   }, [initialSrt]);
 
+  // F3-step4 — beforeunload guard anti-perte. Affiche un prompt natif
+  // "voulez-vous quitter ?" si l'user a chargé/édité des sous-titres ou
+  // uploadé une vidéo et n'a pas encore lancé la génération. On ignore :
+  // - busy=true : génération en cours, l'user peut vouloir consulter
+  //   l'historique en navigant ailleurs (le job continue côté serveur).
+  // - initialSrt présent : regen flow, les captions viennent du serveur
+  //   et ne sont pas une "saisie utilisateur" à protéger spécifiquement.
+  useEffect(() => {
+    const hasUnsavedWork = (captions.length > 0 && !initialSrt) || videoFile !== null;
+    if (!hasUnsavedWork || busy) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [captions.length, videoFile, busy, initialSrt]);
+
   // Pre-load from word-level JSON (regen from a job that used the JSON path)
   useEffect(() => {
     if (!initialSubsJson) return;
