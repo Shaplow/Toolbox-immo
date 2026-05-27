@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
-function adminOnly(role?: string) {
-  return role !== "ADMIN";
-}
-
 // POST /api/admin/accounts/[id]/cursors/reset — remet tous les curseurs d'un compte à 0
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const userContext = await getUserContext();

@@ -4,10 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 
-function adminOnly(role?: string) {
-  return role !== "ADMIN";
-}
-
 type Params = { params: Promise<{ id: string }> };
 
 const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY ?? "";

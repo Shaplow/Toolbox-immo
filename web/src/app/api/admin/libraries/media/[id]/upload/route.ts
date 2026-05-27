@@ -4,10 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { createPresignedUploadUrl, getR2PublicUrl, r2Configured } from "@/lib/r2";
 import path from "path";
 
-function adminOnly(role?: string) {
-  return role !== "ADMIN";
-}
-
 type Params = { params: Promise<{ id: string }> };
 
 const ALLOWED_VIDEO_TYPES = new Set([

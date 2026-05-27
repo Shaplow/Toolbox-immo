@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
-function adminOnly(role?: string) {
-  return role !== "ADMIN";
-}
-
 // GET /api/admin/libraries/data — liste les DataLibrary (+ campaign count)
 export async function GET() {
   const userContext = await getUserContext();
