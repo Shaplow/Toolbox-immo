@@ -21,8 +21,7 @@ import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canCommentOnPublication } from "@/lib/permissions/publications";
 import { logActivity } from "@/lib/publications/activity";
 import { toUserRole } from "@/lib/permissions/role";
-
-const MAX_COMMENT_LENGTH = 5000;
+import { publicationCommentSchema, validateBody } from "@/lib/validation/apiSchemas";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -91,25 +90,12 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
-  let rawBody: unknown;
-  try {
-    rawBody = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Corps JSON invalide" }, { status: 400 });
+  // E5 — validation via Zod schema (publicationCommentSchema).
+  const parsed = await validateBody(req, publicationCommentSchema);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
-
-  const body = (rawBody as Record<string, unknown>)?.body;
-  if (typeof body !== "string" || body.trim().length === 0) {
-    return NextResponse.json({ error: "Le commentaire ne peut pas être vide" }, { status: 400 });
-  }
-  if (body.trim().length > MAX_COMMENT_LENGTH) {
-    return NextResponse.json(
-      { error: `Le commentaire dépasse ${MAX_COMMENT_LENGTH} caractères` },
-      { status: 400 }
-    );
-  }
-
-  const trimmedBody = body.trim();
+  const trimmedBody = parsed.data.body;
 
   // E2 — race condition fix : entre le check `canCommentOnPublication` et le
   // create ci-dessous, le slot peut être supprimé par un autre process. Sans

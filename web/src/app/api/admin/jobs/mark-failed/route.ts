@@ -6,34 +6,15 @@
  * par la page /admin/jobs (ticket E8) pour libérer les slots bloqués
  * par des jobs zombies.
  *
- * Body: { type, id }
- * - type: "render" | "caption" | "transcription" | "description" |
- *         "cover-pack" | "autocut"
- * - id: cuid du job
- *
- * Gating: ADMIN bypass uniquement (canAdminBypass = ADMIN réel hors
- * impersonation). On utilise l'audit log via captureMessage pour tracer
- * qui a marqué quoi.
+ * Body: { type, id } — validé par markJobFailedSchema (E5).
+ * Gating: ADMIN bypass uniquement.
  */
 
 import { NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { captureMessage } from "@/lib/observability/captureError";
-
-interface Body {
-  type?: string;
-  id?: string;
-}
-
-const VALID_TYPES = new Set([
-  "render",
-  "caption",
-  "transcription",
-  "description",
-  "cover-pack",
-  "autocut",
-]);
+import { markJobFailedSchema, validateBody } from "@/lib/validation/apiSchemas";
 
 export async function POST(req: Request) {
   const ctx = await getUserContext();
@@ -41,20 +22,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
-  let body: Body;
-  try {
-    body = (await req.json()) as Body;
-  } catch {
-    return NextResponse.json({ error: "Body JSON invalide" }, { status: 400 });
+  const parsed = await validateBody(req, markJobFailedSchema);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
-
-  const { type, id } = body;
-  if (!type || !id || typeof type !== "string" || typeof id !== "string") {
-    return NextResponse.json({ error: "type et id requis (strings)" }, { status: 400 });
-  }
-  if (!VALID_TYPES.has(type)) {
-    return NextResponse.json({ error: `Type invalide. Attendus: ${[...VALID_TYPES].join(", ")}` }, { status: 400 });
-  }
+  const { type, id } = parsed.data;
 
   try {
     switch (type) {
