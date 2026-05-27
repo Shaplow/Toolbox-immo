@@ -5,18 +5,25 @@ import { Trash2, Upload, Clock, BarChart2, Search, Play, Music2, ArrowUpDown, Ch
 import { toast } from "@/components/ui/Toast";
 import { MediaAssetEditModal } from "./MediaAssetEditModal";
 import { MediaBatchAutocutPanel } from "./MediaBatchAutocutPanel";
-import type { MediaAsset, InstagramAccount, MetadataField, MediaLibrary, SortKey } from "./mediaAssets/types";
+import type { MediaAsset, MetadataField, MediaLibrary, SortKey } from "./mediaAssets/types";
 import { formatDuration, formatDate } from "./mediaAssets/helpers";
 import { LazyVideoThumb } from "./mediaAssets/LazyVideoThumb";
+import { useMediaAssetsLoader } from "./mediaAssets/useMediaAssetsLoader";
+import { useInstagramAccounts } from "./mediaAssets/useInstagramAccounts";
 
 interface Props {
   library: MediaLibrary;
 }
 
 export function MediaAssetsPanel({ library }: Props) {
-  const [assets, setAssets] = useState<MediaAsset[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // ── État global de la liste ──
+  // accountFilter doit être déclaré avant le hook loader (dépendance).
+  const [accountFilter, setAccountFilter] = useState<string | null>(null);
+  const { assets, setAssets, loading, loadError, refetch: load } = useMediaAssetsLoader(
+    library.id,
+    accountFilter,
+  );
+  const accounts = useInstagramAccounts();
   // ── Upload modal ──
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadCategory, setUploadCategory] = useState("");
@@ -58,8 +65,6 @@ export function MediaAssetsPanel({ library }: Props) {
   const [editingFamilyKey, setEditingFamilyKey] = useState<string | null>(null);
   const [familyInput, setFamilyInput] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
-  const [accountFilter, setAccountFilter] = useState<string | null>(null);
   // ── Infinite scroll ──
   const [visibleCount, setVisibleCount] = useState(48);
   const [visibleGroupCount, setVisibleGroupCount] = useState(20);
@@ -83,35 +88,8 @@ export function MediaAssetsPanel({ library }: Props) {
     try { return JSON.parse(library.metadataSchema ?? "[]") as MetadataField[]; } catch { return []; }
   }, [library.metadataSchema]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const url = accountFilter
-        ? `/api/admin/libraries/media/${library.id}/assets?accountId=${encodeURIComponent(accountFilter)}`
-        : `/api/admin/libraries/media/${library.id}/assets`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const raw = await res.json() as (Omit<MediaAsset, "tags" | "accessAccountIds"> & { tags: string; accessAccountIds?: string[] })[]
-      const data: MediaAsset[] = raw.map((a) => ({
-        ...a,
-        setTag: (a as unknown as { setTag?: string | null }).setTag ?? null,
-        category: (a as unknown as { category?: string | null }).category ?? null,
-        tags: (() => { try { return JSON.parse(a.tags) as string[]; } catch { return []; } })(),
-        metadata: (() => { try { const m = (a as unknown as { metadata?: string }).metadata; return m ? JSON.parse(m) as Record<string, string | number | null> : {}; } catch { return {}; } })(),
-        accessAccountIds: a.accessAccountIds ?? [],
-        pendingEditJob: (a as unknown as { pendingEditJob?: { id: string; status: string } | null }).pendingEditJob ?? null,
-      }));
-      setAssets(data);
-    } catch (err) {
-      console.error("[MediaAssetsPanel] load error:", err);
-      setLoadError(err instanceof Error ? err.message : "Erreur de chargement");
-    } finally {
-      setLoading(false);
-    }
-  }, [library.id, accountFilter]);
-
-  useEffect(() => { (async () => { await load(); })(); }, [load]);
+  // ─ Fetch des assets + accounts extrait dans les hooks
+  //   useMediaAssetsLoader / useInstagramAccounts (D3 du split C1-v2).
 
   /**
    * Met à jour silencieusement les champs qui changent en arrière-plan
@@ -168,7 +146,7 @@ export function MediaAssetsPanel({ library }: Props) {
     } catch {
       // silencieux — le poll ne doit pas perturber l'UI
     }
-  }, [library.id]); // plus de dépendance sur load()
+  }, [library.id, setAssets]); // setAssets vient de useMediaAssetsLoader (stable mais explicite)
 
   // Poll toutes les 5s — tourne en continu, ne fait rien si aucun job actif (hasPendingRef)
   useEffect(() => {
@@ -184,13 +162,7 @@ export function MediaAssetsPanel({ library }: Props) {
     return () => window.removeEventListener("keydown", handler);
   }, [showUploadModal, modalUploading]);
 
-  // Load accounts list for access management and account filter
-  useEffect(() => {
-    fetch("/api/admin/accounts")
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: unknown) => setAccounts(data as InstagramAccount[]))
-      .catch(() => {});
-  }, []);
+  // ─ Liste des comptes Instagram chargée via useInstagramAccounts hook.
 
   // filteredPreTag = recherche texte uniquement, sans le filtre tag.
   // Utilisé pour allTags/allSetTags afin que les chips de tags restent
