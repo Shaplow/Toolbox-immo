@@ -62,6 +62,12 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
   const [assigneeCmId, setAssigneeCmId] = useState<string>("");
   const [assigneeVideasteId, setAssigneeVideasteId] = useState<string>("");
 
+  // --- Overrides one-off (Phase 6) — visibles seulement si pattern=null ---
+  const [oneOffNeedsCaptions, setOneOffNeedsCaptions] = useState<boolean | null>(null);
+  const [oneOffNeedsRushes, setOneOffNeedsRushes] = useState<boolean | null>(null);
+  const [oneOffNeedsBrief, setOneOffNeedsBrief] = useState<boolean | null>(null);
+  const [oneOffCoverMode, setOneOffCoverMode] = useState<string>(""); // "" = ne pas spécifier
+
   // --- Données chargées au mount ---
   const [users, setUsers] = useState<UserOption[]>([]);
   const [loadingMeta, setLoadingMeta] = useState(true);
@@ -173,6 +179,14 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
         assigneeVideasteId: assigneeVideasteId || null,
         patternId: selectedPatternId || null,
       };
+
+      // Overrides one-off (uniquement si pas de pattern)
+      if (!selectedPatternId) {
+        if (oneOffNeedsCaptions !== null) payload.needsCaptionsOverride = oneOffNeedsCaptions;
+        if (oneOffNeedsRushes !== null) payload.needsRushesOverride = oneOffNeedsRushes;
+        if (oneOffNeedsBrief !== null) payload.needsBriefOverride = oneOffNeedsBrief;
+        if (oneOffCoverMode) payload.coverModeOverride = oneOffCoverMode;
+      }
 
       const res = await fetch("/api/calendar/slots", {
         method: "POST",
@@ -359,6 +373,61 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
             />
           </div>
 
+          {/* Phase 6 — Config avancée one-off (visible seulement sans pattern) */}
+          {!selectedPatternId && (
+            <details className="rounded-lg border border-fuchsia-100 bg-fuchsia-50/30 p-3 group">
+              <summary className="cursor-pointer text-xs font-medium text-fuchsia-900 select-none flex items-center gap-1.5">
+                <span>Config avancée (slot one-off)</span>
+                <span className="text-fuchsia-700/70 font-normal text-[10px]">
+                  · pré-remplir les options de production
+                </span>
+              </summary>
+              <div className="mt-3 space-y-3">
+                <p className="text-xs text-fuchsia-700/80">
+                  Ces options peuvent aussi être configurées après création depuis le détail du slot.
+                  Laissez vide pour utiliser les défauts (false / none).
+                </p>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="text-[11px] text-gray-600">Cover automatique</span>
+                    <select
+                      value={oneOffCoverMode}
+                      onChange={(e) => setOneOffCoverMode(e.target.value)}
+                      className="mt-1 w-full border border-fuchsia-200 rounded px-2 py-1.5 text-xs bg-white"
+                    >
+                      <option value="">— Aucune (manuel) —</option>
+                      <option value="auto">Auto (lancer après upload)</option>
+                      <option value="manualSelect">Sélection manuelle CM</option>
+                      <option value="none">Désactivée</option>
+                    </select>
+                  </label>
+
+                  <OneOffToggle
+                    label="Sous-titres auto"
+                    value={oneOffNeedsCaptions}
+                    onChange={setOneOffNeedsCaptions}
+                  />
+                  <OneOffToggle
+                    label="Rushes attendus"
+                    value={oneOffNeedsRushes}
+                    onChange={setOneOffNeedsRushes}
+                  />
+                  <OneOffToggle
+                    label="Brief éditorial"
+                    value={oneOffNeedsBrief}
+                    onChange={setOneOffNeedsBrief}
+                  />
+                </div>
+
+                <p className="text-[10px] text-fuchsia-700/70">
+                  💡 Une fois le slot créé et la vidéo uploadée, des boutons « Lancer cover » /
+                  « Lancer captions » seront disponibles dans la fiche pour déclencher les jobs.
+                </p>
+              </div>
+            </details>
+          )}
+
           {error && (
             <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
           )}
@@ -386,5 +455,36 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
         </form>
       </div>
     </div>
+  );
+}
+
+// ─── OneOffToggle ─────────────────────────────────────────────────────────────
+
+/** Select à 3 valeurs : Auto défaut (null), Forcer Oui, Forcer Non. */
+function OneOffToggle({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: boolean | null;
+  onChange: (v: boolean | null) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="text-[11px] text-gray-600">{label}</span>
+      <select
+        value={value === null ? "default" : value ? "true" : "false"}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(v === "default" ? null : v === "true");
+        }}
+        className="mt-1 w-full border border-fuchsia-200 rounded px-2 py-1.5 text-xs bg-white"
+      >
+        <option value="default">— Défaut (non) —</option>
+        <option value="true">Forcer : Oui</option>
+        <option value="false">Forcer : Non</option>
+      </select>
+    </label>
   );
 }

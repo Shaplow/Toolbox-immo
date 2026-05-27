@@ -73,15 +73,16 @@ function readCoverPresetRefs(coverConfig: unknown): CoverConfigRefs {
   const empty: CoverConfigRefs = { coverPresetId: null, coverPresetName: null };
   if (!coverConfig) return empty;
   // coverConfig peut être un objet déjà parsé (form) ou un JSON string (Prisma raw)
-  let obj: { coverPresetId?: unknown; coverPresetName?: unknown } | null = null;
+  type ParsedCoverConfig = { coverPresetId?: unknown; coverPresetName?: unknown };
+  let obj: ParsedCoverConfig | null = null;
   if (typeof coverConfig === "string") {
     try {
-      obj = JSON.parse(coverConfig) as typeof obj;
+      obj = JSON.parse(coverConfig) as ParsedCoverConfig;
     } catch {
       return empty;
     }
   } else if (typeof coverConfig === "object") {
-    obj = coverConfig as typeof obj;
+    obj = coverConfig as ParsedCoverConfig;
   }
   if (!obj) return empty;
   return {

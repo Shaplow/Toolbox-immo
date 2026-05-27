@@ -113,16 +113,24 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(
     packs.map((pack) => {
-      const canvas = readTemplateCanvas(pack.render.template?.jsonData);
-      const templateGroups = readTemplateGroups(pack.render.template?.jsonData);
+      // Phase 5 : render peut être null pour les packs one-off (PublicationVersion).
+      const renderTemplate = pack.render?.template ?? null;
+      const canvas = readTemplateCanvas(renderTemplate?.jsonData);
+      const templateGroups = readTemplateGroups(renderTemplate?.jsonData);
       return {
         id: pack.id,
         status: pack.status,
         renderId: pack.renderId,
         templateId: pack.templateId,
-        templateName: pack.render.template?.name ?? "Template supprimé",
-        client: pack.render.template?.client ?? null,
-        ownerName: isAdmin ? (pack.user.name ?? pack.user.email ?? pack.render.listing.user.name ?? pack.render.listing.user.email ?? "?") : null,
+        templateName: renderTemplate?.name ?? "Template supprimé",
+        client: renderTemplate?.client ?? null,
+        ownerName: isAdmin
+          ? (pack.user.name
+              ?? pack.user.email
+              ?? pack.render?.listing?.user?.name
+              ?? pack.render?.listing?.user?.email
+              ?? "?")
+          : null,
         frameCount: pack.frameCount,
         duration: pack.duration,
         errorMsg: pack.errorMsg,

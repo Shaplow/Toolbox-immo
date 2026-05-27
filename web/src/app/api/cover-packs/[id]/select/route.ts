@@ -63,14 +63,25 @@ export async function POST(req: NextRequest, { params }: Params) {
     await deleteCoverCandidateAssets(id);
     await prisma.coverFrameCandidate.deleteMany({ where: { packId: id } });
 
-    // Log d'activité si le pack est rattaché à une publication.
-    const render = await prisma.render.findUnique({
-      where: { id: pack.renderId },
-      select: { publicationSlotId: true },
-    });
-    if (render?.publicationSlotId) {
+    // Log d'activité si le pack est rattaché à une publication (via render ou
+    // directement via publicationVersion — Phase 5 slots one-off).
+    let slotIdForActivity: string | null = null;
+    if (pack.renderId) {
+      const render = await prisma.render.findUnique({
+        where: { id: pack.renderId },
+        select: { publicationSlotId: true },
+      });
+      slotIdForActivity = render?.publicationSlotId ?? null;
+    } else if (pack.publicationVersionId) {
+      const version = await prisma.publicationVersion.findUnique({
+        where: { id: pack.publicationVersionId },
+        select: { slotId: true },
+      });
+      slotIdForActivity = version?.slotId ?? null;
+    }
+    if (slotIdForActivity) {
       await logActivity(prisma, {
-        slotId: render.publicationSlotId,
+        slotId: slotIdForActivity,
         actorId: userContext.actualUser.id,
         type: "COVER_COMPLETED",
         payload: { coverFramePackId: pack.id, finalCoverUrl: final.url },
