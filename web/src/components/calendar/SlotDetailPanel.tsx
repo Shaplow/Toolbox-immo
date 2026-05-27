@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { X, ExternalLink, Trash2, Check, Clapperboard } from "lucide-react";
 import { STATUS_LABELS, type SlotStatus, type PublicationSlot } from "@/types/calendar";
+import { STATUS_TRANSITIONS } from "@/lib/publications/transitions";
 import { FlexFieldsEditor } from "./FlexFieldsEditor";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
@@ -68,6 +69,15 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
     setForm((prev) => ({ ...prev, [key]: value }));
     setSaved(false);
   }, []);
+
+  // B6 — Statuts proposés au select pour MONTEUR/CM : statut courant + transitions
+  // autorisées depuis ce statut (matrice STATUS_TRANSITIONS). Évite que MONTEUR/CM
+  // puissent "sauter" des étapes du pipeline via l'UI. Pour ADMIN, voir STATUSES global.
+  const availableStatuses: SlotStatus[] = (() => {
+    const allowed = STATUS_TRANSITIONS[slot.status as SlotStatus] ?? [];
+    const set = new Set<SlotStatus>([slot.status as SlotStatus, ...allowed]);
+    return STATUSES.filter((s) => set.has(s));
+  })();
 
   async function handleSave() {
     setSaving(true);
@@ -174,13 +184,16 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
           {/* Status row */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Statut</label>
-            {/* status : éditable pour tous les modes */}
+            {/* B6 — pour les modes restreints (MONTEUR/CM), on ne montre que :
+                 - le statut courant (pour pouvoir le laisser inchangé)
+                 - les transitions autorisées depuis ce statut (STATUS_TRANSITIONS).
+               Pour ADMIN, tous les statuts restent disponibles (bypass matrice). */}
             <select
               value={form.status}
               onChange={(e) => set("status", e.target.value as SlotStatus)}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
             >
-              {STATUSES.map((s) => (
+              {(isRestricted ? availableStatuses : STATUSES).map((s) => (
                 <option key={s} value={s}>{STATUS_LABELS[s]}</option>
               ))}
             </select>

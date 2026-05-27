@@ -170,6 +170,8 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
       "isAuto",
     ],
     MONTEUR: ["status", "notes", "description"],
-    CM: ["status", "notes", "description"],
+    // CM édite la légende IG (caption) en plus de notes/description.
+    // Sans ce champ, CaptionIgSection donne une fausse confirmation de succès (B1).
+    CM: ["status", "title", "caption", "notes", "description"],
     EXTERNAL_GENERATOR: [],
   } as const;
