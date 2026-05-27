@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const accountId = searchParams.get("accountId") ?? undefined;
   const status = searchParams.get("status") ?? undefined;
-  const contentType = searchParams.get("contentType") ?? undefined;
+  const patternId = searchParams.get("patternId") ?? undefined;
   const monteurId = searchParams.get("monteurId") ?? undefined;
   const cmId = searchParams.get("cmId") ?? undefined;
   const dateFrom = searchParams.get("dateFrom");
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
         roleScope,
         accountId ? { accountId } : {},
         status ? { status } : {},
-        contentType ? { contentType } : {},
+        patternId ? { patternId } : {},
         monteurId ? { assigneeMonteurId: monteurId } : {},
         cmId ? { assigneeCmId: cmId } : {},
         dateFrom || dateTo
@@ -122,9 +122,6 @@ export async function POST(req: NextRequest) {
     assigneeCmId: rawAssigneeCmId,
   } = body;
 
-  // contentType doit être fourni directement dans le body
-  const { contentType } = body as { contentType?: string };
-
   // --- Résolution du pattern si fourni ---
   let resolvedAssigneeMonteurId: string | null = rawAssigneeMonteurId ?? null;
   let resolvedAssigneeCmId: string | null = rawAssigneeCmId ?? null;
@@ -143,9 +140,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (!accountId || !scheduledAt || !contentType) {
+  if (!accountId || !scheduledAt) {
     return NextResponse.json(
-      { error: "accountId, scheduledAt et contentType sont requis" },
+      { error: "accountId et scheduledAt sont requis" },
       { status: 400 }
     );
   }
@@ -178,7 +175,6 @@ export async function POST(req: NextRequest) {
     data: {
       accountId,
       scheduledAt: parsedScheduledAt,
-      contentType,
       title: title ?? null,
       caption: caption ?? null,
       notes: notes ?? null,

@@ -35,7 +35,6 @@ export interface WorklistSlot {
   title: string | null;
   scheduledAt: Date;
   status: SlotStatus;
-  contentType: string;
   notes: string | null;
   assigneeMonteurId: string | null;
   assigneeCmId: string | null;

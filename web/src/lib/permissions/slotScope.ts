@@ -161,7 +161,6 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
       "description",
       "templateId",
       "scheduledAt",
-      "contentType",
       "fields",
       "fieldSchema",
       "assigneeMonteurId",

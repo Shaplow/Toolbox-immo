@@ -54,7 +54,7 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
       select: {
         id: true,
         title: true,
-        contentType: true,
+        pattern: { select: { label: true } },
         account: { select: { handle: true, name: true } },
         versions: {
           where: { deletedAt: null },
@@ -173,7 +173,7 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
                 >
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-gray-900 truncate">
-                      {slot.title ?? slot.contentType}
+                      {slot.pattern?.label ?? slot.title ?? "Publication"}
                     </p>
                     <p className="text-[11px] text-gray-500 mt-0.5">
                       @{slot.account.handle}

@@ -23,14 +23,11 @@ export type SlotStatus =
   | "CHECKING"
   | "DONE";
 
-export type ContentType = "RPI" | "RVA4" | "RVA5" | "RTIPS" | "RPOD" | "REACT" | "RQR";
-
 export interface PublicationSlot {
   id: string;
   accountId: string;
   account: { id: string; name: string; handle: string };
   scheduledAt: string; // ISO
-  contentType: string;
   status: SlotStatus;
   title: string | null;
   caption: string | null;
@@ -58,7 +55,6 @@ export interface PublicationSlot {
 // Re-exported from the centralized source of truth — do not duplicate here.
 export { STATUS_LABELS, STATUS_COLORS, STATUS_DOT, STATUS_GROUP } from "@/lib/slots/statusLabels";
 
-export const CONTENT_TYPES: ContentType[] = ["RPI", "RVA4", "RVA5", "RTIPS", "RPOD", "REACT", "RQR"];
 export const OFFRES = ["ESSENTIEL", "CONFIRME", "CEO", "COMPTE_AGENCE"] as const;
 export type Offre = (typeof OFFRES)[number];
 export const DAY_LABELS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];

@@ -16,11 +16,16 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { id } = await params;
   const slot = await prisma.publicationSlot.findUnique({
     where: { id },
-    select: { contentType: true, account: { select: { handle: true } } },
+    select: {
+      title: true,
+      pattern: { select: { label: true } },
+      account: { select: { handle: true } },
+    },
   });
   if (!slot) return { title: "Publication | Toolbox Immo" };
+  const label = slot.pattern?.label ?? slot.title ?? "Publication";
   return {
-    title: `${slot.contentType} · @${slot.account.handle} | Toolbox Immo`,
+    title: `${label} · @${slot.account.handle} | Toolbox Immo`,
   };
 }
 
@@ -272,7 +277,6 @@ export default async function PublicationPage({ params }: PageProps) {
         title: slot.title,
         status: slot.status,
         scheduledAt: slot.scheduledAt,
-        contentType: slot.contentType,
         caption: slot.caption,
         description: slot.description,
         publishedUrl: slot.publishedUrl,

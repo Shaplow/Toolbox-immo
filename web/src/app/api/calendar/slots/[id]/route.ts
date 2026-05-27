@@ -100,7 +100,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     Object.entries(rawBody).filter(([key]) => allowedFields.includes(key))
   );
 
-  const { status, title, caption, description, templateId, scheduledAt, contentType, fields, fieldSchema,
+  const { status, title, caption, description, templateId, scheduledAt, fields, fieldSchema,
           assigneeMonteurId, assigneeCmId, patternId, currentVersionId, isAuto } = body as Record<string, unknown>;
   // notes est mutable : peut être sanitisé avant l'update (H2).
   let { notes } = body as Record<string, unknown>;
@@ -211,7 +211,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       ...(notes !== undefined ? { notes: notes as string | null } : {}),
       ...(templateId !== undefined ? { templateId: templateId as string | null } : {}),
       ...(scheduledAt !== undefined ? { scheduledAt: new Date(scheduledAt as string) } : {}),
-      ...(contentType !== undefined ? { contentType: contentType as string } : {}),
       ...(fields !== undefined ? { fields: JSON.stringify(fields) } : {}),
       ...(fieldSchema !== undefined ? { fieldSchema: JSON.stringify(fieldSchema) } : {}),
       ...(assigneeMonteurId !== undefined ? { assigneeMonteurId: assigneeMonteurId as string | null } : {}),

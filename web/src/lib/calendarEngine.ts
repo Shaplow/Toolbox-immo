@@ -130,8 +130,6 @@ export async function generateCalendarSlots(
         accountId: pattern.accountId,
         scheduledAt,
         patternId: pattern.id,
-        // contentType : utilise pattern.label (champ legacy String) — à nettoyer en Wave E
-        contentType: pattern.label,
         status: "TO_DO",
         templateId: pattern.templateId ?? null,
         assigneeMonteurId: pattern.defaultAssigneeMonteurId ?? null,

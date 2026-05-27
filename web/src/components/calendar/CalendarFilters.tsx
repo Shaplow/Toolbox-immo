@@ -1,6 +1,6 @@
 "use client";
 
-import { CONTENT_TYPES, STATUS_LABELS, type SlotStatus } from "@/types/calendar";
+import { STATUS_LABELS, type SlotStatus } from "@/types/calendar";
 
 interface Account {
   id: string;
@@ -16,7 +16,6 @@ interface AssigneeOption {
 export interface CalendarFiltersState {
   accountId: string;
   status: string;
-  contentType: string;
   monteurId: string;
   cmId: string;
 }
@@ -66,18 +65,6 @@ export function CalendarFilters({ accounts, filters, onChange, monteurs, cms }: 
         <option value="">Tous les statuts</option>
         {STATUSES.map(([key, label]) => (
           <option key={key} value={key}>{label}</option>
-        ))}
-      </select>
-
-      {/* Content type filter */}
-      <select
-        value={filters.contentType}
-        onChange={(e) => set("contentType", e.target.value)}
-        className={SELECT_CLASS}
-      >
-        <option value="">Tous les types</option>
-        {CONTENT_TYPES.map((ct) => (
-          <option key={ct} value={ct}>{ct}</option>
         ))}
       </select>
 

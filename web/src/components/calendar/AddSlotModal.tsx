@@ -49,7 +49,6 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     date: today,
     time: "19:00",
     title: "",
-    contentType: "",
   });
 
   // --- Pattern picker ---
@@ -99,7 +98,6 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     let cancelled = false;
     setLoadingPatterns(true);
     setSelectedPatternId("");
-    setForm((prev) => ({ ...prev, contentType: "" }));
     setAssigneeMonteurId("");
     setAssigneeCmId("");
 
@@ -115,7 +113,6 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
           if (active.length > 0) {
             const first = active[0];
             setSelectedPatternId(first.id);
-            setForm((prev) => ({ ...prev, contentType: first.label }));
             setAssigneeMonteurId(first.defaultAssigneeMonteur?.id ?? "");
             setAssigneeCmId(first.defaultAssigneeCm?.id ?? "");
           }
@@ -130,18 +127,16 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     return () => { cancelled = true; };
   }, [form.accountId]);
 
-  // Quand un pattern est sélectionné, pré-remplir les champs
+  // Quand un pattern est sélectionné, pré-remplir les assignations.
   function handlePatternSelect(patternId: string) {
     setSelectedPatternId(patternId);
     if (!patternId) {
-      setForm((prev) => ({ ...prev, contentType: "" }));
       setAssigneeMonteurId("");
       setAssigneeCmId("");
       return;
     }
     const pattern = patterns.find((p) => p.id === patternId);
     if (pattern) {
-      setForm((prev) => ({ ...prev, contentType: pattern.label }));
       setAssigneeMonteurId(pattern.defaultAssigneeMonteur?.id ?? "");
       setAssigneeCmId(pattern.defaultAssigneeCm?.id ?? "");
     }
@@ -153,8 +148,8 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.contentType.trim()) {
-      setError("Le type de contenu est requis. Sélectionnez un pattern ou saisissez-le manuellement.");
+    if (!selectedPatternId && !form.title.trim()) {
+      setError("Sélectionne un pattern ou renseigne un titre pour ce slot.");
       return;
     }
     setSaving(true);
@@ -165,7 +160,6 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
       const payload: Record<string, unknown> = {
         accountId: form.accountId,
         scheduledAt,
-        contentType: form.contentType,
         title: form.title || null,
         assigneeMonteurId: assigneeMonteurId || null,
         assigneeCmId: assigneeCmId || null,
@@ -259,22 +253,6 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
             )}
           </div>
 
-          {/* Type de contenu — pré-rempli depuis pattern, éditable manuellement */}
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Type de contenu
-              {selectedPatternId && <span className="ml-1 text-indigo-500 text-[10px]">(depuis le pattern)</span>}
-            </label>
-            <input
-              type="text"
-              value={form.contentType}
-              onChange={(e) => set("contentType", e.target.value)}
-              placeholder="ex: RPI, RTIPS…"
-              required
-              className={INPUT_CLS}
-            />
-          </div>
-
           {/* Date + Heure */}
           <div className="flex gap-3">
             <div className="flex-1">
@@ -331,9 +309,14 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
             </div>
           </div>
 
-          {/* Titre */}
+          {/* Titre — optionnel si un pattern est sélectionné, sinon requis */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Titre (optionnel)</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Titre
+              {selectedPatternId
+                ? <span className="ml-1 text-gray-400 text-[10px]">(optionnel)</span>
+                : <span className="ml-1 text-amber-600 text-[10px]">(requis sans pattern)</span>}
+            </label>
             <input
               type="text"
               value={form.title}

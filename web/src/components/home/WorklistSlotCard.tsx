@@ -83,9 +83,9 @@ export function WorklistSlotCard({ slot, monteurBadges, cmBadges }: WorklistSlot
       )}
 
       <div className="flex-1 min-w-0">
-        {/* Titre / fallback sur type de contenu */}
+        {/* Label : pattern en priorité, sinon titre custom, sinon défaut */}
         <p className="text-sm font-medium text-gray-900 truncate">
-          {slot.title ?? slot.contentType}
+          {slot.pattern?.label ?? slot.title ?? "Publication"}
         </p>
 
         {/* Compte */}
