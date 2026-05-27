@@ -226,7 +226,7 @@ export default async function PublicationPage({ params }: PageProps) {
     pattern: slot.pattern ?? null,
     renderJob: slot.render ?? null,
     coverPack: slot.render?.coverFramePack ?? null,
-    captionJob: null,
+    captionJob: latestCaptionJob,
     descriptionJob: null,
     versionsCount: rawVersions.filter((v) => v.deletedAt === null).length,
     currentVersionId: slot.currentVersionId ?? null,

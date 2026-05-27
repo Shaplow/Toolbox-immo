@@ -174,3 +174,68 @@ describe("computePublicationSteps — pattern auto_template sans rushes", () => 
     expect(edit?.visible).toBe(false);
   });
 });
+
+// ── step "captions" status (Phase 1.9 — bug fix passage du job) ───────────────
+
+describe("computePublicationSteps — step 'captions' status", () => {
+  it("'todo' si needsCaptions et aucun job", () => {
+    const steps = computePublicationSteps({
+      slot: baseSlot(),
+      pattern: recipeAutoTemplate,
+      captionJob: null,
+    });
+    const captions = steps.find((s) => s.key === "captions");
+    expect(captions?.visible).toBe(true);
+    expect(captions?.status).toBe("todo");
+  });
+
+  it("'queued' si job QUEUED", () => {
+    const steps = computePublicationSteps({
+      slot: baseSlot(),
+      pattern: recipeAutoTemplate,
+      captionJob: { status: "QUEUED" },
+    });
+    const captions = steps.find((s) => s.key === "captions");
+    expect(captions?.status).toBe("queued");
+  });
+
+  it("'processing' si job PROCESSING", () => {
+    const steps = computePublicationSteps({
+      slot: baseSlot(),
+      pattern: recipeAutoTemplate,
+      captionJob: { status: "PROCESSING" },
+    });
+    const captions = steps.find((s) => s.key === "captions");
+    expect(captions?.status).toBe("processing");
+  });
+
+  it("'done' si job COMPLETED", () => {
+    const steps = computePublicationSteps({
+      slot: baseSlot(),
+      pattern: recipeAutoTemplate,
+      captionJob: { status: "COMPLETED" },
+    });
+    const captions = steps.find((s) => s.key === "captions");
+    expect(captions?.status).toBe("done");
+  });
+
+  it("'failed' si job FAILED", () => {
+    const steps = computePublicationSteps({
+      slot: baseSlot(),
+      pattern: recipeAutoTemplate,
+      captionJob: { status: "FAILED" },
+    });
+    const captions = steps.find((s) => s.key === "captions");
+    expect(captions?.status).toBe("failed");
+  });
+
+  it("step non visible si needsCaptions=false (job ignoré)", () => {
+    const steps = computePublicationSteps({
+      slot: baseSlot(),
+      pattern: { ...recipeAutoTemplate, needsCaptions: false },
+      captionJob: { status: "COMPLETED" },
+    });
+    const captions = steps.find((s) => s.key === "captions");
+    expect(captions?.visible).toBe(false);
+  });
+});
