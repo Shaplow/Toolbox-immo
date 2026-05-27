@@ -18,6 +18,7 @@ import { MediaAssetsVideoCard } from "./mediaAssets/MediaAssetsVideoCard";
 import { MediaAssetsGroupColumn } from "./mediaAssets/MediaAssetsGroupColumn";
 import { MediaAssetsCompactCard } from "./mediaAssets/MediaAssetsCompactCard";
 import { MediaAssetsToolbar } from "./mediaAssets/MediaAssetsToolbar";
+import { useAssetSequence } from "./mediaAssets/useAssetSequence";
 
 interface Props {
   library: MediaLibrary;
@@ -49,8 +50,9 @@ export function MediaAssetsPanel({ library }: Props) {
   // garde l'accès à selectMode/selectedIds/toggleSelect pour les cards.
   const bulk = useBulkEdit({ libraryId: library.id, setAssets, accounts });
   const { selectMode, setSelectMode, selectedIds, toggleSelect, exitSelectMode } = bulk;
-  const [seqState, setSeqState] = useState<string[]>(() => {
-    try { return JSON.parse(library.setSequence) as string[]; } catch { return []; }
+  const { seqState, saveSequence, moveSetTag, addToSequence, removeFromSequence } = useAssetSequence({
+    libraryId: library.id,
+    initialSequence: library.setSequence,
   });
   // ── Infinite scroll ──
   const [visibleCount, setVisibleCount] = useState(48);
@@ -437,37 +439,11 @@ export function MediaAssetsPanel({ library }: Props) {
     };
   }, [groupedBySetTag]);
 
-  async function saveSequence(newSeq: string[]) {
-    setSeqState(newSeq);
-    await fetch(`/api/admin/libraries/media/${library.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ setSequence: newSeq }),
-    });
-  }
-
   // D9 — handleSaveCategory, handleToggleAccess, handleToggleDisabled,
   // handleSaveMetadata, handleSaveCategoryForGroup extraits dans le hook
   // useAssetInlineEdits (cf. const inline ci-dessus).
-
-  function moveSetTag(tag: string, direction: -1 | 1) {
-    const idx = seqState.indexOf(tag);
-    if (idx === -1) return;
-    const next = [...seqState];
-    const target = idx + direction;
-    if (target < 0 || target >= next.length) return;
-    [next[idx], next[target]] = [next[target]!, next[idx]!];
-    void saveSequence(next);
-  }
-
-  function addToSequence(tag: string) {
-    if (seqState.includes(tag)) return;
-    void saveSequence([...seqState, tag]);
-  }
-
-  function removeFromSequence(tag: string) {
-    void saveSequence(seqState.filter((t) => t !== tag));
-  }
+  // D9 — saveSequence + moveSetTag + addToSequence + removeFromSequence
+  // extraits dans useAssetSequence (cf. ci-dessus).
 
   // D9 — handleSaveUsage, handleResetAssetUsage, handleSaveTags,
   // handleSaveSetTag, handleSaveLastUsed, handleDelete, toDateInputValue
