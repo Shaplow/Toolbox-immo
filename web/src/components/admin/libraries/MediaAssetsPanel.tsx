@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { Trash2, Upload, Clock, BarChart2, Search, Play, Music2, ArrowUpDown, Tag, X, RotateCcw, Scissors, LayoutGrid, Layers, Square, CheckSquare, ChevronUp, ChevronDown, ListOrdered, PlusCircle, MinusCircle, FolderOpen, Film, Globe, Lock, Users, Wand2, Loader2, EyeOff, AlertTriangle } from "lucide-react";
-import { toast } from "@/components/ui/Toast";
 import { MediaAssetEditModal } from "./MediaAssetEditModal";
 import { MediaBatchAutocutPanel } from "./MediaBatchAutocutPanel";
 import type { MediaAsset, MetadataField, MediaLibrary, SortKey } from "./mediaAssets/types";
@@ -16,6 +15,7 @@ import { MediaAssetsBulkActionBar } from "./mediaAssets/MediaAssetsBulkActionBar
 import { MediaAssetsRotationView } from "./mediaAssets/MediaAssetsRotationView";
 import { MediaAssetsGroupedView } from "./mediaAssets/MediaAssetsGroupedView";
 import { MediaAssetsAudioList } from "./mediaAssets/MediaAssetsAudioList";
+import { useAssetInlineEdits } from "./mediaAssets/useAssetInlineEdits";
 
 interface Props {
   library: MediaLibrary;
@@ -39,29 +39,17 @@ export function MediaAssetsPanel({ library }: Props) {
   const [sort, setSort] = useState<SortKey>("date_desc");
   const [tagFilter, setTagFilter] = useState("");
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const [editingTagsId, setEditingTagsId] = useState<string | null>(null);
-  const [tagInput, setTagInput] = useState("");
-  const [resetError, setResetError] = useState<string | null>(null);
-  const [editingUsageId, setEditingUsageId] = useState<string | null>(null);
-  const [usageInput, setUsageInput] = useState("");
   const [editingAsset, setEditingAsset] = useState<MediaAsset | null>(null);
   const [showAtelier, setShowAtelier] = useState(false);
-  const [editingSetTagId, setEditingSetTagId] = useState<string | null>(null);
-  const [setTagValue, setSetTagValue] = useState("");
-  const [setTagError, setSetTagError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "grouped" | "rotation">("grid");
   // D4 — bulk edit extrait dans useBulkEdit hook. La sticky bar D8
   // (MediaAssetsBulkActionBar) consomme l'objet `bulk` complet. Le panel
   // garde l'accès à selectMode/selectedIds/toggleSelect pour les cards.
   const bulk = useBulkEdit({ libraryId: library.id, setAssets, accounts });
   const { selectMode, setSelectMode, selectedIds, toggleSelect } = bulk;
-  const [editingLastUsedId, setEditingLastUsedId] = useState<string | null>(null);
-  const [lastUsedInput, setLastUsedInput] = useState("");
   const [seqState, setSeqState] = useState<string[]>(() => {
     try { return JSON.parse(library.setSequence) as string[]; } catch { return []; }
   });
-  const [editingFamilyKey, setEditingFamilyKey] = useState<string | null>(null);
-  const [familyInput, setFamilyInput] = useState("");
   // ── Infinite scroll ──
   const [visibleCount, setVisibleCount] = useState(48);
   const [visibleGroupCount, setVisibleGroupCount] = useState(20);
@@ -73,15 +61,49 @@ export function MediaAssetsPanel({ library }: Props) {
   const filteredLengthRef = useRef(0);
   const visibleGroupCountRef = useRef(0);
   const groupedLengthRef = useRef(0);
-  // ── Metadata editing ──
-  const [editingMetaKey, setEditingMetaKey] = useState<{ assetId: string; key: string } | null>(null);
-  const [metaInput, setMetaInput] = useState("");
-  const [savedMetaFlash, setSavedMetaFlash] = useState<{ assetId: string; key: string } | null>(null);
-  const [metaSaveError, setMetaSaveError] = useState<{ assetId: string; key: string } | null>(null);
 
   const metadataSchema = useMemo<MetadataField[]>(() => {
     try { return JSON.parse(library.metadataSchema ?? "[]") as MetadataField[]; } catch { return []; }
   }, [library.metadataSchema]);
+
+  // D9 — inline edits (setTag, category, tags, usage, lastUsedAt, metadata,
+  // access, disabled, delete) extraits dans useAssetInlineEdits hook.
+  // Destructuré pour garder les call sites historiques inchangés.
+  const inline = useAssetInlineEdits({
+    libraryId: library.id,
+    setAssets,
+    accountFilter,
+    metadataSchema,
+  });
+  const {
+    editingSetTagId, setEditingSetTagId,
+    setTagValue, setSetTagValue,
+    setTagError, setSetTagError,
+    editingFamilyKey, setEditingFamilyKey,
+    familyInput, setFamilyInput,
+    editingTagsId, setEditingTagsId,
+    tagInput, setTagInput,
+    editingUsageId, setEditingUsageId,
+    usageInput, setUsageInput,
+    editingLastUsedId, setEditingLastUsedId,
+    lastUsedInput, setLastUsedInput,
+    editingMetaKey, setEditingMetaKey,
+    metaInput, setMetaInput,
+    savedMetaFlash, metaSaveError,
+    resetError,
+    handleSaveCategory,
+    handleSaveCategoryForGroup,
+    handleToggleAccess,
+    handleToggleDisabled,
+    handleSaveMetadata,
+    handleSaveUsage,
+    handleResetAssetUsage,
+    handleSaveTags,
+    handleSaveSetTag,
+    handleSaveLastUsed,
+    handleDelete,
+    toDateInputValue,
+  } = inline;
 
   // ─ Fetch des assets + accounts extrait dans les hooks
   //   useMediaAssetsLoader / useInstagramAccounts (D3 du split C1-v2).
@@ -433,79 +455,9 @@ export function MediaAssetsPanel({ library }: Props) {
     });
   }
 
-  async function handleSaveCategory(asset: MediaAsset, categoryValue: string) {
-    const val = categoryValue.trim() || null;
-    await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category: val }),
-    });
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, category: val } : a));
-  }
-
-  async function handleToggleAccess(asset: MediaAsset, accountId: string, addAccess: boolean) {
-    const current = asset.accessAccountIds;
-    const next = addAccess
-      ? [...current, accountId]
-      : current.filter((id) => id !== accountId);
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accessAccountIds: next }),
-    });
-    if (!res.ok) return;
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, accessAccountIds: next } : a));
-  }
-
-  async function handleToggleDisabled(asset: MediaAsset) {
-    const next = !asset.disabled;
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ disabled: next }),
-    });
-    if (!res.ok) return;
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, disabled: next } : a));
-  }
-
-  async function handleSaveMetadata(asset: MediaAsset, key: string, value: string) {
-    setEditingMetaKey(null);
-    const currentMeta = asset.metadata ?? {};
-    const schemaField = metadataSchema.find((f) => f.key === key);
-    const parsed: string | number | null = value.trim() === ""
-      ? null
-      : schemaField?.type === "number" ? (Number.isFinite(Number(value)) ? Number(value) : null) : value.trim();
-    const nextMeta = { ...currentMeta, [key]: parsed };
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, metadata: nextMeta } : a));
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ metadata: nextMeta }),
-    });
-    if (res.ok) {
-      setSavedMetaFlash({ assetId: asset.id, key });
-      setTimeout(() => setSavedMetaFlash(null), 1200);
-    } else {
-      setMetaSaveError({ assetId: asset.id, key });
-      setTimeout(() => setMetaSaveError(null), 3000);
-      // Rollback optimistic update
-      setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, metadata: currentMeta } : a));
-    }
-  }
-
-  async function handleSaveCategoryForGroup(groupAssets: MediaAsset[], categoryValue: string) {
-    const val = categoryValue.trim() || null;
-    await Promise.all(
-      groupAssets.map((a) =>
-        fetch(`/api/admin/libraries/media/assets/${a.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ category: val }),
-        })
-      )
-    );
-    setAssets((prev) => prev.map((a) => groupAssets.some((g) => g.id === a.id) ? { ...a, category: val } : a));
-  }
+  // D9 — handleSaveCategory, handleToggleAccess, handleToggleDisabled,
+  // handleSaveMetadata, handleSaveCategoryForGroup extraits dans le hook
+  // useAssetInlineEdits (cf. const inline ci-dessus).
 
   function moveSetTag(tag: string, direction: -1 | 1) {
     const idx = seqState.indexOf(tag);
@@ -526,113 +478,11 @@ export function MediaAssetsPanel({ library }: Props) {
     void saveSequence(seqState.filter((t) => t !== tag));
   }
 
-  async function handleSaveUsage(asset: MediaAsset, raw: string) {
-    const val = parseInt(raw, 10);
-    setEditingUsageId(null);
-    setUsageInput("");
-    if (isNaN(val) || val < 0 || val === asset.usageCount) return;
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ usageCount: val }),
-    });
-    if (!res.ok) {
-      const d = await res.json() as { error?: string };
-      setResetError(d.error ?? "Erreur lors de la mise à jour");
-      return;
-    }
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, usageCount: val, lastUsedAt: val === 0 ? null : new Date().toISOString() } : a));
-  }
-
-  async function handleResetAssetUsage(asset: MediaAsset) {
-    // When a per-account filter is active, reset only that account's usage record.
-    // When viewing globally, perform a full reset (global counters + all per-account records).
-    const body = accountFilter
-      ? { resetUsageForAccount: accountFilter }
-      : { resetUsage: true };
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const d = await res.json() as { error?: string };
-      setResetError(d.error ?? "Erreur lors du reset");
-      return;
-    }
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, usageCount: 0, lastUsedAt: null } : a));
-  }
-
-  async function handleSaveTags(asset: MediaAsset, newTags: string[]) {
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tags: newTags }),
-    });
-    if (!res.ok) return;
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, tags: newTags } : a));
-    setEditingTagsId(null);
-    setTagInput("");
-  }
-
-  async function handleSaveSetTag(asset: MediaAsset, raw: string) {
-    const value = raw.trim() || null;
-    // Skip if unchanged (null == null, or same string)
-    if (value === (asset.setTag ?? null)) {
-      setEditingSetTagId(null);
-      setSetTagValue("");
-      return;
-    }
-    setSetTagError(null);
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ setTag: value }),
-    });
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({})) as { error?: string };
-      setSetTagError(d.error ?? "Erreur lors de la sauvegarde");
-      return;
-    }
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, setTag: value } : a));
-    setEditingSetTagId(null);
-    setSetTagValue("");
-    setSetTagError(null);
-  }
-
+  // D9 — handleSaveUsage, handleResetAssetUsage, handleSaveTags,
+  // handleSaveSetTag, handleSaveLastUsed, handleDelete, toDateInputValue
+  // extraits dans le hook useAssetInlineEdits.
   // ─ Bulk edit handlers extraits dans useBulkEdit (D4 du split C1-v2).
-
-  async function handleSaveLastUsed(asset: MediaAsset, dateStr: string) {
-    setEditingLastUsedId(null);
-    setLastUsedInput("");
-    const lastUsedAt = dateStr ? new Date(dateStr).toISOString() : null;
-    if (lastUsedAt === asset.lastUsedAt) return;
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lastUsedAt }),
-    });
-    if (!res.ok) return;
-    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, lastUsedAt } : a));
-  }
-
-  function toDateInputValue(iso: string | null): string {
-    if (!iso) return "";
-    return new Date(iso).toISOString().split("T")[0] ?? "";
-  }
-
   // uploadFiles + handleFileSelect extraits dans MediaAssetsUploadModal (D7).
-
-  async function handleDelete(asset: MediaAsset) {
-    if (!confirm(`Supprimer "${asset.filename}" ?`)) return;
-    const res = await fetch(`/api/admin/libraries/media/assets/${asset.id}`, { method: "DELETE" });
-    if (!res.ok) {
-      const d = await res.json() as { error?: string };
-      toast.error(d.error ?? "Erreur lors de la suppression");
-      return;
-    }
-    setAssets((prev) => prev.filter((a) => a.id !== asset.id));
-  }
 
   const isVideo = library.type === "video";
 
