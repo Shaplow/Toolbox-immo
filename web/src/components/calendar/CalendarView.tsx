@@ -295,6 +295,26 @@ export function CalendarView({
 
       {/* Calendar grid */}
       <div className="flex-1 overflow-auto px-4 py-4">
+        {/* F4-polish — skeleton du calendrier pendant le chargement initial.
+            Affiché uniquement quand loading=true ET slots.length === 0 pour
+            éviter un flash de skeleton lors des refresh subséquents. */}
+        {loading && slots.length === 0 ? (
+          <div className="grid grid-cols-7 gap-2 min-w-[700px]" aria-label="Chargement du calendrier" aria-busy="true">
+            {weekDays.map((_day, i) => (
+              <div key={i} className="flex flex-col gap-2">
+                <div className="text-center pb-2 border-b border-gray-200">
+                  <div className="h-3 w-8 mx-auto bg-gray-100 rounded animate-pulse" />
+                  <div className="h-5 w-6 mx-auto mt-1 bg-gray-100 rounded animate-pulse" />
+                </div>
+                <div className="flex flex-col gap-2">
+                  {[0, 1].map((j) => (
+                    <div key={j} className="h-16 bg-gray-100 rounded-lg animate-pulse" />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="grid grid-cols-7 gap-2 min-w-[700px]">
           {/* Day headers */}
           {weekDays.map((day, i) => {
@@ -343,6 +363,7 @@ export function CalendarView({
             );
           })}
         </div>
+        )}
       </div>
 
       {/* Slot detail panel */}
