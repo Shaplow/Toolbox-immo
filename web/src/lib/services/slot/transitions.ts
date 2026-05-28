@@ -14,7 +14,7 @@
 
 import type { SlotStatus, UserRole } from "@/types/roles";
 import type { PrismaClient } from "@prisma/client";
-import { logActivity } from "@/lib/publications/activity";
+import { logActivity } from "./activity";
 
 // ─── Statuts legacy toujours présents en base (Phase 1.3 backfill) ────────────
 
