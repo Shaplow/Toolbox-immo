@@ -1,18 +1,28 @@
 #!/usr/bin/env bash
-# Scope guard du chantier feature/ui-boost.
+# Scope guard du chantier UI boost.
 #
-# Échoue le commit si un fichier hors scope est touché. Le scope autorisé
-# couvre uniquement la couche présentation (components, pages, layouts,
-# styles, tailwind config et la doc design system). Toute autre zone du
-# repo doit être laissée intacte pendant ce chantier (cf. plan).
+# Active UNIQUEMENT si le fichier `.ui-boost-active` existe à la racine
+# du repo (toggle manuel). Sans ce toggle, le hook est transparent et
+# n'interfère pas avec les commits normaux.
 #
-# Override ponctuel justifié : commit avec `--no-verify`. Eviter sauf cas
-# tordu (typo dans un commentaire de lib/ par ex) — sinon merge le hotfix
-# sur main et rebase la branche.
+# Workflow :
+#   touch .ui-boost-active    # début de session chantier UI
+#   git commit ...            # protégé : seul le scope présentation passe
+#   rm .ui-boost-active       # fin de session (ou tu veux toucher lib/api)
 #
-# Installation : symlink ou copie en .git/hooks/pre-commit dans le worktree.
+# Quand actif, échoue le commit si un fichier hors scope est touché. Le
+# scope autorisé couvre uniquement la couche présentation (components,
+# pages, layouts, styles, tailwind config et la doc design system).
+#
+# Override ponctuel : `git commit --no-verify`. À éviter — supprime
+# plutôt le toggle puis re-commit.
 
 set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# Inactif si pas de toggle — laisse passer tous les commits.
+[[ -f "$REPO_ROOT/.ui-boost-active" ]] || exit 0
 
 STAGED_FILES="$(git diff --cached --name-only --diff-filter=ACMR)"
 OFFENDERS=()
@@ -45,11 +55,12 @@ while IFS= read -r file; do
 done <<< "$STAGED_FILES"
 
 if [[ ${#OFFENDERS[@]} -gt 0 ]]; then
-  echo "❌ feature/ui-boost scope-guard : ces fichiers sont hors scope du chantier UI :" >&2
+  echo "❌ ui-boost scope-guard : ces fichiers sont hors scope du chantier UI :" >&2
   printf "   - %s\n" "${OFFENDERS[@]}" >&2
   echo >&2
   echo "Scope autorisé : web/src/components/, pages app/admin/dev, styles, tailwind config, docs/design-system.md." >&2
-  echo "Si justifié : 'git commit --no-verify' (ou merge en hotfix sur main puis rebase)." >&2
+  echo "Pour commit hors scope : 'rm .ui-boost-active' puis re-commit." >&2
+  echo "Ou ponctuellement : 'git commit --no-verify'." >&2
   exit 1
 fi
 
