@@ -82,7 +82,19 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    void recordLibraryUsage(render.id);
+    // recordLibraryUsage est fire-and-forget : on log explicitement l'erreur
+    // avec assez de contexte pour permettre un re-run manuel via le script
+    // dédié (revertLibraryCursors + recordLibraryUsage). Sans ce catch, une
+    // erreur DB transitoire ferait silencieusement diverger les compteurs
+    // de rotation (lastUsedAt, AccountLibraryCursor) — l'asset déjà
+    // utilisé pourrait re-sortir au prochain pick.
+    void recordLibraryUsage(render.id).catch((err) => {
+      console.error(
+        `[webhook/renders] recordLibraryUsage failed for render=${render.id} — ` +
+          `compteurs de rotation NON mis à jour. Re-run manuel requis. Erreur :`,
+        err,
+      );
+    });
 
     notifyUser(userId, {
       jobType: "render",
