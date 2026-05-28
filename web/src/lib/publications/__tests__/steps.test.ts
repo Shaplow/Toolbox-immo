@@ -3,10 +3,9 @@ import { computePublicationSteps } from "@/lib/publications/steps";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function baseSlot(overrides?: Partial<{ status: string; caption: string | null; description: string | null }>) {
+function baseSlot(overrides?: Partial<{ status: string; description: string | null }>) {
   return {
     status: "PLANNED" as string,
-    caption: null,
     description: null,
     ...overrides,
   };

@@ -1,14 +1,19 @@
 "use client";
 
 /**
- * DescriptionSection — section "Description" de la fiche publication.
+ * DescriptionSection — section "Légende Instagram" de la fiche publication.
  *
- * Phase 1.3.5.6 : migration vers le champ dédié `description` sur
+ * Phase 2.1 : fusion ancien champ `slot.caption` (Légende IG) + `slot.description`
+ * (description IA) → champ unique `slot.description`. La CaptionIgSection a été
+ * supprimée — toute la rédaction de la légende IG passe désormais par ici, avec
+ * bouton "Générer avec IA" inline. Le PATCH passe par `description` côté API.
+ *
+ * Phase 1.3.5.6 (historique) : migration vers le champ dédié `description` sur
  * PublicationSlot (R14 — audit UX). Avant cette phase, la description
  * était stockée dans `notes`, créant une ambiguïté avec les notes internes.
  *
- * Phase 1.9 B3 : ajout d'une modal inline "Générer avec IA" pour rester
- * dans le contexte de la fiche. Le mode standalone /descriptions reste
+ * Phase 1.9 B3 (historique) : ajout d'une modal inline "Générer avec IA" pour
+ * rester dans le contexte de la fiche. Le mode standalone /descriptions reste
  * disponible pour les usages avancés (transcription, image de référence,
  * configuration fine).
  */
@@ -215,7 +220,7 @@ function DescriptionSectionInner({
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <FileText size={16} className="text-gray-400" />
-          <h2 className="text-sm font-semibold text-gray-700">Description</h2>
+          <h2 className="text-sm font-semibold text-gray-700">Légende Instagram</h2>
           {pattern?.needsDescription && pattern.needsDescription !== "none" && (
             <span className="text-xs text-gray-400 italic">
               ({DESCRIPTION_MODE_LABELS[pattern.needsDescription] ?? pattern.needsDescription})
@@ -289,18 +294,21 @@ function DescriptionSectionInner({
             setSaved(false);
           }}
           disabled={!canEdit || saving}
-          rows={5}
+          rows={6}
           placeholder={
             canEdit
-              ? "Rédigez la description de la publication…"
-              : "Aucune description renseignée."
+              ? "Rédigez la légende Instagram de la publication…\n\n#immobilier #realestate"
+              : "Aucune légende renseignée."
           }
-          className={`w-full border rounded-lg px-3 py-2 text-sm resize-y transition-colors ${
+          className={`w-full border rounded-lg px-3 py-2 text-sm resize-y font-mono leading-relaxed transition-colors ${
             canEdit
               ? "border-gray-200 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 focus:outline-none text-gray-700"
               : "border-gray-100 bg-gray-50 text-gray-600 cursor-default"
           } disabled:opacity-70`}
         />
+
+        {/* Compteur de caractères (limite IG ≈ 2200) */}
+        <p className="text-xs text-gray-400 text-right">{value.length} / 2 200 caractères</p>
 
         {error && (
           <p className="text-xs text-red-600">{error}</p>
@@ -319,7 +327,7 @@ function DescriptionSectionInner({
             </button>
 
             {saved && (
-              <span className="text-xs text-green-600">Description sauvegardée.</span>
+              <span className="text-xs text-green-600">Légende sauvegardée.</span>
             )}
           </div>
         )}
@@ -353,7 +361,7 @@ function DescriptionSectionInner({
                      génération va écraser le texte courant. */}
                 {value.trim().length > 0 && (
                   <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    Une description existe déjà — la génération va l&apos;écraser.
+                    Une légende existe déjà — la génération va l&apos;écraser.
                     Tu pourras toujours annuler en fermant la modale.
                   </p>
                 )}

@@ -92,7 +92,7 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
 
   const [form, setForm] = useState({
     title: slot.title ?? "",
-    caption: slot.caption ?? "",
+    description: slot.description ?? "",
     notes: slot.notes ?? "",
     status: slot.status,
     fieldSchema: slot.fieldSchema,
@@ -198,7 +198,7 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
         ? { status: form.status, notes: form.notes || null }
         : {
             title: form.title || null,
-            caption: form.caption || null,
+            description: form.description || null,
             notes: form.notes || null,
             status: form.status,
             assigneeMonteurId: assigneeMonteurId || null,
@@ -418,8 +418,8 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Légende Instagram</label>
                   <textarea
-                    value={form.caption}
-                    onChange={(e) => set("caption", e.target.value)}
+                    value={form.description}
+                    onChange={(e) => set("description", e.target.value)}
                     rows={3}
                     placeholder="Texte de la publication…"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none bg-white"

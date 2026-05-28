@@ -38,7 +38,7 @@ export interface CreateSlotInput {
   accountId: string;
   scheduledAt: string;
   title?: string | null;
-  caption?: string | null;
+  description?: string | null;
   notes?: string | null;
   templateId?: string | null;
   fields?: Record<string, string>;
@@ -241,7 +241,7 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
       accountId: input.accountId,
       scheduledAt: parsedScheduledAt,
       title: input.title ?? null,
-      caption: input.caption ?? null,
+      description: input.description ?? null,
       notes: input.notes ?? null,
       // Status initial dérivé du pattern.source (cohérence calendarEngine
       // — sinon le défaut DB "TO_DO" laisse les slots manuels invisibles
@@ -376,7 +376,6 @@ export async function patchSlot(
   const {
     status,
     title,
-    caption,
     description,
     templateId,
     scheduledAt,
@@ -459,7 +458,6 @@ export async function patchSlot(
   // E3 — fix M4 mass-assignment : bornes sur les champs texte.
   for (const [name, value] of [
     ["title", title],
-    ["caption", caption],
     ["description", description],
     ["notes", notes],
   ] as const) {
@@ -630,7 +628,6 @@ export async function patchSlot(
       data: {
         ...(status !== undefined ? { status: status as string } : {}),
         ...(title !== undefined ? { title: title as string | null } : {}),
-        ...(caption !== undefined ? { caption: caption as string | null } : {}),
         ...(description !== undefined ? { description: description as string | null } : {}),
         ...(notes !== undefined ? { notes: notes as string | null } : {}),
         ...(templateId !== undefined ? { templateId: templateId as string | null } : {}),

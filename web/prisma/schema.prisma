@@ -662,9 +662,8 @@ model PublicationSlot {
   /// "TO_DO" | "IN_PROGRESS" | "READY" | "CHECKING" | "DONE"
   status            String                @default("TO_DO")
   title             String?
-  /// Texte de la légende Instagram (pour la CM)
-  caption           String?
-  /// Description de publication (rédigée par la CM ou générée par IA).
+  /// Texte de la légende Instagram (rédigée par la CM ou générée par IA).
+  /// Anciennement scindée en `caption` + `description` — fusionnée Phase 2.1.
   /// Distinct de `notes` qui reste réservé aux notes internes.
   description       String?
   /// Champs libres saisis par l'utilisateur (JSON Record<string, string>)

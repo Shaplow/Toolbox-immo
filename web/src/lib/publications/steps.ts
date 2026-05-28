@@ -178,7 +178,7 @@ function descriptionJobStatus(
  * @returns Liste ordonnée de PublicationStep avec `nextAction` résolu.
  */
 export function computePublicationSteps(input: {
-  slot: Pick<PublicationSlot, "status" | "caption" | "description">;
+  slot: Pick<PublicationSlot, "status" | "description">;
   pattern?: Pick<
     AccountPattern,
     | "source"

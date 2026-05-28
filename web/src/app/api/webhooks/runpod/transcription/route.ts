@@ -12,6 +12,7 @@ import { deleteFromR2, r2Configured } from "@/lib/r2";
 import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runpod";
 import { notifyUser } from "@/lib/sseStore";
 import { triggerAutoCaptionForTranscription } from "@/lib/triggerAutoCaptionFromTranscription";
+import { triggerAutoDescriptionForTranscription } from "@/lib/triggerAutoDescriptionFromTranscription";
 
 type TranscriptionOutput = {
   output_key?: string;
@@ -89,6 +90,15 @@ export async function POST(req: NextRequest) {
     if (isAutoPipeline) {
       void triggerAutoCaptionForTranscription(job.id).catch((err) =>
         console.error(`[webhook/transcription] triggerAutoCaption threw: ${String(err)}`),
+      );
+
+      // ── Pipeline description IA automatique ────────────────────────────
+      // Si le pattern du slot a needsDescription === "autoGenerate", on
+      // déclenche la génération de la légende IG directement après la
+      // transcription. Skip silencieux si pas de prompt résolu ou si
+      // description déjà rédigée par la CM. Non bloquant.
+      void triggerAutoDescriptionForTranscription(job.id).catch((err) =>
+        console.error(`[webhook/transcription] triggerAutoDescription threw: ${String(err)}`),
       );
     }
   } else {

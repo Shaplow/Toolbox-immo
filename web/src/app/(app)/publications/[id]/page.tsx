@@ -324,7 +324,7 @@ export default async function PublicationPage({ params }: PageProps) {
 
   // Calcul des steps — utilise le pattern effectif (overrides résolus)
   const steps = computePublicationSteps({
-    slot: { status: effectiveStatus, caption: slot.caption, description: slot.description },
+    slot: { status: effectiveStatus, description: slot.description },
     pattern: effectivePattern,
     renderJob: slot.render ?? null,
     coverPack: effectiveCoverPack,
@@ -386,7 +386,6 @@ export default async function PublicationPage({ params }: PageProps) {
         title: slot.title,
         status: effectiveStatus,
         scheduledAt: slot.scheduledAt,
-        caption: slot.caption,
         description: slot.description,
         publishedUrl: slot.publishedUrl,
         publishedAt: slot.publishedAt,

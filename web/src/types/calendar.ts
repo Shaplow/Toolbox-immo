@@ -32,7 +32,8 @@ export interface PublicationSlot {
   scheduledAt: string; // ISO
   status: SlotStatus;
   title: string | null;
-  caption: string | null;
+  /** Légende Instagram (Phase 2.1 : ancien caption fusionné dans description). */
+  description: string | null;
   notes: string | null;
   fields: Record<string, string>;
   fieldSchema: string[];

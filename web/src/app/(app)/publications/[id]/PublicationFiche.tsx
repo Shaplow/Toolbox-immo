@@ -20,7 +20,6 @@ import { getSlotFinalVideoUrl, isFinalVideoCaptioned } from "@/lib/publications/
 import { CoverSection } from "@/components/publications/sections/CoverSection";
 import { CaptionsSection } from "@/components/publications/sections/CaptionsSection";
 import { DescriptionSection } from "@/components/publications/sections/DescriptionSection";
-import { CaptionIgSection } from "@/components/publications/sections/CaptionIgSection";
 import { ClientValidationSection } from "@/components/publications/sections/ClientValidationSection";
 import { OneOffTriggerButtons } from "@/components/publications/sections/OneOffTriggerButtons";
 import { PublishSection } from "@/components/publications/sections/PublishSection";
@@ -49,7 +48,6 @@ type SectionKey =
   | "cover"
   | "captions"
   | "description"
-  | "captionIg"
   | "clientValidation"
   | "publish"
   | "comments"
@@ -60,7 +58,7 @@ type SectionKey =
  *
  * - ADMIN : tout déplié (vision complète de la pipeline).
  * - MONTEUR : travail = Brief, Rushes, Versions, Commentaires — le reste est secondaire.
- * - CM : travail = Render (lecture), Cover, Captions, Description, Légende IG, Publication.
+ * - CM : travail = Render (lecture), Cover, Captions, Légende IG (description), Publication.
  * - USER : tout replié par défaut (accès minimal, rôle legacy).
  */
 function isPrimaryForRole(section: SectionKey, role: UserRole): boolean {
@@ -86,7 +84,7 @@ function isPrimaryForRole(section: SectionKey, role: UserRole): boolean {
 const PRIMARY_SECTIONS_BY_ROLE: Record<Exclude<UserRole, "ADMIN">, SectionKey[]> = {
   VIDEASTE: ["brief", "rushes", "comments"],
   MONTEUR: ["brief", "rushes", "versions", "render", "comments"],
-  CM: ["render", "rushes", "versions", "cover", "captions", "description", "captionIg", "clientValidation", "publish", "comments"],
+  CM: ["render", "rushes", "versions", "cover", "captions", "description", "clientValidation", "publish", "comments"],
   EXTERNAL_GENERATOR: [],
 };
 
@@ -111,8 +109,7 @@ const SECTION_LABELS: Record<SectionKey, string> = {
   render: "Rendu vidéo",
   cover: "Cover Instagram",
   captions: "Sous-titres",
-  description: "Description",
-  captionIg: "Légende Instagram",
+  description: "Légende Instagram",
   clientValidation: "Validation client",
   publish: "Publication",
   comments: "Commentaires",
@@ -130,8 +127,7 @@ interface SlotInfo {
   title: string | null;
   status: string;
   scheduledAt: Date;
-  caption: string | null;
-  /** Champ dédié à la description de publication (R14 — Phase 1.3.5.6). */
+  /** Légende Instagram (Phase 2.1 : fusion ancien caption + description). */
   description: string | null;
   publishedUrl: string | null;
   publishedAt: Date | null;
@@ -546,16 +542,6 @@ export function PublicationFiche({
                   pattern?.descriptionPromptId ??
                   null
                 }
-              />
-            )}
-
-            {/* Légende Instagram */}
-            {wrap(
-              "captionIg",
-              <CaptionIgSection
-                slot={{ id: slot.id, caption: slot.caption }}
-                description={slot.description}
-                canEdit={canMarkPublished || canEditDescription}
               />
             )}
 

@@ -125,9 +125,15 @@ describe("ALLOWED_PATCH_FIELDS_BY_ROLE — security invariants", () => {
     }
   });
 
-  it("CM can modify caption (B1 — légende Instagram)", () => {
-    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.CM).toContain("caption");
+  it("CM can modify description (Phase 2.1 — légende IG unifiée)", () => {
+    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.CM).toContain("description");
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.CM).toContain("title");
+  });
+
+  it("aucun rôle ne peut PATCH caption — champ supprimé Phase 2.1", () => {
+    for (const role of ["ADMIN", "MONTEUR", "CM", "VIDEASTE", "EXTERNAL_GENERATOR"] as const) {
+      expect(ALLOWED_PATCH_FIELDS_BY_ROLE[role]).not.toContain("caption");
+    }
   });
 
   it("USER has no allowed fields", () => {
@@ -160,7 +166,7 @@ describe("ALLOWED_PATCH_FIELDS_BY_ROLE — security invariants", () => {
   it("VIDEASTE can modify status + notes only (rapport de shoot)", () => {
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.VIDEASTE).toEqual(["status", "notes"]);
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.VIDEASTE).not.toContain("assigneeVideasteId");
-    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.VIDEASTE).not.toContain("caption");
+    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.VIDEASTE).not.toContain("description");
   });
 });
 

@@ -61,7 +61,7 @@ const STATUS_TO_SECTION: Record<string, string> = {
   CLIENT_REVISION: "render",
   // CM : validation / légende / publication
   EDIT_REVIEW: "render",
-  READY_FOR_CM: "captionIg",
+  READY_FOR_CM: "description",
   AWAITING_CLIENT: "clientValidation",
   SCHEDULED: "publish",
   // ADMIN

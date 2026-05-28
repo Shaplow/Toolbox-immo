@@ -103,7 +103,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   // Calcul des steps côté serveur pour que le client n'ait pas à les dériver.
   const steps = computePublicationSteps({
-    slot: { status: slot.status, caption: slot.caption, description: slot.description },
+    slot: { status: slot.status, description: slot.description },
     pattern: slot.pattern ?? null,
     renderJob: slot.render ?? null,
     coverPack: slot.render?.coverFramePack ?? null,

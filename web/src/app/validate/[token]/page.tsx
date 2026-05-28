@@ -41,7 +41,6 @@ export default async function ValidatePage({ params }: PageProps) {
       id: true,
       status: true,
       title: true,
-      caption: true,
       description: true,
       scheduledAt: true,
       needsClientValidationOverride: true,
@@ -148,20 +147,10 @@ export default async function ValidatePage({ params }: PageProps) {
           </section>
 
           {/* ── Légende Instagram ──────────────────────────────────────────── */}
-          {slot.caption && (
-            <section className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                Légende Instagram
-              </h3>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap">{slot.caption}</p>
-            </section>
-          )}
-
-          {/* ── Description / Notes ─────────────────────────────────────────── */}
           {slot.description && (
             <section className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                Description
+                Légende Instagram
               </h3>
               <p className="text-sm text-gray-700 whitespace-pre-wrap">{slot.description}</p>
             </section>

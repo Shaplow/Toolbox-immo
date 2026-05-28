@@ -166,7 +166,6 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
     ADMIN: [
       "status",
       "title",
-      "caption",
       "notes",
       "description",
       "templateId",
@@ -194,9 +193,9 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
       "descriptionPromptIdOverride",
     ],
     MONTEUR: ["status", "notes", "description"],
-    // CM édite la légende IG (caption) en plus de notes/description.
-    // Sans ce champ, CaptionIgSection donne une fausse confirmation de succès (B1).
-    CM: ["status", "title", "caption", "notes", "description"],
+    // CM édite la légende IG (champ `description` depuis la fusion Phase 2.1)
+    // en plus de notes.
+    CM: ["status", "title", "notes", "description"],
     // VIDEASTE : peut changer le statut (ex: shoot annulé) et écrire des notes
     // (compte-rendu sur place). Ne touche pas aux assignations ni au planning.
     VIDEASTE: ["status", "notes"],
