@@ -1,4 +1,4 @@
-import type { VideoSequenceSlot } from "@/types/template";
+import type { TemplateJSON, VideoBlock, VideoSequenceSlot } from "@/types/template";
 
 /** Résume la source vidéo d'un slot en une chaîne lisible. */
 export function getSlotSourceSummary(
@@ -26,4 +26,57 @@ export function getOverlaySummary(slot: VideoSequenceSlot): string {
   if (mode === "raw") return "clip seul";
   if (mode === "groups") return "groupes";
   return "avec infos";
+}
+
+/**
+ * Construit un slot par défaut depuis un VideoBlock du canvas. Utilisé par
+ * la migration et par l'éditeur quand on ajoute le premier clip.
+ *
+ * Copie les références source (libraryId, binding, selectionRule) du
+ * VideoBlock pour que le clip pointe au même contenu que le mode legacy
+ * "single video". `videoBlockId` pointe sur le block lui-même pour le
+ * positionnement (x/y/w/h/fit) lors du composite FFmpeg.
+ */
+export function buildDefaultSlotFromVideoBlock(
+  videoBlock: VideoBlock,
+  options: { id: string; label?: string } = { id: "" },
+): VideoSequenceSlot {
+  return {
+    id: options.id,
+    label: options.label ?? "Vidéo",
+    videoBlockId: videoBlock.id,
+    binding: videoBlock.binding,
+    libraryId: videoBlock.libraryId,
+    selectionRule: videoBlock.selectionRule,
+  };
+}
+
+/**
+ * Garantit qu'un template a au moins un slot dans videoSequence si un
+ * VideoBlock existe. Utilisé pour migrer doucement les templates legacy
+ * vers le mode séquence unifié sans casser le rendu en attendant la
+ * migration DB.
+ *
+ * Retourne `template` inchangé si :
+ * - videoSequence est déjà non-vide, OU
+ * - aucun VideoBlock n'existe dans le template.
+ *
+ * Sinon, retourne une copie avec videoSequence = [slot par défaut].
+ *
+ * Pure : ne mute pas l'input. Idempotent.
+ */
+export function ensureVideoSequence(
+  template: TemplateJSON,
+  generateId: () => string = () => Math.random().toString(36).slice(2, 8),
+): TemplateJSON {
+  const slots = template.videoSequence ?? [];
+  if (slots.length > 0) return template;
+  const videoBlock = template.blocks.find(
+    (b): b is VideoBlock => b.type === "video",
+  );
+  if (!videoBlock) return template;
+  return {
+    ...template,
+    videoSequence: [buildDefaultSlotFromVideoBlock(videoBlock, { id: generateId() })],
+  };
 }

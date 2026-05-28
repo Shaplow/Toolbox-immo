@@ -546,6 +546,21 @@ export interface VideoSequenceSlot {
   overlayGroupIds?: string[];
   /** Cap optionnel sur la durée de ce clip en secondes. */
   maxDuration?: number;
+  /**
+   * Fondu d'entrée audio en secondes appliqué au début de ce clip.
+   * Implémenté côté Python (`template_composite.py`) via le filtre afade :
+   * la rampe démarre au boundary du slot et dure `fadeIn` secondes.
+   * Défaut 0 (pas de fondu).
+   */
+  fadeIn?: number;
+  /**
+   * Fondu de sortie audio en secondes appliqué à la fin de ce clip.
+   * Implémenté côté Python (`template_composite.py`) via le filtre afade :
+   * la rampe démarre `fadeOut` secondes avant le boundary suivant et termine
+   * au boundary. Prioritaire sur le `fadeIn` du slot suivant (overlap).
+   * Défaut 0 (pas de fondu).
+   */
+  fadeOut?: number;
 }
 
 // ─── Template JSON (structure complète) ────────────────────────────────────────
