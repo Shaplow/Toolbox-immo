@@ -494,7 +494,8 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
               {/* ── Section 4 : Génération ── */}
               <Section title="Génération">
                 <ToggleField
-                  label="Captions"
+                  label="Sous-titres auto"
+                  hint="Génère et brûle des sous-titres sur la vidéo finale. Sinon, aucune étape captions n'apparaît dans la fiche."
                   checked={values.needsCaptions}
                   onChange={(v) => set("needsCaptions", v)}
                 />
@@ -547,7 +548,8 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
                   </FormField>
                 )}
                 <ToggleField
-                  label="Validation client"
+                  label="Validation client (magic link)"
+                  hint="Envoie un lien sans login au client pour valider la vidéo avant publication."
                   checked={values.needsClientValidation}
                   onChange={(v) => set("needsClientValidation", v)}
                 />
@@ -562,12 +564,14 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
                   </div>
                 )}
                 <ToggleField
-                  label="Rushes"
+                  label="Rushes vidéaste attendus"
+                  hint="Active l'étape « Montage » dans la fiche (le vidéaste livre des rushes, le monteur publie une version)."
                   checked={values.needsRushes}
                   onChange={(v) => set("needsRushes", v)}
                 />
                 <ToggleField
-                  label="Brief"
+                  label="Brief éditorial"
+                  hint="Ajoute un champ Brief à remplir avant de lancer la production (utile pour les patterns externes)."
                   checked={values.needsBrief}
                   onChange={(v) => set("needsBrief", v)}
                 />
