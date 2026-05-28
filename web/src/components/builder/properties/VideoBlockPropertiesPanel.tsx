@@ -1,6 +1,8 @@
+import { Film, ArrowRight } from "lucide-react";
 import type { VideoBlock } from "@/types/template";
 import { Slider } from "@/components/ui/Slider";
 import { ToggleSwitch } from "@/components/builder/shared/ToggleSwitch";
+import { useBuilderStore } from "@/lib/store/builderStore";
 import { Section } from "./Section";
 
 export function VideoBlockPropertiesPanel({
@@ -10,6 +12,23 @@ export function VideoBlockPropertiesPanel({
   block: VideoBlock;
   onChange: (c: Partial<VideoBlock>) => void;
 }) {
+  const selectSlot = useBuilderStore((s) => s.selectSlot);
+  const slots = useBuilderStore((s) => s.template.videoSequence ?? []);
+
+  // Recherche du slot associé à ce VideoBlock : soit par videoBlockId
+  // explicite, soit par binding partagé (slot.binding === block.binding).
+  const blockBinding = (block as { binding?: string }).binding;
+  const linkedSlot = slots.find(
+    (s) => s.videoBlockId === block.id || (blockBinding && s.binding === blockBinding),
+  );
+
+  function openSequence() {
+    if (linkedSlot) selectSlot(linkedSlot.id);
+    // BuilderClient écoute cet event pour basculer activePanel → "sequence"
+    // (évite un prop drilling de setActivePanel sur 3 niveaux).
+    window.dispatchEvent(new CustomEvent("builder:open-sequence-panel"));
+  }
+
   return (
     <Section label="Options vidéo">
       <div className="space-y-3">
@@ -61,9 +80,27 @@ export function VideoBlockPropertiesPanel({
           />
         )}
 
+        {/* Bridge vers le panneau Séquence — remplace l'ancienne phrase
+            "la source se configure dans l'onglet Séquence" par une action
+            directe qui ouvre le panneau et scrolle au bon slot. */}
+        <button
+          type="button"
+          onClick={openSequence}
+          className="w-full inline-flex items-center justify-between gap-2 px-3 py-2 mt-2 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors text-left"
+        >
+          <span className="flex items-center gap-2 min-w-0">
+            <Film size={13} className="text-indigo-600 shrink-0" />
+            <span className="text-xs font-medium text-indigo-900 truncate">
+              {linkedSlot
+                ? `Source : ${linkedSlot.label || "Clip sans nom"}`
+                : "Configurer la source vidéo"}
+            </span>
+          </span>
+          <ArrowRight size={12} className="text-indigo-600 shrink-0" />
+        </button>
         <p className="text-[10px] text-gray-400 leading-relaxed">
-          Ce bloc est le fond vidéo du template.<br />
-          La source et la bibliothèque se configurent dans l&apos;onglet <strong>Séquence</strong>.
+          La source (fichier / bibliothèque / clip de séquence) se configure
+          dans le panneau Séquence.
         </p>
       </div>
     </Section>

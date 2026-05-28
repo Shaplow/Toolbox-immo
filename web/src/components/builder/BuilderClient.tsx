@@ -219,6 +219,19 @@ export function BuilderClient({
     return () => window.removeEventListener("keydown", onKey);
   }, [handleSave]);
 
+  // L5 — Bridge entre VideoBlockPropertiesPanel (à droite) et le panneau
+  // Séquence (rail gauche). VideoBlockPropertiesPanel dispatche l'event
+  // builder:open-sequence-panel après avoir sélectionné son slot ; on
+  // ouvre alors le bon panneau ici sans avoir à propager setActivePanel
+  // dans le prop drilling de PropertiesPanel.
+  useEffect(() => {
+    function onOpenSequencePanel() {
+      setActivePanel("sequence");
+    }
+    window.addEventListener("builder:open-sequence-panel", onOpenSequencePanel);
+    return () => window.removeEventListener("builder:open-sequence-panel", onOpenSequencePanel);
+  }, []);
+
   // Guard fermeture / refresh / navigation externe quand des changements
   // sont en attente. Le navigateur affiche son prompt natif "Quitter ce
   // site ?". Pas de message custom (les browsers ignorent depuis 2017).

@@ -48,6 +48,20 @@ export function VideoSequencePanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // L5 — scroll au slot sélectionné quand l'ouverture est déclenchée
+  // depuis VideoBlockPropertiesPanel (le panneau vient juste de monter
+  // avec un selectedSlotId pré-positionné). Petit délai pour laisser
+  // le panel s'afficher avant de scroller.
+  useEffect(() => {
+    if (!selectedSlotId) return;
+    const t = setTimeout(() => {
+      document
+        .getElementById(`seq-slot-${selectedSlotId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+    return () => clearTimeout(t);
+  }, [selectedSlotId]);
+
   function addSlot() {
     const id = makeId();
     const videoBlocks = template.blocks.filter((b): b is VideoBlock => b.type === "video");
@@ -225,7 +239,7 @@ export function VideoSequencePanel({
                 )
               : undefined;
             return (
-              <div key={slot.id} className="border-b border-gray-100 last:border-b-0">
+              <div key={slot.id} id={`seq-slot-${slot.id}`} className="border-b border-gray-100 last:border-b-0">
                 {/* Slot row */}
                 <div
                   className={`flex items-center gap-1.5 px-2 py-2 cursor-pointer transition-colors ${
