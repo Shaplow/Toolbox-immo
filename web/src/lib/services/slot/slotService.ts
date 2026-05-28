@@ -21,9 +21,11 @@ import {
   ALLOWED_PATCH_FIELDS_BY_ROLE,
   canUserAccessSlot,
   isValidSlotStatus,
+  whereClauseForUser,
 } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
 import { logActivity } from "@/lib/services/slot/activity";
+import { syncSlotsPipelineStatuses } from "@/lib/services/slot/transitions";
 
 // ─── Types I/O ────────────────────────────────────────────────────────────────
 
@@ -575,4 +577,172 @@ export async function patchSlot(
     fields: safeJSON<Record<string, string>>(updated.fields, {}),
     fieldSchema: safeJSON<string[]>(updated.fieldSchema, []),
   };
+}
+
+// ─── listSlots ────────────────────────────────────────────────────────────────
+
+export interface ListSlotsFilters {
+  accountId?: string;
+  status?: string;
+  patternId?: string;
+  monteurId?: string;
+  cmId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+/**
+ * Liste les PublicationSlot accessibles à l'utilisateur, avec filtres optionnels.
+ *
+ * - Scope rôle injecté en premier dans AND (les filtres URL ne peuvent jamais
+ *   l'écraser : protection contre un filtre `id=X` qui viendrait spread sur
+ *   le clause USER `id:"__never__"`).
+ * - `monteurId` / `cmId` sont des raffinements UX pour l'ADMIN ; pour un
+ *   MONTEUR/CM, l'intersection AND maintient le scope sécurisé.
+ * - Limite hard à 500 ; `hasMore` indique au client qu'il a atteint la borne.
+ * - Rattrapage opportuniste : `syncSlotsPipelineStatuses` met à jour les slots
+ *   dont le render PROCESSING/DONE doit faire transitionner vers IN_PROGRESS/READY_FOR_CM
+ *   (best-effort, non bloquant). Le statut renvoyé reflète immédiatement la transition.
+ *
+ * Throw :
+ *  - `ForbiddenError` si l'appelant est `EXTERNAL_GENERATOR` (pas d'accès pipeline).
+ */
+export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
+  const role = toUserRole(ctx.effectiveUser.role);
+  const userId = ctx.effectiveUser.id;
+
+  if (role === "EXTERNAL_GENERATOR") {
+    throw new ForbiddenError("Accès refusé");
+  }
+
+  const roleScope = whereClauseForUser(role, userId);
+
+  const slots = await prisma.publicationSlot.findMany({
+    where: {
+      AND: [
+        roleScope,
+        filters.accountId ? { accountId: filters.accountId } : {},
+        filters.status ? { status: filters.status } : {},
+        filters.patternId ? { patternId: filters.patternId } : {},
+        filters.monteurId ? { assigneeMonteurId: filters.monteurId } : {},
+        filters.cmId ? { assigneeCmId: filters.cmId } : {},
+        filters.dateFrom || filters.dateTo
+          ? {
+              scheduledAt: {
+                ...(filters.dateFrom ? { gte: new Date(filters.dateFrom) } : {}),
+                ...(filters.dateTo ? { lte: new Date(filters.dateTo) } : {}),
+              },
+            }
+          : {},
+      ],
+    },
+    orderBy: { scheduledAt: "asc" },
+    take: 500,
+    include: {
+      account: { select: { id: true, name: true, handle: true } },
+      template: { select: { id: true, name: true } },
+      render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
+      // pattern.source + needsCaptions nécessaires pour syncSlotsPipelineStatuses.
+      // needs* + allows* pour l'affichage des valeurs héritées dans les
+      // OverrideSelect du SlotDetailPanel (Cohérence Workflows Phase 4).
+      pattern: {
+        select: {
+          label: true,
+          source: true,
+          needsCaptions: true,
+          needsClientValidation: true,
+          allowsClientRevision: true,
+          needsDescription: true,
+          needsRushes: true,
+          needsBrief: true,
+          // Phase 5 — coverMode pour OverrideEnumSelect dans SlotDetailPanel
+          coverMode: true,
+        },
+      },
+      captionJobs: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { status: true },
+      },
+    },
+  });
+
+  const updates = await syncSlotsPipelineStatuses(
+    prisma,
+    slots.map((s) => ({
+      id: s.id,
+      status: s.status,
+      pattern: s.pattern
+        ? { source: s.pattern.source, needsCaptions: s.pattern.needsCaptions }
+        : null,
+      render: s.render ? { status: s.render.status } : null,
+      captionJobs: s.captionJobs.map((c) => ({ status: c.status })),
+    })),
+  );
+
+  return {
+    slots: slots.map((s) => ({
+      ...s,
+      status: updates.get(s.id) ?? s.status,
+      fields: safeJSON<Record<string, string>>(s.fields, {}),
+      fieldSchema: safeJSON<string[]>(s.fieldSchema, []),
+    })),
+    hasMore: slots.length === 500,
+  };
+}
+
+// ─── getSlot ──────────────────────────────────────────────────────────────────
+
+/**
+ * Charge un PublicationSlot par id, scopé par rôle.
+ *
+ * 404 systématique si le slot n'existe pas OU n'est pas accessible selon le
+ * rôle — on ne distingue pas les deux cas (anti-énumération).
+ */
+export async function getSlot(id: string, ctx: UserContext) {
+  const role = toUserRole(ctx.effectiveUser.role);
+  const userId = ctx.effectiveUser.id;
+
+  const slot = await prisma.publicationSlot.findUnique({
+    where: { id },
+    include: {
+      account: { select: { id: true, name: true, handle: true } },
+      template: { select: { id: true, name: true } },
+      render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
+    },
+  });
+
+  if (!slot || !canUserAccessSlot(slot, role, userId)) {
+    throw new NotFoundError("Slot");
+  }
+
+  return {
+    ...slot,
+    fields: safeJSON<Record<string, string>>(slot.fields, {}),
+    fieldSchema: safeJSON<string[]>(slot.fieldSchema, []),
+  };
+}
+
+// ─── deleteSlot ───────────────────────────────────────────────────────────────
+
+/**
+ * Supprime un PublicationSlot (ADMIN uniquement).
+ *
+ * Renvoie 404 (pas 403) pour les non-ADMIN, par cohérence avec GET/PATCH :
+ * un non-admin ne doit pas savoir si le slot existe.
+ */
+export async function deleteSlot(id: string, ctx: UserContext) {
+  const role = toUserRole(ctx.effectiveUser.role);
+
+  if (role !== "ADMIN") {
+    throw new NotFoundError("Slot");
+  }
+
+  const slot = await prisma.publicationSlot.findUnique({ where: { id } });
+  if (!slot) {
+    throw new NotFoundError("Slot");
+  }
+
+  await prisma.publicationSlot.delete({ where: { id } });
+  return { ok: true };
 }
