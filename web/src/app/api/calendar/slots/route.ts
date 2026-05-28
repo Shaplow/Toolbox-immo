@@ -166,6 +166,10 @@ export async function POST(req: NextRequest) {
     needsRushesOverride,
     needsBriefOverride,
     coverModeOverride,
+    // Phase 2 (Cohérence Rôles) — pickers preset/prompt one-off
+    coverPresetIdOverride,
+    captionPresetIdOverride,
+    descriptionPromptIdOverride,
   } = body;
 
   // --- Résolution du pattern si fourni ---
@@ -257,6 +261,15 @@ export async function POST(req: NextRequest) {
         : {}),
       ...(coverModeOverride !== undefined
         ? { coverModeOverride: coverModeOverride as string | null }
+        : {}),
+      ...(coverPresetIdOverride !== undefined
+        ? { coverPresetIdOverride: coverPresetIdOverride as string | null }
+        : {}),
+      ...(captionPresetIdOverride !== undefined
+        ? { captionPresetIdOverride: captionPresetIdOverride as string | null }
+        : {}),
+      ...(descriptionPromptIdOverride !== undefined
+        ? { descriptionPromptIdOverride: descriptionPromptIdOverride as string | null }
         : {}),
     },
     include: {
