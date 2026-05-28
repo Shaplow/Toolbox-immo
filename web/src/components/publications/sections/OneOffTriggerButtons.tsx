@@ -31,9 +31,17 @@ interface Props {
   hasCurrentVersion: boolean;
   /** true si le slot n'a aucun Render lié (cas one-off). */
   hasNoRender: boolean;
-  /** Config résolue : indique si cover auto / captions sont attendus. */
-  needsCoverAuto: boolean;
-  needsCaptions: boolean;
+  /**
+   * Config résolue par resolveSlotConfig (override slot prime sur pattern).
+   * coverMode/captionPresetId nuls = ne pas afficher le bouton correspondant.
+   * Si coverMode="auto" mais coverPresetId null → bouton disabled avec tooltip.
+   */
+  resolvedConfig: {
+    coverMode: string; // "auto" | "manualSelect" | "none"
+    coverPresetId: string | null;
+    needsCaptions: boolean;
+    captionPresetId: string | null;
+  };
 }
 
 export function OneOffTriggerButtons({
@@ -41,16 +49,21 @@ export function OneOffTriggerButtons({
   isAdmin,
   hasCurrentVersion,
   hasNoRender,
-  needsCoverAuto,
-  needsCaptions,
+  resolvedConfig,
 }: Props) {
   const router = useRouter();
   const [coverLoading, setCoverLoading] = useState(false);
   const [captionsLoading, setCaptionsLoading] = useState(false);
 
+  // Affichage basé sur la config RÉSOLUE (override + pattern), pas le pattern brut
+  const showCoverButton = resolvedConfig.coverMode === "auto";
+  const showCaptionsButton = resolvedConfig.needsCaptions === true;
+  const coverDisabled = !resolvedConfig.coverPresetId;
+  const captionsDisabled = !resolvedConfig.captionPresetId;
+
   // Masquer si non applicable
   if (!isAdmin || !hasCurrentVersion || !hasNoRender) return null;
-  if (!needsCoverAuto && !needsCaptions) return null;
+  if (!showCoverButton && !showCaptionsButton) return null;
 
   async function trigger(action: "cover" | "captions") {
     const setLoading = action === "cover" ? setCoverLoading : setCaptionsLoading;
@@ -98,29 +111,39 @@ export function OneOffTriggerButtons({
         </div>
       </div>
       <div className="flex flex-wrap gap-2 mt-3">
-        {needsCoverAuto && (
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={coverLoading ? Loader2 : ImageIcon}
-            disabled={coverLoading}
-            onClick={() => void trigger("cover")}
-          >
-            {coverLoading ? "Lancement…" : "Lancer cover auto"}
-          </Button>
+        {showCoverButton && (
+          <span title={coverDisabled ? "Aucun preset cover défini (override slot ou pattern)" : undefined}>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={coverLoading ? Loader2 : ImageIcon}
+              disabled={coverLoading || coverDisabled}
+              onClick={() => void trigger("cover")}
+            >
+              {coverLoading ? "Lancement…" : "Lancer cover auto"}
+            </Button>
+          </span>
         )}
-        {needsCaptions && (
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={captionsLoading ? Loader2 : AlignLeft}
-            disabled={captionsLoading}
-            onClick={() => void trigger("captions")}
-          >
-            {captionsLoading ? "Lancement…" : "Lancer captions auto"}
-          </Button>
+        {showCaptionsButton && (
+          <span title={captionsDisabled ? "Aucun preset captions défini (override slot ou pattern)" : undefined}>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={captionsLoading ? Loader2 : AlignLeft}
+              disabled={captionsLoading || captionsDisabled}
+              onClick={() => void trigger("captions")}
+            >
+              {captionsLoading ? "Lancement…" : "Lancer captions auto"}
+            </Button>
+          </span>
         )}
       </div>
+      {(coverDisabled && showCoverButton) || (captionsDisabled && showCaptionsButton) ? (
+        <p className="text-[10px] text-amber-700 mt-2">
+          ⚠️ Configurez le preset manquant dans le SlotDetailPanel ou le pattern parent
+          pour activer le bouton.
+        </p>
+      ) : null}
     </section>
   );
 }
