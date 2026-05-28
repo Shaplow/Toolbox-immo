@@ -67,10 +67,25 @@ function safeJSON<T>(str: string | null | undefined, fallback: T): T {
   }
 }
 
-async function ensureUserExists(userId: string, fieldLabel: string): Promise<void> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) {
-    throw new ValidationError(`${fieldLabel} : utilisateur introuvable`);
+/**
+ * Vérifie qu'un user assignee existe ET a le rôle attendu. Partagé par
+ * `createSlot` et `patchSlot` pour garantir la même règle des deux côtés
+ * (sinon on peut créer un slot avec un CM en `assigneeMonteurId` mais ne pas
+ * pouvoir le re-PATCH — asymétrie repérée par le scan-repo 2026-05-28).
+ *
+ * ADMIN passe toujours (un admin peut endosser n'importe quel rôle d'assignee).
+ */
+async function assertAssigneeRole(
+  userId: string,
+  expectedRoles: readonly string[],
+  fieldLabel: string,
+): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  if (!user || !expectedRoles.includes(user.role ?? "")) {
+    throw new ValidationError(`${fieldLabel} : utilisateur invalide ou rôle incorrect`);
   }
 }
 
@@ -139,10 +154,16 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
     throw new ValidationError("scheduledAt invalide");
   }
 
-  // Validation existence des assignees référencés
-  if (resolvedAssigneeMonteurId) await ensureUserExists(resolvedAssigneeMonteurId, "assigneeMonteurId");
-  if (resolvedAssigneeCmId) await ensureUserExists(resolvedAssigneeCmId, "assigneeCmId");
-  if (resolvedAssigneeVideasteId) await ensureUserExists(resolvedAssigneeVideasteId, "assigneeVideasteId");
+  // Validation existence + rôle des assignees référencés (parité avec patchSlot).
+  if (resolvedAssigneeMonteurId) {
+    await assertAssigneeRole(resolvedAssigneeMonteurId, ["MONTEUR", "ADMIN"], "Monteur assignee");
+  }
+  if (resolvedAssigneeCmId) {
+    await assertAssigneeRole(resolvedAssigneeCmId, ["CM", "ADMIN"], "CM assignee");
+  }
+  if (resolvedAssigneeVideasteId) {
+    await assertAssigneeRole(resolvedAssigneeVideasteId, ["VIDEASTE", "ADMIN"], "Vidéaste assignee");
+  }
 
   const slot = await prisma.publicationSlot.create({
     data: {
@@ -373,31 +394,13 @@ export async function patchSlot(
   // M2 — Validation existence + rôle des assignees (déjà filtré côté ADMIN par
   // ALLOWED_PATCH_FIELDS_BY_ROLE — seul ADMIN possède ces champs).
   if (typeof assigneeMonteurId === "string") {
-    const monteur = await prisma.user.findUnique({
-      where: { id: assigneeMonteurId },
-      select: { role: true },
-    });
-    if (!monteur || !["MONTEUR", "ADMIN"].includes(monteur.role ?? "")) {
-      throw new ValidationError("Monteur assignee invalide");
-    }
+    await assertAssigneeRole(assigneeMonteurId, ["MONTEUR", "ADMIN"], "Monteur assignee");
   }
   if (typeof assigneeCmId === "string") {
-    const cm = await prisma.user.findUnique({
-      where: { id: assigneeCmId },
-      select: { role: true },
-    });
-    if (!cm || !["CM", "ADMIN"].includes(cm.role ?? "")) {
-      throw new ValidationError("CM assignee invalide");
-    }
+    await assertAssigneeRole(assigneeCmId, ["CM", "ADMIN"], "CM assignee");
   }
   if (typeof assigneeVideasteId === "string") {
-    const videaste = await prisma.user.findUnique({
-      where: { id: assigneeVideasteId },
-      select: { role: true },
-    });
-    if (!videaste || !["VIDEASTE", "ADMIN"].includes(videaste.role ?? "")) {
-      throw new ValidationError("Vidéaste assignee invalide");
-    }
+    await assertAssigneeRole(assigneeVideasteId, ["VIDEASTE", "ADMIN"], "Vidéaste assignee");
   }
 
   // ── Validation cross-field Phase 5 ─────────────────────────────────────────
