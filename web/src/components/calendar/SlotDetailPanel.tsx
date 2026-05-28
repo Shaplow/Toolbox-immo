@@ -51,6 +51,45 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
+  // Fetch presets/prompts pour les pickers (admin only).
+  // Cover presets dépendent du templateId du slot (via pattern ou direct).
+  useEffect(() => {
+    if (isRestricted) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [capRes, prmRes] = await Promise.all([
+          fetch("/api/caption-presets"),
+          fetch("/api/description/prompts"),
+        ]);
+        if (cancelled) return;
+        if (capRes.ok) {
+          setCaptionPresets(await capRes.json() as Array<{ id: string; name: string }>);
+        }
+        if (prmRes.ok) {
+          const prompts = await prmRes.json() as Array<{ id: string; name: string; isActive: boolean }>;
+          setDescriptionPrompts(prompts.filter((p) => p.isActive));
+        }
+      } catch {
+        // silencieux
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isRestricted]);
+
+  // Cover presets : fetch selon le templateId effectif du slot
+  useEffect(() => {
+    if (isRestricted) return;
+    const tplId = slot.templateId ?? null;
+    if (!tplId) { setCoverPresets([]); return; }
+    let cancelled = false;
+    void fetch(`/api/templates/${tplId}/cover-presets`)
+      .then((r) => (r.ok ? r.json() as Promise<Array<{ id: string; name: string }>> : []))
+      .then((data) => { if (!cancelled) setCoverPresets(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isRestricted, slot.templateId]);
+
   const [form, setForm] = useState({
     title: slot.title ?? "",
     caption: slot.caption ?? "",
@@ -58,14 +97,24 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
     status: slot.status,
     fieldSchema: slot.fieldSchema,
     fields: slot.fields,
-    // W2 + Cohérence Workflows Phase 4 — overrides per-slot. null = hérite.
-    needsClientValidationOverride: slot.needsClientValidationOverride ?? null,
-    allowsClientRevisionOverride: slot.allowsClientRevisionOverride ?? null,
+    // Cohérence Workflows Phase 4 — overrides per-slot (needs*). null = hérite.
+    // NOTE Phase 3 cohérence rôles : needsClientValidationOverride et
+    // allowsClientRevisionOverride sont retirés du panel pour centraliser
+    // l'édition dans la fiche publication (ClientValidationSection).
     needsCaptionsOverride: slot.needsCaptionsOverride ?? null,
     needsDescriptionOverride: slot.needsDescriptionOverride ?? null,
     needsRushesOverride: slot.needsRushesOverride ?? null,
     needsBriefOverride: slot.needsBriefOverride ?? null,
+    // Phase 5 — overrides one-off (cover/captions/description presets)
+    coverModeOverride: slot.coverModeOverride ?? null,
+    coverPresetIdOverride: slot.coverPresetIdOverride ?? null,
+    captionPresetIdOverride: slot.captionPresetIdOverride ?? null,
+    descriptionPromptIdOverride: slot.descriptionPromptIdOverride ?? null,
   });
+  // Listes pour les pickers (fetched on mount)
+  const [coverPresets, setCoverPresets] = useState<Array<{ id: string; name: string }>>([]);
+  const [captionPresets, setCaptionPresets] = useState<Array<{ id: string; name: string }>>([]);
+  const [descriptionPrompts, setDescriptionPrompts] = useState<Array<{ id: string; name: string }>>([]);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -108,12 +157,19 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
             status: form.status,
             fields: form.fields,
             fieldSchema: form.fieldSchema,
-            needsClientValidationOverride: form.needsClientValidationOverride,
-            allowsClientRevisionOverride: form.allowsClientRevisionOverride,
+            // Phase 4 — overrides needs* (booleans + enum description)
             needsCaptionsOverride: form.needsCaptionsOverride,
             needsDescriptionOverride: form.needsDescriptionOverride,
             needsRushesOverride: form.needsRushesOverride,
             needsBriefOverride: form.needsBriefOverride,
+            // Phase 5 — overrides one-off (presets/prompts)
+            coverModeOverride: form.coverModeOverride,
+            coverPresetIdOverride: form.coverPresetIdOverride,
+            captionPresetIdOverride: form.captionPresetIdOverride,
+            descriptionPromptIdOverride: form.descriptionPromptIdOverride,
+            // NOTE Phase 3 cohérence : needsClientValidationOverride et
+            // allowsClientRevisionOverride sont retirés ici — édition
+            // centralisée dans ClientValidationSection (fiche publication).
           };
 
       const res = await fetch(`/api/calendar/slots/${slot.id}`, {
@@ -314,29 +370,27 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
                   Laissez sur « Hériter » pour utiliser la valeur du pattern parent.
                   Forcer Oui/Non écrase pour ce slot uniquement.
                 </p>
-                <OverrideSelect
-                  label="Validation client requise"
-                  value={form.needsClientValidationOverride}
-                  inheritedValue={slot.pattern?.needsClientValidation ?? false}
-                  onChange={(v) => set("needsClientValidationOverride", v)}
-                />
-                <OverrideSelect
-                  label="Autoriser révisions client"
-                  value={form.allowsClientRevisionOverride}
-                  inheritedValue={slot.pattern?.allowsClientRevision ?? false}
-                  onChange={(v) => set("allowsClientRevisionOverride", v)}
-                  disabled={
-                    (form.needsClientValidationOverride === false) ||
-                    (form.needsClientValidationOverride === null &&
-                      slot.pattern?.needsClientValidation === false)
-                  }
-                />
+                <p className="text-[10px] text-fuchsia-600/90 italic bg-fuchsia-50 rounded px-2 py-1">
+                  💡 La validation client (et les révisions) se configure dans la
+                  fiche publication, pas ici.
+                </p>
                 <OverrideSelect
                   label="Sous-titres auto"
                   value={form.needsCaptionsOverride}
                   inheritedValue={slot.pattern?.needsCaptions ?? false}
                   onChange={(v) => set("needsCaptionsOverride", v)}
                 />
+                {/* Picker preset captions conditionnel */}
+                {(form.needsCaptionsOverride === true ||
+                  (form.needsCaptionsOverride === null && slot.pattern?.needsCaptions === true)) && (
+                  <PresetSelect
+                    label="Preset captions (override)"
+                    value={form.captionPresetIdOverride}
+                    options={captionPresets}
+                    inheritedHint="Hérité du pattern si non choisi"
+                    onChange={(v) => set("captionPresetIdOverride", v)}
+                  />
+                )}
                 <OverrideEnumSelect
                   label="Description"
                   value={form.needsDescriptionOverride}
@@ -349,6 +403,44 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
                     { value: "manualWrite", label: "Manuelle" },
                   ]}
                 />
+                {/* Picker prompt IA conditionnel */}
+                {(form.needsDescriptionOverride === "autoGenerate" ||
+                  (form.needsDescriptionOverride === null &&
+                    slot.pattern?.needsDescription === "autoGenerate")) && (
+                  <PresetSelect
+                    label="Prompt IA description (override)"
+                    value={form.descriptionPromptIdOverride}
+                    options={descriptionPrompts}
+                    inheritedHint="Hérité du pattern si non choisi"
+                    onChange={(v) => set("descriptionPromptIdOverride", v)}
+                  />
+                )}
+                <OverrideEnumSelect
+                  label="Cover automatique"
+                  value={form.coverModeOverride}
+                  inheritedValue={slot.pattern?.coverMode ?? "none"}
+                  onChange={(v) => set("coverModeOverride", v)}
+                  options={[
+                    { value: "none", label: "Aucune" },
+                    { value: "manualSelect", label: "Sélection manuelle" },
+                    { value: "auto", label: "Automatique" },
+                  ]}
+                />
+                {/* Picker preset cover conditionnel */}
+                {(form.coverModeOverride === "auto" ||
+                  (form.coverModeOverride === null && slot.pattern?.coverMode === "auto")) && (
+                  <PresetSelect
+                    label="Preset cover (override)"
+                    value={form.coverPresetIdOverride}
+                    options={coverPresets}
+                    inheritedHint={
+                      coverPresets.length === 0
+                        ? "Aucun preset disponible — ce slot doit avoir un template"
+                        : "Hérité du pattern si non choisi"
+                    }
+                    onChange={(v) => set("coverPresetIdOverride", v)}
+                  />
+                )}
                 <OverrideSelect
                   label="Rushes attendus"
                   value={form.needsRushesOverride}
@@ -541,6 +633,53 @@ function OverrideEnumSelect({
           <option key={opt.value} value={opt.value}>
             Forcer : {opt.label}
           </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/**
+ * PresetSelect — picker pour une référence de preset/prompt par ID.
+ * null/"" = hérite du pattern (pas de surcharge).
+ * Désactivé si aucun preset disponible.
+ */
+function PresetSelect({
+  label,
+  value,
+  options,
+  inheritedHint,
+  onChange,
+}: {
+  label: string;
+  value: string | null;
+  options: Array<{ id: string; name: string }>;
+  inheritedHint: string;
+  onChange: (v: string | null) => void;
+}) {
+  const isOverridden = value !== null;
+  return (
+    <label className="block">
+      <span className="text-xs text-gray-600 flex items-center gap-1">
+        {label}
+        {isOverridden && (
+          <span className="text-[10px] font-semibold text-fuchsia-700 bg-fuchsia-100 px-1 rounded">
+            ✎ override
+          </span>
+        )}
+      </span>
+      <select
+        value={value ?? ""}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(v === "" ? null : v);
+        }}
+        disabled={options.length === 0}
+        className="mt-1 w-full border border-fuchsia-200 rounded px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-fuchsia-300 disabled:opacity-50 disabled:bg-gray-50"
+      >
+        <option value="">{inheritedHint}</option>
+        {options.map((opt) => (
+          <option key={opt.id} value={opt.id}>{opt.name}</option>
         ))}
       </select>
     </label>

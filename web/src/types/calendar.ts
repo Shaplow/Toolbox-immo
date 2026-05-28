@@ -59,6 +59,8 @@ export interface PublicationSlot {
     needsDescription?: string;
     needsRushes?: boolean;
     needsBrief?: boolean;
+    // Phase 5 — coverMode hérité du pattern (pour comparaison à coverModeOverride)
+    coverMode?: string;
   } | null;
   assigneeMonteur?: { id: string; name: string | null } | null;
   assigneeCm?: { id: string; name: string | null } | null;

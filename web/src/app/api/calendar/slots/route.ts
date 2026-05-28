@@ -99,6 +99,8 @@ export async function GET(req: NextRequest) {
           needsDescription: true,
           needsRushes: true,
           needsBrief: true,
+          // Phase 5 — coverMode pour OverrideEnumSelect dans SlotDetailPanel
+          coverMode: true,
         },
       },
       captionJobs: {
