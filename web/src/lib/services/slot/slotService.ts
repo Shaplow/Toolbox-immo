@@ -25,7 +25,10 @@ import {
 } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
 import { logActivity } from "@/lib/services/slot/activity";
-import { syncSlotsPipelineStatuses } from "@/lib/services/slot/transitions";
+import {
+  canTransition,
+  syncSlotsPipelineStatuses,
+} from "@/lib/services/slot/transitions";
 
 // ─── Types I/O ────────────────────────────────────────────────────────────────
 
@@ -343,6 +346,36 @@ export async function patchSlot(
     throw new ValidationError("Statut invalide.");
   }
 
+  // Garde anti-bypass : un ADMIN peut techniquement PATCH status="PUBLISHED"
+  // depuis le SlotDetailPanel (matrice STATUS_TRANSITIONS l'autorise), mais
+  // cela court-circuiterait /mark-published qui pose publishedUrl +
+  // publishedAt + activity PUBLISHED. Sans ces champs, le slot apparaît
+  // "publié" sans URL et la worklist CM ne se met pas à jour cohéremment.
+  // Forcer le passage par /mark-published, même pour les ADMIN.
+  if (status === "PUBLISHED") {
+    throw new ForbiddenError(
+      "Pour marquer un slot comme publié, utilisez l'action « Marquer publié » dans la fiche publication. " +
+        "Cela enregistre aussi l'URL Instagram et la date de publication.",
+    );
+  }
+
+  // Enforcement de la matrice STATUS_TRANSITIONS au niveau API.
+  // Avant ce check : MONTEUR/CM pouvaient envoyer PATCH avec n'importe
+  // quel statut hors RESERVED_TERMINAL_STATUSES, même sauter des étapes
+  // (DRAFT → SCHEDULED, EDIT_REVIEW → READY_FOR_CM sans validation CM, etc.).
+  // canTransition est déjà appliqué dans le select du SlotDetailPanel pour
+  // afficher la liste, mais la matrice n'était pas enforced côté serveur.
+  // ADMIN bypass total est dans canTransition lui-même.
+  if (
+    typeof status === "string" &&
+    status !== slot.status &&
+    !canTransition(slot.status, status, role)
+  ) {
+    throw new ForbiddenError(
+      `Transition de statut interdite pour votre rôle : ${slot.status} → ${status}`,
+    );
+  }
+
   if (
     scheduledAt !== undefined &&
     typeof scheduledAt === "string" &&
@@ -403,6 +436,56 @@ export async function patchSlot(
     await assertAssigneeRole(assigneeVideasteId, ["VIDEASTE", "ADMIN"], "Vidéaste assignee");
   }
 
+  // Si patternId change, on doit :
+  //   1. Vérifier que le nouveau pattern appartient au MÊME compte que le slot
+  //      (cross-account leak : un pattern de compte B pour un slot de compte A
+  //      casse toute la résolution needs*/cover/assignees aval).
+  //   2. Charger ses needs* pour que la validation cross-field ci-dessous
+  //      utilise le NOUVEAU pattern, pas l'ancien. Sans ce refetch,
+  //      changer le pattern + activer needsCaptionsOverride en un seul PATCH
+  //      valide la cohérence contre l'ancien pattern → la nouvelle config
+  //      peut être incohérente sans alerte.
+  let effectivePattern = slot.pattern;
+  if (typeof patternId === "string") {
+    const newPattern = await prisma.accountPattern.findUnique({
+      where: { id: patternId },
+      select: {
+        accountId: true,
+        captionPresetId: true,
+        descriptionPromptId: true,
+        needsCaptions: true,
+        needsDescription: true,
+        coverMode: true,
+        coverConfig: true,
+      },
+    });
+    if (!newPattern) {
+      throw new ValidationError("Pattern introuvable");
+    }
+    // Le slot.accountId n'est pas dans le select initial — on le charge.
+    const slotAccount = await prisma.publicationSlot.findUnique({
+      where: { id },
+      select: { accountId: true },
+    });
+    if (slotAccount && newPattern.accountId !== slotAccount.accountId) {
+      throw new ValidationError(
+        "Le pattern choisi n'appartient pas au compte Instagram de cette publication.",
+      );
+    }
+    effectivePattern = {
+      captionPresetId: newPattern.captionPresetId,
+      descriptionPromptId: newPattern.descriptionPromptId,
+      needsCaptions: newPattern.needsCaptions,
+      needsDescription: newPattern.needsDescription,
+      coverMode: newPattern.coverMode,
+      coverConfig: newPattern.coverConfig,
+    };
+  }
+  // patternId="" / null : reset l'effective pattern à null pour la validation.
+  if (patternId === null || patternId === "") {
+    effectivePattern = null;
+  }
+
   // ── Validation cross-field Phase 5 ─────────────────────────────────────────
   // Simule l'état post-update (slot ∪ body diff) pour vérifier la cohérence
   // toggles ↔ presets. Évite de sauver un slot où la cover auto est activée
@@ -415,9 +498,9 @@ export async function patchSlot(
     captionPresetIdOverride !== undefined
       ? (captionPresetIdOverride as string | null)
       : slot.captionPresetIdOverride;
-  const resolvedNeedsCaptions = postUpdateNeedsCaptions ?? slot.pattern?.needsCaptions ?? false;
+  const resolvedNeedsCaptions = postUpdateNeedsCaptions ?? effectivePattern?.needsCaptions ?? false;
   const resolvedCaptionPresetId =
-    postUpdateCaptionPresetId ?? slot.pattern?.captionPresetId ?? null;
+    postUpdateCaptionPresetId ?? effectivePattern?.captionPresetId ?? null;
   if (resolvedNeedsCaptions === true && !resolvedCaptionPresetId) {
     throw new ValidationError(
       "Sous-titres auto activés mais aucun preset captions défini (ni au slot, ni au pattern)",
@@ -433,9 +516,9 @@ export async function patchSlot(
       ? (descriptionPromptIdOverride as string | null)
       : slot.descriptionPromptIdOverride;
   const resolvedNeedsDescription =
-    postUpdateNeedsDescription ?? slot.pattern?.needsDescription ?? "none";
+    postUpdateNeedsDescription ?? effectivePattern?.needsDescription ?? "none";
   const resolvedDescriptionPromptId =
-    postUpdateDescriptionPromptId ?? slot.pattern?.descriptionPromptId ?? null;
+    postUpdateDescriptionPromptId ?? effectivePattern?.descriptionPromptId ?? null;
   if (resolvedNeedsDescription === "autoGenerate" && !resolvedDescriptionPromptId) {
     throw new ValidationError(
       "Description auto activée mais aucun prompt IA défini (ni au slot, ni au pattern)",
@@ -450,8 +533,8 @@ export async function patchSlot(
     coverPresetIdOverride !== undefined
       ? (coverPresetIdOverride as string | null)
       : slot.coverPresetIdOverride;
-  const resolvedCoverMode = postUpdateCoverMode ?? slot.pattern?.coverMode ?? "none";
-  const patternCoverPresetIdRaw = slot.pattern?.coverConfig;
+  const resolvedCoverMode = postUpdateCoverMode ?? effectivePattern?.coverMode ?? "none";
+  const patternCoverPresetIdRaw = effectivePattern?.coverConfig;
   const patternCoverPresetId =
     patternCoverPresetIdRaw &&
     typeof patternCoverPresetIdRaw === "object" &&
@@ -556,10 +639,15 @@ export async function patchSlot(
   }
 
   // Log d'activité — ASSIGNEE_CHANGED si l'un des assignees a changé.
+  // VIDEASTE inclus depuis le fix P3 — le vidéaste fait partie de
+  // l'équipe pipeline et son ré-assignement doit être traçable comme les
+  // deux autres rôles.
   const monteurChanged =
     assigneeMonteurId !== undefined && assigneeMonteurId !== slot.assigneeMonteurId;
   const cmChanged = assigneeCmId !== undefined && assigneeCmId !== slot.assigneeCmId;
-  if (monteurChanged || cmChanged) {
+  const videasteChanged =
+    assigneeVideasteId !== undefined && assigneeVideasteId !== slot.assigneeVideasteId;
+  if (monteurChanged || cmChanged || videasteChanged) {
     await logActivity(prisma, {
       slotId: id,
       actorId: userId,
@@ -570,6 +658,9 @@ export async function patchSlot(
           : {}),
         ...(cmChanged
           ? { cm: { from: slot.assigneeCmId, to: assigneeCmId ?? null } }
+          : {}),
+        ...(videasteChanged
+          ? { videaste: { from: slot.assigneeVideasteId, to: assigneeVideasteId ?? null } }
           : {}),
       },
     });
