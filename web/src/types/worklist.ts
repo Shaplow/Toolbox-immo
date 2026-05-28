@@ -57,7 +57,7 @@ export interface WorklistSlot {
  * - "in_progress" : En cours — IN_EDIT, EDIT_REVIEW.
  * - "waiting"     : En attente client — EDIT_APPROVED, READY_FOR_CM, CAPTIONS_PENDING.
  *                   Informatif seulement (le monteur ne peut rien faire de plus).
- * - null          : Statut exclu de la worklist Monteur (DRAFT, SCHEDULED, PUBLISHED, etc.).
+ * - null          : Statut exclu de la worklist Monteur (SCHEDULED, PUBLISHED, etc.).
  */
 export type MonteurSection = "overdue" | "todo" | "in_progress" | "waiting";
 

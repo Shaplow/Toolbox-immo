@@ -137,20 +137,28 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
     }
   };
 
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
   const toggleActive = async (p: PromptRow) => {
+    if (togglingId) return; // déjà une requête en vol — ignore le double-clic
     const nextActive = !p.isActive;
-    const res = await fetch(`/api/description/prompts/${p.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive: nextActive }),
-    });
-    if (!res.ok) {
-      toast.error("Erreur lors de la mise à jour");
-      return;
+    setTogglingId(p.id);
+    try {
+      const res = await fetch(`/api/description/prompts/${p.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: nextActive }),
+      });
+      if (!res.ok) {
+        toast.error("Erreur lors de la mise à jour");
+        return;
+      }
+      const data = (await res.json()) as PromptRow;
+      setPrompts((prev) => prev.map((row) => (row.id === p.id ? data : row)));
+      toast.success(nextActive ? "Prompt activé." : "Prompt désactivé.");
+    } finally {
+      setTogglingId(null);
     }
-    const data = (await res.json()) as PromptRow;
-    setPrompts((prev) => prev.map((row) => (row.id === p.id ? data : row)));
-    toast.success(nextActive ? "Prompt activé." : "Prompt désactivé.");
   };
 
   const activeCount = prompts.filter((p) => p.isActive).length;
@@ -252,6 +260,7 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
                     size="sm"
                     icon={p.isActive ? Eye : EyeOff}
                     onClick={() => void toggleActive(p)}
+                    disabled={togglingId === p.id}
                     title={p.isActive ? "Désactiver (masquer dans les pickers)" : "Activer (rendre dispo dans les pickers)"}
                   >
                     <span className="sr-only">{p.isActive ? "Désactiver" : "Activer"}</span>
