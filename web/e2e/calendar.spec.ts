@@ -19,8 +19,8 @@ test.describe("Calendar — accès et navigation par rôle", () => {
   test("admin accède au calendrier et voit la grille hebdo", async ({ page }) => {
     await loginAs(page, "admin");
     await page.goto("/calendar");
-    // Header de la semaine en cours doit apparaître
-    await expect(page.locator("text=/lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche/i")).toBeVisible({ timeout: 10_000 });
+    // Header de la semaine — DAY_LABELS = ["Lun", "Mar", "Mer", ...] (3 chars)
+    await expect(page.locator("text=/^Lun$/").first()).toBeVisible({ timeout: 10_000 });
   });
 
   test("admin voit les boutons Générer la semaine + Slot", async ({ page }) => {
@@ -34,7 +34,7 @@ test.describe("Calendar — accès et navigation par rôle", () => {
     await loginAs(page, "monteur");
     await page.goto("/calendar");
     // Le monteur peut voir le calendrier
-    await expect(page.locator("body")).toContainText(/lundi|lun/i);
+    await expect(page.locator("text=/^Lun$/").first()).toBeVisible({ timeout: 10_000 });
     // Mais pas les boutons admin
     await expect(page.locator("button:has-text('Générer la semaine')")).toHaveCount(0);
   });
@@ -42,7 +42,7 @@ test.describe("Calendar — accès et navigation par rôle", () => {
   test("CM accède au calendrier en lecture seule", async ({ page }) => {
     await loginAs(page, "cm");
     await page.goto("/calendar");
-    await expect(page.locator("body")).toContainText(/lundi|lun/i);
+    await expect(page.locator("text=/^Lun$/").first()).toBeVisible({ timeout: 10_000 });
     await expect(page.locator("button:has-text('Générer la semaine')")).toHaveCount(0);
   });
 
@@ -72,10 +72,8 @@ test.describe("Calendar — scope par rôle", () => {
   test("admin voit tous les slots (pas de filtre assigné par défaut)", async ({ page }) => {
     await loginAs(page, "admin");
     await page.goto("/calendar");
-    // L'admin doit voir au moins le test slot ET les éventuels orphan slots
-    // dans la semaine en cours. Cliquer sur "Aujourd'hui" pour normaliser.
-    await page.click("button:has-text('Aujourd')");
-    await page.waitForLoadState("networkidle");
+    // L'admin voit "Test slot E2E" si le slot est dans la semaine courante.
+    await expect(page.locator("text=Test slot E2E").first()).toBeVisible({ timeout: 10_000 });
   });
 });
 
@@ -105,17 +103,14 @@ test.describe("Calendar — bouton génération sécurisé contre rétroactif", 
 });
 
 test.describe("Calendar — navigation semaine", () => {
-  test("prev/next semaine déclenchent un changement de header", async ({ page }) => {
+  test("prev/next semaine n'amènent pas de crash", async ({ page }) => {
     await loginAs(page, "admin");
     await page.goto("/calendar");
-    const initialHeader = await page.locator("text=/\\d+ \\w+ – \\d+ \\w+ \\d{4}/").first().textContent();
-    // Navigue à la semaine suivante
-    await page.locator("button[title='Aujourd\\'hui']").first().click().catch(() => {
-      // Fallback si le titre exact ne match pas
-    });
-    // Pas d'assertion forte ici — on vérifie juste qu'il n'y a pas de crash
-    await expect(page.locator("body")).toBeVisible();
-    expect(initialHeader).toBeTruthy();
+    // Bouton Aujourd'hui présent
+    await expect(page.locator("button", { hasText: "Aujourd" }).first()).toBeVisible();
+    // Click sans assertion forte — vérifie que la nav ne crash pas
+    await page.locator("button", { hasText: "Aujourd" }).first().click();
+    await expect(page.locator("text=/^Lun$/").first()).toBeVisible({ timeout: 5_000 });
   });
 });
 

@@ -80,8 +80,13 @@ function createDb() {
 
 function applyMigrations() {
   const testDbUrl = `postgresql://${PG_USER}:${PG_PASSWORD}@${PG_HOST}:${PG_PORT}/${TEST_DB_NAME}`;
-  console.log("▶ npx prisma migrate deploy (sur toolbox_test)");
-  execSync("npx prisma migrate deploy", {
+  // db push synchronise le schéma sans suivre l'historique des migrations —
+  // adapté aux DB de test recréées de zéro à chaque run. Évite les
+  // surprises liées à l'ordre alphabétique des dossiers de migrations
+  // (ex : `20260526_xxx` qui se trie après `20260526131121_xxx` selon
+  // ASCII et tombe au mauvais moment).
+  console.log("▶ npx prisma db push (sur toolbox_test, sync schema sans historique)");
+  execSync("npx prisma db push --skip-generate --accept-data-loss", {
     stdio: "inherit",
     cwd: webDir,
     env: { ...process.env, DATABASE_URL: testDbUrl },
