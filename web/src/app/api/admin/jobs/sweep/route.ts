@@ -57,6 +57,28 @@ export async function POST() {
     }),
   ]);
 
+  // ── Render ────────────────────────────────────────────────────────────────
+  // Un render qui reste en PROCESSING ou PENDING après le seuil signifie
+  // que le webhook RunPod n'est jamais arrivé (NEXTAUTH_URL mal configuré,
+  // coupure transitoire, redémarrage serveur mid-job). Sans sweep, le
+  // slot reste bloqué en IN_PROGRESS indéfiniment et l'admin doit
+  // force-fail à la main. Mêmes seuils que captions/transcription pour
+  // cohérence opérationnelle. RenderStatus n'a que PENDING/PROCESSING/
+  // DONE/ERROR — pas de QUEUED distinct.
+  // Render n'a pas de updatedAt — on utilise createdAt (la date ne change
+  // jamais, donc un render créé il y a 2h dans PROCESSING est stale par
+  // définition).
+  const [renderProcessing, renderPending] = await Promise.all([
+    prisma.render.updateMany({
+      where: { status: "PROCESSING", createdAt: { lt: processingCutoff } },
+      data:  { status: "ERROR", errorMsg: "Render bloqué en PROCESSING — webhook RunPod jamais reçu (sweep automatique)" },
+    }),
+    prisma.render.updateMany({
+      where: { status: "PENDING", createdAt: { lt: queuedCutoff } },
+      data:  { status: "ERROR", errorMsg: "Render bloqué en PENDING — soumission RunPod jamais finalisée (sweep automatique)" },
+    }),
+  ]);
+
   const summary = {
     captions: {
       processing: captionProcessing.count,
@@ -66,9 +88,14 @@ export async function POST() {
       processing: transcriptionProcessing.count,
       queued:     transcriptionQueued.count,
     },
+    renders: {
+      processing: renderProcessing.count,
+      pending:    renderPending.count,
+    },
     total:
       captionProcessing.count + captionQueued.count +
-      transcriptionProcessing.count + transcriptionQueued.count,
+      transcriptionProcessing.count + transcriptionQueued.count +
+      renderProcessing.count + renderPending.count,
   };
 
   console.info("[admin/jobs/sweep] Sweep terminé par", userContext.actualUser.id, "—", JSON.stringify(summary));
