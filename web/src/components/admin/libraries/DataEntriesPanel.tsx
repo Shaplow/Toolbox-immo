@@ -477,8 +477,23 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
         <p className="text-sm text-gray-400">Chargement…</p>
       ) : entries.length === 0 ? (
         <div className="text-center py-12 text-sm text-gray-500">
-          <p className="mb-2 font-medium">Aucune entrée.</p>
-          <p className="mb-3">Importez un fichier CSV — la première ligne doit contenir les noms des colonnes.</p>
+          <p className="mb-2 font-medium">Aucune entrée pour le moment.</p>
+          <p className="mb-3">Glisse-dépose un CSV n&apos;importe où sur la page, ou utilise le bouton ci-dessous.</p>
+          <div className="flex items-center justify-center gap-2 mb-3 flex-wrap">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+            >
+              <Upload size={14} /> Importer mon premier CSV
+            </button>
+            <button
+              onClick={() => downloadCSVFromColumns(columns, campaign?.name ?? "campagne")}
+              className="inline-flex items-center gap-2 px-3 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50"
+            >
+              <Download size={13} /> Modèle CSV
+            </button>
+          </div>
           <p className="text-xs text-gray-400 mb-1">
             Colonnes réservées (exclues des champs) : <code className="bg-gray-100 px-1 rounded">set_tag</code>, <code className="bg-gray-100 px-1 rounded">category</code>
           </p>
