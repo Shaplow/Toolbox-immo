@@ -13,11 +13,18 @@ import {
   TERMINAL_STATUSES,
 } from "@/types/worklist";
 
-// Statuts à inclure dans la worklist CM.
+// Statuts à inclure dans la worklist CM. Doit rester aligné avec
+// CM_SECTION_MAP dans worklist.ts (sinon un statut mappé en section
+// mais absent du filtre Prisma cause une perte silencieuse de slots).
+//
+// AWAITING_CLIENT / CLIENT_REVISION : le CM continue de bosser sur
+// cover/légende/description pendant la validation client.
 const CM_STATUSES: SlotStatus[] = [
   "EDIT_APPROVED",
   "CAPTIONS_PENDING",
   "READY_FOR_CM",
+  "AWAITING_CLIENT",
+  "CLIENT_REVISION",
   "SCHEDULED",
   "PUBLISHED",
 ];

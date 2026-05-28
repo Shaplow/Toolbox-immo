@@ -13,10 +13,14 @@ import {
   TERMINAL_STATUSES,
 } from "@/types/worklist";
 
-// Statuts à inclure dans la worklist Monteur. DRAFT inclus : un slot
-// assigné mais encore en brouillon doit rester visible — sinon l'admin
-// qui s'auto-assigne sur un slot fraîchement créé (avant passage en
-// PLANNED) ne le voit nulle part.
+// Statuts à inclure dans la worklist Monteur. Doit rester aligné avec
+// MONTEUR_SECTION_MAP dans worklist.ts (sinon un statut mappé en section
+// mais absent du filtre Prisma cause une perte silencieuse de slots).
+//
+// DRAFT : slot assigné mais encore brouillon (admin qui s'auto-assigne
+// avant passage en PLANNED).
+// CLIENT_REVISION : le client a refusé, le monteur doit corriger.
+// AWAITING_CLIENT : informatif (envoyé au client) — affiché en "waiting".
 const MONTEUR_STATUSES: SlotStatus[] = [
   "DRAFT",
   "PLANNED",
@@ -27,6 +31,8 @@ const MONTEUR_STATUSES: SlotStatus[] = [
   "EDIT_APPROVED",
   "CAPTIONS_PENDING",
   "READY_FOR_CM",
+  "AWAITING_CLIENT",
+  "CLIENT_REVISION",
 ];
 
 interface HomeMonteurProps {
