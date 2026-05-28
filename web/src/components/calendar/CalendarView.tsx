@@ -260,12 +260,14 @@ export function CalendarView({
     setConfirmGenOpen(false);
     setGenerating(true);
     try {
+      const dateToEnd = addDays(weekStart, 6);
+      dateToEnd.setHours(23, 59, 59, 999);
       const res = await fetch("/api/calendar/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           dateFrom: dateFrom.toISOString(),
-          dateTo: addDays(weekStart, 6).toISOString(),
+          dateTo: dateToEnd.toISOString(),
         }),
       });
       if (!res.ok) throw new Error("Erreur lors de la génération");
