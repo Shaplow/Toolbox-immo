@@ -38,7 +38,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
   // 3. Charger le slot
   const slot = await prisma.publicationSlot.findUnique({
     where: { id: slotId },
-    select: { id: true, status: true, assigneeMonteurId: true, assigneeCmId: true },
+    select: { id: true, status: true, assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
   });
 
   if (!slot || !canUserAccessSlot(slot, role, userId)) {
@@ -70,7 +70,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   await logActivity(prisma, {
     slotId,
-    actorId: userId,
+    actorId: userContext.actualUser.id,
     type: "VERSION_RESTORED",
     payload: { versionId, versionNumber: version.versionNumber, fileName: version.fileName },
   });

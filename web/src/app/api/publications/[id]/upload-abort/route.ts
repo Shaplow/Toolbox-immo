@@ -34,7 +34,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     select: {
       id: true,
       assigneeMonteurId: true,
-      assigneeCmId: true,
+      assigneeCmId: true, assigneeVideasteId: true,
     },
   });
 

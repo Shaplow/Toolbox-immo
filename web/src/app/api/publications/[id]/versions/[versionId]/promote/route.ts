@@ -52,7 +52,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       status: true,
       currentVersionId: true,
       assigneeMonteurId: true,
-      assigneeCmId: true,
+      assigneeCmId: true, assigneeVideasteId: true,
     },
   });
 
@@ -97,7 +97,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     // Log VERSION_PROMOTED
     await logActivity(tx as typeof prisma, {
       slotId,
-      actorId: userId,
+      actorId: userContext.actualUser.id,
       type: "VERSION_PROMOTED",
       payload: {
         versionId,
@@ -109,14 +109,14 @@ export async function POST(_req: NextRequest, { params }: Params) {
     // Log CURRENT_VERSION_CHANGED
     await logActivity(tx as typeof prisma, {
       slotId,
-      actorId: userId,
+      actorId: userContext.actualUser.id,
       type: "CURRENT_VERSION_CHANGED",
       payload: { from: previousVersionId ?? null, to: versionId },
     });
 
     // Auto-transition dans la même tx — évite un statut figé sur EDIT_REVIEW
     // si le process crash entre le commit de la tx et l'appel hors-tx.
-    await applyAutoTransition(tx as typeof prisma, slotId, slot.status, "VERSION_PROMOTED", userId);
+    await applyAutoTransition(tx as typeof prisma, slotId, slot.status, "VERSION_PROMOTED", userContext.actualUser.id);
   });
 
   // Auto-trigger cover si pattern.coverMode = "auto" et preset configuré.
@@ -124,7 +124,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
   // S'exécute après la transaction pour ne pas perturber la promotion.
   const coverResult = await tryAutoTriggerCover({
     slotId,
-    actorId: userId,
+    actorId: userContext.actualUser.id,
     trigger: "AUTO_POST_PROMOTE",
   });
   if (coverResult.status === "error") {

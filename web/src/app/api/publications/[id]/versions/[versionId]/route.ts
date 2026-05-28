@@ -38,7 +38,7 @@ async function getContext(params: Params) {
       status: true,
       currentVersionId: true,
       assigneeMonteurId: true,
-      assigneeCmId: true,
+      assigneeCmId: true, assigneeVideasteId: true,
     },
   });
 
@@ -90,7 +90,7 @@ export async function PUT(req: NextRequest, ctxParams: Params) {
 
   const slot = await prisma.publicationSlot.findUnique({
     where: { id: slotId },
-    select: { id: true, status: true, assigneeMonteurId: true, assigneeCmId: true },
+    select: { id: true, status: true, assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
   });
 
   if (!slot || !canUserAccessSlot(slot, role, userId)) {
@@ -153,7 +153,7 @@ export async function DELETE(_req: NextRequest, ctxParams: Params) {
       status: true,
       currentVersionId: true,
       assigneeMonteurId: true,
-      assigneeCmId: true,
+      assigneeCmId: true, assigneeVideasteId: true,
     },
   });
 
@@ -191,7 +191,7 @@ export async function DELETE(_req: NextRequest, ctxParams: Params) {
 
   await logActivity(prisma, {
     slotId,
-    actorId: userId,
+    actorId: userContext.actualUser.id,
     type: "VERSION_DELETED",
     payload: { versionId, versionNumber: version.versionNumber, fileName: version.fileName },
   });

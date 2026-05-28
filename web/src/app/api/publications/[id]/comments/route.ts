@@ -41,7 +41,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const slot = await prisma.publicationSlot.findUnique({
     where: { id: slotId },
-    select: { id: true, assigneeMonteurId: true, assigneeCmId: true },
+    select: { id: true, assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
   });
 
   if (!slot || !canUserAccessSlot(slot, role, userId)) {
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const slot = await prisma.publicationSlot.findUnique({
     where: { id: slotId },
-    select: { id: true, assigneeMonteurId: true, assigneeCmId: true },
+    select: { id: true, assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
   });
 
   if (!slot || !canUserAccessSlot(slot, role, userId)) {
@@ -130,7 +130,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Log non bloquant : une erreur ici ne doit pas casser la réponse.
   await logActivity(prisma, {
     slotId,
-    actorId: userId,
+    actorId: userContext.actualUser.id,
     type: "COMMENT_ADDED",
     payload: {
       commentId: comment.id,

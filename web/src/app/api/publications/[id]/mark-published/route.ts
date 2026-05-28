@@ -47,7 +47,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     select: {
       id: true,
       assigneeMonteurId: true,
-      assigneeCmId: true,
+      assigneeCmId: true, assigneeVideasteId: true,
       status: true,
     },
   });
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Log non bloquant.
   await logActivity(prisma, {
     slotId,
-    actorId: userId,
+    actorId: userContext.actualUser.id,
     type: "PUBLISHED",
     payload: {
       url,

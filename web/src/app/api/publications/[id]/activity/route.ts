@@ -34,7 +34,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const slot = await prisma.publicationSlot.findUnique({
     where: { id: slotId },
-    select: { id: true, assigneeMonteurId: true, assigneeCmId: true },
+    select: { id: true, assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
   });
 
   if (!slot || !canUserAccessSlot(slot, role, userId)) {

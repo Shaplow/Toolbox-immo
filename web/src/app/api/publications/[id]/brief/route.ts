@@ -36,7 +36,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const slot = await prisma.publicationSlot.findUnique({
     where: { id: slotId },
-    select: { id: true, status: true, assigneeMonteurId: true, assigneeCmId: true },
+    select: { id: true, status: true, assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
   });
 
   if (!slot || !canUserAccessSlot(slot, role, userId)) {
@@ -82,7 +82,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
   const slot = await prisma.publicationSlot.findUnique({
     where: { id: slotId },
-    select: { id: true, status: true, assigneeMonteurId: true, assigneeCmId: true },
+    select: { id: true, status: true, assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
   });
 
   if (!slot || !canUserAccessSlot(slot, role, userId)) {
@@ -115,7 +115,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
   await logActivity(prisma, {
     slotId,
-    actorId: userId,
+    actorId: userContext.actualUser.id,
     type: "BRIEF_UPDATED",
     payload: { action: "body_updated" },
   });

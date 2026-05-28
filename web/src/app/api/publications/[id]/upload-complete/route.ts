@@ -49,7 +49,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       id: true,
       status: true,
       assigneeMonteurId: true,
-      assigneeCmId: true,
+      assigneeCmId: true, assigneeVideasteId: true,
     },
   });
 
@@ -140,21 +140,21 @@ export async function POST(req: NextRequest, { params }: Params) {
   try {
     if (uploadKind === "rush") {
       return await handleRushComplete({
-        prisma, slotId, slot, userId, r2Key, fileUrl, fileName, mimeType, sizeBytes, durationSec,
+        prisma, slotId, slot, userId, actorId: userContext.actualUser.id, r2Key, fileUrl, fileName, mimeType, sizeBytes, durationSec,
         isMultipart, uploadId,
       });
     }
 
     if (uploadKind === "version") {
       return await handleVersionComplete({
-        prisma, slotId, slot, userId, r2Key, fileUrl, fileName, mimeType, sizeBytes, durationSec,
+        prisma, slotId, slot, userId, actorId: userContext.actualUser.id, r2Key, fileUrl, fileName, mimeType, sizeBytes, durationSec,
         isMultipart, uploadId,
       });
     }
 
     // brief-attachment
     return await handleBriefAttachmentComplete({
-      prisma, slotId, slot, userId, r2Key, fileName, mimeType, sizeBytes,
+      prisma, slotId, slot, userId, actorId: userContext.actualUser.id, r2Key, fileName, mimeType, sizeBytes,
       isMultipart, uploadId,
     });
 
@@ -184,6 +184,9 @@ async function handleRushComplete(args: {
   slotId: string;
   slot: { status: string };
   userId: string;
+  /** actualUser.id — vrai déclencheur de l'action, distinct du data
+   *  owner userId (effectiveUser.id) pour l'audit. */
+  actorId: string;
   r2Key: string;
   fileUrl: string;
   fileName: string;
@@ -193,7 +196,7 @@ async function handleRushComplete(args: {
   isMultipart: boolean;
   uploadId?: string;
 }): Promise<NextResponse> {
-  const { slotId, slot, userId, r2Key, fileName, mimeType, sizeBytes, durationSec } = args;
+  const { slotId, slot, userId, actorId, r2Key, fileName, mimeType, sizeBytes, durationSec } = args;
 
   // Insert + count + activity + auto-transition dans une seule transaction pour éviter
   // un double STATUS_CHANGED parasite en cas d'uploads concurrents.
@@ -217,13 +220,13 @@ async function handleRushComplete(args: {
 
     await logActivity(tx as typeof args.prisma, {
       slotId,
-      actorId: userId,
+      actorId,
       type: "RUSHES_UPLOADED",
       payload: { rushId: created.id, fileName, mimeType },
     });
 
     if (rushCount === 1) {
-      await applyAutoTransition(tx as typeof args.prisma, slotId, slot.status, "RUSHES_UPLOADED_FIRST", userId);
+      await applyAutoTransition(tx as typeof args.prisma, slotId, slot.status, "RUSHES_UPLOADED_FIRST", actorId);
     }
 
     return created;
@@ -239,6 +242,8 @@ async function handleVersionComplete(args: {
   slotId: string;
   slot: { status: string };
   userId: string;
+  /** actualUser.id — vrai déclencheur (audit). */
+  actorId: string;
   r2Key: string;
   fileUrl: string;
   fileName: string;
@@ -248,7 +253,7 @@ async function handleVersionComplete(args: {
   isMultipart: boolean;
   uploadId?: string;
 }): Promise<NextResponse> {
-  const { slotId, slot, userId, r2Key, fileUrl, fileName, mimeType, sizeBytes, durationSec } = args;
+  const { slotId, slot, userId, actorId, r2Key, fileUrl, fileName, mimeType, sizeBytes, durationSec } = args;
 
   // Tout dans une seule transaction : versionNumber calculé atomiquement,
   // logActivity et applyAutoTransition cohérents (pas de drift slot.status / DB).
@@ -276,7 +281,7 @@ async function handleVersionComplete(args: {
 
     await logActivity(tx as typeof args.prisma, {
       slotId,
-      actorId: userId,
+      actorId,
       type: "VERSION_UPLOADED",
       payload: { versionId: version.id, versionNumber: version.versionNumber, fileName },
     });
@@ -294,7 +299,7 @@ async function handleVersionComplete(args: {
     const freshStatus = fresh?.status ?? slot.status;
 
     const trigger = version.versionNumber === 1 ? "VERSION_UPLOADED_FIRST" : "VERSION_UPLOADED_AGAIN";
-    await applyAutoTransition(tx as typeof args.prisma, slotId, freshStatus, trigger, userId);
+    await applyAutoTransition(tx as typeof args.prisma, slotId, freshStatus, trigger, actorId);
 
     return version;
   });
@@ -309,6 +314,8 @@ async function handleBriefAttachmentComplete(args: {
   slotId: string;
   slot: { status: string };
   userId: string;
+  /** actualUser.id — vrai déclencheur (audit). */
+  actorId: string;
   r2Key: string;
   fileName: string;
   mimeType: string;
@@ -316,7 +323,7 @@ async function handleBriefAttachmentComplete(args: {
   isMultipart: boolean;
   uploadId?: string;
 }): Promise<NextResponse> {
-  const { slotId, userId, r2Key, fileName, mimeType, sizeBytes } = args;
+  const { slotId, userId, actorId, r2Key, fileName, mimeType, sizeBytes } = args;
 
   const attachment = await args.prisma.$transaction(async (tx) => {
     // Upsert le brief s'il n'existe pas encore
@@ -344,7 +351,7 @@ async function handleBriefAttachmentComplete(args: {
 
   await logActivity(args.prisma, {
     slotId,
-    actorId: userId,
+    actorId,
     type: "BRIEF_UPDATED",
     payload: { attachmentId: attachment.id, fileName, mimeType },
   });

@@ -74,7 +74,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       id: true,
       status: true,
       assigneeMonteurId: true,
-      assigneeCmId: true,
+      assigneeCmId: true, assigneeVideasteId: true,
     },
   });
 
