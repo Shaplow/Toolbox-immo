@@ -29,6 +29,26 @@ type UploadKind = "rush" | "version" | "brief-attachment";
 
 type Params = { params: Promise<{ id: string }> };
 
+// Doit être tenu en synchro avec upload-presign : si l'attaquant déclare
+// contentType=video/mp4 au presign puis envoie mimeType=application/x-sh en
+// complete, sans cette re-validation le DB stockait le MIME bidon. R2 lie
+// le Content-Type aux bytes via la presigned URL, donc l'attaque reste
+// limitée à de la pollution métadonnée — mais downstream le render-engine
+// décide souvent du traitement selon mimeType.
+const ALLOWED_MIME_TYPES_BY_KIND: Record<UploadKind, readonly string[]> = {
+  rush: [
+    "video/mp4",
+    "video/quicktime",
+    "video/x-m4v",
+    "video/webm",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+  ],
+  version: ["video/mp4", "video/quicktime", "video/x-m4v"],
+  "brief-attachment": ["application/pdf", "image/jpeg", "image/png", "image/webp"],
+};
+
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest, { params }: Params) {
@@ -98,6 +118,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const uploadKind = kind as UploadKind;
+
+  if (!ALLOWED_MIME_TYPES_BY_KIND[uploadKind].includes(mimeType)) {
+    return NextResponse.json(
+      { error: `mimeType non supporté pour ${uploadKind} : ${mimeType}` },
+      { status: 400 },
+    );
+  }
   const isMultipart = !!(uploadId && parts && Array.isArray(parts) && parts.length > 0);
 
   // 4. Vérifier la permission par kind

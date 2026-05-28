@@ -140,8 +140,28 @@ export function MediaAssetsUploadModal({
       });
       progressMap.set(idx, 1);
       refreshOverallProgress();
-      if (ok) uploadedIds.push(assetId);
-      else failed.push(file.name);
+      if (ok) {
+        // L'endpoint /confirm fait un HEAD R2 pour valider que l'objet existe vraiment
+        // (XHR peut "réussir" en cas d'aller-retour réseau pathologique sans data écrite,
+        // ou si R2 répond 2xx tout en perdant le body). Si l'objet manque, la route
+        // supprime le MediaAsset pending et empêche l'asset fantôme d'entrer en rotation.
+        try {
+          const confirmRes = await fetch(
+            `/api/admin/libraries/media/assets/${assetId}/confirm`,
+            { method: "PATCH" },
+          );
+          if (!confirmRes.ok) {
+            failed.push(file.name);
+            return;
+          }
+        } catch {
+          failed.push(file.name);
+          return;
+        }
+        uploadedIds.push(assetId);
+      } else {
+        failed.push(file.name);
+      }
     }
 
     // Worker pool : `CONCURRENCY` workers tirent depuis une queue partagée.

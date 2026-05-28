@@ -59,10 +59,13 @@ export function rushKey(slotId: string, filename: string): string {
 /**
  * Clé R2 pour une version de montage.
  *
- * Pattern : publications/{slotId}/versions/v{versionNumber}-{ts}.{ext}
- * Note : le numéro de version est calculé en DB (lors de l'upload-complete),
- * mais la clé est générée à l'upload-presign avec un numéro temporaire basé
- * sur le timestamp — le numéro définitif sera fixé lors de l'insert Prisma.
+ * Pattern : publications/{slotId}/versions/v{versionNumber}-{ts}-{rand}.{ext}
+ * Note : le numéro de version est calculé en DB (lors de l'upload-complete) ;
+ * la clé garde le numéro temporaire (généralement 0) du presign. Le random
+ * token est obligatoire pour éviter deux uploads concurrents qui tomberaient
+ * dans la même milliseconde — sans lui, le 2ème PUT écrasait silencieusement
+ * le 1er sur R2 alors que les deux PublicationVersion DB existent (avec
+ * versionNumber différents mais r2Key identique).
  */
 export function versionKey(
   slotId: string,
@@ -70,7 +73,7 @@ export function versionKey(
   filename: string
 ): string {
   const { ext } = sanitizeFilename(filename);
-  return `publications/${slotId}/versions/v${versionNumber}-${timestamp()}.${ext}`;
+  return `publications/${slotId}/versions/v${versionNumber}-${timestamp()}-${randomToken()}.${ext}`;
 }
 
 /**

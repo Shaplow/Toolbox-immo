@@ -59,8 +59,12 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Production : upload direct browser → R2 via URL pré-signée ────────────
+  // On passe `size` au presign pour que ContentLength soit incorporé à la
+  // signature : le PUT R2 rejettera tout corps qui ne fait pas exactement
+  // cette taille. Sans cette contrainte, un client malveillant pouvait
+  // déclarer size=1 (passe le check), récupérer l'URL, puis PUT 2 Go.
   const r2Key = `uploads/${key}`;
-  const uploadUrl = await createPresignedUploadUrl(r2Key, contentType);
+  const uploadUrl = await createPresignedUploadUrl(r2Key, contentType, undefined, size);
   const publicUrl = getR2PublicUrl(r2Key);
 
   return NextResponse.json({ uploadUrl, publicUrl, key: r2Key });

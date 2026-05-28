@@ -1,11 +1,11 @@
 /**
- * r2Cleanup — nettoyage des objets R2 orphelins sous le prefix "publications/".
+ * r2Cleanup — nettoyage des objets R2 orphelins sous les prefixes scannés.
  *
  * Un objet est considéré orphelin si :
- * - Il se trouve sous le prefix "publications/"
+ * - Il se trouve sous l'un des SCAN_PREFIXES ("publications/" ou "content-library/")
  * - Il a été créé (LastModified) il y a plus de 24h
- * - Son r2Key n'apparaît pas dans les tables PublicationRush,
- *   PublicationVersion ou PublicationBriefAttachment
+ * - Son r2Key n'apparaît dans aucune des tables PublicationRush,
+ *   PublicationVersion, PublicationBriefAttachment ni MediaAsset
  *
  * Pagination : ListObjectsV2 (1000 objets max par page, toutes pages parcourues).
  * Cross-check DB : collecte les r2Keys existants une seule fois (pas de N requêtes).
@@ -26,7 +26,7 @@ import { prisma } from "@/lib/prisma";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CleanupResult {
-  /** Nombre total d'objets scannés sous "publications/". */
+  /** Nombre total d'objets scannés sous SCAN_PREFIXES. */
   scanned: number;
   /** Nombre d'objets identifiés comme orphelins (anciens + non référencés en DB). */
   orphans: number;
@@ -41,8 +41,10 @@ export interface CleanupResult {
 /** Durée minimale en ms avant qu'un objet soit candidat à la suppression. */
 const CUTOFF_MS = 24 * 60 * 60 * 1000; // 24h
 
-/** Prefix R2 à scanner. */
-const SCAN_PREFIX = "publications/";
+/** Prefixes R2 scannés. Chaque prefix a son propre cross-check DB.
+ *  Ajouter un prefix ici sans étendre loadReferencedKeys → faux positifs
+ *  garantis (l'orphan sweep supprimerait des objets référencés ailleurs). */
+const SCAN_PREFIXES = ["publications/", "content-library/"] as const;
 
 // ─── Client R2 ────────────────────────────────────────────────────────────────
 
@@ -71,16 +73,21 @@ function getBucket(): string | null {
  * Chargement en une seule passe pour éviter les N requêtes par objet.
  */
 async function loadReferencedKeys(): Promise<Set<string>> {
-  const [rushKeys, versionKeys, attachmentKeys] = await Promise.all([
+  const [rushKeys, versionKeys, attachmentKeys, mediaAssetKeys] = await Promise.all([
     prisma.publicationRush.findMany({ select: { r2Key: true } }),
     prisma.publicationVersion.findMany({ select: { r2Key: true } }),
     prisma.publicationBriefAttachment.findMany({ select: { r2Key: true } }),
+    // MediaAsset référence des objets sous "content-library/" (Phase library).
+    // Sans cette source, le sweep supprimerait des assets actifs au prochain
+    // run (faux positif catastrophique pour la rotation).
+    prisma.mediaAsset.findMany({ select: { r2Key: true } }),
   ]);
 
   const set = new Set<string>();
   for (const r of rushKeys) set.add(r.r2Key);
   for (const v of versionKeys) set.add(v.r2Key);
   for (const a of attachmentKeys) set.add(a.r2Key);
+  for (const m of mediaAssetKeys) set.add(m.r2Key);
   return set;
 }
 
@@ -111,37 +118,39 @@ export async function cleanupOrphanR2Objects(
   // 1. Charger les r2Keys référencés en DB (une seule requête groupée)
   const referencedKeys = await loadReferencedKeys();
 
-  // 2. Paginer ListObjectsV2 sur le prefix "publications/"
-  let continuationToken: string | undefined = undefined;
+  // 2. Paginer ListObjectsV2 sur chaque prefix scanné
   let scanned = 0;
   const orphanKeys: string[] = [];
 
-  do {
-    const command = new ListObjectsV2Command({
-      Bucket: bucket,
-      Prefix: SCAN_PREFIX,
-      MaxKeys: 1000,
-      ContinuationToken: continuationToken,
-    });
+  for (const prefix of SCAN_PREFIXES) {
+    let continuationToken: string | undefined = undefined;
+    do {
+      const command = new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        MaxKeys: 1000,
+        ContinuationToken: continuationToken,
+      });
 
-    const response: ListObjectsV2CommandOutput = await client.send(command);
-    const objects = response.Contents ?? [];
+      const response: ListObjectsV2CommandOutput = await client.send(command);
+      const objects = response.Contents ?? [];
 
-    for (const obj of objects) {
-      if (!obj.Key || !obj.LastModified) continue;
-      scanned++;
+      for (const obj of objects) {
+        if (!obj.Key || !obj.LastModified) continue;
+        scanned++;
 
-      // Candidat à l'orphelin : ancien + non référencé
-      const isOld = obj.LastModified < cutoff;
-      const isOrphan = !referencedKeys.has(obj.Key);
+        // Candidat à l'orphelin : ancien + non référencé
+        const isOld = obj.LastModified < cutoff;
+        const isOrphan = !referencedKeys.has(obj.Key);
 
-      if (isOld && isOrphan) {
-        orphanKeys.push(obj.Key);
+        if (isOld && isOrphan) {
+          orphanKeys.push(obj.Key);
+        }
       }
-    }
 
-    continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
-  } while (continuationToken);
+      continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+    } while (continuationToken);
+  }
 
   // 3. Supprimer les orphelins (si pas en dryRun)
   let deleted = 0;
