@@ -19,7 +19,15 @@ export default async function AdminPromptsPage() {
     }),
     prisma.descriptionPrompt.findMany({
       orderBy: { createdAt: "asc" },
-      select: { id: true, name: true, prompt: true, isActive: true, createdAt: true },
+      select: {
+        id: true,
+        name: true,
+        prompt: true,
+        isActive: true,
+        createdAt: true,
+        recipeKind: true,
+        recipeConfig: true,
+      },
     }),
   ]);
 
@@ -28,6 +36,13 @@ export default async function AdminPromptsPage() {
   const descriptionPrompts = descriptionPromptRecords.map((p) => ({
     ...p,
     createdAt: p.createdAt.toISOString(),
+    recipeKind: p.recipeKind as
+      | "transcript_only"
+      | "transcript_and_frame"
+      | "transcript_multi_frame"
+      | "two_pass_reformulate"
+      | "context_enriched",
+    recipeConfig: p.recipeConfig as { frameCount?: number; contextFieldKeys?: string[] } | null,
   }));
 
   return (

@@ -6,6 +6,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
+
+const VALID_RECIPES = [
+  "transcript_only",
+  "transcript_and_frame",
+  "transcript_multi_frame",
+  "two_pass_reformulate",
+  "context_enriched",
+] as const;
 
 async function requireAdmin() {
   const userContext = await getUserContext();
@@ -26,11 +35,27 @@ export async function PATCH(
   if (authResult.error) return authResult.error;
 
   const { id } = await params;
-  const body = await req.json() as { name?: string; prompt?: string; isActive?: boolean };
+  const body = await req.json() as {
+    name?: string;
+    prompt?: string;
+    isActive?: boolean;
+    recipeKind?: string;
+    recipeConfig?: Record<string, unknown> | null;
+  };
 
   const existing = await prisma.descriptionPrompt.findUnique({ where: { id } });
   if (!existing) {
     return NextResponse.json({ error: "Prompt introuvable" }, { status: 404 });
+  }
+
+  if (
+    body.recipeKind !== undefined &&
+    !(VALID_RECIPES as readonly string[]).includes(body.recipeKind)
+  ) {
+    return NextResponse.json(
+      { error: `recipeKind invalide. Valeurs : ${VALID_RECIPES.join(", ")}` },
+      { status: 400 },
+    );
   }
 
   const updated = await prisma.descriptionPrompt.update({
@@ -39,6 +64,13 @@ export async function PATCH(
       ...(body.name !== undefined && { name: body.name.trim() }),
       ...(body.prompt !== undefined && { prompt: body.prompt.trim() }),
       ...(body.isActive !== undefined && { isActive: body.isActive }),
+      ...(body.recipeKind !== undefined && { recipeKind: body.recipeKind }),
+      ...(body.recipeConfig !== undefined && {
+        recipeConfig:
+          body.recipeConfig === null
+            ? Prisma.JsonNull
+            : (body.recipeConfig as Prisma.InputJsonValue),
+      }),
     },
   });
 

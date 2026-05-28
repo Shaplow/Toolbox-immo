@@ -10,12 +10,37 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { toast } from "@/components/ui/Toast";
 
+type RecipeKind =
+  | "transcript_only"
+  | "transcript_and_frame"
+  | "transcript_multi_frame"
+  | "two_pass_reformulate"
+  | "context_enriched";
+
+const RECIPE_LABELS: Record<RecipeKind, string> = {
+  transcript_only: "Transcription seule (défaut)",
+  transcript_and_frame: "Transcription + 1 image",
+  transcript_multi_frame: "Transcription + N frames",
+  two_pass_reformulate: "Deux passes (résumé puis rédaction)",
+  context_enriched: "Contexte enrichi (slot fields)",
+};
+
+const RECIPE_HINTS: Record<RecipeKind, string> = {
+  transcript_only: "Comportement historique : 1 appel LLM avec le transcript.",
+  transcript_and_frame: "Ajoute 1 frame de référence (rush/cover) au prompt.",
+  transcript_multi_frame: "Ajoute jusqu'à N frames (par défaut 4, max 6).",
+  two_pass_reformulate: "Étape 1 : résumé en bullets. Étape 2 : rédaction depuis le résumé.",
+  context_enriched: "Injecte les champs du slot (adresse, prix…) — peut fonctionner sans transcript.",
+};
+
 type PromptRow = {
   id: string;
   name: string;
   prompt: string;
   isActive: boolean;
   createdAt: string;
+  recipeKind?: RecipeKind;
+  recipeConfig?: { frameCount?: number; contextFieldKeys?: string[] } | null;
 };
 
 export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: PromptRow[] }) {
@@ -26,12 +51,16 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
   // Form state (shared for create or edit)
   const [formName, setFormName] = useState("");
   const [formPrompt, setFormPrompt] = useState("");
+  const [formRecipeKind, setFormRecipeKind] = useState<RecipeKind>("transcript_only");
+  const [formFrameCount, setFormFrameCount] = useState<number>(4);
   const [saving, setSaving] = useState(false);
 
   const openCreate = () => {
     setEditingId(null);
     setFormName("");
     setFormPrompt("");
+    setFormRecipeKind("transcript_only");
+    setFormFrameCount(4);
     setCreating(true);
   };
 
@@ -39,6 +68,8 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
     setCreating(false);
     setFormName(p.name);
     setFormPrompt(p.prompt);
+    setFormRecipeKind(p.recipeKind ?? "transcript_only");
+    setFormFrameCount(p.recipeConfig?.frameCount ?? 4);
     setEditingId(p.id);
   };
 
@@ -54,12 +85,20 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
     }
     setSaving(true);
 
+    const recipeConfig =
+      formRecipeKind === "transcript_multi_frame" ? { frameCount: formFrameCount } : null;
+
     try {
       if (creating) {
         const res = await fetch("/api/description/prompts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: formName.trim(), prompt: formPrompt.trim() }),
+          body: JSON.stringify({
+            name: formName.trim(),
+            prompt: formPrompt.trim(),
+            recipeKind: formRecipeKind,
+            recipeConfig,
+          }),
         });
         const data = await res.json() as PromptRow & { error?: string };
         if (!res.ok) { toast.error(data.error ?? "Erreur lors de la création"); return; }
@@ -70,7 +109,12 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
         const res = await fetch(`/api/description/prompts/${editingId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: formName.trim(), prompt: formPrompt.trim() }),
+          body: JSON.stringify({
+            name: formName.trim(),
+            prompt: formPrompt.trim(),
+            recipeKind: formRecipeKind,
+            recipeConfig,
+          }),
         });
         const data = await res.json() as PromptRow & { error?: string };
         if (!res.ok) { toast.error(data.error ?? "Erreur lors de la mise à jour"); return; }
@@ -110,9 +154,13 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
         <PromptForm
           name={formName}
           prompt={formPrompt}
+          recipeKind={formRecipeKind}
+          frameCount={formFrameCount}
           saving={saving}
           onName={setFormName}
           onPrompt={setFormPrompt}
+          onRecipeKind={setFormRecipeKind}
+          onFrameCount={setFormFrameCount}
           onSave={() => void handleSave()}
           onCancel={cancelForm}
           label="Créer"
@@ -136,9 +184,13 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
                 <PromptForm
                   name={formName}
                   prompt={formPrompt}
+                  recipeKind={formRecipeKind}
+                  frameCount={formFrameCount}
                   saving={saving}
                   onName={setFormName}
                   onPrompt={setFormPrompt}
+                  onRecipeKind={setFormRecipeKind}
+                  onFrameCount={setFormFrameCount}
                   onSave={() => void handleSave()}
                   onCancel={cancelForm}
                   label="Enregistrer"
@@ -147,7 +199,14 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
             ) : (
               <div className="px-4 py-3 flex items-start gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900">{p.name}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-medium text-gray-900">{p.name}</p>
+                    {p.recipeKind && p.recipeKind !== "transcript_only" && (
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200">
+                        {RECIPE_LABELS[p.recipeKind]}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-400 mt-0.5 whitespace-pre-line line-clamp-3">
                     {p.prompt}
                   </p>
@@ -182,18 +241,26 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
 function PromptForm({
   name,
   prompt,
+  recipeKind,
+  frameCount,
   saving,
   onName,
   onPrompt,
+  onRecipeKind,
+  onFrameCount,
   onSave,
   onCancel,
   label,
 }: {
   name: string;
   prompt: string;
+  recipeKind: RecipeKind;
+  frameCount: number;
   saving: boolean;
   onName: (v: string) => void;
   onPrompt: (v: string) => void;
+  onRecipeKind: (v: RecipeKind) => void;
+  onFrameCount: (v: number) => void;
   onSave: () => void;
   onCancel: () => void;
   label: string;
@@ -216,6 +283,26 @@ function PromptForm({
           rows={6}
         />
       </FormField>
+      <FormField label="Recette d'exécution" help={RECIPE_HINTS[recipeKind]}>
+        <select
+          value={recipeKind}
+          onChange={(e) => onRecipeKind(e.target.value as RecipeKind)}
+          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+        >
+          {(Object.keys(RECIPE_LABELS) as RecipeKind[]).map((k) => (
+            <option key={k} value={k}>{RECIPE_LABELS[k]}</option>
+          ))}
+        </select>
+      </FormField>
+      {recipeKind === "transcript_multi_frame" && (
+        <FormField label="Nombre de frames (1-6)">
+          <Input
+            type="number"
+            value={String(frameCount)}
+            onChange={(v) => onFrameCount(Math.min(6, Math.max(1, parseInt(v, 10) || 1)))}
+          />
+        </FormField>
+      )}
       <div className="flex items-center gap-2">
         <Button variant="primary" size="sm" icon={Check} loading={saving} onClick={onSave}>
           {label}

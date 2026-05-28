@@ -318,6 +318,13 @@ model DescriptionPrompt {
   name            String
   prompt          String // Instructions pour le LLM
   isActive        Boolean          @default(true)
+  /// Recipe d'exécution bundlée au prompt (P6).
+  /// Valeurs : "transcript_only" (défaut, comportement historique) |
+  /// "transcript_and_frame" | "transcript_multi_frame" | "two_pass_reformulate" |
+  /// "context_enriched". L'executor lit ce champ pour choisir la stratégie.
+  recipeKind      String           @default("transcript_only")
+  /// Config JSON spécifique à la recipe (frame count, fields à injecter, etc.)
+  recipeConfig    Json?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   jobs            DescriptionJob[]
