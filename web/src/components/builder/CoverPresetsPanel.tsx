@@ -103,14 +103,23 @@ export function CoverPresetsPanel({ templateId }: Props) {
     <>
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-          {presets.length > 0
-            ? `${presets.length} preset${presets.length > 1 ? "s" : ""} cover`
-            : "Presets cover"}
-        </p>
-        <Button variant="primary" size="sm" onClick={openCreate}>
-          + Ajouter preset
-        </Button>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+            Cover automatique
+          </p>
+          <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">
+            En général, une seule config par template suffit — la CM choisit la frame côté fiche publication.
+          </p>
+        </div>
+        {presets.length === 0 ? (
+          <Button variant="primary" size="sm" onClick={openCreate}>
+            + Configurer la cover
+          </Button>
+        ) : (
+          <Button variant="ghost" size="sm" onClick={openCreate}>
+            + Ajouter une variante
+          </Button>
+        )}
       </div>
 
       {/* Content */}
@@ -119,9 +128,9 @@ export function CoverPresetsPanel({ templateId }: Props) {
       ) : presets.length === 0 ? (
         <EmptyState
           icon={ImageIcon}
-          title="Aucun preset cover"
-          description="Crée-en un pour configurer la cover automatique des patterns."
-          cta={{ label: "Ajouter un preset", onClick: openCreate }}
+          title="Pas encore configurée"
+          description="Configure une seule fois : combien de frames extraire + quels groupes de texte garder."
+          cta={{ label: "Configurer la cover", onClick: openCreate }}
         />
       ) : (
         <div className="flex flex-col gap-2">

@@ -337,60 +337,23 @@ export function CoverPresetEditDialog({ templateId, preset, open, onClose, onSav
             <div className="overflow-y-auto px-6 py-5 flex flex-col gap-5">
               {/* Section Identité */}
               <section className="space-y-3">
-                <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  Identité
-                </h3>
                 <FormField label="Nom" required error={errors.name}>
                   <Input
                     value={form.name}
                     onChange={(v) => set("name", v)}
                     maxLength={100}
-                    placeholder="Ex : Standard, Minimal, Vibrant…"
+                    placeholder="Ex : Cover par défaut"
                     error={errors.name}
                   />
                 </FormField>
-                <div className="grid grid-cols-2 gap-3">
-                  <FormField label="Ordre" help="Plus petit = en haut.">
-                    <Input
-                      type="number"
-                      value={form.sortOrder}
-                      onChange={(v) => set("sortOrder", v)}
-                    />
-                  </FormField>
-                  <label className="flex items-end gap-3 cursor-pointer pb-1">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        checked={form.enabled}
-                        onChange={(e) => set("enabled", e.target.checked)}
-                        className="sr-only"
-                      />
-                      <div
-                        className={`w-9 h-5 rounded-full transition-colors ${
-                          form.enabled ? "bg-indigo-600" : "bg-gray-200"
-                        }`}
-                      />
-                      <div
-                        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                          form.enabled ? "translate-x-4" : "translate-x-0"
-                        }`}
-                      />
-                    </div>
-                    <span className="text-sm text-gray-700">Activé</span>
-                  </label>
-                </div>
               </section>
 
-              {/* Section Composition */}
+              {/* Section Composition — l'essentiel pour la CM */}
               <section className="space-y-3">
-                <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  Composition
-                </h3>
-
                 {/* frameCount — slider visuel + valeur affichée */}
                 <FormField
-                  label={`Nombre de frames proposées : ${form.frameCount}`}
-                  help="Le CM choisira parmi ces N frames extraites de la vidéo."
+                  label={`Frames proposées : ${form.frameCount}`}
+                  help="Nombre de vignettes que la CM verra pour choisir la cover. 24-36 est un bon compromis."
                 >
                   <input
                     type="range"
@@ -409,8 +372,8 @@ export function CoverPresetEditDialog({ templateId, preset, open, onClose, onSav
 
                 {/* Overlay groups */}
                 <FormField
-                  label="Groupes d'overlay"
-                  help="Éléments du template superposés sur la frame sélectionnée (texte, logo, badge…)."
+                  label="Texte / overlays gardés sur la cover"
+                  help="Coche les groupes du template qui doivent rester visibles sur la frame finale (titre, logo, badge…). La CM pourra les repositionner."
                 >
                   {groups.length === 0 ? (
                     <p className="text-xs text-gray-400 italic">
@@ -443,9 +406,50 @@ export function CoverPresetEditDialog({ templateId, preset, open, onClose, onSav
                   )}
                 </FormField>
 
+              </section>
+
+              {/* Section Avancé — offsets + zones, repliée par défaut */}
+              <details className="rounded-lg border border-gray-200 bg-gray-50/50 p-3">
+                <summary className="cursor-pointer text-xs font-medium text-gray-600 select-none">
+                  Réglages avancés (offsets, zones à éviter, slots à exclure)
+                </summary>
+                <div className="mt-3 space-y-4">
+
+                {/* Toggle activé + ordre (rangés ici, peu touchés) */}
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField label="Ordre" help="Plus petit = en haut.">
+                    <Input
+                      type="number"
+                      value={form.sortOrder}
+                      onChange={(v) => set("sortOrder", v)}
+                    />
+                  </FormField>
+                  <label className="flex items-end gap-3 cursor-pointer pb-1">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={form.enabled}
+                        onChange={(e) => set("enabled", e.target.checked)}
+                        className="sr-only"
+                      />
+                      <div
+                        className={`w-9 h-5 rounded-full transition-colors ${
+                          form.enabled ? "bg-indigo-600" : "bg-gray-200"
+                        }`}
+                      />
+                      <div
+                        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                          form.enabled ? "translate-x-4" : "translate-x-0"
+                        }`}
+                      />
+                    </div>
+                    <span className="text-sm text-gray-700">Activé</span>
+                  </label>
+                </div>
+
                 {/* Offsets X/Y */}
                 <div className="grid grid-cols-2 gap-3">
-                  <FormField label="Offset X (px)">
+                  <FormField label="Offset X (px)" help="La CM peut aligner après — laisse à 0 si tu n'es pas sûr.">
                     <Input
                       type="number"
                       value={form.offsetX}
@@ -460,7 +464,6 @@ export function CoverPresetEditDialog({ templateId, preset, open, onClose, onSav
                     />
                   </FormField>
                 </div>
-              </section>
 
               {/* Section Exclusions */}
               <section className="space-y-3">
@@ -583,6 +586,8 @@ export function CoverPresetEditDialog({ templateId, preset, open, onClose, onSav
                   </FormField>
                 )}
               </section>
+                </div>
+              </details>
             </div>
           </form>
 
