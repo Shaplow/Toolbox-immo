@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, MessageSquare, Pencil, X } from "lucide-react";
+import { Check, MessageSquare, Pencil, X, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
@@ -137,17 +137,47 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
     }
   };
 
+  const toggleActive = async (p: PromptRow) => {
+    const nextActive = !p.isActive;
+    const res = await fetch(`/api/description/prompts/${p.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isActive: nextActive }),
+    });
+    if (!res.ok) {
+      toast.error("Erreur lors de la mise à jour");
+      return;
+    }
+    const data = (await res.json()) as PromptRow;
+    setPrompts((prev) => prev.map((row) => (row.id === p.id ? data : row)));
+    toast.success(nextActive ? "Prompt activé." : "Prompt désactivé.");
+  };
+
+  const activeCount = prompts.filter((p) => p.isActive).length;
+
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500">
           {prompts.length} prompt{prompts.length !== 1 ? "s" : ""} configuré{prompts.length !== 1 ? "s" : ""}
+          {prompts.length > 0 && (
+            <span className="ml-1 text-gray-400">
+              · {activeCount} actif{activeCount !== 1 ? "s" : ""}
+            </span>
+          )}
         </p>
         <Button variant="primary" size="sm" icon={MessageSquare} onClick={openCreate}>
           Nouveau prompt
         </Button>
       </div>
+
+      {prompts.length > 0 && activeCount === 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Aucun prompt n&apos;est actif — ils n&apos;apparaîtront pas dans la modal IA des fiches publication.
+          Active au moins un prompt avec l&apos;icône <Eye size={11} className="inline -mt-0.5" />.
+        </div>
+      )}
 
       {/* Create form */}
       {creating && (
@@ -197,10 +227,15 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
                 />
               </div>
             ) : (
-              <div className="px-4 py-3 flex items-start gap-3">
+              <div className={`px-4 py-3 flex items-start gap-3 ${p.isActive ? "" : "opacity-60 bg-gray-50/50"}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-medium text-gray-900">{p.name}</p>
+                    {!p.isActive && (
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 border border-gray-300">
+                        Inactif
+                      </span>
+                    )}
                     {p.recipeKind && p.recipeKind !== "transcript_only" && (
                       <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200">
                         {RECIPE_LABELS[p.recipeKind]}
@@ -212,6 +247,15 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
                   </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={p.isActive ? Eye : EyeOff}
+                    onClick={() => void toggleActive(p)}
+                    title={p.isActive ? "Désactiver (masquer dans les pickers)" : "Activer (rendre dispo dans les pickers)"}
+                  >
+                    <span className="sr-only">{p.isActive ? "Désactiver" : "Activer"}</span>
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"

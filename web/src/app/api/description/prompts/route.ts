@@ -36,6 +36,7 @@ export async function GET() {
       id: true,
       name: true,
       prompt: true,
+      isActive: true,
       createdAt: true,
       recipeKind: true,
       recipeConfig: true,

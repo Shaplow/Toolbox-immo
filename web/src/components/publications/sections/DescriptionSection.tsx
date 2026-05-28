@@ -79,6 +79,7 @@ function DescriptionSectionInner({
   const [showAi, setShowAi] = useState(false);
   const [prompts, setPrompts] = useState<PromptOption[]>([]);
   const [promptsLoading, setPromptsLoading] = useState(false);
+  const [promptsError, setPromptsError] = useState<string | null>(null);
   const [selectedPromptId, setSelectedPromptId] = useState("");
   const [aiPersonalization, setAiPersonalization] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -92,17 +93,14 @@ function DescriptionSectionInner({
     if (!showAi) return;
     let cancelled = false;
     setPromptsLoading(true);
-    setGenError(null);
+    setPromptsError(null);
     (async () => {
       try {
         const res = await fetch("/api/description/prompts");
-        if (!res.ok) throw new Error("Impossible de charger les prompts.");
+        if (!res.ok) throw new Error(`Impossible de charger les prompts (HTTP ${res.status}).`);
         const data = (await res.json()) as PromptOption[];
         if (cancelled) return;
         setPrompts(data);
-        // Pré-sélection : prompt configuré sur slot/pattern > premier dispo.
-        // S'il y a déjà une sélection (l'utilisateur a cliqué dans la liste),
-        // on ne l'écrase pas.
         if (data.length > 0 && !selectedPromptId) {
           const matchDefault = defaultPromptId
             ? data.find((p) => p.id === defaultPromptId)
@@ -111,7 +109,7 @@ function DescriptionSectionInner({
         }
       } catch (err) {
         if (!cancelled) {
-          setGenError(err instanceof Error ? err.message : "Erreur de chargement.");
+          setPromptsError(err instanceof Error ? err.message : "Erreur de chargement des prompts.");
         }
       } finally {
         if (!cancelled) setPromptsLoading(false);
@@ -308,9 +306,12 @@ function DescriptionSectionInner({
                     <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
                       <Loader2 size={14} className="animate-spin" /> Chargement…
                     </div>
+                  ) : promptsError ? (
+                    <p className="text-sm text-red-600 py-2">{promptsError}</p>
                   ) : prompts.length === 0 ? (
                     <p className="text-sm text-gray-500 py-2">
-                      Aucun prompt actif. Créez-en un depuis{" "}
+                      Aucun prompt actif. Vérifie que tes prompts sont activés (icône œil)
+                      depuis{" "}
                       <Link href="/admin/prompts" className="text-indigo-600 hover:underline">
                         /admin/prompts
                       </Link>
