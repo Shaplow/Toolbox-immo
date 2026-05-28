@@ -520,10 +520,20 @@ export async function triggerAutoCoverPackForRender(
   sourceVideoUrl: string,
   userId: string,
 ): Promise<void> {
-  if (!templateId || !sourceVideoUrl) return;
+  if (!templateId) {
+    console.info(`[autoCover] skip render=${renderId} reason=no_templateId`);
+    return;
+  }
+  if (!sourceVideoUrl) {
+    console.info(`[autoCover] skip render=${renderId} reason=no_sourceVideoUrl`);
+    return;
+  }
 
   const templateExists = await prisma.template.findUnique({ where: { id: templateId }, select: { id: true } });
-  if (!templateExists) return;
+  if (!templateExists) {
+    console.info(`[autoCover] skip render=${renderId} reason=template_not_found template=${templateId}`);
+    return;
+  }
 
   // Lire Pattern.coverConfig — source de vérité Phase 1.8 (template.coverAutoConfig supprimé)
   // + slot.id pour pouvoir logger les activities cover sur la fiche.
@@ -541,8 +551,18 @@ export async function triggerAutoCoverPackForRender(
   const slotId = renderSlot?.publicationSlot?.id ?? null;
   const slotPattern = renderSlot?.publicationSlot?.pattern;
 
-  if (slotPattern?.coverMode !== "auto") return;
-  if (!slotPattern.coverConfig) return;
+  if (!slotId) {
+    console.info(`[autoCover] skip render=${renderId} reason=no_slot_linked`);
+    return;
+  }
+  if (slotPattern?.coverMode !== "auto") {
+    console.info(`[autoCover] skip render=${renderId} slot=${slotId} reason=coverMode_not_auto value=${slotPattern?.coverMode ?? "null"}`);
+    return;
+  }
+  if (!slotPattern.coverConfig) {
+    console.info(`[autoCover] skip render=${renderId} slot=${slotId} reason=coverConfig_null`);
+    return;
+  }
 
   // Phase 3 Cohérence Workflows — résolution par ID stable (coverPresetId)
   // avec fallback sur nom (coverPresetName) pendant 1 release de compat,
@@ -553,7 +573,13 @@ export async function triggerAutoCoverPackForRender(
     coverPresetId?: string;
     coverPresetName?: string;
   } | null;
-  if (!coverConfigJson?.enabled) return;
+  if (!coverConfigJson?.enabled) {
+    console.info(
+      `[autoCover] skip render=${renderId} slot=${slotId} reason=coverConfig_disabled ` +
+      `(coverMode=auto mais coverConfig.enabled=${coverConfigJson?.enabled} — il faut activer dans la config cover du pattern)`,
+    );
+    return;
+  }
 
   const presetId = coverConfigJson.coverPresetId;
   const presetName = coverConfigJson.coverPresetName;

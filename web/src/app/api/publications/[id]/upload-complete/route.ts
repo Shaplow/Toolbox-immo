@@ -24,6 +24,7 @@ import { objectExists, deleteObject, getPublicUrl, isLocalStorage } from "@/lib/
 import { completeMultipartUpload, abortMultipartUpload } from "@/lib/r2Multipart";
 import { logActivity } from "@/lib/services/slot/activity";
 import { applyAutoTransition } from "@/lib/services/slot/transitions";
+import { tryAutoTriggerCover } from "@/lib/services/slot/autoCoverTrigger";
 
 type UploadKind = "rush" | "version" | "brief-attachment";
 
@@ -381,6 +382,23 @@ async function handleVersionComplete(args: {
 
     return version;
   });
+
+  // Phase 2.3 fix : si on a auto-promu une 1ère version sans validation admin,
+  // on doit aussi déclencher tryAutoTriggerCover (équivalent du flux promote
+  // manuel). Sans ça, manual_rushes + auto-promote ne créait jamais de cover
+  // pack et le step Cover restait silencieusement à "todo".
+  if (!needsAdminValidation && result.versionNumber === 1) {
+    const coverResult = await tryAutoTriggerCover({
+      slotId,
+      actorId,
+      trigger: "AUTO_POST_PROMOTE",
+    });
+    if (coverResult.status === "error") {
+      console.error(`[upload-complete] auto-cover post auto-promote failed slot=${slotId}:`, coverResult.reason);
+    } else if (coverResult.status === "skipped") {
+      console.info(`[upload-complete] auto-cover skipped slot=${slotId}: ${coverResult.reason}`);
+    }
+  }
 
   return NextResponse.json({ ok: true, id: result.id, versionNumber: result.versionNumber });
 }
