@@ -10,13 +10,18 @@
  *
  * L'impersonation s'applique : la vue est celle de effectiveUser. Un admin qui
  * impersonne un MONTEUR voit uniquement les slots assignés à ce MONTEUR.
+ *
+ * POST : logique métier extraite dans `services/slot/slotService.createSlot`.
+ * GET  : à extraire en S1.7 — pour l'instant, reste tel quel.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { whereClauseForUser } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
-import { syncSlotsPipelineStatuses } from "@/lib/publications/transitions";
+import { syncSlotsPipelineStatuses } from "@/lib/services/slot/transitions";
+import { createSlot } from "@/lib/services/slot/slotService";
+import { mapServiceError } from "@/lib/services/_runtime/mapServiceError";
 
 /** Safely parse a JSON string. Returns `fallback` if the string is falsy or invalid. */
 function safeJSON<T>(str: string | null | undefined, fallback: T): T {
@@ -140,148 +145,15 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const userContext = await getUserContext();
-  // POST reste réservé aux admins — la création de slots est une opération de planification.
-  // L'impersonation ne donne pas les droits d'un admin : canAdminBypass est false quand on impersonne.
-  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
-    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
+  if (!userContext?.effectiveUser.id) {
+    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
   const body = await req.json();
-  const {
-    accountId,
-    scheduledAt,
-    title,
-    caption,
-    notes,
-    templateId,
-    fields,
-    fieldSchema,
-    // Pattern-based creation (Phase 1.6)
-    patternId,
-    // Les assignees peuvent être fournis explicitement (override) ou déduits depuis le pattern
-    assigneeMonteurId: rawAssigneeMonteurId,
-    assigneeCmId: rawAssigneeCmId,
-    assigneeVideasteId: rawAssigneeVideasteId,
-    // Phase 6 — overrides one-off (uniquement si pattern=null)
-    needsCaptionsOverride,
-    needsDescriptionOverride,
-    needsRushesOverride,
-    needsBriefOverride,
-    coverModeOverride,
-    // Phase 2 (Cohérence Rôles) — pickers preset/prompt one-off
-    coverPresetIdOverride,
-    captionPresetIdOverride,
-    descriptionPromptIdOverride,
-  } = body;
-
-  // --- Résolution du pattern si fourni ---
-  let resolvedAssigneeMonteurId: string | null = rawAssigneeMonteurId ?? null;
-  let resolvedAssigneeCmId: string | null = rawAssigneeCmId ?? null;
-  let resolvedAssigneeVideasteId: string | null = rawAssigneeVideasteId ?? null;
-
-  if (patternId) {
-    const pattern = await prisma.accountPattern.findUnique({ where: { id: patternId } });
-    if (!pattern) {
-      return NextResponse.json({ error: "Pattern introuvable" }, { status: 400 });
-    }
-    // Préfill des assignees : la valeur du body prime (override admin), sinon fallback pattern
-    if (!resolvedAssigneeMonteurId && pattern.defaultAssigneeMonteurId) {
-      resolvedAssigneeMonteurId = pattern.defaultAssigneeMonteurId;
-    }
-    if (!resolvedAssigneeCmId && pattern.defaultAssigneeCmId) {
-      resolvedAssigneeCmId = pattern.defaultAssigneeCmId;
-    }
-    if (!resolvedAssigneeVideasteId && pattern.defaultAssigneeVideasteId) {
-      resolvedAssigneeVideasteId = pattern.defaultAssigneeVideasteId;
-    }
+  try {
+    const slot = await createSlot(body, userContext);
+    return NextResponse.json(slot);
+  } catch (err) {
+    return mapServiceError(err);
   }
-
-  if (!accountId || !scheduledAt) {
-    return NextResponse.json(
-      { error: "accountId et scheduledAt sont requis" },
-      { status: 400 }
-    );
-  }
-
-  const account = await prisma.instagramAccount.findUnique({ where: { id: accountId } });
-  if (!account) {
-    return NextResponse.json({ error: "Compte introuvable" }, { status: 404 });
-  }
-
-  const parsedScheduledAt = new Date(scheduledAt);
-  if (isNaN(parsedScheduledAt.getTime())) {
-    return NextResponse.json({ error: "scheduledAt invalide" }, { status: 400 });
-  }
-
-  // Valider que les assignees référencent des Users existants si fournis
-  if (resolvedAssigneeMonteurId) {
-    const monteur = await prisma.user.findUnique({ where: { id: resolvedAssigneeMonteurId } });
-    if (!monteur) {
-      return NextResponse.json({ error: "assigneeMonteurId : utilisateur introuvable" }, { status: 400 });
-    }
-  }
-  if (resolvedAssigneeCmId) {
-    const cm = await prisma.user.findUnique({ where: { id: resolvedAssigneeCmId } });
-    if (!cm) {
-      return NextResponse.json({ error: "assigneeCmId : utilisateur introuvable" }, { status: 400 });
-    }
-  }
-  if (resolvedAssigneeVideasteId) {
-    const videaste = await prisma.user.findUnique({ where: { id: resolvedAssigneeVideasteId } });
-    if (!videaste) {
-      return NextResponse.json({ error: "assigneeVideasteId : utilisateur introuvable" }, { status: 400 });
-    }
-  }
-
-  const slot = await prisma.publicationSlot.create({
-    data: {
-      accountId,
-      scheduledAt: parsedScheduledAt,
-      title: title ?? null,
-      caption: caption ?? null,
-      notes: notes ?? null,
-      templateId: templateId ?? null,
-      fields: fields ? JSON.stringify(fields) : "{}",
-      fieldSchema: fieldSchema ? JSON.stringify(fieldSchema) : "[]",
-      isAuto: false,
-      patternId: patternId ?? null,
-      assigneeMonteurId: resolvedAssigneeMonteurId,
-      assigneeCmId: resolvedAssigneeCmId,
-      assigneeVideasteId: resolvedAssigneeVideasteId,
-      // Phase 6 — overrides one-off (uniquement si fournis dans le body)
-      ...(needsCaptionsOverride !== undefined
-        ? { needsCaptionsOverride: needsCaptionsOverride as boolean | null }
-        : {}),
-      ...(needsDescriptionOverride !== undefined
-        ? { needsDescriptionOverride: needsDescriptionOverride as string | null }
-        : {}),
-      ...(needsRushesOverride !== undefined
-        ? { needsRushesOverride: needsRushesOverride as boolean | null }
-        : {}),
-      ...(needsBriefOverride !== undefined
-        ? { needsBriefOverride: needsBriefOverride as boolean | null }
-        : {}),
-      ...(coverModeOverride !== undefined
-        ? { coverModeOverride: coverModeOverride as string | null }
-        : {}),
-      ...(coverPresetIdOverride !== undefined
-        ? { coverPresetIdOverride: coverPresetIdOverride as string | null }
-        : {}),
-      ...(captionPresetIdOverride !== undefined
-        ? { captionPresetIdOverride: captionPresetIdOverride as string | null }
-        : {}),
-      ...(descriptionPromptIdOverride !== undefined
-        ? { descriptionPromptIdOverride: descriptionPromptIdOverride as string | null }
-        : {}),
-    },
-    include: {
-      account: { select: { id: true, name: true, handle: true } },
-    },
-  });
-
-  return NextResponse.json({
-    ...slot,
-    fields: safeJSON<Record<string, string>>(slot.fields, {}),
-    fieldSchema: safeJSON<string[]>(slot.fieldSchema, []),
-  });
 }
