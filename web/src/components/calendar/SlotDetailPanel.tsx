@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
-import { X, ExternalLink, Trash2, Check, Clapperboard } from "lucide-react";
+import { X, ExternalLink, Trash2, Check, Clapperboard, Users, Ban } from "lucide-react";
 import { STATUS_LABELS, type SlotStatus, type PublicationSlot } from "@/types/calendar";
 import { STATUS_TRANSITIONS } from "@/lib/services/slot/transitions";
 import { FlexFieldsEditor } from "./FlexFieldsEditor";
@@ -115,6 +115,41 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
   const [coverPresets, setCoverPresets] = useState<Array<{ id: string; name: string }>>([]);
   const [captionPresets, setCaptionPresets] = useState<Array<{ id: string; name: string }>>([]);
   const [descriptionPrompts, setDescriptionPrompts] = useState<Array<{ id: string; name: string }>>([]);
+
+  // Listes d'utilisateurs assignables (admin only)
+  type UserOpt = { id: string; name: string | null };
+  const [monteurs, setMonteurs] = useState<UserOpt[]>([]);
+  const [cms, setCms] = useState<UserOpt[]>([]);
+  const [videastes, setVideastes] = useState<UserOpt[]>([]);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  // Champs d'assignation (admin only) — initialisés depuis le slot
+  const [assigneeMonteurId, setAssigneeMonteurId] = useState<string>(slot.assigneeMonteurId ?? "");
+  const [assigneeCmId, setAssigneeCmId] = useState<string>(slot.assigneeCmId ?? "");
+  const [assigneeVideasteId, setAssigneeVideasteId] = useState<string>(slot.assigneeVideasteId ?? "");
+
+  useEffect(() => {
+    setAssigneeMonteurId(slot.assigneeMonteurId ?? "");
+    setAssigneeCmId(slot.assigneeCmId ?? "");
+    setAssigneeVideasteId(slot.assigneeVideasteId ?? "");
+  }, [slot.assigneeMonteurId, slot.assigneeCmId, slot.assigneeVideasteId]);
+
+  useEffect(() => {
+    if (isRestricted) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/admin/users");
+        if (!res.ok) return;
+        const users = (await res.json()) as Array<{ id: string; name: string | null; role: string }>;
+        if (cancelled) return;
+        setMonteurs(users.filter((u) => u.role === "MONTEUR" || u.role === "ADMIN"));
+        setCms(users.filter((u) => u.role === "CM" || u.role === "ADMIN"));
+        setVideastes(users.filter((u) => u.role === "VIDEASTE" || u.role === "ADMIN"));
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [isRestricted]);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -155,6 +190,9 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
             caption: form.caption || null,
             notes: form.notes || null,
             status: form.status,
+            assigneeMonteurId: assigneeMonteurId || null,
+            assigneeCmId: assigneeCmId || null,
+            assigneeVideasteId: assigneeVideasteId || null,
             fields: form.fields,
             fieldSchema: form.fieldSchema,
             // Phase 4 — overrides needs* (booleans + enum description)
@@ -167,9 +205,6 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
             coverPresetIdOverride: form.coverPresetIdOverride,
             captionPresetIdOverride: form.captionPresetIdOverride,
             descriptionPromptIdOverride: form.descriptionPromptIdOverride,
-            // NOTE Phase 3 cohérence : needsClientValidationOverride et
-            // allowsClientRevisionOverride sont retirés ici — édition
-            // centralisée dans ClientValidationSection (fiche publication).
           };
 
       const res = await fetch(`/api/calendar/slots/${slot.id}`, {
@@ -204,6 +239,29 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
     }
   }
 
+  async function handleCancelConfirmed() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/calendar/slots/${slot.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "CANCELLED" }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({ error: `Erreur ${res.status}` })) as { error?: string };
+        throw new Error(d.error ?? `Erreur ${res.status}`);
+      }
+      const updated = await res.json() as PublicationSlot;
+      onUpdated(updated);
+      setConfirmCancel(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleDeleteConfirmed() {
     setDeleting(true);
     try {
@@ -221,6 +279,17 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
 
   return (
     <>
+      <ConfirmDialog
+        open={confirmCancel}
+        title="Annuler cette mission ?"
+        description="Le slot passera au statut « Annulé ». Aucune donnée n'est supprimée — l'historique reste consultable."
+        confirmLabel="Annuler la mission"
+        variant="danger"
+        loading={saving}
+        onConfirm={() => { void handleCancelConfirmed(); }}
+        onCancel={() => setConfirmCancel(false)}
+      />
+
       <ConfirmDialog
         open={confirmDeleteOpen}
         title="Supprimer ce slot ?"
@@ -283,18 +352,78 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
             </select>
           </div>
 
-          {/* Title — admin uniquement */}
+          {/* Équipe — admin uniquement (action immédiate sur les assignations) */}
           {!isRestricted && (
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Titre</label>
-              <input
-                type="text"
-                value={form.title}
-                onChange={(e) => set("title", e.target.value)}
-                placeholder="Nom du bien, propriétaire…"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
+              <label className="block text-xs font-medium text-gray-600 mb-2 flex items-center gap-1.5">
+                <Users size={12} className="text-gray-400" />
+                Équipe assignée
+              </label>
+              <div className="space-y-2">
+                <AssigneeSelect
+                  label="Vidéaste"
+                  value={assigneeVideasteId}
+                  options={videastes}
+                  onChange={setAssigneeVideasteId}
+                />
+                <AssigneeSelect
+                  label="Monteur"
+                  value={assigneeMonteurId}
+                  options={monteurs}
+                  onChange={setAssigneeMonteurId}
+                />
+                <AssigneeSelect
+                  label="CM"
+                  value={assigneeCmId}
+                  options={cms}
+                  onChange={setAssigneeCmId}
+                />
+              </div>
             </div>
+          )}
+
+          {/* Titre/Caption/Flex fields — admin : repliés dans un details "Détails" */}
+          {!isRestricted && (
+            <details className="rounded-lg border border-gray-200 bg-gray-50/50 p-3">
+              <summary className="cursor-pointer text-xs font-medium text-gray-700 select-none">
+                Détails (titre, légende, infos)
+              </summary>
+              <div className="mt-3 space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Titre</label>
+                  <input
+                    type="text"
+                    value={form.title}
+                    onChange={(e) => set("title", e.target.value)}
+                    placeholder="Nom du bien, propriétaire…"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Légende Instagram</label>
+                  <textarea
+                    value={form.caption}
+                    onChange={(e) => set("caption", e.target.value)}
+                    rows={3}
+                    placeholder="Texte de la publication…"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-2">
+                    Informations complémentaires
+                  </label>
+                  <FlexFieldsEditor
+                    schema={form.fieldSchema}
+                    values={form.fields}
+                    onChange={(schema, values) => {
+                      set("fieldSchema", schema);
+                      set("fields", values);
+                    }}
+                  />
+                </div>
+              </div>
+            </details>
           )}
 
           {/* Title — monteur/cm : lecture seule, affiché uniquement si une valeur existe */}
@@ -305,42 +434,11 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
             </div>
           )}
 
-          {/* Caption — admin uniquement */}
-          {!isRestricted && (
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Légende Instagram</label>
-              <textarea
-                value={form.caption}
-                onChange={(e) => set("caption", e.target.value)}
-                rows={3}
-                placeholder="Texte de la publication…"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
-              />
-            </div>
-          )}
-
           {/* Template affiché en lecture seule pour monteur/cm */}
           {isRestricted && slot.template && (
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Template</label>
               <p className={READ_ONLY_INPUT_CLS}>{slot.template.name}</p>
-            </div>
-          )}
-
-          {/* Flex fields — admin uniquement */}
-          {!isRestricted && (
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-2">
-                Informations complémentaires
-              </label>
-              <FlexFieldsEditor
-                schema={form.fieldSchema}
-                values={form.fields}
-                onChange={(schema, values) => {
-                  set("fieldSchema", schema);
-                  set("fields", values);
-                }}
-              />
             </div>
           )}
 
@@ -490,6 +588,19 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
 
         {/* Footer — shrink-0 pour rester visible même quand le body est long */}
         <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-2 shrink-0 bg-white">
+          {/* Bouton Annuler la mission — admin uniquement, statut non-terminal */}
+          {!isRestricted && slot.status !== "CANCELLED" && slot.status !== "ARCHIVED" && slot.status !== "PUBLISHED" && (
+            <button
+              type="button"
+              onClick={() => setConfirmCancel(true)}
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-50"
+              title="Marquer la mission comme annulée (sans rien supprimer)"
+            >
+              <Ban size={13} />
+              Annuler
+            </button>
+          )}
           {/* Bouton Supprimer — admin uniquement */}
           {!isRestricted && (
             <button
@@ -497,6 +608,7 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
               onClick={() => setConfirmDeleteOpen(true)}
               disabled={deleting}
               className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+              title="Supprimer définitivement"
             >
               <Trash2 size={15} />
             </button>
@@ -536,6 +648,40 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
         </div>
       </div>
     </>
+  );
+}
+
+// ─── AssigneeSelect ──────────────────────────────────────────────────────────
+
+/**
+ * Ligne d'assignation compacte : label + select large.
+ * Le picker liste tous les users du rôle ciblé + ADMIN (peuvent endosser le rôle).
+ */
+function AssigneeSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: Array<{ id: string; name: string | null }>;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-gray-500 w-16 shrink-0">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+      >
+        <option value="">— Non assigné —</option>
+        {options.map((u) => (
+          <option key={u.id} value={u.id}>{u.name ?? u.id}</option>
+        ))}
+      </select>
+    </div>
   );
 }
 
