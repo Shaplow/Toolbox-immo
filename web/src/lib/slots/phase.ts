@@ -90,17 +90,20 @@ export const PHASE_LABELS: Record<PublicationPhase, string> = {
 
 /**
  * Badge complet (background + texte + border) pour cartes/chips.
- * Cohérent avec la palette utilisée dans STATUS_COLORS — gris/jaune/orange/
- * indigo/teal/vert + gris pour terminated (état terminal "froid").
+ * Cohérent avec la palette utilisée dans STATUS_COLORS — gris/jaune/stone/
+ * amber/indigo/teal/vert + gris pour terminated (état terminal "froid").
  *
  * cm_review (indigo) : territoire du CM, cohérent avec OWNER_BADGE_CLS.CM.
  * publishing (teal)  : signal "imminent / programmé", aligné sur la couleur
  *                       du statut SCHEDULED dans STATUS_COLORS.
+ * production (stone) : beige neutre chaud — repeint depuis orange dans le
+ *                       cadre de la refonte DS (chantier ui-boost). Évite
+ *                       le clash avec la brand color orange #FF5A1F.
  */
 export const PHASE_COLORS: Record<PublicationPhase, string> = {
   planned: "bg-gray-100 text-gray-700 border-gray-200",
   shooting: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  production: "bg-orange-100 text-orange-800 border-orange-200",
+  production: "bg-stone-100 text-stone-700 border-stone-200",
   // amber = orange/jaune "attention requise" admin
   admin_review: "bg-amber-100 text-amber-800 border-amber-300",
   cm_review: "bg-indigo-100 text-indigo-700 border-indigo-200",
@@ -115,7 +118,7 @@ export const PHASE_COLORS: Record<PublicationPhase, string> = {
 export const PHASE_DOT: Record<PublicationPhase, string> = {
   planned: "bg-gray-400",
   shooting: "bg-yellow-500",
-  production: "bg-orange-500",
+  production: "bg-stone-500",
   admin_review: "bg-amber-500",
   cm_review: "bg-indigo-500",
   publishing: "bg-teal-500",
