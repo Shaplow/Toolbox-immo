@@ -420,8 +420,14 @@ export function PublicationFiche({
                 />
               )}
 
-            {/* Rushes — Phase B2, conditionné par pattern.needsRushes */}
-            {pattern?.needsRushes &&
+            {/* Rushes — visible si la recipe en attend (pattern.needsRushes)
+                OU si l'on est déjà dans une phase rushs/montage (statut le
+                signale) OU si des rushs ont déjà été déposés. Robuste aux
+                slots dont le pattern a été modifié après création. */}
+            {(pattern?.needsRushes ||
+              slot.status === "RUSHES_EXPECTED" ||
+              slot.status === "RUSHES_RECEIVED" ||
+              rushes.length > 0) &&
               wrap(
                 "rushes",
                 <RushesSection
@@ -433,8 +439,12 @@ export function PublicationFiche({
                 />
               )}
 
-            {/* Versions livrées — Phase C1, conditionné par pattern.needsRushes */}
-            {pattern?.needsRushes &&
+            {/* Versions livrées — visible dans les mêmes conditions que rushs
+                ou s'il existe au moins une version déposée. */}
+            {(pattern?.needsRushes ||
+              slot.status === "RUSHES_EXPECTED" ||
+              slot.status === "RUSHES_RECEIVED" ||
+              versions.length > 0) &&
               wrap(
                 "versions",
                 <VersionsSection

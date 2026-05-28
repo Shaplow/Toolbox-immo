@@ -205,7 +205,16 @@ export function computePublicationSteps(input: {
   const pattern = input.pattern ?? null;
 
   // ── Visibilité par pattern ────────────────────────────────────────────────
-  const rushesVisible = pattern?.needsRushes === true;
+  // rushes : visible si pattern.needsRushes OU si on est dans une phase
+  // rushs/montage (statut le signale) OU s'il existe déjà des rushs. Robuste
+  // aux slots dont le pattern aurait été modifié après création — sans cela,
+  // le step n'apparaissait pas alors que le banner "Uploader les rushes"
+  // s'affichait quand même, créant une UX incohérente.
+  const rushesVisible =
+    pattern?.needsRushes === true ||
+    slot.status === "RUSHES_EXPECTED" ||
+    slot.status === "RUSHES_RECEIVED" ||
+    rushesCount > 0;
   const renderVisible = pattern?.source === "auto_template";
   const editVisible = pattern?.needsRushes === true || pattern?.needsBrief === true;
   const coverVisible =

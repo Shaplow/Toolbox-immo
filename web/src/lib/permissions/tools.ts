@@ -14,8 +14,26 @@
  */
 
 import type { UserRole } from "@/types/roles";
-import type { AppUserIdentity } from "@/lib/userContext";
-import { parsePermissions } from "@/lib/userContext";
+
+// Identité minimale lue depuis la session — duplique le shape de
+// userContext.AppUserIdentity pour éviter de pull userContext.ts (qui
+// importe `next/headers`) dans la bundling chain des composants client.
+// canAccessTool est utilisé côté serveur ET côté client (pour gating UI),
+// donc ce module doit rester sans dépendance server-only.
+export type ToolUserIdentity = {
+  id: string;
+  role: string;
+  permissions: string;
+};
+
+/** JSON-array parse tolérant pour User.permissions. */
+function parsePermissions(rawPermissions: string | null | undefined): string[] {
+  try {
+    return JSON.parse(rawPermissions ?? "[]") as string[];
+  } catch {
+    return [];
+  }
+}
 
 /** Sentinelle : l'ADMIN a accès à TOUS les outils sans liste explicite. */
 export const ROLE_TOOL_SCOPE_ALL = "*" as const;
@@ -48,7 +66,7 @@ export const ROLE_TOOL_SCOPE: Record<UserRole, RoleToolScope> = {
  * Cela permet des cumuls ponctuels : un MONTEUR avec "description" dans ses
  * permissions aura aussi accès à description (les deux sources sont ORées).
  */
-export function canAccessTool(user: AppUserIdentity, toolKey: string): boolean {
+export function canAccessTool(user: ToolUserIdentity, toolKey: string): boolean {
   const role = user.role as UserRole;
 
   // 1. ADMIN
@@ -68,7 +86,7 @@ export function canAccessTool(user: AppUserIdentity, toolKey: string): boolean {
 /**
  * Variante assert : throw si l'utilisateur n'a pas accès à l'outil.
  */
-export function assertCanAccessTool(user: AppUserIdentity, toolKey: string): void {
+export function assertCanAccessTool(user: ToolUserIdentity, toolKey: string): void {
   if (!canAccessTool(user, toolKey)) {
     throw new Error(
       `Accès refusé : le rôle "${user.role}" n'a pas accès à l'outil "${toolKey}".`
