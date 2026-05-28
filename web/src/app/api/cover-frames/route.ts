@@ -32,7 +32,18 @@ export async function POST(req: NextRequest) {
   const form = new FormData();
   form.append("timestamps_json", JSON.stringify(timestamps));
 
-  if (videoUrl.startsWith("/")) {
+  if (videoUrl.startsWith("/api/captions/")) {
+    // Render local : la vidéo vit dans le workspace du render-engine (FastAPI),
+    // pas dans public/. On la passe en URL absolue loopback vers CAPTIONS_API
+    // pour que le render-engine fetch son propre fichier (pas de lecture
+    // disque possible côté web). Cas typique : slot auto_template avec
+    // pipeline VIDEO_LOCAL / SEQUENCE_LOCAL → render.videoUrl pré-rempli sur
+    // la page cover. Sans ce path, le pré-fill cassait avec un 404
+    // "Fichier vidéo introuvable" car path.join(public, /api/captions/…)
+    // ne trouve rien.
+    const enginePath = videoUrl.replace(/^\/api\/captions\//, "");
+    form.append("video_url", `${CAPTIONS_API}/${enginePath}`);
+  } else if (videoUrl.startsWith("/")) {
     // URL locale : lire le fichier sur disque et l'envoyer directement au render engine
     // (évite tout problème réseau cross-container Docker)
     const safePath = path.join(process.cwd(), "public", path.normalize(videoUrl));
