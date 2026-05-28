@@ -168,10 +168,14 @@ export function SlotCard({ slot, onClick, currentUserRole, currentUserId }: Slot
         </span>
         {slot.pattern?.label && (
           <Link
-            href={`/admin/accounts/${slot.accountId}`}
+            href={
+              slot.patternId
+                ? `/admin/accounts/${slot.accountId}?pattern=${slot.patternId}`
+                : `/admin/accounts/${slot.accountId}`
+            }
             onClick={(e) => e.stopPropagation()}
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 transition-colors"
-            title={`Pattern : ${slot.pattern.label} — voir la fiche compte`}
+            title={`Pattern : ${slot.pattern.label} — voir le détail`}
           >
             {slot.pattern.label}
           </Link>

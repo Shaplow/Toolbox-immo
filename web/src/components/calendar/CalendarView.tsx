@@ -89,10 +89,23 @@ export function CalendarView({
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialAccountId = searchParams?.get("accountId") ?? "";
+  // Filtre métier passé depuis HomeAdmin KPI cards.
+  const kpiFilter = searchParams?.get("filter") ?? "";
   const isAdmin = currentUserRole === "ADMIN";
   const detailMode = ROLE_DETAIL_MODE[currentUserRole];
 
-  const [weekStart, setWeekStart] = useState<Date>(() => new Date(initialWeekStart));
+  // Phase nav 2026-05-28 — restaure la semaine depuis l'URL si présente
+  // (?week=YYYY-MM-DD) pour que le retour depuis une fiche /publications/[id]
+  // ne reset pas systématiquement à la semaine courante.
+  const initialWeek = (() => {
+    const w = searchParams?.get("week");
+    if (w && /^\d{4}-\d{2}-\d{2}$/.test(w)) {
+      const parsed = new Date(`${w}T00:00:00`);
+      if (!isNaN(parsed.getTime())) return parsed;
+    }
+    return new Date(initialWeekStart);
+  })();
+  const [weekStart, setWeekStart] = useState<Date>(initialWeek);
   const [slots, setSlots] = useState<PublicationSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -159,9 +172,40 @@ export function CalendarView({
   // Clear slots avant chaque navigation pour déclencher le skeleton — sans
   // ça, le contenu stale de la semaine précédente reste visible pendant
   // le fetch et donne l'illusion qu'on est sur la bonne semaine.
-  function prevWeek() { setSlots([]); setWeekStart((d) => addDays(d, -7)); }
-  function nextWeek() { setSlots([]); setWeekStart((d) => addDays(d, 7)); }
-  function goToday() { setSlots([]); setWeekStart(getMondayOf(new Date())); }
+  // Persiste la semaine courante dans l'URL (?week=YYYY-MM-DD) pour que le
+  // retour depuis une fiche tombe sur la bonne semaine et la position scroll
+  // soit cohérente avec ce qu'on regardait.
+  function persistWeek(week: Date) {
+    const iso = week.toISOString().slice(0, 10); // YYYY-MM-DD
+    const url = new URL(window.location.href);
+    url.searchParams.set("week", iso);
+    router.replace(url.pathname + url.search, { scroll: false });
+  }
+  function prevWeek() {
+    setSlots([]);
+    setWeekStart((d) => {
+      const nw = addDays(d, -7);
+      persistWeek(nw);
+      return nw;
+    });
+  }
+  function nextWeek() {
+    setSlots([]);
+    setWeekStart((d) => {
+      const nw = addDays(d, 7);
+      persistWeek(nw);
+      return nw;
+    });
+  }
+  function goToday() {
+    setSlots([]);
+    const nw = getMondayOf(new Date());
+    setWeekStart(nw);
+    // Pas de persistWeek ici — on retombe sur le défaut serveur, URL clean.
+    const url = new URL(window.location.href);
+    url.searchParams.delete("week");
+    router.replace(url.pathname + url.search, { scroll: false });
+  }
 
   /** True si le slot attend une action de currentUser (rôle owner + assignation matchante).
    *  Owner contextualisé via resolveSlotOwner — pour les statuts amont
@@ -177,8 +221,34 @@ export function CalendarView({
     return false;
   }
 
-  const visibleSlots = filters.onlyMine ? slots.filter(isSlotMine) : slots;
+  // KPI filter venant de HomeAdmin (en plus de onlyMine). Appliqué côté client
+  // — il n'y a pas d'index serveur pour ces critères, mais sur take=500
+  // c'est négligeable.
+  function matchesKpiFilter(slot: PublicationSlot): boolean {
+    if (!kpiFilter) return true;
+    const now = Date.now();
+    const isTerminal =
+      slot.status === "PUBLISHED" ||
+      slot.status === "CANCELLED" ||
+      slot.status === "ARCHIVED" ||
+      slot.status === "REJECTED";
+    switch (kpiFilter) {
+      case "overdue":
+        return !isTerminal && new Date(slot.scheduledAt).getTime() < now;
+      case "no-pattern":
+        return !slot.patternId;
+      case "no-monteur":
+        return !slot.assigneeMonteurId;
+      case "no-videaste":
+        return !slot.assigneeVideasteId;
+      default:
+        return true;
+    }
+  }
+
+  const visibleSlots = (filters.onlyMine ? slots.filter(isSlotMine) : slots).filter(matchesKpiFilter);
   const mineCount = slots.filter(isSlotMine).length;
+  const kpiFilteredCount = kpiFilter ? slots.filter(matchesKpiFilter).length : 0;
 
   function slotsForDay(day: Date) {
     return visibleSlots
@@ -276,6 +346,28 @@ export function CalendarView({
               onClick={clearAccountFilter}
               className="hover:text-indigo-900 transition-colors"
               title="Effacer le filtre compte"
+            >
+              <X size={11} />
+            </button>
+          </span>
+        )}
+
+        {/* Badge filtre KPI venant de HomeAdmin (?filter=) */}
+        {kpiFilter && (
+          <span
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200"
+            title={`${kpiFilteredCount} slot${kpiFilteredCount > 1 ? "s" : ""} dans la semaine affichée`}
+          >
+            {kpiFilter === "overdue" && "En retard"}
+            {kpiFilter === "no-pattern" && "Sans pattern"}
+            {kpiFilter === "no-monteur" && "Sans monteur"}
+            {kpiFilter === "no-videaste" && "Sans vidéaste"}
+            <span className="text-[10px] tabular-nums opacity-70">{kpiFilteredCount}</span>
+            <button
+              type="button"
+              onClick={() => router.replace("/calendar")}
+              className="hover:text-amber-900 transition-colors"
+              title="Effacer le filtre"
             >
               <X size={11} />
             </button>

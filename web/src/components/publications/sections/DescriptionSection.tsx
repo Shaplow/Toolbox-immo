@@ -33,7 +33,6 @@ interface Props {
   initialDescription: string;
   /** true pour CM et ADMIN */
   canEdit: boolean;
-  renderId: string | null;
   /**
    * Prompt à pré-sélectionner dans la modal IA. Résolu côté serveur :
    * slot.descriptionPromptIdOverride ?? pattern.descriptionPromptId ?? null.
@@ -60,7 +59,6 @@ export function DescriptionSection({
   pattern,
   initialDescription,
   canEdit,
-  renderId,
   defaultPromptId,
 }: Props) {
   // Si pas de pattern ou que le pattern indique que la description n'est pas nécessaire, on masque
@@ -71,7 +69,6 @@ export function DescriptionSection({
     pattern={pattern}
     initialDescription={initialDescription}
     canEdit={canEdit}
-    renderId={renderId}
     defaultPromptId={defaultPromptId}
   />;
 }
@@ -82,7 +79,7 @@ function DescriptionSectionInner({
   initialDescription,
   canEdit,
   defaultPromptId,
-}: Omit<Props, "renderId">) {
+}: Props) {
   const [value, setValue] = useState(initialDescription);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);

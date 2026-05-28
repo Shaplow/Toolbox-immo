@@ -102,16 +102,17 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
         <p className="text-sm text-gray-500 mt-1 capitalize">{todayLabel}</p>
       </div>
 
-      {/* Métriques globales — F1.12/F1.13/B10 : cartes cliquables vers /calendar */}
+      {/* Métriques globales — chaque carte filtre le calendrier via ?filter=
+          sur la query string (Phase nav audit 2026-05-28). */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Link
-          href="/calendar"
+          href="/calendar?filter=overdue"
           className={`rounded-xl border p-4 flex flex-col gap-1 transition-colors hover:opacity-80 ${
             overdueCount > 0
               ? "border-red-200 bg-red-50 hover:border-red-300"
               : "border-gray-200 bg-gray-50 hover:border-gray-300"
           }`}
-          title="Voir dans le calendrier"
+          title="Voir les slots en retard"
         >
           <div className="flex items-center gap-2">
             <AlertTriangle
@@ -132,13 +133,13 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
         </Link>
 
         <Link
-          href="/calendar"
+          href="/calendar?filter=no-pattern"
           className={`rounded-xl border p-4 flex flex-col gap-1 transition-colors hover:opacity-80 ${
             noPatternCount > 0
               ? "border-amber-200 bg-amber-50 hover:border-amber-300"
               : "border-gray-200 bg-gray-50 hover:border-gray-300"
           }`}
-          title="Voir dans le calendrier"
+          title="Voir les slots sans pattern"
         >
           <div className="flex items-center gap-2">
             <FileQuestion
@@ -160,13 +161,13 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
 
         {/* B10 — Slots sans monteur assigné (sinon invisibles côté monteur) */}
         <Link
-          href="/calendar"
+          href="/calendar?filter=no-monteur"
           className={`rounded-xl border p-4 flex flex-col gap-1 transition-colors hover:opacity-80 ${
             noMonteurCount > 0
               ? "border-orange-200 bg-orange-50 hover:border-orange-300"
               : "border-gray-200 bg-gray-50 hover:border-gray-300"
           }`}
-          title="Voir dans le calendrier"
+          title="Voir les slots sans monteur assigné"
         >
           <div className="flex items-center gap-2">
             <UserX
@@ -188,13 +189,13 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
 
         {/* Slots nécessitant un vidéaste mais non assignés (équivalent monteur). */}
         <Link
-          href="/calendar"
+          href="/calendar?filter=no-videaste"
           className={`rounded-xl border p-4 flex flex-col gap-1 transition-colors hover:opacity-80 ${
             noVideasteCount > 0
               ? "border-fuchsia-200 bg-fuchsia-50 hover:border-fuchsia-300"
               : "border-gray-200 bg-gray-50 hover:border-gray-300"
           }`}
-          title="Voir dans le calendrier"
+          title="Voir les slots sans vidéaste assigné"
         >
           <div className="flex items-center gap-2">
             <Video

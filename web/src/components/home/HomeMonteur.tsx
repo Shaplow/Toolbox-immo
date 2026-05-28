@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -225,9 +226,10 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
           </p>
           <div className="space-y-2">
             {waiting.map((slot) => (
-              <div
+              <Link
                 key={slot.id}
-                className="bg-white rounded-lg border border-gray-200 px-3 py-2 flex items-center justify-between gap-2"
+                href={`/publications/${slot.id}`}
+                className="bg-white rounded-lg border border-gray-200 px-3 py-2 flex items-center justify-between gap-2 hover:border-gray-300 hover:shadow-sm transition-all"
               >
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-gray-700 truncate">
@@ -238,7 +240,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
                 <span className="text-[11px] text-gray-400 shrink-0">
                   {slot.scheduledAt.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
                 </span>
-              </div>
+              </Link>
             ))}
           </div>
         </div>

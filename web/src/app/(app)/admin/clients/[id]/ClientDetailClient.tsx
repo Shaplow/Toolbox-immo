@@ -44,7 +44,20 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
   // /admin/accounts vers la fiche client onglet comptes). Valeurs invalides
   // tombent sur "info" par défaut.
   const initialTab: Tab = searchParams?.get("tab") === "accounts" ? "accounts" : "info";
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+  const [activeTab, setActiveTabState] = useState<Tab>(initialTab);
+
+  // Synchronise le tab dans l'URL : sans ça, reload ou copie de l'URL
+  // perdait l'onglet courant (audit nav 2026-05-28).
+  function setActiveTab(tab: Tab) {
+    setActiveTabState(tab);
+    const url = new URL(window.location.href);
+    if (tab === "accounts") {
+      url.searchParams.set("tab", "accounts");
+    } else {
+      url.searchParams.delete("tab");
+    }
+    router.replace(url.pathname + url.search, { scroll: false });
+  }
   const [client, setClient] = useState<ClientDetailData | null>(initialClient);
   const [allAccounts, setAllAccounts] = useState<ClientDetailAccountStub[]>(initialAccounts);
   const [form, setForm] = useState({

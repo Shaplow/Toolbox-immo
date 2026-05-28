@@ -29,6 +29,10 @@ interface Props {
   currentVersion?: { versionNumber: number; fileName: string } | null;
   /** Dernier job captions lié à ce slot (Phase 1.9 A2). */
   latestCaptionJob?: CaptionJobInfo | null;
+  /** Preset captions effectif (override slot ou pattern). Si défini, le
+   *  lien "Avancé" pointe direct vers /captions/[presetId]/generate, sinon
+   *  vers la gallery /captions où l'user doit choisir. */
+  effectiveCaptionPresetId?: string | null;
 }
 
 export function CaptionsSection({
@@ -38,13 +42,17 @@ export function CaptionsSection({
   canEdit,
   currentVersion,
   latestCaptionJob,
+  effectiveCaptionPresetId,
 }: Props) {
   // Si le pattern n'exige pas de captions, on masque la section
   if (pattern?.needsCaptions !== true) return null;
 
   // renderId n'est pas consommé par /captions ni /descriptions (audit nav
   // 2026-05-28) — on l'omet pour ne pas laisser un param fantôme dans l'URL.
-  const captionsHref = `/captions?slotId=${slot.id}&returnTo=/publications/${slot.id}`;
+  // Si on connaît déjà le preset effectif, on saute l'étape gallery.
+  const captionsHref = effectiveCaptionPresetId
+    ? `/captions/${effectiveCaptionPresetId}/generate?slotId=${slot.id}&returnTo=/publications/${slot.id}`
+    : `/captions?slotId=${slot.id}&returnTo=/publications/${slot.id}`;
 
   const isInProgress =
     latestCaptionJob?.status === "QUEUED" || latestCaptionJob?.status === "PROCESSING";

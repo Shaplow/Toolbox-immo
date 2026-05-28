@@ -519,6 +519,11 @@ export function PublicationFiche({
                   canEdit={canEditCaptions}
                   currentVersion={currentVersion}
                   latestCaptionJob={latestCaptionJob}
+                  effectiveCaptionPresetId={
+                    slot.captionPresetIdOverride ??
+                    pattern?.captionPresetId ??
+                    null
+                  }
                 />
               )}
 
@@ -530,7 +535,6 @@ export function PublicationFiche({
                 pattern={pattern ? { needsDescription: pattern.needsDescription } : null}
                 initialDescription={slot.description ?? ""}
                 canEdit={canEditDescription}
-                renderId={render?.id ?? null}
                 /**
                  * Prompt par défaut : override slot > pattern.
                  * Quand l'admin a configuré un prompt sur le pattern (et/ou un

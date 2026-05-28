@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Video } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -186,9 +187,10 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
               </div>
               <div className="space-y-2">
                 {delivered.map((slot) => (
-                  <div
+                  <Link
                     key={slot.id}
-                    className="bg-white rounded-lg border border-emerald-100 px-3 py-2 flex items-center justify-between gap-2"
+                    href={`/publications/${slot.id}`}
+                    className="bg-white rounded-lg border border-emerald-100 px-3 py-2 flex items-center justify-between gap-2 hover:border-emerald-300 hover:shadow-sm transition-all"
                   >
                     <div className="min-w-0">
                       <p className="text-xs font-medium text-gray-700 truncate">
@@ -199,7 +201,7 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
                     <span className="text-[11px] text-emerald-700 shrink-0">
                       Rushs livrés
                     </span>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -221,9 +223,10 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
               </p>
               <div className="space-y-2">
                 {inProduction.slice(0, 5).map((slot) => (
-                  <div
+                  <Link
                     key={slot.id}
-                    className="bg-white rounded-lg border border-gray-200 px-3 py-2 flex items-center justify-between gap-2"
+                    href={`/publications/${slot.id}`}
+                    className="bg-white rounded-lg border border-gray-200 px-3 py-2 flex items-center justify-between gap-2 hover:border-gray-300 hover:shadow-sm transition-all"
                   >
                     <div className="min-w-0">
                       <p className="text-xs font-medium text-gray-700 truncate">
@@ -234,7 +237,7 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
                     <span className="text-[11px] text-gray-400 shrink-0">
                       {STATUS_LABELS[slot.status] ?? slot.status}
                     </span>
-                  </div>
+                  </Link>
                 ))}
                 {inProduction.length > 5 && (
                   <p className="text-[11px] text-gray-400 italic text-center">

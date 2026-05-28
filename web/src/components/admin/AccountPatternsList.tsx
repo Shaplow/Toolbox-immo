@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { LayoutList, Edit, Copy, Trash2, Plus, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
@@ -55,13 +55,11 @@ function PatternCard({
   pattern,
   accountId,
   onEdit,
-  onClone,
   onDeleted,
 }: {
   pattern: Pattern;
   accountId: string;
   onEdit: (pattern: Pattern) => void;
-  onClone: () => void;
   onDeleted: () => void;
 }) {
   const [deleting, setDeleting] = useState(false);
@@ -114,7 +112,10 @@ function PatternCard({
   }
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-4">
+    <div
+      id={`pattern-${pattern.id}`}
+      className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-4 transition-all"
+    >
       {/* Header de la card */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
@@ -195,9 +196,6 @@ function PatternCard({
       <div className="flex items-center gap-2 pt-1 border-t border-gray-50">
         <Button variant="secondary" size="sm" icon={Edit} onClick={() => onEdit(pattern)}>
           Éditer
-        </Button>
-        <Button variant="ghost" size="sm" icon={Copy} onClick={() => onClone()}>
-          Cloner
         </Button>
         <div className="ml-auto" title={hasSlots ? `Ce pattern a ${pattern._count.publicationSlots} slot(s) associé(s). Suppression impossible.` : undefined}>
           {hasSlots ? (
@@ -403,6 +401,23 @@ function CloneDialog({
 
 export function AccountPatternsList({ account, patterns }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Deep-link `?pattern=xxx` (depuis le badge pattern sur SlotCard). Scroll +
+  // highlight la card cible au mount pour ne pas obliger l'admin à scanner.
+  const targetPatternId = searchParams?.get("pattern") ?? null;
+  useEffect(() => {
+    if (!targetPatternId) return;
+    const el = document.getElementById(`pattern-${targetPatternId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-violet-400");
+      const timer = setTimeout(() => {
+        el.classList.remove("ring-2", "ring-violet-400");
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [targetPatternId]);
 
   // Edit / Create modal
   const [formOpen, setFormOpen] = useState(false);
@@ -452,9 +467,14 @@ export function AccountPatternsList({ account, patterns }: Props) {
             </span>
           )}
         </div>
-        <Button variant="primary" size="sm" icon={Plus} onClick={openCreate}>
-          Ajouter pattern
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" icon={Copy} onClick={openClone}>
+            Importer depuis un autre compte
+          </Button>
+          <Button variant="primary" size="sm" icon={Plus} onClick={openCreate}>
+            Ajouter pattern
+          </Button>
+        </div>
       </div>
 
       {/* Contenu */}
@@ -476,7 +496,6 @@ export function AccountPatternsList({ account, patterns }: Props) {
               pattern={pattern}
               accountId={account.id}
               onEdit={openEdit}
-              onClone={() => openClone()}
               onDeleted={handleDeleted}
             />
           ))}

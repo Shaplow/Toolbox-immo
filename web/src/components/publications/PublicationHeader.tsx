@@ -107,11 +107,21 @@ export function PublicationHeader({
   }
 
   function handleMarkPublished() {
-    // Scroll vers la section #publish où se trouve le formulaire de marquage.
-    const section = document.getElementById("publish");
-    if (section) {
-      section.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Force d'abord l'ouverture de la CollapsibleSection cible avant de
+    // scroller — même pattern que ProductionChain.scrollToSection. Sans
+    // ça, si la section publish était fermée (préférence localStorage), le
+    // scroll landait sur un bandeau replié.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("pub:open-section", { detail: { sectionId: "publish" } }),
+      );
     }
+    setTimeout(() => {
+      const section = document.getElementById("publish");
+      if (section) {
+        section.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 50);
   }
 
   return (
