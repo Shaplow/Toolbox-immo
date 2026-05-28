@@ -52,33 +52,43 @@ Utilisation : `bg-success-100 text-success-700` pour un badge soft, `bg-success-
 
 ### Brand color
 
-Une couleur signature en plus des accents sémantiques — le "peps" Apple-like de l'app, réservée aux CTA principaux, liens narratifs et highlights marketing. **Jamais** utilisée pour communiquer un statut (succès / erreur / info).
+Une couleur signature en plus des accents sémantiques — orange-corail mature, le peps "agence créative" sans tomber dans le pop kid. Réservée aux CTA principaux, liens narratifs et highlights marketing. **Jamais** utilisée pour communiquer un statut (succès / erreur / info).
 
 | Stop | Hex | Usage |
 |---|---|---|
-| `brand-50`  | `#eff6ff` | Wash très subtil (hero bg) |
-| `brand-100` | `#dbeafe` | Halo doux |
-| `brand-500` | `#3b82f6` | Lien hover, badge new |
-| `brand-600` | `#0070f3` | **Couleur principale** : CTA primaire, liens |
-| `brand-700` | `#0058c4` | Hover state du CTA |
-| `brand-900` | `#0040a0` | Highlights inverses (texte brand sur bg foncé) |
+| `brand-50`  | `#fff4ed` | Wash très subtil (hero bg) |
+| `brand-100` | `#ffe3d0` | Halo doux |
+| `brand-500` | `#ff7a3c` | Lien hover, badge new |
+| `brand-600` | `#ff5a1f` | **Couleur principale** : CTA primaire, liens, eyebrow |
+| `brand-700` | `#e04210` | Hover state du CTA |
+| `brand-900` | `#9c2b06` | Highlights inverses (texte brand sur bg foncé) |
 
 ### Effets
 
 - `shadow-overlay` / `shadow-modal` — élévation sobre des overlays.
 - `shadow-card-elevated` — surfaces marketing (cards photos, hero).
-- `shadow-glow-brand` / `shadow-glow-brand-strong` — halo coloré au repos / hover sur les CTA brand. C'est ce qui donne le "peps".
-- `--gradient-hero` — wash bleu très léger pour les sections de mise en avant.
+- `shadow-glow-brand` / `shadow-glow-brand-strong` — halo coloré orange au repos / hover sur les CTA brand. C'est ce qui donne le "peps".
+- `--gradient-hero` — wash orange-corail très léger pour les sections de mise en avant.
 - `--gradient-subtle` — gradient blanc → gray-50 pour les sections secondaires.
+- `--texture-grain` — noise SVG très subtil pour les hero. Toujours `opacity ≤ 0.6` avec `mix-blend-multiply` pour ne pas dégrader la lecture. Donne la "matière magazine" qui sort du tech pur.
 
 Accès via `style={{ background: "var(--gradient-hero)" }}` ou `className="bg-[var(--gradient-hero)]"`.
 
+### Eyebrow décoratif
+
+Les eyebrows marketing sont préfixés d'un `✦` (asterisk étoilé) en `text-brand-600`. Petite signature visuelle qui rappelle l'étoile de marquage éditorial. À utiliser uniquement dans les sections marketing / hero, pas dans l'UI fonctionnelle.
+
 ### Typographie
 
-- **Sans** : Geist Sans (via `geist/font/sans`). Tracking par défaut, sauf titres ≥ `text-2xl` en `tracking-tight`.
-- **Mono** : Geist Mono (via `geist/font/mono`). Pour code, raccourcis clavier, IDs, valeurs hex.
+Trois familles, chacune avec un rôle précis :
 
-Échelle Tailwind par défaut (`text-xs` à `text-3xl`). Voir `/playground/tokens` pour la rendu visuel.
+- **Geist Sans** (`font-sans`) — texte courant, UI, dashboards, labels. C'est 95% de l'app.
+- **Geist Mono** (`font-mono`) — code, raccourcis clavier, IDs, valeurs hex, métadonnées.
+- **Instrument Serif** (`font-serif`) — *display marketing uniquement*. Hero titles, pull quotes, eyebrow décoratif. **Jamais en body**, jamais en UI fonctionnelle. C'est ce qui dit "studio créatif" sans crier.
+
+Style : préférer `italic` sur la serif pour les hero (effet éditorial fort).
+
+Échelle Tailwind par défaut (`text-xs` à `text-5xl`). Pour les display hero, monter à `text-4xl` ou `text-5xl` avec `tracking-tight leading-[1.05]`.
 
 ### Espacement
 

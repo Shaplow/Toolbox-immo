@@ -1,5 +1,5 @@
 ﻿import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/components/providers/SessionProvider";
 import { ToastContainer } from "@/components/ui/Toast";
@@ -16,6 +16,16 @@ const geistMono = Geist_Mono({
   display: "swap",
 });
 
+// Serif éditoriale — réservée aux hero titles et display marketing.
+// C'est ce qui fait basculer du "tech" au "studio créatif".
+const instrumentSerif = Instrument_Serif({
+  variable: "--font-display-serif",
+  subsets: ["latin"],
+  weight: "400",
+  style: ["normal", "italic"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "TemplateGen Immo",
   description: "Générateur de visuels immobiliers conformes",
@@ -27,7 +37,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr" className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html lang="fr" className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable}`}>
       <body suppressHydrationWarning className="antialiased bg-gray-50 text-gray-900 min-h-screen font-sans">
         <SessionProvider>
           {children}

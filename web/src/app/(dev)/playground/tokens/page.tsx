@@ -246,12 +246,15 @@ export default function TokensPage() {
       <section className="space-y-4">
         <SectionHeading
           title="Brand & expression marketing"
-          subtitle="Une couleur signature (brand) — réservée aux CTA principaux et highlights, jamais aux statuts. Le peps de l'app sans rompre l'épuré."
+          subtitle="Une couleur signature (brand) + une serif éditoriale + une texture grain — le côté studio créatif, sans rompre l'épuré."
         />
 
         {/* Brand color stops */}
         <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-3">Brand color · Bleu Vercel</p>
+          <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-3 inline-flex items-center gap-1.5">
+            <span className="text-brand-600">✦</span>
+            Brand · Orange corail
+          </p>
           <div className="grid grid-cols-2 gap-1 sm:grid-cols-6">
             {(["50", "100", "500", "600", "700", "900"] as const).map((stop) => (
               <div
@@ -266,27 +269,38 @@ export default function TokensPage() {
 
         {/* Hero pattern */}
         <div className="relative overflow-hidden rounded-xl border border-gray-200 bg-[var(--gradient-hero)] p-10 sm:p-14">
-          <p className="text-[11px] uppercase tracking-widest text-brand-600 font-medium">Nouveau · Mise à jour</p>
-          <h3 className="mt-3 text-3xl sm:text-4xl font-semibold tracking-tight text-gray-950">
-            Vos publications, du shoot au feed.
-          </h3>
-          <p className="mt-3 max-w-xl text-sm text-gray-600 leading-relaxed">
-            Une régie éditoriale qui orchestre vos comptes, vos équipes et
-            vos contenus. Pensée pour les agences qui voient grand.
-          </p>
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-glow-brand)] transition-all duration-200 hover:bg-brand-700 hover:shadow-[var(--shadow-glow-brand-strong)] hover:-translate-y-0.5"
-            >
-              Démarrer
-            </button>
-            <button
-              type="button"
-              className="rounded-md border border-gray-300 bg-white/70 px-4 py-2 text-sm font-medium text-gray-800 backdrop-blur transition-colors hover:bg-white hover:border-gray-400"
-            >
-              Voir un exemple →
-            </button>
+          {/* Grain noise overlay — texture studio sans casser la lecture */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 opacity-50 mix-blend-multiply"
+            style={{ backgroundImage: "var(--texture-grain)" }}
+          />
+          <div className="relative">
+            <p className="text-[11px] uppercase tracking-widest text-brand-600 font-medium inline-flex items-center gap-1.5">
+              <span>✦</span>
+              Nouveau · Mise à jour
+            </p>
+            <h3 className="mt-3 font-serif italic text-4xl sm:text-5xl tracking-tight text-gray-950 leading-[1.05]">
+              Vos publications,<br />du shoot au feed.
+            </h3>
+            <p className="mt-4 max-w-xl text-sm text-gray-600 leading-relaxed">
+              Une régie éditoriale qui orchestre vos comptes, vos équipes et
+              vos contenus. Pensée pour les agences qui voient grand.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-glow-brand)] transition-all duration-200 hover:bg-brand-700 hover:shadow-[var(--shadow-glow-brand-strong)] hover:-translate-y-0.5"
+              >
+                Démarrer
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-gray-300 bg-white/70 px-4 py-2 text-sm font-medium text-gray-800 backdrop-blur transition-colors hover:bg-white hover:border-gray-400"
+              >
+                Voir un exemple →
+              </button>
+            </div>
           </div>
         </div>
 
@@ -342,23 +356,43 @@ export default function TokensPage() {
         </div>
 
         {/* Eyebrow / display typo */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-5">
           <p className="text-[11px] uppercase tracking-widest text-gray-400">Typographie marketing</p>
-          <div className="space-y-1">
-            <p className="text-[11px] uppercase tracking-widest text-brand-600 font-medium">Eyebrow</p>
-            <h3 className="text-3xl font-semibold tracking-tight text-gray-950">
-              Display weight bold
+
+          <div className="space-y-2">
+            <p className="text-[11px] uppercase tracking-widest text-brand-600 font-medium inline-flex items-center gap-1.5">
+              <span>✦</span>
+              Display serif italique
+            </p>
+            <h3 className="font-serif italic text-4xl tracking-tight text-gray-950 leading-[1.05]">
+              On crée, vous diffusez.
             </h3>
             <p className="text-sm text-gray-600 leading-relaxed max-w-prose">
-              Le corps reste sobre, c&apos;est l&apos;hiérarchie qui parle.
+              La serif italique sur les hero — c&apos;est ce qui dit
+              &laquo; studio créatif &raquo;. À garder pour les moments
+              clés, jamais pour du body texte.
             </p>
           </div>
-          <div className="border-t border-gray-200 pt-4">
-            <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-1">Pull quote</p>
-            <p className="text-lg text-gray-800 leading-relaxed">
+
+          <div className="border-t border-gray-200 pt-5 space-y-1">
+            <p className="text-[11px] uppercase tracking-widest text-gray-400">Display sans semibold</p>
+            <h3 className="text-3xl font-semibold tracking-tight text-gray-950">
+              Pour les titres techniques.
+            </h3>
+            <p className="text-sm text-gray-600 leading-relaxed max-w-prose">
+              Geist Sans semibold pour les sections plus opérationnelles
+              (dashboard, fiche publication, panneaux). Plus neutre, plus
+              fonctionnel.
+            </p>
+          </div>
+
+          <div className="border-t border-gray-200 pt-5">
+            <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Pull quote serif</p>
+            <p className="font-serif italic text-xl text-gray-800 leading-relaxed">
               &ldquo;Une régie qui fait le travail ingrat à votre place,
               sans abandonner les détails qui font la différence.&rdquo;
             </p>
+            <p className="mt-2 text-[11px] uppercase tracking-widest text-gray-400">— Pull quote · Hero</p>
           </div>
         </div>
       </section>
