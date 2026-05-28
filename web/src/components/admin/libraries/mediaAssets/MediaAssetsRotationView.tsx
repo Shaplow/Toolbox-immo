@@ -22,6 +22,7 @@ import {
   ChevronUp,
   Clock,
   FolderOpen,
+  HelpCircle,
   Layers,
   ListOrdered,
   Lock,
@@ -93,6 +94,31 @@ export function MediaAssetsRotationView({
 
   return (
     <div className="space-y-1.5">
+      {/* Encadré explicatif — clarifier comment l'auto-pick choisit les rushes */}
+      <details className="rounded-xl border border-indigo-100 bg-indigo-50/50 px-3 py-2 mb-1 group">
+        <summary className="cursor-pointer flex items-center gap-2 text-xs font-medium text-indigo-900 select-none">
+          <HelpCircle size={13} className="text-indigo-500" />
+          Comment fonctionne la rotation ?
+        </summary>
+        <div className="mt-2 text-[11px] text-indigo-900/90 leading-relaxed space-y-1.5">
+          <p>
+            Chaque rush est rangé dans une <b>catégorie</b> (ex.&nbsp;: <i>Extérieur</i>)
+            puis dans un <b>set</b> (ex.&nbsp;: <i>Maison-Provence</i>). Un même set
+            regroupe les plans d&apos;un même tournage.
+          </p>
+          <p>
+            <b>Rotation auto</b>&nbsp;: à chaque génération, le moteur prend le
+            prochain set non utilisé pour ce compte, en alternant les catégories.
+            Le rush effectivement choisi dans le set suit la règle de sélection
+            (<i>theme_sequence</i>, <i>least_used</i>…) définie sur la library.
+          </p>
+          <p>
+            <b>Ordre personnalisé</b>&nbsp;: tu fixes manuellement la séquence des
+            sets, le moteur respecte cet ordre au lieu d&apos;alterner par catégorie.
+          </p>
+        </div>
+      </details>
+
       <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-xl border bg-gray-50 border-gray-200 mb-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2 flex-wrap">
