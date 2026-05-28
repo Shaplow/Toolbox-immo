@@ -59,6 +59,8 @@ export interface PublicationSlot {
     needsDescription?: string;
     needsRushes?: boolean;
     needsBrief?: boolean;
+    // Phase 5 — coverMode hérité du pattern (pour comparaison à coverModeOverride)
+    coverMode?: string;
   } | null;
   assigneeMonteur?: { id: string; name: string | null } | null;
   assigneeCm?: { id: string; name: string | null } | null;
@@ -69,6 +71,11 @@ export interface PublicationSlot {
   needsDescriptionOverride?: string | null;
   needsRushesOverride?: boolean | null;
   needsBriefOverride?: boolean | null;
+  // Phase 5 slots one-off — overrides des ressources (preset/prompt)
+  coverModeOverride?: string | null;
+  coverPresetIdOverride?: string | null;
+  captionPresetIdOverride?: string | null;
+  descriptionPromptIdOverride?: string | null;
 }
 
 // Re-exported from the centralized source of truth — do not duplicate here.

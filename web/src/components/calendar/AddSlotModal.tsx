@@ -14,6 +14,7 @@ interface Account {
 interface PatternOption {
   id: string;
   label: string;
+  templateId?: string | null;
   dayOfWeek: number[];
   publishTime: string;
   isActive: boolean;
@@ -67,10 +68,20 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
   const [oneOffNeedsRushes, setOneOffNeedsRushes] = useState<boolean | null>(null);
   const [oneOffNeedsBrief, setOneOffNeedsBrief] = useState<boolean | null>(null);
   const [oneOffCoverMode, setOneOffCoverMode] = useState<string>(""); // "" = ne pas spécifier
+  // Phase 5 — pickers preset/prompt si toggle correspondant activé
+  const [oneOffCoverPresetId, setOneOffCoverPresetId] = useState<string>("");
+  const [oneOffCaptionPresetId, setOneOffCaptionPresetId] = useState<string>("");
+  const [oneOffNeedsDescription, setOneOffNeedsDescription] = useState<string>(""); // "" | "none" | "preFilled" | "autoGenerate" | "manualWrite"
+  const [oneOffDescriptionPromptId, setOneOffDescriptionPromptId] = useState<string>("");
 
   // --- Données chargées au mount ---
   const [users, setUsers] = useState<UserOption[]>([]);
   const [loadingMeta, setLoadingMeta] = useState(true);
+  // Phase 2 — listes pour les pickers presets (chargées au mount, partagées tous comptes)
+  const [captionPresets, setCaptionPresets] = useState<Array<{ id: string; name: string }>>([]);
+  const [descriptionPrompts, setDescriptionPrompts] = useState<Array<{ id: string; name: string }>>([]);
+  const [coverPresets, setCoverPresets] = useState<Array<{ id: string; name: string }>>([]);
+  const [loadingCoverPresets, setLoadingCoverPresets] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,16 +90,27 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  // Fetch users au mount
+  // Fetch users + caption presets + description prompts au mount
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const usersRes = await fetch("/api/admin/users");
+        const [usersRes, presetsRes, promptsRes] = await Promise.all([
+          fetch("/api/admin/users"),
+          fetch("/api/caption-presets"),
+          fetch("/api/description/prompts"),
+        ]);
         if (cancelled) return;
         if (usersRes.ok) {
           const data = await usersRes.json() as UserOption[];
           setUsers(data);
+        }
+        if (presetsRes.ok) {
+          setCaptionPresets(await presetsRes.json() as Array<{ id: string; name: string }>);
+        }
+        if (promptsRes.ok) {
+          const prompts = await promptsRes.json() as Array<{ id: string; name: string; isActive: boolean }>;
+          setDescriptionPrompts(prompts.filter((p) => p.isActive));
         }
       } catch {
         // silencieux
@@ -99,6 +121,27 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     void load();
     return () => { cancelled = true; };
   }, []);
+
+  // Fetch cover presets quand un template (du pattern sélectionné) change.
+  // Pour les slots one-off SANS pattern, il faut un templateId — actuellement
+  // on n'expose pas le picker template au create, donc cover preset reste vide
+  // (l'admin pourra le set après création dans le SlotDetailPanel).
+  useEffect(() => {
+    const selectedPattern = patterns.find((p) => p.id === selectedPatternId);
+    const tplId = selectedPattern?.templateId ?? null;
+    if (!tplId) {
+      setCoverPresets([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingCoverPresets(true);
+    void fetch(`/api/templates/${tplId}/cover-presets`)
+      .then((r) => (r.ok ? r.json() as Promise<Array<{ id: string; name: string }>> : []))
+      .then((data) => { if (!cancelled) setCoverPresets(data); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoadingCoverPresets(false); });
+    return () => { cancelled = true; };
+  }, [patterns, selectedPatternId]);
 
   // Fetch patterns quand le compte change
   useEffect(() => {
@@ -186,6 +229,11 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
         if (oneOffNeedsRushes !== null) payload.needsRushesOverride = oneOffNeedsRushes;
         if (oneOffNeedsBrief !== null) payload.needsBriefOverride = oneOffNeedsBrief;
         if (oneOffCoverMode) payload.coverModeOverride = oneOffCoverMode;
+        // Phase 2 — Phase 5 pickers (preset/prompt) optionnels
+        if (oneOffCoverPresetId) payload.coverPresetIdOverride = oneOffCoverPresetId;
+        if (oneOffCaptionPresetId) payload.captionPresetIdOverride = oneOffCaptionPresetId;
+        if (oneOffNeedsDescription) payload.needsDescriptionOverride = oneOffNeedsDescription;
+        if (oneOffDescriptionPromptId) payload.descriptionPromptIdOverride = oneOffDescriptionPromptId;
       }
 
       const res = await fetch("/api/calendar/slots", {
@@ -420,9 +468,89 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
                   />
                 </div>
 
+                {/* Picker preset cover — apparait si coverMode=auto */}
+                {oneOffCoverMode === "auto" && (
+                  <label className="block">
+                    <span className="text-[11px] text-gray-600">
+                      Preset cover{" "}
+                      <span className="text-fuchsia-700 font-medium">*</span>
+                    </span>
+                    <select
+                      value={oneOffCoverPresetId}
+                      onChange={(e) => setOneOffCoverPresetId(e.target.value)}
+                      disabled={loadingCoverPresets || coverPresets.length === 0}
+                      className="mt-1 w-full border border-fuchsia-200 rounded px-2 py-1.5 text-xs bg-white disabled:bg-gray-50"
+                    >
+                      <option value="">
+                        {coverPresets.length === 0
+                          ? "— Aucun preset disponible (template requis) —"
+                          : "— Choisir un preset —"}
+                      </option>
+                      {coverPresets.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+
+                {/* Picker preset captions — apparait si needsCaptions forcé à true */}
+                {oneOffNeedsCaptions === true && (
+                  <label className="block">
+                    <span className="text-[11px] text-gray-600">
+                      Preset captions <span className="text-fuchsia-700 font-medium">*</span>
+                    </span>
+                    <select
+                      value={oneOffCaptionPresetId}
+                      onChange={(e) => setOneOffCaptionPresetId(e.target.value)}
+                      className="mt-1 w-full border border-fuchsia-200 rounded px-2 py-1.5 text-xs bg-white"
+                    >
+                      <option value="">— Choisir un preset —</option>
+                      {captionPresets.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+
+                {/* Mode description + prompt picker conditionnel */}
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="text-[11px] text-gray-600">Mode description</span>
+                    <select
+                      value={oneOffNeedsDescription}
+                      onChange={(e) => setOneOffNeedsDescription(e.target.value)}
+                      className="mt-1 w-full border border-fuchsia-200 rounded px-2 py-1.5 text-xs bg-white"
+                    >
+                      <option value="">— Défaut (none) —</option>
+                      <option value="none">Aucune</option>
+                      <option value="preFilled">Pré-remplie</option>
+                      <option value="autoGenerate">Auto-générée</option>
+                      <option value="manualWrite">Manuelle</option>
+                    </select>
+                  </label>
+                  {oneOffNeedsDescription === "autoGenerate" && (
+                    <label className="block">
+                      <span className="text-[11px] text-gray-600">
+                        Prompt IA <span className="text-fuchsia-700 font-medium">*</span>
+                      </span>
+                      <select
+                        value={oneOffDescriptionPromptId}
+                        onChange={(e) => setOneOffDescriptionPromptId(e.target.value)}
+                        className="mt-1 w-full border border-fuchsia-200 rounded px-2 py-1.5 text-xs bg-white"
+                      >
+                        <option value="">— Choisir un prompt —</option>
+                        {descriptionPrompts.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                </div>
+
                 <p className="text-[10px] text-fuchsia-700/70">
                   💡 Une fois le slot créé et la vidéo uploadée, des boutons « Lancer cover » /
                   « Lancer captions » seront disponibles dans la fiche pour déclencher les jobs.
+                  La validation client se configure depuis la fiche publication.
                 </p>
               </div>
             </details>
@@ -444,7 +572,11 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
                 loadingPatterns ||
                 // F1.15 — Désactive si ni pattern ni titre (au lieu de laisser
                 // soumettre puis afficher l'erreur).
-                (!selectedPatternId && !form.title.trim())
+                (!selectedPatternId && !form.title.trim()) ||
+                // Phase 2 cohérence — toggle activé sans preset associé
+                (oneOffCoverMode === "auto" && !oneOffCoverPresetId && coverPresets.length > 0) ||
+                (oneOffNeedsCaptions === true && !oneOffCaptionPresetId) ||
+                (oneOffNeedsDescription === "autoGenerate" && !oneOffDescriptionPromptId)
               }
               className="flex-1 px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-60 flex items-center justify-center gap-2"
             >

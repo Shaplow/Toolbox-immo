@@ -250,6 +250,14 @@ export interface PublicationFicheProps {
       respondedAt: string;
     }>;
   };
+  // Phase 4 cohérence — config résolue (override + pattern) pour OneOffTriggerButtons
+  // (le composant utilise ces 4 fields pour décider affichage + disabled).
+  resolvedConfig: {
+    coverMode: string;
+    coverPresetId: string | null;
+    needsCaptions: boolean;
+    captionPresetId: string | null;
+  };
   // Phase 1.3.6
   comments: CommentData[];
   commentsHasMore: boolean;
@@ -278,6 +286,7 @@ export function PublicationFiche({
   currentVersionId,
   latestCaptionJob,
   clientValidation,
+  resolvedConfig,
   comments,
   commentsHasMore,
   activities,
@@ -472,14 +481,15 @@ export function PublicationFiche({
               />
             )}
 
-            {/* Phase 6 — Boutons triggers manuels pour slots one-off (ADMIN only) */}
+            {/* Phase 6 — Boutons triggers manuels pour slots one-off (ADMIN only)
+                Utilise resolvedConfig (override slot + pattern) au lieu de pattern brut
+                pour respecter les overrides du slot (Phase 4 cohérence). */}
             <OneOffTriggerButtons
               slotId={slot.id}
               isAdmin={currentUserRole === "ADMIN"}
               hasCurrentVersion={!!currentVersion}
               hasNoRender={!render}
-              needsCoverAuto={pattern?.coverMode === "auto"}
-              needsCaptions={pattern?.needsCaptions ?? false}
+              resolvedConfig={resolvedConfig}
             />
 
             {/* Publication */}

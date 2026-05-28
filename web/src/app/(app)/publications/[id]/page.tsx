@@ -461,6 +461,12 @@ export default async function PublicationPage({ params }: PageProps) {
           respondedAt: r.respondedAt.toISOString(),
         })),
       }}
+      resolvedConfig={{
+        coverMode: resolvedConfig.coverMode,
+        coverPresetId: resolvedConfig.coverPresetId,
+        needsCaptions: resolvedConfig.needsCaptions,
+        captionPresetId: resolvedConfig.captionPresetId,
+      }}
       comments={comments}
       commentsHasMore={commentsHasMore}
       activities={activities}

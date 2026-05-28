@@ -141,6 +141,22 @@ describe("ALLOWED_PATCH_FIELDS_BY_ROLE — security invariants", () => {
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("patternId");
   });
 
+  it("ADMIN can modify Phase 5 one-off overrides (cover/captions/description presets)", () => {
+    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("coverModeOverride");
+    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("coverPresetIdOverride");
+    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("captionPresetIdOverride");
+    expect(ALLOWED_PATCH_FIELDS_BY_ROLE.ADMIN).toContain("descriptionPromptIdOverride");
+  });
+
+  it("Non-ADMIN roles cannot modify Phase 5 one-off overrides (security)", () => {
+    for (const role of ["MONTEUR", "CM", "VIDEASTE", "EXTERNAL_GENERATOR"] as const) {
+      expect(ALLOWED_PATCH_FIELDS_BY_ROLE[role]).not.toContain("coverModeOverride");
+      expect(ALLOWED_PATCH_FIELDS_BY_ROLE[role]).not.toContain("coverPresetIdOverride");
+      expect(ALLOWED_PATCH_FIELDS_BY_ROLE[role]).not.toContain("captionPresetIdOverride");
+      expect(ALLOWED_PATCH_FIELDS_BY_ROLE[role]).not.toContain("descriptionPromptIdOverride");
+    }
+  });
+
   it("VIDEASTE can modify status + notes only (rapport de shoot)", () => {
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.VIDEASTE).toEqual(["status", "notes"]);
     expect(ALLOWED_PATCH_FIELDS_BY_ROLE.VIDEASTE).not.toContain("assigneeVideasteId");
