@@ -38,6 +38,18 @@ export async function GET(req: NextRequest) {
           template: { select: { id: true, name: true, client: true } },
         },
       },
+      // Phase 5 cohérence rôles — compteur "casquettes assumées"
+      // (combien de slots ce user est assigné comme vidéaste/monteur/cm).
+      // Permet d'afficher un badge dans /admin/users pour visualiser
+      // qu'un ADMIN qui shoote a "3 slots vidéaste" même si son role
+      // technique reste ADMIN.
+      _count: {
+        select: {
+          assignedAsVideaste: true,
+          assignedAsMonteur: true,
+          assignedAsCm: true,
+        },
+      },
     },
   });
 

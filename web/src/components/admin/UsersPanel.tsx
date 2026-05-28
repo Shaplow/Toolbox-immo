@@ -24,6 +24,13 @@ type User = {
   createdAt: string;
   accesses: { templateId: string; template: TemplateStub }[];
   captionPresetAccesses: string[]; // array of presetIds
+  // Phase 5 cohérence rôles — compteur "casquettes assumées" (slots où ce user
+  // est assigneeVideaste/Monteur/Cm). Optionnel pour back-compat.
+  _count?: {
+    assignedAsVideaste?: number;
+    assignedAsMonteur?: number;
+    assignedAsCm?: number;
+  };
 };
 
 interface Props {
@@ -287,6 +294,11 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                 <option value="CM">CM</option>
                 <option value="ADMIN">Administrateur</option>
               </select>
+              <p className="text-[10px] text-gray-500 mt-1 leading-snug">
+                💡 Un <strong>Admin</strong> peut être assigné comme vidéaste, monteur ou CM
+                sur n&apos;importe quel slot (et basculer en vue dédiée via la navbar).
+                Choisissez un rôle dédié pour un user qui assume une seule casquette.
+              </p>
             </FormField>
           </div>
           <div className="flex gap-2 justify-end pt-1">
@@ -327,7 +339,38 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                     {user.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 truncate">{user.name}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium text-gray-900 truncate">{user.name}</p>
+                      {/* Phase 5 — badge "casquettes assumées" :
+                          montre les rôles que ce user assume réellement via ses
+                          assignations sur des slots, indépendamment de user.role.
+                          Utile pour visualiser qu'un ADMIN qui shoote a "V" affiché. */}
+                      {user._count && (() => {
+                        const tags: string[] = [];
+                        if ((user._count.assignedAsVideaste ?? 0) > 0) {
+                          tags.push(`V·${user._count.assignedAsVideaste}`);
+                        }
+                        if ((user._count.assignedAsMonteur ?? 0) > 0) {
+                          tags.push(`M·${user._count.assignedAsMonteur}`);
+                        }
+                        if ((user._count.assignedAsCm ?? 0) > 0) {
+                          tags.push(`CM·${user._count.assignedAsCm}`);
+                        }
+                        if (tags.length === 0) return null;
+                        return (
+                          <span
+                            className="text-[10px] font-medium text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 rounded px-1.5 py-0.5"
+                            title={`Casquettes assumées :\n${tags.map(t => {
+                              if (t.startsWith("V·")) return `Vidéaste (${user._count!.assignedAsVideaste} slots)`;
+                              if (t.startsWith("M·")) return `Monteur (${user._count!.assignedAsMonteur} slots)`;
+                              return `CM (${user._count!.assignedAsCm} slots)`;
+                            }).join("\n")}`}
+                          >
+                            {tags.join(" · ")}
+                          </span>
+                        );
+                      })()}
+                    </div>
                     <p className="text-xs text-gray-400 truncate">
                       {user.username && <span className="font-mono">{user.username}</span>}
                       {user.username && user.email && " · "}
