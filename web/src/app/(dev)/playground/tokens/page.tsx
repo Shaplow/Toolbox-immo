@@ -566,67 +566,101 @@ export default function TokensPage() {
           </div>
         </div>
 
-        {/* Décors SVG hand-drawn */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-5">
-          <p className="text-[11px] uppercase tracking-widest text-gray-400">
-            Décors hand-drawn — bibliothèque
-          </p>
-
-          <div className="grid gap-5 sm:grid-cols-2">
-            {/* Underline */}
-            <div>
-              <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Underline</p>
-              <p className="text-lg text-gray-950">
-                Un mot{" "}
-                <span className="relative inline-block">
-                  important
-                  <HandDrawn.Underline className="absolute -bottom-1.5 left-0 h-2 w-full text-brand-700" />
-                </span>{" "}
-                à mettre en valeur.
-              </p>
+        {/* Vignettes magazine — décors intégrés dans des contextes réels
+            (post, moodboard, testimonial). Pas de catalogue labellisé. */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          {/* Vignette 1 — Instagram post mockup */}
+          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+            <div className="aspect-square bg-gradient-to-br from-stone-200 via-amber-100 to-rose-200 relative">
+              <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" />
+              <div className="absolute bottom-3 left-4 right-4 text-white">
+                <p className="font-serif italic text-2xl leading-tight drop-shadow-sm">
+                  Un appartement<br />
+                  qui se{" "}
+                  <span className="relative inline-block">
+                    raconte
+                    <HandDrawn.Underline className="absolute -bottom-1 left-0 h-1.5 w-full text-white" />
+                  </span>.
+                </p>
+              </div>
             </div>
-
-            {/* Asterisk */}
-            <div>
-              <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Asterisk</p>
-              <p className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-brand-700 font-medium">
-                <HandDrawn.Asterisk className="h-3.5 w-3.5" />
-                Nouveau · Astuce
-              </p>
-            </div>
-
-            {/* Arrow */}
-            <div>
-              <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Arrow</p>
-              <a className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:text-brand-900 group">
-                Voir l&apos;exemple
-                <HandDrawn.Arrow className="h-3 w-7 transition-transform group-hover:translate-x-0.5" />
-              </a>
-            </div>
-
-            {/* Highlight circle */}
-            <div>
-              <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Highlight circle</p>
-              <p className="text-lg text-gray-950">
-                Ton plan{" "}
-                <span className="relative inline-block px-1">
-                  hebdo
-                  <HandDrawn.HighlightCircle className="absolute -inset-x-1 -inset-y-2 text-brand-700 -z-10" />
-                </span>{" "}
-                est validé.
-              </p>
-            </div>
-
-            {/* Bracket */}
-            <div className="sm:col-span-2">
-              <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Bracket</p>
-              <p className="inline-flex items-center text-sm text-gray-700">
-                <HandDrawn.Bracket side="left" className="h-8 w-4 text-brand-700" />
-                <span className="px-1 font-hand text-xl text-brand-700">astuce</span>
-                <HandDrawn.Bracket side="right" className="h-8 w-4 text-brand-700" />
-                <span className="ml-2">
-                  Survol les cards pour voir le lift au hover.
+            <div className="p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="h-7 w-7 rounded-full bg-gray-950 inline-flex items-center justify-center">
+                  <HandDrawn.Sparkle className="h-3.5 w-3.5 text-brand-500" />
                 </span>
+                <div>
+                  <p className="text-sm font-medium text-gray-950 leading-none">toolbox.studio</p>
+                  <p className="text-[10px] text-gray-400">Régie éditoriale · il y a 2h</p>
+                </div>
+              </div>
+              <p className="text-[13px] text-gray-700 leading-relaxed">
+                <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-brand-700 font-medium mr-1">
+                  <HandDrawn.Sparkle className="h-2.5 w-2.5" />
+                  Nouveau
+                </span>
+                3 pièces lumineux, 60m², vue dégagée — Bron Centre.
+              </p>
+            </div>
+          </div>
+
+          {/* Vignette 2 — Moodboard signature */}
+          <div className="relative rounded-xl border border-gray-200 bg-[var(--gradient-hero)] p-6 overflow-hidden">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 opacity-50 mix-blend-multiply"
+              style={{ backgroundImage: "var(--texture-grain)" }}
+            />
+            <div className="relative space-y-4">
+              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-medium">
+                Moodboard · brief client
+              </p>
+              <p className="font-serif italic text-3xl leading-[1.1] text-gray-950">
+                On veut de{" "}
+                <span className="relative inline-block px-1.5">
+                  l&apos;audace
+                  <HandDrawn.HighlightCircle className="absolute -inset-x-1 -inset-y-1 text-brand-700 -z-0" />
+                </span>
+              </p>
+              {/* Palette inline */}
+              <div className="flex items-center gap-1.5">
+                {["bg-gray-950", "bg-brand-600", "bg-stone-200", "bg-amber-50"].map((c) => (
+                  <span key={c} className={`h-6 w-6 rounded-full ring-1 ring-gray-200 ${c}`} />
+                ))}
+                <span className="ml-2 text-[10px] text-gray-500">3 couleurs max · noir + signature</span>
+              </div>
+              {/* Bracket "astuce" */}
+              <div className="inline-flex items-center pt-2">
+                <HandDrawn.Bracket side="left" className="h-7 w-3.5 text-brand-700" />
+                <span className="px-1 font-hand text-lg text-brand-700">à retenir</span>
+                <HandDrawn.Bracket side="right" className="h-7 w-3.5 text-brand-700" />
+                <span className="ml-2 text-[12px] text-gray-600">la serif, jamais en body.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Vignette 3 — Testimonial pull quote pleine largeur */}
+        <div className="rounded-xl border border-gray-200 bg-white p-10 sm:p-14">
+          <div className="max-w-2xl mx-auto text-center space-y-5">
+            <p className="text-[10px] uppercase tracking-widest text-gray-400 inline-flex items-center gap-1.5">
+              <HandDrawn.Sparkle className="h-3 w-3 text-brand-700" />
+              Ce qu&apos;en disent nos clients
+            </p>
+            <p className="font-serif italic text-2xl sm:text-3xl leading-relaxed text-gray-950">
+              &ldquo;Avant Toolbox, on perdait des heures à coordonner.
+              Maintenant on{" "}
+              <span className="relative inline-block">
+                crée
+                <HandDrawn.Underline className="absolute -bottom-1.5 left-0 h-2 w-full text-brand-700" />
+              </span>
+              , ils diffusent.&rdquo;
+            </p>
+            <HandDrawn.WavyRule className="h-2 w-32 mx-auto text-gray-300" />
+            <div className="space-y-0">
+              <p className="font-hand text-2xl text-gray-950 leading-none">— Léa Vasseur</p>
+              <p className="text-[11px] uppercase tracking-widest text-gray-400 mt-2">
+                Directrice · Studio La Mira
               </p>
             </div>
           </div>

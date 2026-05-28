@@ -18,7 +18,8 @@ interface DecorProps extends SVGProps<SVGSVGElement> {
 
 /**
  * Trait souligné ondulé — pour mettre en avant un mot dans un titre.
- * Usage : <span>mot <HandDrawn.Underline className="block h-2 w-full text-brand-600" /></span>
+ * Une seule courbe douce (pas un zigzag d'écolier).
+ * Usage : <span>mot <HandDrawn.Underline className="block h-2 w-full text-brand-700" /></span>
  */
 function Underline({ className, ...rest }: DecorProps) {
   return (
@@ -31,9 +32,9 @@ function Underline({ className, ...rest }: DecorProps) {
       {...rest}
     >
       <path
-        d="M2 5 Q 10 1, 20 4 T 40 4 T 60 4 T 80 4 T 98 4"
+        d="M3 5 C 25 1, 60 6, 97 4"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth="1.6"
         strokeLinecap="round"
       />
     </svg>
@@ -41,27 +42,32 @@ function Underline({ className, ...rest }: DecorProps) {
 }
 
 /**
- * Asterisk dessiné — remplace le ✦ unicode pour un côté plus signature.
- * Usage : préfixe d'eyebrow marketing ou bullet de listes signature.
+ * Sparkle 4-pointes designer — twinkle organique inspiré des "marks"
+ * éditoriaux (Notion, Apple Music). Remplace les anciens ✦ unicode et
+ * les asterisks "étoile d'écolier".
+ * Usage : préfixe d'eyebrow, signature, badge "nouveau".
  */
-function Asterisk({ className, ...rest }: DecorProps) {
+function Sparkle({ className, ...rest }: DecorProps) {
   return (
     <svg
       viewBox="0 0 20 20"
-      fill="none"
+      fill="currentColor"
       className={className}
       aria-hidden
       {...rest}
     >
-      <path
-        d="M10 2 Q 10.5 10, 10.2 18 M 3.5 5.5 Q 10 10, 16.5 14.5 M 16.5 5.5 Q 10 10, 3.5 14.5 M 2 10 Q 10 9.5, 18 10"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
+      {/* Twinkle 4-branches : chaque "pointe" est une courbe Bezier qui
+         ressort progressivement depuis le centre. Style designer mark. */}
+      <path d="M10 1 C 10.4 6.5, 12.4 9.6, 19 10 C 12.4 10.4, 10.4 13.5, 10 19 C 9.6 13.5, 7.6 10.4, 1 10 C 7.6 9.6, 9.6 6.5, 10 1 Z" />
     </svg>
   );
 }
+
+/**
+ * @deprecated Conservé pour rétrocompat — préférer `Sparkle`.
+ * L'ancien asterisk "étoile" est ressenti trop scolaire.
+ */
+const Asterisk = Sparkle;
 
 /**
  * Flèche dessinée — pour les liens narratifs ou les pointeurs de schéma.
@@ -88,12 +94,13 @@ function Arrow({ className, ...rest }: DecorProps) {
 }
 
 /**
- * Cercle dessiné — entoure un élément pour le mettre en avant (genre
- * cercle au crayon sur un mot clé). Pose en absolute autour du contenu.
+ * Cercle dessiné — entoure un élément pour le mettre en avant.
+ * Forme elliptique organique avec ouverture (pas un cercle fermé
+ * d'écolier qui souligne une faute). Pose en absolute autour du contenu.
  * Usage :
  *   <span className="relative">
  *     mot clé
- *     <HandDrawn.HighlightCircle className="absolute -inset-2 text-brand-600 -z-10" />
+ *     <HandDrawn.HighlightCircle className="absolute -inset-2 text-brand-700 -z-10" />
  *   </span>
  */
 function HighlightCircle({ className, ...rest }: DecorProps) {
@@ -106,10 +113,37 @@ function HighlightCircle({ className, ...rest }: DecorProps) {
       aria-hidden
       {...rest}
     >
+      {/* Ellipse organique avec micro-ouverture en haut-gauche : effet
+         "tracé en un coup" plutôt que cercle parfait. */}
       <path
-        d="M8 6 Q 30 2, 60 4 Q 92 6, 95 12 Q 97 28, 80 34 Q 50 38, 20 36 Q 5 33, 7 18 Z"
+        d="M14 8 C 35 3, 70 4, 94 11 C 99 22, 88 33, 60 36 C 30 38, 8 32, 6 20 C 5 13, 9 9, 14 8"
         stroke="currentColor"
-        strokeWidth="1.8"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Trait séparateur ondulé pleine largeur — pour séparer des sections
+ * type éditorial (entre une citation et sa signature). Plus fin et plus
+ * long que Underline.
+ */
+function WavyRule({ className, ...rest }: DecorProps) {
+  return (
+    <svg
+      viewBox="0 0 200 6"
+      preserveAspectRatio="none"
+      fill="none"
+      className={className}
+      aria-hidden
+      {...rest}
+    >
+      <path
+        d="M2 3 C 30 1, 50 5, 80 3 C 110 1, 130 5, 160 3 C 180 2, 190 4, 198 3"
+        stroke="currentColor"
+        strokeWidth="1"
         strokeLinecap="round"
       />
     </svg>
@@ -149,8 +183,11 @@ function Bracket({
 
 export const HandDrawn = {
   Underline,
+  Sparkle,
+  /** @deprecated alias vers Sparkle */
   Asterisk,
   Arrow,
   HighlightCircle,
+  WavyRule,
   Bracket,
 };
