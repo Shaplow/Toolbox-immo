@@ -5,8 +5,13 @@
  * de lancement / re-render vers le builder (admin uniquement).
  */
 
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
-import { Film, Play, RefreshCw, AlertCircle } from "lucide-react";
+import { Film, Play, RefreshCw, AlertCircle, RotateCcw } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { toast } from "@/components/ui/Toast";
 
 interface Props {
   slot: { id: string };
@@ -45,6 +50,9 @@ const RENDER_STATUS_COLORS: Record<string, string> = {
 };
 
 export function RenderSection({ slot, pattern, render, finalVideoUrl, isCaptioned, listingId, canEdit }: Props) {
+  const [confirmRevert, setConfirmRevert] = useState(false);
+  const [reverting, setReverting] = useState(false);
+
   // URL effectivement affichée : version finale (avec captions si dispo), fallback render brut.
   const displayVideoUrl = finalVideoUrl ?? render?.videoUrl ?? null;
   // Si pas de pattern, pas de rendu possible — masquer la section
@@ -54,6 +62,40 @@ export function RenderSection({ slot, pattern, render, finalVideoUrl, isCaptione
   const builderHref = templateId
     ? `/builder/${templateId}${listingId ? `?listingId=${listingId}&slotId=${slot.id}` : `?slotId=${slot.id}`}`
     : null;
+
+  /** Revert rotation consumption — admin recovery path quand le render est mauvais. */
+  async function handleRevertRotation() {
+    if (!render) return;
+    setReverting(true);
+    try {
+      const res = await fetch(`/api/admin/renders/${render.id}/revert-usage`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error((d as { error?: string }).error ?? "Échec du revert");
+      }
+      const summary = (await res.json()) as {
+        assets: { id: string; reverted: boolean }[];
+        cursors: { libraryId: string; reverted: boolean }[];
+        warnings: string[];
+      };
+      const okAssets = summary.assets.filter((a) => a.reverted).length;
+      const okCursors = summary.cursors.filter((c) => c.reverted).length;
+      toast.success(
+        `Rotation revertée : ${okAssets} asset${okAssets > 1 ? "s" : ""} · ${okCursors} cursor${okCursors > 1 ? "s" : ""}` +
+          (summary.warnings.length > 0 ? ` · ${summary.warnings.length} avertissement(s)` : ""),
+      );
+      if (summary.warnings.length > 0) {
+        console.warn("[revert-usage warnings]", summary.warnings);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setReverting(false);
+      setConfirmRevert(false);
+    }
+  }
 
   return (
     <section id="render" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
@@ -125,14 +167,30 @@ export function RenderSection({ slot, pattern, render, finalVideoUrl, isCaptione
             Votre navigateur ne supporte pas la lecture vidéo.
           </video>
 
-          {canEdit && builderHref && (
-            <Link
-              href={builderHref}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors font-medium"
-            >
-              <RefreshCw size={14} />
-              Re-render
-            </Link>
+          {canEdit && (
+            <div className="flex flex-wrap items-center gap-2">
+              {builderHref && (
+                <Link
+                  href={builderHref}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                >
+                  <RefreshCw size={14} />
+                  Re-render
+                </Link>
+              )}
+              {render?.status === "DONE" && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmRevert(true)}
+                  disabled={reverting}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors font-medium disabled:opacity-50"
+                  title="Décrémente les compteurs et restaure les curseurs pour pouvoir re-piocher les mêmes assets"
+                >
+                  <RotateCcw size={14} />
+                  Revert rotation
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -162,12 +220,34 @@ export function RenderSection({ slot, pattern, render, finalVideoUrl, isCaptione
 
       {/* Cas : render en cours / erreur sans media */}
       {render && !render.videoUrl && !render.pngUrl && (
-        <p className="text-sm text-gray-500">
-          {render.status === "ERROR"
-            ? "Le rendu a échoué. Consultez les logs ou relancez depuis le builder."
-            : "Rendu en cours de traitement…"}
-        </p>
+        <div className="space-y-2">
+          <p className="text-sm text-gray-500">
+            {render.status === "ERROR"
+              ? "Le rendu a échoué."
+              : "Rendu en cours de traitement…"}
+          </p>
+          {render.status === "ERROR" && canEdit && builderHref && (
+            <Link
+              href={builderHref}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+            >
+              <RefreshCw size={14} />
+              Relancer le rendu
+            </Link>
+          )}
+        </div>
       )}
+
+      <ConfirmDialog
+        open={confirmRevert}
+        title="Revert la rotation pour ce render ?"
+        description="Cette action décrémente les compteurs d'usage des MediaAssets et DataEntries consommés par ce render, et restaure les curseurs des libraries set-sequence si possible. À utiliser quand le rendu est mauvais et tu veux re-piocher les mêmes assets."
+        confirmLabel="Revert"
+        variant="danger"
+        loading={reverting}
+        onConfirm={() => { void handleRevertRotation(); }}
+        onCancel={() => setConfirmRevert(false)}
+      />
     </section>
   );
 }
