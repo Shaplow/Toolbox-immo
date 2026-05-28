@@ -18,16 +18,17 @@ export default function PlaygroundLayout({ children }: { children: ReactNode }) 
   }
   return (
     <div className="min-h-screen bg-white text-gray-900 antialiased">
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/80 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/70 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3 text-sm">
-          <Link href="/playground" className="font-semibold tracking-tight">
-            Toolbox UI — Playground
+          <Link href="/playground" className="inline-flex items-center gap-1.5 font-semibold tracking-tight">
+            <span className="h-2 w-2 rounded-full bg-brand-600 shadow-[var(--shadow-glow-brand)]" />
+            Toolbox UI
           </Link>
           <nav className="flex items-center gap-4 text-gray-500">
-            <Link href="/playground/tokens" className="hover:text-gray-900">
+            <Link href="/playground/tokens" className="hover:text-gray-950 transition-colors">
               Tokens
             </Link>
-            <Link href="/playground/primitives" className="hover:text-gray-900">
+            <Link href="/playground/primitives" className="hover:text-gray-950 transition-colors">
               Primitives
             </Link>
           </nav>

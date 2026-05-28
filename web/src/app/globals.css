@@ -38,6 +38,20 @@ html {
   --color-info-600:    #2563eb;
   --color-info-700:    #1d4ed8;
 
+  /* ── Brand — couleur signature de l'agence ──────────────────────────────
+     Bleu profond style Vercel/Apple. Réservée :
+       - CTA principal (primary brand)
+       - Liens narratifs / navigation principale
+       - Highlights marketing (badges "Nouveau", eyebrow, etc.)
+     Ne JAMAIS utiliser pour des signaux sémantiques (succès/erreur/info)
+     — c'est la couleur "Toolbox", pas un statut. */
+  --color-brand-50:   #eff6ff;
+  --color-brand-100:  #dbeafe;
+  --color-brand-500:  #3b82f6;
+  --color-brand-600:  #0070f3;
+  --color-brand-700:  #0058c4;
+  --color-brand-900:  #0040a0;
+
   /* ── Animations ─────────────────────────────────────────────────────────── */
   /* Easing principal — smooth spring-like, jamais de bounce */
   --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
@@ -54,6 +68,19 @@ html {
   /* ── Ombres ─────────────────────────────────────────────────────────────── */
   --shadow-overlay: 0 1px 0 rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
   --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.08);
+
+  /* Card subtile pour les surfaces marketing (photos, hero, CTA cards) */
+  --shadow-card-elevated: 0 4px 20px rgba(0, 0, 0, 0.04), 0 2px 6px rgba(0, 0, 0, 0.04);
+
+  /* Halo de focus / hover sur les CTA brand — donne le "peps" */
+  --shadow-glow-brand: 0 0 0 4px rgba(0, 112, 243, 0.12);
+  --shadow-glow-brand-strong: 0 0 0 5px rgba(0, 112, 243, 0.18), 0 6px 24px rgba(0, 112, 243, 0.15);
+
+  /* ── Gradients marketing ───────────────────────────────────────────────── */
+  /* Wash subtil pour les heros / sections de mise en avant */
+  --gradient-hero: linear-gradient(135deg, rgba(0, 112, 243, 0.05) 0%, rgba(0, 112, 243, 0.01) 100%);
+  /* Wash neutre pour les sections secondaires */
+  --gradient-subtle: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
 
   /* ── Radius — sharp, peu de rondeur ─────────────────────────────────────── */
   --radius-sm: 4px;

@@ -50,6 +50,29 @@ Trois familles uniquement. Tout signal coloré doit tomber dans l'une des trois.
 
 Utilisation : `bg-success-100 text-success-700` pour un badge soft, `bg-success-600 text-white` pour un bouton plein, etc.
 
+### Brand color
+
+Une couleur signature en plus des accents sémantiques — le "peps" Apple-like de l'app, réservée aux CTA principaux, liens narratifs et highlights marketing. **Jamais** utilisée pour communiquer un statut (succès / erreur / info).
+
+| Stop | Hex | Usage |
+|---|---|---|
+| `brand-50`  | `#eff6ff` | Wash très subtil (hero bg) |
+| `brand-100` | `#dbeafe` | Halo doux |
+| `brand-500` | `#3b82f6` | Lien hover, badge new |
+| `brand-600` | `#0070f3` | **Couleur principale** : CTA primaire, liens |
+| `brand-700` | `#0058c4` | Hover state du CTA |
+| `brand-900` | `#0040a0` | Highlights inverses (texte brand sur bg foncé) |
+
+### Effets
+
+- `shadow-overlay` / `shadow-modal` — élévation sobre des overlays.
+- `shadow-card-elevated` — surfaces marketing (cards photos, hero).
+- `shadow-glow-brand` / `shadow-glow-brand-strong` — halo coloré au repos / hover sur les CTA brand. C'est ce qui donne le "peps".
+- `--gradient-hero` — wash bleu très léger pour les sections de mise en avant.
+- `--gradient-subtle` — gradient blanc → gray-50 pour les sections secondaires.
+
+Accès via `style={{ background: "var(--gradient-hero)" }}` ou `className="bg-[var(--gradient-hero)]"`.
+
 ### Typographie
 
 - **Sans** : Geist Sans (via `geist/font/sans`). Tracking par défaut, sauf titres ≥ `text-2xl` en `tracking-tight`.
