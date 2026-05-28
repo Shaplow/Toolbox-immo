@@ -121,10 +121,26 @@ export async function generateCalendarSlots(
         );
         continue;
       }
+      // Guard publishTime malformé : sans ce filtre, un pattern avec
+      // publishTime="" / "9:00" / "abc" produirait `[NaN, NaN]` qui passe
+      // dans setUTCHours et donne un Invalid Date — Prisma.createMany
+      // crash alors et FAIT ÉCHOUER toute la run pour TOUS les comptes.
+      // Mieux : skip ce pattern avec un warn, continue les autres.
+      const [hours, minutes] = (pattern.publishTime ?? "").split(":").map(Number);
+      if (
+        !Number.isFinite(hours) ||
+        !Number.isFinite(minutes) ||
+        hours < 0 || hours > 23 ||
+        minutes < 0 || minutes > 59
+      ) {
+        console.warn(
+          `[calendarEngine] pattern ${pattern.id} has invalid publishTime "${pattern.publishTime}" — skipping`,
+        );
+        continue;
+      }
       for (const dow of pattern.dayOfWeek) {
         const targetDate = new Date(weekMs);
         targetDate.setUTCDate(targetDate.getUTCDate() + (dow - 1));
-        const [hours, minutes] = pattern.publishTime.split(":").map(Number);
         targetDate.setUTCHours(hours, minutes, 0, 0);
 
         // Skip si en dehors de la plage demandée (utile aux bords semaine partielle)
