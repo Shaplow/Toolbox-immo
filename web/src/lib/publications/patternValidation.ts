@@ -63,43 +63,6 @@ export interface TemplateValidationContext {
   coverPresetIds?: string[];
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-interface CoverConfigRefs {
-  /** ID stable (Phase 3 Cohérence Workflows) — priorité sur le nom. */
-  coverPresetId: string | null;
-  /** Nom legacy — conservé pour le fallback transitoire pendant la migration. */
-  coverPresetName: string | null;
-}
-
-function readCoverPresetRefs(coverConfig: unknown): CoverConfigRefs {
-  const empty: CoverConfigRefs = { coverPresetId: null, coverPresetName: null };
-  if (!coverConfig) return empty;
-  // coverConfig peut être un objet déjà parsé (form) ou un JSON string (Prisma raw)
-  type ParsedCoverConfig = { coverPresetId?: unknown; coverPresetName?: unknown };
-  let obj: ParsedCoverConfig | null = null;
-  if (typeof coverConfig === "string") {
-    try {
-      obj = JSON.parse(coverConfig) as ParsedCoverConfig;
-    } catch {
-      return empty;
-    }
-  } else if (typeof coverConfig === "object") {
-    obj = coverConfig as ParsedCoverConfig;
-  }
-  if (!obj) return empty;
-  return {
-    coverPresetId:
-      typeof obj.coverPresetId === "string" && obj.coverPresetId.trim()
-        ? obj.coverPresetId.trim()
-        : null,
-    coverPresetName:
-      typeof obj.coverPresetName === "string" && obj.coverPresetName.trim()
-        ? obj.coverPresetName.trim()
-        : null,
-  };
-}
-
 // ─── validatePatternConfig ────────────────────────────────────────────────────
 
 /**
@@ -137,37 +100,17 @@ export function validatePatternConfig(
     });
   }
 
-  // C1 : coverMode=autoPack → référence preset requise (par ID en priorité, fallback nom)
-  if (input.coverMode === "autoPack") {
-    const refs = readCoverPresetRefs(input.coverConfig);
-    if (!refs.coverPresetId && !refs.coverPresetName) {
-      errors.push({
-        field: "coverConfig",
-        code: "MISSING_COVER_PRESET_NAME",
-        message:
-          "Le mode cover « auto » nécessite un preset cover défini dans le template.",
-      });
-    } else if (template) {
-      // C2 : le preset référencé doit exister sur le template (par ID ou nom)
-      const existsById =
-        refs.coverPresetId && template.coverPresetIds
-          ? template.coverPresetIds.includes(refs.coverPresetId)
-          : false;
-      const existsByName =
-        refs.coverPresetName
-          ? template.coverPresetNames.includes(refs.coverPresetName)
-          : false;
-      if (!existsById && !existsByName) {
-        const refLabel = refs.coverPresetId
-          ? `(id=${refs.coverPresetId})`
-          : `« ${refs.coverPresetName} »`;
-        errors.push({
-          field: "coverConfig",
-          code: "COVER_PRESET_NOT_FOUND",
-          message: `Le preset cover ${refLabel} n'existe plus sur le template lié. Choisissez-en un autre ou recréez-le dans le builder.`,
-        });
-      }
-    }
+  // C1 (Phase 2.6) : coverMode=autoPack → template doit avoir au moins une
+  // config cover (preset par défaut). On ne demande plus de référence par nom
+  // côté pattern — c'est toujours le preset sortOrder min qui sert.
+  // Si pas de template chargé (cas race condition), on skip silencieusement.
+  if (input.coverMode === "autoPack" && template && template.coverPresetNames.length === 0) {
+    errors.push({
+      field: "coverConfig",
+      code: "MISSING_COVER_PRESET_NAME",
+      message:
+        "Le mode cover « auto » nécessite une config cover dans le template. Ouvre le builder → onglet « Cover auto » pour l'activer.",
+    });
   }
 
   // C3 : needsCaptions=true → captionPresetId requis

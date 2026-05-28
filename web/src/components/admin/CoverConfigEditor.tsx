@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { FormField } from "@/components/ui/FormField";
-import { CoverPresetThumbnail } from "@/components/builder/CoverPresetThumbnail";
-import type { TemplateJSON } from "@/types/template";
+import { CheckCircle2, AlertTriangle, ExternalLink } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,73 +13,71 @@ type CoverPreset = {
   config: Record<string, unknown>;
 };
 
-type PartialCoverConfig = {
-  enabled?: boolean;
-  /** Référence stable par ID (Phase 3 Cohérence Workflows). Priorité sur coverPresetName. */
-  coverPresetId?: string | null;
-  /** Référence legacy par nom — conservée pour fallback transitoire. */
-  coverPresetName?: string | null;
-};
-
 type Props = {
-  /** Template ID — used to fetch the available presets for this template. */
+  /** Template ID — used to check that the template has a cover config. */
   templateId: string | null;
-  /** Current coverConfig value (already parsed from JSON). Only { enabled, coverPresetName } are used. */
+  /** Current coverConfig value (read-only — we no longer expose toggle/preset picker). */
   value: object | null;
+  /**
+   * Auto-normalize pattern.coverConfig to `{ enabled: true }` when autoPack is
+   * selected. The detail config lives on the template itself (1 preset par
+   * défaut auto-créé dans le builder).
+   */
   onChange: (config: object) => void;
 };
 
 // ─── CoverConfigEditor ────────────────────────────────────────────────────────
+//
+// Phase 2.6 — refonte : le pattern n'a plus à choisir un preset cover.
+// Le template a une config cover unique (auto-créée dans le builder).
+// Le pattern indique uniquement le MODE (autoPack), pas le détail.
+//
+// Ce composant se borne à vérifier que le template a bien une config cover
+// activée — sinon affiche un warning + lien vers le builder.
 
 export function CoverConfigEditor({ templateId, value, onChange }: Props) {
-  const config = (value ?? {}) as PartialCoverConfig;
-
   const [presets, setPresets] = useState<CoverPreset[]>([]);
-  const [template, setTemplate] = useState<TemplateJSON | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Fetch available presets + template (pour le thumbnail) when templateId changes
+  // Normalize coverConfig to { enabled: true } when autoPack mode is selected
+  // and current value is missing/falsy. Done once at mount.
+  useEffect(() => {
+    const current = (value ?? {}) as { enabled?: boolean };
+    if (current.enabled !== true) {
+      onChange({ enabled: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Fetch presets pour vérifier le statut du template
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       if (!templateId) {
-        if (!cancelled) { setPresets([]); setTemplate(null); setLoading(false); }
+        if (!cancelled) {
+          setPresets([]);
+          setLoading(false);
+        }
         return;
       }
       if (!cancelled) setLoading(true);
       try {
-        const [presetsRes, tplRes] = await Promise.all([
-          fetch(`/api/templates/${templateId}/cover-presets`),
-          fetch(`/api/templates/${templateId}`),
-        ]);
+        const res = await fetch(`/api/templates/${templateId}/cover-presets`);
         if (cancelled) return;
-        const presetsData: CoverPreset[] = presetsRes.ok
-          ? await (presetsRes.json() as Promise<CoverPreset[]>)
-          : [];
-        setPresets(presetsData);
-        if (tplRes.ok) {
-          const tplData = (await tplRes.json()) as { jsonData: string };
-          try {
-            setTemplate(JSON.parse(tplData.jsonData) as TemplateJSON);
-          } catch {
-            // ignore parse errors
-          }
-        }
+        const data: CoverPreset[] = res.ok ? await (res.json() as Promise<CoverPreset[]>) : [];
+        setPresets(data);
       } catch {
         // Non-fatal
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [templateId]);
 
-  function patch(partial: Partial<PartialCoverConfig>) {
-    onChange({ ...config, ...partial });
-  }
-
-  // ── No template selected ──────────────────────────────────────────────────
-
+  // ── No template ───────────────────────────────────────────────────────────
   if (!templateId) {
     return (
       <p className="text-sm text-gray-500 italic">
@@ -90,117 +86,87 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
     );
   }
 
-  // ── Template selected ─────────────────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────────
+  if (loading) {
+    return <p className="text-sm text-gray-400 italic">Vérification de la config template…</p>;
+  }
 
-  // Résolution prioritaire par ID (Phase 3), fallback par nom pour legacy.
-  const selectedPreset =
-    (config.coverPresetId
-      ? presets.find((p) => p.id === config.coverPresetId)
-      : null) ??
-    presets.find((p) => p.name === config.coverPresetName) ??
-    null;
+  // ── Résolution : on prend le preset par défaut (sortOrder min) ───────────
+  const sorted = [...presets].sort((a, b) => a.sortOrder - b.sortOrder);
+  const defaultPreset = sorted[0] ?? null;
+  const isEnabled =
+    defaultPreset !== null &&
+    (defaultPreset.config as { enabled?: boolean })?.enabled !== false;
 
+  const frameCount =
+    defaultPreset && typeof (defaultPreset.config as { frameCount?: number }).frameCount === "number"
+      ? (defaultPreset.config as { frameCount: number }).frameCount
+      : 36;
+  const overlayCount = defaultPreset && Array.isArray((defaultPreset.config as { overlayGroupIds?: unknown[] }).overlayGroupIds)
+    ? ((defaultPreset.config as { overlayGroupIds: unknown[] }).overlayGroupIds.length)
+    : 0;
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col gap-4">
-
-      {/* enabled toggle */}
-      <label className="inline-flex items-center gap-3 cursor-pointer">
-        <div className="relative">
-          <input
-            type="checkbox"
-            checked={config.enabled ?? false}
-            onChange={(e) => patch({ enabled: e.target.checked })}
-            className="sr-only"
-          />
-          <div
-            className={`w-9 h-5 rounded-full transition-colors ${config.enabled ? "bg-indigo-600" : "bg-gray-200"}`}
-          />
-          <div
-            className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${config.enabled ? "translate-x-4" : "translate-x-0"}`}
-          />
-        </div>
-        <span className="text-sm text-gray-700">Activer la génération automatique de cover</span>
-      </label>
-
-      {/* Preset picker */}
-      {loading ? (
-        <p className="text-sm text-gray-400 italic">Chargement des presets…</p>
-      ) : presets.length === 0 ? (
-        <p className="text-sm text-gray-500">
-          Ce template n&apos;a aucun preset cover.{" "}
-          <Link
-            href={`/templates/${templateId}/edit`}
-            className="text-indigo-600 underline hover:text-indigo-700"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Va dans le builder template
-          </Link>{" "}
-          pour en créer.
-        </p>
-      ) : (
-        <FormField
-          label="Preset cover"
-          help="Sélectionne le preset cover à utiliser pour ce pattern."
-        >
-          <select
-            value={selectedPreset?.id ?? ""}
-            onChange={(e) => {
-              const newId = e.target.value || null;
-              const newPreset = newId ? presets.find((p) => p.id === newId) : null;
-              // On écrit l'ID + le nom (le nom reste pour fallback compat
-              // côté coverAuto.ts pendant la phase de transition).
-              patch({
-                coverPresetId: newId,
-                coverPresetName: newPreset?.name ?? null,
-              });
-            }}
-            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-          >
-            <option value="" disabled>Choisir un preset…</option>
-            {presets.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </FormField>
-      )}
-
-      {/* Summary + thumbnail du preset sélectionné */}
-      {selectedPreset && (
-        <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 flex items-center gap-3">
-          {template && (
-            <CoverPresetThumbnail
-              template={template}
-              config={selectedPreset.config as Record<string, unknown>}
-              width={56}
-            />
-          )}
-          <div className="text-xs text-indigo-700 space-y-0.5 flex-1 min-w-0">
-            <p className="font-medium truncate">{selectedPreset.name}</p>
-            <p>
-              {Array.isArray((selectedPreset.config as { overlayGroupIds?: unknown[] }).overlayGroupIds)
-                ? `${(selectedPreset.config as { overlayGroupIds: unknown[] }).overlayGroupIds.length} overlay(s)`
-                : "—"}{" "}
-              &middot;{" "}
-              {typeof (selectedPreset.config as { frameCount?: number }).frameCount === "number"
-                ? `${(selectedPreset.config as { frameCount: number }).frameCount} frames`
-                : "36 frames"}
+    <div className="flex flex-col gap-3">
+      {!defaultPreset ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 flex items-start gap-2">
+          <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-800 flex-1">
+            <p className="font-medium mb-0.5">Cover non configurée dans ce template</p>
+            <p className="text-amber-700">
+              Active la cover automatique côté template (onglet « Cover auto »).
             </p>
+            <Link
+              href={`/templates/${templateId}/edit`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-amber-700 underline hover:text-amber-900 mt-1.5"
+            >
+              Ouvrir le builder
+              <ExternalLink size={11} />
+            </Link>
+          </div>
+        </div>
+      ) : !isEnabled ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 flex items-start gap-2">
+          <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-800 flex-1">
+            <p className="font-medium mb-0.5">Cover désactivée dans le template</p>
+            <p className="text-amber-700">
+              La config existe mais le toggle « Activer après chaque render » est off.
+            </p>
+            <Link
+              href={`/templates/${templateId}/edit`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-amber-700 underline hover:text-amber-900 mt-1.5"
+            >
+              Activer dans le builder
+              <ExternalLink size={11} />
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 flex items-start gap-2">
+          <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-emerald-800 flex-1">
+            <p className="font-medium mb-0.5">Cover automatique configurée</p>
+            <p className="text-emerald-700">
+              {frameCount} frames extraites · {overlayCount} overlay{overlayCount > 1 ? "s" : ""} actif{overlayCount > 1 ? "s" : ""}
+            </p>
+            <Link
+              href={`/templates/${templateId}/edit`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-emerald-700 underline hover:text-emerald-900 mt-1.5"
+            >
+              Modifier dans le builder
+              <ExternalLink size={11} />
+            </Link>
           </div>
         </div>
       )}
-
-      {/* Warning si référence preset (par ID ou nom) mais introuvable */}
-      {(config.coverPresetId || config.coverPresetName) && !selectedPreset && presets.length > 0 && (
-        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          Le preset référencé{" "}
-          {config.coverPresetId ? `(id="${config.coverPresetId}")` : `«${config.coverPresetName}»`}
-          {" "}est introuvable dans ce template. Sélectionne-en un autre.
-        </p>
-      )}
-
     </div>
   );
 }

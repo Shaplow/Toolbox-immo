@@ -79,7 +79,6 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
   const [oneOffNeedsRushes, setOneOffNeedsRushes] = useState<boolean | null>(null);
   const [oneOffNeedsBrief, setOneOffNeedsBrief] = useState<boolean | null>(null);
   const [oneOffCoverMode, setOneOffCoverMode] = useState<string>("");
-  const [oneOffCoverPresetId, setOneOffCoverPresetId] = useState<string>("");
   const [oneOffCaptionPresetId, setOneOffCaptionPresetId] = useState<string>("");
   const [oneOffNeedsDescription, setOneOffNeedsDescription] = useState<string>("");
   const [oneOffDescriptionPromptId, setOneOffDescriptionPromptId] = useState<string>("");
@@ -90,7 +89,6 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
   const [captionPresets, setCaptionPresets] = useState<Array<{ id: string; name: string }>>([]);
   const [descriptionPrompts, setDescriptionPrompts] = useState<Array<{ id: string; name: string }>>([]);
   const [coverPresets, setCoverPresets] = useState<Array<{ id: string; name: string }>>([]);
-  const [loadingCoverPresets, setLoadingCoverPresets] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -170,12 +168,10 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
       return;
     }
     let cancelled = false;
-    setLoadingCoverPresets(true);
     void fetch(`/api/templates/${tplId}/cover-presets`)
       .then((r) => (r.ok ? r.json() as Promise<Array<{ id: string; name: string }>> : []))
       .then((data) => { if (!cancelled) setCoverPresets(data); })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setLoadingCoverPresets(false); });
+      .catch(() => {});
     return () => { cancelled = true; };
   }, [patterns, selectedPatternId]);
 
@@ -203,7 +199,9 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     if (!accountId) return false;
     if (isPatternMode) return !!selectedPatternId;
     if (!title.trim()) return false;
-    if (oneOffCoverMode === "autoPack" && !oneOffCoverPresetId && coverPresets.length > 0) return false;
+    // Phase 2.6 — coverMode=autoPack ne requiert plus de presetId : le slot
+    // hérite automatiquement du preset par défaut du template.
+    if (oneOffCoverMode === "autoPack" && coverPresets.length === 0) return false;
     if (oneOffNeedsCaptions === true && !oneOffCaptionPresetId) return false;
     if (oneOffNeedsDescription === "autoGenerate" && !oneOffDescriptionPromptId) return false;
     return true;
@@ -213,7 +211,6 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     selectedPatternId,
     title,
     oneOffCoverMode,
-    oneOffCoverPresetId,
     coverPresets.length,
     oneOffNeedsCaptions,
     oneOffCaptionPresetId,
@@ -259,7 +256,6 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
         if (oneOffNeedsRushes !== null) payload.needsRushesOverride = oneOffNeedsRushes;
         if (oneOffNeedsBrief !== null) payload.needsBriefOverride = oneOffNeedsBrief;
         if (oneOffCoverMode) payload.coverModeOverride = oneOffCoverMode;
-        if (oneOffCoverPresetId) payload.coverPresetIdOverride = oneOffCoverPresetId;
         if (oneOffCaptionPresetId) payload.captionPresetIdOverride = oneOffCaptionPresetId;
         if (oneOffNeedsDescription) payload.needsDescriptionOverride = oneOffNeedsDescription;
         if (oneOffDescriptionPromptId) payload.descriptionPromptIdOverride = oneOffDescriptionPromptId;
@@ -565,24 +561,11 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
                   />
                 </div>
 
-                {oneOffCoverMode === "autoPack" && (
-                  <FormField
-                    label="Preset cover"
-                    required
-                    help={coverPresets.length === 0 ? "Aucun preset disponible — il faut un template lié au pattern." : undefined}
-                  >
-                    <select
-                      value={oneOffCoverPresetId}
-                      onChange={(e) => setOneOffCoverPresetId(e.target.value)}
-                      disabled={loadingCoverPresets || coverPresets.length === 0}
-                      className={SELECT_CLS}
-                    >
-                      <option value="">— Choisir un preset —</option>
-                      {coverPresets.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                  </FormField>
+                {oneOffCoverMode === "autoPack" && coverPresets.length === 0 && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    Aucune config cover sur ce template. Active-la dans le builder
+                    (onglet « Cover auto ») avant de créer ce slot.
+                  </p>
                 )}
 
                 {oneOffNeedsCaptions === true && (

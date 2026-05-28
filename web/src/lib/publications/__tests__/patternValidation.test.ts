@@ -39,10 +39,10 @@ describe("validatePatternConfig — cas OK", () => {
     expect(validatePatternConfig(makeInput(), templateWithPreset)).toEqual([]);
   });
 
-  it("coverMode=auto + coverPresetName valide + preset existe sur template", () => {
+  it("coverMode=autoPack avec template ayant des presets → OK", () => {
     const input = makeInput({
       coverMode: "autoPack",
-      coverConfig: { enabled: true, coverPresetName: "Default" },
+      coverConfig: { enabled: true },
     });
     expect(validatePatternConfig(input, templateWithPreset)).toEqual([]);
   });
@@ -89,10 +89,10 @@ describe("validatePatternConfig — cas KO", () => {
     });
   });
 
-  it("C1 : coverMode=auto sans coverPresetName → MISSING_COVER_PRESET_NAME", () => {
+  it("C1 (Phase 2.6) : coverMode=autoPack + template sans preset → MISSING_COVER_PRESET_NAME", () => {
     const errors = validatePatternConfig(
-      makeInput({ coverMode: "autoPack", coverConfig: { enabled: true } }),
-      templateWithPreset,
+      makeInput({ coverMode: "autoPack", coverConfig: null }),
+      templateNoPreset,
     );
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatchObject({
@@ -101,20 +101,12 @@ describe("validatePatternConfig — cas KO", () => {
     });
   });
 
-  it("C2 : coverPresetName référencé n'existe plus sur template → COVER_PRESET_NOT_FOUND", () => {
+  it("C1 (Phase 2.6) : coverMode=autoPack + template avec preset → OK (peu importe coverConfig)", () => {
     const errors = validatePatternConfig(
-      makeInput({
-        coverMode: "autoPack",
-        coverConfig: { enabled: true, coverPresetName: "Ghost" },
-      }),
-      templateNoPreset,
+      makeInput({ coverMode: "autoPack", coverConfig: null }),
+      templateWithPreset,
     );
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toMatchObject({
-      field: "coverConfig",
-      code: "COVER_PRESET_NOT_FOUND",
-    });
-    expect(errors[0].message).toContain("Ghost");
+    expect(errors).toEqual([]);
   });
 
   it("C3 : needsCaptions=true sans captionPresetId → MISSING_CAPTION_PRESET", () => {
@@ -164,34 +156,11 @@ describe("validatePatternConfig — cas KO", () => {
 // ─── Edge cases ───────────────────────────────────────────────────────────────
 
 describe("validatePatternConfig — edge cases", () => {
-  it("coverConfig en string JSON (cas Prisma raw) est parsé", () => {
+  it("template null + coverMode=autoPack → skip C1 (validation impossible)", () => {
+    // Sans template chargé, on ne peut pas vérifier qu'il a des presets cover.
+    // Comportement attendu : la validation cover passe silencieusement.
     const errors = validatePatternConfig(
-      makeInput({
-        coverMode: "autoPack",
-        coverConfig: JSON.stringify({ enabled: true, coverPresetName: "Default" }),
-      }),
-      templateWithPreset,
-    );
-    expect(errors).toEqual([]);
-  });
-
-  it("coverConfig en string invalide (JSON cassé) → presetName null → MISSING", () => {
-    const errors = validatePatternConfig(
-      makeInput({ coverMode: "autoPack", coverConfig: "{not valid json" }),
-      templateWithPreset,
-    );
-    expect(errors).toHaveLength(1);
-    expect(errors[0].code).toBe("MISSING_COVER_PRESET_NAME");
-  });
-
-  it("template null + coverMode=auto + coverPresetName → ne lève pas C2 (template introuvable)", () => {
-    // C1 ne saute pas car coverPresetName est défini ; C2 ne peut pas vérifier
-    // sans template → comportement attendu : aucune erreur côté C1/C2.
-    const errors = validatePatternConfig(
-      makeInput({
-        coverMode: "autoPack",
-        coverConfig: { enabled: true, coverPresetName: "Default" },
-      }),
+      makeInput({ coverMode: "autoPack", coverConfig: { enabled: true } }),
       null,
     );
     expect(errors).toEqual([]);

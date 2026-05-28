@@ -9,6 +9,7 @@ const mockTemplateFindUnique = vi.fn();
 const mockCoverFramePackFindUnique = vi.fn();
 const mockCoverFramePackCreate = vi.fn();
 const mockTemplateCoverPresetFindUnique = vi.fn();
+const mockTemplateCoverPresetFindFirst = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -24,6 +25,7 @@ vi.mock("@/lib/prisma", () => ({
     },
     templateCoverPreset: {
       findUnique: (...args: unknown[]) => mockTemplateCoverPresetFindUnique(...args),
+      findFirst: (...args: unknown[]) => mockTemplateCoverPresetFindFirst(...args),
     },
   },
 }));
@@ -168,7 +170,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     expect(mockTemplateCoverPresetFindUnique).not.toHaveBeenCalled();
   });
 
-  it("warn + skip si aucune référence preset (id ou nom) — pattern incohérent", async () => {
+  it("Phase 2.6 : pas de référence preset → fallback au preset par défaut du template", async () => {
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
@@ -180,16 +182,19 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
         },
       },
     });
+    // Fallback findFirst → preset par défaut existe
+    mockTemplateCoverPresetFindFirst.mockResolvedValueOnce(MOCK_PRESET);
 
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
 
-    expect(mockCoverFramePackCreate).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("no preset reference"));
-    warnSpy.mockRestore();
+    expect(mockTemplateCoverPresetFindFirst).toHaveBeenCalledWith({
+      where: { templateId: "tpl-1" },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true, config: true, name: true },
+    });
   });
 
-  it("warn + skip si le preset référencé n'existe pas en DB", async () => {
+  it("Phase 2.6 : aucun preset sur le template (ni référence, ni défaut) → warn + skip", async () => {
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
@@ -201,14 +206,15 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
         },
       },
     });
-    // Preset introuvable
+    // Le preset référencé n'existe pas, et le fallback ne trouve rien
     mockTemplateCoverPresetFindUnique.mockResolvedValueOnce(null);
+    mockTemplateCoverPresetFindFirst.mockResolvedValueOnce(null);
 
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
 
     expect(mockCoverFramePackCreate).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("introuvable"));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Aucune config cover"));
     warnSpy.mockRestore();
   });
 

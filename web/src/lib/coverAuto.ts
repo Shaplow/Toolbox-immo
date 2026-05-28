@@ -567,70 +567,62 @@ export async function triggerAutoCoverPackForRender(
     return;
   }
 
-  // Phase 3 Cohérence Workflows — résolution par ID stable (coverPresetId)
-  // avec fallback sur nom (coverPresetName) pendant 1 release de compat,
-  // le temps que tous les patterns soient migrés via le script
-  // scripts/migrate-cover-preset-name-to-id.ts
-  const coverConfigJson = slotPattern.coverConfig as {
+  // Phase 2.6 — résolution simplifiée : pattern.coverConfig.coverPresetId/Name
+  // restent supportés (legacy), mais si absents on utilise le preset par défaut
+  // (sortOrder min). Chaque template a maintenant 1 config cover unique
+  // auto-créée dans le builder.
+  const coverConfigJson = (slotPattern.coverConfig ?? {}) as {
     enabled?: boolean;
     coverPresetId?: string;
     coverPresetName?: string;
-  } | null;
-  if (!coverConfigJson?.enabled) {
+  };
+
+  // enabled = true par défaut quand coverMode === autoPack. Le toggle pattern
+  // a été retiré (redondant avec le mode). On n'arrête que si explicitement
+  // false (legacy).
+  if (coverConfigJson.enabled === false) {
     console.info(
-      `[autoCover] skip render=${renderId} slot=${slotId ?? "?"} reason=coverConfig_disabled ` +
-      `(coverMode=autoPack mais coverConfig.enabled=${coverConfigJson?.enabled} — il faut activer dans la config cover du pattern)`,
+      `[autoCover] skip render=${renderId} slot=${slotId ?? "?"} reason=coverConfig_disabled (legacy explicit false)`,
     );
     return;
   }
 
   const presetId = coverConfigJson.coverPresetId;
   const presetName = coverConfigJson.coverPresetName;
-  if (!presetId && !presetName) {
-    console.warn(
-      `[autoCover] Pattern ${slotPattern.id} has coverMode=autoPack but no preset reference — skip`,
-    );
-    await logCoverActivity(slotId, "COVER_CONFIG_ERROR", {
-      patternId: slotPattern.id,
-      reason: "missing_preset_reference",
-      message: "coverMode=autoPack mais aucun preset configuré dans le pattern",
-    });
-    return;
-  }
-
   const patternTemplateId = slotPattern.templateId ?? templateId;
   let preset: { id: string; config: unknown; name: string } | null = null;
 
   if (presetId) {
-    // Lookup primaire par ID (stable au renommage)
     preset = await prisma.templateCoverPreset.findUnique({
       where: { id: presetId },
       select: { id: true, config: true, name: true },
     });
   }
   if (!preset && presetName) {
-    // Fallback compat : pattern non migré → lookup par nom
-    console.warn(
-      `[autoCover] Pattern ${slotPattern.id} utilise encore coverPresetName ("${presetName}") — exécuter le script de migration`,
-    );
     preset = await prisma.templateCoverPreset.findUnique({
       where: { templateId_name: { templateId: patternTemplateId, name: presetName } },
       select: { id: true, config: true, name: true },
     });
   }
+  if (!preset) {
+    // Fallback principal : preset par défaut du template (sortOrder min)
+    preset = await prisma.templateCoverPreset.findFirst({
+      where: { templateId: patternTemplateId },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true, config: true, name: true },
+    });
+  }
 
   if (!preset) {
-    const refLabel = presetId ? `id="${presetId}"` : `name="${presetName}"`;
     console.warn(
-      `[autoCover] Preset ${refLabel} introuvable pour template ${patternTemplateId} — skip`,
+      `[autoCover] Aucune config cover sur le template ${patternTemplateId} — skip`,
     );
     await logCoverActivity(slotId, "COVER_CONFIG_ERROR", {
       patternId: slotPattern.id,
-      reason: "preset_not_found",
-      presetId: presetId ?? null,
-      presetName: presetName ?? null,
+      reason: "no_template_cover_config",
       templateId: patternTemplateId,
-      message: `Preset cover introuvable sur le template (${refLabel})`,
+      message:
+        "Aucune config cover sur le template. Ouvre le builder → onglet « Cover auto » pour l'activer.",
     });
     return;
   }

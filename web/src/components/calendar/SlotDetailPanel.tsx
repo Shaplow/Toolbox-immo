@@ -77,19 +77,6 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
     return () => { cancelled = true; };
   }, [isRestricted]);
 
-  // Cover presets : fetch selon le templateId effectif du slot
-  useEffect(() => {
-    if (isRestricted) return;
-    const tplId = slot.templateId ?? null;
-    if (!tplId) { setCoverPresets([]); return; }
-    let cancelled = false;
-    void fetch(`/api/templates/${tplId}/cover-presets`)
-      .then((r) => (r.ok ? r.json() as Promise<Array<{ id: string; name: string }>> : []))
-      .then((data) => { if (!cancelled) setCoverPresets(data); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [isRestricted, slot.templateId]);
-
   const [form, setForm] = useState({
     title: slot.title ?? "",
     description: slot.description ?? "",
@@ -116,7 +103,6 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
     descriptionPromptIdOverride: slot.descriptionPromptIdOverride ?? null,
   });
   // Listes pour les pickers (fetched on mount)
-  const [coverPresets, setCoverPresets] = useState<Array<{ id: string; name: string }>>([]);
   const [captionPresets, setCaptionPresets] = useState<Array<{ id: string; name: string }>>([]);
   const [descriptionPrompts, setDescriptionPrompts] = useState<Array<{ id: string; name: string }>>([]);
 
@@ -552,22 +538,9 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
                     { value: "monteurUpload", label: "Upload par le monteur" },
                   ]}
                 />
-                {/* Picker preset cover conditionnel — visible uniquement pour
-                    autoPack (les autres modes ne consomment pas de preset). */}
-                {(form.coverModeOverride === "autoPack" ||
-                  (form.coverModeOverride === null && slot.pattern?.coverMode === "autoPack")) && (
-                  <PresetSelect
-                    label="Preset cover (override)"
-                    value={form.coverPresetIdOverride}
-                    options={coverPresets}
-                    inheritedHint={
-                      coverPresets.length === 0
-                        ? "Aucun preset disponible — ce slot doit avoir un template"
-                        : "Hérité du pattern si non choisi"
-                    }
-                    onChange={(v) => set("coverPresetIdOverride", v)}
-                  />
-                )}
+                {/* Phase 2.6 — picker preset retiré : la config cover vit
+                    désormais directement sur le template (1 preset par défaut,
+                    auto-créé dans le builder). Le slot hérite automatiquement. */}
                 <OverrideSelect
                   label="Rushes attendus"
                   value={form.needsRushesOverride}
