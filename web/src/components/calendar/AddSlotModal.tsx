@@ -223,6 +223,11 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Anti double-submit : l'utilisateur peut soumettre via Entrée pendant
+    // qu'un POST est en vol (le bouton "Créer" est disabled mais pas le
+    // form). Sans ce guard, 2 slots dupliqués peuvent être créés pour le
+    // même {accountId, scheduledAt, patternId}.
+    if (saving) return;
     if (!canSubmit()) {
       setError(isPatternMode ? "Sélectionne un pattern." : "Renseigne au moins un titre.");
       return;

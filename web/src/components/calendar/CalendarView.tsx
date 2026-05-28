@@ -156,9 +156,12 @@ export function CalendarView({
 
   useEffect(() => { void load(); }, [load]);
 
-  function prevWeek() { setWeekStart((d) => addDays(d, -7)); }
-  function nextWeek() { setWeekStart((d) => addDays(d, 7)); }
-  function goToday() { setWeekStart(getMondayOf(new Date())); }
+  // Clear slots avant chaque navigation pour déclencher le skeleton — sans
+  // ça, le contenu stale de la semaine précédente reste visible pendant
+  // le fetch et donne l'illusion qu'on est sur la bonne semaine.
+  function prevWeek() { setSlots([]); setWeekStart((d) => addDays(d, -7)); }
+  function nextWeek() { setSlots([]); setWeekStart((d) => addDays(d, 7)); }
+  function goToday() { setSlots([]); setWeekStart(getMondayOf(new Date())); }
 
   /** True si le slot attend une action de currentUser (rôle owner + assignation matchante).
    *  Owner contextualisé via resolveSlotOwner — pour les statuts amont
@@ -208,7 +211,13 @@ export function CalendarView({
 
   function handleSlotUpdated(updated: PublicationSlot) {
     setSlots((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
-    setSelectedSlot(updated);
+    // Ne re-sélectionne le slot mis à jour QUE si c'est celui actuellement
+    // ouvert dans le panneau. Sans cette garde, le PATCH d'un slot dont la
+    // réponse arrive après que l'user ait switché vers un autre slot fait
+    // sauter le panneau vers l'ancien — comportement très désorientant.
+    setSelectedSlot((current) =>
+      current && current.id === updated.id ? updated : current,
+    );
     toast.success("Slot mis à jour");
   }
 
@@ -407,9 +416,14 @@ export function CalendarView({
         )}
       </div>
 
-      {/* Slot detail panel */}
+      {/* Slot detail panel — key={slot.id} force le remontage du panneau
+          quand on bascule d'un slot à un autre. Sans ce key, le `form`
+          state local (titre, statut, notes, overrides) conservait les
+          valeurs du slot précédent puisque React ne remonte pas le
+          composant si la prop change d'un objet truthy à un autre. */}
       {selectedSlot && (
         <SlotDetailPanel
+          key={selectedSlot.id}
           slot={selectedSlot}
           onUpdated={handleSlotUpdated}
           onDeleted={handleSlotDeleted}

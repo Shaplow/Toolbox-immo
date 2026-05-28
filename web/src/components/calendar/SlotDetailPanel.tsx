@@ -166,11 +166,22 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
   // puissent "sauter" des étapes du pipeline via l'UI. Pour ADMIN, voir STATUSES global.
   // Note : slot.status peut être un legacy status (TO_DO, IN_PROGRESS, etc.) qui
   // n'est pas dans STATUS_TRANSITIONS — on fallback sur tableau vide dans ce cas.
+  //
+  // Les statuts terminaux réservés (PUBLISHED, CANCELLED, ARCHIVED, REJECTED)
+  // sont filtrés ici : le service les bloque déjà côté API mais l'UI les
+  // proposait, donnant lieu à un échec opaque au save. Le CM atteint
+  // PUBLISHED en passant par mark-published, pas via ce select.
+  const RESERVED_TERMINAL_FOR_SELECT = new Set<SlotStatus>([
+    "PUBLISHED",
+    "CANCELLED",
+    "ARCHIVED",
+    "REJECTED",
+  ]);
   const availableStatuses: SlotStatus[] = (() => {
     const transitions = STATUS_TRANSITIONS as Record<string, SlotStatus[]>;
     const allowed = transitions[slot.status] ?? [];
     const set = new Set<SlotStatus>([slot.status as SlotStatus, ...allowed]);
-    return STATUSES.filter((s) => set.has(s));
+    return STATUSES.filter((s) => set.has(s) && !RESERVED_TERMINAL_FOR_SELECT.has(s));
   })();
 
   async function handleSave() {
