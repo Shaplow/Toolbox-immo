@@ -49,6 +49,36 @@ type ValidatedReferenceImage = {
   mimeType: string;
 };
 
+// ─── Recipes ─────────────────────────────────────────────────────────────────
+// Cf. DescriptionPrompt.recipeKind (Phase P6). Avant ce dispatcher, toutes les
+// recipes dégradaient silencieusement en "transcript_only".
+
+type RecipeKind =
+  | "transcript_only"
+  | "transcript_and_frame"
+  | "transcript_multi_frame"
+  | "two_pass_reformulate"
+  | "context_enriched";
+
+type RecipeConfig = {
+  frameCount?: number;
+  contextFieldKeys?: string[];
+} | null;
+
+const VALID_RECIPE_KINDS = new Set<RecipeKind>([
+  "transcript_only",
+  "transcript_and_frame",
+  "transcript_multi_frame",
+  "two_pass_reformulate",
+  "context_enriched",
+]);
+
+function normalizeRecipeKind(value: unknown): RecipeKind {
+  return typeof value === "string" && VALID_RECIPE_KINDS.has(value as RecipeKind)
+    ? (value as RecipeKind)
+    : "transcript_only";
+}
+
 function buildUserMessage(
   promptText: string,
   transcriptText: string | undefined,
@@ -345,11 +375,95 @@ export async function POST(req: NextRequest) {
     );
   }
   const clampedPersonalization = personalization;
+
+  // ── Dispatcher recipes ────────────────────────────────────────────────────
+  // Lecture des champs P6 (peut être absent sur des prompts antérieurs à la
+  // migration, d'où le normalize avec fallback transcript_only).
+  const recipeKind = normalizeRecipeKind(
+    (prompt as { recipeKind?: string }).recipeKind,
+  );
+  const recipeConfig = ((prompt as { recipeConfig?: unknown }).recipeConfig ??
+    null) as RecipeConfig;
+
+  // Validations spécifiques par recipe (avant tout appel LLM).
+  if (
+    (recipeKind === "transcript_and_frame" ||
+      recipeKind === "transcript_multi_frame") &&
+    !referenceImage
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Cette recette requiert une image de référence — joignez-en une ou choisissez un autre prompt.",
+      },
+      { status: 400 },
+    );
+  }
+
+  // Pour context_enriched : charger les champs métier du slot (adresse,
+  // prix, etc.). Sans slotId, on dégrade en transcript_only avec un warn.
+  let slotContext: { title: string | null; fields: Record<string, string> } | null = null;
+  if (recipeKind === "context_enriched") {
+    if (!resolvedSlotId) {
+      console.warn(
+        "[description/generate] recipe=context_enriched sans slotId — dégrade en transcript_only",
+      );
+    } else {
+      const slotFull = await prisma.publicationSlot.findUnique({
+        where: { id: resolvedSlotId },
+        select: { title: true, fields: true },
+      });
+      if (slotFull) {
+        let parsed: Record<string, string> = {};
+        try {
+          const raw = JSON.parse(slotFull.fields ?? "{}") as unknown;
+          if (raw && typeof raw === "object") {
+            parsed = Object.fromEntries(
+              Object.entries(raw as Record<string, unknown>)
+                .filter(([, v]) => typeof v === "string" && v.trim().length > 0)
+                .map(([k, v]) => [k, String(v)]),
+            );
+          }
+        } catch {
+          // JSON malformé — on ignore et continue avec un contexte vide.
+        }
+        // Filtre par contextFieldKeys si configuré (sinon tous les champs).
+        const keys = Array.isArray(recipeConfig?.contextFieldKeys)
+          ? recipeConfig.contextFieldKeys
+          : null;
+        if (keys && keys.length > 0) {
+          parsed = Object.fromEntries(
+            Object.entries(parsed).filter(([k]) => keys.includes(k)),
+          );
+        }
+        slotContext = { title: slotFull.title, fields: parsed };
+      }
+    }
+  }
+
+  // Build le prompt de base. Pour context_enriched : on injecte les champs
+  // slot directement dans le promptText (rien de plus à faire dans le user
+  // message — le LLM reçoit tout dans un seul payload cohérent).
+  let basePromptText = prompt.prompt;
+  if (recipeKind === "context_enriched" && slotContext) {
+    const contextLines: string[] = [];
+    if (slotContext.title) contextLines.push(`Titre : ${slotContext.title}`);
+    for (const [k, v] of Object.entries(slotContext.fields)) {
+      contextLines.push(`${k} : ${v}`);
+    }
+    if (contextLines.length > 0) {
+      basePromptText =
+        prompt.prompt +
+        "\n\nContexte de la publication (ne pas inventer d'autres informations) :\n" +
+        contextLines.join("\n");
+    }
+  }
+
   const userMessage = buildUserMessage(
-    prompt.prompt,
+    basePromptText,
     normalizedTranscriptText,
     clampedPersonalization,
-    !!referenceImage
+    !!referenceImage,
   );
   const normalizedInputFilename = inputFilename?.trim()
     || (!normalizedTranscriptText ? referenceImageInput?.filename?.trim() : undefined)
@@ -359,9 +473,56 @@ export async function POST(req: NextRequest) {
   let errorMsg: string | undefined;
 
   try {
-    result = model === "claude"
-      ? await generateWithClaude(userMessage, referenceImage)
-      : await generateWithGPT(userMessage, referenceImage);
+    if (recipeKind === "two_pass_reformulate") {
+      // Pass 1 : résumé en bullets, sans rédaction finale. Limite max_tokens
+      // implicite via le contrat LLM (~4k tokens). Pas d'image en pass 1
+      // pour rester rapide et déterministe.
+      const pass1Message =
+        prompt.prompt +
+        "\n\n[Étape 1/2] Résume cette transcription en bullets concis (max 12 points), sans rédiger la description finale. Pas d'introduction.\n\n" +
+        (clampedPersonalization?.trim()
+          ? `Informations complémentaires :\n${clampedPersonalization.trim()}\n\n`
+          : "") +
+        (normalizedTranscriptText
+          ? `Transcription :\n${normalizedTranscriptText.slice(0, MAX_TRANSCRIPT_CHARS)}`
+          : "Aucune transcription fournie — base-toi uniquement sur les informations complémentaires.");
+
+      const summary = model === "claude"
+        ? await generateWithClaude(pass1Message, null)
+        : await generateWithGPT(pass1Message, null);
+
+      // Pass 2 : rédaction finale à partir du résumé.
+      const pass2Message =
+        prompt.prompt +
+        "\n\n[Étape 2/2] À partir du résumé ci-dessous, rédige la description finale conformément aux instructions du prompt. Ne reproduis pas le résumé tel quel — rédige du texte fluide.\n\nRésumé :\n" +
+        summary;
+
+      result = model === "claude"
+        ? await generateWithClaude(pass2Message, referenceImage)
+        : await generateWithGPT(pass2Message, referenceImage);
+    } else {
+      // transcript_only | transcript_and_frame | transcript_multi_frame |
+      // context_enriched (single-pass) : un seul appel avec userMessage
+      // construit ci-dessus.
+      //
+      // Note pour transcript_multi_frame : la config peut spécifier
+      // frameCount > 1, mais l'extraction de N frames depuis la vidéo
+      // source nécessite un pipeline FFmpeg côté serveur qui n'est pas
+      // implémenté ici — on consomme la frame fournie comme une seule
+      // image et on logue un warn pour signaler la dégradation.
+      if (
+        recipeKind === "transcript_multi_frame" &&
+        (recipeConfig?.frameCount ?? 1) > 1
+      ) {
+        console.warn(
+          `[description/generate] recipe=transcript_multi_frame frameCount=${recipeConfig?.frameCount} ` +
+            "demandé mais extraction multi-frame non implémentée — dégrade en 1 frame.",
+        );
+      }
+      result = model === "claude"
+        ? await generateWithClaude(userMessage, referenceImage)
+        : await generateWithGPT(userMessage, referenceImage);
+    }
   } catch (err) {
     const rawMsg = err instanceof Error ? err.message : "Erreur inconnue";
     errorMsg = rawMsg.slice(0, 200);
