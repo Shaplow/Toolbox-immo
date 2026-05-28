@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronRight, ChevronDown, Trash2 } from "lucide-react";
+import { ChevronRight, Trash2 } from "lucide-react";
 import { useBuilderStore } from "@/lib/store/builderStore";
-import type { VideoSequenceSlot, MusicBlock, VideoBlock, AnyBlock } from "@/types/template";
+import type { VideoSequenceSlot, VideoBlock, AnyBlock } from "@/types/template";
 import { getSlotSourceSummary, getOverlaySummary } from "@/lib/videoSequenceUtils";
 import { SlotPropertiesForm } from "@/components/builder/shared/SlotPropertiesForm";
 import { SelectionRuleEditor } from "@/components/builder/shared/SelectionRuleEditor";
@@ -27,23 +27,15 @@ export function VideoSequencePanel({
   const isActive = slots.length > 0;
   const schema = template.schema ?? [];
 
-  // Blocks that live at the template level (not per-slot)
-  const musicBlock = template.blocks.find((b): b is MusicBlock => b.type === "music");
   // Single-video source: only relevant when NOT in sequence mode
   const singleVideoBlock = !isActive ? template.blocks.find((b): b is VideoBlock => b.type === "video") : undefined;
 
-  const [audioLibraries, setAudioLibraries] = useState<{ id: string; name: string }[]>([]);
-  const [musicOpen, setMusicOpen] = useState(false);
   const [confirmDisable, setConfirmDisable] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/libraries/media?type=video")
       .then((r) => (r.ok ? (r.json() as Promise<{ id: string; name: string }[]>) : []))
       .then(setVideoLibraries)
-      .catch(() => {});
-    fetch("/api/admin/libraries/media?type=audio")
-      .then((r) => (r.ok ? (r.json() as Promise<{ id: string; name: string }[]>) : []))
-      .then(setAudioLibraries)
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -378,137 +370,6 @@ export function VideoSequencePanel({
         </div>
       )}
 
-      {/* ── Music section — always visible when a MusicBlock exists ─────────── */}
-      {musicBlock && (
-        <div className="border-t border-gray-100">
-          {/* Compact header — always visible */}
-          <button
-            type="button"
-            onClick={() => setMusicOpen((o) => !o)}
-            className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50/70 transition-colors text-left"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-[9px] font-semibold uppercase tracking-wider text-gray-400 shrink-0">🎵 Musique</span>
-              <div className="flex items-center gap-1 flex-wrap min-w-0">
-                <span className="text-[9px] text-gray-500 truncate max-w-[90px]">
-                  {musicBlock.libraryId
-                    ? (audioLibraries.find((l) => l.id === musicBlock.libraryId)?.name ?? "Biblio.")
-                    : "Formulaire"}
-                </span>
-                <span className="text-[9px] text-gray-400">·</span>
-                <span className="text-[9px] text-gray-500">{Math.round((musicBlock.volume ?? 0.3) * 100)}%</span>
-                {(musicBlock.loop) && (
-                  <span className="text-[8px] px-1 py-0 rounded bg-gray-100 text-gray-400">loop</span>
-                )}
-                {((musicBlock.fadeIn ?? 0) > 0 || (musicBlock.fadeOut ?? 0) > 0) && (
-                  <span className="text-[8px] px-1 py-0 rounded bg-gray-100 text-gray-400">fade</span>
-                )}
-              </div>
-            </div>
-            {musicOpen
-              ? <ChevronDown size={12} className="shrink-0 text-gray-400" />
-              : <ChevronRight size={12} className="shrink-0 text-gray-400" />}
-          </button>
-
-          {/* Expanded controls */}
-          {musicOpen && (
-            <div className="px-3 pb-3 flex flex-col gap-2 border-t border-gray-100 bg-gray-50/40">
-
-              {/* Library */}
-              <div className="flex flex-col gap-0.5 pt-2">
-                <span className="text-[9px] text-gray-400 uppercase tracking-wide">Bibliothèque audio</span>
-                <select
-                  value={musicBlock.libraryId ?? ""}
-                  onChange={(e) =>
-                    updateBlock(musicBlock.id, { libraryId: e.target.value || undefined } as Partial<AnyBlock>)
-                  }
-                  className="border border-gray-200 rounded-lg px-2 py-1 text-[10px] bg-white"
-                >
-                  <option value="">— Formulaire (upload à la génération) —</option>
-                  {audioLibraries.map((lib) => (
-                    <option key={lib.id} value={lib.id}>{lib.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Selection rule */}
-              {musicBlock.libraryId && (
-                <div>
-                  <span className="text-[9px] text-gray-400 uppercase tracking-wide block mb-1">À la génération</span>
-                  <SelectionRuleEditor
-                    rule={musicBlock.audioSelectionRule}
-                    onChange={(r) =>
-                      updateBlock(musicBlock.id, { audioSelectionRule: r } as Partial<AnyBlock>)
-                    }
-                    strategies={[
-                      { value: "oldest_used", label: "La plus ancienne" },
-                      { value: "least_used", label: "Moins utilisée" },
-                      { value: "random", label: "Aléatoire" },
-                      { value: "manual", label: "Manuelle" },
-                    ]}
-                    schema={schema}
-                  />
-                </div>
-              )}
-
-              {/* Volume + loop on one row */}
-              <div className="flex items-center gap-3">
-                <div className="flex-1 flex flex-col gap-0.5">
-                  <div className="flex justify-between text-[9px] text-gray-400">
-                    <span>Volume</span>
-                    <span>{Math.round((musicBlock.volume ?? 0.3) * 100)}%</span>
-                  </div>
-                  <input
-                    type="range" min={0} max={1} step={0.05}
-                    value={musicBlock.volume ?? 0.3}
-                    onChange={(e) =>
-                      updateBlock(musicBlock.id, { volume: Number(e.target.value) } as Partial<AnyBlock>)
-                    }
-                    className="w-full"
-                  />
-                </div>
-                <label className="flex items-center gap-1.5 shrink-0 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={musicBlock.loop ?? false}
-                    onChange={(e) =>
-                      updateBlock(musicBlock.id, { loop: e.target.checked } as Partial<AnyBlock>)
-                    }
-                    className="rounded"
-                  />
-                  <span className="text-[10px] text-gray-500">Loop</span>
-                </label>
-              </div>
-
-              {/* Fade in/out on one row */}
-              <div className="grid grid-cols-2 gap-2">
-                <label className="flex flex-col gap-0.5">
-                  <span className="text-[9px] text-gray-400 uppercase">Fade in (s)</span>
-                  <input
-                    type="number" min={0} step={0.5}
-                    value={musicBlock.fadeIn ?? 0}
-                    onChange={(e) =>
-                      updateBlock(musicBlock.id, { fadeIn: Number(e.target.value) } as Partial<AnyBlock>)
-                    }
-                    className="border border-gray-200 rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
-                  />
-                </label>
-                <label className="flex flex-col gap-0.5">
-                  <span className="text-[9px] text-gray-400 uppercase">Fade out (s)</span>
-                  <input
-                    type="number" min={0} step={0.5}
-                    value={musicBlock.fadeOut ?? 0}
-                    onChange={(e) =>
-                      updateBlock(musicBlock.id, { fadeOut: Number(e.target.value) } as Partial<AnyBlock>)
-                    }
-                    className="border border-gray-200 rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
-                  />
-                </label>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

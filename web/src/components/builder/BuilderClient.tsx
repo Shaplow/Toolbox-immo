@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Layers, AlignLeft, Film, Settings, Undo2, Redo2, X, ChevronLeft, Image, Type, Loader2 } from "lucide-react";
+import { Layers, AlignLeft, Film, Music, Settings, Undo2, Redo2, X, ChevronLeft, Image, Type, Loader2 } from "lucide-react";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import { collectBuilderFontsFromSources, type BuilderFontEntry } from "@/lib/builderFonts";
 import { toast } from "@/components/ui/Toast";
@@ -14,6 +14,7 @@ import { Canvas } from "./Canvas";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { SchemaPanel } from "@/components/builder/SchemaPanel";
 import { VideoSequencePanel } from "@/components/builder/VideoSequencePanel";
+import { MusicPanel } from "@/components/builder/MusicPanel";
 import { SettingsPanel } from "@/components/builder/SettingsPanel";
 import { CoverTabPanel } from "@/components/builder/CoverTabPanel";
 import { CaptionsTabPanel } from "@/components/builder/CaptionsTabPanel";
@@ -21,13 +22,14 @@ import { SequenceTimeline } from "@/components/builder/SequenceTimeline";
 
 // ─── Rail tab definitions ─────────────────────────────────────────────────────
 
-type PanelId = "layers" | "schema" | "sequence" | "cover" | "captions" | "settings";
+type PanelId = "layers" | "schema" | "sequence" | "music" | "cover" | "captions" | "settings";
 
 /** Top items du rail (création / structure du template) */
 const PANEL_ITEMS_TOP: { id: PanelId; label: string; Icon: React.ComponentType<{ size?: number }> }[] = [
   { id: "layers",   label: "Calques",    Icon: Layers },
   { id: "schema",   label: "Formulaire", Icon: AlignLeft },
   { id: "sequence", label: "Séquence",   Icon: Film },
+  { id: "music",    label: "Musique",    Icon: Music },
 ];
 
 /** Bottom items du rail (config auto cover/captions + paramètres généraux) */
@@ -41,6 +43,7 @@ const PANEL_LABELS: Record<PanelId, string> = {
   layers:   "Calques",
   schema:   "Formulaire",
   sequence: "Séquence",
+  music:    "Musique",
   cover:    "Cover auto",
   captions: "Sous-titres auto",
   settings: "Paramètres",
@@ -457,6 +460,7 @@ export function BuilderClient({
                 {activePanel === "layers"   && <BlocksPanel />}
                 {activePanel === "schema"   && <SchemaPanel />}
                 {activePanel === "sequence" && <VideoSequencePanel videoLibraries={videoLibraries} setVideoLibraries={setVideoLibraries} />}
+                {activePanel === "music"    && <MusicPanel />}
                 {activePanel === "cover"    && <CoverTabPanel templateId={templateId} />}
                 {activePanel === "captions" && <CaptionsTabPanel templateId={templateId} />}
                 {activePanel === "settings" && <SettingsPanel />}
