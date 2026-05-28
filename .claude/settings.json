@@ -1,6 +1,8 @@
 {
   "permissions": {
     "allow": [
+      "Bash(git commit:*)",
+      "Bash(git merge:*)",
       "Bash(npm run lint:*)",
       "Bash(npm run build:*)",
       "Bash(npm run install:web:*)",
@@ -44,15 +46,13 @@
       "Bash(gh issue view:*)",
       "Bash(gh issue list:*)",
       "Bash(gh api repos/*/pulls/*)",
+      "Bash(git checkout:*)",
+      "Bash(git push:*)",
       "Bash(gh repo view:*)"
     ],
     "ask": [
-      "Bash(git push:*)",
-      "Bash(git commit:*)",
-      "Bash(git merge:*)",
       "Bash(git rebase:*)",
       "Bash(git reset:*)",
-      "Bash(git checkout:*)",
       "Bash(git restore:*)",
       "Bash(git clean:*)",
       "Bash(git stash drop:*)",
@@ -67,5 +67,18 @@
       "Bash(git reset --hard:*)",
       "Bash(rm -rf:*)"
     ]
-  }
+  },
+  "hooks": {
+      "PostToolUse": [
+        {
+          "matcher": "Edit|Write",
+          "hooks": [ 
+            {
+              "type": "command",
+              "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/lint-changed-ts.sh"
+            }
+          ] 
+        }
+      ] 
+    } 
 }

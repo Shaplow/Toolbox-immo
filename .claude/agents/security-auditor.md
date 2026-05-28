@@ -1,7 +1,7 @@
 ---
 name: security-auditor
 description: Perform a static security audit on Toolbox Immo code. Use for OWASP Top 10 coverage, auth boundary checks, secrets handling, upload flow validation, permission enforcement, untrusted-input analysis. Trigger keywords — "security audit", "audit de sécurité", "OWASP", "auth review", "permissions check", "upload validation". Produces a structured threat report only — does NOT implement fixes.
-model: opus
+model: sonnet
 tools: ["Read", "Bash", "Grep", "Glob", "WebFetch", "Agent"]
 ---
 
