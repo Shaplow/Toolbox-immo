@@ -824,7 +824,25 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
     include: {
       account: { select: { id: true, name: true, handle: true } },
       template: { select: { id: true, name: true } },
-      render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
+      // render + coverFramePack du render (cas auto_template). Pour les patterns
+      // manual_rushes, le coverFramePack est rattaché à currentVersion ; on le
+      // fetch séparément ci-dessous.
+      render: {
+        select: {
+          id: true,
+          status: true,
+          pngUrl: true,
+          videoUrl: true,
+          coverFramePack: { select: { status: true } },
+        },
+      },
+      // CoverFramePack côté manual_rushes / external_upload (Phase 5).
+      currentVersion: {
+        select: {
+          id: true,
+          coverFramePack: { select: { status: true } },
+        },
+      },
       assigneeMonteur: { select: { id: true, name: true } },
       assigneeCm: { select: { id: true, name: true } },
       assigneeVideaste: { select: { id: true, name: true } },
@@ -845,10 +863,17 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
           coverMode: true,
         },
       },
+      // Dernier job captions/description pour alimenter PipelineDots avec
+      // les vraies données (au lieu de déduire depuis slot.status).
       captionJobs: {
         orderBy: { createdAt: "desc" },
         take: 1,
         select: { status: true },
+      },
+      descriptionJobs: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { status: true, result: true },
       },
     },
   });

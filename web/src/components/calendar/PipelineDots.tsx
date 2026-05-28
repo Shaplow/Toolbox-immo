@@ -4,8 +4,13 @@
  * PipelineDots — mini indicateur pipeline pour SlotCard du calendrier.
  *
  * Affiche jusqu'à 5 dots colorés (render, cover, captions, description, publish)
- * basés sur les infos déjà chargées par /api/calendar/slots (status du slot +
- * status du render + needs* du pattern). Pas de fetch supplémentaire.
+ * basés sur les **vraies données des jobs** chargés par /api/calendar/slots.
+ *
+ * Avant Phase 2.2, les statuts cover/captions/description étaient déduits du
+ * slot.status via une heuristique READY_STATUSES, ce qui mentait dès qu'un
+ * job était dans un état différent (ex: cover encore QUEUED alors que slot
+ * était déjà READY_FOR_CM). Maintenant : chaque dot lit directement le status
+ * du job associé.
  *
  * Les dots des étapes non applicables (selon le pattern) sont rendus en gris
  * très clair, opacité 30%. Le tooltip natif `title` donne l'état au hover.
@@ -31,56 +36,106 @@ const LABEL: Record<DotStatus, string> = {
   muted: "non applicable",
 };
 
-const PUBLISHED = "PUBLISHED";
-const READY_STATUSES = new Set([
-  "EDIT_APPROVED",
-  "CAPTIONS_PENDING",
-  "READY_FOR_CM",
-  "AWAITING_CLIENT",
-  "CLIENT_REVISION",
-  "SCHEDULED",
-  PUBLISHED,
-]);
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function renderStatus(slot: PublicationSlot): DotStatus {
-  // Render visible seulement si pattern.source === "auto_template" — sinon muted.
-  // On n'a pas pattern.source dans le slot type → on déduit via la présence d'un templateId.
-  const visible = !!slot.templateId;
-  if (!visible) return "muted";
+  // Render visible uniquement pour les patterns auto_template. On ne peut
+  // pas distinguer 100% sûr sans pattern.source (le type ne l'expose pas
+  // toujours sur la card), donc on prend templateId comme proxy fiable :
+  // un slot sans templateId n'a jamais de render auto.
+  if (!slot.templateId) return "muted";
   const r = slot.render;
   if (!r) return "todo";
-  if (r.status === "DONE") return "done";
-  if (r.status === "ERROR" || r.status === "FAILED") return "failed";
-  return "processing";
+  switch (r.status) {
+    case "DONE":
+      return "done";
+    case "ERROR":
+    case "FAILED":
+      return "failed";
+    case "PENDING":
+    case "PROCESSING":
+    case "QUEUED":
+      return "processing";
+    default:
+      return "todo";
+  }
 }
 
 function coverStatus(slot: PublicationSlot): DotStatus {
   const mode = slot.coverModeOverride ?? slot.pattern?.coverMode;
   if (!mode || mode === "none") return "muted";
-  // On ne charge pas coverFramePack — on déduit grossièrement via le slot.status.
-  if (slot.status === PUBLISHED) return "done";
-  if (READY_STATUSES.has(slot.status)) return "processing";
-  return "todo";
+
+  // CoverFramePack peut être rattaché soit au render (auto_template) soit à
+  // la currentVersion (manual_rushes / external_upload). On prend le premier
+  // disponible — précédence à la version (plus récent dans le cycle de vie).
+  const pack =
+    slot.currentVersion?.coverFramePack ??
+    slot.render?.coverFramePack ??
+    null;
+  if (!pack) return "todo";
+
+  switch (pack.status) {
+    case "SELECTED":
+      return "done";
+    case "READY":
+      // READY sans selection : on attend l'action CM → encore "todo" UX
+      return "todo";
+    case "FAILED":
+      return "failed";
+    case "QUEUED":
+    case "PROCESSING":
+      return "processing";
+    default:
+      return "todo";
+  }
 }
 
 function captionsStatus(slot: PublicationSlot): DotStatus {
   const needs = slot.needsCaptionsOverride ?? slot.pattern?.needsCaptions;
   if (!needs) return "muted";
-  if (slot.status === PUBLISHED) return "done";
-  if (READY_STATUSES.has(slot.status)) return "processing";
-  return "todo";
+
+  const job = slot.captionJobs?.[0];
+  if (!job) return "todo";
+
+  switch (job.status) {
+    case "COMPLETED":
+      return "done";
+    case "FAILED":
+      return "failed";
+    case "QUEUED":
+    case "PROCESSING":
+      return "processing";
+    default:
+      return "todo";
+  }
 }
 
 function descriptionStatus(slot: PublicationSlot): DotStatus {
   const needs = slot.needsDescriptionOverride ?? slot.pattern?.needsDescription;
   if (!needs || needs === "none") return "muted";
-  if (slot.status === PUBLISHED) return "done";
-  if (READY_STATUSES.has(slot.status)) return "processing";
-  return "todo";
+
+  // Si la légende a été rédigée à la main (slot.description), c'est "done"
+  // même sans DescriptionJob — la CM a écrit directement.
+  if (slot.description && slot.description.trim().length > 0) return "done";
+
+  const job = slot.descriptionJobs?.[0];
+  if (!job) return "todo";
+
+  switch (job.status) {
+    case "COMPLETED":
+      return job.result && job.result.trim().length > 0 ? "done" : "todo";
+    case "FAILED":
+      return "failed";
+    case "QUEUED":
+    case "PROCESSING":
+      return "processing";
+    default:
+      return "todo";
+  }
 }
 
 function publishStatus(slot: PublicationSlot): DotStatus {
-  if (slot.status === PUBLISHED) return "done";
+  if (slot.status === "PUBLISHED") return "done";
   // ARCHIVED = sortie de cycle saine (publication ancienne archivée) — pas
   // un échec. CANCELLED = sortie annulée par décision admin — pas un bug
   // de pipeline non plus. BLOCKED reste "failed" car c'est explicitement
@@ -99,7 +154,7 @@ export function PipelineDots({ slot }: Props) {
     { key: "render", label: "Rendu", status: renderStatus(slot) },
     { key: "cover", label: "Cover", status: coverStatus(slot) },
     { key: "captions", label: "Sous-titres", status: captionsStatus(slot) },
-    { key: "description", label: "Description", status: descriptionStatus(slot) },
+    { key: "description", label: "Légende", status: descriptionStatus(slot) },
     { key: "publish", label: "Publication", status: publishStatus(slot) },
   ];
 

@@ -3,14 +3,12 @@
 import Link from "next/link";
 import { PipelineDots } from "./PipelineDots";
 import {
-  STATUS_COLORS,
-  STATUS_DOT,
-  STATUS_LABELS,
   OWNER_LABEL,
   OWNER_BADGE_CLS,
   type PublicationSlot,
 } from "@/types/calendar";
 import { resolveSlotOwner } from "@/lib/slots/statusLabels";
+import { getPublicationPhase, PHASE_LABELS, PHASE_COLORS, PHASE_DOT } from "@/lib/slots/phase";
 import type { UserRole } from "@/types/roles";
 
 interface SlotCardProps {
@@ -63,8 +61,13 @@ export function SlotCard({ slot, onClick, currentUserRole, currentUserId }: Slot
     hour: "2-digit",
     minute: "2-digit",
   });
-  const statusColor = STATUS_COLORS[slot.status];
-  const dot = STATUS_DOT[slot.status];
+  // Phase 2.2 : on n'affiche plus le statut DB (17 valeurs verbeuses) mais une
+  // phase humaine (5 valeurs). La granularité technique (render, cover,
+  // captions, description, publish) est portée par PipelineDots avec les
+  // vraies données des jobs — pas par le badge.
+  const phase = getPublicationPhase(slot.status);
+  const phaseColor = PHASE_COLORS[phase];
+  const phaseDot = PHASE_DOT[phase];
   // Owner contextualisé : PLANNED/TO_DO avec vidéaste assigné devient
   // VIDEASTE (sinon STATUS_OWNER renvoie ADMIN, faussant le badge).
   const ownerRole = resolveSlotOwner(slot);
@@ -157,11 +160,11 @@ export function SlotCard({ slot, onClick, currentUserRole, currentUserId }: Slot
         </div>
       )}
 
-      {/* Footer — statut + pattern + pipeline dots */}
+      {/* Footer — phase + pattern + pipeline dots */}
       <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-gray-100">
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${statusColor}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
-          {STATUS_LABELS[slot.status]}
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${phaseColor}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${phaseDot}`} />
+          {PHASE_LABELS[phase]}
         </span>
         {slot.pattern?.label && (
           <Link

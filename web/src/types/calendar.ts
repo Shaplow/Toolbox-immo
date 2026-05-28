@@ -39,7 +39,23 @@ export interface PublicationSlot {
   fieldSchema: string[];
   templateId: string | null;
   template: { id: string; name: string } | null;
-  render: { id: string; status: string; pngUrl: string | null; videoUrl: string | null } | null;
+  render: {
+    id: string;
+    status: string;
+    pngUrl: string | null;
+    videoUrl: string | null;
+    /** CoverFramePack lié au render (auto_template). */
+    coverFramePack?: { status: string } | null;
+  } | null;
+  /** CoverFramePack lié à la version courante (manual_rushes / external_upload). */
+  currentVersion?: {
+    id: string;
+    coverFramePack?: { status: string } | null;
+  } | null;
+  /** Dernier CaptionJob du slot (status uniquement, pour PipelineDots). */
+  captionJobs?: Array<{ status: string }>;
+  /** Dernier DescriptionJob du slot (status + result pour fallback completion). */
+  descriptionJobs?: Array<{ status: string; result: string | null }>;
   isAuto: boolean;
   createdAt: string;
   updatedAt: string;
