@@ -141,10 +141,21 @@ export async function applyAutoTransition(
   const targetStatus = computeAutoTransition(currentStatus, trigger);
   if (!targetStatus) return null;
 
-  await prisma.publicationSlot.update({
-    where: { id: slotId },
+  // Update conditionnel sur le status courant : si un autre process a déjà
+  // fait évoluer le slot entre la lecture (currentStatus) et ici, on ne
+  // veut PAS écraser cet état avec notre cible (risque de régression). Le
+  // count=0 signifie "race perdue, on skip silencieusement".
+  const updated = await prisma.publicationSlot.updateMany({
+    where: { id: slotId, status: currentStatus },
     data: { status: targetStatus },
   });
+  if (updated.count === 0) {
+    console.info(
+      `[applyAutoTransition] race détectée (slot=${slotId} trigger=${trigger}) : ` +
+        `status attendu "${currentStatus}" mais déjà changé — transition ignorée.`,
+    );
+    return null;
+  }
 
   await logActivity(prisma, {
     slotId,
@@ -355,18 +366,26 @@ export async function applyAutoTransitionFromPipeline(
     const target = await computeAutoTransitionTarget(prisma, slotId);
     if (!target) return null;
 
-    // Re-lire le status courant pour le payload activity (la cible a été
-    // calculée mais on ne l'a pas en local).
+    // Re-lire le status courant pour le payload activity ET pour garder
+    // l'update conditionnel sur cette valeur (anti-TOCTOU : 2 webhooks
+    // concurrents peuvent calculer la même cible mais l'un doit perdre).
     const current = await prisma.publicationSlot.findUnique({
       where: { id: slotId },
       select: { status: true },
     });
     if (!current) return null;
 
-    await prisma.publicationSlot.update({
-      where: { id: slotId },
+    const updated = await prisma.publicationSlot.updateMany({
+      where: { id: slotId, status: current.status },
       data: { status: target },
     });
+    if (updated.count === 0) {
+      console.info(
+        `[applyAutoTransitionFromPipeline] race détectée (slot=${slotId} trigger=${trigger}) : ` +
+          `status "${current.status}" déjà changé par un autre process — transition ignorée.`,
+      );
+      return null;
+    }
 
     await logActivity(prisma, {
       slotId,
