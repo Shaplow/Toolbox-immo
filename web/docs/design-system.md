@@ -111,20 +111,29 @@ Ces couleurs **signifient** quelque chose (qui c'est, où on en est). Le brand n
 - Tailwind par défaut autorisés en plus : `rounded-2xl` (16px, modals / hero cards), `rounded-full` (pills, dots, avatars)
 - Privilégier l'échelle DS pour les composants UI courants. `rounded-2xl` réservé aux surfaces "élevées" (modals, hero), `rounded-full` aux éléments circulaires.
 
-### Décors signature — Sparkle & Arrow
+### Décors signature
 
-Deux décors SVG seulement (`web/src/components/ui/decor/HandDrawn.tsx`) — pour éviter la surcharge graphique scolaire. La personnalité passe surtout par les typos (Serif italic + Caveat hand) ; les décors viennent ponctuer.
+Quatre décors SVG (`web/src/components/ui/decor/HandDrawn.tsx`), regroupés en 2 paires d'usage. La personnalité passe d'abord par les typos (Serif italic + Caveat hand) ; les décors viennent ponctuer chirurgicalement.
+
+**Décors d'UI signature** (utilisables dans toutes les zones marketing-adjacentes) :
 
 | Décor | Usage |
 |---|---|
-| `<HandDrawn.Sparkle />` | Préfixe d'eyebrow marketing, badge "Nouveau", accent dans avatar agence. Style twinkle 4-pointes filled. |
+| `<HandDrawn.Sparkle />` | Préfixe d'eyebrow, badge "Nouveau", accent dans avatar agence. Twinkle 4-pointes filled. |
 | `<HandDrawn.Arrow />` | Flèche signature des liens narratifs. Animation : `transition-transform group-hover:translate-x-0.5`. |
+
+**Décors éditoriaux** (strictement réservés au contexte hero / testimonial / pull quote — jamais dans les listes, panneaux, fiches) :
+
+| Décor | Usage |
+|---|---|
+| `<HandDrawn.Underline />` | Souligné subtil sous un mot clé d'une citation ou d'un hero serif italic. Une seule courbe douce, jamais un zigzag. |
+| `<HandDrawn.WavyRule />` | Trait séparateur fin entre une citation et sa signature, ou divider éditorial discret. |
 
 Tous utilisent `currentColor`. Pas de bibliothèque externe (Rough.js) — SVG path statiques.
 
-**À utiliser uniquement** dans les zones signature (logo, eyebrows, badges Astuce, liens narratifs), **jamais** dans l'UI fonctionnelle. Et surtout : **rester sobre** — un Sparkle par section au max, sinon ça vire "tape-à-l'œil".
+**Doctrine de sobriété** : un Sparkle par section, un Underline par citation. Si tu dois en empiler 3 pour faire passer un message, c'est que la typo (serif italic + hand) ne fait pas son boulot — refonds la composition plutôt que d'empiler des décors.
 
-Décors envisagés puis écartés (trop scolaires / verbeux) : Underline wavy, HighlightCircle, Bracket, WavyRule. Si un cas d'usage légitime apparaît plus tard, on les ressort — mais par défaut on s'en passe.
+Décors envisagés puis écartés : HighlightCircle (trop scolaire), Bracket (trop verbeux). Si un cas d'usage légitime apparaît plus tard, on les ressort.
 
 ### Typographie — 3 registres, discipline stricte
 

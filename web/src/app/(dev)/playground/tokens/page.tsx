@@ -634,16 +634,22 @@ export default function TokensPage() {
 
         {/* Vignette 3 — Testimonial pull quote pleine largeur */}
         <div className="rounded-xl border border-gray-200 bg-white p-10 sm:p-14">
-          <div className="max-w-2xl mx-auto text-center space-y-6">
+          <div className="max-w-2xl mx-auto text-center space-y-5">
             <p className="text-[10px] uppercase tracking-widest text-gray-400 inline-flex items-center gap-1.5">
               <HandDrawn.Sparkle className="h-3 w-3 text-brand-700" />
               Ce qu&apos;en disent nos clients
             </p>
             <p className="font-serif italic text-2xl sm:text-3xl leading-relaxed text-gray-950">
               &ldquo;Avant Toolbox, on perdait des heures à coordonner.
-              Maintenant on crée, ils diffusent.&rdquo;
+              Maintenant on{" "}
+              <span className="relative inline-block">
+                crée
+                <HandDrawn.Underline className="absolute -bottom-1.5 left-0 h-2 w-full text-brand-700" />
+              </span>
+              , ils diffusent.&rdquo;
             </p>
-            <div className="pt-2 space-y-1.5">
+            <HandDrawn.WavyRule className="h-2 w-32 mx-auto text-gray-300" />
+            <div className="space-y-1.5">
               <p className="font-hand text-2xl text-gray-950 leading-none">— Léa Vasseur</p>
               <p className="text-[11px] uppercase tracking-widest text-gray-400">
                 Directrice · Studio La Mira

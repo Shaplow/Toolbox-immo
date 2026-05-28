@@ -18,6 +18,56 @@ interface DecorProps extends SVGProps<SVGSVGElement> {
 }
 
 /**
+ * Trait souligné subtil — une seule courbe Bezier douce.
+ * Usage ponctuel sous un mot clé d'une citation ou d'un hero serif.
+ * Strictement réservé aux contextes éditoriaux (testimonial, hero).
+ * Pas dans les titres d'UI fonctionnelle.
+ */
+function Underline({ className, ...rest }: DecorProps) {
+  return (
+    <svg
+      viewBox="0 0 100 8"
+      preserveAspectRatio="none"
+      fill="none"
+      className={className}
+      aria-hidden
+      {...rest}
+    >
+      <path
+        d="M3 5 C 25 1, 60 6, 97 4"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Trait séparateur ondulé fin — entre une citation et sa signature, ou
+ * comme divider éditorial discret. Pas dans l'UI fonctionnelle.
+ */
+function WavyRule({ className, ...rest }: DecorProps) {
+  return (
+    <svg
+      viewBox="0 0 200 6"
+      preserveAspectRatio="none"
+      fill="none"
+      className={className}
+      aria-hidden
+      {...rest}
+    >
+      <path
+        d="M2 3 C 30 1, 50 5, 80 3 C 110 1, 130 5, 160 3 C 180 2, 190 4, 198 3"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/**
  * Sparkle 4-pointes designer — twinkle organique inspiré des "marks"
  * éditoriaux (Notion, Apple Music). Pour les eyebrows, badges "nouveau",
  * accents dans les avatars.
@@ -64,4 +114,6 @@ function Arrow({ className, ...rest }: DecorProps) {
 export const HandDrawn = {
   Sparkle,
   Arrow,
+  Underline,
+  WavyRule,
 };
