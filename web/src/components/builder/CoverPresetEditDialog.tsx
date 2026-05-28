@@ -45,6 +45,14 @@ type FormState = {
   offsetY: string;
   excludeZones: ExcludeZone[];
   excludeSlotIds: string[];
+  includeSlotIds: string[];
+  /**
+   * Mode source frames (UI only — sérialisé en exclude/include vide ou non).
+   *  "all"      : toute la vidéo finale (default) → excludeSlotIds=[], includeSlotIds=[]
+   *  "exclude"  : toute la vidéo SAUF ces clips → excludeSlotIds set
+   *  "include"  : UNIQUEMENT ces clips comme source → includeSlotIds set
+   */
+  slotMode: "all" | "exclude" | "include";
 };
 
 type Props = {
@@ -69,9 +77,16 @@ function defaultForm(preset?: CoverPresetRow | null): FormState {
       offsetY: "0",
       excludeZones: [],
       excludeSlotIds: [],
+      includeSlotIds: [],
+      slotMode: "all",
     };
   }
   const c = preset.config;
+  const excludeSlotIds = Array.isArray(c.excludeSlotIds) ? (c.excludeSlotIds as string[]) : [];
+  const includeSlotIds = Array.isArray(c.includeSlotIds) ? (c.includeSlotIds as string[]) : [];
+  // Déduire le mode depuis les valeurs stockées
+  const slotMode: FormState["slotMode"] =
+    includeSlotIds.length > 0 ? "include" : excludeSlotIds.length > 0 ? "exclude" : "all";
   return {
     name: preset.name,
     sortOrder: String(preset.sortOrder),
@@ -81,7 +96,9 @@ function defaultForm(preset?: CoverPresetRow | null): FormState {
     offsetX: String(typeof c.offsetX === "number" ? c.offsetX : 0),
     offsetY: String(typeof c.offsetY === "number" ? c.offsetY : 0),
     excludeZones: Array.isArray(c.excludeZones) ? (c.excludeZones as ExcludeZone[]) : [],
-    excludeSlotIds: Array.isArray(c.excludeSlotIds) ? (c.excludeSlotIds as string[]) : [],
+    excludeSlotIds,
+    includeSlotIds,
+    slotMode,
   };
 }
 
@@ -159,11 +176,14 @@ export function CoverPresetEditDialog({ templateId, preset, open, onClose, onSav
   }
 
   function toggleSlot(slotId: string, checked: boolean) {
+    // Selon le mode actif, on toggle dans excludeSlotIds ou includeSlotIds.
+    const field = form.slotMode === "include" ? "includeSlotIds" : "excludeSlotIds";
+    const current = form[field];
     set(
-      "excludeSlotIds",
+      field,
       checked
-        ? [...form.excludeSlotIds, slotId]
-        : form.excludeSlotIds.filter((id) => id !== slotId),
+        ? [...current, slotId]
+        : current.filter((id) => id !== slotId),
     );
   }
 
@@ -191,6 +211,12 @@ export function CoverPresetEditDialog({ templateId, preset, open, onClose, onSav
   }
 
   function buildConfig(): Record<string, unknown> {
+    // Phase 2.5 — sérialisation selon le mode :
+    //  "all"     : ni excludeSlotIds ni includeSlotIds → toute la vidéo
+    //  "exclude" : excludeSlotIds rempli, includeSlotIds vide
+    //  "include" : includeSlotIds rempli, excludeSlotIds vide
+    const excludeSlotIds = form.slotMode === "exclude" ? form.excludeSlotIds : [];
+    const includeSlotIds = form.slotMode === "include" ? form.includeSlotIds : [];
     return {
       enabled: form.enabled,
       frameCount: Math.min(72, Math.max(6, form.frameCount)),
@@ -198,7 +224,8 @@ export function CoverPresetEditDialog({ templateId, preset, open, onClose, onSav
       offsetX: parseInt(form.offsetX, 10) || 0,
       offsetY: parseInt(form.offsetY, 10) || 0,
       excludeZones: form.excludeZones,
-      excludeSlotIds: form.excludeSlotIds,
+      excludeSlotIds,
+      includeSlotIds,
     };
   }
 
@@ -406,6 +433,86 @@ export function CoverPresetEditDialog({ templateId, preset, open, onClose, onSav
                   )}
                 </FormField>
 
+                {/* Source des frames — Phase 2.5 : radio mode + chips clip
+                    pour résoudre "dans quel clip on prend les frames". */}
+                {videoSlots.length > 0 && (
+                  <FormField
+                    label="Source des frames"
+                    help="Détermine depuis quels clips de la séquence vidéo l'extraction des frames se fait."
+                  >
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { value: "all" as const, label: "Toute la vidéo finale" },
+                          { value: "exclude" as const, label: "Sauf certains clips" },
+                          { value: "include" as const, label: "Uniquement ces clips" },
+                        ].map((opt) => {
+                          const isActive = form.slotMode === opt.value;
+                          return (
+                            <label
+                              key={opt.value}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs cursor-pointer transition-colors ${
+                                isActive
+                                  ? "bg-indigo-50 border-indigo-300 text-indigo-700 font-medium"
+                                  : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="slotMode"
+                                value={opt.value}
+                                checked={isActive}
+                                onChange={() => set("slotMode", opt.value)}
+                                className="sr-only"
+                              />
+                              {opt.label}
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {/* Chips des clips, visibles seulement si exclude ou include */}
+                      {form.slotMode !== "all" && (
+                        <div className="flex flex-wrap gap-2 mt-1 p-2 bg-gray-50 rounded-lg">
+                          {videoSlots.map((s) => {
+                            const list =
+                              form.slotMode === "include"
+                                ? form.includeSlotIds
+                                : form.excludeSlotIds;
+                            const isSel = list.includes(s.id);
+                            const tint =
+                              form.slotMode === "include"
+                                ? isSel
+                                  ? "bg-emerald-50 border-emerald-300 text-emerald-700 font-medium"
+                                  : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
+                                : isSel
+                                  ? "bg-red-50 border-red-300 text-red-700 font-medium"
+                                  : "bg-white border-gray-200 text-gray-600 hover:border-gray-300";
+                            return (
+                              <label
+                                key={s.id}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs cursor-pointer transition-colors ${tint}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSel}
+                                  onChange={(e) => toggleSlot(s.id, e.target.checked)}
+                                  className="sr-only"
+                                />
+                                {s.label}
+                              </label>
+                            );
+                          })}
+                          {videoSlots.length === 0 && (
+                            <p className="text-[11px] text-gray-400 italic">
+                              Aucun clip dans la séquence vidéo de ce template.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </FormField>
+                )}
+
               </section>
 
               {/* Section Avancé — offsets + zones, repliée par défaut */}
@@ -554,37 +661,9 @@ export function CoverPresetEditDialog({ templateId, preset, open, onClose, onSav
                   </ul>
                 )}
 
-                {/* Slots vidéo exclus (si template a videoSequence) */}
-                {videoSlots.length > 0 && (
-                  <FormField
-                    label="Slots vidéo exclus"
-                    help="Slots du template à ignorer pour l'extraction (ex: intro/outro)."
-                  >
-                    <div className="flex flex-wrap gap-2 mt-1">
-                      {videoSlots.map((s) => {
-                        const isSel = form.excludeSlotIds.includes(s.id);
-                        return (
-                          <label
-                            key={s.id}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs cursor-pointer transition-colors ${
-                              isSel
-                                ? "bg-red-50 border-red-300 text-red-700 font-medium"
-                                : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isSel}
-                              onChange={(e) => toggleSlot(s.id, e.target.checked)}
-                              className="sr-only"
-                            />
-                            {s.label}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </FormField>
-                )}
+                {/* Note : la sélection des slots vidéo a été remontée dans la
+                    section Composition (Phase 2.5). On la garde plus en
+                    "Avancé" — elle est trop centrale pour être cachée. */}
               </section>
                 </div>
               </details>

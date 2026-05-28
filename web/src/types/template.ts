@@ -660,8 +660,15 @@ export interface CoverAutoConfig {
   /**
    * IDs des slots de videoSequence à exclure de la recherche de frames.
    * Convertis en zones temporelles comme pour l'auto-caption.
+   * Ignoré si includeSlotIds est non vide.
    */
   excludeSlotIds?: string[];
+  /**
+   * Phase 2.5 — IDs des slots à utiliser EXCLUSIVEMENT comme source de frames.
+   * Si non vide, prend le pas sur excludeSlotIds (mode "uniquement ces clips").
+   * Si vide ou absent, on retombe sur le mode "toute la vidéo + exclusions".
+   */
+  includeSlotIds?: string[];
   /** Groupes du builder à reprendre comme overlay texte sur la cover finale. */
   overlayGroupIds?: string[];
 }

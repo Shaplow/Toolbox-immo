@@ -86,12 +86,26 @@ interface CoverGeneratorProps {
    * TOUS les packs du système — la CM choisissait dans un mauvais lot.
    */
   slotId?: string;
+  /**
+   * Phase 2.5 — vidéo source pré-remplie pour l'onglet manuel.
+   * Utilisé par /publications/[id]/cover avec mode=manualSelect pour
+   * que la CM puisse extraire des frames depuis la vidéo finale sans
+   * avoir à la re-uploader.
+   */
+  prefillVideoUrl?: string;
+  prefillVideoName?: string;
+  /**
+   * Si "manual", on bascule sur l'onglet manuel au mount. Utile quand le
+   * mode pattern est "manualSelect" : il n'y a pas de pack auto à montrer,
+   * direct l'extraction libre.
+   */
+  initialTab?: "packs" | "manual";
 }
 
-export function CoverGenerator({ slotId }: CoverGeneratorProps = {}) {
+export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, initialTab = "packs" }: CoverGeneratorProps = {}) {
   const { confirm, dialog: confirmDialog } = useConfirm();
   // ── Tab ────────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<"packs" | "manual">("packs");
+  const [activeTab, setActiveTab] = useState<"packs" | "manual">(initialTab);
 
   // ── Auto packs ─────────────────────────────────────────────────────────────
   const [packs, setPacks] = useState<CoverPack[]>([]);
@@ -106,8 +120,10 @@ export function CoverGenerator({ slotId }: CoverGeneratorProps = {}) {
   const [overlayKey, setOverlayKey] = useState(0); // increment to force overlay PNG re-fetch
 
   // ── Video ──────────────────────────────────────────────────────────────────
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [videoName, setVideoName] = useState("");
+  // Phase 2.5 : pré-fill depuis prefillVideoUrl si fourni (mode manualSelect
+  // qui démarre direct sur la vidéo finale sans upload).
+  const [videoUrl, setVideoUrl] = useState<string | null>(prefillVideoUrl ?? null);
+  const [videoName, setVideoName] = useState(prefillVideoName ?? "");
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);

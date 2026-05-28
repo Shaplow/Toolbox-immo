@@ -46,7 +46,12 @@ export default async function PublicationCoverPage({ params }: Props) {
       title: true,
       assigneeMonteurId: true,
       assigneeCmId: true,
+      assigneeVideasteId: true,
+      coverModeOverride: true,
       account: { select: { handle: true } },
+      pattern: { select: { coverMode: true } },
+      render: { select: { videoUrl: true } },
+      currentVersion: { select: { fileUrl: true, fileName: true } },
     },
   });
 
@@ -58,6 +63,17 @@ export default async function PublicationCoverPage({ params }: Props) {
 
   const slotLabel = slot.title ?? `@${slot.account.handle}`;
   const backHref = `/publications/${slot.id}`;
+
+  // Phase 2.5 — mode effectif. Si manualSelect : on bascule direct sur l'onglet
+  // manuel + on pré-remplit la vidéo (finale renderée ou version montée).
+  const effectiveCoverMode = slot.coverModeOverride ?? slot.pattern?.coverMode ?? "none";
+  const prefillVideoUrl =
+    slot.render?.videoUrl ?? slot.currentVersion?.fileUrl ?? undefined;
+  const prefillVideoName =
+    slot.currentVersion?.fileName ??
+    (slot.render?.videoUrl ? `Vidéo rendue · ${slotLabel}` : undefined);
+  const initialTab: "packs" | "manual" =
+    effectiveCoverMode === "manualSelect" ? "manual" : "packs";
 
   return (
     <div>
@@ -87,7 +103,12 @@ export default async function PublicationCoverPage({ params }: Props) {
         </div>
       </div>
 
-      <CoverGenerator slotId={slot.id} />
+      <CoverGenerator
+        slotId={slot.id}
+        prefillVideoUrl={prefillVideoUrl}
+        prefillVideoName={prefillVideoName}
+        initialTab={initialTab}
+      />
     </div>
   );
 }

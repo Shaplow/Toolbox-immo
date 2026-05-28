@@ -243,8 +243,15 @@ async function resolveNativeCoverSources(
   const listingData = safeJson<ListingData>(listingDataRaw, {} as ListingData);
   const videoAssets = usedAssets.videoAssets ?? {};
   const videoBlocks = (template.blocks ?? []).filter((block): block is VideoBlock => block.type === "video");
+  // Phase 2.5 — si includeSlotIds est fourni, prend le pas (mode "uniquement
+  // ces clips"). Sinon on tombe sur le mode historique exclude.
+  const slotFilter = (slot: { id: string }) => {
+    const includes = config.includeSlotIds ?? [];
+    if (includes.length > 0) return includes.includes(slot.id);
+    return !(config.excludeSlotIds ?? []).includes(slot.id);
+  };
   const sourceKeys = slots.length > 0
-    ? slots.filter((slot) => !(config.excludeSlotIds ?? []).includes(slot.id)).map((slot) => slot.id)
+    ? slots.filter(slotFilter).map((slot) => slot.id)
     : videoBlocks.map((block) => block.id);
   if (sourceKeys.length === 0) return [];
 
@@ -261,7 +268,7 @@ async function resolveNativeCoverSources(
 
   const sources: CoverFrameSource[] = [];
   const sourceItems = slots.length > 0
-    ? slots.filter((slot) => !(config.excludeSlotIds ?? []).includes(slot.id)).map((slot) => ({
+    ? slots.filter(slotFilter).map((slot) => ({
         id: slot.id,
         maxDuration: slot.maxDuration,
         rawUrl: resolveSlotNativeUrl(slot, videoAssets, assetById, listingData),
