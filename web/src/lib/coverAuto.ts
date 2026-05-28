@@ -551,16 +551,12 @@ export async function triggerAutoCoverPackForRender(
   const slotId = renderSlot?.publicationSlot?.id ?? null;
   const slotPattern = renderSlot?.publicationSlot?.pattern;
 
-  if (!slotId) {
-    console.info(`[autoCover] skip render=${renderId} reason=no_slot_linked`);
-    return;
-  }
   if (slotPattern?.coverMode !== "auto") {
-    console.info(`[autoCover] skip render=${renderId} slot=${slotId} reason=coverMode_not_auto value=${slotPattern?.coverMode ?? "null"}`);
+    console.info(`[autoCover] skip render=${renderId} slot=${slotId ?? "?"} reason=coverMode_not_auto value=${slotPattern?.coverMode ?? "null"}`);
     return;
   }
   if (!slotPattern.coverConfig) {
-    console.info(`[autoCover] skip render=${renderId} slot=${slotId} reason=coverConfig_null`);
+    console.info(`[autoCover] skip render=${renderId} slot=${slotId ?? "?"} reason=coverConfig_null`);
     return;
   }
 
@@ -575,7 +571,7 @@ export async function triggerAutoCoverPackForRender(
   } | null;
   if (!coverConfigJson?.enabled) {
     console.info(
-      `[autoCover] skip render=${renderId} slot=${slotId} reason=coverConfig_disabled ` +
+      `[autoCover] skip render=${renderId} slot=${slotId ?? "?"} reason=coverConfig_disabled ` +
       `(coverMode=auto mais coverConfig.enabled=${coverConfigJson?.enabled} — il faut activer dans la config cover du pattern)`,
     );
     return;

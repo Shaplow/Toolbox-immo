@@ -52,9 +52,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (status === "COMPLETED" && output && !output.error) {
-    // Pour les jobs auto-déclenchés (renderId présent), inputKey est la vidéo du render :
-    // on la conserve (Phase 4 en a besoin) et on ne la supprime pas de R2.
-    const isAutoPipeline = Boolean(job.renderId);
+    // Pour les jobs auto-déclenchés (renderId OU publicationVersionId présent),
+    // inputKey pointe vers une vidéo qu'on doit conserver (le render pour
+    // auto_template, la version uploadée pour manual_rushes / external_upload).
+    const isAutoPipeline = Boolean(job.renderId || job.publicationVersionId);
 
     await prisma.transcriptionJob.update({
       where: { id: job.id },
@@ -86,17 +87,22 @@ export async function POST(req: NextRequest) {
     console.info(`[webhook/transcription] job=${job.id} done`);
 
     // ── Pipeline sous-titres automatique ─────────────────────────────────
-    // Déclenchement non bloquant du CaptionJob si ce job vient d'un render auto.
-    if (isAutoPipeline) {
+    // Captions auto : nécessite un template avec captionAutoConfig.enabled,
+    // donc uniquement pour les transcriptions liées à un render (auto_template).
+    // Pour les transcriptions liées à une PublicationVersion (manual_rushes),
+    // le trigger return early de toute façon (no renderId). La CM peut
+    // toujours lancer les captions manuellement via la fiche.
+    if (job.renderId) {
       void triggerAutoCaptionForTranscription(job.id).catch((err) =>
         console.error(`[webhook/transcription] triggerAutoCaption threw: ${String(err)}`),
       );
+    }
 
-      // ── Pipeline description IA automatique ────────────────────────────
-      // Si le pattern du slot a needsDescription === "autoGenerate", on
-      // déclenche la génération de la légende IG directement après la
-      // transcription. Skip silencieux si pas de prompt résolu ou si
-      // description déjà rédigée par la CM. Non bloquant.
+    // ── Pipeline description IA automatique ────────────────────────────────
+    // Marche pour les deux paths : render-based ET version-based. Le trigger
+    // résout le slot via render.publicationSlotId OU
+    // publicationVersion.slotId selon ce qui est disponible (Phase 2.4).
+    if (isAutoPipeline) {
       void triggerAutoDescriptionForTranscription(job.id).catch((err) =>
         console.error(`[webhook/transcription] triggerAutoDescription threw: ${String(err)}`),
       );

@@ -24,6 +24,7 @@ import { toUserRole } from "@/lib/permissions/role";
 import { logActivity } from "@/lib/services/slot/activity";
 import { applyAutoTransition } from "@/lib/services/slot/transitions";
 import { tryAutoTriggerCover } from "@/lib/services/slot/autoCoverTrigger";
+import { triggerAutoTranscriptionForVersion } from "@/lib/triggerAutoTranscriptionForVersion";
 
 type Params = { params: Promise<{ id: string; versionId: string }> };
 
@@ -132,6 +133,14 @@ export async function POST(_req: NextRequest, { params }: Params) {
   } else if (coverResult.status === "skipped") {
     console.info(`[promote] auto-cover skipped for slot=${slotId}: ${coverResult.reason}`);
   }
+
+  // Phase 2.4 — chaîne auto transcription/caption/description pour
+  // manual_rushes / external_upload. Fire-and-forget : la transcription est
+  // longue (~30s à plusieurs minutes selon la durée vidéo), le promote
+  // répond immédiatement et la suite est asynchrone via webhook.
+  void triggerAutoTranscriptionForVersion(versionId).catch((err) =>
+    console.error(`[promote] auto-transcription threw for slot=${slotId}:`, err),
+  );
 
   return NextResponse.json({
     ok: true,

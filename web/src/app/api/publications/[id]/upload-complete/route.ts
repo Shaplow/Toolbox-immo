@@ -25,6 +25,7 @@ import { completeMultipartUpload, abortMultipartUpload } from "@/lib/r2Multipart
 import { logActivity } from "@/lib/services/slot/activity";
 import { applyAutoTransition } from "@/lib/services/slot/transitions";
 import { tryAutoTriggerCover } from "@/lib/services/slot/autoCoverTrigger";
+import { triggerAutoTranscriptionForVersion } from "@/lib/triggerAutoTranscriptionForVersion";
 
 type UploadKind = "rush" | "version" | "brief-attachment";
 
@@ -383,11 +384,11 @@ async function handleVersionComplete(args: {
     return version;
   });
 
-  // Phase 2.3 fix : si on a auto-promu une 1ère version sans validation admin,
-  // on doit aussi déclencher tryAutoTriggerCover (équivalent du flux promote
-  // manuel). Sans ça, manual_rushes + auto-promote ne créait jamais de cover
-  // pack et le step Cover restait silencieusement à "todo".
+  // Phase 2.3 + 2.4 — déclenchement de la chaîne auto post auto-promote.
+  // Sans ce câblage, manual_rushes + needsAdminValidation=false ne lance
+  // jamais cover/transcription/captions/description et le slot reste muet.
   if (!needsAdminValidation && result.versionNumber === 1) {
+    // Cover
     const coverResult = await tryAutoTriggerCover({
       slotId,
       actorId,
@@ -398,6 +399,12 @@ async function handleVersionComplete(args: {
     } else if (coverResult.status === "skipped") {
       console.info(`[upload-complete] auto-cover skipped slot=${slotId}: ${coverResult.reason}`);
     }
+
+    // Transcription (qui consommera captions + description en cascade via le
+    // webhook RunPod /api/webhooks/runpod/transcription).
+    void triggerAutoTranscriptionForVersion(result.id).catch((err) =>
+      console.error(`[upload-complete] auto-transcription post auto-promote threw slot=${slotId}:`, err),
+    );
   }
 
   return NextResponse.json({ ok: true, id: result.id, versionNumber: result.versionNumber });

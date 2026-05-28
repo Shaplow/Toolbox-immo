@@ -71,6 +71,7 @@ export type CaptionJobRow = {
   createdAt: string;
   ownerName: string | null;
   presetId: string | null;
+  errorMsg: string | null;
 };
 
 export type TranscriptionJobRow = {
@@ -150,6 +151,8 @@ interface TimelineEntry {
   createdAt: string;
   href: string;
   ownerName?: string | null;
+  /** Message d'erreur affiché sous la row quand status FAILED/ERROR. */
+  errorMsg?: string | null;
 }
 
 const TONE_BG: Record<Tone, string> = {
@@ -204,28 +207,39 @@ function StatusBadge({ status }: { status: string }) {
 
 function TimelineRow({ entry }: { entry: TimelineEntry }) {
   const Icon = entry.icon;
+  const isError = ["FAILED", "ERROR"].includes(entry.status);
+  const showError = isError && entry.errorMsg;
   return (
     <Link
       href={entry.href}
-      className="group flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 hover:border-indigo-200 hover:shadow-sm transition-all"
+      className={`group block rounded-xl border bg-white px-4 py-3 hover:shadow-sm transition-all ${
+        isError ? "border-red-100 hover:border-red-300" : "border-gray-100 hover:border-indigo-200"
+      }`}
     >
-      <div className={`shrink-0 flex items-center justify-center w-9 h-9 rounded-lg ${TONE_BG[entry.iconTone]}`}>
-        <Icon size={16} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm font-medium text-gray-900 truncate">{entry.title}</p>
-          <StatusBadge status={entry.status} />
+      <div className="flex items-center gap-3">
+        <div className={`shrink-0 flex items-center justify-center w-9 h-9 rounded-lg ${TONE_BG[entry.iconTone]}`}>
+          <Icon size={16} />
         </div>
-        <p className="text-xs text-gray-400 mt-0.5 truncate">
-          {entry.sublabel ?? "—"}
-          {entry.ownerName && <span className="ml-1.5">· {entry.ownerName}</span>}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-medium text-gray-900 truncate">{entry.title}</p>
+            <StatusBadge status={entry.status} />
+          </div>
+          <p className="text-xs text-gray-400 mt-0.5 truncate">
+            {entry.sublabel ?? "—"}
+            {entry.ownerName && <span className="ml-1.5">· {entry.ownerName}</span>}
+          </p>
+        </div>
+        <div className="shrink-0 flex items-center gap-2 text-xs text-gray-400">
+          <span className="hidden sm:inline">{formatDate(entry.createdAt)}</span>
+          <ChevronRight size={14} className="text-gray-300 group-hover:text-indigo-400 transition-colors" />
+        </div>
+      </div>
+      {showError && (
+        <p className="mt-2 pl-12 text-xs text-red-600 line-clamp-2" title={entry.errorMsg ?? undefined}>
+          {entry.errorMsg}
         </p>
-      </div>
-      <div className="shrink-0 flex items-center gap-2 text-xs text-gray-400">
-        <span className="hidden sm:inline">{formatDate(entry.createdAt)}</span>
-        <ChevronRight size={14} className="text-gray-300 group-hover:text-indigo-400 transition-colors" />
-      </div>
+      )}
     </Link>
   );
 }
@@ -269,6 +283,7 @@ function captionToEntry(job: CaptionJobRow): TimelineEntry {
     createdAt: job.createdAt,
     href: job.presetId ? `/captions/${job.presetId}/generate?captionJobId=${job.id}` : "/captions",
     ownerName: job.ownerName,
+    errorMsg: job.errorMsg,
   };
 }
 
@@ -287,6 +302,7 @@ function transcriptionToEntry(job: TranscriptionJobRow): TimelineEntry {
     createdAt: job.createdAt,
     href: `/transcriptions/${job.id}`,
     ownerName: job.ownerName,
+    errorMsg: job.errorMsg,
   };
 }
 
@@ -304,6 +320,7 @@ function descriptionToEntry(job: DescriptionJobRow): TimelineEntry {
     createdAt: job.createdAt,
     href: "/descriptions",
     ownerName: job.ownerName,
+    errorMsg: job.errorMsg,
   };
 }
 

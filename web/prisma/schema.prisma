@@ -254,6 +254,11 @@ model TranscriptionJob {
   /// Render à l'origine de ce job (si déclenché automatiquement via captionAutoConfig)
   renderId          String?          @unique
   render            Render?          @relation(fields: [renderId], references: [id], onDelete: SetNull)
+  /// PublicationVersion à l'origine de ce job (Phase 2.4 — chaîne auto pour
+  /// les patterns manual_rushes / external_upload, alternative à renderId).
+  /// Mutuellement exclusif avec renderId en pratique.
+  publicationVersionId String?       @unique
+  publicationVersion   PublicationVersion? @relation("VersionTranscriptionJob", fields: [publicationVersionId], references: [id], onDelete: SetNull)
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   descriptionJobs   DescriptionJob[]
@@ -922,6 +927,9 @@ model PublicationVersion {
   currentForSlot   PublicationSlot? @relation("SlotCurrentVersion")
   /// CoverFramePack créé manuellement sur cette version (Phase 5 slots one-off).
   coverFramePack   CoverFramePack?  @relation("VersionCoverFramePack")
+  /// TranscriptionJob auto-déclenché sur cette version (Phase 2.4 — chaîne
+  /// auto pour manual_rushes / external_upload).
+  transcriptionJob TranscriptionJob? @relation("VersionTranscriptionJob")
 
   @@unique([slotId, versionNumber])
   @@index([slotId])

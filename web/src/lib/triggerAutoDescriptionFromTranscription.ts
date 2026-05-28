@@ -86,6 +86,7 @@ export async function triggerAutoDescriptionForTranscription(
       id: true,
       userId: true,
       renderId: true,
+      publicationVersionId: true,
       outputJsonKey: true,
       render: {
         select: {
@@ -93,15 +94,20 @@ export async function triggerAutoDescriptionForTranscription(
           publicationSlotId: true,
         },
       },
+      publicationVersion: {
+        select: { id: true, slotId: true },
+      },
     },
   });
 
-  if (!job?.renderId || !job.render?.publicationSlotId) {
+  // Source du slot : soit via render (auto_template) soit via version
+  // (manual_rushes / external_upload — Phase 2.4).
+  const slotId =
+    job?.render?.publicationSlotId ?? job?.publicationVersion?.slotId ?? null;
+  if (!job || !slotId) {
     logSkip(transcriptionJobId, "no_render");
     return;
   }
-
-  const slotId = job.render.publicationSlotId;
 
   const slot = await prisma.publicationSlot.findUnique({
     where: { id: slotId },

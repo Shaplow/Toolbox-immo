@@ -234,6 +234,7 @@ export default async function ListingsPage({ searchParams }: PageProps) {
       createdAt: j.createdAt.toISOString(),
       ownerName: isAdmin ? (j.user.name ?? j.user.email ?? "?") : null,
       presetId: j.presetId ?? null,
+      errorMsg: j.errorMsg ?? null,
     };
   });
 
