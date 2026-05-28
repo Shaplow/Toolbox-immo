@@ -351,7 +351,9 @@ export function PublicationFiche({
 
       {/* Bandeau "À ton tour" — affiché si l'user est le owner du statut actuel.
           Permet au monteur/CM/vidéaste de voir immédiatement ce qu'il doit faire,
-          sans avoir à interpréter la ProductionChain. */}
+          avec un lien direct vers la section concernée. C'est la SEULE source
+          d'attention contextuelle : ProductionChain en dessous est informatif
+          (vue globale du pipeline) et ne doit plus rivaliser visuellement. */}
       <NextActionBanner
         slotStatus={slot.status}
         currentUserId={currentUserId}
@@ -361,11 +363,11 @@ export function PublicationFiche({
         assigneeVideasteId={assigneeVideaste?.id ?? null}
       />
 
-      {/* ProductionChain — sticky sous le header pour rester visible pendant le scroll. */}
-      <div className="sticky top-[68px] z-10 bg-gray-50/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/80 border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
-          <ProductionChain steps={steps} />
-        </div>
+      {/* ProductionChain — non sticky : vue d'ensemble du pipeline visible
+          en haut puis libère l'espace vertical au scroll. Le NextActionBanner
+          au-dessus reste sticky avec le header pour le rappel d'action. */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6">
+        <ProductionChain steps={steps} />
       </div>
 
       {/* Corps de la fiche — 2 colonnes en xl, stack vertical en dessous. */}
