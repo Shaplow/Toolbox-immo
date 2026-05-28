@@ -210,20 +210,33 @@ export async function generateRender(renderId: string): Promise<void> {
   });
   const { enrichedListing } = validateConformite(listingData);
 
-  // ─── Branchement : vidéo (RunPod) vs image (Node.js) ─────────────────────
+  // ─── Branchement : vidéo (RunPod ou local) vs image (Node.js) ───────────
+  // Chantier C1 — pipeline unifié : tout template avec un VideoBlock arrive
+  // ici avec videoSequence non-vide (garanti par normalizeTemplateJSON +
+  // migration des templates legacy via scripts/migrate-templates-to-
+  // unified-sequence.ts). La branche pipeline single (generateVideoRender)
+  // est dead code et supprimée en Phase 5 du chantier.
   const videoBlocks = getActiveVideoBlocks(templateJson, enrichedListing);
   console.log(
-    `[generateRender] ${renderId} — activeVideoBlocks: ${videoBlocks.length}, USE_RUNPOD=${process.env.USE_RUNPOD}`
+    `[generateRender] ${renderId} — activeVideoBlocks: ${videoBlocks.length}, sequenceSlots: ${templateJson.videoSequence?.length ?? 0}, USE_RUNPOD=${process.env.USE_RUNPOD}`
   );
 
-  // videoSequence (multi-clip) takes priority over single VideoBlock
   if (templateJson.videoSequence && templateJson.videoSequence.length > 0) {
     await generateSequenceRender(renderId, templateJson, enrichedListing, render.accountId ?? null);
     return;
   }
 
   if (videoBlocks.length > 0) {
-    await generateVideoRender(renderId, templateJson, enrichedListing, videoBlocks, render.accountId ?? null);
+    // Filet de sécurité : templateJson devrait avoir une videoSequence après
+    // normalizeTemplateJSON. Si on tombe ici c'est qu'un Template a un
+    // VideoBlock mais pas de slot — état incohérent. Logue + fail explicite
+    // pour qu'on s'en aperçoive en monitoring plutôt que de retomber
+    // silencieusement sur le pipeline legacy.
+    await failRender(
+      renderId,
+      "Template incohérent : un bloc vidéo existe mais aucun clip n'est défini dans la séquence. " +
+        "Lance le script de migration `migrate-templates-to-unified-sequence` ou ajoute un clip dans le builder.",
+    );
     return;
   }
 

@@ -1,4 +1,5 @@
 import { compileTextTemplate } from "@/lib/textTemplate";
+import { ensureVideoSequence } from "@/lib/videoSequenceUtils";
 import type {
   AnyBlock,
   BlockConditionalRule,
@@ -145,7 +146,7 @@ export function normalizeTemplateJSON(template: TemplateJSON): TemplateJSON {
     };
   });
 
-  return {
+  const baseNormalized: TemplateJSON = {
     ...template,
     canvas: {
       ...template.canvas,
@@ -165,6 +166,11 @@ export function normalizeTemplateJSON(template: TemplateJSON): TemplateJSON {
       return normalizedField;
     }),
   };
+  // Chantier C1 : tout template avec un VideoBlock a au moins un slot dans
+  // videoSequence (mode séquence unifié). No-op si videoSequence est déjà
+  // non-vide. Idempotent tant que la séquence reste non-vide entre deux
+  // normalisations (les IDs aléatoires ne sont générés qu'une fois).
+  return ensureVideoSequence(baseNormalized);
 }
 
 export function serializeTemplateJSON(template: TemplateJSON): TemplateJSON {

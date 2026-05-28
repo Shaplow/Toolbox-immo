@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { ChevronRight, Trash2 } from "lucide-react";
 import { useBuilderStore } from "@/lib/store/builderStore";
-import type { VideoSequenceSlot, VideoBlock, AnyBlock } from "@/types/template";
-import { getSlotSourceSummary, getOverlaySummary } from "@/lib/videoSequenceUtils";
+import type { VideoSequenceSlot, VideoBlock, MusicBlock, AnyBlock } from "@/types/template";
+import {
+  getSlotSourceSummary,
+  getOverlaySummary,
+  buildDefaultSlotFromVideoBlock,
+} from "@/lib/videoSequenceUtils";
 import { SlotPropertiesForm } from "@/components/builder/shared/SlotPropertiesForm";
-import { SelectionRuleEditor } from "@/components/builder/shared/SelectionRuleEditor";
 
 function makeId() {
   return Math.random().toString(36).slice(2, 8);
@@ -24,13 +27,15 @@ export function VideoSequencePanel({
 }) {
   const { template, updateVideoSequence, updateBlock, selectedSlotId, selectSlot } = useBuilderStore();
   const slots = template.videoSequence ?? [];
-  const isActive = slots.length > 0;
   const schema = template.schema ?? [];
 
-  // Single-video source: only relevant when NOT in sequence mode
-  const singleVideoBlock = !isActive ? template.blocks.find((b): b is VideoBlock => b.type === "video") : undefined;
+  // MusicBlock conservé pour les overrides audio par-slot (slotAudio).
+  // La config musique principale est gérée dans le panneau Musique dédié.
+  const musicBlock = template.blocks.find((b): b is MusicBlock => b.type === "music");
 
-  const [confirmDisable, setConfirmDisable] = useState(false);
+  // VideoBlock principal : utilisé pour amorcer le 1er clip si aucun slot
+  // n'existe encore (cas template tout neuf qui n'a pas été normalisé).
+  const primaryVideoBlock = template.blocks.find((b): b is VideoBlock => b.type === "video");
 
   useEffect(() => {
     fetch("/api/admin/libraries/media?type=video")
@@ -66,7 +71,21 @@ export function VideoSequencePanel({
     selectSlot(id);
   }
 
+  // Amorce un premier slot depuis le VideoBlock principal (utile pour
+  // un template fraîchement créé qui n'a pas encore traversé la
+  // normalisation, ou si l'utilisateur a tout supprimé).
+  function seedFirstSlot() {
+    if (!primaryVideoBlock) return;
+    const slot = buildDefaultSlotFromVideoBlock(primaryVideoBlock, { id: makeId() });
+    updateVideoSequence([slot]);
+    selectSlot(slot.id);
+  }
+
   function removeSlot(id: string) {
+    // C1 — On garde toujours au moins 1 slot tant qu'un VideoBlock existe :
+    // un template avec VideoBlock mais sans slot ne rend pas. Si l'utilisateur
+    // veut "désactiver la vidéo", il doit retirer le VideoBlock du canvas.
+    if (slots.length === 1 && primaryVideoBlock) return;
     const next = slots.filter((s) => s.id !== id);
     updateVideoSequence(next.length === 0 ? undefined : next);
     if (selectedSlotId === id) selectSlot(null);
@@ -82,141 +101,52 @@ export function VideoSequencePanel({
     updateVideoSequence(next);
   }
 
-  function disableSequence() {
-    updateVideoSequence(undefined);
-    selectSlot(null);
-    setConfirmDisable(false);
-  }
+  const hasSlots = slots.length > 0;
 
   return (
     <div className="flex flex-col h-full overflow-y-auto text-xs">
-      <div className="px-3 py-3 border-b border-gray-100 flex items-start justify-between gap-2">
-        <div>
-          <p className="text-[11px] font-semibold text-gray-700">
-            Vidéo & Musique
-            {isActive && (
-              <span className="ml-1.5 text-[9px] font-normal text-indigo-500 bg-indigo-50 border border-indigo-100 rounded-full px-1.5 py-0.5">
-                {slots.length} clip{slots.length > 1 ? "s" : ""}
-              </span>
-            )}
-          </p>
-          <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">
-            {isActive
-              ? "Cliquez sur un clip pour configurer sa source et ses overlays."
-              : "Sources vidéo et musique pour le rendu. Activez la séquence pour assembler plusieurs clips."}
-          </p>
-        </div>
-        {isActive && (
-          <div className="shrink-0 flex items-center gap-1.5 mt-0.5">
-            {confirmDisable ? (
-              <>
-                <span className="text-[9px] text-red-500">{slots.length} clip{slots.length > 1 ? "s" : ""} supprimé{slots.length > 1 ? "s" : ""} —</span>
-                <button
-                  type="button"
-                  onClick={disableSequence}
-                  className="text-[10px] px-2 py-1 rounded border border-red-400 text-white bg-red-500 hover:bg-red-600 transition-colors"
-                >
-                  Confirmer
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmDisable(false)}
-                  className="text-[10px] px-2 py-1 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
-                >
-                  Annuler
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => slots.length > 1 ? setConfirmDisable(true) : disableSequence()}
-                className="text-[10px] px-2 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 transition-colors"
-              >
-                Désactiver
-              </button>
-            )}
-          </div>
-        )}
+      <div className="px-3 py-3 border-b border-gray-100">
+        <p className="text-[11px] font-semibold text-gray-700">
+          Séquence vidéo
+          {hasSlots && (
+            <span className="ml-1.5 text-[9px] font-normal text-indigo-500 bg-indigo-50 border border-indigo-100 rounded-full px-1.5 py-0.5">
+              {slots.length} clip{slots.length > 1 ? "s" : ""}
+            </span>
+          )}
+        </p>
+        <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">
+          Ordonne les clips assemblés dans le rendu vidéo final. Clique sur un clip pour configurer source et overlays.
+        </p>
       </div>
 
-      {/* ── Single video source (no sequence mode) ─────────────────────────── */}
-      {!isActive && singleVideoBlock && (
-        <div className="px-3 py-3 border-b border-gray-100">
-          <p className="text-[9px] font-semibold uppercase tracking-wider text-gray-400 mb-2">📼 Source vidéo</p>
-          <label className="flex flex-col gap-0.5">
-            <span className="text-[10px] text-gray-500">Bibliothèque</span>
-            <select
-              value={singleVideoBlock.libraryId ?? ""}
-              onChange={(e) =>
-                updateBlock(singleVideoBlock.id, { libraryId: e.target.value || undefined } as Partial<AnyBlock>)
-              }
-              className="border border-gray-200 rounded px-2 py-1 text-[11px]"
-            >
-              <option value="">— Formulaire (upload à la génération) —</option>
-              {videoLibraries.map((lib) => (
-                <option key={lib.id} value={lib.id}>{lib.name}</option>
-              ))}
-            </select>
-          </label>
-          {singleVideoBlock.libraryId && (
-            <div className="mt-2">
-              <span className="text-[10px] text-gray-500 block mb-1">À la génération</span>
-              <SelectionRuleEditor
-                rule={singleVideoBlock.selectionRule}
-                onChange={(r) =>
-                  updateBlock(singleVideoBlock.id, { selectionRule: r } as Partial<AnyBlock>)
-                }
-                strategies={[
-                  { value: "theme_sequence", label: "Auto" },
-                  { value: "least_used",     label: "Moins utilisée" },
-                  { value: "oldest_used",    label: "La plus ancienne" },
-                  { value: "random",         label: "Aléatoire" },
-                  { value: "manual",         label: "Manuelle (choix à la génération)" },
-                ]}
-                schema={schema}
-              />
-            </div>
-          )}
-          <p className="text-[9px] text-gray-400 mt-2 leading-relaxed">
-            Pour assembler plusieurs clips en un seul MP4, créez une séquence ci-dessous.
-          </p>
+      {/* Empty state : pas de VideoBlock dans le template */}
+      {!hasSlots && !primaryVideoBlock && (
+        <div className="px-3 py-6 text-[11px] text-gray-400 italic text-center">
+          Ajoute un bloc vidéo depuis le panneau Calques pour amorcer
+          la séquence.
         </div>
       )}
 
-      {/* ── Create sequence CTA ─────────────────────────────────────────────── */}
-      {!isActive && (
-        <div className={`flex flex-col gap-3 p-4 ${singleVideoBlock ? "border-b border-gray-100" : ""}`}>
-          {!singleVideoBlock && (
-            <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-3 flex flex-col gap-2">
-              <p className="text-[10px] font-semibold text-indigo-700 uppercase tracking-wide">Comment ça marche</p>
-              <ol className="flex flex-col gap-1.5">
-                <li className="flex items-start gap-2 text-[10px] text-indigo-800 leading-relaxed">
-                  <span className="shrink-0 w-4 h-4 flex items-center justify-center rounded-full bg-indigo-600 text-white font-bold text-[8px]">1</span>
-                  Crée tes clips (ex. : Intro • Bien • Outro)
-                </li>
-                <li className="flex items-start gap-2 text-[10px] text-indigo-800 leading-relaxed">
-                  <span className="shrink-0 w-4 h-4 flex items-center justify-center rounded-full bg-indigo-600 text-white font-bold text-[8px]">2</span>
-                  Clique sur un clip → choisis la source vidéo (formulaire ou bibliothèque)
-                </li>
-                <li className="flex items-start gap-2 text-[10px] text-indigo-800 leading-relaxed">
-                  <span className="shrink-0 w-4 h-4 flex items-center justify-center rounded-full bg-indigo-600 text-white font-bold text-[8px]">3</span>
-                  Décide quels textes/blocs s&apos;affichent sur ce clip
-                </li>
-              </ol>
-            </div>
-          )}
+      {/* Empty state : VideoBlock présent mais pas encore de slot
+          (template tout neuf ou tous slots supprimés). */}
+      {!hasSlots && primaryVideoBlock && (
+        <div className="px-3 py-4 flex flex-col gap-2">
+          <p className="text-[10px] text-gray-500 leading-relaxed">
+            Le canvas a un bloc vidéo mais aucun clip n&apos;est encore
+            défini dans la séquence.
+          </p>
           <button
             type="button"
-            onClick={addSlot}
+            onClick={seedFirstSlot}
             className="w-full px-3 py-2 bg-indigo-600 text-white text-[11px] font-medium rounded-lg hover:bg-indigo-700 transition-colors"
           >
-            + Séquence multi-clips
+            + Créer le premier clip
           </button>
         </div>
       )}
 
       {/* Slot list */}
-      {isActive && (
+      {hasSlots && (
         <div className="flex flex-col">
           {slots.map((slot, i) => {
             const isSelected = selectedSlotId === slot.id;
@@ -230,6 +160,7 @@ export function VideoSequencePanel({
                     (f as { optionsSource?: { libraryId?: string } }).optionsSource?.libraryId === slot.libraryId,
                 )
               : undefined;
+            const canDelete = !(slots.length === 1 && primaryVideoBlock);
             return (
               <div key={slot.id} id={`seq-slot-${slot.id}`} className="border-b border-gray-100 last:border-b-0">
                 {/* Slot row */}
@@ -309,8 +240,9 @@ export function VideoSequencePanel({
                     <button
                       type="button"
                       onClick={() => removeSlot(slot.id)}
-                      title="Supprimer ce clip"
-                      className="p-1 text-gray-300 hover:text-red-500 transition-colors"
+                      disabled={!canDelete}
+                      title={canDelete ? "Supprimer ce clip" : "Au moins 1 clip est requis quand un bloc vidéo existe"}
+                      className="p-1 text-gray-300 hover:text-red-500 disabled:opacity-30 disabled:hover:text-gray-300 transition-colors"
                     >
                       <Trash2 size={11} />
                     </button>
