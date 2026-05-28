@@ -81,9 +81,12 @@ function descriptionStatus(slot: PublicationSlot): DotStatus {
 
 function publishStatus(slot: PublicationSlot): DotStatus {
   if (slot.status === PUBLISHED) return "done";
-  if (slot.status === "BLOCKED" || slot.status === "CANCELLED" || slot.status === "ARCHIVED") {
-    return "failed";
-  }
+  // ARCHIVED = sortie de cycle saine (publication ancienne archivée) — pas
+  // un échec. CANCELLED = sortie annulée par décision admin — pas un bug
+  // de pipeline non plus. BLOCKED reste "failed" car c'est explicitement
+  // un état d'erreur qui requiert une intervention.
+  if (slot.status === "BLOCKED") return "failed";
+  if (slot.status === "CANCELLED" || slot.status === "ARCHIVED") return "muted";
   return "todo";
 }
 

@@ -228,6 +228,14 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     // form). Sans ce guard, 2 slots dupliqués peuvent être créés pour le
     // même {accountId, scheduledAt, patternId}.
     if (saving) return;
+    // Anti-race : en mode pattern, si la fetch des patterns d'un compte
+    // n'est pas encore terminée, les assignees IDs sont à "" (reset au
+    // début de l'effect d'account change). Soumettre maintenant créerait
+    // un slot sans assignations même si le pattern par défaut en a.
+    if (isPatternMode && loadingPatterns) {
+      setError("Chargement des patterns du compte en cours…");
+      return;
+    }
     if (!canSubmit()) {
       setError(isPatternMode ? "Sélectionne un pattern." : "Renseigne au moins un titre.");
       return;

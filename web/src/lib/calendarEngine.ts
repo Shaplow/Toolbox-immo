@@ -165,14 +165,17 @@ export async function generateCalendarSlots(
     select: { accountId: true, scheduledAt: true, patternId: true },
   });
 
-  // Index : "accountId|scheduledAtMs|patternId"
+  // Index : "accountId|scheduledAtISO|patternId" — utiliser toISOString plutôt
+  // que getTime() pour ne pas dépendre d'une éventuelle conversion timezone
+  // côté driver (Postgres timestamptz est fiable, mais SQLite/MySQL peuvent
+  // renvoyer un Date dans le fuseau local). L'ISO UTC est neutre.
   const existingKeys = new Set(
-    existing.map((s) => `${s.accountId}|${s.scheduledAt.getTime()}|${s.patternId}`)
+    existing.map((s) => `${s.accountId}|${s.scheduledAt.toISOString()}|${s.patternId}`)
   );
 
   // 4. Filtrer les cibles qui n'existent pas encore
   const toCreate = targets.filter(({ pattern, scheduledAt }) => {
-    const key = `${pattern.accountId}|${scheduledAt.getTime()}|${pattern.id}`;
+    const key = `${pattern.accountId}|${scheduledAt.toISOString()}|${pattern.id}`;
     return !existingKeys.has(key);
   });
 

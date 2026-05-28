@@ -1,7 +1,47 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2, GripVertical } from "lucide-react";
+
+/**
+ * Mini-éditeur contrôlé pour la clé d'un champ flex.
+ *
+ * Avant : <input defaultValue={key}> uncontrolled — si l'utilisateur
+ * renommait rapidement 2 fields, le onBlur du premier pouvait être
+ * déclenché APRÈS le rerender qui changeait la liste des fields, et
+ * lire l'event.target.value qui pointait vers une valeur stale.
+ *
+ * Solution : state local par-input via composant dédié. Resync avec
+ * originalKey si la prop change (ex : renommé ailleurs / liste réordonnée).
+ */
+function KeyEditor({ originalKey, onCommit }: { originalKey: string; onCommit: (v: string) => void }) {
+  const [draft, setDraft] = useState(originalKey);
+  // Resync si la prop change (e.g. autre source de modification).
+  useEffect(() => {
+    setDraft(originalKey);
+  }, [originalKey]);
+  return (
+    <input
+      type="text"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (draft !== originalKey) onCommit(draft);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          (e.target as HTMLInputElement).blur();
+        }
+        if (e.key === "Escape") {
+          setDraft(originalKey);
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      className="w-32 shrink-0 text-xs border border-gray-200 rounded px-2 py-1 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-300 bg-gray-50"
+    />
+  );
+}
 
 interface FlexFieldsEditorProps {
   schema: string[];
@@ -56,17 +96,12 @@ export function FlexFieldsEditor({ schema, values, onChange, readOnly = false }:
               <GripVertical size={14} />
             </span>
           )}
-          {/* Key label — editable if not readOnly */}
+          {/* Key label — editable if not readOnly. Controlled via KeyEditor
+              pour éviter les races onBlur stale entre 2 renames rapides. */}
           {readOnly ? (
             <span className="w-32 shrink-0 text-xs font-medium text-gray-600 truncate">{key}</span>
           ) : (
-            <input
-              type="text"
-              defaultValue={key}
-              onBlur={(e) => renameField(key, e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }}
-              className="w-32 shrink-0 text-xs border border-gray-200 rounded px-2 py-1 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-300 bg-gray-50"
-            />
+            <KeyEditor originalKey={key} onCommit={(next) => renameField(key, next)} />
           )}
 
           {/* Value */}
