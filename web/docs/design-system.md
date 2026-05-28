@@ -111,23 +111,20 @@ Ces couleurs **signifient** quelque chose (qui c'est, où on en est). Le brand n
 - Tailwind par défaut autorisés en plus : `rounded-2xl` (16px, modals / hero cards), `rounded-full` (pills, dots, avatars)
 - Privilégier l'échelle DS pour les composants UI courants. `rounded-2xl` réservé aux surfaces "élevées" (modals, hero), `rounded-full` aux éléments circulaires.
 
-### Eyebrow décoratif & décors hand-drawn
+### Décors signature — Sparkle & Arrow
 
-Les eyebrows marketing sont préfixés du composant `<HandDrawn.Asterisk />` (asterisk dessiné style Excalidraw) en `text-brand-600`. Petite signature visuelle qui rappelle l'étoile éditoriale.
-
-**Bibliothèque `HandDrawn`** (`web/src/components/ui/decor/HandDrawn.tsx`) — décors SVG signature à appliquer chirurgicalement :
+Deux décors SVG seulement (`web/src/components/ui/decor/HandDrawn.tsx`) — pour éviter la surcharge graphique scolaire. La personnalité passe surtout par les typos (Serif italic + Caveat hand) ; les décors viennent ponctuer.
 
 | Décor | Usage |
 |---|---|
-| `<HandDrawn.Underline />` | Trait wavy sous un mot clé dans un titre |
-| `<HandDrawn.Asterisk />` | Préfixe d'eyebrow marketing, bullet signature |
-| `<HandDrawn.Arrow />` | Flèche dessinée pour les liens narratifs |
-| `<HandDrawn.HighlightCircle />` | Cercle au crayon autour d'un mot clé |
-| `<HandDrawn.Bracket side="left" \| "right" />` | Brackets pour cadrer un mot signature `[astuce]` |
+| `<HandDrawn.Sparkle />` | Préfixe d'eyebrow marketing, badge "Nouveau", accent dans avatar agence. Style twinkle 4-pointes filled. |
+| `<HandDrawn.Arrow />` | Flèche signature des liens narratifs. Animation : `transition-transform group-hover:translate-x-0.5`. |
 
-Tous utilisent `currentColor` — héritent de la couleur du parent. Pas de bibliothèque externe (Rough.js) : SVG path statiques, légers, accessibles.
+Tous utilisent `currentColor`. Pas de bibliothèque externe (Rough.js) — SVG path statiques.
 
-**À utiliser uniquement** dans les zones signature (logo, badges Astuce, eyebrows, empty states friendly), **jamais** dans l'UI fonctionnelle.
+**À utiliser uniquement** dans les zones signature (logo, eyebrows, badges Astuce, liens narratifs), **jamais** dans l'UI fonctionnelle. Et surtout : **rester sobre** — un Sparkle par section au max, sinon ça vire "tape-à-l'œil".
+
+Décors envisagés puis écartés (trop scolaires / verbeux) : Underline wavy, HighlightCircle, Bracket, WavyRule. Si un cas d'usage légitime apparaît plus tard, on les ressort — mais par défaut on s'en passe.
 
 ### Typographie — 3 registres, discipline stricte
 

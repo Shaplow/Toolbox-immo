@@ -566,21 +566,18 @@ export default function TokensPage() {
           </div>
         </div>
 
-        {/* Vignettes magazine — décors intégrés dans des contextes réels
-            (post, moodboard, testimonial). Pas de catalogue labellisé. */}
+        {/* Vignettes magazine — décors réduits au strict signature
+            (Sparkle + Arrow). Le reste de la personnalité passe par les
+            typos (Serif italic + Caveat hand) et la composition. */}
         <div className="grid gap-4 sm:grid-cols-2">
           {/* Vignette 1 — Instagram post mockup */}
           <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
             <div className="aspect-square bg-gradient-to-br from-stone-200 via-amber-100 to-rose-200 relative">
-              <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/15 to-transparent" />
               <div className="absolute bottom-3 left-4 right-4 text-white">
                 <p className="font-serif italic text-2xl leading-tight drop-shadow-sm">
                   Un appartement<br />
-                  qui se{" "}
-                  <span className="relative inline-block">
-                    raconte
-                    <HandDrawn.Underline className="absolute -bottom-1 left-0 h-1.5 w-full text-white" />
-                  </span>.
+                  qui se raconte.
                 </p>
               </div>
             </div>
@@ -611,16 +608,14 @@ export default function TokensPage() {
               className="pointer-events-none absolute inset-0 opacity-50 mix-blend-multiply"
               style={{ backgroundImage: "var(--texture-grain)" }}
             />
-            <div className="relative space-y-4">
-              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-medium">
+            <div className="relative space-y-5">
+              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-medium inline-flex items-center gap-1.5">
+                <HandDrawn.Sparkle className="h-2.5 w-2.5 text-brand-700" />
                 Moodboard · brief client
               </p>
               <p className="font-serif italic text-3xl leading-[1.1] text-gray-950">
-                On veut de{" "}
-                <span className="relative inline-block px-1.5">
-                  l&apos;audace
-                  <HandDrawn.HighlightCircle className="absolute -inset-x-1 -inset-y-1 text-brand-700 -z-0" />
-                </span>
+                On veut de l&apos;audace,<br />
+                pas du tape-à-l&apos;œil.
               </p>
               {/* Palette inline */}
               <div className="flex items-center gap-1.5">
@@ -629,37 +624,28 @@ export default function TokensPage() {
                 ))}
                 <span className="ml-2 text-[10px] text-gray-500">3 couleurs max · noir + signature</span>
               </div>
-              {/* Bracket "astuce" */}
-              <div className="inline-flex items-center pt-2">
-                <HandDrawn.Bracket side="left" className="h-7 w-3.5 text-brand-700" />
-                <span className="px-1 font-hand text-lg text-brand-700">à retenir</span>
-                <HandDrawn.Bracket side="right" className="h-7 w-3.5 text-brand-700" />
-                <span className="ml-2 text-[12px] text-gray-600">la serif, jamais en body.</span>
-              </div>
+              {/* Note hand discrète */}
+              <p className="font-hand text-xl text-brand-700 leading-none pt-1">
+                la serif, jamais en body.
+              </p>
             </div>
           </div>
         </div>
 
         {/* Vignette 3 — Testimonial pull quote pleine largeur */}
         <div className="rounded-xl border border-gray-200 bg-white p-10 sm:p-14">
-          <div className="max-w-2xl mx-auto text-center space-y-5">
+          <div className="max-w-2xl mx-auto text-center space-y-6">
             <p className="text-[10px] uppercase tracking-widest text-gray-400 inline-flex items-center gap-1.5">
               <HandDrawn.Sparkle className="h-3 w-3 text-brand-700" />
               Ce qu&apos;en disent nos clients
             </p>
             <p className="font-serif italic text-2xl sm:text-3xl leading-relaxed text-gray-950">
               &ldquo;Avant Toolbox, on perdait des heures à coordonner.
-              Maintenant on{" "}
-              <span className="relative inline-block">
-                crée
-                <HandDrawn.Underline className="absolute -bottom-1.5 left-0 h-2 w-full text-brand-700" />
-              </span>
-              , ils diffusent.&rdquo;
+              Maintenant on crée, ils diffusent.&rdquo;
             </p>
-            <HandDrawn.WavyRule className="h-2 w-32 mx-auto text-gray-300" />
-            <div className="space-y-0">
+            <div className="pt-2 space-y-1.5">
               <p className="font-hand text-2xl text-gray-950 leading-none">— Léa Vasseur</p>
-              <p className="text-[11px] uppercase tracking-widest text-gray-400 mt-2">
+              <p className="text-[11px] uppercase tracking-widest text-gray-400">
                 Directrice · Studio La Mira
               </p>
             </div>
