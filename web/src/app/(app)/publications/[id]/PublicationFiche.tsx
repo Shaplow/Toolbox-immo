@@ -399,7 +399,7 @@ export function PublicationFiche({
           en haut puis libère l'espace vertical au scroll. Le NextActionBanner
           au-dessus reste sticky avec le header pour le rappel d'action. */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6">
-        <ProductionChain steps={steps} />
+        <ProductionChain steps={steps} viewerRole={currentUserRole} />
       </div>
 
       {/* Corps de la fiche — 2 colonnes en xl, stack vertical en dessous. */}

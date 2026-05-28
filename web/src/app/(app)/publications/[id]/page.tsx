@@ -318,6 +318,7 @@ export default async function PublicationPage({ params }: PageProps) {
     captionJob: latestCaptionJob,
     descriptionJob: latestDescriptionJob,
     versionsCount: rawVersions.filter((v) => v.deletedAt === null).length,
+    rushesCount: rushes.length,
     currentVersionId: slot.currentVersionId ?? null,
   });
 
@@ -343,9 +344,12 @@ export default async function PublicationPage({ params }: PageProps) {
 
   // Permissions UI
   const userForPermission = { id: userId, role };
+  // assigneeVideasteId est REQUIS ici sinon canUploadRushes retourne toujours
+  // false pour un vidéaste assigné (compare undefined === user.id).
   const slotForPermission = {
     assigneeMonteurId: slot.assigneeMonteurId,
     assigneeCmId: slot.assigneeCmId,
+    assigneeVideasteId: slot.assigneeVideasteId,
   };
 
   const canPublish = canMarkPublished(userForPermission, slotForPermission);

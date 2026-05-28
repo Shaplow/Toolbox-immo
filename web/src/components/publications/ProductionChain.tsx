@@ -1,9 +1,17 @@
 "use client";
 
 import type { PublicationStep, StepStatus } from "@/lib/publications/steps";
+import type { UserRole } from "@/types/roles";
 
 export interface ProductionChainProps {
   steps: PublicationStep[];
+  /**
+   * Si fourni, filtre les steps pour ne montrer que ceux où ce rôle est
+   * impliqué (sauf ADMIN qui voit tout — vue de supervision).
+   * Si absent, on affiche tous les steps visibles (compat callsites non
+   * mis à jour).
+   */
+  viewerRole?: UserRole;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +163,7 @@ function StepIcon({ status }: { status: StepStatus }) {
 // on scroll vers "versions". `validation` n'a pas encore de section (placeholder
 // Phase 2), donc cliquer dessus n'a aucun effet — c'est intentionnel.
 const STEP_TO_SECTION: Record<string, string> = {
+  rushes: "rushes",
   render: "render",
   edit: "versions",
   cover: "cover",
@@ -163,8 +172,19 @@ const STEP_TO_SECTION: Record<string, string> = {
   publish: "publish",
 };
 
-export function ProductionChain({ steps }: ProductionChainProps) {
-  const visibleSteps = steps.filter((s) => s.visible);
+export function ProductionChain({ steps, viewerRole }: ProductionChainProps) {
+  // Filtrage en 2 passes :
+  // 1) visibilité par pattern (déjà décidée par computePublicationSteps)
+  // 2) filtrage par rôle viewer : ADMIN voit tout (supervision), les autres
+  //    ne voient que les steps où ils figurent dans step.roles.
+  //    Si viewerRole est absent (callsite pas mis à jour), on garde l'ancien
+  //    comportement = tous les visible-steps.
+  const visibleSteps = steps.filter((s) => {
+    if (!s.visible) return false;
+    if (!viewerRole) return true;
+    if (viewerRole === "ADMIN") return true;
+    return s.roles.includes(viewerRole);
+  });
 
   function scrollToSection(stepKey: string) {
     const sectionId = STEP_TO_SECTION[stepKey];
@@ -188,10 +208,21 @@ export function ProductionChain({ steps }: ProductionChainProps) {
     }, 50);
   }
 
+  if (visibleSteps.length === 0) {
+    // Aucun step pertinent pour ce rôle (recipe sans rushes pour un vidéaste,
+    // etc.). On masque la chain plutôt que de montrer une carte vide.
+    return null;
+  }
+
   return (
     <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
       <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
         Chaîne de production
+        {viewerRole && viewerRole !== "ADMIN" && (
+          <span className="ml-2 text-[10px] font-normal normal-case text-gray-400">
+            · tes étapes
+          </span>
+        )}
       </h2>
 
       {/* Compteur "N/M étapes" et lien "Étape en cours" retirés : redondants

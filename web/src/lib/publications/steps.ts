@@ -14,12 +14,14 @@ import type {
   CaptionJob,
   DescriptionJob,
 } from "@prisma/client";
+import type { UserRole } from "@/types/roles";
 
 // ---------------------------------------------------------------------------
 // Types publics
 // ---------------------------------------------------------------------------
 
 export type StepKey =
+  | "rushes"
   | "render"
   | "edit"
   | "cover"
@@ -27,6 +29,36 @@ export type StepKey =
   | "description"
   | "validation"
   | "publish";
+
+/**
+ * Rôles responsables ou intéressés par chaque step.
+ *
+ * Utilisé par ProductionChain pour filtrer les étapes affichées :
+ * - ADMIN voit tout (vue de supervision).
+ * - Les autres rôles ne voient que les steps où ils apparaissent dans cette
+ *   matrice — typiquement leurs propres étapes + les inputs directs dont ils
+ *   dépendent. Ça évite à un vidéaste de voir cover/captions/description et
+ *   à un CM de voir l'étape de montage qui ne le concerne pas.
+ *
+ * VIDEASTE = uniquement "rushes" (son livrable).
+ * MONTEUR  = "rushes" (input) + "render" + "edit" (livrable).
+ * CM       = "cover" + "captions" + "description" + "validation" + "publish".
+ * EXTERNAL_GENERATOR = aucune (la chain ne lui est pas montrée).
+ */
+const STEP_ROLES: Record<StepKey, UserRole[]> = {
+  rushes:     ["VIDEASTE", "MONTEUR"],
+  render:     ["MONTEUR"],
+  edit:       ["MONTEUR"],
+  cover:      ["CM"],
+  captions:   ["CM", "MONTEUR"],
+  description:["CM"],
+  validation: ["CM"],
+  publish:    ["CM"],
+};
+
+export function getStepRoles(key: StepKey): UserRole[] {
+  return STEP_ROLES[key];
+}
 
 export type StepStatus =
   | "todo"
@@ -48,6 +80,8 @@ export interface PublicationStep {
    * status ∈ ["todo", "failed"] — indique la prochaine action à mener.
    */
   nextAction: boolean;
+  /** Rôles intéressés par ce step (utilisé par ProductionChain pour filtrer). */
+  roles: UserRole[];
 }
 
 // ---------------------------------------------------------------------------
@@ -161,14 +195,17 @@ export function computePublicationSteps(input: {
   descriptionJob?: Pick<DescriptionJob, "status" | "result"> | null;
   /** Nombre de versions non supprimées (pour calculer le statut du step "edit"). */
   versionsCount?: number;
+  /** Nombre de rushs uploadés (pour calculer le statut du step "rushes"). */
+  rushesCount?: number;
   /** ID de la version courante promue par l'ADMIN. */
   currentVersionId?: string | null;
 }): PublicationStep[] {
-  const { slot, renderJob, coverPack, captionJob, descriptionJob, versionsCount = 0, currentVersionId } =
+  const { slot, renderJob, coverPack, captionJob, descriptionJob, versionsCount = 0, rushesCount = 0, currentVersionId } =
     input;
   const pattern = input.pattern ?? null;
 
   // ── Visibilité par pattern ────────────────────────────────────────────────
+  const rushesVisible = pattern?.needsRushes === true;
   const renderVisible = pattern?.source === "auto_template";
   const editVisible = pattern?.needsRushes === true || pattern?.needsBrief === true;
   const coverVisible =
@@ -178,6 +215,18 @@ export function computePublicationSteps(input: {
     pattern != null && pattern.needsDescription !== "none";
   const validationVisible = pattern?.needsClientValidation === true;
   // publish : toujours visible
+
+  // ── Statut step "rushes" ──────────────────────────────────────────────────
+  // todo  = aucun rush, slot pas encore au stade "shoot livré"
+  // done  = au moins un rush uploadé (le vidéaste a déposé son livrable)
+  let rushesStatus: StepStatus;
+  if (rushesCount > 0) {
+    rushesStatus = "done";
+  } else if (slot.status === "RUSHES_EXPECTED") {
+    rushesStatus = "processing";
+  } else {
+    rushesStatus = "todo";
+  }
 
   // ── Statut step "edit" ─────────────────────────────────────────────────────
   let editStatus: StepStatus;
@@ -202,28 +251,39 @@ export function computePublicationSteps(input: {
   // ── Construction de la liste brute ────────────────────────────────────────
   const rawSteps: Omit<PublicationStep, "nextAction">[] = [
     {
+      key: "rushes",
+      label: "Rushs",
+      visible: rushesVisible,
+      status: rushesVisible ? rushesStatus : "todo",
+      roles: STEP_ROLES.rushes,
+    },
+    {
       key: "render",
       label: "Rendu vidéo",
       visible: renderVisible,
       status: renderVisible ? renderJobStatus(renderJob) : "todo",
+      roles: STEP_ROLES.render,
     },
     {
       key: "edit",
       label: "Montage",
       visible: editVisible,
       status: editVisible ? editStatus : "todo",
+      roles: STEP_ROLES.edit,
     },
     {
       key: "cover",
       label: "Cover",
       visible: coverVisible,
       status: coverVisible ? coverPackStatus(coverPack) : "todo",
+      roles: STEP_ROLES.cover,
     },
     {
       key: "captions",
       label: "Sous-titres",
       visible: captionsVisible,
       status: captionsVisible ? captionJobStatus(captionJob) : "todo",
+      roles: STEP_ROLES.captions,
     },
     {
       key: "description",
@@ -232,6 +292,7 @@ export function computePublicationSteps(input: {
       status: descriptionVisible
         ? descriptionJobStatus(descriptionJob, slot.description)
         : "todo",
+      roles: STEP_ROLES.description,
     },
     {
       key: "validation",
@@ -243,12 +304,14 @@ export function computePublicationSteps(input: {
       // remplacer par le statut réel calculé depuis le validationJob/validation
       // table.
       status: "blocked",
+      roles: STEP_ROLES.validation,
     },
     {
       key: "publish",
       label: "Publier",
       visible: true,
       status: publishStatus,
+      roles: STEP_ROLES.publish,
     },
   ];
 
