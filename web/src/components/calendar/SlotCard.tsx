@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PipelineDots } from "./PipelineDots";
 import {
   STATUS_COLORS,
   STATUS_DOT,
@@ -153,7 +154,7 @@ export function SlotCard({ slot, onClick, currentUserRole, currentUserId }: Slot
         </div>
       )}
 
-      {/* Footer: status + account */}
+      {/* Footer: status + account + pipeline dots */}
       <div className="flex items-center gap-1.5 flex-wrap">
         <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${statusColor}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
@@ -161,6 +162,9 @@ export function SlotCard({ slot, onClick, currentUserRole, currentUserId }: Slot
         </span>
         <span className="text-[10px] text-gray-400 truncate uppercase tracking-wide">
           {slot.account.handle}
+        </span>
+        <span className="ml-auto">
+          <PipelineDots slot={slot} />
         </span>
       </div>
     </button>
