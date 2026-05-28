@@ -21,6 +21,7 @@ import { compileTextTemplate, resolveTextTemplate } from "@/lib/textTemplate";
 import { roundLayoutDebugValue, type LayoutDebugSnapshot } from "@/lib/layoutDebug";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled } from "@/lib/textBackground";
+import { Grid3x3, Magnet, Lock, Anchor } from "lucide-react";
 import { resolveBlockForListing, resolveBlockState } from "@/lib/templateConditions";
 import type { AnyBlock } from "@/types/template";
 import { Resizable } from "re-resizable";
@@ -848,14 +849,14 @@ export function Canvas({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-gray-200">
-      {/* Zoom + options toolbar */}
+      {/* Toolbar Canvas : uniquement contrôles de VUE (zoom, ajuster, grille, snap).
+          Undo/Redo restent dans le header global du builder (BuilderClient) — pas de
+          doublon ici, sinon l'user ne sait plus quelle version est canonique. */}
       <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 border-b border-gray-200 shrink-0 flex-wrap">
-        <button onClick={zoomOut} className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">−</button>
-        <span className="text-xs text-gray-600 w-12 text-center">{Math.round(zoom * 100)}%</span>
-        <button onClick={zoomIn}  className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">+</button>
-        <button onClick={fitToScreen} className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">Fit</button>
-        <button onClick={undo} className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">Undo</button>
-        <button onClick={redo} className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">Redo</button>
+        <button onClick={zoomOut} title="Dézoomer" className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">−</button>
+        <span className="text-xs text-gray-600 w-12 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
+        <button onClick={zoomIn} title="Zoomer" className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">+</button>
+        <button onClick={fitToScreen} title="Ajuster à l'écran" className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">Ajuster</button>
 
         <span className="text-gray-300 mx-1">|</span>
 
@@ -863,22 +864,24 @@ export function Canvas({
         <button
           onClick={() => setShowGrid((v) => !v)}
           title="Afficher/masquer la grille"
-          className={`text-xs px-2 py-0.5 border rounded transition-colors ${
+          className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded transition-colors ${
             showGrid ? "bg-indigo-100 border-indigo-300 text-indigo-700" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
           }`}
         >
-          ⊞ Grille
+          <Grid3x3 size={12} />
+          Grille
         </button>
 
         {/* Snap toggle */}
         <button
           onClick={() => setSnapToGrid((v) => !v)}
           title={`Snap to grid (${effectiveGridSize}px canvas units at current zoom)`}
-          className={`text-xs px-2 py-0.5 border rounded transition-colors ${
+          className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded transition-colors ${
             snapToGrid ? "bg-indigo-100 border-indigo-300 text-indigo-700" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
           }`}
         >
-          🧲 Snap{snapToGrid ? ` (${effectiveGridSize})` : ""}
+          <Magnet size={12} />
+          Snap{snapToGrid ? ` (${effectiveGridSize})` : ""}
         </button>
 
         {/* Multi-select hint */}
@@ -1098,9 +1101,11 @@ export function Canvas({
                     <div style={{
                       position: "absolute", top: 2, right: 2,
                       background: "rgba(0,0,0,0.45)", borderRadius: 3,
-                      padding: "1px 3px", fontSize: 9, color: "#fff",
-                      pointerEvents: "none", lineHeight: 1.2,
-                    }}>🔒</div>
+                      padding: "2px", color: "#fff",
+                      pointerEvents: "none", display: "inline-flex",
+                    }}>
+                      <Lock size={10} />
+                    </div>
                   )}
                   {showAnchorIndicator && anchorOffset && (
                     <div style={{
@@ -1108,11 +1113,12 @@ export function Canvas({
                       left: anchorOffset.x * zoom,
                       top: anchorOffset.y * zoom,
                       transform: "translate(-50%, -50%)",
-                      fontSize: Math.max(12, zoom * 16),
                       pointerEvents: "none",
-                      lineHeight: 1.1,
+                      color: "#0ea5e9",
                       filter: "drop-shadow(0 1px 2px rgba(255,255,255,0.95)) drop-shadow(0 1px 6px rgba(14,165,233,0.35))",
-                    }}>⚓</div>
+                    }}>
+                      <Anchor size={Math.max(12, zoom * 16)} />
+                    </div>
                   )}
                 </div>
               );
@@ -1172,9 +1178,11 @@ export function Canvas({
                   <div style={{
                     position: "absolute", top: 2, right: 2,
                     background: "rgba(0,0,0,0.45)", borderRadius: 3,
-                    padding: "1px 3px", fontSize: 9, color: "#fff",
-                    pointerEvents: "none", lineHeight: 1.2,
-                  }}>🔒</div>
+                    padding: "2px", color: "#fff",
+                    pointerEvents: "none", display: "inline-flex",
+                  }}>
+                    <Lock size={10} />
+                  </div>
                 )}
                 {showAnchorIndicator && anchorOffset && (
                   <div style={{
@@ -1182,11 +1190,12 @@ export function Canvas({
                     left: anchorOffset.x * zoom,
                     top: anchorOffset.y * zoom,
                     transform: "translate(-50%, -50%)",
-                    fontSize: Math.max(12, zoom * 16),
                     pointerEvents: "none",
-                    lineHeight: 1.1,
+                    color: "#0ea5e9",
                     filter: "drop-shadow(0 1px 2px rgba(255,255,255,0.95)) drop-shadow(0 1px 6px rgba(14,165,233,0.35))",
-                  }}>⚓</div>
+                  }}>
+                    <Anchor size={Math.max(12, zoom * 16)} />
+                  </div>
                 )}
               </Resizable>
             );
