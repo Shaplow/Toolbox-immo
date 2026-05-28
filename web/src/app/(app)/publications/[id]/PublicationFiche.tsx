@@ -554,11 +554,14 @@ export function PublicationFiche({
                 />
               )}
 
-              <ActivityTimeline
-                slotId={slot.id}
-                initialActivities={activities}
-                initialHasMore={activityHasMore}
-              />
+              {wrap(
+                "activity",
+                <ActivityTimeline
+                  slotId={slot.id}
+                  initialActivities={activities}
+                  initialHasMore={activityHasMore}
+                />
+              )}
             </div>
           </aside>
         </div>
