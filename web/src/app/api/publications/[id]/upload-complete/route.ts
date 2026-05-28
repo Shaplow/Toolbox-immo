@@ -281,8 +281,20 @@ async function handleVersionComplete(args: {
       payload: { versionId: version.id, versionNumber: version.versionNumber, fileName },
     });
 
+    // Re-lire le statut dans la transaction : sans ça, on pousse au trigger
+    // la valeur capturée AVANT la requête (slot.status pris en dehors de
+    // la tx). Si un autre acteur — ex. un ADMIN qui avance le slot — a
+    // modifié le statut entre-temps, la matrice computeAutoTransition
+    // recevait une valeur stale et l'auto-transition ne se déclenchait
+    // pas (cas VERSION_UPLOADED_AGAIN qui attend EDIT_APPROVED).
+    const fresh = await tx.publicationSlot.findUnique({
+      where: { id: slotId },
+      select: { status: true },
+    });
+    const freshStatus = fresh?.status ?? slot.status;
+
     const trigger = version.versionNumber === 1 ? "VERSION_UPLOADED_FIRST" : "VERSION_UPLOADED_AGAIN";
-    await applyAutoTransition(tx as typeof args.prisma, slotId, slot.status, trigger, userId);
+    await applyAutoTransition(tx as typeof args.prisma, slotId, freshStatus, trigger, userId);
 
     return version;
   });
