@@ -16,7 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canDeleteVersion } from "@/lib/permissions/publications";
 import { toUserRole } from "@/lib/permissions/role";
-import { createPresignedDownloadUrl } from "@/lib/r2";
+import { getDownloadUrl } from "@/lib/storage";
 import { logActivity } from "@/lib/services/slot/activity";
 
 type Params = { params: Promise<{ id: string; versionId: string }> };
@@ -66,7 +66,7 @@ export async function GET(_req: NextRequest, ctxParams: Params) {
   }
 
   try {
-    const downloadUrl = await createPresignedDownloadUrl(version.r2Key, version.fileName, 3600);
+    const downloadUrl = await getDownloadUrl(version.r2Key, version.fileName);
     return NextResponse.json({ downloadUrl });
   } catch {
     return NextResponse.json(

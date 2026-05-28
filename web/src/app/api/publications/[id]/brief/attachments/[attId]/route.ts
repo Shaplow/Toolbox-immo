@@ -15,7 +15,7 @@ import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canEditBrief } from "@/lib/permissions/publications";
 import { toUserRole } from "@/lib/permissions/role";
-import { createPresignedDownloadUrl, deleteFromR2 } from "@/lib/r2";
+import { getDownloadUrl, deleteObject } from "@/lib/storage";
 import { logActivity } from "@/lib/services/slot/activity";
 
 type Params = { params: Promise<{ id: string; attId: string }> };
@@ -51,7 +51,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   try {
-    const downloadUrl = await createPresignedDownloadUrl(attachment.r2Key, attachment.fileName, 3600);
+    const downloadUrl = await getDownloadUrl(attachment.r2Key, attachment.fileName);
     return NextResponse.json({ downloadUrl });
   } catch {
     return NextResponse.json({ error: "Erreur de génération de l'URL de téléchargement" }, { status: 500 });
@@ -94,11 +94,11 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   // Hard delete (FK cascade géré par Prisma)
   await prisma.publicationBriefAttachment.delete({ where: { id: attId } });
 
-  // Cleanup R2 (best-effort — ne pas faire échouer la réponse si R2 échoue)
+  // Cleanup storage (R2 ou disque local) — best-effort, on n'échoue pas si fail.
   try {
-    await deleteFromR2(attachment.r2Key);
+    await deleteObject(attachment.r2Key);
   } catch (err) {
-    console.error(`[brief-attachment DELETE] R2 cleanup failed for key=${attachment.r2Key}:`, err);
+    console.error(`[brief-attachment DELETE] storage cleanup failed for key=${attachment.r2Key}:`, err);
   }
 
   await logActivity(prisma, {

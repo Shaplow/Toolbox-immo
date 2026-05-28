@@ -20,7 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canUploadRushes, canUploadVersion, canEditBrief } from "@/lib/permissions/publications";
 import { toUserRole } from "@/lib/permissions/role";
-import { objectExistsInR2, deleteFromR2, getR2PublicUrl } from "@/lib/r2";
+import { objectExists, deleteObject, getPublicUrl, isLocalStorage } from "@/lib/storage";
 import { completeMultipartUpload, abortMultipartUpload } from "@/lib/r2Multipart";
 import { logActivity } from "@/lib/services/slot/activity";
 import { applyAutoTransition } from "@/lib/services/slot/transitions";
@@ -151,18 +151,18 @@ export async function POST(req: NextRequest, { params }: Params) {
       );
     }
   } else {
-    // Single PUT : vérifier que l'objet est bien présent en R2
-    const exists = await objectExistsInR2(r2Key);
+    // Single PUT : vérifier que l'objet est bien présent (R2 ou disque local).
+    const exists = await objectExists(r2Key);
     if (!exists) {
       return NextResponse.json(
-        { error: "Le fichier n'est pas encore disponible en R2. Vérifiez que l'upload est terminé." },
+        { error: "Le fichier n'est pas encore disponible. Vérifiez que l'upload est terminé." },
         { status: 400 }
       );
     }
   }
 
   // 6. Logique métier transactionnelle
-  const fileUrl = getR2PublicUrl(r2Key);
+  const fileUrl = getPublicUrl(r2Key);
 
   try {
     if (uploadKind === "rush") {
@@ -186,16 +186,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     });
 
   } catch (err) {
-    // Cleanup R2 si insert Prisma échoue
-    console.error(`[upload-complete] Prisma insert failed, cleaning up R2 key=${r2Key}:`, err);
+    // Cleanup storage si insert Prisma échoue (R2 ou disque local).
+    console.error(`[upload-complete] Prisma insert failed, cleaning up storage key=${r2Key}:`, err);
     try {
-      if (isMultipart && uploadId) {
+      if (isMultipart && uploadId && !isLocalStorage()) {
         await abortMultipartUpload(r2Key, uploadId);
       } else {
-        await deleteFromR2(r2Key);
+        await deleteObject(r2Key);
       }
     } catch (cleanupErr) {
-      console.error(`[upload-complete] R2 cleanup failed for key=${r2Key}:`, cleanupErr);
+      console.error(`[upload-complete] cleanup failed for key=${r2Key}:`, cleanupErr);
     }
     return NextResponse.json(
       { error: "Erreur lors de l'enregistrement. L'upload a été annulé." },

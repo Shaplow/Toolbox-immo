@@ -12,7 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canDeleteRushes } from "@/lib/permissions/publications";
 import { toUserRole } from "@/lib/permissions/role";
-import { createPresignedDownloadUrl } from "@/lib/r2";
+import { getDownloadUrl } from "@/lib/storage";
 import { logActivity } from "@/lib/services/slot/activity";
 
 type Params = { params: Promise<{ id: string; rushId: string }> };
@@ -47,7 +47,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   try {
-    const downloadUrl = await createPresignedDownloadUrl(rush.r2Key, rush.fileName, 3600);
+    const downloadUrl = await getDownloadUrl(rush.r2Key, rush.fileName);
     return NextResponse.json({ downloadUrl });
   } catch {
     return NextResponse.json({ error: "Erreur de génération de l'URL de téléchargement" }, { status: 500 });

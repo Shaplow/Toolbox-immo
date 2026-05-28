@@ -143,15 +143,19 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Permission refusée" }, { status: 403 });
   }
 
-  // 7. Vérifier R2
-  if (!r2Configured()) {
+  // 7. Vérifier le backend de stockage. Si R2 absent en dev, on bascule sur
+  //    le fallback local (/api/publications/[id]/upload-local). En prod,
+  //    R2 reste obligatoire — pas de fallback disque.
+  const useLocalFallback = !r2Configured() && process.env.NODE_ENV !== "production";
+  if (!r2Configured() && !useLocalFallback) {
     return NextResponse.json(
       { error: "Service de stockage non configuré" },
       { status: 503 }
     );
   }
 
-  // 8. Générer la clé R2
+  // 8. Générer la clé (format R2-style même en local — la clé est le chemin
+  //    logique de l'objet, le backend physique change mais pas la convention).
   let r2Key: string;
   if (uploadKind === "rush") {
     r2Key = rushKey(slotId, filename);
@@ -160,6 +164,14 @@ export async function POST(req: NextRequest, { params }: Params) {
     r2Key = versionKey(slotId, 0, filename);
   } else {
     r2Key = briefAttachmentKey(slotId, filename);
+  }
+
+  // 8.5 — Fallback local : pas de multipart, juste une route PUT direct.
+  //       Le client utilise la même interface (PUT au URL retourné avec
+  //       le fichier comme body). Pas d'expiration en local : c'est dev.
+  if (useLocalFallback) {
+    const localUrl = `/api/publications/${slotId}/upload-local?r2Key=${encodeURIComponent(r2Key)}`;
+    return NextResponse.json({ singleUrl: localUrl, r2Key });
   }
 
   // 9. Single PUT vs multipart
