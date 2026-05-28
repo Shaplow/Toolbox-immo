@@ -86,6 +86,12 @@ html {
   --shadow-glow-brand: 0 0 0 4px rgba(255, 90, 31, 0.12);
   --shadow-glow-brand-strong: 0 0 0 5px rgba(255, 90, 31, 0.18), 0 6px 24px rgba(255, 90, 31, 0.18);
 
+  /* Focus rings unifiés — à appliquer sur tout élément focusable.
+     Utiliser via `focus-visible:shadow-[var(--shadow-focus-ring)]` ou
+     mieux : la classe utility `focus-ring` définie en bas du fichier. */
+  --shadow-focus-ring: 0 0 0 3px rgba(255, 90, 31, 0.22);
+  --shadow-focus-ring-danger: 0 0 0 3px rgba(220, 38, 38, 0.22);
+
   /* ── Gradients marketing ───────────────────────────────────────────────── */
   /* Wash subtil pour les heros / sections de mise en avant (warm) */
   --gradient-hero: linear-gradient(135deg, rgba(255, 90, 31, 0.06) 0%, rgba(255, 122, 60, 0.02) 100%);
@@ -125,4 +131,17 @@ textarea::placeholder {
 .text-bg-per-line {
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
+}
+
+/* ── Focus ring utility ──────────────────────────────────────────────────
+   Anneau de focus unifié à appliquer sur tout élément focusable (button,
+   input, link, etc.). Use `focus-ring` ou `focus-ring-danger` pour le
+   variant erreur. */
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
+}
+.focus-ring-danger:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring-danger);
 }

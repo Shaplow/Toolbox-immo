@@ -243,6 +243,135 @@ export default function TokensPage() {
         </div>
       </section>
 
+      {/* ── States UI ──────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="États UI"
+          subtitle="Patterns à appliquer uniformément dans tous les composants. La cohérence des états (focus, sélection, disabled, loading, erreur) est ce qui distingue un design system tenu d'un patchwork."
+        />
+
+        {/* Focus ring */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+          <p className="text-[11px] uppercase tracking-widest text-gray-400">
+            Focus ring · classe utility <code className="font-mono text-gray-600">focus-ring</code>
+          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <button className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 focus-ring transition-colors hover:bg-gray-50">
+              Tab pour me focus
+            </button>
+            <input
+              type="text"
+              placeholder="Tab pour focus"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus-ring"
+            />
+            <input
+              type="text"
+              placeholder="Erreur (danger)"
+              className="rounded-md border border-danger-600 px-3 py-2 text-sm focus-ring-danger"
+            />
+          </div>
+          <p className="text-[11px] text-gray-500 leading-relaxed">
+            La classe globale <code className="font-mono">focus-ring</code> applique
+            l&apos;anneau brand sur <code className="font-mono">:focus-visible</code>.
+            Pour les inputs en erreur, utiliser <code className="font-mono">focus-ring-danger</code>.
+          </p>
+        </div>
+
+        {/* Sélection mono — IMPORTANT : brand n'est PAS pour la sélection UI */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+          <p className="text-[11px] uppercase tracking-widest text-gray-400">
+            Sélection · état actif
+          </p>
+          <p className="text-[12px] text-gray-600 leading-relaxed max-w-prose">
+            <strong className="text-gray-950">Le brand n&apos;est PAS la couleur de sélection.</strong>
+            {" "}Une nav, une liste, un onglet sélectionné se rend en{" "}
+            <strong className="text-gray-950">mono dark</strong> (gray-950 ou
+            gray-100). Sinon l&apos;app vire orange-pop. Reserve le brand aux
+            CTA primary et highlights marketing.
+          </p>
+          {/* Sample nav list */}
+          <div className="rounded-md border border-gray-200 bg-gray-50/40 p-2 max-w-sm space-y-1">
+            {["Calques", "Formulaire", "Séquence", "Musique"].map((item, i) => (
+              <div
+                key={item}
+                className={`rounded-md px-3 py-1.5 text-sm flex items-center justify-between transition-colors ${
+                  i === 2
+                    ? "bg-gray-950 text-white"
+                    : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                <span>{item}</span>
+                {i === 2 && <span className="text-[10px] uppercase tracking-widest opacity-60">Sélectionné</span>}
+              </div>
+            ))}
+          </div>
+          {/* Sample tab */}
+          <div className="flex items-center border-b border-gray-200 max-w-md">
+            {["Aperçu", "Versions", "Activité"].map((tab, i) => (
+              <button
+                key={tab}
+                className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                  i === 0
+                    ? "border-gray-950 text-gray-950"
+                    : "border-transparent text-gray-500 hover:text-gray-800"
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Disabled / Loading */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+          <p className="text-[11px] uppercase tracking-widest text-gray-400">
+            Désactivé · chargement
+          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              disabled
+              className="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white opacity-50 cursor-not-allowed"
+            >
+              Disabled
+            </button>
+            <button className="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white opacity-70 cursor-wait inline-flex items-center gap-2">
+              <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+              Chargement
+            </button>
+            <input
+              type="text"
+              disabled
+              placeholder="Input désactivé"
+              className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-400 cursor-not-allowed"
+            />
+          </div>
+          <p className="text-[11px] text-gray-500 leading-relaxed">
+            Disabled : <code className="font-mono">opacity-50 cursor-not-allowed</code>.
+            Loading : spinner inline + <code className="font-mono">opacity-70</code>.
+          </p>
+        </div>
+
+        {/* Hover lift */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+          <p className="text-[11px] uppercase tracking-widest text-gray-400">
+            Hover lift (cards interactives)
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {["Module A", "Module B", "Module C"].map((m) => (
+              <div
+                key={m}
+                className="cursor-pointer rounded-lg border border-gray-200 bg-white p-4 transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-elevated)] hover:border-gray-300"
+              >
+                <p className="text-sm font-medium text-gray-950">{m}</p>
+                <p className="mt-1 text-[11px] text-gray-500">
+                  Subtil. Pas de couleur, juste l&apos;élévation.
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── Brand & marketing ──────────────────────────────────────────── */}
       <section className="space-y-4">
         <SectionHeading
@@ -253,7 +382,7 @@ export default function TokensPage() {
         {/* Brand color stops */}
         <div className="rounded-lg border border-gray-200 bg-white p-4">
           <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-3 inline-flex items-center gap-1.5">
-            <span className="text-brand-600">✦</span>
+            <span className="text-brand-700">✦</span>
             Brand · Orange corail
           </p>
           <div className="grid grid-cols-2 gap-1 sm:grid-cols-6">
@@ -277,7 +406,7 @@ export default function TokensPage() {
             style={{ backgroundImage: "var(--texture-grain)" }}
           />
           <div className="relative">
-            <p className="text-[11px] uppercase tracking-widest text-brand-600 font-medium inline-flex items-center gap-1.5">
+            <p className="text-[11px] uppercase tracking-widest text-brand-700 font-medium inline-flex items-center gap-1.5">
               <span>✦</span>
               Nouveau · Mise à jour
             </p>
@@ -321,7 +450,7 @@ export default function TokensPage() {
               </div>
               <div className="p-4">
                 <p className="text-[10px] uppercase tracking-widest text-gray-400 font-medium">Module</p>
-                <h4 className="mt-1 font-semibold tracking-tight text-gray-950 group-hover:text-brand-600 transition-colors">
+                <h4 className="mt-1 font-semibold tracking-tight text-gray-950 group-hover:text-brand-900 transition-colors">
                   {card.label}
                 </h4>
                 <p className="mt-1 text-xs text-gray-500">
@@ -349,7 +478,7 @@ export default function TokensPage() {
             <button className="rounded-md px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100">
               Ghost
             </button>
-            <a className="group inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700">
+            <a className="group inline-flex items-center gap-1 text-sm font-medium text-brand-700 hover:text-brand-900">
               Lien narratif
               <span className="transition-transform group-hover:translate-x-0.5">→</span>
             </a>
@@ -361,7 +490,7 @@ export default function TokensPage() {
           <p className="text-[11px] uppercase tracking-widest text-gray-400">Typographie marketing</p>
 
           <div className="space-y-2">
-            <p className="text-[11px] uppercase tracking-widest text-brand-600 font-medium inline-flex items-center gap-1.5">
+            <p className="text-[11px] uppercase tracking-widest text-brand-700 font-medium inline-flex items-center gap-1.5">
               <span>✦</span>
               Display serif italique
             </p>
@@ -451,7 +580,7 @@ export default function TokensPage() {
                 Un mot{" "}
                 <span className="relative inline-block">
                   important
-                  <HandDrawn.Underline className="absolute -bottom-1.5 left-0 h-2 w-full text-brand-600" />
+                  <HandDrawn.Underline className="absolute -bottom-1.5 left-0 h-2 w-full text-brand-700" />
                 </span>{" "}
                 à mettre en valeur.
               </p>
@@ -460,7 +589,7 @@ export default function TokensPage() {
             {/* Asterisk */}
             <div>
               <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Asterisk</p>
-              <p className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-brand-600 font-medium">
+              <p className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-brand-700 font-medium">
                 <HandDrawn.Asterisk className="h-3.5 w-3.5" />
                 Nouveau · Astuce
               </p>
@@ -469,7 +598,7 @@ export default function TokensPage() {
             {/* Arrow */}
             <div>
               <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Arrow</p>
-              <a className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700 group">
+              <a className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:text-brand-900 group">
                 Voir l&apos;exemple
                 <HandDrawn.Arrow className="h-3 w-7 transition-transform group-hover:translate-x-0.5" />
               </a>
@@ -482,7 +611,7 @@ export default function TokensPage() {
                 Ton plan{" "}
                 <span className="relative inline-block px-1">
                   hebdo
-                  <HandDrawn.HighlightCircle className="absolute -inset-x-1 -inset-y-2 text-brand-600 -z-10" />
+                  <HandDrawn.HighlightCircle className="absolute -inset-x-1 -inset-y-2 text-brand-700 -z-10" />
                 </span>{" "}
                 est validé.
               </p>
@@ -492,9 +621,9 @@ export default function TokensPage() {
             <div className="sm:col-span-2">
               <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Bracket</p>
               <p className="inline-flex items-center text-sm text-gray-700">
-                <HandDrawn.Bracket side="left" className="h-8 w-4 text-brand-600" />
+                <HandDrawn.Bracket side="left" className="h-8 w-4 text-brand-700" />
                 <span className="px-1 font-hand text-xl text-brand-700">astuce</span>
-                <HandDrawn.Bracket side="right" className="h-8 w-4 text-brand-600" />
+                <HandDrawn.Bracket side="right" className="h-8 w-4 text-brand-700" />
                 <span className="ml-2">
                   Survol les cards pour voir le lift au hover.
                 </span>

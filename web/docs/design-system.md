@@ -52,16 +52,18 @@ Utilisation : `bg-success-100 text-success-700` pour un badge soft, `bg-success-
 
 ### Brand color
 
-Une couleur signature en plus des accents sémantiques — orange-corail mature, le peps "agence créative" sans tomber dans le pop kid. Réservée aux CTA principaux, liens narratifs et highlights marketing. **Jamais** utilisée pour communiquer un statut (succès / erreur / info).
+Une couleur signature en plus des accents sémantiques — orange-corail mature, le peps "agence créative" sans tomber dans le pop kid. Réservée aux CTA principaux, liens narratifs et highlights marketing. **Jamais** utilisée pour communiquer un statut (succès / erreur / info), **jamais** pour la sélection d'un élément UI (item de nav actif, slot sélectionné — cf. "États UI" plus bas).
 
 | Stop | Hex | Usage |
 |---|---|---|
 | `brand-50`  | `#fff4ed` | Wash très subtil (hero bg) |
 | `brand-100` | `#ffe3d0` | Halo doux |
-| `brand-500` | `#ff7a3c` | Lien hover, badge new |
-| `brand-600` | `#ff5a1f` | **Couleur principale** : CTA primaire, liens, eyebrow |
-| `brand-700` | `#e04210` | Hover state du CTA |
-| `brand-900` | `#9c2b06` | Highlights inverses (texte brand sur bg foncé) |
+| `brand-500` | `#ff7a3c` | Badge "new", icône signature |
+| `brand-600` | `#ff5a1f` | **Fonds** : CTA primary (`bg-brand-600 text-white`) — contraste OK sur blanc |
+| `brand-700` | `#e04210` | **Textes** : eyebrow, lien narratif, headline brand sur fond clair — passe AA |
+| `brand-900` | `#9c2b06` | Hover state du texte brand |
+
+**Accessibilité texte critique** : `brand-600` sur blanc = ratio ~3.4 (sous AA pour texte petit). Utiliser `brand-700` dès qu'on met du texte brand sur fond clair (ratio ~5.2, AA ✓).
 
 ### Effets
 
@@ -73,6 +75,41 @@ Une couleur signature en plus des accents sémantiques — orange-corail mature,
 - `--texture-grain` — noise SVG très subtil pour les hero. Toujours `opacity ≤ 0.6` avec `mix-blend-multiply` pour ne pas dégrader la lecture. Donne la "matière magazine" qui sort du tech pur.
 
 Accès via `style={{ background: "var(--gradient-hero)" }}` ou `className="bg-[var(--gradient-hero)]"`.
+
+### États UI
+
+Patterns à appliquer uniformément. La cohérence des états est ce qui distingue un design system tenu d'un patchwork.
+
+| État | Pattern | Token / classe |
+|---|---|---|
+| **Focus** | Anneau brand 3px à 22% opacité | `focus-ring` (utility globale) |
+| **Focus erreur** | Anneau danger 3px | `focus-ring-danger` |
+| **Sélection (item de nav, onglet, slot)** | **Mono dark** : `bg-gray-950 text-white` ou `border-b-gray-950` | — pas de classe dédiée |
+| **Hover discret (item de liste)** | `bg-gray-100` | — |
+| **Hover lift (cards interactives)** | `hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-elevated)] hover:border-gray-300` | — |
+| **Désactivé** | `opacity-50 cursor-not-allowed` (button) ou `bg-gray-50 text-gray-400 cursor-not-allowed` (input) | — |
+| **Chargement** | Spinner inline `<span class="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />` + `opacity-70 cursor-wait` | — |
+| **Erreur (input)** | `border-danger-600` + `focus-ring-danger` | — |
+
+**Règle critique** : le **brand** n'est PAS utilisé pour la sélection. Une nav, une liste, un onglet sélectionné = **mono dark** (`gray-950`). Sinon l'app vire orange-pop et le brand perd sa rareté.
+
+### Couleurs auxiliaires (rôles, phases)
+
+Le système a deux familles de couleurs **en plus** du brand et des accents sémantiques. Elles sont **gérées hors design system** (Tailwind par défaut, dans `web/src/lib/slots/phase.ts` et `web/src/types/calendar.ts`). Ne pas les toucher pendant la migration UI.
+
+| Famille | Source | Palette utilisée |
+|---|---|---|
+| **Phases publication** | `PHASE_COLORS` dans `lib/slots/phase.ts` | gray (planned), yellow (shooting), stone (production), amber (admin_review), indigo (cm_review), teal (publishing), green (published), gray (terminated) |
+| **Rôles (badges)** | `OWNER_BADGE_CLS` dans `lib/slots/statusLabels.ts` | amber (Vidéaste), orange (Monteur), indigo (CM), violet (Admin) |
+| **Avatars rôles SlotCard** | `ROLE_AVATAR_CLS` dans `calendar/SlotCard.tsx` | amber (V), orange (M), indigo (C) |
+
+Ces couleurs **signifient** quelque chose (qui c'est, où on en est). Le brand ne les touche pas. La migration UI ne les modifie pas non plus, sauf en cas de clash visuel explicite (cas `production: orange` repeint en `stone` car conflit avec brand).
+
+### Radius autorisés
+
+- Tokens du DS : `rounded-sm` (4px) · `rounded-md` (6px) · `rounded-lg` (8px) · `rounded-xl` (10px)
+- Tailwind par défaut autorisés en plus : `rounded-2xl` (16px, modals / hero cards), `rounded-full` (pills, dots, avatars)
+- Privilégier l'échelle DS pour les composants UI courants. `rounded-2xl` réservé aux surfaces "élevées" (modals, hero), `rounded-full` aux éléments circulaires.
 
 ### Eyebrow décoratif & décors hand-drawn
 
