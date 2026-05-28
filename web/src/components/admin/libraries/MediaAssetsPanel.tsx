@@ -40,8 +40,12 @@ export function MediaAssetsPanel({ library }: Props) {
   // ── Upload modal ──
   // D7 — la modal d'upload est extraite dans MediaAssetsUploadModal.tsx,
   // qui encapsule son propre state (drag-drop, progress, fields). Le panel
-  // ne garde que l'open/close.
+  // ne garde que l'open/close + un drop-zone page-level qui ouvre la modal
+  // pré-remplie avec les fichiers déposés.
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
+  const [pageDragOver, setPageDragOver] = useState(false);
+  const dragDepthRef = useRef(0);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortKey>("date_desc");
   const [tagFilter, setTagFilter] = useState("");
@@ -557,8 +561,52 @@ export function MediaAssetsPanel({ library }: Props) {
     );
   }
 
+  // ── Page-level drag-drop ─────────────────────────────────────────────
+  // Permet de déposer des fichiers n'importe où sur le panel ; ouvre la modal
+  // pré-remplie et lance l'upload automatiquement. dragDepthRef évite que les
+  // enfants déclenchent un dragleave (compteur d'entrées).
+  const isVideoLib = library.type === "video";
+  function handlePageDragOver(e: React.DragEvent) {
+    if (!e.dataTransfer?.types?.includes("Files")) return;
+    e.preventDefault();
+    setPageDragOver(true);
+  }
+  function handlePageDragEnter(e: React.DragEvent) {
+    if (!e.dataTransfer?.types?.includes("Files")) return;
+    dragDepthRef.current += 1;
+    setPageDragOver(true);
+  }
+  function handlePageDragLeave() {
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setPageDragOver(false);
+  }
+  function handlePageDrop(e: React.DragEvent) {
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setPageDragOver(false);
+    const files = Array.from(e.dataTransfer.files ?? []).filter((f) =>
+      isVideoLib ? f.type.startsWith("video/") : f.type.startsWith("audio/"),
+    );
+    if (files.length === 0) return;
+    setPendingFiles(files);
+    setShowUploadModal(true);
+  }
+
   return (
-    <div className={`relative${selectMode ? " pb-20" : ""}`}>
+    <div
+      className={`relative${selectMode ? " pb-20" : ""}`}
+      onDragEnter={handlePageDragEnter}
+      onDragOver={handlePageDragOver}
+      onDragLeave={handlePageDragLeave}
+      onDrop={handlePageDrop}
+    >
+      {pageDragOver && !showUploadModal && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-indigo-500/10 border-4 border-dashed border-indigo-400 pointer-events-none">
+          <div className="bg-white rounded-xl shadow-lg px-6 py-4 text-sm font-medium text-indigo-700">
+            Déposez les fichiers pour les ajouter à <span className="font-semibold">{library.name}</span>
+          </div>
+        </div>
+      )}
       <MediaAssetsToolbar
         library={library}
         isVideo={isVideo}
@@ -704,10 +752,12 @@ export function MediaAssetsPanel({ library }: Props) {
       {/* ── Upload modal (D7 — extraite dans MediaAssetsUploadModal) ── */}
       <MediaAssetsUploadModal
         open={showUploadModal}
-        onClose={() => setShowUploadModal(false)}
+        onClose={() => { setShowUploadModal(false); setPendingFiles(null); }}
         library={library}
         accounts={accounts}
         onUploaded={() => void load()}
+        initialFiles={pendingFiles}
+        onInitialFilesConsumed={() => setPendingFiles(null)}
       />
       {confirmDialog}
     </div>

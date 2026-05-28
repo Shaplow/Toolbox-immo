@@ -29,9 +29,24 @@ interface Props {
   accounts: InstagramAccount[];
   /** Appelé après upload réussi pour que le parent refetch la liste. */
   onUploaded: () => void | Promise<void>;
+  /**
+   * Fichiers pré-fournis (typiquement via drop-zone page-level).
+   * Quand non-vide, le upload démarre automatiquement à l'ouverture de la modal.
+   * Le parent doit le reset à null après consommation pour éviter une re-upload.
+   */
+  initialFiles?: File[] | null;
+  onInitialFilesConsumed?: () => void;
 }
 
-export function MediaAssetsUploadModal({ open, onClose, library, accounts, onUploaded }: Props) {
+export function MediaAssetsUploadModal({
+  open,
+  onClose,
+  library,
+  accounts,
+  onUploaded,
+  initialFiles,
+  onInitialFilesConsumed,
+}: Props) {
   const isVideo = library.type === "video";
 
   // ─ State local à la modal (extrait de MediaAssetsPanel)
@@ -56,6 +71,19 @@ export function MediaAssetsUploadModal({ open, onClose, library, accounts, onUpl
     return () => window.removeEventListener("keydown", handler);
   }, [open, modalUploading, onClose]);
 
+  // Auto-upload de fichiers passés via initialFiles (page-level drop-zone).
+  useEffect(() => {
+    if (!open || !initialFiles || initialFiles.length === 0) return;
+    const filtered = initialFiles.filter((f) =>
+      isVideo ? f.type.startsWith("video/") : f.type.startsWith("audio/"),
+    );
+    if (filtered.length > 0) {
+      void uploadFiles(filtered);
+    }
+    onInitialFilesConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialFiles]);
+
   async function uploadFiles(files: File[]) {
     if (files.length === 0) return;
     setModalUploading(true);
@@ -64,24 +92,37 @@ export function MediaAssetsUploadModal({ open, onClose, library, accounts, onUpl
     setModalProgress(0);
 
     const uploadedIds: string[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]!;
+    const failed: string[] = [];
+
+    // Concurrency-limited parallel uploader (3 simultanés) :
+    // - le presign reste sequential (pas la bottleneck), c'est l'upload qui
+    //   bénéficie du parallélisme.
+    // - on agrège le progress via une map fileIdx → percent.
+    const CONCURRENCY = 3;
+    const progressMap = new Map<number, number>();
+
+    function refreshOverallProgress() {
+      let sum = 0;
+      for (const v of progressMap.values()) sum += v;
+      const overall = Math.round((sum / files.length) * 100);
+      setModalProgress(overall);
+    }
+
+    async function uploadOne(idx: number): Promise<void> {
+      const file = files[idx]!;
+      progressMap.set(idx, 0);
       const presignRes = await fetch(`/api/admin/libraries/media/${library.id}/upload`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size }),
       });
       if (!presignRes.ok) {
-        const d = (await presignRes.json()) as { error?: string };
-        setModalError(d.error ?? "Erreur lors de la préparation de l'upload");
-        setModalUploading(false);
+        failed.push(file.name);
+        progressMap.set(idx, 100);
+        refreshOverallProgress();
         return;
       }
-      const { uploadUrl, assetId } = (await presignRes.json()) as {
-        uploadUrl: string;
-        assetId: string;
-      };
-      uploadedIds.push(assetId);
+      const { uploadUrl, assetId } = (await presignRes.json()) as { uploadUrl: string; assetId: string };
 
       const ok = await new Promise<boolean>((resolve) => {
         const xhr = new XMLHttpRequest();
@@ -89,18 +130,33 @@ export function MediaAssetsUploadModal({ open, onClose, library, accounts, onUpl
         xhr.setRequestHeader("Content-Type", file.type);
         xhr.upload.addEventListener("progress", (ev) => {
           if (ev.lengthComputable) {
-            const filePercent = ev.loaded / ev.total;
-            const overall = Math.round(((i + filePercent) / files.length) * 100);
-            setModalProgress(overall);
+            progressMap.set(idx, ev.loaded / ev.total);
+            refreshOverallProgress();
           }
         });
         xhr.addEventListener("load", () => resolve(xhr.status >= 200 && xhr.status < 300));
         xhr.addEventListener("error", () => resolve(false));
         xhr.send(file);
       });
+      progressMap.set(idx, 1);
+      refreshOverallProgress();
+      if (ok) uploadedIds.push(assetId);
+      else failed.push(file.name);
+    }
 
-      if (!ok) {
-        setModalError(`Échec de l'upload : ${file.name}`);
+    // Worker pool : `CONCURRENCY` workers tirent depuis une queue partagée.
+    let next = 0;
+    const workers = Array.from({ length: Math.min(CONCURRENCY, files.length) }, async () => {
+      while (next < files.length) {
+        const idx = next++;
+        await uploadOne(idx);
+      }
+    });
+    await Promise.all(workers);
+
+    if (failed.length > 0) {
+      setModalError(`Échec(s) : ${failed.slice(0, 3).join(", ")}${failed.length > 3 ? "…" : ""}`);
+      if (uploadedIds.length === 0) {
         setModalUploading(false);
         return;
       }
@@ -124,7 +180,11 @@ export function MediaAssetsUploadModal({ open, onClose, library, accounts, onUpl
       });
     }
 
-    setModalSuccess(`${files.length} fichier${files.length > 1 ? "s" : ""} uploadé${files.length > 1 ? "s" : ""}`);
+    const okCount = uploadedIds.length;
+    setModalSuccess(
+      `${okCount} fichier${okCount > 1 ? "s" : ""} uploadé${okCount > 1 ? "s" : ""}` +
+        (failed.length > 0 ? ` · ${failed.length} échec(s)` : ""),
+    );
     setModalProgress(null);
     setModalUploading(false);
     await onUploaded();
