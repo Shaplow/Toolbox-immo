@@ -20,7 +20,6 @@ import { MediaAssetsGroupColumn } from "./mediaAssets/MediaAssetsGroupColumn";
 import { MediaAssetsCompactCard } from "./mediaAssets/MediaAssetsCompactCard";
 import { MediaAssetsToolbar } from "./mediaAssets/MediaAssetsToolbar";
 import { useAssetSequence } from "./mediaAssets/useAssetSequence";
-import { RotationSimulator } from "./mediaAssets/RotationSimulator";
 
 interface Props {
   library: MediaLibrary;
@@ -635,11 +634,6 @@ export function MediaAssetsPanel({ library }: Props) {
 
       {/* D8 — bulk action bar extraite dans MediaAssetsBulkActionBar */}
       {selectMode && <MediaAssetsBulkActionBar bulk={bulk} filtered={filtered} accounts={accounts} />}
-
-      {/* W4 — Simulateur de rotation (panel debug pliable) */}
-      {!selectMode && (
-        <RotationSimulator libraryId={library.id} accounts={accounts} />
-      )}
 
       {/* Error */}
       {loadError && (
