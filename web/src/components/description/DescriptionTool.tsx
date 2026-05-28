@@ -13,6 +13,7 @@ import {
   ChevronDown,
   ChevronUp,
   AlertCircle,
+  ArrowLeft,
   Loader2,
   Wand2,
   Settings,
@@ -114,6 +115,16 @@ export function DescriptionTool({
 }) {
   const searchParams = useSearchParams();
   const slotIdFromUrl = searchParams?.get("slotId") ?? null;
+  // returnTo : URL relative à laquelle le bouton "← Retour" doit
+  // ramener l'utilisateur. Construit par DescriptionSection quand
+  // on entre depuis la fiche publication, sinon absent.
+  const returnToRaw = searchParams?.get("returnTo") ?? null;
+  // Garde-fou : on n'accepte que les chemins relatifs internes
+  // pour éviter un open-redirect via le query string.
+  const returnTo =
+    returnToRaw && returnToRaw.startsWith("/") && !returnToRaw.startsWith("//")
+      ? returnToRaw
+      : null;
 
   // Input
   const [inputTab, setInputTab] = useState<"upload" | "transcription">("upload");
@@ -333,6 +344,17 @@ export function DescriptionTool({
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
+
+      {/* Breadcrumb retour — visible quand on entre depuis la fiche publication. */}
+      {returnTo && (
+        <Link
+          href={returnTo}
+          className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+        >
+          <ArrowLeft size={14} />
+          Retour à la fiche publication
+        </Link>
+      )}
 
       {/* ── Section 1: Source ──────────────────────────────────────────── */}
       <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
