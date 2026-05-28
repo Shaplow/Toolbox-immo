@@ -44,16 +44,20 @@ export default async function CalendarPage() {
   // Listes des assignés disponibles — chargées uniquement pour ADMIN
   // (les MONTEUR/CM ne voient que leurs propres slots, le filtre serait
   // inutile pour eux).
+  //
+  // Les ADMIN sont inclus dans chaque liste car ils peuvent endosser
+  // n'importe quel rôle pipeline (cohérence avec SlotDetailPanel qui
+  // filtre `u.role === "X" || u.role === "ADMIN"` côté client).
   const [monteurs, cms] =
     role === "ADMIN"
       ? await Promise.all([
           prisma.user.findMany({
-            where: { role: "MONTEUR" },
+            where: { role: { in: ["MONTEUR", "ADMIN"] } },
             select: { id: true, name: true, email: true },
             orderBy: { name: "asc" },
           }),
           prisma.user.findMany({
-            where: { role: "CM" },
+            where: { role: { in: ["CM", "ADMIN"] } },
             select: { id: true, name: true, email: true },
             orderBy: { name: "asc" },
           }),
@@ -69,11 +73,12 @@ export default async function CalendarPage() {
   // preventing React hydration mismatches caused by timezone differences.
   const initialWeekStart = getMondayISOOf(new Date());
 
-  // Liste des vidéastes — pour le filtre admin
+  // Liste des vidéastes — pour le filtre admin. Inclut les ADMIN
+  // (ils peuvent endosser le rôle de vidéaste).
   const videastes =
     role === "ADMIN"
       ? await prisma.user.findMany({
-          where: { role: "VIDEASTE" },
+          where: { role: { in: ["VIDEASTE", "ADMIN"] } },
           select: { id: true, name: true, email: true },
           orderBy: { name: "asc" },
         })
