@@ -91,16 +91,6 @@ export function CoverTabPanel({ templateId }: Props) {
   const groups = template.groups ?? [];
   const slots = template.videoSequence ?? [];
 
-  // En mode single (pas de séquence), on expose le VideoBlock du canvas comme
-  // "clip principal" pour ne pas afficher "Aucun slot vidéo" alors qu'un clip
-  // existe bien. C'est purement visuel — les modes include/exclude restent
-  // cachés car non applicables sur un unique clip (équivalent au mode "all").
-  // Quand l'utilisateur active la séquence multi-clips, le panneau bascule
-  // automatiquement sur la liste réelle des slots.
-  const singleVideoBlockExists =
-    slots.length === 0 &&
-    template.blocks.some((b) => b.type === "video");
-
   const [presetId, setPresetId] = useState<string | null>(null);
   const [config, setConfig] = useState<CoverConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(true);
@@ -387,26 +377,10 @@ export function CoverTabPanel({ templateId }: Props) {
               Clips où piocher les frames
             </p>
             {slots.length === 0 ? (
-              singleVideoBlockExists ? (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 text-xs text-gray-600">
-                    <span className="shrink-0 w-5 h-5 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 text-[9px] font-semibold">
-                      1
-                    </span>
-                    <span>Vidéo principale</span>
-                    <span className="text-[9px] text-gray-400">(clip unique)</span>
-                  </div>
-                  <p className="text-[10px] text-gray-400 leading-relaxed">
-                    Les frames sont piochées sur toute la vidéo. Active une
-                    séquence multi-clips dans l&apos;onglet Vidéo pour piocher
-                    sélectivement sur certains clips.
-                  </p>
-                </div>
-              ) : (
-                <span className="text-[10px] text-gray-400 italic">
-                  Aucun bloc vidéo dans ce template.
-                </span>
-              )
+              <span className="text-[10px] text-gray-400 italic">
+                Aucun bloc vidéo dans ce template — ajoute-en un depuis Calques
+                puis amorce un clip dans l&apos;onglet Séquence.
+              </span>
             ) : (
               <>
                 <div className="space-y-1 mb-2">

@@ -198,9 +198,9 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
             ) : (
               <>
                 <p className="text-[10px] text-gray-400 mb-2">
-                  Clip unique dans ce template — définis des plages temporelles
-                  à ignorer sur la vidéo, ou active une séquence multi-clips
-                  dans l&apos;onglet Vidéo pour exclure sélectivement.
+                  Aucun clip défini dans ce template — définis des plages
+                  temporelles à ignorer, ou ajoute des clips dans l&apos;onglet
+                  Séquence.
                 </p>
                 {(captionAutoConfig?.excludeZones ?? []).map((zone, i) => (
                   <div key={zone.id} className="mb-2 rounded-lg border border-red-100 bg-red-50/30 p-2 space-y-1.5">
