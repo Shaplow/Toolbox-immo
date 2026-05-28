@@ -75,61 +75,62 @@ export function SlotCard({ slot, onClick, currentUserRole, currentUserId }: Slot
       (ownerRole === "CM" && slot.assigneeCmId === currentUserId) ||
       (ownerRole === "ADMIN" && currentUserRole === "ADMIN"));
 
+  // Wrapper en <div role="button"> au lieu de <button> : la card peut
+  // contenir un <Link> (badge pattern) qui était HTML invalide imbriqué
+  // dans un <button>, produisant un targeting erratique au clic.
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onClick();
+    }
+  }
+
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={`w-full text-left rounded-lg border bg-white p-2.5 hover:shadow-sm transition-all ${
+      onKeyDown={handleKeyDown}
+      className={`group w-full text-left rounded-xl border bg-white p-3 cursor-pointer hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 transition-all ${
         isMine
           ? "border-l-4 border-l-indigo-500 border-y border-r border-indigo-200 hover:border-indigo-400"
           : "border-gray-200 hover:border-indigo-300"
       }`}
     >
-      {/* Time + label */}
-      <div className="flex items-baseline gap-1.5 mb-1.5">
-        <span className="text-xs text-gray-400 font-medium tabular-nums">{time}</span>
-        <span className="text-xs font-semibold text-gray-800 truncate">
+      {/* Ligne 1 — heure + titre + flag auto */}
+      <div className="flex items-baseline gap-2 mb-2">
+        <span className="text-xs text-gray-500 font-medium tabular-nums shrink-0">{time}</span>
+        <span className="text-sm font-semibold text-gray-900 truncate flex-1">
           {slot.pattern?.label ?? slot.title ?? "Publication"}
         </span>
         {slot.isAuto && (
-          <span className="ml-auto shrink-0 text-[10px] text-gray-400">auto</span>
+          <span className="shrink-0 text-[10px] uppercase tracking-wide text-gray-400">auto</span>
         )}
       </div>
 
-      {/* Title (uniquement si distinct du label affiché ci-dessus) */}
+      {/* Sous-titre — visible uniquement si distinct du label */}
       {slot.title && slot.pattern?.label && slot.title !== slot.pattern.label && (
-        <p className="text-xs text-gray-600 truncate mb-1.5">{slot.title}</p>
+        <p className="text-xs text-gray-500 truncate mb-2">{slot.title}</p>
       )}
 
-      {/* Pattern badge cliquable — vers fiche compte */}
-      {slot.pattern?.label && (
-        <div className="mb-1.5" onClick={(e) => e.stopPropagation()}>
-          <Link
-            href={`/admin/accounts/${slot.accountId}`}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 transition-colors"
-            title={`Pattern : ${slot.pattern.label} — voir la fiche compte`}
-          >
-            {slot.pattern.label}
-          </Link>
-        </div>
-      )}
-
-      {/* Owner badge — qui doit jouer maintenant */}
-      {ownerRole && (
-        <div className="mb-1.5">
+      {/* Ligne 2 — owner badge + handle compte */}
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        {ownerRole && (
           <span
-            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border ${OWNER_BADGE_CLS[ownerRole]}`}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${OWNER_BADGE_CLS[ownerRole]}`}
             title={`Action attendue : ${OWNER_LABEL[ownerRole]}`}
           >
-            <span className="opacity-60">→</span>
             {isMine ? "À toi" : OWNER_LABEL[ownerRole]}
           </span>
-        </div>
-      )}
+        )}
+        <span className="text-[11px] text-gray-500 truncate">
+          @{slot.account.handle}
+        </span>
+      </div>
 
-      {/* Assignees row — visible quand au moins un est défini */}
+      {/* Ligne 3 — avatars assignés (si au moins un défini) */}
       {(slot.assigneeVideaste || slot.assigneeMonteur || slot.assigneeCm) && (
-        <div className="flex items-center gap-1 mb-1.5">
+        <div className="flex items-center gap-1.5 mb-2">
           {slot.assigneeVideaste && (
             <RoleAvatar
               role="V"
@@ -154,19 +155,26 @@ export function SlotCard({ slot, onClick, currentUserRole, currentUserId }: Slot
         </div>
       )}
 
-      {/* Footer: status + account + pipeline dots */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${statusColor}`}>
+      {/* Footer — statut + pattern + pipeline dots */}
+      <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-gray-100">
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${statusColor}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
           {STATUS_LABELS[slot.status]}
         </span>
-        <span className="text-[10px] text-gray-400 truncate uppercase tracking-wide">
-          {slot.account.handle}
-        </span>
+        {slot.pattern?.label && (
+          <Link
+            href={`/admin/accounts/${slot.accountId}`}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 transition-colors"
+            title={`Pattern : ${slot.pattern.label} — voir la fiche compte`}
+          >
+            {slot.pattern.label}
+          </Link>
+        )}
         <span className="ml-auto">
           <PipelineDots slot={slot} />
         </span>
       </div>
-    </button>
+    </div>
   );
 }

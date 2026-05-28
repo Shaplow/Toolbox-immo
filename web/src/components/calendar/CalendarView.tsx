@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Plus, RefreshCw, Calendar, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Calendar, X, Sparkles } from "lucide-react";
 import { DAY_LABELS, STATUS_OWNER, type PublicationSlot } from "@/types/calendar";
 import type { UserRole } from "@/types/roles";
 import { SlotCard } from "./SlotCard";
@@ -11,6 +11,7 @@ import { AddSlotModal } from "./AddSlotModal";
 import { CalendarFilters, type CalendarFiltersState } from "./CalendarFilters";
 import { toast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Button } from "@/components/ui/Button";
 
 interface Account {
   id: string;
@@ -297,22 +298,24 @@ export function CalendarView({
 
           {isAdmin && (
             <>
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => setConfirmGenOpen(true)}
-                disabled={generating}
-                className="px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                loading={generating}
+                icon={Sparkles}
               >
-                {generating ? "Génération…" : "Générer la semaine"}
-              </button>
+                Générer la semaine
+              </Button>
 
-              <button
-                type="button"
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={() => { setAddDefaultDate(undefined); setShowAdd(true); }}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 flex items-center gap-1.5"
+                icon={Plus}
               >
-                <Plus size={13} /> Slot
-              </button>
+                Slot
+              </Button>
             </>
           )}
         </div>
