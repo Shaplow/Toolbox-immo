@@ -100,6 +100,27 @@ Exceptions intentionnelles :
 - **Page admin avec panel client** : server component qui fetch via Prisma + passe initialData à un client component. Garde admin via `getUserContext` + `actualUser.role === "ADMIN"` (redirect si non).
 - **ToolPageHeader** partout en haut des pages admin (titre + subtitle + icône + actions optionnelles).
 
+### Surfaces UI — contrat home / calendar / fiche
+
+L'app a 3 surfaces principales, chacune avec une vocation distincte. **Ne jamais
+dupliquer une responsabilité d'une surface à une autre** (pas d'action surface
+dans les homes, pas de triage dans la fiche).
+
+| Surface | Rôle | Vocation |
+|---|---|---|
+| `/home` (HomeAdmin) | ADMIN | **Vue de pilotage** : KPI cards + versions à valider. Pas de worklist perso. |
+| `/home` (HomeMonteur / HomeCm / HomeVideaste) | rôle métier | **Worklist triage perso** — slots assignés, découpés par phase/urgence. Click → fiche. Aucune action surface (pas d'upload, pas de validation inline). |
+| `/home` (HomeExternalClient) | EXTERNAL_GENERATOR | **Gateway client externe** : templates accessibles + lien "Mes générations" → /listings. Hors pipeline éditoriale. |
+| `/calendar` | ADMIN principalement | **Orchestration** : création de slots, réassignation, génération de semaine. L'admin agit pour les autres rôles via le calendrier. |
+| `/publications/[id]` (fiche complète) | tous (filtré par rôle) | **Surface d'exécution unifiée**. `shouldRenderForRole` masque les sections hors-rôle. `ProductionChain` filtre les steps via `viewerRole`. ADMIN voit tout pour supervision/proxy. |
+
+**Convention ADMIN-proxy** : quand l'admin doit uploader un rush à la place du
+vidéaste ou faire un montage à la place du monteur, il passe par
+`/calendar` → slot → fiche complète. Toutes les sections lui sont visibles
+(les helpers `canX*` dans `lib/permissions/publications.ts` font le bypass ADMIN).
+**Pas de toggle "Agir comme X"** sur la fiche : le view-as existant au top
+de la nav (`/api/admin/view-as`) suffit pour prévisualiser le UI d'un rôle.
+
 ### Navigation admin (3 sous-sections)
 ```
 PRODUCTION  — Templates / Calendrier

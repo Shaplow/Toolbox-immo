@@ -6,7 +6,7 @@ import { HomeAdmin } from "@/components/home/HomeAdmin";
 import { HomeMonteur } from "@/components/home/HomeMonteur";
 import { HomeVideaste } from "@/components/home/HomeVideaste";
 import { HomeCm } from "@/components/home/HomeCm";
-import { HomeUser } from "@/components/home/HomeUser";
+import { HomeExternalClient } from "@/components/home/HomeExternalClient";
 
 /**
  * /home — Dispatcher de rôle.
@@ -37,27 +37,21 @@ export default async function HomePage() {
     return <HomeCm userId={effectiveUser.id} userName={effectiveUser.name} />;
   }
 
-  // Fallback USER (ou rôle inconnu) — accès "générateur externe" : on liste
-  // les ressources qui lui ont été attribuées (templates, presets, outils).
-  const [templateAccesses, presetAccesses] = await Promise.all([
-    prisma.templateAccess.findMany({
-      where: { userId: effectiveUser.id },
-      include: { template: { select: { id: true, name: true } } },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.captionPresetAccess.findMany({
-      where: { userId: effectiveUser.id },
-      include: { preset: { select: { id: true, name: true } } },
-      orderBy: { createdAt: "desc" },
-    }),
-  ]);
+  // Fallback EXTERNAL_GENERATOR (ou rôle inconnu) — client externe : on
+  // liste les templates qu'on lui a attribués, avec un lien vers ses
+  // générations dans /listings. Les presets sous-titres ne sont pas exposés
+  // (réservés à l'équipe interne — outils granulaires hors scope client).
+  const templateAccesses = await prisma.templateAccess.findMany({
+    where: { userId: effectiveUser.id },
+    include: { template: { select: { id: true, name: true } } },
+    orderBy: { createdAt: "desc" },
+  });
 
   return (
-    <HomeUser
+    <HomeExternalClient
       permissions={effectiveUser.permissions}
       access={{
         templates: templateAccesses.map((a) => ({ id: a.template.id, name: a.template.name })),
-        captionPresets: presetAccesses.map((a) => ({ id: a.preset.id, name: a.preset.name })),
       }}
     />
   );
