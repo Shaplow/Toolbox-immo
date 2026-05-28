@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus, RefreshCw, Calendar, X, Sparkles } from "lucide-react";
-import { DAY_LABELS, STATUS_OWNER, type PublicationSlot } from "@/types/calendar";
+import { DAY_LABELS, type PublicationSlot } from "@/types/calendar";
+import { resolveSlotOwner } from "@/lib/slots/statusLabels";
 import type { UserRole } from "@/types/roles";
 import { SlotCard } from "./SlotCard";
 import { SlotDetailPanel, type SlotDetailPanelMode } from "./SlotDetailPanel";
@@ -159,9 +160,12 @@ export function CalendarView({
   function nextWeek() { setWeekStart((d) => addDays(d, 7)); }
   function goToday() { setWeekStart(getMondayOf(new Date())); }
 
-  /** True si le slot attend une action de currentUser (rôle owner + assignation matchante). */
+  /** True si le slot attend une action de currentUser (rôle owner + assignation matchante).
+   *  Owner contextualisé via resolveSlotOwner — pour les statuts amont
+   *  (PLANNED, TO_DO) avec un vidéaste assigné, le owner devient VIDEASTE
+   *  au lieu de l'ADMIN par défaut de STATUS_OWNER. */
   function isSlotMine(slot: PublicationSlot): boolean {
-    const owner = STATUS_OWNER[slot.status];
+    const owner = resolveSlotOwner(slot);
     if (!owner) return false;
     if (owner === "ADMIN") return currentUserRole === "ADMIN";
     if (owner === "VIDEASTE") return slot.assigneeVideasteId === currentUserId;

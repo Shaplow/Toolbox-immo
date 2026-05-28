@@ -6,11 +6,11 @@ import {
   STATUS_COLORS,
   STATUS_DOT,
   STATUS_LABELS,
-  STATUS_OWNER,
   OWNER_LABEL,
   OWNER_BADGE_CLS,
   type PublicationSlot,
 } from "@/types/calendar";
+import { resolveSlotOwner } from "@/lib/slots/statusLabels";
 import type { UserRole } from "@/types/roles";
 
 interface SlotCardProps {
@@ -65,7 +65,9 @@ export function SlotCard({ slot, onClick, currentUserRole, currentUserId }: Slot
   });
   const statusColor = STATUS_COLORS[slot.status];
   const dot = STATUS_DOT[slot.status];
-  const ownerRole = STATUS_OWNER[slot.status];
+  // Owner contextualisé : PLANNED/TO_DO avec vidéaste assigné devient
+  // VIDEASTE (sinon STATUS_OWNER renvoie ADMIN, faussant le badge).
+  const ownerRole = resolveSlotOwner(slot);
 
   // Détermine si le slot attend une action de l'utilisateur courant
   const isMine =

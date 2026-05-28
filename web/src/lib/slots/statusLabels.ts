@@ -148,6 +148,36 @@ export const STATUS_OWNER: Record<SlotStatus, SlotOwnerRole> = {
   DONE: null,
 };
 
+/**
+ * Owner contextuel : enrichit STATUS_OWNER avec l'état d'assignation.
+ *
+ * Cas particulier — statuts "phase amont" (PLANNED, TO_DO legacy) :
+ * STATUS_OWNER les marque ADMIN par défaut, mais quand un vidéaste est
+ * assigné, l'action attendue est concrètement le shoot, donc l'owner
+ * effectif est le vidéaste. Sans cette résolution, le badge SlotCard
+ * affichait "Admin" / "À toi (admin)" sur des slots où tout le monde
+ * (sauf l'admin) attendait le vidéaste — trompeur côté UX et exclusif
+ * côté logique (le vidéaste assigné ne voyait pas le slot comme "le
+ * sien" dans le filtre `onlyMine`).
+ *
+ * DRAFT reste ADMIN même avec un vidéaste assigné : un brouillon n'est
+ * pas considéré comme "à shooter" tant que l'admin n'a pas confirmé
+ * (passage à PLANNED).
+ */
+export function resolveSlotOwner(slot: {
+  status: SlotStatus | string;
+  assigneeVideasteId?: string | null;
+}): SlotOwnerRole {
+  const base = STATUS_OWNER[slot.status as SlotStatus] ?? null;
+  if (
+    (slot.status === "PLANNED" || slot.status === "TO_DO") &&
+    slot.assigneeVideasteId
+  ) {
+    return "VIDEASTE";
+  }
+  return base;
+}
+
 /** Libellé court pour le badge owner (FR). */
 export const OWNER_LABEL: Record<NonNullable<SlotOwnerRole>, string> = {
   VIDEASTE: "Vidéaste",

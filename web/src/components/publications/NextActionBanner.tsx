@@ -11,12 +11,12 @@
 
 import { ArrowRight } from "lucide-react";
 import {
-  STATUS_OWNER,
   NEXT_ACTION,
   OWNER_LABEL,
   OWNER_BADGE_CLS,
   type SlotStatus,
 } from "@/types/calendar";
+import { resolveSlotOwner } from "@/lib/slots/statusLabels";
 import type { UserRole } from "@/types/roles";
 
 interface Props {
@@ -37,7 +37,10 @@ function isCurrentUserOwner(args: {
   assigneeCmId: string | null;
   assigneeVideasteId?: string | null;
 }): boolean {
-  const owner = STATUS_OWNER[args.slotStatus as SlotStatus] ?? null;
+  const owner = resolveSlotOwner({
+    status: args.slotStatus,
+    assigneeVideasteId: args.assigneeVideasteId ?? null,
+  });
   if (!owner) return false;
   if (owner === "ADMIN") return args.currentUserRole === "ADMIN";
   if (owner === "VIDEASTE") return args.assigneeVideasteId === args.currentUserId;
@@ -76,7 +79,10 @@ export function NextActionBanner({
   assigneeCmId,
   assigneeVideasteId,
 }: Props) {
-  const owner = STATUS_OWNER[slotStatus as SlotStatus] ?? null;
+  const owner = resolveSlotOwner({
+    status: slotStatus,
+    assigneeVideasteId: assigneeVideasteId ?? null,
+  });
   const action = NEXT_ACTION[slotStatus as SlotStatus] ?? null;
   if (!owner || !action) return null;
 
