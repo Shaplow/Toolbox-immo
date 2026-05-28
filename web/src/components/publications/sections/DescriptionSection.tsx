@@ -41,6 +41,14 @@ interface PromptOption {
   name: string;
 }
 
+/** Libellés français pour les modes de description (sinon on affiche les
+ *  codes camelCase bruts dans l'en-tête de section). */
+const DESCRIPTION_MODE_LABELS: Record<string, string> = {
+  preFilled: "pré-remplie",
+  autoGenerate: "auto-générée",
+  manualWrite: "manuelle",
+};
+
 export function DescriptionSection({
   slot,
   pattern,
@@ -208,7 +216,9 @@ function DescriptionSectionInner({
           <FileText size={16} className="text-gray-400" />
           <h2 className="text-sm font-semibold text-gray-700">Description</h2>
           {pattern?.needsDescription && pattern.needsDescription !== "none" && (
-            <span className="text-xs text-gray-400 italic">({pattern.needsDescription})</span>
+            <span className="text-xs text-gray-400 italic">
+              ({DESCRIPTION_MODE_LABELS[pattern.needsDescription] ?? pattern.needsDescription})
+            </span>
           )}
         </div>
 

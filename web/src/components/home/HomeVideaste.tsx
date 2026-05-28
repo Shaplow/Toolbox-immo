@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { WorklistSection } from "./WorklistSection";
 import type { WorklistSlot } from "@/types/worklist";
 import type { SlotStatus } from "@/types/roles";
+import { STATUS_LABELS } from "@/types/calendar";
 import {
   getVideasteSection,
   isSlotOverdue,
@@ -140,7 +141,7 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
             <WorklistSection
               title="En retard"
               slots={overdue}
-              mode="monteur"
+              mode="admin"
               tone="danger"
             />
           )}
@@ -149,7 +150,7 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
           <WorklistSection
             title="À shooter cette semaine"
             slots={thisWeekShoots}
-            mode="monteur"
+            mode="admin"
             tone="default"
             emptyMessage="Aucun shoot prévu cette semaine."
           />
@@ -158,7 +159,7 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
           <WorklistSection
             title="À venir"
             slots={upcomingShoots}
-            mode="monteur"
+            mode="admin"
             tone="muted"
             collapsible
             defaultOpen={false}
@@ -223,7 +224,7 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
                       <p className="text-[11px] text-gray-400">@{slot.account.handle}</p>
                     </div>
                     <span className="text-[11px] text-gray-400 shrink-0">
-                      {slot.status}
+                      {STATUS_LABELS[slot.status] ?? slot.status}
                     </span>
                   </div>
                 ))}

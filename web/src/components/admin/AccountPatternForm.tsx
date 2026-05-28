@@ -511,7 +511,7 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
                       options={captionPresets}
                       placeholder={
                         captionPresets.length === 0
-                          ? "Aucun preset disponible — créez-en un dans /tools/captions"
+                          ? "Aucun preset disponible — créez-en un dans /captions"
                           : "— Choisir un preset —"
                       }
                     />
