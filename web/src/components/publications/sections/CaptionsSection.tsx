@@ -8,7 +8,8 @@
  */
 
 import Link from "next/link";
-import { Subtitles, ExternalLink, Loader2, CheckCircle, AlertCircle, Play } from "lucide-react";
+import { Subtitles, ExternalLink, Loader2, CheckCircle, AlertCircle, Play, Sparkles } from "lucide-react";
+import { canTriggerCaptions, type ActionVerdict } from "@/lib/publications/actions";
 
 interface CaptionJobInfo {
   id: string;
@@ -50,16 +51,27 @@ export function CaptionsSection({
   const isDone = latestCaptionJob?.status === "COMPLETED";
   const isError = latestCaptionJob?.status === "FAILED";
 
-  // Le mode "auto" : pour les patterns auto_template, les captions sont
-  // déclenchées par le pipeline RunPod après render → pas de bouton manuel
-  // "Lancer", juste un état (sauf en cas de FAILED où regénérer est légitime).
-  const isAutoPipeline = pattern?.source === "auto_template";
-  // Pour les patterns non auto_template (manual_rushes / external_upload),
-  // l'utilisateur peut lancer manuellement, MAIS la cible est soit la version
-  // courante (currentVersion) soit le render existant. Sans aucun des deux,
-  // le job ne saurait pas quoi traiter.
-  const hasTarget = !!currentVersion || !!renderId;
-  // Bouton "Regénérer" légitime quand un job final (DONE ou FAILED) existe.
+  // Verdict centralisé : visible / enabled / intent + reason.
+  // Voir lib/publications/actions.ts pour la logique métier (auto pipeline,
+  // prérequis cible, job déjà en vol).
+  const verdict: ActionVerdict = canTriggerCaptions({
+    pattern: pattern
+      ? {
+          source: pattern.source ?? "auto_template",
+          needsCaptions: pattern.needsCaptions,
+          needsDescription: "none",
+          coverMode: "none",
+        }
+      : null,
+    resolved: null,
+    render: renderId ? { status: "DONE" } : null,
+    currentVersion: currentVersion ? { id: "v" } : null,
+    coverPack: null,
+    latestCaptionJob: latestCaptionJob ?? null,
+    isAdmin: canEdit,
+    canEdit,
+  });
+  // Regénérer reste possible après un job final (DONE ou FAILED).
   const canRegenerate = isDone || isError;
 
   return (
@@ -123,22 +135,26 @@ export function CaptionsSection({
           </div>
         )}
 
-        {!latestCaptionJob && (
+        {/* Empty state — affiché tant qu'aucun job n'a été lancé et que le
+            verdict en explique la raison (auto, waiting, etc.). */}
+        {!latestCaptionJob && verdict.visible && verdict.enabled === false && (
+          <div className="flex items-start gap-2 text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
+            {verdict.intent === "auto" && (
+              <Sparkles size={14} className="text-indigo-500 shrink-0 mt-0.5" />
+            )}
+            <span>{verdict.reason}</span>
+          </div>
+        )}
+        {!latestCaptionJob && verdict.visible && verdict.enabled === true && (
           <p className="text-sm text-gray-500">
-            {isAutoPipeline
-              ? "Les sous-titres seront générés automatiquement après le rendu de cette publication."
-              : hasTarget
-                ? "Aucun job de sous-titres encore lancé pour cette publication."
-                : "En attente d'une version livrée — les sous-titres se génèrent à partir du fichier monteur."}
+            Aucun job de sous-titres encore lancé pour cette publication.
           </p>
         )}
 
-        {/* Bouton d'action — règles :
-            - Mode auto_template : pas de "Lancer", seulement "Regénérer" sur
-              un job DONE/FAILED (déclenche un re-run sur le même render).
-            - Mode manual : nécessite une cible (currentVersion ou renderId).
-            - Lecture seule pour les rôles sans canEdit. */}
-        {canEdit && (canRegenerate || !isAutoPipeline) && hasTarget && (
+        {/* CTA actif uniquement si le verdict l'autorise — ET on garde le
+            cas "Regénérer" (DONE/FAILED) qui ne dépend pas du verdict
+            (l'user veut explicitement re-tenter sur la même cible). */}
+        {canEdit && ((verdict.visible && verdict.enabled) || canRegenerate) && (
           <Link
             href={captionsHref}
             className="inline-flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"

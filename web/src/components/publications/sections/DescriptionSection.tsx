@@ -19,6 +19,7 @@ import { FileText, ExternalLink, Save, Check, Sparkles, Loader2 } from "lucide-r
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
 import { Textarea } from "@/components/ui/Textarea";
+import { canGenerateDescription } from "@/lib/publications/actions";
 
 interface Props {
   slot: { id: string };
@@ -223,30 +224,50 @@ function DescriptionSectionInner({
         </div>
 
         <div className="flex items-center gap-3">
-          {/* "Générer avec IA" : visible uniquement pour les modes manuels
-              (manualWrite). Pour autoGenerate, le job est déclenché par le
-              backend après render ; pour preFilled, le texte est pré-rempli
-              depuis la bibliothèque — proposer un bouton manuel à côté
-              donnerait l'impression que rien ne tourne en arrière-plan. */}
-          {canEdit && pattern?.needsDescription === "manualWrite" && (
-            <button
-              type="button"
-              onClick={() => setShowAi(true)}
-              className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
-            >
-              <Sparkles size={12} />
-              Générer avec IA
-            </button>
-          )}
-          {canEdit && pattern?.needsDescription === "autoGenerate" && (
-            <span
-              className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5"
-              title="Cette description est générée automatiquement après le rendu vidéo."
-            >
-              <Sparkles size={10} />
-              Auto
-            </span>
-          )}
+          {/* Verdict centralisé : modal IA visible seulement pour manualWrite ;
+              badge "Auto" pour autoGenerate ; rien pour preFilled / none. */}
+          {(() => {
+            const verdict = canGenerateDescription({
+              pattern: pattern
+                ? {
+                    source: "auto_template",
+                    needsCaptions: false,
+                    needsDescription: pattern.needsDescription,
+                    coverMode: "none",
+                  }
+                : null,
+              resolved: null,
+              render: null,
+              currentVersion: null,
+              coverPack: null,
+              latestCaptionJob: null,
+              isAdmin: canEdit,
+              canEdit,
+            });
+            if (!verdict.visible) return null;
+            if (verdict.enabled) {
+              return (
+                <button
+                  type="button"
+                  onClick={() => setShowAi(true)}
+                  className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
+                >
+                  <Sparkles size={12} />
+                  Générer avec IA
+                </button>
+              );
+            }
+            // verdict.enabled=false → badge intent (ex. "Auto")
+            return (
+              <span
+                className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5"
+                title={verdict.reason}
+              >
+                <Sparkles size={10} />
+                Auto
+              </span>
+            );
+          })()}
 
           {/* Lien vers l'outil standalone (config avancée : transcription, image, modèle…) */}
           <Link
