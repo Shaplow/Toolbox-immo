@@ -21,7 +21,7 @@ interface CaptionJobInfo {
 interface Props {
   slot: { id: string };
   renderId: string | null;
-  pattern: { needsCaptions: boolean } | null;
+  pattern: { needsCaptions: boolean; source?: string } | null;
   /** true pour CM, MONTEUR, et ADMIN */
   canEdit: boolean;
   /** Version courante promue par l'ADMIN (si needsRushes=true). */
@@ -49,6 +49,18 @@ export function CaptionsSection({
     latestCaptionJob?.status === "QUEUED" || latestCaptionJob?.status === "PROCESSING";
   const isDone = latestCaptionJob?.status === "COMPLETED";
   const isError = latestCaptionJob?.status === "FAILED";
+
+  // Le mode "auto" : pour les patterns auto_template, les captions sont
+  // déclenchées par le pipeline RunPod après render → pas de bouton manuel
+  // "Lancer", juste un état (sauf en cas de FAILED où regénérer est légitime).
+  const isAutoPipeline = pattern?.source === "auto_template";
+  // Pour les patterns non auto_template (manual_rushes / external_upload),
+  // l'utilisateur peut lancer manuellement, MAIS la cible est soit la version
+  // courante (currentVersion) soit le render existant. Sans aucun des deux,
+  // le job ne saurait pas quoi traiter.
+  const hasTarget = !!currentVersion || !!renderId;
+  // Bouton "Regénérer" légitime quand un job final (DONE ou FAILED) existe.
+  const canRegenerate = isDone || isError;
 
   return (
     <section id="captions" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
@@ -113,17 +125,25 @@ export function CaptionsSection({
 
         {!latestCaptionJob && (
           <p className="text-sm text-gray-500">
-            Aucun job de sous-titres encore lancé pour cette publication.
+            {isAutoPipeline
+              ? "Les sous-titres seront générés automatiquement après le rendu de cette publication."
+              : hasTarget
+                ? "Aucun job de sous-titres encore lancé pour cette publication."
+                : "En attente d'une version livrée — les sous-titres se génèrent à partir du fichier monteur."}
           </p>
         )}
 
-        {/* Bouton d'action vers l'outil */}
-        {canEdit ? (
+        {/* Bouton d'action — règles :
+            - Mode auto_template : pas de "Lancer", seulement "Regénérer" sur
+              un job DONE/FAILED (déclenche un re-run sur le même render).
+            - Mode manual : nécessite une cible (currentVersion ou renderId).
+            - Lecture seule pour les rôles sans canEdit. */}
+        {canEdit && (canRegenerate || !isAutoPipeline) && hasTarget && (
           <Link
             href={captionsHref}
             className="inline-flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
           >
-            {isDone ? (
+            {canRegenerate ? (
               <>
                 <Play size={14} />
                 Regénérer les sous-titres
@@ -135,7 +155,10 @@ export function CaptionsSection({
               </>
             )}
           </Link>
-        ) : (
+        )}
+
+        {/* Lecture seule (rôles non-éditeurs) : lien vers l'outil si un job existe. */}
+        {!canEdit && latestCaptionJob && (
           <Link
             href={captionsHref}
             className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors font-medium border border-indigo-200"

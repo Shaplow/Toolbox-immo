@@ -223,7 +223,12 @@ function DescriptionSectionInner({
         </div>
 
         <div className="flex items-center gap-3">
-          {canEdit && (
+          {/* "Générer avec IA" : visible uniquement pour les modes manuels
+              (manualWrite). Pour autoGenerate, le job est déclenché par le
+              backend après render ; pour preFilled, le texte est pré-rempli
+              depuis la bibliothèque — proposer un bouton manuel à côté
+              donnerait l'impression que rien ne tourne en arrière-plan. */}
+          {canEdit && pattern?.needsDescription === "manualWrite" && (
             <button
               type="button"
               onClick={() => setShowAi(true)}
@@ -232,6 +237,15 @@ function DescriptionSectionInner({
               <Sparkles size={12} />
               Générer avec IA
             </button>
+          )}
+          {canEdit && pattern?.needsDescription === "autoGenerate" && (
+            <span
+              className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5"
+              title="Cette description est générée automatiquement après le rendu vidéo."
+            >
+              <Sparkles size={10} />
+              Auto
+            </span>
           )}
 
           {/* Lien vers l'outil standalone (config avancée : transcription, image, modèle…) */}

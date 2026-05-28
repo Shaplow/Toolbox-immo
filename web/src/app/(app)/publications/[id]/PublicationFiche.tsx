@@ -491,7 +491,7 @@ export function PublicationFiche({
                 <CaptionsSection
                   slot={{ id: slot.id }}
                   renderId={render?.id ?? null}
-                  pattern={pattern ? { needsCaptions: pattern.needsCaptions } : null}
+                  pattern={pattern ? { needsCaptions: pattern.needsCaptions, source: pattern.source } : null}
                   canEdit={canEditCaptions}
                   currentVersion={currentVersion}
                   latestCaptionJob={latestCaptionJob}
@@ -554,6 +554,8 @@ export function PublicationFiche({
               hasCurrentVersion={!!currentVersion}
               hasNoRender={!render}
               resolvedConfig={resolvedConfig}
+              hasCaptionJob={!!latestCaptionJob}
+              hasCoverPack={!!coverPack && coverPack.status !== "FAILED"}
             />
 
             {/* Publication */}

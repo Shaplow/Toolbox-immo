@@ -6,7 +6,7 @@
  */
 
 import Link from "next/link";
-import { ImageIcon, ExternalLink, AlertTriangle } from "lucide-react";
+import { ImageIcon, ExternalLink, AlertTriangle, Loader2 } from "lucide-react";
 
 interface Props {
   slot: { id: string };
@@ -162,20 +162,34 @@ export function CoverSection({ slot, pattern, coverPack, coverConfigError, canEd
         </div>
       )}
 
-      {/* Cover pack créé mais pas encore de finalCoverUrl */}
-      {coverPack && !coverPack.finalCoverUrl && (
+      {/* Cover pack créé mais pas encore de finalCoverUrl — selon le status
+          du pack on distingue : pas encore prêt (QUEUED/PROCESSING) vs prêt
+          à choisir (READY). Le bouton "Continuer" n'a de sens qu'en READY,
+          sinon il mène sur un tool sans frames extraites. */}
+      {coverPack && !coverPack.finalCoverUrl && coverPack.status !== "FAILED" && (
         <div className="space-y-3">
-          <p className="text-sm text-gray-500">
-            Cover en cours de sélection — les frames sont prêtes à choisir.
-          </p>
-          {canEdit && (
-            <Link
-              href={coverToolHref}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors font-medium border border-indigo-200"
-            >
-              <ExternalLink size={14} />
-              Continuer la sélection
-            </Link>
+          {coverPack.status === "READY" ? (
+            <>
+              <p className="text-sm text-gray-500">
+                Les frames sont prêtes — choisis la meilleure cover dans l&apos;outil dédié.
+              </p>
+              {canEdit && (
+                <Link
+                  href={coverToolHref}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors font-medium border border-indigo-200"
+                >
+                  <ExternalLink size={14} />
+                  Continuer la sélection
+                </Link>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
+              <Loader2 size={14} className="animate-spin shrink-0 text-gray-400" />
+              <span>
+                Extraction des frames en cours… La cover sera sélectionnable dès que le pack sera prêt.
+              </span>
+            </div>
           )}
         </div>
       )}

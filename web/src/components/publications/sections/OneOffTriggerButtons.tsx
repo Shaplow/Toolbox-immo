@@ -19,7 +19,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ImageIcon, AlignLeft, Loader2 } from "lucide-react";
+import { ImageIcon, AlignLeft, Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { toast } from "@/components/ui/Toast";
 
@@ -42,6 +42,12 @@ interface Props {
     needsCaptions: boolean;
     captionPresetId: string | null;
   };
+  /** Statut du dernier captionJob lié — masque le bouton "Lancer captions"
+   *  si un job existe déjà (évite les double-clics qui créent des jobs
+   *  parallèles inutiles). */
+  hasCaptionJob?: boolean;
+  /** Idem pour cover : pack non-FAILED déjà existant masque "Lancer cover". */
+  hasCoverPack?: boolean;
 }
 
 export function OneOffTriggerButtons({
@@ -50,14 +56,19 @@ export function OneOffTriggerButtons({
   hasCurrentVersion,
   hasNoRender,
   resolvedConfig,
+  hasCaptionJob = false,
+  hasCoverPack = false,
 }: Props) {
   const router = useRouter();
   const [coverLoading, setCoverLoading] = useState(false);
   const [captionsLoading, setCaptionsLoading] = useState(false);
 
-  // Affichage basé sur la config RÉSOLUE (override + pattern), pas le pattern brut
-  const showCoverButton = resolvedConfig.coverMode === "auto";
-  const showCaptionsButton = resolvedConfig.needsCaptions === true;
+  // Affichage basé sur la config RÉSOLUE (override + pattern), pas le pattern brut.
+  // Masquage supplémentaire : si un job (cover ou captions) a déjà été
+  // déclenché, on ne re-propose pas le bouton — l'admin doit voir l'état
+  // dans la section dédiée et regénérer depuis là si besoin.
+  const showCoverButton = resolvedConfig.coverMode === "auto" && !hasCoverPack;
+  const showCaptionsButton = resolvedConfig.needsCaptions === true && !hasCaptionJob;
   const coverDisabled = !resolvedConfig.coverPresetId;
   const captionsDisabled = !resolvedConfig.captionPresetId;
 
@@ -139,8 +150,9 @@ export function OneOffTriggerButtons({
         )}
       </div>
       {(coverDisabled && showCoverButton) || (captionsDisabled && showCaptionsButton) ? (
-        <p className="text-[10px] text-amber-700 mt-2">
-          ⚠️ Configurez le preset manquant dans le SlotDetailPanel ou le pattern parent
+        <p className="text-[10px] text-amber-700 mt-2 inline-flex items-center gap-1">
+          <AlertTriangle size={10} className="text-amber-600 shrink-0" />
+          Configurez le preset manquant dans le SlotDetailPanel ou le pattern parent
           pour activer le bouton.
         </p>
       ) : null}
