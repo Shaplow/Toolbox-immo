@@ -76,11 +76,23 @@ export function GroupPropertiesPanel({
 
   return (
     <aside className="w-64 bg-white border-l border-gray-200 flex flex-col shrink-0 overflow-y-auto">
-      {/* Header */}
+      {/* Header — nom éditable inline.
+          Avant : "groupe #abc1" (id tronqué). Le name était enterré dans le
+          formulaire propriétés et l'user ne savait pas quel groupe il édite. */}
       <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          groupe <span className="text-gray-300 font-normal">#{group.id.slice(-4)}</span>
-        </p>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">
+            Groupe
+          </p>
+          <input
+            type="text"
+            value={group.name}
+            onChange={(e) => updateGroup(group.id, { name: e.target.value })}
+            placeholder="Groupe sans nom"
+            className="w-full text-sm font-semibold text-gray-900 bg-transparent border-0 outline-none focus:bg-gray-50 focus:ring-2 focus:ring-indigo-300 rounded px-1 -mx-1"
+            title="Cliquer pour renommer le groupe"
+          />
+        </div>
         <div className="flex items-center gap-1">
           <button
             onClick={() => updateGroup(group.id, { hidden: !group.hidden })}
@@ -111,27 +123,17 @@ export function GroupPropertiesPanel({
 
       <div className="p-4 space-y-5 text-xs">
         {/* ── Groupe ── */}
+        {/* Nom retiré : édité directement dans le header au-dessus. */}
         <Section label="Groupe">
-          <div className="space-y-2">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-600">Nom</span>
-              <input
-                type="text"
-                value={group.name}
-                onChange={(e) => updateGroup(group.id, { name: e.target.value })}
-                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
-              />
-            </label>
-            <div className="flex items-center justify-between">
-              <ToggleSwitch
-                checked={group.collapsed ?? false}
-                onChange={(v) => updateGroup(group.id, { collapsed: v })}
-                label="Replié par défaut"
-              />
-              <span className="text-[10px] text-gray-400 shrink-0">
-                {memberCount} calque{memberCount > 1 ? "s" : ""}
-              </span>
-            </div>
+          <div className="flex items-center justify-between">
+            <ToggleSwitch
+              checked={group.collapsed ?? false}
+              onChange={(v) => updateGroup(group.id, { collapsed: v })}
+              label="Replié par défaut"
+            />
+            <span className="text-[10px] text-gray-400 shrink-0">
+              {memberCount} calque{memberCount > 1 ? "s" : ""}
+            </span>
           </div>
         </Section>
 
@@ -252,6 +254,15 @@ export function GroupPropertiesPanel({
                 Colonne
               </button>
             </div>
+            {/* Hint contextuel selon le mode choisi — sans modal, juste une
+                ligne sous le sélecteur pour expliquer la conséquence concrète. */}
+            <p className="text-[10px] text-gray-400 italic leading-relaxed">
+              {!isAutoLayout
+                ? "Libre : chaque calque garde sa position individuelle. Tu déplaces à la main."
+                : autoLayoutMode === "row"
+                  ? "Ligne : les calques s'alignent côte à côte horizontalement, espacés régulièrement."
+                  : "Colonne : les calques s'empilent verticalement, espacés régulièrement."}
+            </p>
 
             {isAutoLayout ? (
               <>
@@ -298,6 +309,9 @@ export function GroupPropertiesPanel({
                     <option value="center">Centre</option>
                     <option value="end">{autoLayoutMode === "column" ? "Bas" : "Droite"}</option>
                   </select>
+                  <span className="text-[10px] text-gray-400 italic">
+                    Position du bloc d&apos;ancrage dans le {autoLayoutMode === "column" ? "sens vertical" : "sens horizontal"}.
+                  </span>
                 </label>
 
                 <label className="flex flex-col gap-1">
@@ -311,6 +325,9 @@ export function GroupPropertiesPanel({
                     <option value="middle">Milieu</option>
                     <option value="bottom">{autoLayoutMode === "column" ? "Droite" : "Bas"}</option>
                   </select>
+                  <span className="text-[10px] text-gray-400 italic">
+                    Position du bloc d&apos;ancrage dans le {autoLayoutMode === "column" ? "sens horizontal" : "sens vertical"}.
+                  </span>
                 </label>
 
                 <label className="flex flex-col gap-1">
@@ -327,6 +344,9 @@ export function GroupPropertiesPanel({
                       </option>
                     ))}
                   </select>
+                  <span className="text-[10px] text-gray-400 italic">
+                    Bloc pivot pour le centrage. Les autres blocs se positionnent autour selon les règles Justifier / Aligner.
+                  </span>
                 </label>
 
                 {orderedMembers.length > 0 ? (
