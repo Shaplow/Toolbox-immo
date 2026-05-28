@@ -27,10 +27,15 @@ describe("getPublicationPhase", () => {
     expect(getPublicationPhase("EDIT_REVIEW")).toBe("admin_review");
   });
 
-  it("phase CM → publishing", () => {
-    expect(getPublicationPhase("READY_FOR_CM")).toBe("publishing");
-    expect(getPublicationPhase("AWAITING_CLIENT")).toBe("publishing");
-    expect(getPublicationPhase("CLIENT_REVISION")).toBe("publishing");
+  it("phase CM (cover, description, validation client) → cm_review", () => {
+    // "À finaliser" : il reste cover et/ou description et/ou validation client.
+    // Distincte de "À publier" qui est strictement réservée à SCHEDULED.
+    expect(getPublicationPhase("READY_FOR_CM")).toBe("cm_review");
+    expect(getPublicationPhase("AWAITING_CLIENT")).toBe("cm_review");
+    expect(getPublicationPhase("CLIENT_REVISION")).toBe("cm_review");
+  });
+
+  it("SCHEDULED → publishing (et seulement SCHEDULED — tout est validé)", () => {
     expect(getPublicationPhase("SCHEDULED")).toBe("publishing");
   });
 
@@ -48,8 +53,8 @@ describe("getPublicationPhase", () => {
   it("statuts legacy mappés raisonnablement", () => {
     expect(getPublicationPhase("TO_DO")).toBe("planned");
     expect(getPublicationPhase("IN_PROGRESS")).toBe("production");
-    expect(getPublicationPhase("READY")).toBe("publishing");
-    expect(getPublicationPhase("CHECKING")).toBe("publishing");
+    expect(getPublicationPhase("READY")).toBe("cm_review");
+    expect(getPublicationPhase("CHECKING")).toBe("cm_review");
     expect(getPublicationPhase("DONE")).toBe("published");
   });
 });
@@ -60,6 +65,7 @@ describe("PHASE_LABELS / PHASE_COLORS", () => {
     "shooting",
     "production",
     "admin_review",
+    "cm_review",
     "publishing",
     "published",
     "terminated",

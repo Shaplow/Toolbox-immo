@@ -1,13 +1,17 @@
 /**
  * Phase humaine d'un PublicationSlot.
  *
- * Regroupe les 17 statuts pipeline en 7 phases lisibles pour l'UX :
+ * Regroupe les 17 statuts pipeline en 8 phases lisibles pour l'UX :
  *
  *   À planifier   → DRAFT, PLANNED
  *   À shooter     → RUSHES_EXPECTED
  *   En production → RUSHES_RECEIVED, IN_EDIT, EDIT_APPROVED, CAPTIONS_PENDING
  *   À valider     → EDIT_REVIEW (Phase 2.3 — owner ADMIN)
- *   À publier     → READY_FOR_CM, AWAITING_CLIENT, CLIENT_REVISION, SCHEDULED
+ *   À finaliser   → READY_FOR_CM, AWAITING_CLIENT, CLIENT_REVISION
+ *                    (Le CM doit encore préparer cover, description, et obtenir
+ *                     la validation client si requise. Distincte de "À publier"
+ *                     qui doit rester strictement réservé à SCHEDULED.)
+ *   À publier     → SCHEDULED (tout est validé, attente du créneau de publication)
  *   Publié        → PUBLISHED
  *   Terminé       → CANCELLED, REJECTED, ARCHIVED, BLOCKED
  *
@@ -25,6 +29,7 @@ export type PublicationPhase =
   | "shooting"
   | "production"
   | "admin_review"
+  | "cm_review"
   | "publishing"
   | "published"
   | "terminated";
@@ -41,9 +46,14 @@ const STATUS_TO_PHASE: Record<SlotStatus, PublicationPhase> = {
   EDIT_REVIEW: "admin_review",
   EDIT_APPROVED: "production",
   CAPTIONS_PENDING: "production",
-  READY_FOR_CM: "publishing",
-  AWAITING_CLIENT: "publishing",
-  CLIENT_REVISION: "publishing",
+  // "À finaliser" : il reste cover, description et/ou validation client avant
+  // que le slot soit réellement prêt à publier. Auparavant ces statuts étaient
+  // mappés sur "publishing" → badge "À publier" prématuré et trompeur.
+  READY_FOR_CM: "cm_review",
+  AWAITING_CLIENT: "cm_review",
+  CLIENT_REVISION: "cm_review",
+  // "À publier" est strictement réservé à SCHEDULED — tout est validé, on
+  // attend juste le créneau de publication Instagram.
   SCHEDULED: "publishing",
   PUBLISHED: "published",
   CANCELLED: "terminated",
@@ -54,8 +64,8 @@ const STATUS_TO_PHASE: Record<SlotStatus, PublicationPhase> = {
   // ── Legacy aliases ────────────────────────────────────────────────────────
   TO_DO: "planned",
   IN_PROGRESS: "production",
-  READY: "publishing",
-  CHECKING: "publishing",
+  READY: "cm_review",
+  CHECKING: "cm_review",
   DONE: "published",
 };
 
@@ -70,6 +80,7 @@ export const PHASE_LABELS: Record<PublicationPhase, string> = {
   shooting: "À shooter",
   production: "En production",
   admin_review: "À valider",
+  cm_review: "À finaliser",
   publishing: "À publier",
   published: "Publié",
   terminated: "Terminé",
@@ -80,7 +91,11 @@ export const PHASE_LABELS: Record<PublicationPhase, string> = {
 /**
  * Badge complet (background + texte + border) pour cartes/chips.
  * Cohérent avec la palette utilisée dans STATUS_COLORS — gris/jaune/orange/
- * indigo/vert + gris pour terminated (état terminal "froid").
+ * indigo/teal/vert + gris pour terminated (état terminal "froid").
+ *
+ * cm_review (indigo) : territoire du CM, cohérent avec OWNER_BADGE_CLS.CM.
+ * publishing (teal)  : signal "imminent / programmé", aligné sur la couleur
+ *                       du statut SCHEDULED dans STATUS_COLORS.
  */
 export const PHASE_COLORS: Record<PublicationPhase, string> = {
   planned: "bg-gray-100 text-gray-700 border-gray-200",
@@ -88,7 +103,8 @@ export const PHASE_COLORS: Record<PublicationPhase, string> = {
   production: "bg-orange-100 text-orange-800 border-orange-200",
   // amber = orange/jaune "attention requise" admin
   admin_review: "bg-amber-100 text-amber-800 border-amber-300",
-  publishing: "bg-indigo-100 text-indigo-700 border-indigo-200",
+  cm_review: "bg-indigo-100 text-indigo-700 border-indigo-200",
+  publishing: "bg-teal-100 text-teal-700 border-teal-200",
   published: "bg-green-100 text-green-700 border-green-200",
   terminated: "bg-gray-100 text-gray-500 border-gray-200",
 };
@@ -101,7 +117,8 @@ export const PHASE_DOT: Record<PublicationPhase, string> = {
   shooting: "bg-yellow-500",
   production: "bg-orange-500",
   admin_review: "bg-amber-500",
-  publishing: "bg-indigo-500",
+  cm_review: "bg-indigo-500",
+  publishing: "bg-teal-500",
   published: "bg-green-500",
   terminated: "bg-gray-300",
 };
