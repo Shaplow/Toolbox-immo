@@ -1,16 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Link2 } from "lucide-react";
+import Link from "next/link";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import type { CaptionExcludeZone } from "@/types/template";
+
+interface LinkedPattern {
+  id: string;
+  label: string;
+  isActive: boolean;
+  accountId: string;
+  accountHandle: string;
+  captionPresetId: string | null;
+}
 
 /**
  * Onglet "Sous-titres auto" du builder.
  * Présenté en tab séparé pour rendre la config visible et éviter qu'elle se
  * perde dans la longue page Paramètres.
+ *
+ * Si on a un templateId, on liste les patterns qui pointent vers ce template
+ * pour rendre visible l'impact des changements sur le calendrier.
  */
-export function CaptionsTabPanel() {
+export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
   const { template, updateCaptionAutoConfig } = useBuilderStore();
   const captionAutoConfig = template.captionAutoConfig;
 
@@ -18,6 +31,18 @@ export function CaptionsTabPanel() {
   const [loadingPresets, setLoadingPresets] = useState(false);
   const [captionPrompts, setCaptionPrompts] = useState<{ id: string; name: string }[]>([]);
   const [loadingPrompts, setLoadingPrompts] = useState(false);
+  const [linkedPatterns, setLinkedPatterns] = useState<LinkedPattern[]>([]);
+
+  // Charge les patterns qui utilisent ce template — surface l'impact du changement.
+  useEffect(() => {
+    if (!templateId) return;
+    let active = true;
+    fetch(`/api/templates/${templateId}/usage`)
+      .then((r) => (r.ok ? (r.json() as Promise<{ patterns: LinkedPattern[] }>) : { patterns: [] }))
+      .then((data) => { if (active) setLinkedPatterns(data.patterns); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [templateId]);
 
   useEffect(() => {
     let active = true;
@@ -62,6 +87,48 @@ export function CaptionsTabPanel() {
           <span className="text-gray-700 font-medium">Activer après chaque render</span>
         </label>
       </div>
+
+      {/* Patterns liés — visibilité de l'impact des changements */}
+      {linkedPatterns.length > 0 && (
+        <div className="px-3 py-3 border-b border-gray-100">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2 flex items-center gap-1">
+            <Link2 size={10} />
+            Patterns utilisant ce template ({linkedPatterns.length})
+          </p>
+          <div className="space-y-1">
+            {linkedPatterns.map((p) => (
+              <Link
+                key={p.id}
+                href={`/admin/accounts/${p.accountId}`}
+                className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-gray-50 transition-colors group"
+                title="Voir la fiche compte"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-gray-700 truncate group-hover:text-gray-900">{p.label}</span>
+                    {!p.isActive && (
+                      <span className="text-[9px] px-1 rounded bg-gray-100 text-gray-500 border border-gray-200 shrink-0">
+                        inactif
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-gray-400 truncate">@{p.accountHandle}</p>
+                </div>
+                <span
+                  className={`text-[9px] px-1.5 py-0.5 rounded shrink-0 ${
+                    p.captionPresetId
+                      ? "bg-violet-50 text-violet-700 border border-violet-200"
+                      : "bg-gray-100 text-gray-500 border border-gray-200"
+                  }`}
+                  title={p.captionPresetId ? "Caption preset défini sur le pattern" : "Utilise le défaut template"}
+                >
+                  {p.captionPresetId ? "preset" : "défaut"}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {!enabled ? (
         <div className="px-3 py-3 text-[11px] text-gray-400 italic">

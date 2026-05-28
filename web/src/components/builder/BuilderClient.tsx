@@ -400,7 +400,7 @@ export function BuilderClient({
                 {activePanel === "schema"   && <SchemaPanel />}
                 {activePanel === "sequence" && <VideoSequencePanel videoLibraries={videoLibraries} setVideoLibraries={setVideoLibraries} />}
                 {activePanel === "cover"    && <CoverTabPanel templateId={templateId} />}
-                {activePanel === "captions" && <CaptionsTabPanel />}
+                {activePanel === "captions" && <CaptionsTabPanel templateId={templateId} />}
                 {activePanel === "settings" && <SettingsPanel />}
               </div>
             </div>
