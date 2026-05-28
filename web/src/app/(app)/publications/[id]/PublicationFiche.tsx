@@ -83,7 +83,11 @@ function isPrimaryForRole(section: SectionKey, role: UserRole): boolean {
  */
 const PRIMARY_SECTIONS_BY_ROLE: Record<Exclude<UserRole, "ADMIN">, SectionKey[]> = {
   VIDEASTE: ["brief", "rushes", "comments"],
-  MONTEUR: ["brief", "rushes", "versions", "render", "comments"],
+  // Phase 2.5 : MONTEUR voit aussi "cover" pour le cas monteurUpload (il
+  // uploade la cover avec sa version). CoverSection se masque elle-même
+  // si le mode n'est pas monteurUpload, donc pas de bruit pour les autres
+  // patterns.
+  MONTEUR: ["brief", "rushes", "versions", "render", "cover", "comments"],
   CM: ["render", "rushes", "versions", "cover", "captions", "description", "clientValidation", "publish", "comments"],
   EXTERNAL_GENERATOR: [],
 };
@@ -504,6 +508,12 @@ export function PublicationFiche({
                 coverPack={coverPack}
                 coverConfigError={coverConfigError}
                 canEdit={canEditCover}
+                viewerRole={currentUserRole}
+                canMonteurUpload={
+                  currentUserRole === "ADMIN" ||
+                  (currentUserRole === "MONTEUR" &&
+                    assigneeMonteur?.id === currentUserId)
+                }
                 currentVersion={currentVersion}
               />
             )}
