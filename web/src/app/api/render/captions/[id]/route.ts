@@ -19,6 +19,7 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { getR2PublicUrl, deleteFromR2, r2Configured } from "@/lib/r2";
 import { resolveRunpodJobPhase, runpodConfigured, isPodJobId } from "@/lib/runpod";
+import { onCaptionsCompleted } from "@/lib/services/slot/pipelineHooks";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -106,6 +107,8 @@ export async function GET(
           console.warn(`[captions/status] R2 cleanup failed for key=${job.inputKey}:`, err)
         );
       }
+      // Parité webhook RunPod : log activity + auto-transition pipeline.
+      await onCaptionsCompleted(job.id);
       return NextResponse.json({ status: "COMPLETED", videoUrl });
     }
 

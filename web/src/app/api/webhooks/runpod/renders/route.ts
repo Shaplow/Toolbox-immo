@@ -15,8 +15,7 @@ import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsa
 import { RENDER_STAGE } from "@/lib/renderer/renderWorkflow";
 import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
 import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
-import { logActivity } from "@/lib/services/slot/activity";
-import { applyAutoTransitionFromPipeline } from "@/lib/services/slot/transitions";
+import { onRenderCompleted } from "@/lib/services/slot/pipelineHooks";
 
 type RenderOutput = {
   video_url?: string;
@@ -120,22 +119,9 @@ export async function POST(req: NextRequest) {
     });
     console.info(`[webhook/renders] render=${render.id} done, videoUrl=${videoUrl}`);
 
-    if (render.publicationSlot) {
-      await logActivity(prisma, {
-        slotId: render.publicationSlot.id,
-        actorId: null,
-        type: "RENDER_COMPLETED",
-        payload: { renderId: render.id, videoUrl },
-      });
-
-      // Auto-transition pipeline : si auto_template + render DONE + (pas de captions
-      // OU captions déjà COMPLETED) → READY_FOR_CM. Idempotent (no-op si déjà avancé).
-      await applyAutoTransitionFromPipeline(
-        prisma,
-        render.publicationSlot.id,
-        "RENDER_COMPLETED",
-      );
-    }
+    // Parité avec le pipeline local : log activity + auto-transition pipeline.
+    // Helper unique pour éviter le drift entre webhook RunPod et exécution locale.
+    await onRenderCompleted(render.id);
 
     // ── Pipeline sous-titres automatique ──────────────────────────────────
     // Non bloquant : les erreurs internes ne doivent pas faire échouer le webhook.

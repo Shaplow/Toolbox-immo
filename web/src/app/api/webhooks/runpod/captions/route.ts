@@ -11,8 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { getR2PublicUrl, deleteFromR2, r2Configured, isR2PublicUrl } from "@/lib/r2";
 import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runpod";
 import { notifyUser } from "@/lib/sseStore";
-import { logActivity } from "@/lib/services/slot/activity";
-import { applyAutoTransitionFromPipeline } from "@/lib/services/slot/transitions";
+import { onCaptionsCompleted } from "@/lib/services/slot/pipelineHooks";
 
 type CaptionOutput = {
   video_url?: string;
@@ -78,22 +77,9 @@ export async function POST(req: NextRequest) {
     notifyUser(job.userId, { jobType: "captions", jobId: job.id, status: "COMPLETED", videoUrl: videoUrl ?? null });
     console.info(`[webhook/captions] job=${job.id} done, videoUrl=${videoUrl}`);
 
-    if (job.slotId) {
-      await logActivity(prisma, {
-        slotId: job.slotId,
-        actorId: null,
-        type: "CAPTIONS_COMPLETED",
-        payload: { captionJobId: job.id, videoUrl },
-      });
-
-      // Auto-transition pipeline : si auto_template + render DONE + captions COMPLETED
-      // (cas typique : render fini avant captions) → READY_FOR_CM.
-      await applyAutoTransitionFromPipeline(
-        prisma,
-        job.slotId,
-        "CAPTIONS_COMPLETED",
-      );
-    }
+    // Parité avec le pipeline local : log activity + auto-transition pipeline.
+    // Helper unique pour éviter le drift entre webhook RunPod et exécution locale.
+    await onCaptionsCompleted(job.id);
   } else {
     const errorMsg = output?.error ?? error ?? `RunPod status: ${status}`;
 

@@ -32,6 +32,7 @@ import { prisma } from "@/lib/prisma";
 import { uploadToR2, deleteFromR2, r2Configured, createPresignedUploadUrl } from "@/lib/r2";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
+import { onCaptionsCompleted } from "@/lib/services/slot/pipelineHooks";
 
 /**
  * Vérifie qu'un slotId soumis par le client appartient bien à un slot
@@ -356,6 +357,9 @@ export async function POST(req: NextRequest) {
         where: { id: captionJob.id },
         data:  { status: "COMPLETED", outputUrl: absoluteUrl },
       });
+
+      // Parité webhook RunPod : log activity + auto-transition pipeline.
+      await onCaptionsCompleted(captionJob.id);
 
       return NextResponse.json({
         captionJobId: captionJob.id,

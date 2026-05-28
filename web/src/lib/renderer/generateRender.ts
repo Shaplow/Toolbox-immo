@@ -18,6 +18,7 @@ import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsa
 import { selectMediaAsset, selectMediaAssetBySetSequence, selectMediaAssetByMetadataValue, normalizeRule } from "@/lib/contentLibraryResolver";
 import { triggerAutoTranscriptionLocal } from "@/lib/triggerAutoTranscriptionLocal";
 import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
+import { onRenderCompleted } from "@/lib/services/slot/pipelineHooks";
 
 const OUTPUT_DIR = path.join(process.cwd(), "public", "renders");
 const LOCAL_VIDEO_RENDER_TIMEOUT_MS = 10 * 60 * 1000;
@@ -281,6 +282,10 @@ export async function generateRender(renderId: string): Promise<void> {
   recordLibraryUsage(renderId).catch((err) =>
     console.error("[generateRender] recordLibraryUsage failed:", err)
   );
+
+  // Parité webhook RunPod : log activity + auto-transition pipeline si le
+  // render est rattaché à un PublicationSlot.
+  await onRenderCompleted(renderId);
 }
 
 // ─── Pipeline vidéo (RunPod ou local) ────────────────────────────────────────
@@ -1118,6 +1123,9 @@ async function generateVideoRenderLocal(
       console.error("[generateRender] recordLibraryUsage failed:", err)
     );
 
+    // Parité webhook RunPod : log activity + auto-transition pipeline.
+    await onRenderCompleted(renderId);
+
     // Auto-sous-titrage local (captionAutoConfig.enabled) — best-effort
     const rawVideoPath = data.videoUrl.startsWith("http") ? null : data.videoUrl;
     if (rawVideoPath) {
@@ -1844,6 +1852,9 @@ async function generateSequenceRenderLocal(
     recordLibraryUsage(renderId).catch((err) =>
       console.error("[generateRender] recordLibraryUsage failed:", err)
     );
+
+    // Parité webhook RunPod : log activity + auto-transition pipeline.
+    await onRenderCompleted(renderId);
 
     // Persister slotDurations sur Render pour que les triggers en aval (auto-sous-titres,
     // cover frames) puissent les lire — même path que le webhook RunPod renders.
