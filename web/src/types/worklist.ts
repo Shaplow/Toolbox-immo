@@ -85,7 +85,10 @@ const MONTEUR_SECTION_MAP: Partial<Record<SlotStatus, MonteurSection>> = {
   CAPTIONS_PENDING: "waiting",
   READY_FOR_CM: "waiting",
   AWAITING_CLIENT: "waiting",
-  // Exclus : DRAFT, SCHEDULED, PUBLISHED, REJECTED, CANCELLED, BLOCKED, ARCHIVED
+  // Exclus : SCHEDULED, PUBLISHED, REJECTED, CANCELLED, BLOCKED, ARCHIVED
+  // ── Legacy aliases (Phase 1.2 backfill incomplet) ─────────────────────────
+  TO_DO: "todo",
+  IN_PROGRESS: "in_progress",
 };
 
 /**
@@ -126,6 +129,10 @@ const CM_SECTION_MAP: Partial<Record<SlotStatus, CmSection>> = {
   PUBLISHED: "published",
   // Exclus : DRAFT, PLANNED, RUSHES_EXPECTED, RUSHES_RECEIVED, IN_EDIT, EDIT_REVIEW,
   //          REJECTED, CANCELLED, BLOCKED, ARCHIVED
+  // ── Legacy aliases (Phase 1.2 backfill incomplet) ─────────────────────────
+  READY: "to_prepare",
+  CHECKING: "to_prepare",
+  DONE: "published",
 };
 
 /**
@@ -172,7 +179,11 @@ const VIDEASTE_SECTION_MAP: Partial<Record<SlotStatus, VideasteSection>> = {
   CLIENT_REVISION: "in_edit",
   AWAITING_CLIENT: "in_edit",
   SCHEDULED: "in_edit",
-  // Exclus : DRAFT, PUBLISHED, REJECTED, CANCELLED, BLOCKED, ARCHIVED
+  // Exclus : PUBLISHED, REJECTED, CANCELLED, BLOCKED, ARCHIVED
+  // ── Legacy alias (Phase 1.2 backfill incomplet) ───────────────────────────
+  // Pour un vidéaste, "TO_DO" signifie "à shooter" (les rushes ne sont
+  // pas encore livrés) → même section que PLANNED.
+  TO_DO: "to_shoot",
 };
 
 /**

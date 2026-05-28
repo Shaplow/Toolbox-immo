@@ -36,6 +36,10 @@ const VIDEASTE_STATUSES: SlotStatus[] = [
   "AWAITING_CLIENT",
   "CLIENT_REVISION",
   "SCHEDULED",
+  // Legacy : TO_DO englobe "à shooter" pour les slots créés avant
+  // l'introduction de la pipeline RUSHES_EXPECTED. Tant que le backfill
+  // n'est pas complet, un slot legacy assigné doit être visible.
+  "TO_DO",
 ];
 
 interface HomeVideasteProps {
@@ -132,7 +136,11 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
         <EmptyState
           icon={<Video size={20} className="text-gray-400" />}
           title="Rien à shooter pour le moment"
-          description="Tes prochaines missions de tournage apparaîtront ici dès qu'elles seront planifiées."
+          description={
+            "Tes prochaines missions de tournage apparaîtront ici dès qu'elles te seront " +
+            "assignées dans le calendrier (champ « Vidéaste » sur le slot). Si tu attendais " +
+            "une mission, vérifie avec un admin qu'elle pointe bien vers ton compte."
+          }
         />
       ) : (
         <>

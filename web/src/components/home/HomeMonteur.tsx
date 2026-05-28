@@ -17,10 +17,12 @@ import {
 // MONTEUR_SECTION_MAP dans worklist.ts (sinon un statut mappé en section
 // mais absent du filtre Prisma cause une perte silencieuse de slots).
 //
-// DRAFT : slot assigné mais encore brouillon (admin qui s'auto-assigne
-// avant passage en PLANNED).
+// DRAFT : slot assigné mais encore brouillon.
 // CLIENT_REVISION : le client a refusé, le monteur doit corriger.
 // AWAITING_CLIENT : informatif (envoyé au client) — affiché en "waiting".
+// TO_DO / IN_PROGRESS : statuts legacy avant le passage à la pipeline
+//   éditoriale. Tant que la DB contient encore des slots dans ces
+//   statuts (Phase 1.2 backfill incomplet), ils doivent rester visibles.
 const MONTEUR_STATUSES: SlotStatus[] = [
   "DRAFT",
   "PLANNED",
@@ -33,6 +35,9 @@ const MONTEUR_STATUSES: SlotStatus[] = [
   "READY_FOR_CM",
   "AWAITING_CLIENT",
   "CLIENT_REVISION",
+  // Legacy
+  "TO_DO",
+  "IN_PROGRESS",
 ];
 
 interface HomeMonteurProps {

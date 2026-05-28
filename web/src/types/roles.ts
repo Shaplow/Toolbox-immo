@@ -59,7 +59,16 @@ export type SlotStatus =
   | "REJECTED"
   | "CANCELLED"
   | "BLOCKED"
-  | "ARCHIVED";
+  | "ARCHIVED"
+  // ── Aliases legacy (Phase 1.2 backfill incomplet) ─────────────────────────
+  // Conservés dans le type tant que la DB peut renvoyer ces valeurs ; les
+  // worklists doivent les filtrer pour ne pas perdre silencieusement les
+  // slots qui les portent.
+  | "TO_DO"
+  | "IN_PROGRESS"
+  | "READY"
+  | "CHECKING"
+  | "DONE";
 
 export const SLOT_STATUSES = {
   DRAFT: "DRAFT",
@@ -79,6 +88,12 @@ export const SLOT_STATUSES = {
   CANCELLED: "CANCELLED",
   BLOCKED: "BLOCKED",
   ARCHIVED: "ARCHIVED",
+  // Legacy
+  TO_DO: "TO_DO",
+  IN_PROGRESS: "IN_PROGRESS",
+  READY: "READY",
+  CHECKING: "CHECKING",
+  DONE: "DONE",
 } as const satisfies Record<SlotStatus, SlotStatus>;
 
 // ---------------------------------------------------------------------------

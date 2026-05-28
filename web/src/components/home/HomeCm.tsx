@@ -19,6 +19,7 @@ import {
 //
 // AWAITING_CLIENT / CLIENT_REVISION : le CM continue de bosser sur
 // cover/légende/description pendant la validation client.
+// READY / CHECKING / DONE : aliases legacy (Phase 1.2 backfill).
 const CM_STATUSES: SlotStatus[] = [
   "EDIT_APPROVED",
   "CAPTIONS_PENDING",
@@ -27,6 +28,10 @@ const CM_STATUSES: SlotStatus[] = [
   "CLIENT_REVISION",
   "SCHEDULED",
   "PUBLISHED",
+  // Legacy
+  "READY",
+  "CHECKING",
+  "DONE",
 ];
 
 // Fenêtre "Publié récemment" : 14 jours glissants.

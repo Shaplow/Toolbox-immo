@@ -50,6 +50,16 @@ export const STATUS_TRANSITIONS: Record<SlotStatus, SlotStatus[]> = {
   BLOCKED: [],  // récupération ADMIN uniquement
   CANCELLED: [],
   ARCHIVED: [],
+  // ── Legacy : transitions vides — la fonction canTransition tolère
+  //    les statuts legacy en `from` via LEGACY_STATUSES (cf. ligne 68)
+  //    et délègue la décision à l'ADMIN pour faire avancer le slot
+  //    vers la pipeline éditoriale moderne. Les entries ci-dessous ne
+  //    servent qu'à satisfaire le type Record<SlotStatus, SlotStatus[]>.
+  TO_DO: [],
+  IN_PROGRESS: [],
+  READY: [],
+  CHECKING: [],
+  DONE: [],
 };
 
 // ─── canTransition ─────────────────────────────────────────────────────────────
