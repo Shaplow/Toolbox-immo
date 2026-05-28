@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Layers, AlignLeft, Film, Music, Settings, Undo2, Redo2, X, ChevronLeft, Image, Type, Loader2 } from "lucide-react";
+import { Layers, AlignLeft, Film, Music, Settings, Undo2, Redo2, X, ChevronLeft, Camera, Captions, Loader2 } from "lucide-react";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import { collectBuilderFontsFromSources, type BuilderFontEntry } from "@/lib/builderFonts";
 import { toast } from "@/components/ui/Toast";
@@ -34,8 +34,8 @@ const PANEL_ITEMS_TOP: { id: PanelId; label: string; Icon: React.ComponentType<{
 
 /** Bottom items du rail (config auto cover/captions + paramètres généraux) */
 const PANEL_ITEMS_BOTTOM: { id: PanelId; label: string; Icon: React.ComponentType<{ size?: number }> }[] = [
-  { id: "cover",    label: "Cover auto",      Icon: Image },
-  { id: "captions", label: "Sous-titres auto", Icon: Type },
+  { id: "cover",    label: "Cover auto",      Icon: Camera },
+  { id: "captions", label: "Sous-titres auto", Icon: Captions },
   { id: "settings", label: "Paramètres",       Icon: Settings },
 ];
 

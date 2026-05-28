@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useMemo, useState } from "react";
-import { Type, Image as ImageIcon, Video, Square, Zap, Music } from "lucide-react";
+import { Type, Image as ImageIcon, Video, Square, Zap, Music, Eye, EyeOff } from "lucide-react";
 import type { ReactNode } from "react";
 import { getAutoLayoutOrderedBlocks, isAutoLayoutGroup } from "@/lib/groupLayout";
 import { useBuilderStore } from "@/lib/store/builderStore";
@@ -184,13 +184,13 @@ export function BlocksPanel() {
             updateBlock(block.id, { hidden: !block.hidden } as Partial<AnyBlock>);
           }}
           title={block.hidden ? "Afficher le bloc" : "Masquer le bloc"}
-          className={`shrink-0 rounded border px-1.5 py-0.5 text-[11px] transition-colors ${
+          className={`shrink-0 inline-flex items-center justify-center rounded border px-1.5 py-1 transition-colors ${
             block.hidden
               ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
               : "border-gray-200 bg-white text-gray-400 hover:border-gray-400 hover:text-gray-600"
           }`}
         >
-          👁
+          {block.hidden ? <EyeOff size={11} /> : <Eye size={11} />}
         </button>
         {showOrdering ? (
           <div className="flex items-center gap-0.5">
@@ -355,13 +355,13 @@ export function BlocksPanel() {
                     updateGroup(group.id, { hidden: !group.hidden });
                   }}
                   title={group.hidden ? "Afficher le groupe" : "Masquer le groupe"}
-                  className={`shrink-0 rounded border px-1.5 py-0.5 text-[11px] transition-colors ${
+                  className={`shrink-0 inline-flex items-center justify-center rounded border px-1.5 py-1 transition-colors ${
                     group.hidden
                       ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
                       : "border-gray-200 bg-white text-gray-400 hover:border-gray-400 hover:text-gray-600"
                   }`}
                 >
-                  👁
+                  {group.hidden ? <EyeOff size={11} /> : <Eye size={11} />}
                 </button>
               </div>
 

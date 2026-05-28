@@ -28,9 +28,11 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
   const captionAutoConfig = template.captionAutoConfig;
 
   const [captionPresets, setCaptionPresets] = useState<{ id: string; name: string }[]>([]);
-  const [loadingPresets, setLoadingPresets] = useState(false);
+  // Initial true : on est en train de fetch dès le mount, évite le pattern
+  // setState(true) dans useEffect (interdit par react-hooks/set-state-in-effect).
+  const [loadingPresets, setLoadingPresets] = useState(true);
   const [captionPrompts, setCaptionPrompts] = useState<{ id: string; name: string }[]>([]);
-  const [loadingPrompts, setLoadingPrompts] = useState(false);
+  const [loadingPrompts, setLoadingPrompts] = useState(true);
   const [linkedPatterns, setLinkedPatterns] = useState<LinkedPattern[]>([]);
 
   // Charge les patterns qui utilisent ce template — surface l'impact du changement.
@@ -46,7 +48,6 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
 
   useEffect(() => {
     let active = true;
-    setLoadingPresets(true);
     fetch("/api/caption-presets")
       .then((r) => (r.ok ? (r.json() as Promise<{ id: string; name: string }[]>) : []))
       .then((data) => { if (active) setCaptionPresets(data); })
@@ -57,7 +58,6 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
 
   useEffect(() => {
     let active = true;
-    setLoadingPrompts(true);
     fetch("/api/caption-prompts")
       .then((r) => (r.ok ? (r.json() as Promise<{ id: string; name: string }[]>) : []))
       .then((data) => { if (active) setCaptionPrompts(data); })
