@@ -13,7 +13,7 @@
  * configuration fine).
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { FileText, ExternalLink, Save, Check, Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -74,6 +74,19 @@ function DescriptionSectionInner({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Resync de la prop quand le serveur refresh (navigation soft, refetch).
+  // On garde une ref de la dernière valeur initiale "connue" : si l'user
+  // n'a rien tapé (value === lastKnownInitial), on re-sync ; sinon on
+  // préserve sa frappe en cours pour ne pas écraser une édition.
+  const lastInitialRef = useRef(initialDescription);
+  useEffect(() => {
+    if (lastInitialRef.current === initialDescription) return;
+    if (value === lastInitialRef.current) {
+      setValue(initialDescription);
+    }
+    lastInitialRef.current = initialDescription;
+  }, [initialDescription, value]);
 
   // Modal IA inline
   const [showAi, setShowAi] = useState(false);

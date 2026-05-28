@@ -7,7 +7,7 @@
  * Le champ `caption` est autorisé pour le rôle CM et ADMIN côté serveur.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MessageSquare, Save, Check, Copy } from "lucide-react";
 
 interface Props {
@@ -19,12 +19,25 @@ interface Props {
 }
 
 export function CaptionIgSection({ slot, description, canEdit }: Props) {
-  const [value, setValue] = useState(slot.caption ?? "");
+  const initial = slot.caption ?? "";
+  const [value, setValue] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isDirty = value !== (slot.caption ?? "");
+  // Resync de la prop quand le serveur refresh : si l'user n'a pas
+  // modifié localement, on suit la nouvelle valeur ; sinon on préserve
+  // l'édition en cours (pas d'écrasement silencieux).
+  const lastInitialRef = useRef(initial);
+  useEffect(() => {
+    if (lastInitialRef.current === initial) return;
+    if (value === lastInitialRef.current) {
+      setValue(initial);
+    }
+    lastInitialRef.current = initial;
+  }, [initial, value]);
+
+  const isDirty = value !== initial;
 
   async function handleSave() {
     setSaving(true);
