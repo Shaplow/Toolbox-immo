@@ -1,14 +1,30 @@
 /**
- * Helpers pour la validation client externe (W2).
+ * Helpers pour la validation client externe (W2) — tokens magic link uniquement.
  *
  * - Token magic link : génération cryptographically secure, hash sha256 en DB,
  *   comparaison timing-safe. Le rawToken n'est jamais re-stocké après émission.
- * - Resolve config : merge override per-slot + config du pattern (override prime).
  * - TTL : 7 jours par défaut, renouvelable par ADMIN.
+ *
+ * Les helpers `resolveOverride`, `resolveClientValidationConfig`, `resolveSlotConfig`
+ * vivent désormais dans `@/lib/services/slot/config`. Ce module les re-export
+ * pour préserver les imports existants pendant la phase de migration (S1).
+ * Les imports directs depuis `@/lib/services/slot/config` sont à privilégier.
  */
 
 import { randomBytes, createHash, timingSafeEqual } from "crypto";
 import type { PrismaClient } from "@prisma/client";
+
+// Re-exports — le code source vit dans services/slot/config.ts (S1.2)
+export {
+  resolveOverride,
+  resolveClientValidationConfig,
+  resolveSlotConfig,
+} from "@/lib/services/slot/config";
+export type {
+  ResolveSource,
+  ClientValidationConfig,
+  SlotResolvedConfig,
+} from "@/lib/services/slot/config";
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 
@@ -36,199 +52,6 @@ export function compareHashes(a: string, b: string): boolean {
   } catch {
     return false;
   }
-}
-
-// ─── Resolve config (pattern + override slot) ─────────────────────────────────
-
-/**
- * Résout une valeur effective override/pattern selon le contrat :
- *  - override !== null/undefined → override prime (source "override")
- *  - sinon pattern existe → valeur du pattern (source "pattern")
- *  - sinon → valeur par défaut (source "default")
- *
- * Helper générique réutilisable pour TOUS les champs `needs*Override` du slot.
- */
-export type ResolveSource = "pattern" | "override" | "default";
-
-export function resolveOverride<T>(
-  overrideValue: T | null | undefined,
-  patternValue: T | null | undefined,
-  defaultValue: T,
-): { value: T; source: ResolveSource } {
-  if (overrideValue !== null && overrideValue !== undefined) {
-    return { value: overrideValue, source: "override" };
-  }
-  if (patternValue !== null && patternValue !== undefined) {
-    return { value: patternValue, source: "pattern" };
-  }
-  return { value: defaultValue, source: "default" };
-}
-
-interface PatternForValidation {
-  needsClientValidation: boolean;
-  allowsClientRevision: boolean;
-}
-
-interface SlotForValidation {
-  needsClientValidationOverride: boolean | null;
-  allowsClientRevisionOverride: boolean | null;
-}
-
-export interface ClientValidationConfig {
-  /** True si ce slot doit passer par une validation client externe. */
-  needsClientValidation: boolean;
-  /** True si le client peut refuser avec commentaire (ping-pong autorisé). */
-  allowsClientRevision: boolean;
-  /**
-   * Pour debug/UI : indique d'où chaque valeur vient.
-   * - "pattern" : valeur héritée du pattern
-   * - "override" : valeur surchargée au niveau du slot
-   * - "default" : pas de pattern (slot orphelin), valeur false par défaut
-   */
-  source: {
-    needsClientValidation: ResolveSource;
-    allowsClientRevision: ResolveSource;
-  };
-}
-
-/**
- * Calcule la config effective de validation client pour un slot.
- * Override per-slot prime sur la config du pattern.
- *
- * Règle : null = hérite ; true/false = écrase explicitement.
- */
-export function resolveClientValidationConfig(
-  slot: SlotForValidation,
-  pattern: PatternForValidation | null,
-): ClientValidationConfig {
-  const needs = resolveOverride(
-    slot.needsClientValidationOverride,
-    pattern?.needsClientValidation,
-    false,
-  );
-  const allows = resolveOverride(
-    slot.allowsClientRevisionOverride,
-    pattern?.allowsClientRevision,
-    false,
-  );
-  return {
-    needsClientValidation: needs.value,
-    allowsClientRevision: allows.value,
-    source: {
-      needsClientValidation: needs.source,
-      allowsClientRevision: allows.source,
-    },
-  };
-}
-
-// ─── Resolve étendu pour tous les needs* (Cohérence Workflows Phase 4) ────────
-
-interface SlotForAllOverrides {
-  needsClientValidationOverride: boolean | null;
-  allowsClientRevisionOverride: boolean | null;
-  needsCaptionsOverride: boolean | null;
-  needsDescriptionOverride: string | null;
-  needsRushesOverride: boolean | null;
-  needsBriefOverride: boolean | null;
-  // Phase 5 — overrides one-off (référence directe aux ressources)
-  coverModeOverride?: string | null;
-  coverPresetIdOverride?: string | null;
-  captionPresetIdOverride?: string | null;
-  descriptionPromptIdOverride?: string | null;
-}
-
-interface PatternForAllNeeds {
-  needsClientValidation: boolean;
-  allowsClientRevision: boolean;
-  needsCaptions: boolean;
-  needsDescription: string;
-  needsRushes: boolean;
-  needsBrief: boolean;
-  // Phase 5 — valeurs héritées pour les overrides one-off
-  coverMode?: string;
-  /** coverConfig contient le coverPresetId (Phase 3) — passé en string nullable. */
-  coverPresetId?: string | null;
-  captionPresetId?: string | null;
-  descriptionPromptId?: string | null;
-}
-
-/**
- * Config résolue exhaustive des `needs*` (et `allows*`) pour un slot.
- * Inclut la source de chaque valeur (pattern/override/default) pour permettre
- * à l'UI d'indiquer "ce champ est surchargé".
- */
-export interface SlotResolvedConfig {
-  needsClientValidation: boolean;
-  allowsClientRevision: boolean;
-  needsCaptions: boolean;
-  needsDescription: string;
-  needsRushes: boolean;
-  needsBrief: boolean;
-  // Phase 5 — config one-off résolue (référence aux ressources)
-  coverMode: string;
-  coverPresetId: string | null;
-  captionPresetId: string | null;
-  descriptionPromptId: string | null;
-  source: {
-    needsClientValidation: ResolveSource;
-    allowsClientRevision: ResolveSource;
-    needsCaptions: ResolveSource;
-    needsDescription: ResolveSource;
-    needsRushes: ResolveSource;
-    needsBrief: ResolveSource;
-    coverMode: ResolveSource;
-    coverPresetId: ResolveSource;
-    captionPresetId: ResolveSource;
-    descriptionPromptId: ResolveSource;
-  };
-}
-
-/**
- * Calcule la config effective d'un slot pour tous les `needs*` (et `allows*`),
- * en appliquant les overrides per-slot par-dessus la config du pattern.
- *
- * Utilisé par : computePublicationSteps (page.tsx fiche), triggerAutoCaption,
- * SlotDetailPanel (lecture seule pour afficher les valeurs effectives).
- */
-export function resolveSlotConfig(
-  slot: SlotForAllOverrides,
-  pattern: PatternForAllNeeds | null,
-): SlotResolvedConfig {
-  const ncv = resolveOverride(slot.needsClientValidationOverride, pattern?.needsClientValidation, false);
-  const acr = resolveOverride(slot.allowsClientRevisionOverride, pattern?.allowsClientRevision, false);
-  const nc = resolveOverride(slot.needsCaptionsOverride, pattern?.needsCaptions, false);
-  const nd = resolveOverride(slot.needsDescriptionOverride, pattern?.needsDescription, "none");
-  const nr = resolveOverride(slot.needsRushesOverride, pattern?.needsRushes, false);
-  const nb = resolveOverride(slot.needsBriefOverride, pattern?.needsBrief, false);
-  // Phase 5 — overrides one-off
-  const cm = resolveOverride(slot.coverModeOverride, pattern?.coverMode, "none");
-  const cpId = resolveOverride(slot.coverPresetIdOverride, pattern?.coverPresetId, null);
-  const captPId = resolveOverride(slot.captionPresetIdOverride, pattern?.captionPresetId, null);
-  const descPId = resolveOverride(slot.descriptionPromptIdOverride, pattern?.descriptionPromptId, null);
-  return {
-    needsClientValidation: ncv.value,
-    allowsClientRevision: acr.value,
-    needsCaptions: nc.value,
-    needsDescription: nd.value,
-    needsRushes: nr.value,
-    needsBrief: nb.value,
-    coverMode: cm.value,
-    coverPresetId: cpId.value,
-    captionPresetId: captPId.value,
-    descriptionPromptId: descPId.value,
-    source: {
-      needsClientValidation: ncv.source,
-      allowsClientRevision: acr.source,
-      needsCaptions: nc.source,
-      needsDescription: nd.source,
-      needsRushes: nr.source,
-      needsBrief: nb.source,
-      coverMode: cm.source,
-      coverPresetId: cpId.source,
-      captionPresetId: captPId.source,
-      descriptionPromptId: descPId.source,
-    },
-  };
 }
 
 // ─── Token génération / révocation ────────────────────────────────────────────
