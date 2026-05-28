@@ -47,7 +47,16 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
         select: { id: true, handle: true, name: true },
       },
       pattern: {
-        select: { label: true },
+        select: { label: true, coverMode: true },
+      },
+      // Cover à choisir : on charge le coverFramePack du dernier render pour
+      // savoir si des frames sont prêtes mais non encore sélectionnées par le CM.
+      render: {
+        select: {
+          coverFramePack: {
+            select: { status: true, finalCoverUrl: true },
+          },
+        },
       },
     },
     orderBy: { scheduledAt: "asc" },
@@ -116,8 +125,38 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
     },
   };
 
+  // Override : si une cover frame pack est READY (frames dispo) et finalCoverUrl
+  // pas encore renseignée, la mission CM prioritaire est "Cover à choisir" —
+  // devant les badges "À sous-titrer" / "Captions en cours" / "Prêt à publier".
+  const COVER_TO_PICK_BADGE: WorklistCmBadges = {
+    statusLabel: "Cover à choisir",
+    statusClasses: "bg-amber-100 text-amber-700 border border-amber-200",
+  };
+
+  const coverPackBySlot = new Map<string, { status: string; finalCoverUrl: string | null } | null>(
+    rawSlots.map((s) => [s.id, s.render?.coverFramePack ?? null])
+  );
+  const coverModeBySlot = new Map<string, string | null>(
+    rawSlots.map((s) => [s.id, s.pattern?.coverMode ?? null])
+  );
+
+  function cmBadgeForSlot(slotId: string, status: string): WorklistCmBadges {
+    const pack = coverPackBySlot.get(slotId);
+    const coverMode = coverModeBySlot.get(slotId);
+    if (
+      coverMode &&
+      coverMode !== "none" &&
+      pack &&
+      pack.status === "READY" &&
+      !pack.finalCoverUrl
+    ) {
+      return COVER_TO_PICK_BADGE;
+    }
+    return CM_STATUS_BADGES[status] ?? {};
+  }
+
   const cmBadgesMap = new Map<string, WorklistCmBadges>(
-    toPrepare.map((s) => [s.id, CM_STATUS_BADGES[s.status] ?? {}])
+    toPrepare.map((s) => [s.id, cmBadgeForSlot(s.id, s.status)])
   );
 
   return (
