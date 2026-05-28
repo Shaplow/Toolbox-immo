@@ -309,12 +309,25 @@ export default async function PublicationPage({ params }: PageProps) {
     }),
   ]);
 
+  // Cover pack : un CoverFramePack peut être rattaché à un Render
+  // (auto_template) OU à une PublicationVersion promue (manual_rushes,
+  // external_upload). Sans ce fallback, le pack créé par tryAutoTrigger
+  // Cover post-promote restait invisible pour les slots manual_rushes et
+  // le step "cover" était figé à "todo".
+  const versionCoverPack = slot.currentVersionId
+    ? await prisma.coverFramePack.findUnique({
+        where: { publicationVersionId: slot.currentVersionId },
+        select: { id: true, status: true, finalCoverUrl: true, errorMsg: true },
+      })
+    : null;
+  const effectiveCoverPack = versionCoverPack ?? slot.render?.coverFramePack ?? null;
+
   // Calcul des steps — utilise le pattern effectif (overrides résolus)
   const steps = computePublicationSteps({
     slot: { status: effectiveStatus, caption: slot.caption, description: slot.description },
     pattern: effectivePattern,
     renderJob: slot.render ?? null,
-    coverPack: slot.render?.coverFramePack ?? null,
+    coverPack: effectiveCoverPack,
     captionJob: latestCaptionJob,
     descriptionJob: latestDescriptionJob,
     versionsCount: rawVersions.filter((v) => v.deletedAt === null).length,
@@ -322,11 +335,11 @@ export default async function PublicationPage({ params }: PageProps) {
     currentVersionId: slot.currentVersionId ?? null,
   });
 
-  // Cover config error : si pas de pack créé alors que pattern.coverMode=auto,
-  // chercher la dernière activity COVER_CONFIG_ERROR pour afficher un warning
-  // contextuel dans CoverSection.
+  // Cover config error : si aucun pack n'a été créé (ni côté render, ni côté
+  // version) alors que pattern.coverMode=auto, on cherche la dernière activity
+  // COVER_CONFIG_ERROR pour afficher un warning contextuel dans CoverSection.
   let coverConfigError: { reason: string; presetName?: string; message: string } | null = null;
-  if (!slot.render?.coverFramePack && slot.pattern?.coverMode === "auto") {
+  if (!effectiveCoverPack && slot.pattern?.coverMode === "auto") {
     const lastConfigError = await prisma.publicationActivity.findFirst({
       where: { slotId: id, type: "COVER_CONFIG_ERROR" },
       orderBy: { createdAt: "desc" },
@@ -418,7 +431,7 @@ export default async function PublicationPage({ params }: PageProps) {
             }
           : null
       }
-      coverPack={slot.render?.coverFramePack ?? null}
+      coverPack={effectiveCoverPack}
       coverConfigError={coverConfigError}
       assigneeMonteur={slot.assigneeMonteur}
       assigneeCm={slot.assigneeCm}
