@@ -23,18 +23,22 @@ export default async function CalendarPage() {
 
   const userId = userContext.effectiveUser.id;
 
-  // ADMIN voit tous les comptes ; MONTEUR/CM voient uniquement les comptes
-  // sur lesquels ils ont des slots assignés (alignement avec whereClauseForUser).
+  // ADMIN voit tous les comptes ; MONTEUR/CM/VIDEASTE voient uniquement les
+  // comptes sur lesquels ils ont des slots assignés (alignement avec
+  // whereClauseForUser). Avant le fix : VIDEASTE tombait dans la branche
+  // sinon = CM et voyait les comptes où il est CM assigné — n'importe quoi.
+  const assigneeFilterByRole: Record<string, Record<string, string>> = {
+    MONTEUR: { assigneeMonteurId: userId },
+    CM: { assigneeCmId: userId },
+    VIDEASTE: { assigneeVideasteId: userId },
+  };
   const accounts = await prisma.instagramAccount.findMany({
     where:
       role === "ADMIN"
         ? undefined
         : {
             publicationSlots: {
-              some:
-                role === "MONTEUR"
-                  ? { assigneeMonteurId: userId }
-                  : { assigneeCmId: userId },
+              some: assigneeFilterByRole[role] ?? { assigneeCmId: userId },
             },
           },
     orderBy: { name: "asc" },
