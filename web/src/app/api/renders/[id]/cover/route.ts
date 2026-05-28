@@ -40,8 +40,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // Phase 2.0 — résolution via coverPresetName → TemplateCoverPreset
   const slotPattern = render.publicationSlot?.pattern;
-  if (slotPattern?.coverMode !== "auto" || !slotPattern.coverConfig) {
-    return NextResponse.json({ error: "Cover semi-auto non configurée sur ce pattern" }, { status: 400 });
+  if (slotPattern?.coverMode !== "autoPack" || !slotPattern.coverConfig) {
+    return NextResponse.json({ error: "Pack cover auto non configuré sur ce pattern" }, { status: 400 });
   }
 
   const coverConfigJson = slotPattern.coverConfig as { enabled?: boolean; coverPresetName?: string } | null;

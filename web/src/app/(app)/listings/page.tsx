@@ -214,8 +214,8 @@ export default async function ListingsPage({ searchParams }: PageProps) {
       errorMsg: r.errorMsg ?? null,
       createdAt: r.createdAt.toISOString(),
       coverPack: r.coverFramePack ? { id: r.coverFramePack.id, status: r.coverFramePack.status } : null,
-      // Cover auto activée si le slot lié a un pattern coverMode=auto (Phase 1.8).
-      coverAutoEnabled: r.publicationSlot?.pattern?.coverMode === "auto",
+      // Cover auto activée si le slot lié a un pattern coverMode=autoPack (Phase 2.5).
+      coverAutoEnabled: r.publicationSlot?.pattern?.coverMode === "autoPack",
     })),
   }));
 

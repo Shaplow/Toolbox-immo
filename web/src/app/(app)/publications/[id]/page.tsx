@@ -339,7 +339,7 @@ export default async function PublicationPage({ params }: PageProps) {
   // version) alors que pattern.coverMode=auto, on cherche la dernière activity
   // COVER_CONFIG_ERROR pour afficher un warning contextuel dans CoverSection.
   let coverConfigError: { reason: string; presetName?: string; message: string } | null = null;
-  if (!effectiveCoverPack && slot.pattern?.coverMode === "auto") {
+  if (!effectiveCoverPack && slot.pattern?.coverMode === "autoPack") {
     const lastConfigError = await prisma.publicationActivity.findFirst({
       where: { slotId: id, type: "COVER_CONFIG_ERROR" },
       orderBy: { createdAt: "desc" },

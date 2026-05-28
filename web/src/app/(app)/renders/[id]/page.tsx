@@ -57,7 +57,7 @@ export default async function RenderPage({ params }: Props) {
 
   // Lire Pattern.coverConfig (source de vérité Phase 1.8 — template.coverAutoConfig supprimé)
   const slotPattern = render.publicationSlot?.pattern;
-  const patternCoverConfig = slotPattern?.coverMode === "auto" && slotPattern.coverConfig
+  const patternCoverConfig = slotPattern?.coverMode === "autoPack" && slotPattern.coverConfig
     ? (slotPattern.coverConfig as { enabled?: boolean })
     : null;
   const coverAutoEnabled = patternCoverConfig?.enabled === true;

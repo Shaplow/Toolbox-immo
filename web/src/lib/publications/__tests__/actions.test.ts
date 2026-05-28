@@ -15,12 +15,12 @@ function makeCtx(overrides: Partial<ActionContext> = {}): ActionContext {
       source: "auto_template",
       needsCaptions: true,
       needsDescription: "autoGenerate",
-      coverMode: "auto",
+      coverMode: "autoPack",
     },
     resolved: {
       needsCaptions: true,
       needsDescription: "autoGenerate",
-      coverMode: "auto",
+      coverMode: "autoPack",
       coverPresetId: "preset-1",
       captionPresetId: "caption-1",
       descriptionPromptId: "prompt-1",
@@ -197,7 +197,7 @@ describe("canTriggerCover", () => {
         resolved: {
           needsCaptions: false,
           needsDescription: "none",
-          coverMode: "auto",
+          coverMode: "autoPack",
           coverPresetId: null,
           captionPresetId: null,
           descriptionPromptId: null,

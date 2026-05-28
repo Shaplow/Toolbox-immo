@@ -34,7 +34,7 @@ const recipeWithBoth = {
 
 const recipeAutoTemplate = {
   source: "auto_template" as const,
-  coverMode: "auto" as const,
+  coverMode: "autoPack" as const,
   needsCaptions: true,
   needsDescription: "autoGenerate" as const,
   needsClientValidation: false,
@@ -141,7 +141,7 @@ describe("computePublicationSteps — ordre des steps", () => {
   it("le step 'edit' est positionné avant 'cover' et 'captions'", () => {
     const recipeAll = {
       source: "manual_rushes" as const,
-      coverMode: "auto" as const,
+      coverMode: "autoPack" as const,
       needsCaptions: true,
       needsDescription: "none" as const,
       needsClientValidation: false,

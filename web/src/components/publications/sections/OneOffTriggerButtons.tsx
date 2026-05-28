@@ -34,10 +34,10 @@ interface Props {
   /**
    * Config résolue par resolveSlotConfig (override slot prime sur pattern).
    * coverMode/captionPresetId nuls = ne pas afficher le bouton correspondant.
-   * Si coverMode="auto" mais coverPresetId null → bouton disabled avec tooltip.
+   * Si coverMode="autoPack" mais coverPresetId null → bouton disabled avec tooltip.
    */
   resolvedConfig: {
-    coverMode: string; // "auto" | "manualSelect" | "none"
+    coverMode: string; // "none" | "manualSelect" | "autoPack" | "monteurUpload"
     coverPresetId: string | null;
     needsCaptions: boolean;
     captionPresetId: string | null;
@@ -67,7 +67,7 @@ export function OneOffTriggerButtons({
   // Masquage supplémentaire : si un job (cover ou captions) a déjà été
   // déclenché, on ne re-propose pas le bouton — l'admin doit voir l'état
   // dans la section dédiée et regénérer depuis là si besoin.
-  const showCoverButton = resolvedConfig.coverMode === "auto" && !hasCoverPack;
+  const showCoverButton = resolvedConfig.coverMode === "autoPack" && !hasCoverPack;
   const showCaptionsButton = resolvedConfig.needsCaptions === true && !hasCaptionJob;
   const coverDisabled = !resolvedConfig.coverPresetId;
   const captionsDisabled = !resolvedConfig.captionPresetId;

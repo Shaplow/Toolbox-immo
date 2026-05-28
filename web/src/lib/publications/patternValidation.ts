@@ -30,6 +30,7 @@ export interface PatternValidationError {
     | "MISSING_CAPTION_PRESET"
     | "MISSING_DESCRIPTION_PROMPT"
     | "MISSING_TEMPLATE"
+    | "MONTEUR_UPLOAD_REQUIRES_MANUAL_RUSHES"
     | "ALLOWS_REVISION_WITHOUT_VALIDATION";
   message: string;
 }
@@ -124,8 +125,20 @@ export function validatePatternConfig(
     });
   }
 
-  // C1 : coverMode=auto → référence preset requise (par ID en priorité, fallback nom)
-  if (input.coverMode === "auto") {
+  // C6 (Phase 2.5) : coverMode=monteurUpload → source doit être manual_rushes
+  // (sinon il n'y a pas de phase montage donc personne pour uploader la cover).
+  if (input.coverMode === "monteurUpload" && input.source !== "manual_rushes") {
+    errors.push({
+      field: "coverMode",
+      code: "MONTEUR_UPLOAD_REQUIRES_MANUAL_RUSHES",
+      message:
+        "Le mode « Upload par le monteur » nécessite une source manual_rushes " +
+        "(le monteur livre la cover avec son montage).",
+    });
+  }
+
+  // C1 : coverMode=autoPack → référence preset requise (par ID en priorité, fallback nom)
+  if (input.coverMode === "autoPack") {
     const refs = readCoverPresetRefs(input.coverConfig);
     if (!refs.coverPresetId && !refs.coverPresetName) {
       errors.push({

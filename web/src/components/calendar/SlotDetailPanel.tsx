@@ -541,19 +541,21 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
                   />
                 )}
                 <OverrideEnumSelect
-                  label="Cover automatique"
+                  label="Mode cover"
                   value={form.coverModeOverride}
                   inheritedValue={slot.pattern?.coverMode ?? "none"}
                   onChange={(v) => set("coverModeOverride", v)}
                   options={[
-                    { value: "none", label: "Aucune" },
-                    { value: "manualSelect", label: "Sélection manuelle" },
-                    { value: "auto", label: "Automatique" },
+                    { value: "none", label: "Pas de cover" },
+                    { value: "manualSelect", label: "Sélection libre (CM)" },
+                    { value: "autoPack", label: "Pack auto → sélection (CM)" },
+                    { value: "monteurUpload", label: "Upload par le monteur" },
                   ]}
                 />
-                {/* Picker preset cover conditionnel */}
-                {(form.coverModeOverride === "auto" ||
-                  (form.coverModeOverride === null && slot.pattern?.coverMode === "auto")) && (
+                {/* Picker preset cover conditionnel — visible uniquement pour
+                    autoPack (les autres modes ne consomment pas de preset). */}
+                {(form.coverModeOverride === "autoPack" ||
+                  (form.coverModeOverride === null && slot.pattern?.coverMode === "autoPack")) && (
                   <PresetSelect
                     label="Preset cover (override)"
                     value={form.coverPresetIdOverride}

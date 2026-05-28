@@ -23,9 +23,13 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 const COVER_MODE_LABELS: Record<string, string> = {
-  auto: "Automatique",
-  manualSelect: "Sélection manuelle",
-  none: "Aucune",
+  none: "Pas de cover",
+  manualSelect: "Sélection libre (CM)",
+  autoPack: "Pack auto → sélection (CM)",
+  monteurUpload: "Upload par le monteur",
+  // Compat back : si un pattern n'a pas encore été migré (devrait pas arriver
+  // après la migration data Phase 2.5, mais ceinture+bretelles).
+  auto: "Pack auto → sélection (CM)",
 };
 
 const NEEDS_DESCRIPTION_LABELS: Record<string, string> = {

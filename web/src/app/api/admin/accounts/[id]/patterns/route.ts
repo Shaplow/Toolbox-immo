@@ -13,7 +13,7 @@ import {
 } from "@/lib/publications/patternValidation";
 
 const VALID_SOURCES = ["auto_template", "manual_rushes", "external_upload"] as const;
-const VALID_COVER_MODES = ["auto", "manualSelect", "none"] as const;
+const VALID_COVER_MODES = ["none", "manualSelect", "autoPack", "monteurUpload"] as const;
 const VALID_NEEDS_DESCRIPTION = ["preFilled", "autoGenerate", "manualWrite", "none"] as const;
 const PUBLISH_TIME_RE = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
 

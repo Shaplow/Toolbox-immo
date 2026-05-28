@@ -719,7 +719,8 @@ model PublicationSlot {
   needsRushesOverride           Boolean?
   /// Override per-slot de needsBrief du pattern. null = hérite.
   needsBriefOverride            Boolean?
-  /// Override per-slot du mode cover ("auto" | "manualSelect" | "none"). null = hérite.
+  /// Override per-slot du mode cover (Phase 2.5 :
+  /// "none" | "manualSelect" | "autoPack" | "monteurUpload"). null = hérite.
   coverModeOverride             String?
   /// Override per-slot de l'ID du preset cover utilisé. null = hérite.
   coverPresetIdOverride         String?
@@ -815,9 +816,14 @@ model AccountPattern {
   templateId String?
   template   Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
-  // Cover config (déplacée depuis Template.coverAutoConfig)
-  coverMode   String @default("none") // "auto" | "manualSelect" | "none"
-  coverConfig Json? // CoverAutoConfig snapshot si coverMode="auto"
+  // Cover config (Phase 2.5 — refonte des modes)
+  //   "none"         : pas de cover
+  //   "manualSelect" : CM choisit librement une frame depuis la vidéo finale
+  //   "autoPack"     : pack auto extrait via preset, CM sélectionne la finale
+  //   "monteurUpload": le monteur uploade la cover en même temps que sa version
+  //                   (uniquement valide pour pattern.source = "manual_rushes")
+  coverMode   String @default("none")
+  coverConfig Json? // CoverAutoConfig snapshot si coverMode="autoPack"
 
   // Flags besoins
   needsDescription      String  @default("none") // "preFilled" | "autoGenerate" | "manualWrite" | "none"

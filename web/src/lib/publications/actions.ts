@@ -148,8 +148,8 @@ export function canTriggerCaptions(ctx: ActionContext): ActionVerdict {
 /**
  * Lancer la cover manuellement.
  *
- * Visible seulement si coverMode = "auto" ou "manualSelect".
- * Masqué pour coverMode = "none".
+ * Visible seulement si coverMode = "autoPack" ou "manualSelect".
+ * Masqué pour coverMode = "none" ou "monteurUpload" (le monteur uploade).
  * Désactivé tant qu'un pack non-FAILED existe (l'admin doit regénérer
  * depuis la section dédiée s'il veut réessayer).
  */
@@ -157,6 +157,10 @@ export function canTriggerCover(ctx: ActionContext): ActionVerdict {
   if (!ctx.canEdit) return { visible: false };
   const mode = ctx.resolved?.coverMode ?? ctx.pattern?.coverMode ?? "none";
   if (mode === "none") return { visible: false };
+  // monteurUpload : pas de bouton "Lancer cover" — c'est le monteur qui
+  // uploade directement via la dropzone dans la CoverSection. Pas d'extraction
+  // de pack à déclencher.
+  if (mode === "monteurUpload") return { visible: false };
 
   if (
     ctx.coverPack &&
@@ -180,7 +184,7 @@ export function canTriggerCover(ctx: ActionContext): ActionVerdict {
       reason: "Pack cover prêt — sélectionne une frame dans la section Cover.",
     };
   }
-  if (mode === "auto" && !ctx.resolved?.coverPresetId) {
+  if (mode === "autoPack" && !ctx.resolved?.coverPresetId) {
     return {
       visible: true,
       enabled: false,

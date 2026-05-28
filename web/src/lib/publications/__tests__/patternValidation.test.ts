@@ -41,7 +41,7 @@ describe("validatePatternConfig — cas OK", () => {
 
   it("coverMode=auto + coverPresetName valide + preset existe sur template", () => {
     const input = makeInput({
-      coverMode: "auto",
+      coverMode: "autoPack",
       coverConfig: { enabled: true, coverPresetName: "Default" },
     });
     expect(validatePatternConfig(input, templateWithPreset)).toEqual([]);
@@ -91,7 +91,7 @@ describe("validatePatternConfig — cas KO", () => {
 
   it("C1 : coverMode=auto sans coverPresetName → MISSING_COVER_PRESET_NAME", () => {
     const errors = validatePatternConfig(
-      makeInput({ coverMode: "auto", coverConfig: { enabled: true } }),
+      makeInput({ coverMode: "autoPack", coverConfig: { enabled: true } }),
       templateWithPreset,
     );
     expect(errors).toHaveLength(1);
@@ -104,7 +104,7 @@ describe("validatePatternConfig — cas KO", () => {
   it("C2 : coverPresetName référencé n'existe plus sur template → COVER_PRESET_NOT_FOUND", () => {
     const errors = validatePatternConfig(
       makeInput({
-        coverMode: "auto",
+        coverMode: "autoPack",
         coverConfig: { enabled: true, coverPresetName: "Ghost" },
       }),
       templateNoPreset,
@@ -167,7 +167,7 @@ describe("validatePatternConfig — edge cases", () => {
   it("coverConfig en string JSON (cas Prisma raw) est parsé", () => {
     const errors = validatePatternConfig(
       makeInput({
-        coverMode: "auto",
+        coverMode: "autoPack",
         coverConfig: JSON.stringify({ enabled: true, coverPresetName: "Default" }),
       }),
       templateWithPreset,
@@ -177,7 +177,7 @@ describe("validatePatternConfig — edge cases", () => {
 
   it("coverConfig en string invalide (JSON cassé) → presetName null → MISSING", () => {
     const errors = validatePatternConfig(
-      makeInput({ coverMode: "auto", coverConfig: "{not valid json" }),
+      makeInput({ coverMode: "autoPack", coverConfig: "{not valid json" }),
       templateWithPreset,
     );
     expect(errors).toHaveLength(1);
@@ -189,7 +189,7 @@ describe("validatePatternConfig — edge cases", () => {
     // sans template → comportement attendu : aucune erreur côté C1/C2.
     const errors = validatePatternConfig(
       makeInput({
-        coverMode: "auto",
+        coverMode: "autoPack",
         coverConfig: { enabled: true, coverPresetName: "Default" },
       }),
       null,

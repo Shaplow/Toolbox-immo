@@ -97,7 +97,7 @@ export async function tryAutoTriggerCover(
         : null,
     );
 
-    if (resolved.coverMode !== "auto") {
+    if (resolved.coverMode !== "autoPack") {
       return { status: "skipped", reason: `cover_mode_${resolved.coverMode}` };
     }
     if (!resolved.coverPresetId) {

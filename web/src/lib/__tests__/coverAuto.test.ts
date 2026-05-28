@@ -139,7 +139,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
-        pattern: { id: "pat-1", coverMode: "auto", coverConfig: null, templateId: "tpl-1" },
+        pattern: { id: "pat-1", coverMode: "autoPack", coverConfig: null, templateId: "tpl-1" },
       },
     });
 
@@ -154,7 +154,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
       publicationSlot: {
         pattern: {
           id: "pat-1",
-          coverMode: "auto",
+          coverMode: "autoPack",
           coverConfig: { enabled: false, coverPresetName: "Default" },
           templateId: "tpl-1",
         },
@@ -174,7 +174,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
       publicationSlot: {
         pattern: {
           id: "pat-unmigrated",
-          coverMode: "auto",
+          coverMode: "autoPack",
           coverConfig: { enabled: true }, // ni coverPresetId ni coverPresetName
           templateId: "tpl-1",
         },
@@ -195,7 +195,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
       publicationSlot: {
         pattern: {
           id: "pat-1",
-          coverMode: "auto",
+          coverMode: "autoPack",
           coverConfig: { enabled: true, coverPresetName: "Inexistant" },
           templateId: "tpl-1",
         },
@@ -218,7 +218,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
       publicationSlot: {
         pattern: {
           id: "pat-1",
-          coverMode: "auto",
+          coverMode: "autoPack",
           coverConfig: PATTERN_CONFIG_WITH_PRESET,
           templateId: "tpl-1",
         },
@@ -242,7 +242,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
       publicationSlot: {
         pattern: {
           id: "pat-1",
-          coverMode: "auto",
+          coverMode: "autoPack",
           coverConfig: PATTERN_CONFIG_WITH_PRESET,
           templateId: "tpl-pattern", // templateId du pattern (peut différer du render)
         },
@@ -267,7 +267,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
       publicationSlot: {
         pattern: {
           id: "pat-migrated",
-          coverMode: "auto",
+          coverMode: "autoPack",
           coverConfig: {
             enabled: true,
             coverPresetId: "preset-1",
@@ -295,7 +295,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
       publicationSlot: {
         pattern: {
           id: "pat-1",
-          coverMode: "auto",
+          coverMode: "autoPack",
           coverConfig: PATTERN_CONFIG_WITH_PRESET,
           templateId: "tpl-1",
         },
@@ -316,7 +316,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
       publicationSlot: {
         pattern: {
           id: "pat-X",
-          coverMode: "auto",
+          coverMode: "autoPack",
           coverConfig: PATTERN_CONFIG_WITH_PRESET,
           templateId: "tpl-99",
         },
@@ -341,7 +341,7 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
       publicationSlot: {
         pattern: {
           id: "pat-1",
-          coverMode: "auto",
+          coverMode: "autoPack",
           coverConfig: PATTERN_CONFIG_WITH_PRESET,
           templateId: "tpl-1",
         },

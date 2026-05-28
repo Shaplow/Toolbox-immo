@@ -318,7 +318,7 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
     setLoading(true);
     try {
       let coverConfig: unknown = null;
-      if (values.coverMode === "auto" && values.coverConfigJson.trim()) {
+      if (values.coverMode === "autoPack" && values.coverConfigJson.trim()) {
         coverConfig = JSON.parse(values.coverConfigJson);
       }
 
@@ -482,12 +482,25 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
                   value={values.coverMode}
                   onChange={(v) => set("coverMode", v)}
                   options={[
-                    { value: "none", label: "Aucune" },
-                    { value: "manualSelect", label: "Sélection manuelle" },
-                    { value: "auto", label: "Automatique" },
+                    { value: "none", label: "Pas de cover" },
+                    { value: "manualSelect", label: "Sélection libre (CM)" },
+                    { value: "autoPack", label: "Pack auto → sélection (CM)" },
+                    { value: "monteurUpload", label: "Upload par le monteur" },
                   ]}
                 />
-                {values.coverMode === "auto" && (
+                {/* Help text par mode pour clarifier qui fait quoi */}
+                <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
+                  {values.coverMode === "none" &&
+                    "Aucune cover. La section ne s'affiche pas sur la fiche."}
+                  {values.coverMode === "manualSelect" &&
+                    "La CM choisit librement une frame depuis la vidéo finale, sans config préalable."}
+                  {values.coverMode === "autoPack" &&
+                    "Le système extrait des frames via le preset configuré + place les groupes de texte. La CM valide la frame finale et ajuste."}
+                  {values.coverMode === "monteurUpload" &&
+                    "Le monteur uploade la cover en même temps que sa version. Pas de génération automatique. Nécessite une source « manual_rushes »."}
+                </p>
+                {/* Preset config visible seulement pour autoPack */}
+                {values.coverMode === "autoPack" && (
                   <FormField label="" error={xfieldErrorsByField.coverConfigJson}>
                     <CoverConfigEditor
                       templateId={values.templateId || null}
@@ -495,6 +508,12 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
                       onChange={(cfg) => set("coverConfigJson", JSON.stringify(cfg, null, 2))}
                     />
                   </FormField>
+                )}
+                {/* Warning si monteurUpload + source pas manual_rushes */}
+                {values.coverMode === "monteurUpload" && values.source !== "manual_rushes" && (
+                  <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    ⚠ Ce mode nécessite une source « manual_rushes » (la source actuelle est « {values.source} »).
+                  </p>
                 )}
               </Section>
 

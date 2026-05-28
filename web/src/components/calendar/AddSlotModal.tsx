@@ -203,7 +203,7 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     if (!accountId) return false;
     if (isPatternMode) return !!selectedPatternId;
     if (!title.trim()) return false;
-    if (oneOffCoverMode === "auto" && !oneOffCoverPresetId && coverPresets.length > 0) return false;
+    if (oneOffCoverMode === "autoPack" && !oneOffCoverPresetId && coverPresets.length > 0) return false;
     if (oneOffNeedsCaptions === true && !oneOffCaptionPresetId) return false;
     if (oneOffNeedsDescription === "autoGenerate" && !oneOffDescriptionPromptId) return false;
     return true;
@@ -541,10 +541,11 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
                       onChange={(e) => setOneOffCoverMode(e.target.value)}
                       className={SELECT_CLS}
                     >
-                      <option value="">— Manuel —</option>
-                      <option value="auto">Auto</option>
-                      <option value="manualSelect">Sélection CM</option>
-                      <option value="none">Désactivée</option>
+                      <option value="">— Hérite du pattern —</option>
+                      <option value="none">Pas de cover</option>
+                      <option value="manualSelect">Sélection libre (CM)</option>
+                      <option value="autoPack">Pack auto → sélection (CM)</option>
+                      <option value="monteurUpload">Upload par le monteur</option>
                     </select>
                   </FormField>
                   <OneOffToggle
@@ -564,7 +565,7 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
                   />
                 </div>
 
-                {oneOffCoverMode === "auto" && (
+                {oneOffCoverMode === "autoPack" && (
                   <FormField
                     label="Preset cover"
                     required

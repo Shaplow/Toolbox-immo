@@ -551,8 +551,8 @@ export async function triggerAutoCoverPackForRender(
   const slotId = renderSlot?.publicationSlot?.id ?? null;
   const slotPattern = renderSlot?.publicationSlot?.pattern;
 
-  if (slotPattern?.coverMode !== "auto") {
-    console.info(`[autoCover] skip render=${renderId} slot=${slotId ?? "?"} reason=coverMode_not_auto value=${slotPattern?.coverMode ?? "null"}`);
+  if (slotPattern?.coverMode !== "autoPack") {
+    console.info(`[autoCover] skip render=${renderId} slot=${slotId ?? "?"} reason=coverMode_not_autoPack value=${slotPattern?.coverMode ?? "null"}`);
     return;
   }
   if (!slotPattern.coverConfig) {
@@ -572,7 +572,7 @@ export async function triggerAutoCoverPackForRender(
   if (!coverConfigJson?.enabled) {
     console.info(
       `[autoCover] skip render=${renderId} slot=${slotId ?? "?"} reason=coverConfig_disabled ` +
-      `(coverMode=auto mais coverConfig.enabled=${coverConfigJson?.enabled} — il faut activer dans la config cover du pattern)`,
+      `(coverMode=autoPack mais coverConfig.enabled=${coverConfigJson?.enabled} — il faut activer dans la config cover du pattern)`,
     );
     return;
   }
@@ -581,12 +581,12 @@ export async function triggerAutoCoverPackForRender(
   const presetName = coverConfigJson.coverPresetName;
   if (!presetId && !presetName) {
     console.warn(
-      `[autoCover] Pattern ${slotPattern.id} has coverMode=auto but no preset reference — skip`,
+      `[autoCover] Pattern ${slotPattern.id} has coverMode=autoPack but no preset reference — skip`,
     );
     await logCoverActivity(slotId, "COVER_CONFIG_ERROR", {
       patternId: slotPattern.id,
       reason: "missing_preset_reference",
-      message: "coverMode=auto mais aucun preset configuré dans le pattern",
+      message: "coverMode=autoPack mais aucun preset configuré dans le pattern",
     });
     return;
   }
