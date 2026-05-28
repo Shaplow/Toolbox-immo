@@ -85,6 +85,19 @@ async function main() {
     },
   });
 
+  const videaste = await prisma.user.upsert({
+    where: { email: "videaste@test.local" },
+    update: { role: "VIDEASTE" },
+    create: {
+      email: "videaste@test.local",
+      username: "test_videaste",
+      name: "Test Vidéaste",
+      passwordHash: TEST_PASSWORD_HASH,
+      role: "VIDEASTE",
+      permissions: "[]",
+    },
+  });
+
   const user = await prisma.user.upsert({
     where: { email: "user@test.local" },
     update: { role: "EXTERNAL_GENERATOR" },
@@ -98,7 +111,7 @@ async function main() {
     },
   });
 
-  console.log(`  ✓ Users : admin=${admin.id}, monteur=${monteur.id}, cm=${cm.id}, user=${user.id}`);
+  console.log(`  ✓ Users : admin=${admin.id}, monteur=${monteur.id}, cm=${cm.id}, videaste=${videaste.id}, user=${user.id}`);
 
   // ── Client + InstagramAccount ─────────────────────────────────────────────
   const client = await prisma.client.upsert({
@@ -162,6 +175,7 @@ async function main() {
     update: {
       assigneeMonteurId: monteur.id,
       assigneeCmId: cm.id,
+      assigneeVideasteId: videaste.id,
       patternId: pattern.id,
       accountId: account.id,
     },
@@ -176,6 +190,7 @@ async function main() {
       description: "Description de test injectée par seed.",
       assigneeMonteurId: monteur.id,
       assigneeCmId: cm.id,
+      assigneeVideasteId: videaste.id,
       isAuto: false,
     },
   });
@@ -277,10 +292,11 @@ async function main() {
 
   console.log("\n✅ Seed test DB terminé.");
   console.log("\n   Credentials (tous : password=testpass) :");
-  console.log("   - admin@test.local    (ADMIN)");
-  console.log("   - monteur@test.local  (MONTEUR, assigné slot test-slot-1)");
-  console.log("   - cm@test.local       (CM, assigné slot test-slot-1)");
-  console.log("   - user@test.local     (EXTERNAL_GENERATOR, permission captions)");
+  console.log("   - admin@test.local      (ADMIN)");
+  console.log("   - monteur@test.local    (MONTEUR, assigné slot test-slot-1)");
+  console.log("   - cm@test.local         (CM, assigné slot test-slot-1)");
+  console.log("   - videaste@test.local   (VIDEASTE, assigné slot test-slot-1)");
+  console.log("   - user@test.local       (EXTERNAL_GENERATOR, permission captions)");
 }
 
 main()

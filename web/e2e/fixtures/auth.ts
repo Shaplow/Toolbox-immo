@@ -26,6 +26,12 @@ export const TEST_USERS = {
     password: "testpass",
     role: "CM" as const,
   },
+  videaste: {
+    email: "videaste@test.local",
+    username: "test_videaste",
+    password: "testpass",
+    role: "VIDEASTE" as const,
+  },
   user: {
     email: "user@test.local",
     username: "test_user",
