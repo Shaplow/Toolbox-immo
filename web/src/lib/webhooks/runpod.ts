@@ -16,9 +16,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 const WEBHOOK_SECRET = process.env.RUNPOD_WEBHOOK_SECRET;
 
-if (!WEBHOOK_SECRET && process.env.NODE_ENV === "production") {
+if (!WEBHOOK_SECRET && process.env.NODE_ENV !== "test") {
+  // Non gated par NODE_ENV=production : staging / preview deployments
+  // sont aussi exposés à internet et doivent surfacer le warning. Seul
+  // l'environnement de test (vitest) reste silencieux pour ne pas polluer.
+  const env = process.env.NODE_ENV ?? "development";
   console.error(
-    "[security] RUNPOD_WEBHOOK_SECRET is not set in production. " +
+    `[security] RUNPOD_WEBHOOK_SECRET is not set (NODE_ENV=${env}). ` +
     "RunPod webhook endpoints are unauthenticated — anyone can fake job completions. " +
     "Set RUNPOD_WEBHOOK_SECRET in your environment variables."
   );
