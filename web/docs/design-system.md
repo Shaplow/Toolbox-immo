@@ -74,21 +74,37 @@ Une couleur signature en plus des accents sémantiques — orange-corail mature,
 
 Accès via `style={{ background: "var(--gradient-hero)" }}` ou `className="bg-[var(--gradient-hero)]"`.
 
-### Eyebrow décoratif
+### Eyebrow décoratif & décors hand-drawn
 
-Les eyebrows marketing sont préfixés d'un `✦` (asterisk étoilé) en `text-brand-600`. Petite signature visuelle qui rappelle l'étoile de marquage éditorial. À utiliser uniquement dans les sections marketing / hero, pas dans l'UI fonctionnelle.
+Les eyebrows marketing sont préfixés du composant `<HandDrawn.Asterisk />` (asterisk dessiné style Excalidraw) en `text-brand-600`. Petite signature visuelle qui rappelle l'étoile éditoriale.
 
-### Typographie
+**Bibliothèque `HandDrawn`** (`web/src/components/ui/decor/HandDrawn.tsx`) — décors SVG signature à appliquer chirurgicalement :
 
-Trois familles, chacune avec un rôle précis :
+| Décor | Usage |
+|---|---|
+| `<HandDrawn.Underline />` | Trait wavy sous un mot clé dans un titre |
+| `<HandDrawn.Asterisk />` | Préfixe d'eyebrow marketing, bullet signature |
+| `<HandDrawn.Arrow />` | Flèche dessinée pour les liens narratifs |
+| `<HandDrawn.HighlightCircle />` | Cercle au crayon autour d'un mot clé |
+| `<HandDrawn.Bracket side="left" \| "right" />` | Brackets pour cadrer un mot signature `[astuce]` |
 
-- **Geist Sans** (`font-sans`) — texte courant, UI, dashboards, labels. C'est 95% de l'app.
-- **Geist Mono** (`font-mono`) — code, raccourcis clavier, IDs, valeurs hex, métadonnées.
-- **Instrument Serif** (`font-serif`) — *display marketing uniquement*. Hero titles, pull quotes, eyebrow décoratif. **Jamais en body**, jamais en UI fonctionnelle. C'est ce qui dit "studio créatif" sans crier.
+Tous utilisent `currentColor` — héritent de la couleur du parent. Pas de bibliothèque externe (Rough.js) : SVG path statiques, légers, accessibles.
 
-Style : préférer `italic` sur la serif pour les hero (effet éditorial fort).
+**À utiliser uniquement** dans les zones signature (logo, badges Astuce, eyebrows, empty states friendly), **jamais** dans l'UI fonctionnelle.
 
-Échelle Tailwind par défaut (`text-xs` à `text-5xl`). Pour les display hero, monter à `text-4xl` ou `text-5xl` avec `tracking-tight leading-[1.05]`.
+### Typographie — 3 registres, discipline stricte
+
+Toolbox a **3 familles typographiques**, chacune un rôle précis. Ne jamais en faire dériver l'usage hors de son registre.
+
+| Registre | Famille | Utility | Quand | Où ne JAMAIS l'utiliser |
+|---|---|---|---|---|
+| **Tech functional** | Geist Sans / Mono | `font-sans` / `font-mono` | 90% de l'app : dashboards, panneaux, fiches, formulaires, tableaux, labels, raccourcis clavier, IDs | — |
+| **Marketing editorial** | Instrument Serif italic | `font-serif italic` | Hero titles + pull quotes — landing pages futures et 1-2 heros marquants dans l'app | Body texte, UI courante, labels |
+| **Signature handmade** | Caveat | `font-hand` | Logo "Toolbox", badges "Astuce", eyebrow décoratif, empty states friendly, légendes de schémas | Body texte, titres de page, UI fonctionnelle (panneaux, fiches, formulaires) |
+
+**Doctrine** : la cohérence ne signifie pas l'uniformité. Geist sert l'efficacité, Serif sert l'éditorial, Caveat sert la personnalité. Mixer les 3 dans le même écran = sympa pour un hero, banni pour un panneau.
+
+Échelle Tailwind par défaut (`text-xs` à `text-5xl`). Hero serif : `text-4xl` ou `text-5xl` + `tracking-tight leading-[1.05]`. Hand : `text-xl` à `text-3xl`, jamais en dessous (illisible).
 
 ### Espacement
 

@@ -1,5 +1,5 @@
 ﻿import type { Metadata } from "next";
-import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import { Geist, Geist_Mono, Instrument_Serif, Caveat } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/components/providers/SessionProvider";
 import { ToastContainer } from "@/components/ui/Toast";
@@ -26,6 +26,17 @@ const instrumentSerif = Instrument_Serif({
   display: "swap",
 });
 
+// Signature handmade (style Excalidraw) — pour les accents personnalité :
+// logo, badges "Astuce", eyebrows décoratifs, légendes. JAMAIS en body
+// ni en UI fonctionnelle. C'est ce qui signe l'agence dans l'app sans
+// rompre l'épuré tech du reste.
+const caveat = Caveat({
+  variable: "--font-caveat",
+  subsets: ["latin"],
+  weight: ["500", "700"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "TemplateGen Immo",
   description: "Générateur de visuels immobiliers conformes",
@@ -37,7 +48,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr" className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable}`}>
+    <html lang="fr" className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} ${caveat.variable}`}>
       <body suppressHydrationWarning className="antialiased bg-gray-50 text-gray-900 min-h-screen font-sans">
         <SessionProvider>
           {children}

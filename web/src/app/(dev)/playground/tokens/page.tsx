@@ -5,6 +5,7 @@
  * surfaces. Synchronisé avec `web/src/app/globals.css` et la doc
  * `web/docs/design-system.md`.
  */
+import { HandDrawn } from "@/components/ui/decor/HandDrawn";
 
 const GRAY_SCALE = [
   { name: "white",    hex: "#ffffff", usage: "Fond principal" },
@@ -393,6 +394,153 @@ export default function TokensPage() {
               sans abandonner les détails qui font la différence.&rdquo;
             </p>
             <p className="mt-2 text-[11px] uppercase tracking-widest text-gray-400">— Pull quote · Hero</p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Signature handmade ────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="Signature handmade · style Excalidraw"
+          subtitle="Le 3e registre — caractère agence. Apparitions chirurgicales dans l'app : logo, badges « Astuce », eyebrows, légendes. JAMAIS en body ni UI fonctionnelle."
+        />
+
+        {/* Doctrine d'usage des 3 registres typo */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-4">
+            Discipline d&apos;usage des 3 registres
+          </p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-gray-700">Tech functional</p>
+              <p className="text-2xl font-semibold tracking-tight text-gray-950">Geist Sans</p>
+              <p className="text-[11px] text-gray-500 leading-relaxed">
+                UI courante : 90% de l&apos;app. Dashboards, panneaux,
+                fiches, formulaires.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-gray-700">Marketing editorial</p>
+              <p className="font-serif italic text-2xl tracking-tight text-gray-950">Instrument Serif</p>
+              <p className="text-[11px] text-gray-500 leading-relaxed">
+                Hero titles, pull quotes, landing pages. Studio créatif.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-gray-700">Signature handmade</p>
+              <p className="font-hand text-3xl text-gray-950">Caveat</p>
+              <p className="text-[11px] text-gray-500 leading-relaxed">
+                Logo, badges « Astuce », eyebrows, légendes. Touches
+                agence ponctuelles.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Décors SVG hand-drawn */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-5">
+          <p className="text-[11px] uppercase tracking-widest text-gray-400">
+            Décors hand-drawn — bibliothèque
+          </p>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            {/* Underline */}
+            <div>
+              <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Underline</p>
+              <p className="text-lg text-gray-950">
+                Un mot{" "}
+                <span className="relative inline-block">
+                  important
+                  <HandDrawn.Underline className="absolute -bottom-1.5 left-0 h-2 w-full text-brand-600" />
+                </span>{" "}
+                à mettre en valeur.
+              </p>
+            </div>
+
+            {/* Asterisk */}
+            <div>
+              <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Asterisk</p>
+              <p className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-brand-600 font-medium">
+                <HandDrawn.Asterisk className="h-3.5 w-3.5" />
+                Nouveau · Astuce
+              </p>
+            </div>
+
+            {/* Arrow */}
+            <div>
+              <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Arrow</p>
+              <a className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700 group">
+                Voir l&apos;exemple
+                <HandDrawn.Arrow className="h-3 w-7 transition-transform group-hover:translate-x-0.5" />
+              </a>
+            </div>
+
+            {/* Highlight circle */}
+            <div>
+              <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Highlight circle</p>
+              <p className="text-lg text-gray-950">
+                Ton plan{" "}
+                <span className="relative inline-block px-1">
+                  hebdo
+                  <HandDrawn.HighlightCircle className="absolute -inset-x-1 -inset-y-2 text-brand-600 -z-10" />
+                </span>{" "}
+                est validé.
+              </p>
+            </div>
+
+            {/* Bracket */}
+            <div className="sm:col-span-2">
+              <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Bracket</p>
+              <p className="inline-flex items-center text-sm text-gray-700">
+                <HandDrawn.Bracket side="left" className="h-8 w-4 text-brand-600" />
+                <span className="px-1 font-hand text-xl text-brand-700">astuce</span>
+                <HandDrawn.Bracket side="right" className="h-8 w-4 text-brand-600" />
+                <span className="ml-2">
+                  Survol les cards pour voir le lift au hover.
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Patterns concrets : éléments app habillés en signature */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-5">
+          <p className="text-[11px] uppercase tracking-widest text-gray-400">
+            Application dans l&apos;app — exemples
+          </p>
+
+          {/* Logo agence */}
+          <div className="flex items-center gap-4 border-b border-gray-100 pb-5">
+            <span className="h-8 w-8 rounded-md bg-gray-950 inline-flex items-center justify-center">
+              <HandDrawn.Asterisk className="h-4 w-4 text-brand-500" />
+            </span>
+            <div>
+              <p className="font-hand text-2xl text-gray-950 leading-none">Toolbox</p>
+              <p className="text-[10px] uppercase tracking-widest text-gray-400">Régie éditoriale</p>
+            </div>
+          </div>
+
+          {/* Tip callout */}
+          <div className="border-l-2 border-brand-600 bg-brand-50 pl-4 py-3 pr-4 rounded-r-lg">
+            <p className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-brand-700 font-medium mb-1">
+              <HandDrawn.Asterisk className="h-3 w-3" />
+              Astuce
+            </p>
+            <p className="text-sm text-gray-800 leading-relaxed">
+              Tu peux dupliquer un slot existant via{" "}
+              <kbd className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-[10px] font-mono">⌘D</kbd>
+              {" "}depuis le calendrier.
+            </p>
+          </div>
+
+          {/* Empty state friendly */}
+          <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center space-y-3">
+            <HandDrawn.Asterisk className="h-6 w-6 text-gray-300 mx-auto" />
+            <p className="font-hand text-2xl text-gray-700">Aucun slot ici pour l&apos;instant</p>
+            <p className="text-xs text-gray-500 max-w-sm mx-auto">
+              Crée ton premier slot depuis le calendrier ou attends que la
+              prochaine génération hebdo soit lancée.
+            </p>
           </div>
         </div>
       </section>

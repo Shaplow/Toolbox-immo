@@ -19,6 +19,11 @@ html {
      marketing. Donne le côté studio créatif vs purement tech. Usage
      chirurgical : titres hero + pull quotes uniquement. */
   --font-serif: var(--font-display-serif);
+  /* Signature handmade (Caveat) — accents signature style Excalidraw.
+     Usage chirurgical : logo, badges "Astuce", eyebrow décoratif,
+     légendes de schémas. JAMAIS en body ni UI fonctionnelle.
+     Accessible via `font-hand` utility. */
+  --font-hand: var(--font-caveat);
 
   /* ── Couleurs sémantiques (en plus de la palette Tailwind par défaut) ──── */
   --color-background: var(--background);
