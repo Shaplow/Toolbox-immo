@@ -13,8 +13,12 @@ import {
   TERMINAL_STATUSES,
 } from "@/types/worklist";
 
-// Statuts à inclure dans la worklist Monteur (DRAFT exclu intentionnellement).
+// Statuts à inclure dans la worklist Monteur. DRAFT inclus : un slot
+// assigné mais encore en brouillon doit rester visible — sinon l'admin
+// qui s'auto-assigne sur un slot fraîchement créé (avant passage en
+// PLANNED) ne le voit nulle part.
 const MONTEUR_STATUSES: SlotStatus[] = [
+  "DRAFT",
   "PLANNED",
   "RUSHES_EXPECTED",
   "RUSHES_RECEIVED",

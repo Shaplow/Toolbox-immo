@@ -62,6 +62,9 @@ export interface WorklistSlot {
 export type MonteurSection = "overdue" | "todo" | "in_progress" | "waiting";
 
 const MONTEUR_SECTION_MAP: Partial<Record<SlotStatus, MonteurSection>> = {
+  // Brouillon assigné — surfacé en "todo" pour rester visible (sinon un
+  // slot fraîchement créé avant passage en PLANNED disparaît de la worklist).
+  DRAFT: "todo",
   // À monter — démarre quand les rushs sont livrés. PLANNED reste en "todo"
   // pour les slots sans pattern (legacy ou one-off) où le monteur peut anticiper.
   PLANNED: "todo",
@@ -152,6 +155,9 @@ export function getCmSection(status: SlotStatus): CmSection | null {
 export type VideasteSection = "overdue" | "to_shoot" | "shooting_done" | "in_edit";
 
 const VIDEASTE_SECTION_MAP: Partial<Record<SlotStatus, VideasteSection>> = {
+  // Brouillon assigné — surfacé en "to_shoot" pour rester visible (un slot
+  // assigné mais encore brouillon doit apparaître quelque part).
+  DRAFT: "to_shoot",
   // À shooter (action requise)
   PLANNED: "to_shoot",
   RUSHES_EXPECTED: "to_shoot",

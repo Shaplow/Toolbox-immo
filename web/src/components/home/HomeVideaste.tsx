@@ -14,13 +14,16 @@ import {
 
 /**
  * Statuts à inclure dans la worklist Vidéaste.
- * - Action requise : PLANNED, RUSHES_EXPECTED (à shooter)
+ * - À shooter : DRAFT (brouillon assigné), PLANNED, RUSHES_EXPECTED
  * - Action terminée mais à garder visible : RUSHES_RECEIVED (shoot livré)
  * - Informatif uniquement : IN_EDIT → SCHEDULED (suivi production aval)
  *
- * Exclusions : DRAFT (pas planifié), PUBLISHED/ARCHIVED/etc (terminé, hors worklist).
+ * DRAFT inclus : un slot assigné mais encore brouillon doit rester visible —
+ * sinon un admin qui s'auto-assigne avant que le slot passe en PLANNED ne
+ * le voit nulle part. Exclus : PUBLISHED/ARCHIVED/etc (terminé).
  */
 const VIDEASTE_STATUSES: SlotStatus[] = [
+  "DRAFT",
   "PLANNED",
   "RUSHES_EXPECTED",
   "RUSHES_RECEIVED",
