@@ -9,10 +9,19 @@
  * sizes en lignes. États (loading, disabled, with icon) en sous-grille.
  */
 
+"use client";
+
+import { useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
+import { FormField } from "@/components/ui/FormField";
 import { ArrowRight, Plus, Send, Trash2 } from "lucide-react";
 
 export default function PrimitivesPage() {
+  const [text, setText] = useState("Lola Caupert");
+  const [longText, setLongText] = useState("Un appartement plein de charme, vue dégagée sur le parc.");
+  const [errored, setErrored] = useState("");
   return (
     <div className="space-y-12">
       <header className="space-y-2">
@@ -76,6 +85,57 @@ export default function PrimitivesPage() {
           <div className="flex items-center justify-center gap-3">
             <Button variant="brand" size="lg" icon={Send}>Démarrer</Button>
             <Button variant="ghost" size="lg" icon={ArrowRight}>En savoir plus</Button>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Input / Textarea / FormField ──────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="Input · Textarea · FormField"
+          subtitle="Champs contrôlés (value/onChange string). FormField wrap avec label + required + help + error."
+        />
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          {/* États Input */}
+          <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+            <p className="text-[11px] uppercase tracking-widest text-gray-400">Input</p>
+            <FormField label="Nom du compte" required help="Le handle Instagram sans @.">
+              <Input value={text} onChange={setText} placeholder="lola_caupert" />
+            </FormField>
+            <FormField
+              label="Email"
+              error="Format d'email invalide."
+            >
+              <Input value={errored} onChange={setErrored} placeholder="contact@studio.fr" />
+            </FormField>
+            <FormField label="ID compte (lecture seule)">
+              <Input value="acc_8f3z2x9p" onChange={() => {}} disabled />
+            </FormField>
+          </div>
+
+          {/* États Textarea */}
+          <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+            <p className="text-[11px] uppercase tracking-widest text-gray-400">Textarea</p>
+            <FormField
+              label="Légende Instagram"
+              help="Cmd/Ctrl + Entrée pour valider."
+            >
+              <Textarea
+                value={longText}
+                onChange={setLongText}
+                rows={4}
+                placeholder="Écris la légende ici…"
+              />
+            </FormField>
+            <FormField label="Notes monteur (désactivé)">
+              <Textarea
+                value="Pas d'accès à ce champ."
+                onChange={() => {}}
+                disabled
+                rows={2}
+              />
+            </FormField>
           </div>
         </div>
       </section>
