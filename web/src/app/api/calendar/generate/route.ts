@@ -40,9 +40,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Empêche la génération rétroactive : si toute la plage est dans le passé,
+  // on refuse avec un message explicite. Si la plage chevauche maintenant
+  // (cas semaine courante), on tronque côté engine via dateFrom = max(from, now).
+  const now = new Date();
+  if (to <= now) {
+    return NextResponse.json(
+      {
+        error:
+          "Plage entièrement passée — la génération auto ne crée pas de slots rétroactifs.",
+      },
+      { status: 400 },
+    );
+  }
+  const effectiveFrom = from > now ? from : now;
+
   const result = await generateCalendarSlots({
     accountIds: Array.isArray(accountIds) ? accountIds : undefined,
-    dateFrom: from,
+    dateFrom: effectiveFrom,
     dateTo: to,
   });
 
