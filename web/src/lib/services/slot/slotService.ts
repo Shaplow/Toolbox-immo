@@ -29,6 +29,8 @@ import {
   canTransition,
   syncSlotsPipelineStatuses,
 } from "@/lib/services/slot/transitions";
+import { mapSourceToInitialStatus } from "@/lib/calendarEngine";
+import { deleteFromR2 } from "@/lib/r2";
 
 // ─── Types I/O ────────────────────────────────────────────────────────────────
 
@@ -125,6 +127,24 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
   let resolvedAssigneeCmId: string | null = input.assigneeCmId ?? null;
   let resolvedAssigneeVideasteId: string | null = input.assigneeVideasteId ?? null;
 
+  // Status initial : si un pattern est fourni, dérive de pattern.source
+  // (cohérence avec calendarEngine.generateCalendarSlots). Sinon DRAFT.
+  let initialStatus: string = "DRAFT";
+
+  let resolvedPattern: {
+    accountId: string;
+    source: string;
+    captionPresetId: string | null;
+    descriptionPromptId: string | null;
+    needsCaptions: boolean;
+    needsDescription: string;
+    coverMode: string;
+    coverConfig: unknown;
+    defaultAssigneeMonteurId: string | null;
+    defaultAssigneeCmId: string | null;
+    defaultAssigneeVideasteId: string | null;
+  } | null = null;
+
   if (input.patternId) {
     const pattern = await prisma.accountPattern.findUnique({
       where: { id: input.patternId },
@@ -132,6 +152,16 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
     if (!pattern) {
       throw new ValidationError("Pattern introuvable");
     }
+    // Cross-account guard : pareil que patchSlot, un pattern d'un autre
+    // compte casserait toute la résolution downstream (needs*/cover/
+    // idempotence).
+    if (pattern.accountId !== input.accountId) {
+      throw new ValidationError(
+        "Le pattern choisi n'appartient pas au compte Instagram de cette publication.",
+      );
+    }
+    resolvedPattern = pattern;
+    initialStatus = mapSourceToInitialStatus(pattern.source);
     if (!resolvedAssigneeMonteurId && pattern.defaultAssigneeMonteurId) {
       resolvedAssigneeMonteurId = pattern.defaultAssigneeMonteurId;
     }
@@ -168,6 +198,44 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
     await assertAssigneeRole(resolvedAssigneeVideasteId, ["VIDEASTE", "ADMIN"], "Vidéaste assignee");
   }
 
+  // Cross-field validation Phase 5 — parité avec patchSlot. Simule l'état
+  // post-création (overrides ∪ pattern) pour vérifier la cohérence
+  // toggles ↔ presets. Sans ces guards, un admin pouvait créer un slot
+  // où needsCaptions=true mais sans aucun captionPresetId résolvable —
+  // trigger-captions échouait plus tard de façon cryptique.
+  const resolvedNeedsCaptions =
+    input.needsCaptionsOverride ?? resolvedPattern?.needsCaptions ?? false;
+  const resolvedCaptionPresetId =
+    input.captionPresetIdOverride ?? resolvedPattern?.captionPresetId ?? null;
+  if (resolvedNeedsCaptions === true && !resolvedCaptionPresetId) {
+    throw new ValidationError(
+      "Sous-titres auto activés mais aucun preset captions défini (ni au slot, ni au pattern)",
+    );
+  }
+  const resolvedNeedsDescription =
+    input.needsDescriptionOverride ?? resolvedPattern?.needsDescription ?? "none";
+  const resolvedDescriptionPromptId =
+    input.descriptionPromptIdOverride ?? resolvedPattern?.descriptionPromptId ?? null;
+  if (resolvedNeedsDescription === "autoGenerate" && !resolvedDescriptionPromptId) {
+    throw new ValidationError(
+      "Description auto activée mais aucun prompt IA défini (ni au slot, ni au pattern)",
+    );
+  }
+  const resolvedCoverMode = input.coverModeOverride ?? resolvedPattern?.coverMode ?? "none";
+  const patternCoverPresetIdRaw = resolvedPattern?.coverConfig;
+  const patternCoverPresetId =
+    patternCoverPresetIdRaw &&
+    typeof patternCoverPresetIdRaw === "object" &&
+    !Array.isArray(patternCoverPresetIdRaw)
+      ? (patternCoverPresetIdRaw as { coverPresetId?: string }).coverPresetId ?? null
+      : null;
+  const resolvedCoverPresetId = input.coverPresetIdOverride ?? patternCoverPresetId;
+  if (resolvedCoverMode === "auto" && !resolvedCoverPresetId) {
+    throw new ValidationError(
+      "Cover mode auto activé mais aucun preset cover défini (ni au slot, ni au pattern)",
+    );
+  }
+
   const slot = await prisma.publicationSlot.create({
     data: {
       accountId: input.accountId,
@@ -175,6 +243,10 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
       title: input.title ?? null,
       caption: input.caption ?? null,
       notes: input.notes ?? null,
+      // Status initial dérivé du pattern.source (cohérence calendarEngine
+      // — sinon le défaut DB "TO_DO" laisse les slots manuels invisibles
+      // dans les worklists qui filtrent par status moderne).
+      status: initialStatus,
       templateId: input.templateId ?? null,
       fields: input.fields ? JSON.stringify(input.fields) : "{}",
       fieldSchema: input.fieldSchema ? JSON.stringify(input.fieldSchema) : "[]",
@@ -832,6 +904,20 @@ export async function getSlot(id: string, ctx: UserContext) {
  *
  * Renvoie 404 (pas 403) pour les non-ADMIN, par cohérence avec GET/PATCH :
  * un non-admin ne doit pas savoir si le slot existe.
+ *
+ * Cleanup R2 : avant Prisma cascade (qui supprime les rows PublicationVersion,
+ * PublicationRush, PublicationBriefAttachment en DB), on récupère les R2 keys
+ * pour les supprimer du bucket. Sans ce cleanup, chaque slot supprimé
+ * laissait derrière lui ses fichiers vidéo/image dans R2 — fuite de
+ * stockage permanente.
+ *
+ * Best-effort : on log les échecs R2 mais on continue la suppression DB.
+ * Un échec partiel R2 vaut mieux que de laisser le slot indéfiniment.
+ *
+ * Render et CaptionJob ont `onDelete: SetNull` côté FK donc le lien slot
+ * devient null mais les jobs restent en DB avec leurs propres R2 keys.
+ * Ils ne sont PAS nettoyés ici — c'est de la dette assumée car ces jobs
+ * peuvent être ré-utilisés (re-render sur un autre slot, etc.).
  */
 export async function deleteSlot(id: string, ctx: UserContext) {
   const role = toUserRole(ctx.effectiveUser.role);
@@ -840,11 +926,44 @@ export async function deleteSlot(id: string, ctx: UserContext) {
     throw new NotFoundError("Slot");
   }
 
-  const slot = await prisma.publicationSlot.findUnique({ where: { id } });
+  // Charge le slot + tous les enfants qui détiennent des R2 keys avant
+  // que Prisma cascade ne les supprime de la DB.
+  const slot = await prisma.publicationSlot.findUnique({
+    where: { id },
+    include: {
+      versions: { select: { r2Key: true } },
+      rushes: { select: { r2Key: true } },
+      brief: { include: { attachments: { select: { r2Key: true } } } },
+    },
+  });
   if (!slot) {
     throw new NotFoundError("Slot");
   }
 
+  // Collecte toutes les R2 keys orphelines après la cascade.
+  const r2KeysToDelete: string[] = [
+    ...slot.versions.map((v) => v.r2Key),
+    ...slot.rushes.map((r) => r.r2Key),
+    ...(slot.brief?.attachments.map((a) => a.r2Key) ?? []),
+  ];
+
+  // DB delete (cascade supprime les rows enfants).
   await prisma.publicationSlot.delete({ where: { id } });
-  return { ok: true };
+
+  // Cleanup R2 — best-effort. On itère séquentiellement pour ne pas
+  // saturer le bucket en cas de slot avec beaucoup de versions/rushes.
+  // Chaque échec est loggué avec le key pour permettre un cleanup
+  // manuel (script ou réessai opérationnel).
+  for (const key of r2KeysToDelete) {
+    try {
+      await deleteFromR2(key);
+    } catch (err) {
+      console.error(
+        `[deleteSlot] R2 cleanup failed for slotId=${id} key=${key}:`,
+        err,
+      );
+    }
+  }
+
+  return { ok: true, r2KeysDeleted: r2KeysToDelete.length };
 }
