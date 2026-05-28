@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, Plus, X } from "lucide-react";
+import { Download } from "lucide-react";
 import { useBuilderStore } from "@/lib/store/builderStore";
-import { CoverPresetsPanel } from "./CoverPresetsPanel";
 import { CANVAS_FORMATS } from "@/types/template";
-import type { CaptionExcludeZone, SchemaField } from "@/types/template";
+import type { SchemaField } from "@/types/template";
 
 function downloadCSVTemplate(schema: SchemaField[], templateName: string) {
   // Only data-like fields (exclude video/image/audio — they aren't stored in DataEntry)
@@ -23,51 +22,19 @@ function downloadCSVTemplate(schema: SchemaField[], templateName: string) {
   URL.revokeObjectURL(url);
 }
 
-type Props = {
-  /** ID du template en base — nécessaire pour la gestion des presets cover. */
-  templateId?: string;
-};
-
-export function SettingsPanel({ templateId }: Props) {
-  const { template, updateContentLibrary, updateCanvas, updateCaptionAutoConfig } = useBuilderStore();
+export function SettingsPanel() {
+  const { template, updateContentLibrary, updateCanvas } = useBuilderStore();
   const cl = template.contentLibrary;
-  const captionAutoConfig = template.captionAutoConfig;
 
   const [dataLibraries, setDataLibraries] = useState<{ id: string; name: string; templateType: string }[]>([]);
   const [campaigns, setCampaigns] = useState<{ id: string; name: string; isActive: boolean }[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
-  const [captionPresets, setCaptionPresets] = useState<{ id: string; name: string }[]>([]);
-  const [loadingPresets, setLoadingPresets] = useState(false);
-  const [captionPrompts, setCaptionPrompts] = useState<{ id: string; name: string }[]>([]);
-  const [loadingPrompts, setLoadingPrompts] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/libraries/data")
       .then((r) => (r.ok ? (r.json() as Promise<{ id: string; name: string; templateType: string }[]>) : []))
       .then(setDataLibraries)
       .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    setLoadingPresets(true);
-    fetch("/api/caption-presets")
-      .then((r) => (r.ok ? (r.json() as Promise<{ id: string; name: string }[]>) : []))
-      .then((data) => { if (active) setCaptionPresets(data); })
-      .catch(() => {})
-      .finally(() => { if (active) setLoadingPresets(false); });
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    setLoadingPrompts(true);
-    fetch("/api/caption-prompts")
-      .then((r) => (r.ok ? (r.json() as Promise<{ id: string; name: string }[]>) : []))
-      .then((data) => { if (active) setCaptionPrompts(data); })
-      .catch(() => {})
-      .finally(() => { if (active) setLoadingPrompts(false); });
-    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -315,248 +282,13 @@ export function SettingsPanel({ templateId }: Props) {
         )}
       </div>
 
-      {/* Pipeline sous-titres */}
-      <div className="px-3 py-3 border-b border-gray-100">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Pipeline sous-titres</p>
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={captionAutoConfig?.enabled ?? false}
-              onChange={(e) => updateCaptionAutoConfig({ enabled: e.target.checked })}
-              className="rounded"
-            />
-            <span className="text-gray-500">Activer après chaque render</span>
-          </label>
-
-          {captionAutoConfig?.enabled && (
-            <>
-              <label className="flex flex-col gap-0.5">
-                <span className="text-gray-500">Preset de sous-titres</span>
-                {loadingPresets ? (
-                  <span className="text-[10px] text-gray-400 italic">Chargement…</span>
-                ) : captionPresets.length === 0 ? (
-                  <span className="text-[10px] text-gray-400 italic">Aucun preset disponible.</span>
-                ) : (
-                  <select
-                    value={captionAutoConfig?.presetId ?? ""}
-                    onChange={(e) => updateCaptionAutoConfig({ presetId: e.target.value || undefined })}
-                    className="border border-gray-200 rounded px-2 py-1 text-xs bg-white"
-                  >
-                    <option value="">— Sélectionner un preset —</option>
-                    {captionPresets.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                )}
-              </label>
-
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
-                  Zones sans sous-titres
-                </p>
-                {(template.videoSequence?.length ?? 0) > 0 ? (
-                  /* Template séquence : une case à cocher par slot */
-                  <div className="space-y-1">
-                    {(template.videoSequence ?? []).map((slot) => {
-                      const isExcluded = (captionAutoConfig?.excludeSlotIds ?? []).includes(slot.id);
-                      return (
-                        <label key={slot.id} className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={isExcluded}
-                            onChange={(e) => {
-                              const current = captionAutoConfig?.excludeSlotIds ?? [];
-                              const updated = e.target.checked
-                                ? [...current, slot.id]
-                                : current.filter((id) => id !== slot.id);
-                              updateCaptionAutoConfig({ excludeSlotIds: updated });
-                            }}
-                            className="rounded"
-                          />
-                          <span className="text-xs text-gray-600">{slot.label ?? `Slot`}</span>
-                          {slot.maxDuration !== undefined && (
-                            <span className="text-[9px] text-gray-400">({slot.maxDuration}s max)</span>
-                          )}
-                        </label>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  /* Template non-séquence : zones explicites par timestamp / groupe */
-                  <>
-                {(captionAutoConfig?.excludeZones ?? []).map((zone, i) => (
-                  <div key={zone.id} className="mb-2 rounded-lg border border-gray-100 bg-gray-50 p-2 space-y-1.5">
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="text"
-                        placeholder="Label (ex: outro)"
-                        value={zone.label}
-                        onChange={(e) => {
-                          const zones = [...(captionAutoConfig?.excludeZones ?? [])];
-                          zones[i] = { ...zones[i], label: e.target.value };
-                          updateCaptionAutoConfig({ excludeZones: zones });
-                        }}
-                        className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const zones = (captionAutoConfig?.excludeZones ?? []).filter((_, j) => j !== i);
-                          updateCaptionAutoConfig({ excludeZones: zones });
-                        }}
-                        className="text-gray-400 hover:text-red-500 p-1 transition-colors"
-                        title="Supprimer cette zone"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                    <label className="flex flex-col gap-0.5">
-                      <span className="text-gray-400 text-[10px]">Début — groupe</span>
-                      <select
-                        value={zone.startGroupId ?? ""}
-                        onChange={(e) => {
-                          const zones = [...(captionAutoConfig?.excludeZones ?? [])];
-                          zones[i] = { ...zones[i], startGroupId: e.target.value || undefined };
-                          updateCaptionAutoConfig({ excludeZones: zones });
-                        }}
-                        className="border border-gray-200 rounded px-2 py-1 text-xs bg-white"
-                      >
-                        <option value="">— Timestamp explicite —</option>
-                        {template.groups.map((g) => (
-                          <option key={g.id} value={g.id}>{g.name}</option>
-                        ))}
-                      </select>
-                      {!zone.startGroupId && (
-                        <input
-                          type="number"
-                          min={0}
-                          step={0.1}
-                          placeholder="Secondes"
-                          value={zone.startTime ?? ""}
-                          onChange={(e) => {
-                            const zones = [...(captionAutoConfig?.excludeZones ?? [])];
-                            zones[i] = { ...zones[i], startTime: e.target.value ? Number(e.target.value) : undefined };
-                            updateCaptionAutoConfig({ excludeZones: zones });
-                          }}
-                          className="border border-gray-200 rounded px-2 py-1 text-xs"
-                        />
-                      )}
-                      {zone.startGroupId && (() => {
-                        const members = template.blocks.filter(b => b.groupId === zone.startGroupId);
-                        const times = members.map(b => b.appearAt).filter((t): t is number => typeof t === "number");
-                        const ts = times.length > 0 ? Math.min(...times) : null;
-                        return ts !== null ? (
-                          <span className="text-[9px] text-gray-400">→ {ts}s</span>
-                        ) : (
-                          <span className="text-[9px] text-amber-500">Aucun bloc avec appearAt dans ce groupe</span>
-                        );
-                      })()}
-                    </label>
-                    <label className="flex flex-col gap-0.5">
-                      <span className="text-gray-400 text-[10px]">Fin — groupe</span>
-                      <select
-                        value={zone.endGroupId ?? ""}
-                        onChange={(e) => {
-                          const zones = [...(captionAutoConfig?.excludeZones ?? [])];
-                          zones[i] = { ...zones[i], endGroupId: e.target.value || undefined };
-                          updateCaptionAutoConfig({ excludeZones: zones });
-                        }}
-                        className="border border-gray-200 rounded px-2 py-1 text-xs bg-white"
-                      >
-                        <option value="">— Fin de vidéo —</option>
-                        {template.groups.map((g) => (
-                          <option key={g.id} value={g.id}>{g.name}</option>
-                        ))}
-                      </select>
-                      {!zone.endGroupId && (
-                        <input
-                          type="number"
-                          min={0}
-                          step={0.1}
-                          placeholder="Secondes (fin de vidéo si vide)"
-                          value={zone.endTime ?? ""}
-                          onChange={(e) => {
-                            const zones = [...(captionAutoConfig?.excludeZones ?? [])];
-                            zones[i] = { ...zones[i], endTime: e.target.value ? Number(e.target.value) : undefined };
-                            updateCaptionAutoConfig({ excludeZones: zones });
-                          }}
-                          className="border border-gray-200 rounded px-2 py-1 text-xs"
-                        />
-                      )}
-                    </label>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const safeZone: CaptionExcludeZone = { id: `zone-${Date.now()}`, label: "" };
-                    const zones = [...(captionAutoConfig?.excludeZones ?? []), safeZone];
-                    updateCaptionAutoConfig({ excludeZones: zones });
-                  }}
-                  className="flex items-center gap-1 text-[10px] text-indigo-600 hover:text-indigo-700"
-                >
-                  <Plus size={11} />
-                  Ajouter une zone
-                </button>
-                  </>
-                )}
-              </div>
-
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
-                  Correction IA
-                </p>
-                <label className="flex flex-col gap-0.5 mb-2">
-                  <span className="text-gray-500">Prompt de correction</span>
-                  {loadingPrompts ? (
-                    <span className="text-[10px] text-gray-400 italic">Chargement…</span>
-                  ) : captionPrompts.length === 0 ? (
-                    <span className="text-[10px] text-gray-400 italic">Aucun prompt disponible.</span>
-                  ) : (
-                    <select
-                      value={captionAutoConfig?.correctionPromptId ?? ""}
-                      onChange={(e) => updateCaptionAutoConfig({ correctionPromptId: e.target.value || undefined })}
-                      className="border border-gray-200 rounded px-2 py-1 text-xs bg-white"
-                    >
-                      <option value="">— Désactivée —</option>
-                      {captionPrompts.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                  )}
-                </label>
-                {captionAutoConfig?.correctionPromptId && (
-                  <label className="flex flex-col gap-0.5">
-                    <span className="text-gray-500">Modèle IA</span>
-                    <select
-                      value={captionAutoConfig?.correctionModel ?? "claude"}
-                      onChange={(e) => updateCaptionAutoConfig({ correctionModel: e.target.value as "claude" | "gpt" })}
-                      className="border border-gray-200 rounded px-2 py-1 text-xs bg-white"
-                    >
-                      <option value="claude">Claude (Anthropic)</option>
-                      <option value="gpt">GPT (OpenAI)</option>
-                    </select>
-                  </label>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Presets cover */}
-      <div className="px-3 py-3 border-b border-gray-100">
-        {templateId ? (
-          <CoverPresetsPanel templateId={templateId} />
-        ) : (
-          <>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Presets cover</p>
-            <p className="text-xs text-gray-500">
-              Sauvegarde le template d&apos;abord pour gérer les presets cover.
-            </p>
-          </>
-        )}
+      {/* Note de redirection vers les onglets dédiés */}
+      <div className="px-3 py-3 border-b border-gray-100 bg-indigo-50/40">
+        <p className="text-[11px] text-indigo-700 leading-relaxed">
+          La configuration <span className="font-medium">Cover auto</span> et{" "}
+          <span className="font-medium">Sous-titres auto</span> a son propre onglet
+          dans le rail à gauche.
+        </p>
       </div>
 
       {/* Margins */}

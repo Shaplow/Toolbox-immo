@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { Layers, AlignLeft, Film, Settings, Undo2, Redo2, X, ChevronLeft } from "lucide-react";
+import { Layers, AlignLeft, Film, Settings, Undo2, Redo2, X, ChevronLeft, Image, Type } from "lucide-react";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import { collectBuilderFontsFromSources, type BuilderFontEntry } from "@/lib/builderFonts";
 import { toast } from "@/components/ui/Toast";
@@ -15,22 +15,34 @@ import { PropertiesPanel } from "./PropertiesPanel";
 import { SchemaPanel } from "@/components/builder/SchemaPanel";
 import { VideoSequencePanel } from "@/components/builder/VideoSequencePanel";
 import { SettingsPanel } from "@/components/builder/SettingsPanel";
+import { CoverTabPanel } from "@/components/builder/CoverTabPanel";
+import { CaptionsTabPanel } from "@/components/builder/CaptionsTabPanel";
 import { SequenceTimeline } from "@/components/builder/SequenceTimeline";
 
 // ─── Rail tab definitions ─────────────────────────────────────────────────────
 
-type PanelId = "layers" | "schema" | "sequence" | "settings";
+type PanelId = "layers" | "schema" | "sequence" | "cover" | "captions" | "settings";
 
-const PANEL_ITEMS: { id: Exclude<PanelId, "settings">; label: string; Icon: React.ComponentType<{ size?: number }> }[] = [
+/** Top items du rail (création / structure du template) */
+const PANEL_ITEMS_TOP: { id: PanelId; label: string; Icon: React.ComponentType<{ size?: number }> }[] = [
   { id: "layers",   label: "Calques",    Icon: Layers },
   { id: "schema",   label: "Formulaire", Icon: AlignLeft },
   { id: "sequence", label: "Séquence",   Icon: Film },
+];
+
+/** Bottom items du rail (config auto cover/captions + paramètres généraux) */
+const PANEL_ITEMS_BOTTOM: { id: PanelId; label: string; Icon: React.ComponentType<{ size?: number }> }[] = [
+  { id: "cover",    label: "Cover auto",      Icon: Image },
+  { id: "captions", label: "Sous-titres auto", Icon: Type },
+  { id: "settings", label: "Paramètres",       Icon: Settings },
 ];
 
 const PANEL_LABELS: Record<PanelId, string> = {
   layers:   "Calques",
   schema:   "Formulaire",
   sequence: "Séquence",
+  cover:    "Cover auto",
+  captions: "Sous-titres auto",
   settings: "Paramètres",
 };
 
@@ -311,7 +323,7 @@ export function BuilderClient({
 
           {/* ── Icon rail (always visible, 48px) ─────────────────────────── */}
           <nav className="w-12 flex flex-col items-center pt-2 pb-3 gap-0.5 bg-white border-r border-gray-100 shrink-0">
-            {PANEL_ITEMS.map(({ id, label, Icon }) => (
+            {PANEL_ITEMS_TOP.map(({ id, label, Icon }) => (
               <button
                 key={id}
                 type="button"
@@ -334,19 +346,35 @@ export function BuilderClient({
 
             <div className="flex-1" />
 
-            {/* Settings at bottom */}
-            <button
-              type="button"
-              onClick={() => handleRailClick("settings")}
-              title="Paramètres"
-              className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
-                activePanel === "settings"
-                  ? "bg-indigo-50 text-indigo-700"
-                  : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-              }`}
-            >
-              <Settings size={18} />
-            </button>
+            {/* Bottom items : Cover auto / Captions auto / Settings */}
+            {PANEL_ITEMS_BOTTOM.map(({ id, label, Icon }) => {
+              const hasCoverConfig =
+                id === "cover" &&
+                Array.isArray((template as { coverPresets?: unknown[] }).coverPresets) &&
+                ((template as { coverPresets?: unknown[] }).coverPresets?.length ?? 0) > 0;
+              const hasCaptionConfig =
+                id === "captions" &&
+                (template.captionAutoConfig?.enabled ?? false);
+              const showDot = (hasCoverConfig || hasCaptionConfig) && activePanel !== id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => handleRailClick(id)}
+                  title={label}
+                  className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors relative ${
+                    activePanel === id
+                      ? "bg-indigo-50 text-indigo-700"
+                      : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                  }`}
+                >
+                  <Icon size={18} />
+                  {showDot && (
+                    <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-indigo-400" aria-hidden />
+                  )}
+                </button>
+              );
+            })}
           </nav>
 
           {/* ── Fly-out panel (shown when a panel is active) ──────────────── */}
@@ -371,7 +399,9 @@ export function BuilderClient({
                 {activePanel === "layers"   && <BlocksPanel />}
                 {activePanel === "schema"   && <SchemaPanel />}
                 {activePanel === "sequence" && <VideoSequencePanel videoLibraries={videoLibraries} setVideoLibraries={setVideoLibraries} />}
-                {activePanel === "settings" && <SettingsPanel templateId={templateId} />}
+                {activePanel === "cover"    && <CoverTabPanel templateId={templateId} />}
+                {activePanel === "captions" && <CaptionsTabPanel />}
+                {activePanel === "settings" && <SettingsPanel />}
               </div>
             </div>
           )}
