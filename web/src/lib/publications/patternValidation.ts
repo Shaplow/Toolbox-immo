@@ -43,6 +43,8 @@ export interface PatternValidationInput {
   coverConfig: unknown;
   needsCaptions: boolean;
   needsDescription: string;
+  /** Phase 2.3 — validation admin du montage. Optionnel pour back-compat. */
+  needsAdminValidation?: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
   captionPresetId: string | null;

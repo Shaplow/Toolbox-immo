@@ -1,11 +1,12 @@
 /**
  * Phase humaine d'un PublicationSlot.
  *
- * Regroupe les 17 statuts pipeline en 6 phases lisibles pour l'UX :
+ * Regroupe les 17 statuts pipeline en 7 phases lisibles pour l'UX :
  *
  *   À planifier   → DRAFT, PLANNED
  *   À shooter     → RUSHES_EXPECTED
- *   En production → RUSHES_RECEIVED, IN_EDIT, EDIT_REVIEW, EDIT_APPROVED, CAPTIONS_PENDING
+ *   En production → RUSHES_RECEIVED, IN_EDIT, EDIT_APPROVED, CAPTIONS_PENDING
+ *   À valider     → EDIT_REVIEW (Phase 2.3 — owner ADMIN)
  *   À publier     → READY_FOR_CM, AWAITING_CLIENT, CLIENT_REVISION, SCHEDULED
  *   Publié        → PUBLISHED
  *   Terminé       → CANCELLED, REJECTED, ARCHIVED, BLOCKED
@@ -23,6 +24,7 @@ export type PublicationPhase =
   | "planned"
   | "shooting"
   | "production"
+  | "admin_review"
   | "publishing"
   | "published"
   | "terminated";
@@ -34,7 +36,9 @@ const STATUS_TO_PHASE: Record<SlotStatus, PublicationPhase> = {
   RUSHES_EXPECTED: "shooting",
   RUSHES_RECEIVED: "production",
   IN_EDIT: "production",
-  EDIT_REVIEW: "production",
+  // Phase 2.3 — EDIT_REVIEW est sa propre phase ("À valider", owner ADMIN).
+  // Sans ça, le badge "En production" masquait l'attente d'une action admin.
+  EDIT_REVIEW: "admin_review",
   EDIT_APPROVED: "production",
   CAPTIONS_PENDING: "production",
   READY_FOR_CM: "publishing",
@@ -65,6 +69,7 @@ export const PHASE_LABELS: Record<PublicationPhase, string> = {
   planned: "À planifier",
   shooting: "À shooter",
   production: "En production",
+  admin_review: "À valider",
   publishing: "À publier",
   published: "Publié",
   terminated: "Terminé",
@@ -81,6 +86,8 @@ export const PHASE_COLORS: Record<PublicationPhase, string> = {
   planned: "bg-gray-100 text-gray-700 border-gray-200",
   shooting: "bg-yellow-100 text-yellow-800 border-yellow-200",
   production: "bg-orange-100 text-orange-800 border-orange-200",
+  // amber = orange/jaune "attention requise" admin
+  admin_review: "bg-amber-100 text-amber-800 border-amber-300",
   publishing: "bg-indigo-100 text-indigo-700 border-indigo-200",
   published: "bg-green-100 text-green-700 border-green-200",
   terminated: "bg-gray-100 text-gray-500 border-gray-200",
@@ -93,6 +100,7 @@ export const PHASE_DOT: Record<PublicationPhase, string> = {
   planned: "bg-gray-400",
   shooting: "bg-yellow-500",
   production: "bg-orange-500",
+  admin_review: "bg-amber-500",
   publishing: "bg-indigo-500",
   published: "bg-green-500",
   terminated: "bg-gray-300",

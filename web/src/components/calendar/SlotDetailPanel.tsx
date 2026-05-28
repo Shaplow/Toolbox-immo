@@ -101,6 +101,10 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
     // NOTE Phase 3 cohérence rôles : needsClientValidationOverride et
     // allowsClientRevisionOverride sont retirés du panel pour centraliser
     // l'édition dans la fiche publication (ClientValidationSection).
+    // Phase 2.3 : needsAdminValidationOverride reste ici (pas de section dédiée
+    // sur la fiche pour la validation admin — l'action de promote est dans
+    // "Versions livrées" directement).
+    needsAdminValidationOverride: slot.needsAdminValidationOverride ?? null,
     needsCaptionsOverride: slot.needsCaptionsOverride ?? null,
     needsDescriptionOverride: slot.needsDescriptionOverride ?? null,
     needsRushesOverride: slot.needsRushesOverride ?? null,
@@ -207,6 +211,7 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
             fields: form.fields,
             fieldSchema: form.fieldSchema,
             // Phase 4 — overrides needs* (booleans + enum description)
+            needsAdminValidationOverride: form.needsAdminValidationOverride,
             needsCaptionsOverride: form.needsCaptionsOverride,
             needsDescriptionOverride: form.needsDescriptionOverride,
             needsRushesOverride: form.needsRushesOverride,
@@ -488,6 +493,12 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
                   💡 La validation client (et les révisions) se configure dans la
                   fiche publication, pas ici.
                 </p>
+                <OverrideSelect
+                  label="Validation admin du montage"
+                  value={form.needsAdminValidationOverride}
+                  inheritedValue={slot.pattern?.needsAdminValidation ?? false}
+                  onChange={(v) => set("needsAdminValidationOverride", v)}
+                />
                 <OverrideSelect
                   label="Sous-titres auto"
                   value={form.needsCaptionsOverride}

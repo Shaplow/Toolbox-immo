@@ -71,6 +71,8 @@ export interface PublicationSlot {
     // W2 — config validation client héritée du pattern (peut être null si pas chargé)
     needsClientValidation?: boolean;
     allowsClientRevision?: boolean;
+    /** Phase 2.3 — validation admin du montage héritée. */
+    needsAdminValidation?: boolean;
     // Cohérence Workflows Phase 4 — autres needs* hérités du pattern
     needsCaptions?: boolean;
     needsDescription?: string;
@@ -84,6 +86,8 @@ export interface PublicationSlot {
   assigneeCm?: { id: string; name: string | null } | null;
   assigneeVideaste?: { id: string; name: string | null } | null;
   // W2 + Cohérence Workflows Phase 4 — overrides per-slot (null = hérite du pattern)
+  /** Phase 2.3 — override admin validation du montage. */
+  needsAdminValidationOverride?: boolean | null;
   needsClientValidationOverride?: boolean | null;
   allowsClientRevisionOverride?: boolean | null;
   needsCaptionsOverride?: boolean | null;

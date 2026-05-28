@@ -62,14 +62,21 @@ export async function POST(req: NextRequest, { params }: Params) {
   const userId = userContext.effectiveUser.id;
   const { id: slotId } = await params;
 
-  // 2. Charger le slot
+  // 2. Charger le slot + overrides + pattern (pour résoudre needsAdminValidation
+  //    avant de décider si la version uploadée passe par EDIT_REVIEW ou est
+  //    auto-promue directement).
   const slot = await prisma.publicationSlot.findUnique({
     where: { id: slotId },
     select: {
       id: true,
       status: true,
       assigneeMonteurId: true,
-      assigneeCmId: true, assigneeVideasteId: true,
+      assigneeCmId: true,
+      assigneeVideasteId: true,
+      needsAdminValidationOverride: true,
+      pattern: {
+        select: { needsAdminValidation: true },
+      },
     },
   });
 
@@ -173,9 +180,14 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     if (uploadKind === "version") {
+      // Phase 2.3 — needsAdminValidation effectif (override > pattern > false).
+      const needsAdminValidation =
+        slot.needsAdminValidationOverride ??
+        slot.pattern?.needsAdminValidation ??
+        false;
       return await handleVersionComplete({
         prisma, slotId, slot, userId, actorId: userContext.actualUser.id, r2Key, fileUrl, fileName, mimeType, sizeBytes, durationSec,
-        isMultipart, uploadId,
+        isMultipart, uploadId, needsAdminValidation,
       });
     }
 
@@ -279,8 +291,11 @@ async function handleVersionComplete(args: {
   durationSec?: number;
   isMultipart: boolean;
   uploadId?: string;
+  /** Phase 2.3 — true : EDIT_REVIEW intercalé (admin promote manuelle).
+   *  false : version uploadée auto-promue + transition EDIT_APPROVED. */
+  needsAdminValidation: boolean;
 }): Promise<NextResponse> {
-  const { slotId, slot, userId, actorId, r2Key, fileUrl, fileName, mimeType, sizeBytes, durationSec } = args;
+  const { slotId, slot, userId, actorId, r2Key, fileUrl, fileName, mimeType, sizeBytes, durationSec, needsAdminValidation } = args;
 
   // Tout dans une seule transaction : versionNumber calculé atomiquement,
   // logActivity et applyAutoTransition cohérents (pas de drift slot.status / DB).
@@ -325,8 +340,44 @@ async function handleVersionComplete(args: {
     });
     const freshStatus = fresh?.status ?? slot.status;
 
-    const trigger = version.versionNumber === 1 ? "VERSION_UPLOADED_FIRST" : "VERSION_UPLOADED_AGAIN";
-    await applyAutoTransition(tx as typeof args.prisma, slotId, freshStatus, trigger, actorId);
+    // Phase 2.3 — flux selon needsAdminValidation effectif.
+    //
+    // - needsAdminValidation === true  : flux historique. Upload → EDIT_REVIEW
+    //   (admin promote manuelle). Idem pour les révisions.
+    // - needsAdminValidation === false : la version uploadée devient
+    //   currentVersion automatiquement.
+    //     - Pour la 1ère version : on déclenche la transition de statut
+    //       VERSION_PROMOTED → EDIT_APPROVED (workflow standard avance).
+    //     - Pour les révisions (v2+) : on met juste à jour currentVersionId
+    //       sans toucher au statut. Le slot peut être à n'importe quel
+    //       moment du cycle (CLIENT_REVISION, AWAITING_CLIENT, SCHEDULED…),
+    //       l'humain décide la suite — l'auto-transition serait dangereuse
+    //       (risque de remettre le slot en arrière par rapport aux décisions
+    //       client/CM déjà prises en aval).
+    if (!needsAdminValidation) {
+      await tx.publicationSlot.update({
+        where: { id: slotId },
+        data: { currentVersionId: version.id },
+      });
+      await logActivity(tx as typeof args.prisma, {
+        slotId,
+        actorId,
+        type: "VERSION_PROMOTED",
+        payload: {
+          versionId: version.id,
+          versionNumber: version.versionNumber,
+          autoPromoted: true,
+          reason: "needsAdminValidation_disabled",
+        },
+      });
+      if (version.versionNumber === 1) {
+        await applyAutoTransition(tx as typeof args.prisma, slotId, freshStatus, "VERSION_PROMOTED", actorId);
+      }
+      // versionNumber > 1 : pas de transition. Le slot reste où il est.
+    } else {
+      const trigger = version.versionNumber === 1 ? "VERSION_UPLOADED_FIRST" : "VERSION_UPLOADED_AGAIN";
+      await applyAutoTransition(tx as typeof args.prisma, slotId, freshStatus, trigger, actorId);
+    }
 
     return version;
   });

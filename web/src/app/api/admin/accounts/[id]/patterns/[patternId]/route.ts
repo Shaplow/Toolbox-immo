@@ -30,6 +30,8 @@ type PatchBody = {
   coverConfig?: unknown;
   needsDescription?: string;
   needsCaptions?: boolean;
+  /** Phase 2.3 — validation admin du montage. */
+  needsAdminValidation?: boolean;
   needsClientValidation?: boolean;
   allowsClientRevision?: boolean;
   needsRushes?: boolean;
@@ -118,6 +120,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       coverConfig: true,
       needsCaptions: true,
       needsDescription: true,
+      needsAdminValidation: true,
       needsClientValidation: true,
       allowsClientRevision: true,
       captionPresetId: true,
@@ -142,6 +145,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     coverConfig: body.coverConfig !== undefined ? body.coverConfig : existing.coverConfig,
     needsCaptions: body.needsCaptions ?? existing.needsCaptions,
     needsDescription: body.needsDescription ?? existing.needsDescription,
+    needsAdminValidation: body.needsAdminValidation ?? existing.needsAdminValidation,
     needsClientValidation: body.needsClientValidation ?? existing.needsClientValidation,
     allowsClientRevision: body.allowsClientRevision ?? existing.allowsClientRevision,
     captionPresetId:
@@ -165,6 +169,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if ("coverConfig" in body) data.coverConfig = body.coverConfig !== null && body.coverConfig !== undefined ? (body.coverConfig as Prisma.InputJsonValue) : Prisma.JsonNull;
   if (body.needsDescription !== undefined) data.needsDescription = body.needsDescription;
   if (body.needsCaptions !== undefined) data.needsCaptions = body.needsCaptions;
+  if (body.needsAdminValidation !== undefined) data.needsAdminValidation = body.needsAdminValidation;
   if (body.needsClientValidation !== undefined) data.needsClientValidation = body.needsClientValidation;
   if (body.allowsClientRevision !== undefined) data.allowsClientRevision = body.allowsClientRevision;
   if (body.needsRushes !== undefined) data.needsRushes = body.needsRushes;

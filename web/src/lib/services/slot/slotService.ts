@@ -387,6 +387,7 @@ export async function patchSlot(
     patternId,
     currentVersionId,
     isAuto,
+    needsAdminValidationOverride,
     needsClientValidationOverride,
     allowsClientRevisionOverride,
     needsCaptionsOverride,
@@ -645,8 +646,11 @@ export async function patchSlot(
           ? { currentVersionId: currentVersionId as string | null }
           : {}),
         ...(isAuto !== undefined ? { isAuto: isAuto as boolean } : {}),
-        // W2 + Cohérence Workflows Phase 4 — overrides per-slot.
+        // W2 + Cohérence Workflows Phase 4 + Phase 2.3 — overrides per-slot.
         // null = hérite du pattern, true/false = écrase. needsDescription est un enum (string).
+        ...(needsAdminValidationOverride !== undefined
+          ? { needsAdminValidationOverride: needsAdminValidationOverride as boolean | null }
+          : {}),
         ...(needsClientValidationOverride !== undefined
           ? { needsClientValidationOverride: needsClientValidationOverride as boolean | null }
           : {}),
@@ -854,6 +858,7 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
           label: true,
           source: true,
           needsCaptions: true,
+          needsAdminValidation: true,
           needsClientValidation: true,
           allowsClientRevision: true,
           needsDescription: true,

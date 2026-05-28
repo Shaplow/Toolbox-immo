@@ -33,6 +33,7 @@ type PostBody = {
   coverConfig?: unknown;
   needsDescription?: string;
   needsCaptions?: boolean;
+  needsAdminValidation?: boolean;
   needsClientValidation?: boolean;
   allowsClientRevision?: boolean;
   needsRushes?: boolean;
@@ -187,6 +188,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         coverConfig: body.coverConfig !== undefined ? (body.coverConfig as import("@prisma/client").Prisma.InputJsonValue) : undefined,
         needsDescription: body.needsDescription!,
         needsCaptions: body.needsCaptions ?? false,
+        needsAdminValidation: body.needsAdminValidation ?? false,
         needsClientValidation: body.needsClientValidation ?? false,
         allowsClientRevision: body.allowsClientRevision ?? false,
         needsRushes: body.needsRushes ?? false,

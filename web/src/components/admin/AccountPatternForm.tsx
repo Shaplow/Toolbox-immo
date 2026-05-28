@@ -33,6 +33,8 @@ export type AccountPatternRow = {
   coverConfig: unknown;
   needsDescription: string;
   needsCaptions: boolean;
+  /** Phase 2.3 — validation admin du montage avant promote. */
+  needsAdminValidation: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
   needsRushes: boolean;
@@ -70,6 +72,7 @@ type FormValues = {
   coverConfigJson: string;
   needsCaptions: boolean;
   needsDescription: string;
+  needsAdminValidation: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
   needsRushes: boolean;
@@ -95,6 +98,7 @@ function defaultValues(initial?: AccountPatternRow | null): FormValues {
       coverConfigJson: "",
       needsCaptions: false,
       needsDescription: "none",
+      needsAdminValidation: false,
       needsClientValidation: false,
       allowsClientRevision: false,
       needsRushes: false,
@@ -119,6 +123,7 @@ function defaultValues(initial?: AccountPatternRow | null): FormValues {
       initial.coverConfig != null ? JSON.stringify(initial.coverConfig, null, 2) : "",
     needsCaptions: initial.needsCaptions,
     needsDescription: initial.needsDescription,
+    needsAdminValidation: initial.needsAdminValidation,
     needsClientValidation: initial.needsClientValidation,
     allowsClientRevision: initial.allowsClientRevision,
     needsRushes: initial.needsRushes,
@@ -276,6 +281,7 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
         coverConfig: parsedCoverConfig,
         needsCaptions: values.needsCaptions,
         needsDescription: values.needsDescription,
+        needsAdminValidation: values.needsAdminValidation,
         needsClientValidation: values.needsClientValidation,
         allowsClientRevision: values.allowsClientRevision,
         captionPresetId: values.captionPresetId || null,
@@ -325,6 +331,7 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
         coverConfig,
         needsCaptions: values.needsCaptions,
         needsDescription: values.needsDescription,
+        needsAdminValidation: values.needsAdminValidation,
         needsClientValidation: values.needsClientValidation,
         allowsClientRevision: values.allowsClientRevision,
         needsRushes: values.needsRushes,
@@ -547,6 +554,12 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
                     />
                   </FormField>
                 )}
+                <ToggleField
+                  label="Validation admin du montage"
+                  hint="Si activé : le montage uploadé passe par l'admin (« À valider ») avant de continuer. Si désactivé : la version uploadée devient automatiquement courante et le CM prend la main."
+                  checked={values.needsAdminValidation}
+                  onChange={(v) => set("needsAdminValidation", v)}
+                />
                 <ToggleField
                   label="Validation client (magic link)"
                   hint="Envoie un lien sans login au client pour valider la vidéo avant publication."

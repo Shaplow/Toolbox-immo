@@ -697,6 +697,10 @@ model PublicationSlot {
   patternId         String?
   pattern           AccountPattern?       @relation(fields: [patternId], references: [id], onDelete: SetNull)
 
+  /// Override per-slot de needsAdminValidation du pattern. null = hérite.
+  /// Phase 2.3 : permet d'activer la validation admin du montage (status
+  /// EDIT_REVIEW intercalé) sur ce slot précis, indépendamment du pattern.
+  needsAdminValidationOverride  Boolean?
   /// Override per-slot de needsClientValidation du pattern. null = hérite du pattern.
   needsClientValidationOverride Boolean?
   /// Override per-slot de allowsClientRevision du pattern. null = hérite du pattern.
@@ -813,6 +817,12 @@ model AccountPattern {
   // Flags besoins
   needsDescription      String  @default("none") // "preFilled" | "autoGenerate" | "manualWrite" | "none"
   needsCaptions         Boolean @default(false)
+  /// Phase 2.3 — Si true, le montage uploadé passe par EDIT_REVIEW (validation
+  /// admin) avant d'être promu et de continuer. Si false, la version uploadée
+  /// devient automatiquement currentVersion et le slot saute en EDIT_APPROVED.
+  /// Par défaut false : workflow rapide ; l'admin peut activer le garde-fou
+  /// au pattern ou au slot si besoin.
+  needsAdminValidation  Boolean @default(false)
   needsClientValidation Boolean @default(false)
   /// Si true, le client peut refuser avec commentaire (CLIENT_REVISION → ping-pong).
   /// Si false, le client peut seulement valider ou annuler complètement.

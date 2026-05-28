@@ -181,6 +181,8 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
       // W2 — override per-slot de la config validation client
       "needsClientValidationOverride",
       "allowsClientRevisionOverride",
+      // Phase 2.3 — override per-slot de la validation admin du montage
+      "needsAdminValidationOverride",
       // Cohérence Workflows Phase 4 — overrides per-slot des autres needs*
       "needsCaptionsOverride",
       "needsDescriptionOverride",

@@ -19,9 +19,12 @@ describe("getPublicationPhase", () => {
   it("toute la phase montage → production", () => {
     expect(getPublicationPhase("RUSHES_RECEIVED")).toBe("production");
     expect(getPublicationPhase("IN_EDIT")).toBe("production");
-    expect(getPublicationPhase("EDIT_REVIEW")).toBe("production");
     expect(getPublicationPhase("EDIT_APPROVED")).toBe("production");
     expect(getPublicationPhase("CAPTIONS_PENDING")).toBe("production");
+  });
+
+  it("EDIT_REVIEW → admin_review (Phase 2.3 : sa propre phase)", () => {
+    expect(getPublicationPhase("EDIT_REVIEW")).toBe("admin_review");
   });
 
   it("phase CM → publishing", () => {
@@ -56,6 +59,7 @@ describe("PHASE_LABELS / PHASE_COLORS", () => {
     "planned",
     "shooting",
     "production",
+    "admin_review",
     "publishing",
     "published",
     "terminated",

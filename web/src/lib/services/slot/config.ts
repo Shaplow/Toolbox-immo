@@ -96,6 +96,8 @@ export function resolveClientValidationConfig(
 // ─── Resolve étendu pour tous les needs* (Cohérence Workflows Phase 4) ────────
 
 interface SlotForAllOverrides {
+  /** Phase 2.3 — override admin validation du montage. */
+  needsAdminValidationOverride?: boolean | null;
   needsClientValidationOverride: boolean | null;
   allowsClientRevisionOverride: boolean | null;
   needsCaptionsOverride: boolean | null;
@@ -110,6 +112,8 @@ interface SlotForAllOverrides {
 }
 
 interface PatternForAllNeeds {
+  /** Phase 2.3 — flag d'activation de la validation admin (EDIT_REVIEW). */
+  needsAdminValidation?: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
   needsCaptions: boolean;
@@ -130,6 +134,8 @@ interface PatternForAllNeeds {
  * à l'UI d'indiquer "ce champ est surchargé".
  */
 export interface SlotResolvedConfig {
+  /** Phase 2.3 — true si le montage uploadé doit passer par EDIT_REVIEW (admin promote). */
+  needsAdminValidation: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
   needsCaptions: boolean;
@@ -142,6 +148,7 @@ export interface SlotResolvedConfig {
   captionPresetId: string | null;
   descriptionPromptId: string | null;
   source: {
+    needsAdminValidation: ResolveSource;
     needsClientValidation: ResolveSource;
     allowsClientRevision: ResolveSource;
     needsCaptions: ResolveSource;
@@ -163,6 +170,7 @@ export function resolveSlotConfig(
   slot: SlotForAllOverrides,
   pattern: PatternForAllNeeds | null,
 ): SlotResolvedConfig {
+  const nav = resolveOverride(slot.needsAdminValidationOverride, pattern?.needsAdminValidation, false);
   const ncv = resolveOverride(slot.needsClientValidationOverride, pattern?.needsClientValidation, false);
   const acr = resolveOverride(slot.allowsClientRevisionOverride, pattern?.allowsClientRevision, false);
   const nc = resolveOverride(slot.needsCaptionsOverride, pattern?.needsCaptions, false);
@@ -175,6 +183,7 @@ export function resolveSlotConfig(
   const captPId = resolveOverride(slot.captionPresetIdOverride, pattern?.captionPresetId, null);
   const descPId = resolveOverride(slot.descriptionPromptIdOverride, pattern?.descriptionPromptId, null);
   return {
+    needsAdminValidation: nav.value,
     needsClientValidation: ncv.value,
     allowsClientRevision: acr.value,
     needsCaptions: nc.value,
@@ -186,6 +195,7 @@ export function resolveSlotConfig(
     captionPresetId: captPId.value,
     descriptionPromptId: descPId.value,
     source: {
+      needsAdminValidation: nav.source,
       needsClientValidation: ncv.source,
       allowsClientRevision: acr.source,
       needsCaptions: nc.source,
