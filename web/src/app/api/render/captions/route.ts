@@ -22,14 +22,46 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
+import { getUserContext, type UserContext } from "@/lib/userContext";
 import { hasTool, TOOLS } from "@/lib/permissions";
+import { canUserAccessSlot } from "@/lib/permissions/slotScope";
+import { toUserRole } from "@/lib/permissions/role";
 import { isCaptionCompatibleFontAsset, listFontAssetsByFamilies } from "@/lib/fontAssets";
 import { normalizeCaptionConfig } from "@/lib/captionsEngine";
 import { prisma } from "@/lib/prisma";
 import { uploadToR2, deleteFromR2, r2Configured, createPresignedUploadUrl } from "@/lib/r2";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
+
+/**
+ * Vérifie qu'un slotId soumis par le client appartient bien à un slot
+ * auquel l'utilisateur a accès. Sans ce check, un user authentifié pouvait
+ * lier un CaptionJob à un slot tiers et injecter via le webhook une
+ * activity STATUS_CHANGED + auto-transition CAPTIONS_COMPLETED sur ce
+ * slot (IDOR via slot association).
+ *
+ * Retourne le slotId si OK, null si on doit refuser (caller renvoie 404).
+ */
+async function resolveSlotIdOrNull(
+  slotId: string | undefined,
+  userContext: UserContext,
+): Promise<{ ok: true; slotId: string | null } | { ok: false }> {
+  if (!slotId) return { ok: true, slotId: null };
+  const slot = await prisma.publicationSlot.findUnique({
+    where: { id: slotId },
+    select: {
+      id: true,
+      assigneeMonteurId: true,
+      assigneeCmId: true,
+      assigneeVideasteId: true,
+    },
+  });
+  const role = toUserRole(userContext.effectiveUser.role);
+  if (!slot || !canUserAccessSlot(slot, role, userContext.effectiveUser.id)) {
+    return { ok: false };
+  }
+  return { ok: true, slotId: slot.id };
+}
 
 const RUNPOD_API_KEY    = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -148,7 +180,13 @@ export async function POST(req: NextRequest) {
     const srtFilename  = String(body.srtFilename ?? "captions.srt").trim();
     const previewMode  = String(body.previewMode ?? "false").toLowerCase() !== "false";
     const presetId     = body.presetId ? String(body.presetId).trim() : undefined;
-    const slotId       = body.slotId ? String(body.slotId).trim() : undefined;
+    const slotIdRaw    = body.slotId ? String(body.slotId).trim() : undefined;
+
+    const slotCheck = await resolveSlotIdOrNull(slotIdRaw, userContext);
+    if (!slotCheck.ok) {
+      return NextResponse.json({ error: "Publication introuvable" }, { status: 404 });
+    }
+    const slotId = slotCheck.slotId;
 
     if (!filename || !VIDEO_EXTENSIONS.has(ext)) {
       return NextResponse.json(
@@ -236,7 +274,15 @@ export async function POST(req: NextRequest) {
   const configStr      = formData.get("config") as string | null;
   const previewModeStr = (formData.get("preview_mode") as string | null) ?? "true";
   const presetId       = (formData.get("preset_id") as string | null) ?? undefined;
-  const slotId         = (formData.get("slot_id") as string | null) ?? undefined;
+  const slotIdRaw      = (formData.get("slot_id") as string | null) ?? undefined;
+
+  // Vérifie l'accès au slot avant tout traitement (IDOR — voir
+  // resolveSlotIdOrNull plus haut).
+  const slotCheckMp = await resolveSlotIdOrNull(slotIdRaw ?? undefined, userContext);
+  if (!slotCheckMp.ok) {
+    return NextResponse.json({ error: "Publication introuvable" }, { status: 404 });
+  }
+  const slotId = slotCheckMp.slotId;
 
   if (presetId && !isAdmin) {
     const presetAccess = await prisma.captionPresetAccess.findFirst({
