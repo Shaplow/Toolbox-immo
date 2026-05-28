@@ -143,12 +143,14 @@ export function RenderSection({ slot, pattern, render, finalVideoUrl, isCaptione
         )}
       </div>
 
-      {/* Cas : pattern sans template automatique */}
+      {/* Cas : pattern sans template automatique (slot one-off / vidéo livrée
+          manuellement par le monteur) — pas de phrase de roadmap interne ici. */}
       {pattern?.source !== "auto_template" && (
         <div className="flex items-start gap-2 text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
           <AlertCircle size={15} className="text-gray-400 mt-0.5 flex-shrink-0" />
           <span>
-            Pas de rendu automatique pour ce type de publication — upload manuel prévu en Phase 1.4.
+            Ce slot utilise une vidéo livrée manuellement par le monteur (pas
+            de rendu auto depuis un template).
           </span>
         </div>
       )}

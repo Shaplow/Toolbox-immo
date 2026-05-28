@@ -64,19 +64,42 @@ type SectionKey =
  */
 function isPrimaryForRole(section: SectionKey, role: UserRole): boolean {
   if (role === "ADMIN") return true;
+  const list = PRIMARY_SECTIONS_BY_ROLE[role as Exclude<UserRole, "ADMIN">];
+  return list?.includes(section) ?? true;
+}
 
-  const primaryByRole: Record<Exclude<UserRole, "ADMIN">, SectionKey[]> = {
-    // VIDÉASTE : travaille uniquement sur le brief + rushes (upload). Les
-    // autres sections sont en lecture seule (informatif, replié par défaut).
-    VIDEASTE: ["brief", "rushes", "comments"],
-    MONTEUR: ["brief", "rushes", "versions", "comments"],
-    // F1.9 — Le CM a besoin de voir rushes + versions pour valider le matériel
-    // avant de préparer cover/captions/description. Section ouverte par défaut.
-    CM: ["render", "rushes", "versions", "cover", "captions", "description", "captionIg", "clientValidation", "publish", "comments"],
-    EXTERNAL_GENERATOR: [],
-  };
+/**
+ * Sections RENDUES (vs simplement repliées) pour un rôle donné. Les
+ * sections hors liste ne sont pas du tout montées dans le DOM — pas
+ * de chevron à ignorer, pas de bruit visuel pour les rôles qui n'ont
+ * rien à y faire.
+ *
+ * ADMIN : tout (pas d'entrée dans le record, voir wrap()).
+ * VIDÉASTE : brief + rushes + comments. Le reste lui est inutile.
+ * MONTEUR : brief + rushes + versions + render (lecture seule pour
+ *   référencer le rendu final) + comments. Cover/captions/description
+ *   ne le concernent pas.
+ * CM : tout sauf brief (qui appartient au pipeline amont). Activity
+ *   reste repliée par défaut.
+ */
+const PRIMARY_SECTIONS_BY_ROLE: Record<Exclude<UserRole, "ADMIN">, SectionKey[]> = {
+  VIDEASTE: ["brief", "rushes", "comments"],
+  MONTEUR: ["brief", "rushes", "versions", "render", "comments"],
+  CM: ["render", "rushes", "versions", "cover", "captions", "description", "captionIg", "clientValidation", "publish", "comments"],
+  EXTERNAL_GENERATOR: [],
+};
 
-  return primaryByRole[role]?.includes(section) ?? true;
+/**
+ * true = la section est MONTÉE dans le DOM pour ce rôle. false = ne
+ * s'affiche pas du tout. ADMIN voit tout. Distinct de
+ * isPrimaryForRole qui pilote uniquement l'état ouvert/fermé.
+ */
+function shouldRenderForRole(section: SectionKey, role: UserRole): boolean {
+  if (role === "ADMIN") return true;
+  const list = PRIMARY_SECTIONS_BY_ROLE[role as Exclude<UserRole, "ADMIN">];
+  // Activity reste accessible à tous les rôles connectés (informatif).
+  if (section === "activity") return role !== "EXTERNAL_GENERATOR";
+  return list?.includes(section) ?? false;
 }
 
 /** Labels lisibles pour les sections repliées. */
@@ -323,16 +346,24 @@ export function PublicationFiche({
   // retrouve "Render" réduit la prochaine fois qu'il ouvre la même
   // fiche A. La préférence est par-slot (pas globale) pour ne pas
   // surprendre quand on change de publication.
-  const wrap = (key: SectionKey, node: React.ReactNode) => (
-    <CollapsibleSection
-      title={SECTION_LABELS[key]}
-      defaultOpen={isPrimaryForRole(key, currentUserRole)}
-      storageKey={`pub-section:${slot.id}:${key}`}
-      sectionId={key}
-    >
-      {node}
-    </CollapsibleSection>
-  );
+  //
+  // shouldRenderForRole filtre les sections qui n'ont aucun sens pour
+  // ce rôle (ex. VIDÉASTE qui voit Cover/Captions/Description). Le wrap
+  // retourne null dans ce cas — la section n'apparaît pas du tout, et
+  // pas seulement repliée avec un chevron à ignorer.
+  const wrap = (key: SectionKey, node: React.ReactNode) => {
+    if (!shouldRenderForRole(key, currentUserRole)) return null;
+    return (
+      <CollapsibleSection
+        title={SECTION_LABELS[key]}
+        defaultOpen={isPrimaryForRole(key, currentUserRole)}
+        storageKey={`pub-section:${slot.id}:${key}`}
+        sectionId={key}
+      >
+        {node}
+      </CollapsibleSection>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">

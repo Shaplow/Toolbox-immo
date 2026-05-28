@@ -194,29 +194,10 @@ export function ProductionChain({ steps }: ProductionChainProps) {
         Chaîne de production
       </h2>
 
-      {/* Scroll horizontal sur mobile, flex wrap sur desktop */}
-      {(() => {
-        const total = visibleSteps.length;
-        const done = visibleSteps.filter((s) => s.status === "done").length;
-        const nextStep = visibleSteps.find((s) => s.nextAction);
-        if (total === 0) return null;
-        return (
-          <div className="flex items-center justify-between text-[11px] text-gray-500 -mt-2 mb-2 gap-3 flex-wrap">
-            <span>
-              {done}/{total} étape{total > 1 ? "s" : ""} terminée{done > 1 ? "s" : ""}
-            </span>
-            {nextStep && (
-              <button
-                type="button"
-                onClick={() => scrollToSection(nextStep.key)}
-                className="text-indigo-600 hover:text-indigo-800 font-medium"
-              >
-                Étape en cours : {nextStep.label} →
-              </button>
-            )}
-          </div>
-        );
-      })()}
+      {/* Compteur "N/M étapes" et lien "Étape en cours" retirés : redondants
+          avec le NextActionBanner au-dessus qui dit déjà "À toi · ROLE —
+          phrase d'action" et permet d'aller à la section. Cette ligne
+          créait deux fils d'attention concurrents juste en haut de fiche. */}
 
       <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
         {visibleSteps.map((step, idx) => {
