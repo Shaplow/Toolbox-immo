@@ -23,6 +23,7 @@ import { canPromoteVersion } from "@/lib/permissions/publications";
 import { toUserRole } from "@/lib/permissions/role";
 import { logActivity } from "@/lib/services/slot/activity";
 import { applyAutoTransition } from "@/lib/services/slot/transitions";
+import { tryAutoTriggerCover } from "@/lib/services/slot/autoCoverTrigger";
 
 type Params = { params: Promise<{ id: string; versionId: string }> };
 
@@ -118,5 +119,23 @@ export async function POST(_req: NextRequest, { params }: Params) {
     await applyAutoTransition(tx as typeof prisma, slotId, slot.status, "VERSION_PROMOTED", userId);
   });
 
-  return NextResponse.json({ ok: true, currentVersionId: versionId });
+  // Auto-trigger cover si pattern.coverMode = "auto" et preset configuré.
+  // Best-effort (jamais throw) — log uniquement en cas de skip/erreur.
+  // S'exécute après la transaction pour ne pas perturber la promotion.
+  const coverResult = await tryAutoTriggerCover({
+    slotId,
+    actorId: userId,
+    trigger: "AUTO_POST_PROMOTE",
+  });
+  if (coverResult.status === "error") {
+    console.error(`[promote] auto-cover trigger failed for slot=${slotId}:`, coverResult.reason);
+  } else if (coverResult.status === "skipped") {
+    console.info(`[promote] auto-cover skipped for slot=${slotId}: ${coverResult.reason}`);
+  }
+
+  return NextResponse.json({
+    ok: true,
+    currentVersionId: versionId,
+    autoCover: coverResult,
+  });
 }

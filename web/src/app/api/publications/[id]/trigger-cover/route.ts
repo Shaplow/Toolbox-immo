@@ -7,22 +7,14 @@
  *
  * ADMIN uniquement. Idempotent : skip si un pack existe déjà pour cette version.
  *
- * Flux :
- *   1. Charge slot + currentVersion + pattern + overrides
- *   2. Résout la config cover via resolveSlotConfig
- *   3. Si coverMode != "auto" → 400
- *   4. Charge le preset par ID (override slot prioritaire sur pattern.coverConfig)
- *   5. Crée CoverFramePack { publicationVersionId, renderId=null, sourceVideoUrl=version.fileUrl }
- *   6. Lance prepareCoverFramePack (extraction frames async)
- *   7. Log activity COVER_QUEUED
+ * Toute la logique métier est partagée avec l'auto-trigger post-promote dans
+ * `tryAutoTriggerCover` (services/slot/autoCoverTrigger.ts) — cette route est
+ * une couche fine auth + traduction en HTTP.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
-import { prisma } from "@/lib/prisma";
-import { resolveSlotConfig } from "@/lib/services/slot/config";
-import { logActivity } from "@/lib/services/slot/activity";
-import { queueCoverFramePackPreparation } from "@/lib/coverAuto";
+import { tryAutoTriggerCover } from "@/lib/services/slot/autoCoverTrigger";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -33,150 +25,53 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
   }
 
   const { id: slotId } = await params;
-  const slot = await prisma.publicationSlot.findUnique({
-    where: { id: slotId },
-    select: {
-      id: true,
-      currentVersionId: true,
-      currentVersion: {
-        select: { id: true, fileUrl: true, r2Key: true, fileName: true },
-      },
-      // Pour resolveSlotConfig
-      needsClientValidationOverride: true,
-      allowsClientRevisionOverride: true,
-      needsCaptionsOverride: true,
-      needsDescriptionOverride: true,
-      needsRushesOverride: true,
-      needsBriefOverride: true,
-      coverModeOverride: true,
-      coverPresetIdOverride: true,
-      captionPresetIdOverride: true,
-      descriptionPromptIdOverride: true,
-      pattern: {
-        select: {
-          needsClientValidation: true,
-          allowsClientRevision: true,
-          needsCaptions: true,
-          needsDescription: true,
-          needsRushes: true,
-          needsBrief: true,
-          coverMode: true,
-          coverConfig: true,
-          captionPresetId: true,
-          descriptionPromptId: true,
-          templateId: true,
-        },
-      },
-    },
-  });
 
-  if (!slot) {
-    return NextResponse.json({ error: "Slot introuvable" }, { status: 404 });
-  }
-  if (!slot.currentVersion || !slot.currentVersion.fileUrl) {
-    return NextResponse.json(
-      { error: "Aucune version courante uploadée — uploadez d'abord la vidéo" },
-      { status: 400 },
-    );
-  }
-
-  // coverConfig.coverPresetId (Phase 3) — extrait pour le résolveur
-  const patternCoverPresetId =
-    slot.pattern?.coverConfig &&
-    typeof slot.pattern.coverConfig === "object" &&
-    "coverPresetId" in (slot.pattern.coverConfig as Record<string, unknown>)
-      ? ((slot.pattern.coverConfig as { coverPresetId?: string }).coverPresetId ?? null)
-      : null;
-
-  const resolved = resolveSlotConfig(
-    slot,
-    slot.pattern
-      ? {
-          ...slot.pattern,
-          coverMode: slot.pattern.coverMode,
-          coverPresetId: patternCoverPresetId,
-        }
-      : null,
-  );
-
-  if (resolved.coverMode !== "auto") {
-    return NextResponse.json(
-      { error: `Cover mode est "${resolved.coverMode}" — auto requis pour ce trigger` },
-      { status: 400 },
-    );
-  }
-  if (!resolved.coverPresetId) {
-    return NextResponse.json(
-      { error: "Aucun preset cover défini (override slot ou pattern)" },
-      { status: 400 },
-    );
-  }
-
-  const preset = await prisma.templateCoverPreset.findUnique({
-    where: { id: resolved.coverPresetId },
-    select: { id: true, name: true, config: true, templateId: true },
-  });
-  if (!preset) {
-    return NextResponse.json(
-      { error: `Preset cover introuvable (id="${resolved.coverPresetId}")` },
-      { status: 400 },
-    );
-  }
-
-  // Idempotence : skip si un pack existe déjà pour cette version
-  const existing = await prisma.coverFramePack.findUnique({
-    where: { publicationVersionId: slot.currentVersionId! },
-    select: { id: true },
-  });
-  if (existing) {
-    return NextResponse.json(
-      { ok: true, packId: existing.id, message: "Pack déjà existant pour cette version" },
-      { status: 200 },
-    );
-  }
-
-  const config = preset.config as Record<string, unknown>;
-  const frameCount =
-    typeof config.frameCount === "number"
-      ? Math.min(72, Math.max(6, Math.round(config.frameCount)))
-      : 36;
-
-  const actorId = userContext.actualUser.id;
-
-  const pack = await prisma.coverFramePack.create({
-    data: {
-      userId: actorId,
-      renderId: null,
-      publicationVersionId: slot.currentVersionId!,
-      templateId: preset.templateId,
-      status: "QUEUED",
-      sourceVideoUrl: slot.currentVersion.fileUrl,
-      frameCount,
-      config: JSON.stringify(config),
-      overlayGroupIds: JSON.stringify(
-        Array.isArray((config as { overlayGroupIds?: unknown[] }).overlayGroupIds)
-          ? (config as { overlayGroupIds: unknown[] }).overlayGroupIds
-          : [],
-      ),
-    },
-    select: { id: true },
-  });
-
-  await logActivity(prisma, {
+  const result = await tryAutoTriggerCover({
     slotId,
-    actorId,
-    type: "COVER_QUEUED",
-    payload: {
-      coverFramePackId: pack.id,
-      presetId: preset.id,
-      presetName: preset.name,
-      frameCount,
-      trigger: "MANUAL_FROM_VERSION",
-      publicationVersionId: slot.currentVersionId,
-    },
+    actorId: userContext.actualUser.id,
+    trigger: "MANUAL_FROM_VERSION",
   });
 
-  queueCoverFramePackPreparation(pack.id);
-
-  return NextResponse.json({ ok: true, packId: pack.id, presetName: preset.name });
+  switch (result.status) {
+    case "queued":
+      return NextResponse.json({
+        ok: true,
+        packId: result.packId,
+        presetName: result.presetName,
+      });
+    case "idempotent":
+      return NextResponse.json(
+        { ok: true, packId: result.packId, message: "Pack déjà existant pour cette version" },
+        { status: 200 },
+      );
+    case "skipped":
+      // Traduction explicite des raisons → message HTTP
+      if (result.reason === "no_current_version") {
+        return NextResponse.json(
+          { error: "Aucune version courante uploadée — uploadez d'abord la vidéo" },
+          { status: 400 },
+        );
+      }
+      if (result.reason.startsWith("cover_mode_")) {
+        return NextResponse.json(
+          { error: `Cover mode est "${result.reason.replace("cover_mode_", "")}" — auto requis pour ce trigger` },
+          { status: 400 },
+        );
+      }
+      if (result.reason === "no_cover_preset") {
+        return NextResponse.json(
+          { error: "Aucun preset cover défini (override slot ou pattern)" },
+          { status: 400 },
+        );
+      }
+      if (result.reason === "preset_not_found") {
+        return NextResponse.json(
+          { error: "Preset cover introuvable" },
+          { status: 400 },
+        );
+      }
+      return NextResponse.json({ error: result.reason }, { status: 400 });
+    case "error":
+      return NextResponse.json({ error: result.reason }, { status: 500 });
+  }
 }
