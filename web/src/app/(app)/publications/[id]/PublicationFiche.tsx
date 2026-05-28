@@ -439,11 +439,18 @@ export function PublicationFiche({
                 />
               )}
 
-            {/* Versions livrées — visible dans les mêmes conditions que rushs
-                ou s'il existe au moins une version déposée. */}
-            {(pattern?.needsRushes ||
+            {/* Versions livrées — visible si le pattern implique un montage
+                humain (manual_rushes, needsRushes ou needsBrief), ou si une
+                phase de montage est atteinte côté statut, ou si une version
+                existe déjà. Aligné sur editVisible de computePublicationSteps. */}
+            {(pattern?.source === "manual_rushes" ||
+              pattern?.needsRushes ||
+              pattern?.needsBrief ||
               slot.status === "RUSHES_EXPECTED" ||
               slot.status === "RUSHES_RECEIVED" ||
+              slot.status === "IN_EDIT" ||
+              slot.status === "EDIT_REVIEW" ||
+              slot.status === "EDIT_APPROVED" ||
               versions.length > 0) &&
               wrap(
                 "versions",

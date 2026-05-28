@@ -216,7 +216,21 @@ export function computePublicationSteps(input: {
     slot.status === "RUSHES_RECEIVED" ||
     rushesCount > 0;
   const renderVisible = pattern?.source === "auto_template";
-  const editVisible = pattern?.needsRushes === true || pattern?.needsBrief === true;
+  // edit (Montage) : tout pattern non-auto_template implique un montage humain.
+  // - manual_rushes : monteur monte à partir des rushs vidéaste
+  // - external_upload : le client uploade la vidéo finie (pas de montage chez
+  //   nous) → edit reste caché sauf si needsBrief.
+  // On considère AUSSI les fallbacks statut/versions pour être robuste à des
+  // recipes mal configurées (même logique que rushesVisible).
+  const editVisible =
+    pattern?.source === "manual_rushes" ||
+    pattern?.needsRushes === true ||
+    pattern?.needsBrief === true ||
+    versionsCount > 0 ||
+    slot.status === "IN_EDIT" ||
+    slot.status === "EDIT_REVIEW" ||
+    slot.status === "EDIT_APPROVED" ||
+    slot.status === "RUSHES_RECEIVED";
   const coverVisible =
     pattern != null && pattern.coverMode !== "none";
   const captionsVisible = pattern?.needsCaptions === true;
