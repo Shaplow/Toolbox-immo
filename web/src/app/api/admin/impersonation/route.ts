@@ -51,6 +51,11 @@ export async function POST(req: NextRequest) {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
+    // 8h — couvre une journée de travail mais expire pendant la nuit. Sans
+    // maxAge le cookie était session-only mais survivait à la restauration
+    // de session de Chrome/Firefox, exposant l'admin à reprendre l'identité
+    // impersonnée sans le savoir.
+    maxAge: 8 * 60 * 60,
   });
   return response;
 }
