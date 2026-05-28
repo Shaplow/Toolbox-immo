@@ -708,6 +708,24 @@ export async function patchSlot(
       type: "STATUS_CHANGED",
       payload: { from: slot.status, to: status },
     });
+
+    // Cancel cascade : si on passe à CANCELLED, marquer les jobs en cours
+    // comme FAILED (Render, CaptionJob) pour qu'ils :
+    //  1. Disparaissent des worklists "en cours"
+    //  2. Bloquent les webhooks RunPod qui arriveraient après (idempotence
+    //     côté webhook = ne pas écraser un terminal status)
+    //  3. Soient nettoyés par le sweep périodique sans confusion
+    // Best-effort : ces updates ne doivent pas faire échouer la transition.
+    if (status === "CANCELLED") {
+      try {
+        await cancelPendingJobsForSlot(id);
+      } catch (err) {
+        console.error(
+          `[patchSlot] cancel cascade failed for slot=${id}:`,
+          err,
+        );
+      }
+    }
   }
 
   // Log d'activité — ASSIGNEE_CHANGED si l'un des assignees a changé.
@@ -895,6 +913,62 @@ export async function getSlot(id: string, ctx: UserContext) {
     fields: safeJSON<Record<string, string>>(slot.fields, {}),
     fieldSchema: safeJSON<string[]>(slot.fieldSchema, []),
   };
+}
+
+// ─── cancelPendingJobsForSlot ────────────────────────────────────────────────
+
+/**
+ * Marque tous les jobs RunPod en cours (Render PENDING/PROCESSING,
+ * CaptionJob QUEUED/PROCESSING) comme FAILED quand un slot est annulé.
+ *
+ * Pas d'appel à l'API RunPod pour annuler côté pod — coûteux et fragile.
+ * On se contente du marquage DB qui suffit pour :
+ *  - Sortir les jobs des worklists "en cours"
+ *  - Ignorer les webhooks RunPod qui arriveraient APRÈS (le webhook checke
+ *    typiquement que le status n'est pas déjà terminal avant de l'écraser)
+ *  - Permettre au sweep périodique d'identifier les orphelins
+ *
+ * Best-effort : chaque update est wrappé en try/catch — un échec sur Render
+ * ne bloque pas le cancel CaptionJob, etc.
+ */
+async function cancelPendingJobsForSlot(slotId: string): Promise<void> {
+  const cancelMsg = "Slot annulé — job interrompu";
+
+  // Render (publicationSlotId est unique sur Render)
+  try {
+    const updated = await prisma.render.updateMany({
+      where: {
+        publicationSlotId: slotId,
+        status: { in: ["PENDING", "PROCESSING"] },
+      },
+      data: { status: "ERROR", errorMsg: cancelMsg },
+    });
+    if (updated.count > 0) {
+      console.info(
+        `[cancelPendingJobsForSlot] slot=${slotId} marked ${updated.count} render(s) as ERROR`,
+      );
+    }
+  } catch (err) {
+    console.error(`[cancelPendingJobsForSlot] render update failed slot=${slotId}:`, err);
+  }
+
+  // CaptionJob
+  try {
+    const updated = await prisma.captionJob.updateMany({
+      where: {
+        slotId,
+        status: { in: ["QUEUED", "PROCESSING"] },
+      },
+      data: { status: "FAILED", errorMsg: cancelMsg },
+    });
+    if (updated.count > 0) {
+      console.info(
+        `[cancelPendingJobsForSlot] slot=${slotId} marked ${updated.count} caption job(s) as FAILED`,
+      );
+    }
+  } catch (err) {
+    console.error(`[cancelPendingJobsForSlot] captionJob update failed slot=${slotId}:`, err);
+  }
 }
 
 // ─── deleteSlot ───────────────────────────────────────────────────────────────

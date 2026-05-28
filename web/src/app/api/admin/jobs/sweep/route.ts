@@ -22,6 +22,12 @@ import { prisma } from "@/lib/prisma";
 
 const PROCESSING_STALL_MS  = 2 * 60 * 60 * 1000;  // 2 h
 const QUEUED_STALL_MS      = 30 * 60 * 1000;       // 30 min
+// Seuil pour qu'un job orphelin (slotId=null) soit considéré "vieux".
+// 30 jours après la cassure du lien slot, le job est très probablement
+// inutilisé — flaggué dans le summary pour monitoring (pas supprimé
+// automatiquement : on garde l'audit). Le cleanup réel passe par script
+// dédié si besoin.
+const ORPHAN_AGE_MS        = 30 * 24 * 60 * 60 * 1000; // 30 jours
 
 export async function POST() {
   const userContext = await getUserContext();
@@ -79,6 +85,30 @@ export async function POST() {
     }),
   ]);
 
+  // ── Orphelins (slotId=null, status terminal, ancienneté > 30j) ────────────
+  // Reporting seul — pas de suppression auto (audit trail préservé). Si le
+  // chiffre grossit anormalement, lancer un script de cleanup R2/DB
+  // dédié. Ces orphelins viennent typiquement de slots supprimés via
+  // /api/calendar/slots/[id] (DELETE pose SetNull sur Render.publication
+  // SlotId et CaptionJob.slotId).
+  const orphanCutoff = new Date(now.getTime() - ORPHAN_AGE_MS);
+  const [orphanCaptions, orphanRenders] = await Promise.all([
+    prisma.captionJob.count({
+      where: {
+        slotId: null,
+        status: { in: ["COMPLETED", "FAILED"] },
+        updatedAt: { lt: orphanCutoff },
+      },
+    }),
+    prisma.render.count({
+      where: {
+        publicationSlotId: null,
+        status: { in: ["DONE", "ERROR"] },
+        createdAt: { lt: orphanCutoff },
+      },
+    }),
+  ]);
+
   const summary = {
     captions: {
       processing: captionProcessing.count,
@@ -91,6 +121,13 @@ export async function POST() {
     renders: {
       processing: renderProcessing.count,
       pending:    renderPending.count,
+    },
+    /** Compteurs informatifs — ces jobs ne sont pas modifiés par le sweep,
+     *  juste reportés pour monitoring de la dette. */
+    orphans: {
+      captions:  orphanCaptions,
+      renders:   orphanRenders,
+      olderThan: `${Math.round(ORPHAN_AGE_MS / (24 * 60 * 60 * 1000))}j`,
     },
     total:
       captionProcessing.count + captionQueued.count +
