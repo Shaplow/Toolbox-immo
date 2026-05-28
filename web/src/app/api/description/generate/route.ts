@@ -285,9 +285,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Modèle invalide" }, { status: 400 });
   }
 
-  const prompt = await prisma.descriptionPrompt.findUnique({ where: { id: promptId } });
+  // Guard isActive : un prompt désactivé par l'admin ne doit plus pouvoir
+  // être utilisé (cas du promptId qui traîne dans une URL bookmark, dans
+  // pattern.descriptionPromptId, ou dans slot.descriptionPromptIdOverride).
+  const prompt = await prisma.descriptionPrompt.findUnique({
+    where: { id: promptId, isActive: true },
+  });
   if (!prompt) {
-    return NextResponse.json({ error: "Prompt introuvable" }, { status: 404 });
+    return NextResponse.json({ error: "Prompt introuvable ou désactivé" }, { status: 404 });
   }
 
   // Validate transcriptionId ownership: the referenced job must belong to the current user.
