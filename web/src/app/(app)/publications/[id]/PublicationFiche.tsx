@@ -32,6 +32,7 @@ import { CommentsSection } from "@/components/publications/CommentsSection";
 import { ActivityTimeline } from "@/components/publications/ActivityTimeline";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import type { PublicationStep } from "@/lib/publications/steps";
+import { promoteVersionWarning } from "@/lib/publications/actions";
 import type { CommentData } from "@/components/publications/CommentItem";
 import type { ActivityItem } from "@/components/publications/ActivityTimeline";
 import type { UserRole } from "@/types/roles";
@@ -444,6 +445,16 @@ export function PublicationFiche({
                   canPromoteVersion={canPromoteVersion}
                   isAdmin={currentUserRole === "ADMIN"}
                   currentUserId={currentUserId}
+                  promoteCoherenceWarning={promoteVersionWarning({
+                    pattern: null,
+                    resolved: null,
+                    render: render ? { status: render.status } : null,
+                    currentVersion: currentVersion ? { id: currentVersion.id } : null,
+                    coverPack: coverPack ? { status: coverPack.status } : null,
+                    latestCaptionJob: latestCaptionJob ? { status: latestCaptionJob.status } : null,
+                    isAdmin: currentUserRole === "ADMIN",
+                    canEdit: canPromoteVersion,
+                  })}
                 />
               )}
 
@@ -558,7 +569,9 @@ export function PublicationFiche({
               hasCoverPack={!!coverPack && coverPack.status !== "FAILED"}
             />
 
-            {/* Publication */}
+            {/* Publication — récupère les steps incomplets pour afficher
+                un warning non-bloquant si le CM tente de publier alors
+                que cover/captions/description sont todo ou failed. */}
             {wrap(
               "publish",
               <PublishSection
@@ -569,6 +582,12 @@ export function PublicationFiche({
                   publishedAt: slot.publishedAt,
                 }}
                 canPublish={canMarkPublished}
+                incompleteSteps={steps
+                  .filter((s) => s.visible && s.key !== "publish")
+                  .filter((s): s is typeof s & { status: "todo" | "failed" } =>
+                    s.status === "todo" || s.status === "failed",
+                  )
+                  .map((s) => ({ key: String(s.key), label: s.label, status: s.status }))}
               />
             )}
           </div>

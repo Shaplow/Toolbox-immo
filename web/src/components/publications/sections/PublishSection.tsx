@@ -9,7 +9,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Send, CheckCircle, ExternalLink, Edit2, Check } from "lucide-react";
+import { Send, CheckCircle, ExternalLink, Edit2, Check, AlertTriangle } from "lucide-react";
 
 interface Props {
   slot: {
@@ -20,6 +20,10 @@ interface Props {
   };
   /** true pour CM assigné et ADMIN */
   canPublish: boolean;
+  /** Steps "amont" pas encore terminées au moment du rendu — utilisé pour
+   *  afficher un warning non-bloquant si le CM tente de publier alors que
+   *  cover/captions/description ne sont pas done. Si vide, pas de warning. */
+  incompleteSteps?: Array<{ key: string; label: string; status: "todo" | "failed" }>;
 }
 
 function formatDateTimeFR(date: Date): string {
@@ -33,7 +37,7 @@ function formatDateTimeFR(date: Date): string {
   });
 }
 
-export function PublishSection({ slot, canPublish }: Props) {
+export function PublishSection({ slot, canPublish, incompleteSteps = [] }: Props) {
   const router = useRouter();
   const isPublished = slot.status === "PUBLISHED";
 
@@ -203,8 +207,28 @@ export function PublishSection({ slot, canPublish }: Props) {
 
       {!isPublished && canPublish && (
         <div className="space-y-4">
+          {/* Warning non-bloquant si des étapes amont sont incomplètes —
+              le CM peut toujours publier (cas légitime : il publie depuis
+              IG avec une cover par défaut), mais on signale ce qui manque. */}
+          {incompleteSteps.length > 0 && (
+            <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <AlertTriangle size={15} className="text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium">
+                  {incompleteSteps.length === 1
+                    ? "Une étape n'est pas finalisée"
+                    : `${incompleteSteps.length} étapes ne sont pas finalisées`}{" "}
+                  : {incompleteSteps.map((s) => s.label).join(", ")}.
+                </p>
+                <p className="text-xs text-amber-700/80 mt-0.5">
+                  Tu peux quand même marquer publié — vérifie juste que c&apos;est
+                  bien le contenu que tu veux figer.
+                </p>
+              </div>
+            </div>
+          )}
           <p className="text-sm text-gray-500">
-            Collez l&apos;URL Instagram de la publication une fois postée pour marquer ce slot comme publié.
+            Colle l&apos;URL Instagram de la publication une fois postée pour marquer ce slot comme publié.
           </p>
 
           <div className="space-y-2">

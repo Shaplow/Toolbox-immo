@@ -52,6 +52,10 @@ interface VersionsSectionProps {
   canPromoteVersion: boolean;
   isAdmin: boolean;
   currentUserId: string;
+  /** Warning calculé par le parent via promoteVersionWarning() — affiché
+   *  dans le ConfirmDialog quand l'admin promote une nouvelle version alors
+   *  que des jobs (captions/cover) ont déjà été générés sur l'ancienne. */
+  promoteCoherenceWarning?: string | null;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -97,6 +101,7 @@ function VersionCard({
   isAdmin,
   currentUserId,
   onRefresh,
+  promoteCoherenceWarning,
 }: {
   version: VersionItem;
   slotId: string;
@@ -105,6 +110,7 @@ function VersionCard({
   isAdmin: boolean;
   currentUserId: string;
   onRefresh: () => void;
+  promoteCoherenceWarning?: string | null;
 }) {
   const isCurrent = version.id === currentVersionId;
   const isDeleted = version.deletedAt !== null;
@@ -348,7 +354,10 @@ function VersionCard({
               <ConfirmDialog
                 open={promoteOpen}
                 title="Promouvoir cette version ?"
-                description={`V${version.versionNumber} deviendra la version de référence pour les captions, la cover et la publication. Continuer ?`}
+                description={
+                  `V${version.versionNumber} deviendra la version de référence pour les captions, la cover et la publication.` +
+                  (promoteCoherenceWarning ? ` ${promoteCoherenceWarning}` : "")
+                }
                 confirmLabel="Promouvoir"
                 loading={promoting}
                 onConfirm={handlePromote}
@@ -394,6 +403,7 @@ export function VersionsSection({
   canPromoteVersion,
   isAdmin,
   currentUserId,
+  promoteCoherenceWarning,
 }: VersionsSectionProps) {
   const router = useRouter();
   // Les listes sont lues depuis les props serveur — router.refresh() déclenche un re-render
@@ -477,6 +487,7 @@ export function VersionsSection({
               isAdmin={isAdmin}
               currentUserId={currentUserId}
               onRefresh={handleRefresh}
+              promoteCoherenceWarning={promoteCoherenceWarning}
             />
           ))}
         </ul>

@@ -61,6 +61,10 @@ export function RenderSection({ slot, pattern, render, finalVideoUrl, isCaptione
   const displayVideoUrl = finalVideoUrl ?? render?.videoUrl ?? null;
   // Si pas de pattern, pas de rendu possible — masquer la section
   if (!pattern) return null;
+  // Pas de section "Rendu vidéo" pour les slots one-off (manual_rushes /
+  // external_upload) qui n'ont aucun render — l'audit a noté que le titre
+  // créait une fausse expectative. La vidéo finale est gérée dans VersionsSection.
+  if (pattern.source !== "auto_template" && !render) return null;
 
   const templateId = pattern?.templateId ?? null;
   const builderHref = templateId
