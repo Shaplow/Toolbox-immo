@@ -376,3 +376,70 @@ describe("computeAutoTransitionTargetPure — idempotence et scope", () => {
     ).toBeNull();
   });
 });
+
+// ─── Initial statuses modernes (PLANNED, DRAFT) — régression historique ──────
+//
+// Les slots auto_template sont créés en PLANNED (mapSourceToInitialStatus).
+// Avant le fix, PIPELINE_DRIVEN_STATUSES ne contenait que TO_DO/IN_PROGRESS/
+// READY_FOR_CM → un slot PLANNED restait bloqué même quand son Render passait
+// DONE. Ces tests figent l'invariant pour les statuts initiaux modernes.
+
+describe("computeAutoTransitionTargetPure — statuts initiaux modernes", () => {
+  const autoTemplate = { source: "auto_template", needsCaptions: false };
+  const autoTemplateWithCaptions = { source: "auto_template", needsCaptions: true };
+
+  it("PLANNED + render DONE + pas de captions → READY_FOR_CM", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "PLANNED",
+        pattern: autoTemplate,
+        render: { status: "DONE" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBe("READY_FOR_CM");
+  });
+
+  it("PLANNED + render PROCESSING → IN_PROGRESS", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "PLANNED",
+        pattern: autoTemplate,
+        render: { status: "PROCESSING" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBe("IN_PROGRESS");
+  });
+
+  it("PLANNED + render DONE + captions COMPLETED → READY_FOR_CM", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "PLANNED",
+        pattern: autoTemplateWithCaptions,
+        render: { status: "DONE" },
+        latestCaptionJobStatus: "COMPLETED",
+      }),
+    ).toBe("READY_FOR_CM");
+  });
+
+  it("PLANNED + render DONE + captions PROCESSING → IN_PROGRESS", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "PLANNED",
+        pattern: autoTemplateWithCaptions,
+        render: { status: "DONE" },
+        latestCaptionJobStatus: "PROCESSING",
+      }),
+    ).toBe("IN_PROGRESS");
+  });
+
+  it("DRAFT + render DONE → READY_FOR_CM (cas createSlot sans pattern)", () => {
+    expect(
+      computeAutoTransitionTargetPure({
+        status: "DRAFT",
+        pattern: autoTemplate,
+        render: { status: "DONE" },
+        latestCaptionJobStatus: null,
+      }),
+    ).toBe("READY_FOR_CM");
+  });
+});

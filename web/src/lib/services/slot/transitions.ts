@@ -194,7 +194,15 @@ export type PipelineTrigger =
 // ── Statuts "pilotés par le pipeline" : on peut écraser tant qu'on est ici. ──
 // Dès que l'utilisateur fait avancer manuellement (READY_FOR_CM est posé par
 // nous-mêmes, donc accepté ; les autres viennent d'actions humaines).
+//
+// DRAFT/PLANNED inclus car ce sont les statuts initiaux des slots auto_template
+// (mapSourceToInitialStatus → PLANNED ; createSlot sans pattern → DRAFT). Sans
+// eux, un slot fraîchement créé reste éternellement "À planifier" même quand
+// le Render passe DONE — l'auto-transition pipeline ne le voyait pas comme
+// pilotable. TO_DO est conservé pour les slots legacy non backfillés.
 const PIPELINE_DRIVEN_STATUSES = new Set<string>([
+  "DRAFT",
+  "PLANNED",
   "TO_DO",
   "IN_PROGRESS",
   "READY_FOR_CM", // accepté car on peut y être passé puis vouloir reculer en IN_PROGRESS
