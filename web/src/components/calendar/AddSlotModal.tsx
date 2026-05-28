@@ -375,7 +375,9 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
                           <div className="flex items-center gap-3 text-xs text-gray-500">
                             <span className="inline-flex items-center gap-1">
                               <Clock size={11} />
-                              {p.dayOfWeek.map((d) => DAYS[d] ?? `J${d}`).join("/")} · {p.publishTime}
+                              {p.dayOfWeek.length === 0
+                                ? "Pattern manuel (pas de planning auto)"
+                                : `${p.dayOfWeek.map((d) => DAYS[d] ?? `J${d}`).join("/")} · ${p.publishTime}`}
                             </span>
                             {(p.defaultAssigneeVideaste || p.defaultAssigneeMonteur || p.defaultAssigneeCm) && (
                               <span className="inline-flex items-center gap-1">

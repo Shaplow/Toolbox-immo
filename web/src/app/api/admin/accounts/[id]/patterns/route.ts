@@ -54,7 +54,8 @@ function validatePatternBody(body: PostBody, requireAll: boolean): string | null
     if (!body.source) return "Le champ source est requis";
     if (!body.coverMode) return "Le champ coverMode est requis";
     if (!body.needsDescription) return "Le champ needsDescription est requis";
-    if (!Array.isArray(body.dayOfWeek) || body.dayOfWeek.length === 0) return "Le champ dayOfWeek est requis (tableau non vide)";
+    // dayOfWeek peut être vide → pattern "manuel" (sans génération auto).
+    if (!Array.isArray(body.dayOfWeek)) return "Le champ dayOfWeek doit être un tableau";
     if (!body.publishTime) return "Le champ publishTime est requis";
   }
 
@@ -68,8 +69,8 @@ function validatePatternBody(body: PostBody, requireAll: boolean): string | null
     return `needsDescription invalide. Valeurs acceptées : ${VALID_NEEDS_DESCRIPTION.join(", ")}`;
   }
   if (body.dayOfWeek !== undefined) {
-    if (!Array.isArray(body.dayOfWeek) || body.dayOfWeek.length === 0) {
-      return "dayOfWeek doit être un tableau non vide";
+    if (!Array.isArray(body.dayOfWeek)) {
+      return "dayOfWeek doit être un tableau";
     }
     const validDays = body.dayOfWeek.every(
       (d: unknown) => typeof d === "number" && Number.isInteger(d) && d >= 1 && d <= 7

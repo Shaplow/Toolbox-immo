@@ -112,10 +112,8 @@ export async function generateCalendarSlots(
 
   for (let weekMs = startMondayMs; weekMs <= endMondayMs; weekMs += ONE_WEEK_MS) {
     for (const pattern of patterns) {
-      if (pattern.dayOfWeek.length === 0) {
-        console.warn(`[calendarEngine] Pattern ${pattern.id} has empty dayOfWeek array — skipping`);
-        continue;
-      }
+      // dayOfWeek vide = pattern manuel (template uniquement, pas d'auto-gen).
+      if (pattern.dayOfWeek.length === 0) continue;
       for (const dow of pattern.dayOfWeek) {
         const targetDate = new Date(weekMs);
         targetDate.setUTCDate(targetDate.getUTCDate() + (dow - 1));

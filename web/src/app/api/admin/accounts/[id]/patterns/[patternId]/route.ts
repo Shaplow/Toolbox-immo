@@ -56,8 +56,8 @@ function validatePatchBody(body: PatchBody): string | null {
     return `needsDescription invalide. Valeurs acceptées : ${VALID_NEEDS_DESCRIPTION.join(", ")}`;
   }
   if (body.dayOfWeek !== undefined) {
-    if (!Array.isArray(body.dayOfWeek) || body.dayOfWeek.length === 0) {
-      return "dayOfWeek doit être un tableau non vide";
+    if (!Array.isArray(body.dayOfWeek)) {
+      return "dayOfWeek doit être un tableau";
     }
     const validDays = body.dayOfWeek.every(
       (d: unknown) => typeof d === "number" && Number.isInteger(d) && d >= 1 && d <= 7

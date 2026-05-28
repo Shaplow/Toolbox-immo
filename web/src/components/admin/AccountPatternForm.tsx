@@ -153,8 +153,10 @@ const PUBLISH_TIME_RE = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
 function validate(values: FormValues): Partial<Record<keyof FormValues, string>> {
   const errors: Partial<Record<keyof FormValues, string>> = {};
   if (!values.label.trim()) errors.label = "Le label est requis";
-  if (values.daysOfWeek.length === 0) errors.daysOfWeek = "Sélectionnez au moins un jour";
-  if (!PUBLISH_TIME_RE.test(values.publishTime)) errors.publishTime = "Format HH:MM requis";
+  // daysOfWeek peut être vide → pattern manuel (template pour AddSlotModal, pas d'auto-gen).
+  if (values.daysOfWeek.length > 0 && !PUBLISH_TIME_RE.test(values.publishTime)) {
+    errors.publishTime = "Format HH:MM requis";
+  }
   return errors;
 }
 
@@ -573,7 +575,11 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
 
               {/* ── Section 5 : Planning ── */}
               <Section title="Planning">
-                <FormField label="Jours de publication" required error={errors.daysOfWeek}>
+                <p className="text-xs text-gray-500 -mt-1 mb-1 leading-relaxed">
+                  Sans jour coché, le pattern n&apos;est pas auto-généré et reste disponible
+                  comme template manuel dans le calendrier (« Ajouter un slot »).
+                </p>
+                <FormField label="Jours de publication (laisser vide pour un pattern manuel)" error={errors.daysOfWeek}>
                   <div className="flex flex-wrap gap-2 mt-1">
                     {DAYS_OF_WEEK.map((day) => {
                       const checked = values.daysOfWeek.includes(day.value);
@@ -607,7 +613,11 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
                     <p className="mt-1 text-xs text-red-600">{errors.daysOfWeek}</p>
                   )}
                 </FormField>
-                <FormField label="Heure de publication" required error={errors.publishTime}>
+                <FormField
+                  label={values.daysOfWeek.length === 0 ? "Heure de publication (ignorée — pattern manuel)" : "Heure de publication"}
+                  required={values.daysOfWeek.length > 0}
+                  error={errors.publishTime}
+                >
                   <input
                     type="time"
                     value={values.publishTime}
