@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, AlertTriangle, FileQuestion, UserX, ArrowRight, CalendarClock, Building2, Film } from "lucide-react";
+import { CalendarDays, AlertTriangle, FileQuestion, UserX, ArrowRight, CalendarClock, Building2, Film, Video } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import type { SlotStatus } from "@/types/roles";
 import { TERMINAL_STATUSES } from "@/types/worklist";
@@ -35,7 +35,7 @@ interface HomeAdminProps {
 export async function HomeAdmin({ userName }: HomeAdminProps) {
   const now = new Date();
 
-  const [overdueCount, noPatternCount, noMonteurCount, editReviewSlots] = await Promise.all([
+  const [overdueCount, noPatternCount, noMonteurCount, noVideasteCount, editReviewSlots] = await Promise.all([
     prisma.publicationSlot.count({
       where: {
         scheduledAt: { lt: now },
@@ -55,6 +55,13 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
       where: {
         assigneeMonteurId: null,
         status: { in: ACTIVE_STATUSES.filter((s) => !(TERMINAL_STATUSES as readonly string[]).includes(s)) },
+      },
+    }),
+    // Slots actifs nécessitant un vidéaste (manual_rushes) mais sans assignation.
+    prisma.publicationSlot.count({
+      where: {
+        assigneeVideasteId: null,
+        status: { in: ["PLANNED", "RUSHES_EXPECTED"] },
       },
     }),
     // Slots en EDIT_REVIEW = version livrée, attend validation admin
@@ -96,7 +103,7 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
       </div>
 
       {/* Métriques globales — F1.12/F1.13/B10 : cartes cliquables vers /calendar */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Link
           href="/calendar"
           className={`rounded-xl border p-4 flex flex-col gap-1 transition-colors hover:opacity-80 ${
@@ -176,6 +183,34 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
             }`}
           >
             {noMonteurCount}
+          </p>
+        </Link>
+
+        {/* Slots nécessitant un vidéaste mais non assignés (équivalent monteur). */}
+        <Link
+          href="/calendar"
+          className={`rounded-xl border p-4 flex flex-col gap-1 transition-colors hover:opacity-80 ${
+            noVideasteCount > 0
+              ? "border-fuchsia-200 bg-fuchsia-50 hover:border-fuchsia-300"
+              : "border-gray-200 bg-gray-50 hover:border-gray-300"
+          }`}
+          title="Voir dans le calendrier"
+        >
+          <div className="flex items-center gap-2">
+            <Video
+              size={15}
+              className={noVideasteCount > 0 ? "text-fuchsia-500" : "text-gray-400"}
+            />
+            <span className="text-xs font-medium text-gray-600">
+              Sans vidéaste
+            </span>
+          </div>
+          <p
+            className={`text-3xl font-bold mt-1 ${
+              noVideasteCount > 0 ? "text-fuchsia-700" : "text-gray-400"
+            }`}
+          >
+            {noVideasteCount}
           </p>
         </Link>
       </div>

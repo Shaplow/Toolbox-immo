@@ -92,6 +92,7 @@ export async function generateCalendarSlots(
       templateId: true,
       defaultAssigneeMonteurId: true,
       defaultAssigneeCmId: true,
+      defaultAssigneeVideasteId: true,
     },
   });
 
@@ -167,6 +168,7 @@ export async function generateCalendarSlots(
         templateId: pattern.templateId ?? null,
         assigneeMonteurId: pattern.defaultAssigneeMonteurId ?? null,
         assigneeCmId: pattern.defaultAssigneeCmId ?? null,
+        assigneeVideasteId: pattern.defaultAssigneeVideasteId ?? null,
         isAuto: true,
         fields: "{}",
         fieldSchema: "[]",
