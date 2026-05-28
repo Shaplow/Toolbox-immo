@@ -19,40 +19,43 @@ Inspirations : **Vercel** + **Excalidraw**. Épuré, classe, pro.
 
 ## Tokens
 
-À remplir en **Phase 1**. Plan :
+Définis dans `web/src/app/globals.css` (Tailwind v4 `@theme inline`). Visualisation live sur `/playground/tokens`.
 
-### Palette
+### Palette monochrome
 
-| Token | Hex | Usage |
-|---|---|---|
-| `bg.default` | `#FFFFFF` | Fond principal |
-| `bg.subtle` | `#F8F9FA` (à valider) | Fond secondaire (cards, hover discret) |
-| `bg.muted` | `#F1F3F5` | Skeletons, badges neutres |
-| `text.primary` | `#0A0A0A` | Texte principal |
-| `text.secondary` | `#6B7280` | Texte secondaire |
-| `text.muted` | `#9CA3AF` | Aide, placeholder |
-| `border.default` | `#E5E7EB` | Bordures par défaut |
-| `border.strong` | `#D1D5DB` | Bordures hover / actives |
-| `accent.success` | TBD | Validations, statuts OK |
-| `accent.danger` | TBD | Suppression, erreurs |
-| `accent.info` | TBD | Annotations neutres |
+Échelle Tailwind `gray-*` standard. Foreground principal `gray-950` (`#0a0a0a`), background `white`.
+
+| Usage | Token classes |
+|---|---|
+| Fond principal | `bg-white` |
+| Fond subtle / hover discret | `bg-gray-50` |
+| Skeletons / badges neutres | `bg-gray-100` |
+| Bordures défaut | `border-gray-200` |
+| Bordures hover / actives | `border-gray-300` |
+| Texte muted / placeholder | `text-gray-400` |
+| Icônes secondaires | `text-gray-500` |
+| Texte secondaire | `text-gray-600` |
+| Labels forts | `text-gray-700` |
+| Texte primaire / titres | `text-gray-950` |
+
+### Accents sémantiques
+
+Trois familles uniquement. Tout signal coloré doit tomber dans l'une des trois.
+
+| Famille | 50 | 100 | 600 | 700 | Usage principal |
+|---|---|---|---|---|---|
+| `success` | `#f0fdf4` | `#dcfce7` | `#16a34a` | `#15803d` | Validations, mark-published, statuts OK |
+| `danger`  | `#fef2f2` | `#fee2e2` | `#dc2626` | `#b91c1c` | Suppression, erreurs, refus |
+| `info`    | `#eff6ff` | `#dbeafe` | `#2563eb` | `#1d4ed8` | Annotations neutres, hints, état programmé |
+
+Utilisation : `bg-success-100 text-success-700` pour un badge soft, `bg-success-600 text-white` pour un bouton plein, etc.
 
 ### Typographie
 
-- **Sans** : Geist Sans (via `geist/font/sans`). Tracking par défaut, sauf titres > 2xl en `tracking-tight`.
-- **Mono** : Geist Mono (via `geist/font/mono`). Utilisée pour code, raccourcis clavier, IDs.
+- **Sans** : Geist Sans (via `geist/font/sans`). Tracking par défaut, sauf titres ≥ `text-2xl` en `tracking-tight`.
+- **Mono** : Geist Mono (via `geist/font/mono`). Pour code, raccourcis clavier, IDs, valeurs hex.
 
-Échelle (à confirmer) :
-
-| Token | Taille | Line-height | Usage |
-|---|---|---|---|
-| `text-xs` | 11px | 16px | Métadonnées, labels |
-| `text-sm` | 13px | 20px | Corps principal |
-| `text-base` | 14px | 22px | Texte long |
-| `text-lg` | 16px | 24px | Sous-titres |
-| `text-xl` | 20px | 28px | Titres section |
-| `text-2xl` | 24px | 32px | Titres page |
-| `text-3xl` | 30px | 38px | Hero |
+Échelle Tailwind par défaut (`text-xs` à `text-3xl`). Voir `/playground/tokens` pour la rendu visuel.
 
 ### Espacement
 

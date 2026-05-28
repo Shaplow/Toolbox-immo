@@ -2,7 +2,7 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #0a0a0a;
   color-scheme: light;
 }
 
@@ -12,10 +12,54 @@ html {
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* ── Fonts ─────────────────────────────────────────────────────────────── */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* ── Couleurs sémantiques (en plus de la palette Tailwind par défaut) ──── */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  /* Accent sémantique : succès (vert sobre type Vercel) */
+  --color-success-50:  #f0fdf4;
+  --color-success-100: #dcfce7;
+  --color-success-600: #16a34a;
+  --color-success-700: #15803d;
+
+  /* Accent sémantique : danger */
+  --color-danger-50:   #fef2f2;
+  --color-danger-100:  #fee2e2;
+  --color-danger-600:  #dc2626;
+  --color-danger-700:  #b91c1c;
+
+  /* Accent sémantique : info (bleu Vercel) */
+  --color-info-50:     #eff6ff;
+  --color-info-100:    #dbeafe;
+  --color-info-600:    #2563eb;
+  --color-info-700:    #1d4ed8;
+
+  /* ── Animations ─────────────────────────────────────────────────────────── */
+  /* Easing principal — smooth spring-like, jamais de bounce */
+  --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Durations sémantiques */
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 350ms;
+
+  /* Default transition appliquée par les utilities `transition-*` */
+  --default-transition-duration: 200ms;
+  --default-transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── Ombres ─────────────────────────────────────────────────────────────── */
+  --shadow-overlay: 0 1px 0 rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.08);
+
+  /* ── Radius — sharp, peu de rondeur ─────────────────────────────────────── */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
 }
 
 body {

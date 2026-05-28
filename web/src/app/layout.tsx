@@ -1,13 +1,9 @@
 ﻿import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { SessionProvider } from "@/components/providers/SessionProvider";
 import { ToastContainer } from "@/components/ui/Toast";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "TemplateGen Immo",
@@ -20,8 +16,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr">
-      <body suppressHydrationWarning className={`${geistSans.variable} antialiased bg-gray-50 text-gray-900 min-h-screen`}>
+    <html lang="fr" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+      <body suppressHydrationWarning className="antialiased bg-gray-50 text-gray-900 min-h-screen font-sans">
         <SessionProvider>
           {children}
           <ToastContainer />
