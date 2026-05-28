@@ -1,4 +1,6 @@
 ﻿import { prisma } from "@/lib/prisma";
+import { ROLE_TOOL_SCOPE, ROLE_TOOL_SCOPE_ALL } from "@/lib/permissions/tools";
+import type { UserRole } from "@/types/roles";
 
 /**
  * Outils disponibles dans la Toolbox Immo.
@@ -50,7 +52,8 @@ export const EXTERNAL_GENERATOR_ALLOWED_TOOLS: readonly Tool[] = [TOOLS.TEMPLATE
 
 // -- Helpers -------------------------------------------------------------------
 
-/** Retourne les outils d'un user. ADMIN -> tous les outils. */
+/** Retourne les outils d'un user. ADMIN -> tous les outils.
+ *  Combine ROLE_TOOL_SCOPE (default rôle) + User.permissions JSON (granularité). */
 export async function getUserTools(userId: string): Promise<Tool[]> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -58,14 +61,29 @@ export async function getUserTools(userId: string): Promise<Tool[]> {
   });
   if (!user) return [];
   if (user.role === "ADMIN") return Object.values(TOOLS);
+  const role = user.role as UserRole;
+  const roleScope = ROLE_TOOL_SCOPE[role] ?? [];
+  let individual: Tool[] = [];
   try {
-    return JSON.parse(user.permissions) as Tool[];
+    individual = JSON.parse(user.permissions) as Tool[];
   } catch {
-    return [];
+    individual = [];
   }
+  if (roleScope === ROLE_TOOL_SCOPE_ALL) return Object.values(TOOLS);
+  const fromRole = (roleScope as readonly string[]).filter((t): t is Tool =>
+    Object.values(TOOLS).includes(t as Tool),
+  );
+  return Array.from(new Set([...fromRole, ...individual]));
 }
 
-/** Verifie si un user a acces a un outil. ADMIN -> toujours true. */
+/** Verifie si un user a acces a un outil.
+ *  ADMIN -> toujours true.
+ *  CM/MONTEUR -> outils du rôle (ROLE_TOOL_SCOPE) OU outils individuels (permissions JSON).
+ *  EXTERNAL_GENERATOR/USER -> outils individuels uniquement.
+ *
+ *  Avant ce fix, hasTool consultait uniquement permissions JSON, ce qui bloquait
+ *  silencieusement CM/MONTEUR sur tous leurs outils par défaut (captions, transcription,
+ *  description, cover) sauf si un admin avait ajouté manuellement la perm. */
 export async function hasTool(userId: string, tool: Tool): Promise<boolean> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -73,6 +91,10 @@ export async function hasTool(userId: string, tool: Tool): Promise<boolean> {
   });
   if (!user) return false;
   if (user.role === "ADMIN") return true;
+  const role = user.role as UserRole;
+  const roleScope = ROLE_TOOL_SCOPE[role] ?? [];
+  if (roleScope === ROLE_TOOL_SCOPE_ALL) return true;
+  if ((roleScope as readonly string[]).includes(tool)) return true;
   try {
     const tools = JSON.parse(user.permissions) as Tool[];
     return tools.includes(tool);

@@ -51,7 +51,9 @@ export async function POST(req: NextRequest) {
   if (!userContext?.effectiveUser.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
-  if (!userContext.canAdminBypass) {
+  // Ressource admin globale : on autorise l'ADMIN réel même en impersonation
+  // (les prompts ne sont pas scopés au user impersonné).
+  if (userContext.actualUser.role !== "ADMIN") {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
