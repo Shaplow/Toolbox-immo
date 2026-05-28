@@ -16,25 +16,14 @@ function buildRule(
   strategy: string,
   tagConditions: TagCondition[],
   tagConditionsOperator: "AND" | "OR",
-  igAccountFilter: string,
-  igAccountFilterParam: string,
-  igMode: "literal" | "param",
 ): MediaSelectionRule {
   if (strategy === "manual") return "manual";
   const s = strategy as MediaSelectionRuleConfig["strategy"];
   const cleanConditions = tagConditions.filter((c) => c.tag.trim() !== "");
-  const hasIg =
-    igMode === "literal" ? igAccountFilter.trim() !== "" : igAccountFilterParam !== "";
-  if (cleanConditions.length === 0 && !hasIg) return s;
+  if (cleanConditions.length === 0) return s;
   const result: MediaSelectionRuleConfig = { strategy: s };
-  if (cleanConditions.length > 0) {
-    result.tagConditions = cleanConditions;
-    if (cleanConditions.length > 1) result.tagConditionsOperator = tagConditionsOperator;
-  }
-  if (hasIg) {
-    if (igMode === "literal") result.igAccountFilter = igAccountFilter.trim();
-    else result.igAccountFilterParam = igAccountFilterParam;
-  }
+  result.tagConditions = cleanConditions;
+  if (cleanConditions.length > 1) result.tagConditionsOperator = tagConditionsOperator;
   return result;
 }
 
@@ -67,23 +56,13 @@ export function SelectionRuleEditor({
   const [tagConditionsOperator, setTagConditionsOperator] = useState<"AND" | "OR">(
     config.tagConditionsOperator ?? "AND",
   );
-  const [igAccountFilter, setIgAccountFilter] = useState(config.igAccountFilter ?? "");
-  const [igAccountFilterParam, setIgAccountFilterParam] = useState(
-    config.igAccountFilterParam ?? "",
-  );
-  const [igMode, setIgMode] = useState<"literal" | "param">(
-    config.igAccountFilterParam ? "param" : "literal",
-  );
 
   function emit(
     s: string = strategy,
     conditions: TagCondition[] = tagConditions,
     condOp: "AND" | "OR" = tagConditionsOperator,
-    igLit: string = igAccountFilter,
-    igParam: string = igAccountFilterParam,
-    igM: "literal" | "param" = igMode,
   ) {
-    onChange(buildRule(s, conditions, condOp, igLit, igParam, igM));
+    onChange(buildRule(s, conditions, condOp));
   }
 
   function handleStrategyChange(s: string) {
@@ -112,30 +91,6 @@ export function SelectionRuleEditor({
   function handleOperatorChange(op: "AND" | "OR") {
     setTagConditionsOperator(op);
     emit(strategy, tagConditions, op);
-  }
-
-  function handleIgModeChange(m: "literal" | "param") {
-    setIgMode(m);
-    if (m === "literal") {
-      setIgAccountFilterParam("");
-      emit(strategy, tagConditions, tagConditionsOperator, igAccountFilter, "", m);
-    } else {
-      // Auto-select first available param field so the dropdown is never left blank
-      const defaultParam = igAccountFilterParam || paramFields[0]?.key || "";
-      setIgAccountFilter("");
-      setIgAccountFilterParam(defaultParam);
-      emit(strategy, tagConditions, tagConditionsOperator, "", defaultParam, m);
-    }
-  }
-
-  function handleIgLiteralChange(v: string) {
-    setIgAccountFilter(v);
-    emit(strategy, tagConditions, tagConditionsOperator, v, "", "literal");
-  }
-
-  function handleIgParamChange(v: string) {
-    setIgAccountFilterParam(v);
-    emit(strategy, tagConditions, tagConditionsOperator, "", v, "param");
   }
 
   const isManual = strategy === "manual";
@@ -254,50 +209,6 @@ export function SelectionRuleEditor({
               <Plus size={11} />
               Ajouter un filtre
             </button>
-          </div>
-
-          {/* ── IG account filter ────────────────────────────────────────── */}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
-              Compte IG
-            </span>
-            {paramFields.length > 0 && (
-              <div className="flex rounded border border-gray-200 overflow-hidden">
-                {(["literal", "param"] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => handleIgModeChange(m)}
-                    className={`flex-1 text-[9px] px-2 py-1 transition-colors ${
-                      igMode === m
-                        ? "bg-indigo-600 text-white"
-                        : "bg-white text-gray-500 hover:bg-gray-50"
-                    }`}
-                  >
-                    {m === "literal" ? "Fixe" : "Depuis un champ"}
-                  </button>
-                ))}
-              </div>
-            )}
-            {igMode === "literal" || paramFields.length === 0 ? (
-              <input
-                type="text"
-                value={igAccountFilter}
-                onChange={(e) => handleIgLiteralChange(e.target.value)}
-                placeholder="@handle ou identifiant (optionnel)"
-                className="border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
-              />
-            ) : (
-              <select
-                value={igAccountFilterParam}
-                onChange={(e) => handleIgParamChange(e.target.value)}
-                className="border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
-              >
-                {paramFields.map((f) => (
-                  <option key={f.key} value={f.key}>{f.label || f.key}</option>
-                ))}
-              </select>
-            )}
           </div>
         </>
       )}

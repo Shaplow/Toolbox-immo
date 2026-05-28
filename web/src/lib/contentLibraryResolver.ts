@@ -63,7 +63,7 @@ function buildTagFragment(
   const parts: Prisma.Sql[] = [];
 
   // Legacy path: no tagConditions → fall back to single tagFilter/tagFilterParam
-  if (!config.tagConditions?.length && !config.igAccountFilter && !config.igAccountFilterParam) {
+  if (!config.tagConditions?.length) {
     const legacyTag = resolveTag(config, formData);
     if (legacyTag) {
       const likeVal = `%"${legacyTag}"%`;
@@ -92,19 +92,6 @@ function buildTagFragment(
         ? condParts[0]!
         : Prisma.sql`(${Prisma.join(condParts, op)})`,
     );
-  }
-
-  // igAccountFilter — additional AND tag condition (IG handle stored as tag)
-  const igTag =
-    config.igAccountFilter?.trim() ||
-    (config.igAccountFilterParam && formData
-      ? typeof formData[config.igAccountFilterParam] === "string"
-        ? (formData[config.igAccountFilterParam] as string).trim()
-        : ""
-      : "");
-  if (igTag) {
-    const likeVal = `%"${igTag.toLowerCase()}"%`;
-    parts.push(Prisma.sql`lower(ma.tags) ILIKE ${likeVal}`);
   }
 
   if (parts.length === 0) return Prisma.sql``;

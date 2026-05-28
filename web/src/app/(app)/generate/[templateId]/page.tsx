@@ -170,9 +170,9 @@ export default async function GeneratePage({ params, searchParams }: Props) {
   const mediaFieldAspectRatios = buildMediaFieldAspectRatios(json);
 
   // ─── Resolve ig_account handle BEFORE library prefill ────────────────────
-  // igAccountFilterParam in SelectionRuleEditor references a form field (e.g. "ig_account").
-  // The value must be in formData when resolveLibraryPrefill is called so the resolver
-  // can apply the IG tag filter correctly. Only inject if not already present.
+  // Auto-injecte le handle IG dans formData["ig_account"] si le template
+  // déclare ce champ. Utile pour les conditions de tag fromParam=true qui
+  // pointent sur ig_account, ou pour un usage textuel direct dans le rendu.
   if (accountId && !initialValues?.ig_account) {
     const hasIgField = json.schema.some((f) => f.key === "ig_account");
     if (hasIgField) {

@@ -278,16 +278,6 @@ export interface MediaSelectionRuleConfig {
    * "OR" = l'asset doit satisfaire au moins une condition.
    */
   tagConditionsOperator?: "AND" | "OR";
-  /**
-   * Filtre par compte Instagram (handle/identifiant littéral).
-   * L'asset doit avoir ce tag (convention : les assets sont tagués avec le handle IG).
-   */
-  igAccountFilter?: string;
-  /**
-   * Clé d'un champ du schéma dont la valeur sera utilisée comme filtre compte IG.
-   * Résolue depuis formData à la génération.
-   */
-  igAccountFilterParam?: string;
 }
 
 /**
