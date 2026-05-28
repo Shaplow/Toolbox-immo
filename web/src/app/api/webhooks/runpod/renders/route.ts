@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getR2PublicUrl } from "@/lib/r2";
+import { getR2PublicUrl, isR2PublicUrl } from "@/lib/r2";
 import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runpod";
 import { notifyUser } from "@/lib/sseStore";
 import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsage";
@@ -64,7 +64,23 @@ export async function POST(req: NextRequest) {
 
   if (status === "COMPLETED" && output && !output.error) {
     const outputKey = output.output_key ?? "";
-    const videoUrl = output.video_url ?? (outputKey ? getR2PublicUrl(outputKey) : null);
+    // Garde origin : un webhook forgé (ou un worker compromis) peut envoyer
+    // n'importe quel video_url. On force le R2 public configuré comme seule
+    // origine acceptable — sinon on retombe sur output_key qu'on construit
+    // nous-mêmes. Sans ça, Render.videoUrl pouvait pointer vers une URL
+    // externe (XSS si rendu en <video>, exfiltration en cas de fetch serveur).
+    const submittedUrl = output.video_url;
+    let videoUrl: string | null = null;
+    if (submittedUrl && isR2PublicUrl(submittedUrl)) {
+      videoUrl = submittedUrl;
+    } else if (outputKey) {
+      videoUrl = getR2PublicUrl(outputKey);
+      if (submittedUrl) {
+        console.warn(
+          `[webhook/renders] render=${render.id} rejected non-R2 video_url=${submittedUrl} — using output_key fallback`,
+        );
+      }
+    }
 
     await prisma.render.update({
       where: { id: render.id },
@@ -166,7 +182,13 @@ export async function POST(req: NextRequest) {
       status: "ERROR",
       errorMsg,
     });
-    void revertLibraryCursors(render.id);
+    // Fire-and-forget mais avec .catch explicite — sans cela, une erreur de
+    // revert serait silencieusement avalée (unhandled rejection), laissant
+    // le cursor consommé pour un render échoué. Aligné sur recordLibraryUsage
+    // côté success.
+    revertLibraryCursors(render.id).catch((err) => {
+      console.error(`[webhook/renders] revertLibraryCursors failed for render=${render.id}:`, err);
+    });
     console.error(`[webhook/renders] render=${render.id} failed: ${errorMsg}`);
   }
 

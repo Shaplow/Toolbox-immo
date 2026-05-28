@@ -2,6 +2,7 @@
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { RENDER_PIPELINE, RENDER_STAGE } from "@/lib/renderer/renderWorkflow";
+import { revertLibraryCursors } from "@/lib/recordLibraryUsage";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -35,6 +36,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const heartbeatAge = render.lastHeartbeatAt ? now - render.lastHeartbeatAt.getTime() : null;
 
   // ─── Local stall (render vidéo local sans heartbeat) ────────────────────
+  let stalled = false;
   if (
     render.status === "PROCESSING" &&
     render.pipeline === RENDER_PIPELINE.VIDEO_LOCAL &&
@@ -53,6 +55,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         lastHeartbeatAt: new Date(),
       },
     });
+    stalled = true;
   } else if (
     // ─── Pre-submit stall (RunPod sans runpodJobId) ───────────────────────
     render.status === "PROCESSING" &&
@@ -72,6 +75,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
         finishedAt: new Date(),
         lastHeartbeatAt: new Date(),
       },
+    });
+    stalled = true;
+  }
+
+  // Bugfix asset rotation P1 : sans cet appel, le cursor avancé au moment du
+  // submit (advanceLibraryCursorsOnSubmit) restait permanemment consommé pour
+  // un render qui n'a jamais abouti. Conséquence silencieuse : la rotation
+  // theme_sequence sautait une position à chaque stall, drift cumulatif.
+  // Aligné sur failRender (generateRender.ts) et webhook ERROR (webhooks/runpod/renders).
+  if (stalled) {
+    revertLibraryCursors(id).catch((err) => {
+      console.error(`[renders/GET stall] revertLibraryCursors failed for render=${id}:`, err);
     });
   }
 

@@ -85,6 +85,37 @@ export async function POST() {
     }),
   ]);
 
+  // ── MediaEditJob ──────────────────────────────────────────────────────────
+  // Jobs d'édition asset (trim, normalize, gain) qui restent "processing" sans
+  // webhook arrivé. Statuts lowercase pour ce modèle ("pending"/"processing"/
+  // "done"/"failed") — divergence historique avec Render/Caption.
+  const [mediaEditProcessing, mediaEditPending] = await Promise.all([
+    prisma.mediaEditJob.updateMany({
+      where: { status: "processing", updatedAt: { lt: processingCutoff } },
+      data:  { status: "failed", errorMsg: "Job bloqué en processing — webhook RunPod jamais reçu (sweep automatique)" },
+    }),
+    prisma.mediaEditJob.updateMany({
+      where: { status: "pending", updatedAt: { lt: queuedCutoff } },
+      data:  { status: "failed", errorMsg: "Job bloqué en pending — soumission RunPod jamais finalisée (sweep automatique)" },
+    }),
+  ]);
+
+  // ── MediaAutocutBatch ─────────────────────────────────────────────────────
+  // Batch d'analyse Whisper de plusieurs assets. Si le batch reste processing
+  // au-delà du seuil, on le passe failed. Pas de revert sur les jobs internes
+  // (les MediaAutocutJob non terminés du batch sont laissés tels quels — on
+  // peut les retraiter via un re-run du batch).
+  const [autocutBatchProcessing, autocutBatchPending] = await Promise.all([
+    prisma.mediaAutocutBatch.updateMany({
+      where: { status: "processing", updatedAt: { lt: processingCutoff } },
+      data:  { status: "failed", errorMsg: "Batch bloqué en processing — webhook RunPod jamais reçu (sweep automatique)" },
+    }),
+    prisma.mediaAutocutBatch.updateMany({
+      where: { status: "pending", updatedAt: { lt: queuedCutoff } },
+      data:  { status: "failed", errorMsg: "Batch bloqué en pending — soumission RunPod jamais finalisée (sweep automatique)" },
+    }),
+  ]);
+
   // ── Orphelins (slotId=null, status terminal, ancienneté > 30j) ────────────
   // Reporting seul — pas de suppression auto (audit trail préservé). Si le
   // chiffre grossit anormalement, lancer un script de cleanup R2/DB
@@ -122,6 +153,14 @@ export async function POST() {
       processing: renderProcessing.count,
       pending:    renderPending.count,
     },
+    mediaEdit: {
+      processing: mediaEditProcessing.count,
+      pending:    mediaEditPending.count,
+    },
+    autocutBatch: {
+      processing: autocutBatchProcessing.count,
+      pending:    autocutBatchPending.count,
+    },
     /** Compteurs informatifs — ces jobs ne sont pas modifiés par le sweep,
      *  juste reportés pour monitoring de la dette. */
     orphans: {
@@ -132,7 +171,9 @@ export async function POST() {
     total:
       captionProcessing.count + captionQueued.count +
       transcriptionProcessing.count + transcriptionQueued.count +
-      renderProcessing.count + renderPending.count,
+      renderProcessing.count + renderPending.count +
+      mediaEditProcessing.count + mediaEditPending.count +
+      autocutBatchProcessing.count + autocutBatchPending.count,
   };
 
   console.info("[admin/jobs/sweep] Sweep terminé par", userContext.actualUser.id, "—", JSON.stringify(summary));

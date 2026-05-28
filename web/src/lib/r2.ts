@@ -228,6 +228,31 @@ export function getR2PublicUrl(key: string): string {
   return `${publicUrl.replace(/\/$/, "")}/${key}`;
 }
 
+/**
+ * Vérifie qu'une URL pointe bien vers le bucket R2 public configuré.
+ *
+ * Utilisé par les webhooks RunPod pour valider l'origine du `video_url` /
+ * `output_url` avant de l'écrire dans Render.videoUrl, CaptionJob.outputUrl,
+ * MediaAsset.url, etc. Sans cette garde, un attaquant qui forge un webhook
+ * peut pointer ces champs vers n'importe quelle URL externe (stored XSS si
+ * rendu dans un <video>/<img>, exfiltration si fetch côté serveur).
+ *
+ * Comparaison stricte par origin — pas de `startsWith` qui validerait
+ * `https://r2.cdn.victim.com.attacker.com/…`.
+ */
+export function isR2PublicUrl(candidate: string | null | undefined): boolean {
+  if (!candidate || typeof candidate !== "string") return false;
+  const { publicUrl } = getR2Config();
+  if (!publicUrl) return false;
+  try {
+    const candUrl = new URL(candidate);
+    const baseUrl = new URL(publicUrl);
+    return candUrl.origin === baseUrl.origin;
+  } catch {
+    return false;
+  }
+}
+
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
 /**

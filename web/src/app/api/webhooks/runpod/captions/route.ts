@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getR2PublicUrl, deleteFromR2, r2Configured } from "@/lib/r2";
+import { getR2PublicUrl, deleteFromR2, r2Configured, isR2PublicUrl } from "@/lib/r2";
 import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runpod";
 import { notifyUser } from "@/lib/sseStore";
 import { logActivity } from "@/lib/services/slot/activity";
@@ -50,7 +50,19 @@ export async function POST(req: NextRequest) {
 
   if (status === "COMPLETED" && output && !output.error) {
     const outputKey = output.output_key ?? job.outputKey ?? "";
-    const videoUrl = output.video_url ?? (outputKey ? getR2PublicUrl(outputKey) : null);
+    // Garde origin : voir webhook/renders pour le rationale.
+    const submittedUrl = output.video_url;
+    let videoUrl: string | null = null;
+    if (submittedUrl && isR2PublicUrl(submittedUrl)) {
+      videoUrl = submittedUrl;
+    } else if (outputKey) {
+      videoUrl = getR2PublicUrl(outputKey);
+      if (submittedUrl) {
+        console.warn(
+          `[webhook/captions] job=${job.id} rejected non-R2 video_url=${submittedUrl} — using output_key fallback`,
+        );
+      }
+    }
 
     await prisma.captionJob.update({
       where: { id: job.id },

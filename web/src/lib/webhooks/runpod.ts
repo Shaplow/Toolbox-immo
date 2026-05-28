@@ -13,6 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 
 const WEBHOOK_SECRET = process.env.RUNPOD_WEBHOOK_SECRET;
 
@@ -47,11 +48,23 @@ if (!process.env.NEXTAUTH_URL && process.env.NODE_ENV === "production") {
  * If RUNPOD_WEBHOOK_SECRET is not set, the check is skipped (dev / unprotected).
  */
 export function verifyRunpodWebhook(req: NextRequest): NextResponse | null {
-  if (WEBHOOK_SECRET) {
-    const provided = req.nextUrl.searchParams.get("secret");
-    if (provided !== WEBHOOK_SECRET) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!WEBHOOK_SECRET) return null;
+  const provided = req.nextUrl.searchParams.get("secret");
+  if (!provided) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // Comparaison timing-safe : un `provided !== WEBHOOK_SECRET` court-circuite
+  // au premier byte qui diffère, ce qui permet à un attaquant qui mesure
+  // précisément la latence de reconstruire le secret caractère par caractère.
+  // Buffer length doit être identique sinon timingSafeEqual throw — d'où le
+  // guard de longueur avant.
+  const providedBuf = Buffer.from(provided, "utf8");
+  const secretBuf = Buffer.from(WEBHOOK_SECRET, "utf8");
+  if (providedBuf.length !== secretBuf.length) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!timingSafeEqual(providedBuf, secretBuf)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   return null;
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runpod";
+import { isR2PublicUrl } from "@/lib/r2";
 
 /**
  * POST /api/webhooks/runpod/media-edit
@@ -54,7 +55,17 @@ export async function POST(req: NextRequest) {
 
   if (status === "COMPLETED" && output && !output.error) {
     const newDuration = typeof output.duration === "number" ? output.duration : undefined;
-    const newUrl = output.video_url ?? undefined;
+    // Garde origin : MediaAsset.url est rendu directement dans des templates ;
+    // un video_url externe → stored XSS si template encode mal, ou exfiltration
+    // via fetch côté serveur. On rejette tout ce qui n'est pas notre R2 public.
+    const newUrl = output.video_url && isR2PublicUrl(output.video_url)
+      ? output.video_url
+      : undefined;
+    if (output.video_url && newUrl === undefined) {
+      console.warn(
+        `[webhook/media-edit] job=${job.id} rejected non-R2 video_url=${output.video_url}`,
+      );
+    }
 
     await prisma.$transaction(async (tx) => {
       await tx.mediaEditJob.update({
