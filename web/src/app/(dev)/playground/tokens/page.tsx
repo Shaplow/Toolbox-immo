@@ -661,7 +661,7 @@ export default function TokensPage() {
           {/* Logo agence */}
           <div className="flex items-center gap-4 border-b border-gray-100 pb-5">
             <span className="h-8 w-8 rounded-md bg-gray-950 inline-flex items-center justify-center">
-              <HandDrawn.Asterisk className="h-4 w-4 text-brand-500" />
+              <HandDrawn.Sparkle className="h-4 w-4 text-brand-500" />
             </span>
             <div>
               <p className="font-hand text-2xl text-gray-950 leading-none">Toolbox</p>
@@ -672,7 +672,7 @@ export default function TokensPage() {
           {/* Tip callout */}
           <div className="border-l-2 border-brand-600 bg-brand-50 pl-4 py-3 pr-4 rounded-r-lg">
             <p className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-brand-700 font-medium mb-1">
-              <HandDrawn.Asterisk className="h-3 w-3" />
+              <HandDrawn.Sparkle className="h-3 w-3" />
               Astuce
             </p>
             <p className="text-sm text-gray-800 leading-relaxed">
@@ -684,7 +684,7 @@ export default function TokensPage() {
 
           {/* Empty state friendly */}
           <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center space-y-3">
-            <HandDrawn.Asterisk className="h-6 w-6 text-gray-300 mx-auto" />
+            <HandDrawn.Sparkle className="h-6 w-6 text-gray-300 mx-auto" />
             <p className="font-hand text-2xl text-gray-700">Aucun slot ici pour l&apos;instant</p>
             <p className="text-xs text-gray-500 max-w-sm mx-auto">
               Crée ton premier slot depuis le calendrier ou attends que la
