@@ -172,10 +172,9 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
     });
   }
 
-  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
+  /** Import effectif d'un fichier CSV — extrait pour pouvoir être appelé
+   *  depuis le drop-zone page-level en plus du <input type="file">. */
+  async function importCSVFile(file: File) {
     setImporting(true);
     setImportError(null);
     setImportSuccess(null);
@@ -203,6 +202,44 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
       }
     }
     setImporting(false);
+  }
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    await importCSVFile(file);
+  }
+
+  // ── Drop-zone page-level pour CSV ───────────────────────────────────
+  const [pageDragOver, setPageDragOver] = useState(false);
+  const dragDepthRef = useRef(0);
+
+  function handleDragEnter(e: React.DragEvent) {
+    if (!e.dataTransfer?.types?.includes("Files")) return;
+    dragDepthRef.current += 1;
+    setPageDragOver(true);
+  }
+  function handleDragOver(e: React.DragEvent) {
+    if (!e.dataTransfer?.types?.includes("Files")) return;
+    e.preventDefault();
+  }
+  function handleDragLeave() {
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setPageDragOver(false);
+  }
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setPageDragOver(false);
+    const file = Array.from(e.dataTransfer.files ?? []).find(
+      (f) => f.name.toLowerCase().endsWith(".csv") || f.type === "text/csv" || f.type === "text/plain",
+    );
+    if (!file) {
+      setImportError("Aucun fichier CSV détecté dans la sélection déposée.");
+      return;
+    }
+    void importCSVFile(file);
   }
 
   async function handleReset() {
@@ -320,7 +357,20 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
   const isPerAccountPolicy = campaign?.usagePolicy === "cycle_per_account" || campaign?.usagePolicy === "once_per_account";
 
   return (
-    <div>
+    <div
+      className="relative"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {pageDragOver && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-indigo-500/10 border-4 border-dashed border-indigo-400 pointer-events-none">
+          <div className="bg-white rounded-xl shadow-lg px-6 py-4 text-sm font-medium text-indigo-700">
+            Déposez le CSV pour importer dans <span className="font-semibold">{campaign?.name ?? "cette campagne"}</span>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
