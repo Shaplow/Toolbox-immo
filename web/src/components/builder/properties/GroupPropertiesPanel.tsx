@@ -1,48 +1,13 @@
 "use client";
 
+import { Eye, EyeOff, Lock, Unlock } from "lucide-react";
 import { getAutoLayoutMode, getAutoLayoutOrderedBlocks, getGroupBounds } from "@/lib/groupLayout";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import type { LayerGroup } from "@/types/template";
 import { Slider } from "@/components/ui/Slider";
+import { ToggleSwitch } from "@/components/builder/shared/ToggleSwitch";
 import { Section } from "./Section";
 import { GroupConditionalRulesSection } from "./GroupConditionalRulesSection";
-
-function ToggleSwitch({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className="flex items-center gap-2 w-full text-left"
-    >
-      <span
-        className={[
-          "relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent",
-          "transition-colors duration-150",
-          checked ? "bg-indigo-600" : "bg-gray-200",
-        ].join(" ")}
-      >
-        <span
-          className={[
-            "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow",
-            "transition-transform duration-150",
-            checked ? "translate-x-4" : "translate-x-0",
-          ].join(" ")}
-        />
-      </span>
-      <span className="text-xs text-gray-600">{label}</span>
-    </button>
-  );
-}
 
 export function GroupPropertiesPanel({
   group,
@@ -121,25 +86,25 @@ export function GroupPropertiesPanel({
             onClick={() => updateGroup(group.id, { hidden: !group.hidden })}
             title={group.hidden ? "Afficher le groupe" : "Masquer le groupe à la génération"}
             className={[
-              "shrink-0 text-sm px-1.5 py-0.5 rounded-lg border transition-colors",
+              "shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg border transition-colors",
               group.hidden
                 ? "bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100"
                 : "bg-white border-gray-200 text-gray-400 hover:border-gray-400 hover:text-gray-600",
             ].join(" ")}
           >
-            👁
+            {group.hidden ? <EyeOff size={13} /> : <Eye size={13} />}
           </button>
           <button
             onClick={() => updateGroup(group.id, { locked: !group.locked })}
             title={group.locked ? "Déverrouiller le groupe" : "Verrouiller le groupe"}
             className={[
-              "shrink-0 text-sm px-1.5 py-0.5 rounded-lg border transition-colors",
+              "shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg border transition-colors",
               group.locked
                 ? "bg-indigo-50 border-indigo-300 text-indigo-700 hover:bg-indigo-100"
                 : "bg-white border-gray-200 text-gray-400 hover:border-gray-400 hover:text-gray-600",
             ].join(" ")}
           >
-            {group.locked ? "🔒" : "🔓"}
+            {group.locked ? <Lock size={13} /> : <Unlock size={13} />}
           </button>
         </div>
       </div>

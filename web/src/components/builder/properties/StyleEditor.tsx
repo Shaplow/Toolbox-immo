@@ -13,47 +13,10 @@ import {
 import { useBuilderStore } from "@/lib/store/builderStore";
 import type { BlockStyle } from "@/types/template";
 import { Slider } from "@/components/ui/Slider";
+import { ToggleSwitch } from "@/components/builder/shared/ToggleSwitch";
 import { BoxPaddingEditor } from "./BoxPaddingEditor";
 import { FontFamilyPicker } from "./FontFamilyPicker";
 import { toUniformPaddingValue } from "./utils";
-
-/** Inline toggle switch used locally within StyleEditor */
-function ToggleSwitch({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className="flex items-center gap-2 w-full text-left"
-    >
-      <span
-        className={[
-          "relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent",
-          "transition-colors duration-150",
-          checked ? "bg-indigo-600" : "bg-gray-200",
-        ].join(" ")}
-      >
-        <span
-          className={[
-            "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow",
-            "transition-transform duration-150",
-            checked ? "translate-x-4" : "translate-x-0",
-          ].join(" ")}
-        />
-      </span>
-      <span className="text-xs text-gray-600">{label}</span>
-    </button>
-  );
-}
 
 /** Reusable section sub-header within StyleEditor */
 function SubSection({ label }: { label: string }) {
