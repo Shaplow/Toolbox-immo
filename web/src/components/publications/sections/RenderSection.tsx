@@ -9,9 +9,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Film, Play, RefreshCw, AlertCircle, RotateCcw } from "lucide-react";
+import { Film, Play, RefreshCw, AlertCircle, RotateCcw, AlertTriangle } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { toast } from "@/components/ui/Toast";
+import { useRouter } from "next/navigation";
 
 interface Props {
   slot: { id: string };
@@ -50,8 +51,11 @@ const RENDER_STATUS_COLORS: Record<string, string> = {
 };
 
 export function RenderSection({ slot, pattern, render, finalVideoUrl, isCaptioned, listingId, canEdit }: Props) {
+  const router = useRouter();
   const [confirmRevert, setConfirmRevert] = useState(false);
   const [reverting, setReverting] = useState(false);
+  const [confirmForceFail, setConfirmForceFail] = useState(false);
+  const [forceFailing, setForceFailing] = useState(false);
 
   // URL effectivement affichée : version finale (avec captions si dispo), fallback render brut.
   const displayVideoUrl = finalVideoUrl ?? render?.videoUrl ?? null;
@@ -62,6 +66,28 @@ export function RenderSection({ slot, pattern, render, finalVideoUrl, isCaptione
   const builderHref = templateId
     ? `/builder/${templateId}${listingId ? `?listingId=${listingId}&slotId=${slot.id}` : `?slotId=${slot.id}`}`
     : null;
+
+  /** Force-fail un render stuck en PROCESSING/PENDING (admin recovery). */
+  async function handleForceFail() {
+    if (!render) return;
+    setForceFailing(true);
+    try {
+      const res = await fetch(`/api/admin/renders/${render.id}/force-fail`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error((d as { error?: string }).error ?? "Échec du force-fail");
+      }
+      toast.success("Render forcé en ERROR. Rotation libérée — tu peux relancer.");
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setForceFailing(false);
+      setConfirmForceFail(false);
+    }
+  }
 
   /** Revert rotation consumption — admin recovery path quand le render est mauvais. */
   async function handleRevertRotation() {
@@ -226,15 +252,33 @@ export function RenderSection({ slot, pattern, render, finalVideoUrl, isCaptione
               ? "Le rendu a échoué."
               : "Rendu en cours de traitement…"}
           </p>
-          {render.status === "ERROR" && canEdit && builderHref && (
-            <Link
-              href={builderHref}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors font-medium"
-            >
-              <RefreshCw size={14} />
-              Relancer le rendu
-            </Link>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {render.status === "ERROR" && canEdit && builderHref && (
+              <Link
+                href={builderHref}
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+              >
+                <RefreshCw size={14} />
+                Relancer le rendu
+              </Link>
+            )}
+            {/* Force-fail visible quand le render semble bloqué (PROCESSING/PENDING/QUEUED). */}
+            {canEdit &&
+              (render.status === "PROCESSING" ||
+                render.status === "PENDING" ||
+                render.status === "QUEUED") && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmForceFail(true)}
+                  disabled={forceFailing}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors font-medium disabled:opacity-50"
+                  title="Bloquer le render et libérer la rotation pour pouvoir relancer"
+                >
+                  <AlertTriangle size={14} />
+                  Force fail
+                </button>
+              )}
+          </div>
         </div>
       )}
 
@@ -247,6 +291,16 @@ export function RenderSection({ slot, pattern, render, finalVideoUrl, isCaptione
         loading={reverting}
         onConfirm={() => { void handleRevertRotation(); }}
         onCancel={() => setConfirmRevert(false)}
+      />
+      <ConfirmDialog
+        open={confirmForceFail}
+        title="Forcer ce render en échec ?"
+        description="Le render passera immédiatement en ERROR. Les MediaAssets et curseurs claim-és au prefill seront relâchés pour pouvoir re-piocher. À utiliser uniquement quand le render est bloqué (RunPod crash, heartbeat trop ancien, webhook perdu)."
+        confirmLabel="Force fail"
+        variant="danger"
+        loading={forceFailing}
+        onConfirm={() => { void handleForceFail(); }}
+        onCancel={() => setConfirmForceFail(false)}
       />
     </section>
   );
