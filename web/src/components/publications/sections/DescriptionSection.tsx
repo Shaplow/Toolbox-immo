@@ -28,6 +28,12 @@ interface Props {
   /** true pour CM et ADMIN */
   canEdit: boolean;
   renderId: string | null;
+  /**
+   * Prompt à pré-sélectionner dans la modal IA. Résolu côté serveur :
+   * slot.descriptionPromptIdOverride ?? pattern.descriptionPromptId ?? null.
+   * Si null, on retombe sur le premier prompt actif disponible.
+   */
+  defaultPromptId?: string | null;
 }
 
 interface PromptOption {
@@ -35,7 +41,14 @@ interface PromptOption {
   name: string;
 }
 
-export function DescriptionSection({ slot, pattern, initialDescription, canEdit, renderId }: Props) {
+export function DescriptionSection({
+  slot,
+  pattern,
+  initialDescription,
+  canEdit,
+  renderId,
+  defaultPromptId,
+}: Props) {
   // Si pas de pattern ou que le pattern indique que la description n'est pas nécessaire, on masque
   if (!pattern || pattern.needsDescription === "none") return null;
 
@@ -45,10 +58,18 @@ export function DescriptionSection({ slot, pattern, initialDescription, canEdit,
     initialDescription={initialDescription}
     canEdit={canEdit}
     renderId={renderId}
+    defaultPromptId={defaultPromptId}
   />;
 }
 
-function DescriptionSectionInner({ slot, pattern, initialDescription, canEdit, renderId }: Props) {
+function DescriptionSectionInner({
+  slot,
+  pattern,
+  initialDescription,
+  canEdit,
+  renderId,
+  defaultPromptId,
+}: Props) {
   const [value, setValue] = useState(initialDescription);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -79,8 +100,14 @@ function DescriptionSectionInner({ slot, pattern, initialDescription, canEdit, r
         const data = (await res.json()) as PromptOption[];
         if (cancelled) return;
         setPrompts(data);
+        // Pré-sélection : prompt configuré sur slot/pattern > premier dispo.
+        // S'il y a déjà une sélection (l'utilisateur a cliqué dans la liste),
+        // on ne l'écrase pas.
         if (data.length > 0 && !selectedPromptId) {
-          setSelectedPromptId(data[0].id);
+          const matchDefault = defaultPromptId
+            ? data.find((p) => p.id === defaultPromptId)
+            : null;
+          setSelectedPromptId(matchDefault?.id ?? data[0].id);
         }
       } catch (err) {
         if (!cancelled) {
@@ -93,7 +120,7 @@ function DescriptionSectionInner({ slot, pattern, initialDescription, canEdit, r
     return () => {
       cancelled = true;
     };
-  }, [showAi, selectedPromptId]);
+  }, [showAi, selectedPromptId, defaultPromptId]);
 
   // ESC pour fermer
   useEffect(() => {

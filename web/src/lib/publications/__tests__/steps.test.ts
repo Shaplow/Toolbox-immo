@@ -142,7 +142,7 @@ describe("computePublicationSteps — ordre des steps", () => {
   it("le step 'edit' est positionné avant 'cover' et 'captions'", () => {
     const recipeAll = {
       source: "manual_rushes" as const,
-      needsCover: "auto" as const,
+      coverMode: "auto" as const,
       needsCaptions: true,
       needsDescription: "none" as const,
       needsClientValidation: false,

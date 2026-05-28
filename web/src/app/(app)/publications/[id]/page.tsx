@@ -65,6 +65,8 @@ export default async function PublicationPage({ params }: PageProps) {
           allowsClientRevision: true,
           needsRushes: true,
           needsBrief: true,
+          captionPresetId: true,
+          descriptionPromptId: true,
         },
       },
       assigneeMonteur: { select: { id: true, name: true, email: true } },
@@ -371,6 +373,8 @@ export default async function PublicationPage({ params }: PageProps) {
         publishedUrl: slot.publishedUrl,
         publishedAt: slot.publishedAt,
         notes: slot.notes,
+        captionPresetIdOverride: slot.captionPresetIdOverride,
+        descriptionPromptIdOverride: slot.descriptionPromptIdOverride,
       }}
       account={{
         id: slot.account.id,
@@ -393,6 +397,9 @@ export default async function PublicationPage({ params }: PageProps) {
               allowsClientRevision: effectivePattern.allowsClientRevision,
               needsRushes: effectivePattern.needsRushes,
               needsBrief: effectivePattern.needsBrief,
+              // FK presets/prompts — pré-remplissent les modals IA / captions de la fiche
+              captionPresetId: slot.pattern?.captionPresetId ?? null,
+              descriptionPromptId: slot.pattern?.descriptionPromptId ?? null,
             }
           : null
       }

@@ -111,6 +111,9 @@ interface SlotInfo {
   publishedUrl: string | null;
   publishedAt: Date | null;
   notes: string | null;
+  // Phase 5 — overrides ressources (per-slot, ont priorité sur pattern)
+  captionPresetIdOverride?: string | null;
+  descriptionPromptIdOverride?: string | null;
 }
 
 interface AccountInfo {
@@ -131,6 +134,8 @@ interface PatternInfo {
   allowsClientRevision: boolean;
   needsRushes: boolean;
   needsBrief: boolean;
+  captionPresetId?: string | null;
+  descriptionPromptId?: string | null;
 }
 
 interface RushItem {
@@ -454,6 +459,17 @@ export function PublicationFiche({
                 initialDescription={slot.description ?? ""}
                 canEdit={canEditDescription}
                 renderId={render?.id ?? null}
+                /**
+                 * Prompt par défaut : override slot > pattern.
+                 * Quand l'admin a configuré un prompt sur le pattern (et/ou un
+                 * override sur le slot), il doit être pré-sélectionné dans la
+                 * modal IA — pas un fallback "data[0]".
+                 */
+                defaultPromptId={
+                  slot.descriptionPromptIdOverride ??
+                  pattern?.descriptionPromptId ??
+                  null
+                }
               />
             )}
 
