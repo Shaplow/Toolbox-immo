@@ -71,6 +71,7 @@ export default async function PublicationPage({ params }: PageProps) {
       },
       assigneeMonteur: { select: { id: true, name: true, email: true } },
       assigneeCm: { select: { id: true, name: true, email: true } },
+      assigneeVideaste: { select: { id: true, name: true, email: true } },
       render: {
         select: {
           id: true,
@@ -417,6 +418,7 @@ export default async function PublicationPage({ params }: PageProps) {
       coverConfigError={coverConfigError}
       assigneeMonteur={slot.assigneeMonteur}
       assigneeCm={slot.assigneeCm}
+      assigneeVideaste={slot.assigneeVideaste}
       steps={steps}
       permissions={{
         canMarkPublished: canPublish,

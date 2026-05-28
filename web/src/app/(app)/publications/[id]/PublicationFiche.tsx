@@ -13,6 +13,7 @@
  */
 
 import { PublicationHeader } from "@/components/publications/PublicationHeader";
+import { NextActionBanner } from "@/components/publications/NextActionBanner";
 import { ProductionChain } from "@/components/publications/ProductionChain";
 import { RenderSection } from "@/components/publications/sections/RenderSection";
 import { getSlotFinalVideoUrl, isFinalVideoCaptioned } from "@/lib/publications/finalVideo";
@@ -218,6 +219,7 @@ export interface PublicationFicheProps {
   coverConfigError: CoverConfigError | null;
   assigneeMonteur: AssigneeInfo | null;
   assigneeCm: AssigneeInfo | null;
+  assigneeVideaste: AssigneeInfo | null;
   steps: PublicationStep[];
   permissions: PublicationFichePermissions;
   // Phase B2 — Rushes
@@ -282,6 +284,7 @@ export function PublicationFiche({
   coverConfigError,
   assigneeMonteur,
   assigneeCm,
+  assigneeVideaste,
   steps,
   permissions,
   rushes,
@@ -344,6 +347,18 @@ export function PublicationFiche({
         canMarkPublished={canMarkPublished}
         canDelete={canDelete}
         currentUserRole={currentUserRole}
+      />
+
+      {/* Bandeau "À ton tour" — affiché si l'user est le owner du statut actuel.
+          Permet au monteur/CM/vidéaste de voir immédiatement ce qu'il doit faire,
+          sans avoir à interpréter la ProductionChain. */}
+      <NextActionBanner
+        slotStatus={slot.status}
+        currentUserId={currentUserId}
+        currentUserRole={currentUserRole}
+        assigneeMonteurId={assigneeMonteur?.id ?? null}
+        assigneeCmId={assigneeCm?.id ?? null}
+        assigneeVideasteId={assigneeVideaste?.id ?? null}
       />
 
       {/* ProductionChain — sticky sous le header pour rester visible pendant le scroll. */}
