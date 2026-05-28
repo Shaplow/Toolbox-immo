@@ -79,7 +79,16 @@ function pickFromCandidates(candidates: number[], count: number): number[] {
   return picked;
 }
 
-export function CoverGenerator() {
+interface CoverGeneratorProps {
+  /**
+   * Si fourni, ne charge que les packs cover liés à ce slot (via render OU
+   * currentVersion). Sans ce filtre, /publications/[id]/cover affichait
+   * TOUS les packs du système — la CM choisissait dans un mauvais lot.
+   */
+  slotId?: string;
+}
+
+export function CoverGenerator({ slotId }: CoverGeneratorProps = {}) {
   const { confirm, dialog: confirmDialog } = useConfirm();
   // ── Tab ────────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"packs" | "manual">("packs");
@@ -132,7 +141,10 @@ export function CoverGenerator() {
   const loadPacks = useCallback(async (silent = false) => {
     if (!silent) setPacksLoading(true);
     try {
-      const res = await fetch("/api/cover-packs");
+      const url = slotId
+        ? `/api/cover-packs?slotId=${encodeURIComponent(slotId)}`
+        : "/api/cover-packs";
+      const res = await fetch(url);
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json() as CoverPack[];
       setPacks(data);
@@ -162,7 +174,7 @@ export function CoverGenerator() {
     } finally {
       if (!silent) setPacksLoading(false);
     }
-  }, []);
+  }, [slotId]);
 
   useEffect(() => {
     void loadPacks();

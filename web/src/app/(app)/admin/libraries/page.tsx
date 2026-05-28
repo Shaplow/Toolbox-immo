@@ -74,7 +74,7 @@ export default async function LibrariesHubPage() {
         </Link>
 
         <Link
-          href="/admin/fonts"
+          href="/admin/libraries/fonts"
           className="flex flex-col gap-3 p-5 border border-gray-200 rounded-xl hover:border-violet-300 hover:bg-violet-50 transition-colors"
         >
           <div className="w-10 h-10 p-2 bg-violet-100 rounded-lg text-violet-600 flex items-center justify-center">

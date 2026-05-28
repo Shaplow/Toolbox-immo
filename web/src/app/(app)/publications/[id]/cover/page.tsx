@@ -87,7 +87,7 @@ export default async function PublicationCoverPage({ params }: Props) {
         </div>
       </div>
 
-      <CoverGenerator />
+      <CoverGenerator slotId={slot.id} />
     </div>
   );
 }

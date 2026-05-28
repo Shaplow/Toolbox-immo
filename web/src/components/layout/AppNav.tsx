@@ -221,7 +221,11 @@ export function AppNav({
               >
                 Admin <span className="text-gray-400 ml-1">(par défaut)</span>
               </button>
-              {(["VIDEASTE", "MONTEUR", "CM"] as const).map((role) => (
+              {([
+                ["VIDEASTE", "Vidéaste"],
+                ["MONTEUR", "Monteur"],
+                ["CM", "CM"],
+              ] as const).map(([role, label]) => (
                 <button
                   key={role}
                   type="button"
@@ -232,7 +236,7 @@ export function AppNav({
                       : "text-gray-700"
                   }`}
                 >
-                  Vue {role.charAt(0) + role.slice(1).toLowerCase()}
+                  Vue {label}
                   <span className="text-gray-400 ml-1 text-[10px]">
                     (mes slots assignés)
                   </span>

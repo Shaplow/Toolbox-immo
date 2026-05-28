@@ -81,9 +81,8 @@ function DescriptionSectionInner({
   pattern,
   initialDescription,
   canEdit,
-  renderId,
   defaultPromptId,
-}: Props) {
+}: Omit<Props, "renderId">) {
   const [value, setValue] = useState(initialDescription);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -112,9 +111,9 @@ function DescriptionSectionInner({
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
 
-  const descriptionToolHref = renderId
-    ? `/descriptions?slotId=${slot.id}&renderId=${renderId}&returnTo=/publications/${slot.id}`
-    : `/descriptions?slotId=${slot.id}&returnTo=/publications/${slot.id}`;
+  // renderId n'est pas consommé par /descriptions (audit nav 2026-05-28) —
+  // on l'omet pour ne pas laisser un param fantôme dans l'URL.
+  const descriptionToolHref = `/descriptions?slotId=${slot.id}&returnTo=/publications/${slot.id}`;
 
   useEffect(() => {
     if (!showAi) return;

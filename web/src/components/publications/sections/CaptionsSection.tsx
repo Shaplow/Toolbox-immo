@@ -42,9 +42,9 @@ export function CaptionsSection({
   // Si le pattern n'exige pas de captions, on masque la section
   if (pattern?.needsCaptions !== true) return null;
 
-  const captionsHref = renderId
-    ? `/captions?slotId=${slot.id}&renderId=${renderId}&returnTo=/publications/${slot.id}`
-    : `/captions?slotId=${slot.id}&returnTo=/publications/${slot.id}`;
+  // renderId n'est pas consommé par /captions ni /descriptions (audit nav
+  // 2026-05-28) — on l'omet pour ne pas laisser un param fantôme dans l'URL.
+  const captionsHref = `/captions?slotId=${slot.id}&returnTo=/publications/${slot.id}`;
 
   const isInProgress =
     latestCaptionJob?.status === "QUEUED" || latestCaptionJob?.status === "PROCESSING";

@@ -33,6 +33,9 @@ interface JobRow {
   createdAt: Date;
   updatedAt?: Date | null;
   label: string;
+  /** Lien vers l'entité source (slot, listing, asset) pour permettre à
+   *  l'admin de creuser le contexte sans copier l'ID. */
+  href?: string;
 }
 
 const TYPE_LABELS: Record<JobRow["type"], string> = {
@@ -91,31 +94,39 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
   const [renders, captions, transcriptions, descriptions, coverPacks, autocuts] = await Promise.all([
     prisma.render.findMany({
       where: { status: { in: ["PENDING", "PROCESSING"] } },
-      select: { id: true, status: true, listingId: true, createdAt: true, pipeline: true, stage: true },
+      select: { id: true, status: true, listingId: true, publicationSlotId: true, createdAt: true, pipeline: true, stage: true },
       orderBy: { createdAt: "asc" },
       take: 200,
     }),
     prisma.captionJob.findMany({
       where: { status: { in: ["QUEUED", "PROCESSING"] } },
-      select: { id: true, status: true, userId: true, createdAt: true, updatedAt: true },
+      select: { id: true, status: true, userId: true, slotId: true, createdAt: true, updatedAt: true },
       orderBy: { createdAt: "asc" },
       take: 200,
     }),
     prisma.transcriptionJob.findMany({
       where: { status: { in: ["QUEUED", "PROCESSING"] } },
-      select: { id: true, status: true, userId: true, createdAt: true, updatedAt: true },
+      select: {
+        id: true, status: true, userId: true, createdAt: true, updatedAt: true,
+        render: { select: { publicationSlotId: true } },
+      },
       orderBy: { createdAt: "asc" },
       take: 200,
     }),
     prisma.descriptionJob.findMany({
       where: { status: { in: ["QUEUED", "PROCESSING"] } },
-      select: { id: true, status: true, userId: true, createdAt: true, updatedAt: true },
+      select: { id: true, status: true, userId: true, slotId: true, createdAt: true, updatedAt: true },
       orderBy: { createdAt: "asc" },
       take: 200,
     }),
     prisma.coverFramePack.findMany({
       where: { status: { in: ["QUEUED", "PROCESSING"] } },
-      select: { id: true, status: true, userId: true, renderId: true, publicationVersionId: true, createdAt: true, updatedAt: true },
+      select: {
+        id: true, status: true, userId: true, renderId: true, publicationVersionId: true,
+        createdAt: true, updatedAt: true,
+        render: { select: { publicationSlotId: true } },
+        publicationVersion: { select: { slotId: true } },
+      },
       orderBy: { createdAt: "asc" },
       take: 200,
     }),
@@ -135,7 +146,8 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
       status: r.status,
       userId: null,
       createdAt: r.createdAt,
-      label: `Listing ${r.listingId.slice(0, 8)}… (${r.pipeline ?? "?"} · ${r.stage ?? "?"})`,
+      label: `${r.publicationSlotId ? "Slot" : "Listing"} ${(r.publicationSlotId ?? r.listingId).slice(0, 8)}… (${r.pipeline ?? "?"} · ${r.stage ?? "?"})`,
+      href: r.publicationSlotId ? `/publications/${r.publicationSlotId}` : `/listings`,
     })),
     ...captions.map((c): JobRow => ({
       type: "caption",
@@ -144,7 +156,8 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
       userId: c.userId,
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
-      label: `Job ${c.id.slice(0, 8)}…`,
+      label: c.slotId ? `Slot ${c.slotId.slice(0, 8)}…` : `Job ${c.id.slice(0, 8)}…`,
+      href: c.slotId ? `/publications/${c.slotId}` : undefined,
     })),
     ...transcriptions.map((t): JobRow => ({
       type: "transcription",
@@ -153,7 +166,10 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
       userId: t.userId,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
-      label: `Job ${t.id.slice(0, 8)}…`,
+      label: t.render?.publicationSlotId
+        ? `Slot ${t.render.publicationSlotId.slice(0, 8)}…`
+        : `Job ${t.id.slice(0, 8)}…`,
+      href: t.render?.publicationSlotId ? `/publications/${t.render.publicationSlotId}` : undefined,
     })),
     ...descriptions.map((d): JobRow => ({
       type: "description",
@@ -162,19 +178,26 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
       userId: d.userId,
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
-      label: `Job ${d.id.slice(0, 8)}…`,
+      label: d.slotId ? `Slot ${d.slotId.slice(0, 8)}…` : `Job ${d.id.slice(0, 8)}…`,
+      href: d.slotId ? `/publications/${d.slotId}` : undefined,
     })),
-    ...coverPacks.map((p): JobRow => ({
-      type: "cover-pack",
-      id: p.id,
-      status: p.status,
-      userId: p.userId,
-      createdAt: p.createdAt,
-      updatedAt: p.updatedAt,
-      label: p.renderId
-        ? `Render ${p.renderId.slice(0, 8)}…`
-        : `Version ${(p.publicationVersionId ?? "?").slice(0, 8)}…`,
-    })),
+    ...coverPacks.map((p): JobRow => {
+      const slotId = p.render?.publicationSlotId ?? p.publicationVersion?.slotId ?? null;
+      return {
+        type: "cover-pack",
+        id: p.id,
+        status: p.status,
+        userId: p.userId,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+        label: slotId
+          ? `Slot ${slotId.slice(0, 8)}…`
+          : p.renderId
+            ? `Render ${p.renderId.slice(0, 8)}…`
+            : `Version ${(p.publicationVersionId ?? "?").slice(0, 8)}…`,
+        href: slotId ? `/publications/${slotId}` : undefined,
+      };
+    }),
     ...autocuts.map((a): JobRow => ({
       type: "autocut",
       id: a.id,
@@ -183,6 +206,7 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,
       label: `Asset ${a.assetId.slice(0, 8)}…`,
+      href: `/admin/libraries/media`,
     })),
   ];
 
@@ -312,7 +336,17 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
                       </span>
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-gray-600">
-                      {row.label}
+                      {row.href ? (
+                        <Link
+                          href={row.href}
+                          className="text-indigo-600 hover:text-indigo-700 hover:underline"
+                          title="Ouvrir la source"
+                        >
+                          {row.label}
+                        </Link>
+                      ) : (
+                        row.label
+                      )}
                     </td>
                     <td className="px-3 py-2 text-xs text-gray-700">{row.status}</td>
                     <td className="px-3 py-2">
