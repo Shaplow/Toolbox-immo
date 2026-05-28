@@ -62,8 +62,10 @@ export interface PublicationSlot {
     // Phase 5 — coverMode hérité du pattern (pour comparaison à coverModeOverride)
     coverMode?: string;
   } | null;
+  assigneeVideasteId?: string | null;
   assigneeMonteur?: { id: string; name: string | null } | null;
   assigneeCm?: { id: string; name: string | null } | null;
+  assigneeVideaste?: { id: string; name: string | null } | null;
   // W2 + Cohérence Workflows Phase 4 — overrides per-slot (null = hérite du pattern)
   needsClientValidationOverride?: boolean | null;
   allowsClientRevisionOverride?: boolean | null;
@@ -79,7 +81,17 @@ export interface PublicationSlot {
 }
 
 // Re-exported from the centralized source of truth — do not duplicate here.
-export { STATUS_LABELS, STATUS_COLORS, STATUS_DOT, STATUS_GROUP } from "@/lib/slots/statusLabels";
+export {
+  STATUS_LABELS,
+  STATUS_COLORS,
+  STATUS_DOT,
+  STATUS_GROUP,
+  STATUS_OWNER,
+  OWNER_LABEL,
+  OWNER_BADGE_CLS,
+  NEXT_ACTION,
+  type SlotOwnerRole,
+} from "@/lib/slots/statusLabels";
 
 export const OFFRES = ["ESSENTIEL", "CONFIRME", "CEO", "COMPTE_AGENCE"] as const;
 export type Offre = (typeof OFFRES)[number];

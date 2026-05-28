@@ -590,6 +590,7 @@ export interface ListSlotsFilters {
   patternId?: string;
   monteurId?: string;
   cmId?: string;
+  videasteId?: string;
   dateFrom?: string;
   dateTo?: string;
 }
@@ -629,6 +630,7 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
         filters.patternId ? { patternId: filters.patternId } : {},
         filters.monteurId ? { assigneeMonteurId: filters.monteurId } : {},
         filters.cmId ? { assigneeCmId: filters.cmId } : {},
+        filters.videasteId ? { assigneeVideasteId: filters.videasteId } : {},
         filters.dateFrom || filters.dateTo
           ? {
               scheduledAt: {
@@ -645,6 +647,9 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
       account: { select: { id: true, name: true, handle: true } },
       template: { select: { id: true, name: true } },
       render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
+      assigneeMonteur: { select: { id: true, name: true } },
+      assigneeCm: { select: { id: true, name: true } },
+      assigneeVideaste: { select: { id: true, name: true } },
       // pattern.source + needsCaptions nécessaires pour syncSlotsPipelineStatuses.
       // needs* + allows* pour l'affichage des valeurs héritées dans les
       // OverrideSelect du SlotDetailPanel (Cohérence Workflows Phase 4).
@@ -712,6 +717,9 @@ export async function getSlot(id: string, ctx: UserContext) {
       account: { select: { id: true, name: true, handle: true } },
       template: { select: { id: true, name: true } },
       render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
+      assigneeMonteur: { select: { id: true, name: true } },
+      assigneeCm: { select: { id: true, name: true } },
+      assigneeVideaste: { select: { id: true, name: true } },
     },
   });
 

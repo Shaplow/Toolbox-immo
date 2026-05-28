@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
         patternId: searchParams.get("patternId") ?? undefined,
         monteurId: searchParams.get("monteurId") ?? undefined,
         cmId: searchParams.get("cmId") ?? undefined,
+        videasteId: searchParams.get("videasteId") ?? undefined,
         dateFrom: searchParams.get("dateFrom") ?? undefined,
         dateTo: searchParams.get("dateTo") ?? undefined,
       },

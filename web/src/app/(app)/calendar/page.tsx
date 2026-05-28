@@ -69,14 +69,26 @@ export default async function CalendarPage() {
   // preventing React hydration mismatches caused by timezone differences.
   const initialWeekStart = getMondayISOOf(new Date());
 
+  // Liste des vidéastes — pour le filtre admin
+  const videastes =
+    role === "ADMIN"
+      ? await prisma.user.findMany({
+          where: { role: "VIDEASTE" },
+          select: { id: true, name: true, email: true },
+          orderBy: { name: "asc" },
+        })
+      : [];
+
   return (
     <div className="flex flex-col h-full">
       <CalendarView
         accounts={accounts}
         initialWeekStart={initialWeekStart}
         currentUserRole={role}
+        currentUserId={userId}
         monteurs={monteurs.map(formatAssignee)}
         cms={cms.map(formatAssignee)}
+        videastes={videastes.map(formatAssignee)}
       />
     </div>
   );

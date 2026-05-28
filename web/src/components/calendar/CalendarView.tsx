@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus, RefreshCw, Calendar, X } from "lucide-react";
-import { DAY_LABELS, type PublicationSlot } from "@/types/calendar";
+import { DAY_LABELS, STATUS_OWNER, type PublicationSlot } from "@/types/calendar";
 import type { UserRole } from "@/types/roles";
 import { SlotCard } from "./SlotCard";
 import { SlotDetailPanel, type SlotDetailPanelMode } from "./SlotDetailPanel";
@@ -32,10 +32,14 @@ interface CalendarViewProps {
    * MONTEUR et CM consultent en lecture seule, filtrés sur leurs slots assignés.
    */
   currentUserRole: UserRole;
+  /** ID effectif (impersonation-aware) — utilisé pour mettre en avant les slots "à moi". */
+  currentUserId: string;
   /** Liste des monteurs (ADMIN uniquement) — vide pour MONTEUR/CM. */
   monteurs?: AssigneeOption[];
   /** Liste des CM (ADMIN uniquement) — vide pour MONTEUR/CM. */
   cms?: AssigneeOption[];
+  /** Liste des vidéastes (ADMIN uniquement). */
+  videastes?: AssigneeOption[];
 }
 
 const ROLE_DETAIL_MODE: Record<UserRole, SlotDetailPanelMode> = {
@@ -75,8 +79,10 @@ export function CalendarView({
   accounts,
   initialWeekStart,
   currentUserRole,
+  currentUserId,
   monteurs = [],
   cms = [],
+  videastes = [],
 }: CalendarViewProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -98,6 +104,8 @@ export function CalendarView({
     status: "",
     monteurId: "",
     cmId: "",
+    videasteId: "",
+    onlyMine: false,
   });
 
   /** Compte actif correspondant au filtre accountId, pour afficher le badge. */
@@ -127,6 +135,7 @@ export function CalendarView({
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.monteurId ? { monteurId: filters.monteurId } : {}),
         ...(filters.cmId ? { cmId: filters.cmId } : {}),
+        ...(filters.videasteId ? { videasteId: filters.videasteId } : {}),
       });
       const res = await fetch(`/api/calendar/slots?${params.toString()}`);
       if (!res.ok) throw new Error(`Erreur ${res.status}`);
@@ -149,8 +158,22 @@ export function CalendarView({
   function nextWeek() { setWeekStart((d) => addDays(d, 7)); }
   function goToday() { setWeekStart(getMondayOf(new Date())); }
 
+  /** True si le slot attend une action de currentUser (rôle owner + assignation matchante). */
+  function isSlotMine(slot: PublicationSlot): boolean {
+    const owner = STATUS_OWNER[slot.status];
+    if (!owner) return false;
+    if (owner === "ADMIN") return currentUserRole === "ADMIN";
+    if (owner === "VIDEASTE") return slot.assigneeVideasteId === currentUserId;
+    if (owner === "MONTEUR") return slot.assigneeMonteurId === currentUserId;
+    if (owner === "CM") return slot.assigneeCmId === currentUserId;
+    return false;
+  }
+
+  const visibleSlots = filters.onlyMine ? slots.filter(isSlotMine) : slots;
+  const mineCount = slots.filter(isSlotMine).length;
+
   function slotsForDay(day: Date) {
-    return slots
+    return visibleSlots
       .filter((s) => isSameDay(new Date(s.scheduledAt), day))
       .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
   }
@@ -246,12 +269,21 @@ export function CalendarView({
         )}
 
         <div className="ml-auto flex items-center gap-2 flex-wrap">
+          {/* Compteur "à toi" — visible si l'utilisateur a un rôle pipeline */}
+          {currentUserRole !== "EXTERNAL_GENERATOR" && mineCount > 0 && (
+            <span className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2.5 py-1 font-medium tabular-nums">
+              {mineCount} pour toi
+            </span>
+          )}
+
           <CalendarFilters
             accounts={accounts}
             filters={filters}
             onChange={setFilters}
             monteurs={monteurs}
             cms={cms}
+            videastes={videastes}
+            hasMineToggle={currentUserRole !== "EXTERNAL_GENERATOR"}
           />
 
           <button
@@ -342,6 +374,8 @@ export function CalendarView({
                       key={slot.id}
                       slot={slot}
                       onClick={() => setSelectedSlot(slot)}
+                      currentUserRole={currentUserRole}
+                      currentUserId={currentUserId}
                     />
                   ))}
 

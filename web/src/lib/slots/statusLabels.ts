@@ -107,6 +107,95 @@ export const STATUS_DOT: Record<SlotStatus, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// Owner — rôle responsable de la prochaine action pour un statut donné.
+// ---------------------------------------------------------------------------
+//
+// Utile pour afficher "à qui le slot attend une action" sans logique éparpillée
+// dans les composants. `null` quand aucun rôle n'a d'action attendue (terminaux).
+//
+// VIDEASTE  : doit fournir les rushes
+// MONTEUR   : doit monter / exporter / appliquer revisions
+// CM        : doit valider montage / écrire caption / programmer / suivre client
+// ADMIN     : par défaut au début (brouillon/planifié) et pour les états bloqués
+
+export type SlotOwnerRole = "VIDEASTE" | "MONTEUR" | "CM" | "ADMIN" | null;
+
+export const STATUS_OWNER: Record<SlotStatus, SlotOwnerRole> = {
+  // ── New pipeline statuses ──────────────────────────────────────────────
+  DRAFT: "ADMIN",
+  PLANNED: "ADMIN",
+  RUSHES_EXPECTED: "VIDEASTE",
+  RUSHES_RECEIVED: "MONTEUR",
+  IN_EDIT: "MONTEUR",
+  EDIT_REVIEW: "CM",
+  EDIT_APPROVED: "MONTEUR",
+  CAPTIONS_PENDING: "MONTEUR",
+  READY_FOR_CM: "CM",
+  AWAITING_CLIENT: "CM",
+  CLIENT_REVISION: "MONTEUR",
+  SCHEDULED: "CM",
+  PUBLISHED: null,
+  REJECTED: "ADMIN",
+  CANCELLED: null,
+  BLOCKED: "ADMIN",
+  ARCHIVED: null,
+
+  // ── Legacy aliases ─────────────────────────────────────────────────────
+  TO_DO: "ADMIN",
+  IN_PROGRESS: "MONTEUR",
+  READY: "CM",
+  CHECKING: "CM",
+  DONE: null,
+};
+
+/** Libellé court pour le badge owner (FR). */
+export const OWNER_LABEL: Record<NonNullable<SlotOwnerRole>, string> = {
+  VIDEASTE: "Vidéaste",
+  MONTEUR: "Monteur",
+  CM: "CM",
+  ADMIN: "Admin",
+};
+
+/** Couleur du badge owner — tokenisé pour rester cohérent avec les rôles. */
+export const OWNER_BADGE_CLS: Record<NonNullable<SlotOwnerRole>, string> = {
+  VIDEASTE: "bg-amber-50 text-amber-700 border-amber-200",
+  MONTEUR: "bg-orange-50 text-orange-700 border-orange-200",
+  CM: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  ADMIN: "bg-violet-50 text-violet-700 border-violet-200",
+};
+
+/**
+ * Phrase d'action à afficher au rôle owner ("Tu dois…").
+ * Pour les autres rôles, on affiche `OWNER_LABEL` à la place.
+ */
+export const NEXT_ACTION: Record<SlotStatus, string | null> = {
+  DRAFT: "Compléter le brouillon",
+  PLANNED: "Confirmer la production",
+  RUSHES_EXPECTED: "Uploader les rushes",
+  RUSHES_RECEIVED: "Démarrer le montage",
+  IN_EDIT: "Continuer le montage",
+  EDIT_REVIEW: "Valider le montage",
+  EDIT_APPROVED: "Exporter le final",
+  CAPTIONS_PENDING: "Générer les sous-titres",
+  READY_FOR_CM: "Écrire la légende",
+  AWAITING_CLIENT: "Relancer le client",
+  CLIENT_REVISION: "Appliquer les revisions",
+  SCHEDULED: "Surveiller la publication",
+  PUBLISHED: null,
+  REJECTED: "Décider de la suite",
+  CANCELLED: null,
+  BLOCKED: "Débloquer",
+  ARCHIVED: null,
+
+  // ── Legacy aliases ─────────────────────────────────────────────────────
+  TO_DO: "Lancer la production",
+  IN_PROGRESS: "Continuer le montage",
+  READY: "Valider le montage",
+  CHECKING: "Valider le montage",
+  DONE: null,
+};
+
+// ---------------------------------------------------------------------------
 // Groups
 // ---------------------------------------------------------------------------
 
