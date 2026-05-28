@@ -1,10 +1,12 @@
-﻿import { prisma } from "@/lib/prisma";
+﻿import Link from "next/link";
+import { prisma } from "@/lib/prisma";
 import { ListingsClient, type ListingRow, type CaptionJobRow, type TranscriptionJobRow, type DescriptionJobRow } from "@/components/listings/ListingsClient";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { RefreshButton } from "@/components/ui/RefreshButton";
 import { toUserRole } from "@/lib/permissions/role";
-import { List } from "lucide-react";
+import { canUserAccessSlot } from "@/lib/permissions/slotScope";
+import { List, Info, ChevronLeft, X } from "lucide-react";
 
 const LISTING_INCLUDE = {
   template: { select: { id: true, name: true, client: true, formats: true } },
@@ -24,6 +26,7 @@ const LISTING_INCLUDE = {
       // "Générer Cover" sur les renders dont le slot a un pattern coverMode=auto.
       publicationSlot: {
         select: {
+          id: true,
           pattern: { select: { coverMode: true } },
         },
       },
@@ -31,7 +34,11 @@ const LISTING_INCLUDE = {
   },
 } as const;
 
-export default async function ListingsPage() {
+interface PageProps {
+  searchParams: Promise<{ slotId?: string }>;
+}
+
+export default async function ListingsPage({ searchParams }: PageProps) {
   const userContext = await getUserContext();
   // L'impersonation s'applique : la vue est celle de effectiveUser.
   // Un admin qui impersonne un MONTEUR voit la vue exacte de ce MONTEUR :
@@ -39,6 +46,33 @@ export default async function ListingsPage() {
   const userId = userContext!.effectiveUser.id;
   const isAdmin = userContext!.canAdminBypass;
   const effectiveRole = toUserRole(userContext!.effectiveUser.role);
+
+  // Phase nav 2026-05-28 — filtre slotId optionnel : permet de voir tous les
+  // jobs (renders, captions, transcriptions, descriptions) liés à une publi
+  // précise. Le bouton "Voir tous les jobs de cette publi" sur la fiche
+  // mène ici.
+  const { slotId: filterSlotId } = await searchParams;
+  let slotBannerContext: { id: string; title: string | null; handle: string } | null = null;
+  if (filterSlotId) {
+    const slot = await prisma.publicationSlot.findUnique({
+      where: { id: filterSlotId },
+      select: {
+        id: true,
+        title: true,
+        assigneeMonteurId: true,
+        assigneeCmId: true,
+        assigneeVideasteId: true,
+        account: { select: { handle: true } },
+      },
+    });
+    if (slot && canUserAccessSlot(slot, effectiveRole, userId)) {
+      slotBannerContext = {
+        id: slot.id,
+        title: slot.title,
+        handle: slot.account.handle,
+      };
+    }
+  }
 
   const userPerms = parsePermissions(userContext!.effectiveUser.permissions);
   const hasCaptions = isAdmin || userPerms.includes("captions");
@@ -109,8 +143,19 @@ export default async function ListingsPage() {
     });
   }
 
+  // Filtres slotId : appliqués via Prisma quand slotBannerContext est set.
+  // CaptionJob et DescriptionJob ont slotId direct. TranscriptionJob via render.
+  const slotFilterCaption = slotBannerContext ? { slotId: slotBannerContext.id } : {};
+  const slotFilterDescription = slotBannerContext ? { slotId: slotBannerContext.id } : {};
+  const slotFilterTranscription = slotBannerContext
+    ? { render: { publicationSlotId: slotBannerContext.id } }
+    : {};
+
   const captionJobs = await prisma.captionJob.findMany({
-    where: isAdmin ? {} : { userId },
+    where: {
+      ...(isAdmin ? {} : { userId }),
+      ...slotFilterCaption,
+    },
     orderBy: { createdAt: "desc" },
     take: 50,
     include: {
@@ -119,7 +164,10 @@ export default async function ListingsPage() {
   });
 
   const transcriptionJobs = await prisma.transcriptionJob.findMany({
-    where: isAdmin ? {} : { userId },
+    where: {
+      ...(isAdmin ? {} : { userId }),
+      ...slotFilterTranscription,
+    },
     orderBy: { createdAt: "desc" },
     take: 50,
     include: {
@@ -128,7 +176,10 @@ export default async function ListingsPage() {
   });
 
   const descriptionJobs = await prisma.descriptionJob.findMany({
-    where: isAdmin ? {} : { userId },
+    where: {
+      ...(isAdmin ? {} : { userId }),
+      ...slotFilterDescription,
+    },
     orderBy: { createdAt: "desc" },
     take: 50,
     include: {
@@ -136,6 +187,14 @@ export default async function ListingsPage() {
       user: { select: { name: true, email: true } },
     },
   });
+
+  // Pour les listings : filtrer post-fetch pour ne garder que ceux dont au
+  // moins un render est lié au slot ciblé.
+  if (slotBannerContext) {
+    listings = listings.filter((l) =>
+      l.renders.some((r) => r.publicationSlot?.id === slotBannerContext!.id),
+    );
+  }
 
   // Serialize for the client component
   const rows: ListingRow[] = listings.map((l) => ({
@@ -217,26 +276,66 @@ export default async function ListingsPage() {
   if (inProgressCount > 0) subtitleParts.push(`${inProgressCount} en cours`);
 
   return (
-    <div className="p-8">
-      <ToolPageHeader
-        icon={List}
-        iconColor="indigo"
-        title={isAdmin ? "Historique des générations" : "Mon historique"}
-        subtitle={subtitleParts.join(" · ")}
-        actions={<RefreshButton title="Rafraîchir la liste" />}
-      />
+    <div>
+      {slotBannerContext && (
+        <div className="bg-indigo-50 border-b border-indigo-100 px-4 py-3">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0 text-sm">
+              <Info size={14} className="text-indigo-500 shrink-0" />
+              <span className="text-indigo-900">
+                Jobs filtrés pour{" "}
+                <span className="font-semibold">
+                  {slotBannerContext.title ?? `@${slotBannerContext.handle}`}
+                </span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/publications/${slotBannerContext.id}`}
+                className="inline-flex items-center gap-1 text-xs font-medium text-indigo-700 hover:text-indigo-900 transition-colors"
+              >
+                <ChevronLeft size={12} />
+                Retour à la publication
+              </Link>
+              <Link
+                href="/listings"
+                className="inline-flex items-center gap-1 text-xs font-medium text-indigo-700 hover:text-indigo-900 transition-colors"
+                title="Effacer le filtre"
+              >
+                <X size={12} />
+                Tout voir
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="p-8">
+        <ToolPageHeader
+          icon={List}
+          iconColor="indigo"
+          title={
+            slotBannerContext
+              ? "Jobs de cette publication"
+              : isAdmin
+                ? "Historique des générations"
+                : "Mon historique"
+          }
+          subtitle={subtitleParts.join(" · ")}
+          actions={<RefreshButton title="Rafraîchir la liste" />}
+        />
 
-      <ListingsClient
-        initialListings={rows}
-        initialCaptionJobs={captionRows}
-        initialTranscriptionJobs={transcriptionRows}
-        initialDescriptionJobs={descriptionRows}
-        isAdmin={isAdmin}
-        hasCaptions={hasCaptions}
-        hasTranscription={hasTranscription}
-        hasDescription={hasDescription}
-        hasCovers={hasCovers}
-      />
+        <ListingsClient
+          initialListings={rows}
+          initialCaptionJobs={captionRows}
+          initialTranscriptionJobs={transcriptionRows}
+          initialDescriptionJobs={descriptionRows}
+          isAdmin={isAdmin}
+          hasCaptions={hasCaptions}
+          hasTranscription={hasTranscription}
+          hasDescription={hasDescription}
+          hasCovers={hasCovers}
+        />
+      </div>
     </div>
   );
 }

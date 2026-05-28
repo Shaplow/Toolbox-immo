@@ -1,6 +1,7 @@
-﻿import { prisma } from "@/lib/prisma";
+﻿import Link from "next/link";
+import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
-import { LayoutTemplate } from "lucide-react";
+import { LayoutTemplate, Info, RotateCcw } from "lucide-react";
 import { ListingForm } from "@/components/form/ListingForm";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { collectTemplateConditionValues, normalizeTemplateJSON } from "@/lib/templateNormalization";
@@ -55,13 +56,21 @@ export default async function GeneratePage({ params, searchParams }: Props) {
   }
 
   // If slotId provided: load slot to derive accountId and merge flex fields
+  // + capture context for banner (title, account handle).
+  let slotBannerContext: { title: string | null; handle: string } | null = null;
   if (slotId) {
     const slot = await prisma.publicationSlot.findFirst({
       where: { id: slotId },
-      select: { accountId: true, fields: true },
+      select: {
+        accountId: true,
+        fields: true,
+        title: true,
+        account: { select: { handle: true } },
+      },
     });
     if (slot) {
       if (!accountId) accountId = slot.accountId;
+      slotBannerContext = { title: slot.title, handle: slot.account.handle };
       try {
         const slotFields = JSON.parse(slot.fields) as Record<string, string>;
         // Slot fields are base values; listingId data (if any) takes precedence
@@ -69,6 +78,10 @@ export default async function GeneratePage({ params, searchParams }: Props) {
       } catch { /* ignore malformed JSON */ }
     }
   }
+
+  // Listing présent pour banner (le modèle Listing n'a pas de nom propre,
+  // donc on affiche juste un label "annonce existante" sans creuser jsonData).
+  const hasListingPrefill = !!listingId && !!initialValues;
 
   const { canAccessTemplate } = await import("@/lib/permissions");
   const ok = userContext.canAdminBypass
@@ -205,11 +218,44 @@ export default async function GeneratePage({ params, searchParams }: Props) {
 
   const subtitleParts: string[] = [`Template : ${template.name}`];
   if (template.client) subtitleParts.push(template.client);
-  if (initialValues) subtitleParts.push("formulaire pré-rempli");
   if (autoMode) subtitleParts.push("génération automatique");
 
+  // Sources de pré-remplissage pour le bandeau (Phase nav 2026-05-28).
+  // Avant : "formulaire pré-rempli" en subtitle, peu visible. Maintenant
+  // banner explicite avec source + bouton "Repartir vierge".
+  const prefillSources: string[] = [];
+  if (slotBannerContext) {
+    prefillSources.push(
+      `slot ${slotBannerContext.title ?? `@${slotBannerContext.handle}`}`,
+    );
+  }
+  if (hasListingPrefill) prefillSources.push("une annonce existante");
+  const hasPrefill = prefillSources.length > 0;
+
   return (
-    <div className="px-4 py-8 xl:px-8 max-w-[1680px] mx-auto">
+    <div>
+      {hasPrefill && (
+        <div className="bg-indigo-50 border-b border-indigo-100 px-4 py-3">
+          <div className="max-w-[1680px] mx-auto flex items-center justify-between gap-3 flex-wrap px-4 xl:px-8">
+            <div className="flex items-center gap-2 min-w-0 text-sm">
+              <Info size={14} className="text-indigo-500 shrink-0" />
+              <span className="text-indigo-900">
+                Formulaire pré-rempli depuis{" "}
+                <span className="font-semibold">{prefillSources.join(" + ")}</span>
+              </span>
+            </div>
+            <Link
+              href={`/generate/${templateId}`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-indigo-700 hover:text-indigo-900 transition-colors shrink-0"
+              title="Charger le formulaire sans pré-remplissage"
+            >
+              <RotateCcw size={12} />
+              Repartir vierge
+            </Link>
+          </div>
+        </div>
+      )}
+      <div className="px-4 py-8 xl:px-8 max-w-[1680px] mx-auto">
       <ToolPageHeader
         icon={LayoutTemplate}
         iconColor="indigo"
@@ -227,6 +273,7 @@ export default async function GeneratePage({ params, searchParams }: Props) {
         libraryPrefillContext={libraryPrefillContext}
         autoSubmit={autoMode}
       />
+      </div>
     </div>
   );
 }

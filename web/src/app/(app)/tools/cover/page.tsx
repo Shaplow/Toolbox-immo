@@ -1,24 +1,18 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ChevronLeft, Info, Image as ImageIcon } from "lucide-react";
+import { Image as ImageIcon } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { hasTool, TOOLS } from "@/lib/permissions";
-import { prisma } from "@/lib/prisma";
 import { CoverGenerator } from "@/components/covers/CoverGenerator";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 
 interface PageProps {
-  searchParams: Promise<{ slotId?: string; returnTo?: string }>;
-}
-
-/**
- * Valide un returnTo pour éviter les open-redirects. On n'accepte que les
- * URL internes commençant par "/publications/" (pattern actuel des call sites).
- */
-function sanitizeReturnTo(value: string | undefined): string | null {
-  if (!value) return null;
-  if (!value.startsWith("/publications/")) return null;
-  return value;
+  /**
+   * Compat back-link : si quelqu'un atterrit ici avec ?slotId=, on redirige
+   * vers la sous-route slot-scopée /publications/[id]/cover (workflow précise
+   * dédié). Cette page reste utilisée uniquement comme outil **standalone**
+   * (extraction de frames sur une vidéo upload ad-hoc, sans rattachement slot).
+   */
+  searchParams: Promise<{ slotId?: string }>;
 }
 
 export default async function CoverPage({ searchParams }: PageProps) {
@@ -30,57 +24,23 @@ export default async function CoverPage({ searchParams }: PageProps) {
     redirect("/home");
   }
 
-  const { slotId, returnTo } = await searchParams;
-  const safeReturnTo = sanitizeReturnTo(returnTo);
-
-  // Charge le contexte slot uniquement si slotId présent ET valide (le user a
-  // accès via /publications/[id] qui gate déjà — ici on n'affiche qu'un titre).
-  const slotContext = slotId
-    ? await prisma.publicationSlot.findUnique({
-        where: { id: slotId },
-        select: {
-          id: true,
-          title: true,
-          account: { select: { handle: true } },
-        },
-      })
-    : null;
+  const { slotId } = await searchParams;
+  // Redirection vers le workflow précise quand un slot est référencé.
+  // Sans ça, l'user atterrissait sur l'outil standalone qui n'avait aucun
+  // moyen d'attacher le résultat au slot.
+  if (slotId && /^[a-zA-Z0-9_-]+$/.test(slotId)) {
+    redirect(`/publications/${slotId}/cover`);
+  }
 
   return (
-    <div>
-      {slotContext && (
-        <div className="bg-indigo-50 border-b border-indigo-100 px-4 py-3">
-          <div className="max-w-6xl mx-auto flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2 min-w-0 text-sm">
-              <Info size={14} className="text-indigo-500 shrink-0" />
-              <span className="text-indigo-900">
-                Vous choisissez une cover pour{" "}
-                <span className="font-semibold">
-                  {slotContext.title ?? `@${slotContext.account.handle}`}
-                </span>
-              </span>
-            </div>
-            {safeReturnTo && (
-              <Link
-                href={safeReturnTo}
-                className="inline-flex items-center gap-1 text-xs font-medium text-indigo-700 hover:text-indigo-900 transition-colors shrink-0"
-              >
-                <ChevronLeft size={12} />
-                Retour à la publication
-              </Link>
-            )}
-          </div>
-        </div>
-      )}
-      <div className="p-8 max-w-6xl mx-auto">
-        <ToolPageHeader
-          icon={ImageIcon}
-          iconColor="emerald"
-          title="Extraction de cover"
-          subtitle="Génère des frames depuis une vidéo pour choisir la cover idéale."
-        />
-        <CoverGenerator />
-      </div>
+    <div className="p-8 max-w-6xl mx-auto">
+      <ToolPageHeader
+        icon={ImageIcon}
+        iconColor="emerald"
+        title="Extraction de cover"
+        subtitle="Génère des frames depuis une vidéo pour choisir la cover idéale. Mode standalone — pas rattaché à une publication."
+      />
+      <CoverGenerator />
     </div>
   );
 }

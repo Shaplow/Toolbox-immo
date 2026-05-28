@@ -1,6 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, FileText, Video } from "lucide-react";
+import { ChevronLeft, FileText, Video, Scissors, Sparkles } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -113,6 +113,47 @@ export default async function TranscriptionJobPage({
           hasOutput: !!job.outputJsonKey,
         }}
       />
+
+      {/* Actions inline : "Utiliser dans..." pour fermer la boucle vers les
+          outils captions/descriptions. Visible uniquement quand le job est
+          complet (sinon ça pointerait vers une transcription vide). */}
+      {job.status === "COMPLETED" && job.outputJsonKey && (
+        <div className="mt-6 bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">
+            Utiliser cette transcription
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={
+                sourceSlot
+                  ? `/captions?slotId=${sourceSlot.id}&transcriptionId=${job.id}&returnTo=/publications/${sourceSlot.id}`
+                  : `/captions?transcriptionId=${job.id}`
+              }
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-pink-50 text-pink-700 border border-pink-200 hover:bg-pink-100 transition-colors text-sm font-medium"
+            >
+              <Scissors size={14} />
+              Dans Sous-titres
+            </Link>
+            <Link
+              href={
+                sourceSlot
+                  ? `/descriptions?slotId=${sourceSlot.id}`
+                  : `/descriptions`
+              }
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors text-sm font-medium"
+            >
+              <Sparkles size={14} />
+              Dans Légende
+            </Link>
+          </div>
+          {!sourceSlot && (
+            <p className="text-xs text-gray-400 mt-2">
+              Cette transcription n&apos;est pas rattachée à une publication —
+              le résultat sera créé en mode standalone.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

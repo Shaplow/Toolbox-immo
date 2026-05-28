@@ -9,6 +9,7 @@ import {
   MoreHorizontal,
   Trash2,
   CheckCircle,
+  List,
 } from "lucide-react";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/slots/statusLabels";
 import type { SlotStatus, UserRole } from "@/types/roles";
@@ -215,7 +216,15 @@ export function PublicationHeader({
                       className="fixed inset-0 z-10"
                       onClick={() => setMenuOpen(false)}
                     />
-                    <div className="absolute right-0 top-8 z-20 bg-white rounded-xl border border-gray-100 shadow-lg py-1 w-44">
+                    <div className="absolute right-0 top-8 z-20 bg-white rounded-xl border border-gray-100 shadow-lg py-1 w-56">
+                      <Link
+                        href={`/listings?slotId=${slot.id}`}
+                        onClick={() => setMenuOpen(false)}
+                        className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                      >
+                        <List size={14} className="text-gray-400" />
+                        Voir tous les jobs
+                      </Link>
                       <button
                         type="button"
                         onClick={() => handleDeleteClick()}

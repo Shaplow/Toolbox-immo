@@ -1,13 +1,20 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getUserContext } from "@/lib/userContext";
 import { hasTool } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { canUserAccessSlot } from "@/lib/permissions/slotScope";
+import { toUserRole } from "@/lib/permissions/role";
 import { DescriptionTool, type DescriptionPromptRow, type DescriptionJobRow } from "@/components/description/DescriptionTool";
-import { FileText } from "lucide-react";
+import { FileText, Info, ChevronLeft } from "lucide-react";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { RefreshButton } from "@/components/ui/RefreshButton";
 
-export default async function DescriptionPage() {
+interface PageProps {
+  searchParams: Promise<{ slotId?: string }>;
+}
+
+export default async function DescriptionPage({ searchParams }: PageProps) {
   const userContext = await getUserContext();
   if (!userContext) redirect("/login");
 
@@ -18,6 +25,31 @@ export default async function DescriptionPage() {
     const access = await hasTool(userId, "description");
     if (!access) redirect("/home");
   }
+
+  // Phase nav 2026-05-28 : si on arrive avec ?slotId=, on charge le contexte
+  // pour afficher un banner explicite "Vous générez une description pour..."
+  // — pattern symétrique à /publications/[id]/cover et /captions/[id]/generate.
+  const { slotId } = await searchParams;
+  const role = toUserRole(userContext.effectiveUser.role);
+  const slotContext = slotId
+    ? await prisma.publicationSlot.findUnique({
+        where: { id: slotId },
+        select: {
+          id: true,
+          title: true,
+          assigneeMonteurId: true,
+          assigneeCmId: true,
+          assigneeVideasteId: true,
+          account: { select: { handle: true } },
+        },
+      })
+    : null;
+  // Garde access : on n'expose le contexte que si l'user a vraiment accès au
+  // slot (anti-énumération via /descriptions?slotId=X).
+  const slotForBanner =
+    slotContext && canUserAccessSlot(slotContext, role, userId)
+      ? { title: slotContext.title, handle: slotContext.account.handle }
+      : null;
 
   const aiConfig = {
     hasClaude: !!process.env.ANTHROPIC_API_KEY,
@@ -61,21 +93,49 @@ export default async function DescriptionPage() {
   }));
 
   return (
-    <div className="p-8">
-      <ToolPageHeader
-        icon={FileText}
-        iconColor="amber"
-        title="Générateur de descriptions"
-        subtitle="Créez des descriptions à partir d'un fichier SRT/JSON, d'une transcription existante ou uniquement d'une image si besoin."
-        actions={<RefreshButton title="Rafraîchir les descriptions" />}
-      />
+    <div>
+      {slotForBanner && slotId && (
+        <div className="bg-indigo-50 border-b border-indigo-100 px-4 py-3">
+          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0 text-sm">
+              <Info size={14} className="text-indigo-500 shrink-0" />
+              <span className="text-indigo-900">
+                Vous générez une légende pour{" "}
+                <span className="font-semibold">
+                  {slotForBanner.title ?? `@${slotForBanner.handle}`}
+                </span>
+              </span>
+            </div>
+            <Link
+              href={`/publications/${slotId}`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-indigo-700 hover:text-indigo-900 transition-colors shrink-0"
+            >
+              <ChevronLeft size={12} />
+              Retour à la publication
+            </Link>
+          </div>
+        </div>
+      )}
+      <div className="p-8">
+        <ToolPageHeader
+          icon={FileText}
+          iconColor="amber"
+          title="Générateur de descriptions"
+          subtitle={
+            slotForBanner
+              ? "Configuration avancée : transcription, image de référence, choix de modèle. Le résultat sera rattaché à la publication."
+              : "Mode standalone — créez des descriptions à partir d'un fichier SRT/JSON, d'une transcription existante ou uniquement d'une image si besoin."
+          }
+          actions={<RefreshButton title="Rafraîchir les descriptions" />}
+        />
 
-      <DescriptionTool
-        initialPrompts={initialPrompts}
-        initialJobs={initialJobs}
-        isAdmin={isAdmin}
-        aiConfig={aiConfig}
-      />
+        <DescriptionTool
+          initialPrompts={initialPrompts}
+          initialJobs={initialJobs}
+          isAdmin={isAdmin}
+          aiConfig={aiConfig}
+        />
+      </div>
     </div>
   );
 }
