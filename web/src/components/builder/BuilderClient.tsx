@@ -1,8 +1,8 @@
 ﻿"use client";
 
 import { useEffect, useCallback, useMemo, useState } from "react";
-import Link from "next/link";
-import { Layers, AlignLeft, Film, Settings, Undo2, Redo2, X, ChevronLeft, Image, Type } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Layers, AlignLeft, Film, Settings, Undo2, Redo2, X, ChevronLeft, Image, Type, Loader2 } from "lucide-react";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import { collectBuilderFontsFromSources, type BuilderFontEntry } from "@/lib/builderFonts";
 import { toast } from "@/components/ui/Toast";
@@ -65,8 +65,9 @@ export function BuilderClient({
   backUrl,
   backLabel = "Templates",
 }: Props) {
-  const { template, setTemplate, isSaving, setSaving, undo, redo, past, future } =
+  const { template, setTemplate, isSaving, isDirty, setSaving, markSaved, undo, redo, past, future } =
     useBuilderStore();
+  const router = useRouter();
   const [activePanel, setActivePanel] = useState<PanelId | null>("layers");
   const [globalFonts, setGlobalFonts] = useState<BuilderFontEntry[]>([]);
   const [videoLibraries, setVideoLibraries] = useState<{ id: string; name: string }[]>([]);
@@ -170,6 +171,7 @@ export function BuilderClient({
         }),
       });
       if (res.ok) {
+        markSaved();
         if (showSuccessToast) toast.success("Template sauvegardé ✓");
         return true;
       } else {
@@ -182,7 +184,7 @@ export function BuilderClient({
     } finally {
       setSaving(false);
     }
-  }, [isSaving, setSaving, template, templateId]);
+  }, [isSaving, setSaving, markSaved, template, templateId]);
 
   const handleSave = useCallback(async () => { void saveTemplate(); }, [saveTemplate]);
 
@@ -216,6 +218,34 @@ export function BuilderClient({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [handleSave]);
+
+  // Guard fermeture / refresh / navigation externe quand des changements
+  // sont en attente. Le navigateur affiche son prompt natif "Quitter ce
+  // site ?". Pas de message custom (les browsers ignorent depuis 2017).
+  useEffect(() => {
+    if (!isDirty) return;
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isDirty]);
+
+  // Confirm sur clic du lien "Retour" — Link de Next.js fait une navigation
+  // soft, beforeunload ne se déclenche pas. On intercepte le clic et on
+  // demande confirmation si dirty.
+  const handleBackClick = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (!isDirty || !backUrl) return;
+      e.preventDefault();
+      const ok = window.confirm(
+        "Tu as des modifications non sauvegardées. Quitter sans sauvegarder ?",
+      );
+      if (ok) router.push(backUrl);
+    },
+    [isDirty, backUrl, router],
+  );
 
   // Layout debug
   useEffect(() => {
@@ -252,20 +282,34 @@ export function BuilderClient({
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <header className="flex items-center gap-1.5 bg-white border-b border-gray-200 px-3 h-10 shrink-0">
         {backUrl && (
-          <Link
+          <a
             href={backUrl}
+            onClick={handleBackClick}
             className="inline-flex items-center gap-0.5 text-xs text-gray-400 hover:text-gray-700 transition-colors mr-1 shrink-0"
             title={`Retour vers ${backLabel}`}
           >
             <ChevronLeft size={13} />
             {backLabel}
-          </Link>
+          </a>
         )}
 
         {/* Template name */}
         <span className="font-semibold text-gray-900 text-sm truncate max-w-[220px]" title={templateName}>
           {templateName}
         </span>
+
+        {/* Indicateur "Non sauvegardé" — visible dès qu'une mutation tracked
+            a eu lieu depuis le dernier load/save. Garde le user au courant
+            sans clignoter sur les éditions normales. */}
+        {isDirty && (
+          <span
+            className="ml-2 inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 shrink-0"
+            title="Modifications non sauvegardées — Ctrl+S pour enregistrer"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            Non sauvegardé
+          </span>
+        )}
 
         <div className="w-px h-5 bg-gray-200 mx-1.5 shrink-0" />
 
@@ -309,9 +353,10 @@ export function BuilderClient({
         <button
           onClick={handleSave}
           disabled={isSaving}
-          className="text-xs px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium disabled:opacity-60 transition-colors"
+          className="text-xs px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium disabled:opacity-60 transition-colors inline-flex items-center gap-1.5"
         >
-          {isSaving ? "…" : "Sauvegarder"}
+          {isSaving && <Loader2 size={12} className="animate-spin" />}
+          Sauvegarder
         </button>
       </header>
 

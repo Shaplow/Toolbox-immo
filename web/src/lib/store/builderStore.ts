@@ -14,6 +14,10 @@ interface BuilderState {
   /** IDs of blocks that are part of the current multi-selection (canvas + panel). */
   multiSelectedBlockIds: string[];
   isSaving: boolean;
+  /** true dès qu'une mutation history-tracked a eu lieu depuis le dernier
+   *  setTemplate (chargement) ou markSaved (sauvegarde réussie). Sert au
+   *  badge "Non sauvegardé" du header et au beforeunload de BuilderClient. */
+  isDirty: boolean;
   // Undo/redo history
   past: TemplateJSON[];
   future: TemplateJSON[];
@@ -48,12 +52,16 @@ interface BuilderState {
   setSchema: (schema: SchemaField[]) => void;
   setFormSections: (formSections: TemplateFormSection[]) => void;
   setSaving: (v: boolean) => void;
+  /** Reset le flag isDirty (appelé après sauvegarde réussie). */
+  markSaved: () => void;
   recordHistory: (snapshot: TemplateJSON) => void;
   undo: () => void;
   redo: () => void;
 }
 
-/** Push current template to past, clear future, apply fn */
+/** Push current template to past, clear future, apply fn.
+ *  Marque le store comme dirty — toute mutation history-tracked compte
+ *  comme un changement non sauvegardé tant que markSaved n'est pas appelé. */
 function withHistory(
   get: () => BuilderState,
   set: (partial: Partial<BuilderState>) => void,
@@ -61,14 +69,16 @@ function withHistory(
 ) {
   const current = get().template;
   const past = [...get().past, current].slice(-HISTORY_LIMIT);
-  set({ template: nextTemplate, past, future: [] });
+  set({ template: nextTemplate, past, future: [], isDirty: true });
 }
 
+/** Mutation hors historique : la prop change mais ne compte ni pour undo
+ *  ni pour le dirty flag (utilisé pendant un resize/drag en cours par ex.). */
 function withoutHistory(
   set: (partial: Partial<BuilderState>) => void,
   nextTemplate: TemplateJSON
 ) {
-  set({ template: nextTemplate });
+  set({ template: nextTemplate, isDirty: true });
 }
 
 function syncAutoLayoutGroups(template: TemplateJSON): TemplateJSON {
@@ -111,6 +121,7 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
   selectedSlotId: null,
   multiSelectedBlockIds: [],
   isSaving: false,
+  isDirty: false,
   past: [],
   future: [],
 
@@ -122,6 +133,7 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
     selectedGroupId: null,
     selectedSlotId: null,
     multiSelectedBlockIds: [],
+    isDirty: false,
   }),
 
   selectSlot: (id) => {
@@ -375,10 +387,12 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
 
   setSaving: (v) => set({ isSaving: v }),
 
+  markSaved: () => set({ isDirty: false }),
+
   recordHistory: (snapshot) => {
     if (snapshot === get().template) return;
     const past = [...get().past, snapshot].slice(-HISTORY_LIMIT);
-    set({ past, future: [] });
+    set({ past, future: [], isDirty: true });
   },
 
   undo: () => {
@@ -389,6 +403,7 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
       template: prev,
       past: past.slice(0, -1),
       future: [template, ...future].slice(0, HISTORY_LIMIT),
+      isDirty: true,
     });
   },
 
@@ -400,6 +415,7 @@ export const useBuilderStore = create<BuilderState>()((set, get) => ({
       template: next,
       past: [...past, template].slice(-HISTORY_LIMIT),
       future: future.slice(1),
+      isDirty: true,
     });
   },
 }));
