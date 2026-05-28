@@ -13,10 +13,8 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
-import {
-  verifyClientValidationToken,
-  resolveClientValidationConfig,
-} from "@/lib/publications/clientValidation";
+import { verifyClientValidationToken } from "@/lib/publications/clientValidation";
+import { resolveClientValidationConfig } from "@/lib/services/slot/config";
 import { getSlotFinalVideoUrl } from "@/lib/publications/finalVideo";
 import { ValidationActions } from "./ValidationActions";
 

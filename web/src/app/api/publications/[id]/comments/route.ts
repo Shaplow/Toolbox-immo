@@ -19,7 +19,7 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canCommentOnPublication } from "@/lib/permissions/publications";
-import { logActivity } from "@/lib/publications/activity";
+import { logActivity } from "@/lib/services/slot/activity";
 import { toUserRole } from "@/lib/permissions/role";
 import { publicationCommentSchema, validateBody } from "@/lib/validation/apiSchemas";
 

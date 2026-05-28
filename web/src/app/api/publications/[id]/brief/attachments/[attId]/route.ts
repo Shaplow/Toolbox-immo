@@ -16,7 +16,7 @@ import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canEditBrief } from "@/lib/permissions/publications";
 import { toUserRole } from "@/lib/permissions/role";
 import { createPresignedDownloadUrl, deleteFromR2 } from "@/lib/r2";
-import { logActivity } from "@/lib/publications/activity";
+import { logActivity } from "@/lib/services/slot/activity";
 
 type Params = { params: Promise<{ id: string; attId: string }> };
 

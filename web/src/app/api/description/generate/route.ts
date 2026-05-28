@@ -28,7 +28,7 @@ import { prisma } from "@/lib/prisma";
 import { hasTool } from "@/lib/permissions";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
-import { logActivity } from "@/lib/publications/activity";
+import { logActivity } from "@/lib/services/slot/activity";
 
 const MAX_TRANSCRIPT_CHARS = 50_000;
 const MAX_PERSONALIZATION_CHARS = 2_000;

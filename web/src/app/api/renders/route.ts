@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { startRenderGeneration } from "@/lib/renderer/generateRender";
 import { advanceLibraryCursorsOnSubmit, advanceAudioUsageOnSubmit } from "@/lib/contentLibraryResolver";
-import { applyAutoTransitionFromPipeline } from "@/lib/publications/transitions";
+import { applyAutoTransitionFromPipeline } from "@/lib/services/slot/transitions";
 
 // POST /api/renders — déclenche une génération
 export async function POST(req: NextRequest) {

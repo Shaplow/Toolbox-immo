@@ -11,8 +11,8 @@ import { prisma } from "@/lib/prisma";
 import { getR2PublicUrl, deleteFromR2, r2Configured } from "@/lib/r2";
 import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runpod";
 import { notifyUser } from "@/lib/sseStore";
-import { logActivity } from "@/lib/publications/activity";
-import { applyAutoTransitionFromPipeline } from "@/lib/publications/transitions";
+import { logActivity } from "@/lib/services/slot/activity";
+import { applyAutoTransitionFromPipeline } from "@/lib/services/slot/transitions";
 
 type CaptionOutput = {
   video_url?: string;

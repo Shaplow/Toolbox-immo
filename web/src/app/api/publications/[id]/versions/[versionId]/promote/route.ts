@@ -21,8 +21,8 @@ import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canPromoteVersion } from "@/lib/permissions/publications";
 import { toUserRole } from "@/lib/permissions/role";
-import { logActivity } from "@/lib/publications/activity";
-import { applyAutoTransition } from "@/lib/publications/transitions";
+import { logActivity } from "@/lib/services/slot/activity";
+import { applyAutoTransition } from "@/lib/services/slot/transitions";
 
 type Params = { params: Promise<{ id: string; versionId: string }> };
 

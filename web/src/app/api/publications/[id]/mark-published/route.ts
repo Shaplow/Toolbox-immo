@@ -21,8 +21,8 @@ import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canMarkPublished } from "@/lib/permissions/publications";
 import { toUserRole } from "@/lib/permissions/role";
-import { logActivity } from "@/lib/publications/activity";
-import { canTransition } from "@/lib/publications/transitions";
+import { logActivity } from "@/lib/services/slot/activity";
+import { canTransition } from "@/lib/services/slot/transitions";
 
 /** Hôtes Instagram autorisés pour l'URL de publication. */
 const ALLOWED_INSTAGRAM_HOSTS = ["www.instagram.com", "instagram.com"] as const;

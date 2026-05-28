@@ -15,8 +15,8 @@ import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsa
 import { RENDER_STAGE } from "@/lib/renderer/renderWorkflow";
 import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
 import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
-import { logActivity } from "@/lib/publications/activity";
-import { applyAutoTransitionFromPipeline } from "@/lib/publications/transitions";
+import { logActivity } from "@/lib/services/slot/activity";
+import { applyAutoTransitionFromPipeline } from "@/lib/services/slot/transitions";
 
 type RenderOutput = {
   video_url?: string;

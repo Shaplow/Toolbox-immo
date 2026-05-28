@@ -4,7 +4,7 @@ import {
   computeAutoTransition,
   computeAutoTransitionTargetPure,
   STATUS_TRANSITIONS,
-} from "@/lib/publications/transitions";
+} from "@/lib/services/slot/transitions";
 import type { SlotStatus } from "@/types/roles";
 
 // ─── canTransition ─────────────────────────────────────────────────────────────

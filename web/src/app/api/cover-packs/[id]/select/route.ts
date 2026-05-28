@@ -3,7 +3,7 @@ import { getUserContext } from "@/lib/userContext";
 import { deleteCoverCandidateAssets, renderFinalCover } from "@/lib/coverAuto";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { logActivity } from "@/lib/publications/activity";
+import { logActivity } from "@/lib/services/slot/activity";
 
 type Params = { params: Promise<{ id: string }> };
 

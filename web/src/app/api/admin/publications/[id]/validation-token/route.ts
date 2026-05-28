@@ -15,8 +15,8 @@ import {
   revokeClientValidationTokens,
   CLIENT_VALIDATION_TOKEN_TTL_MS,
 } from "@/lib/publications/clientValidation";
-import { resolveClientValidationConfig } from "@/lib/publications/clientValidation";
-import { logActivity } from "@/lib/publications/activity";
+import { resolveClientValidationConfig } from "@/lib/services/slot/config";
+import { logActivity } from "@/lib/services/slot/activity";
 
 type RouteContext = { params: Promise<{ id: string }> };
 

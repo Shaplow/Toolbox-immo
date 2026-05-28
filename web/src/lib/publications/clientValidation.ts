@@ -5,26 +5,12 @@
  *   comparaison timing-safe. Le rawToken n'est jamais re-stocké après émission.
  * - TTL : 7 jours par défaut, renouvelable par ADMIN.
  *
- * Les helpers `resolveOverride`, `resolveClientValidationConfig`, `resolveSlotConfig`
- * vivent désormais dans `@/lib/services/slot/config`. Ce module les re-export
- * pour préserver les imports existants pendant la phase de migration (S1).
- * Les imports directs depuis `@/lib/services/slot/config` sont à privilégier.
+ * Les helpers de résolution (resolveOverride, resolveSlotConfig,
+ * resolveClientValidationConfig) vivent dans `@/lib/services/slot/config`.
  */
 
 import { randomBytes, createHash, timingSafeEqual } from "crypto";
 import type { PrismaClient } from "@prisma/client";
-
-// Re-exports — le code source vit dans services/slot/config.ts (S1.2)
-export {
-  resolveOverride,
-  resolveClientValidationConfig,
-  resolveSlotConfig,
-} from "@/lib/services/slot/config";
-export type {
-  ResolveSource,
-  ClientValidationConfig,
-  SlotResolvedConfig,
-} from "@/lib/services/slot/config";
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 

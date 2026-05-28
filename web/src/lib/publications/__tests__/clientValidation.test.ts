@@ -1,11 +1,10 @@
 import { describe, it, expect } from "vitest";
+import { hashToken, compareHashes } from "@/lib/publications/clientValidation";
 import {
-  hashToken,
-  compareHashes,
   resolveClientValidationConfig,
   resolveOverride,
   resolveSlotConfig,
-} from "@/lib/publications/clientValidation";
+} from "@/lib/services/slot/config";
 
 // ─── hashToken ────────────────────────────────────────────────────────────────
 

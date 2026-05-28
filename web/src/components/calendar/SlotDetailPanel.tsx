@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { X, ExternalLink, Trash2, Check, Clapperboard } from "lucide-react";
 import { STATUS_LABELS, type SlotStatus, type PublicationSlot } from "@/types/calendar";
-import { STATUS_TRANSITIONS } from "@/lib/publications/transitions";
+import { STATUS_TRANSITIONS } from "@/lib/services/slot/transitions";
 import { FlexFieldsEditor } from "./FlexFieldsEditor";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 

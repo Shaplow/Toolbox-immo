@@ -6,7 +6,7 @@ import { buildHTML } from "@/lib/renderer/buildHTML";
 import { renderPNG } from "@/lib/renderer/renderPNG";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import { resolveSlotExcludeZones, resolveZone } from "@/lib/triggerAutoCaptionFromTranscription";
-import { logActivity, type ActivityType } from "@/lib/publications/activity";
+import { logActivity, type ActivityType } from "@/lib/services/slot/activity";
 import type { ListingData } from "@/types/listing";
 import type { AnyBlock, CoverAutoConfig, ImageBlock, SchemaField, TemplateJSON, TextBlock, VideoBlock, VideoSequenceSlot } from "@/types/template";
 

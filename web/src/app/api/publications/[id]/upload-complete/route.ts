@@ -22,8 +22,8 @@ import { canUploadRushes, canUploadVersion, canEditBrief } from "@/lib/permissio
 import { toUserRole } from "@/lib/permissions/role";
 import { objectExistsInR2, deleteFromR2, getR2PublicUrl } from "@/lib/r2";
 import { completeMultipartUpload, abortMultipartUpload } from "@/lib/r2Multipart";
-import { logActivity } from "@/lib/publications/activity";
-import { applyAutoTransition } from "@/lib/publications/transitions";
+import { logActivity } from "@/lib/services/slot/activity";
+import { applyAutoTransition } from "@/lib/services/slot/transitions";
 
 type UploadKind = "rush" | "version" | "brief-attachment";
 

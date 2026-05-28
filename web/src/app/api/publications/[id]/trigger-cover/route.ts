@@ -20,8 +20,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
-import { resolveSlotConfig } from "@/lib/publications/clientValidation";
-import { logActivity } from "@/lib/publications/activity";
+import { resolveSlotConfig } from "@/lib/services/slot/config";
+import { logActivity } from "@/lib/services/slot/activity";
 import { queueCoverFramePackPreparation } from "@/lib/coverAuto";
 
 type RouteContext = { params: Promise<{ id: string }> };

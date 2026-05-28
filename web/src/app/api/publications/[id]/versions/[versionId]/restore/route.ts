@@ -14,7 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canRestoreVersion } from "@/lib/permissions/publications";
 import { toUserRole } from "@/lib/permissions/role";
-import { logActivity } from "@/lib/publications/activity";
+import { logActivity } from "@/lib/services/slot/activity";
 
 type Params = { params: Promise<{ id: string; versionId: string }> };
 

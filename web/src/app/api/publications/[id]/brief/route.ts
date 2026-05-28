@@ -16,7 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canEditBrief } from "@/lib/permissions/publications";
 import { toUserRole } from "@/lib/permissions/role";
-import { logActivity } from "@/lib/publications/activity";
+import { logActivity } from "@/lib/services/slot/activity";
 
 const MAX_BRIEF_LENGTH = 8000;
 
