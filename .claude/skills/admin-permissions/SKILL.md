@@ -9,17 +9,25 @@ Use this skill when the task touches access control, user management, tool gatin
 
 ## Core Model
 
-Permissions are stored as a JSON array string in `User.permissions`, e.g. `["captions","description"]`.
+Roles are defined in `web/src/types/roles.ts`. Five roles exist:
+- `ADMIN` — full access, all tools, can impersonate any non-admin user
+- `MONTEUR` — gets captions + transcription tools by default via `ROLE_TOOL_SCOPE`
+- `CM` — community manager role; tool scope defined in `ROLE_TOOL_SCOPE`
+- `VIDEASTE` — filmmaker; no standalone tools (workflow via publication pipeline)
+- `EXTERNAL_GENERATOR` — external client; limited to templates + covers
 
-Two roles exist:
-- `ADMIN` — gets all tools automatically, can impersonate any non-admin user
-- `USER` — gets only the tools explicitly assigned in `permissions`
+`USER` was the former catch-all role and has been superseded. Do not re-create it.
+
+Tool grants work on two levels: role-based scope (`ROLE_TOOL_SCOPE` in `web/src/lib/permissions/tools.ts`) plus individual overrides stored as a JSON array in `User.permissions` (e.g. `["description"]`). `hasTool()` checks both layers.
 
 ## Key Files
 
 | File | Role |
 |---|---|
 | `web/src/lib/permissions.ts` | `TOOLS` enum, `hasTool()`, `getUserTools()`, `setUserTools()`, `canAccessTemplate()` |
+| `web/src/lib/permissions/tools.ts` | `ROLE_TOOL_SCOPE` — default tool grants per role |
+| `web/src/lib/permissions/slotScope.ts` | `whereClauseForUser`, `canUserAccessSlot`, `ALLOWED_PATCH_FIELDS_BY_ROLE` |
+| `web/src/lib/permissions/publications.ts` | `canSeePublication`, `canMarkPublished`, `canEditComment` |
 | `web/src/lib/userContext.ts` | `getUserContext()`, `resolveUserContext()`, `IMPERSONATION_COOKIE_NAME`, `UserContext` type |
 | `web/src/lib/auth.ts` | JWT callback — parses and re-serializes permissions; `session.user.role` and `session.user.permissions` |
 | `web/src/app/api/admin/users/route.ts` | Admin user list and creation |
@@ -28,15 +36,15 @@ Two roles exist:
 | `web/src/app/api/admin/users/[id]/caption-preset-accesses/route.ts` | Caption preset access grants per user |
 | `web/src/app/api/admin/accounts/[id]/route.ts` | Instagram account management |
 | `web/src/app/api/admin/accounts/[id]/cursors/reset/route.ts` | Reset library rotation cursor for an account |
+| `web/src/app/api/admin/accounts/[id]/patterns/route.ts` | Pattern CRUD for an account |
 | `web/src/app/api/admin/libraries/media/` | Media library CRUD, asset upload, access, edit, reset-usage |
 | `web/src/app/api/admin/libraries/data/` | Data library, campaign, entry CRUD + CSV import |
-| `web/src/app/api/admin/offer-schedule/route.ts` | Offer schedule management |
 | `web/src/app/api/admin/impersonation/route.ts` | Set/clear impersonation cookie |
 | `web/src/components/admin/UsersPanel.tsx` | Admin user management UI |
-| `web/src/components/admin/PresetsPanel.tsx` | Caption preset admin UI |
 | `web/src/components/admin/CaptionPromptsPanel.tsx` | Admin caption prompt management |
-| `web/src/components/admin/InstagramAccountsPanel.tsx` | Instagram account management UI |
-| `web/src/components/admin/OfferSchedulePanel.tsx` | Offer schedule UI |
+| `web/src/components/admin/AccountPatternsList.tsx` | Account patterns list UI |
+| `web/src/components/admin/AccountPatternForm.tsx` | Account pattern form UI |
+| `web/src/components/admin/AccountsListAdmin.tsx` | Instagram accounts list UI |
 | `web/src/components/admin/libraries/` | Media + data library management panels |
 
 ## UserContext Pattern
@@ -94,4 +102,5 @@ const userContext = await resolveUserContext(
 
 Run targeted lint: `cd web && npm run lint -- web/src/lib/permissions.ts web/src/lib/userContext.ts`
 
-No automated permission tests currently exist. Verify behavior manually via the admin UI or by checking the impersonation cookie flow.
+Unit tests exist for permissions helpers: `cd web && npm run test:unit` covers `slotScope`, `publications`, and `tools` helpers.
+Verify impersonation behavior manually via the admin UI or by checking the impersonation cookie flow.

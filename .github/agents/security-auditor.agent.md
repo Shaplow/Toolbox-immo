@@ -1,7 +1,7 @@
 ---
 name: security-auditor
 description: Perform a static security audit of Toolbox Immo code on paper. Use when you want OWASP Top 10 coverage, auth boundary checks, secrets handling review, upload flow validation, permission enforcement audit, or an untrusted-input analysis. Produces a structured threat report only — does NOT implement fixes.
-model: Claude Sonnet 4.6 (copilot)
+model: sonnet
 ---
 
 # Security Auditor

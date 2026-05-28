@@ -104,5 +104,8 @@ Si tu veux d'abord faire une revue du plan : lance `code-reviewer` avec le plan 
 - If the feature is clearly small (one file, one route), say so and suggest skipping straight to `toolbox-generalist` without a formal plan.
 - If the feature spans both layers, always flag the integration contract (what data goes from web to render-engine and in what format).
 - If Prisma schema changes are involved, always put them in Phase 1.
+- If the feature touches auth or permissions, flag the `getUserContext()` rule (Phase 1.8): never call `auth()` directly in API routes except `/api/admin/impersonation`.
+- If the feature adds UI, note that `web/src/components/ui/` primitives (Button, Input, FormField, EmptyState, ConfirmDialog, DeleteButton, Toast) must be used — no one-off Tailwind button classes.
+- If the feature touches permissions, helpers, or admin navigation, flag that `npm run test:unit && npm run test:e2e` must pass before committing.
 - If the user is vague, ask one clarifying question before producing the plan — do not produce a plan on bad inputs.
 - Keep phases small enough that each one can be committed and reviewed independently (target: < 400 LOC per phase when possible).

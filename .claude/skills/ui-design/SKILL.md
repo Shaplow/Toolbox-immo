@@ -197,13 +197,22 @@ Standard container for grouped content within a page:
 
 ## Shared Primitives
 
+Use these for **all new code**. Do not duplicate the patterns below with one-off Tailwind classes.
+
 | Component | Path | When to use |
 |-----------|------|-------------|
 | `AppNav` | `web/src/components/layout/AppNav.tsx` | App shell — do not duplicate |
 | `ToolPageHeader` | `web/src/components/layout/ToolPageHeader.tsx` | Every tool page header |
-| `Toast` / `useToast` | `web/src/components/ui/Toast.tsx` | User-facing feedback messages |
+| `Button` | `web/src/components/ui/Button.tsx` | All buttons — variants `primary \| secondary \| ghost \| danger`, sizes `sm \| md`, props `loading \| disabled \| icon` |
+| `Input` | `web/src/components/ui/Input.tsx` | Controlled text input; `error` prop adds red ring |
+| `Textarea` | `web/src/components/ui/Textarea.tsx` | Same API as Input + `resize-y` |
+| `FormField` | `web/src/components/ui/FormField.tsx` | Label + required + help + error wrapper around any input |
+| `EmptyState` | `web/src/components/ui/EmptyState.tsx` | Empty list / missing data — icon + title + description + optional CTA |
+| `ConfirmDialog` | `web/src/components/ui/ConfirmDialog.tsx` | Confirmation modal with focus trap, ESC, variant `danger` |
+| `DeleteButton` | `web/src/components/ui/DeleteButton.tsx` | Trash icon → ConfirmDialog; props `itemLabel`, `description?`, `onConfirm` |
+| `Toast` / `useToast` | `web/src/components/ui/Toast.tsx` | `toast.success/error/info`. Never `alert()` or `confirm()` native. |
 
-There is **no shared component library** beyond these. All other UI is inline Tailwind. When adding a new reusable pattern, consider creating it in `web/src/components/ui/` only if it will be used in 3+ places.
+When adding a new reusable pattern, create it in `web/src/components/ui/` if it will be used in 3+ places.
 
 ---
 

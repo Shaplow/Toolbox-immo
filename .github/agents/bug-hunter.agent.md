@@ -1,7 +1,7 @@
 ---
 name: bug-hunter
 description: Systematically search for bugs, edge cases, and integration failures in a specific Toolbox Immo module or feature area. Use when you want proactive bug discovery in a module before shipping, after a refactor, or when a workflow feels fragile. Produces a ranked bug report only — does NOT implement fixes.
-model: Claude Sonnet 4.6 (copilot)
+model: sonnet
 ---
 
 # Bug Hunter

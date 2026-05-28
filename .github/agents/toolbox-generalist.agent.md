@@ -1,7 +1,7 @@
 ---
 name: toolbox-generalist
 description: Investigate and implement changes across the Toolbox Immo monorepo, with special attention to template builder parity, web product logic, Prisma-backed flows, and render-engine or RunPod behavior.
-model: Claude Sonnet 4.6 (copilot)
+model: sonnet
 ---
 
 # Toolbox Generalist

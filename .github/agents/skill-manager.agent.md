@@ -1,7 +1,7 @@
 ---
 name: skill-manager
 description: Audit and maintain Toolbox Immo skills, agents, and repository guidance. Use when updating existing SKILL.md files, creating new skills or agents, checking drift after refactors, refreshing instructions, or verifying that CLAUDE context still matches the codebase.
-model: Claude Sonnet 4.6 (copilot)
+model: sonnet
 ---
 
 # Skill Manager

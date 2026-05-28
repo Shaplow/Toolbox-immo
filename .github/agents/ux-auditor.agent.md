@@ -1,7 +1,7 @@
 ---
 name: ux-auditor
 description: Audit a Toolbox Immo module from an end-user perspective. Use when you want to understand the full experience a user goes through — entry point to completion, all states, error paths, and friction points — for a specific module or workflow. Produces a ranked friction report only — does NOT implement fixes.
-model: Claude Sonnet 4.6 (copilot)
+model: sonnet
 ---
 
 # UX Auditor

@@ -64,7 +64,7 @@ For each screen or panel in the module, verify that these states are handled and
 - Are loading messages specific? ("Génération en cours…" not "Chargement…")
 
 ### Consistency with the App
-- Does this module use `ToolPageHeader`, standard modals, standard button classes?
+- Does this module use `ToolPageHeader`, `Button` / `Input` / `FormField` / `EmptyState` / `ConfirmDialog` / `DeleteButton` primitives from `web/src/components/ui/`? Flag any inline one-off button classes or raw `alert()` / `confirm()` calls.
 - Does it follow the same navigation patterns as other modules?
 - Are spacing, typography, and color consistent with design tokens in `ui-design`?
 

@@ -12,9 +12,9 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
    - general web app or Prisma behavior
    - captions, transcription, or file-upload workflow orchestration
    - description generation workflow (Claude/GPT, prompts, transcript/image inputs)
-   - content library (MediaLibrary, MediaAsset, setTag, setSequence, AccountLibraryCursor, DataLibrary, selection rules, set_sequence rotation, generation pre-fill, asset editing, offer-based automation, MediaAutocutJob batch autocut)
+   - content library (MediaLibrary, MediaAsset, setTag, setSequence, AccountLibraryCursor, DataLibrary, selection rules, set_sequence rotation, generation pre-fill, asset editing, MediaAutocutJob batch autocut)
    - admin, permissions, or impersonation (ADMIN/MONTEUR/CM/USER roles — see Phase 1.x conventions)
-   - **publication pipeline** (PublicationSlot, ContentRecipe, fiche `/publications/[id]`, worklists per role — Phase 1.2 / 1.3)
+   - **publication pipeline** (PublicationSlot, AccountPattern, fiche `/publications/[id]`, worklists per role)
    - render-engine, FFmpeg, RunPod, storage pipeline, or webhook callbacks
    - UI and UX cleanup (use `web/src/components/ui/` primitives — see Phase 1.4 conventions)
 2. Read `.github/copilot-instructions.md` for repo overview, then the relevant file-scoped instructions in `.github/instructions/`.
@@ -34,7 +34,7 @@ Toolbox Immo is a monorepo that mixes a fairly complex Next.js product surface w
 L'app a pivoté d'une grille d'outils standalone vers un pipeline éditorial avec rôles. Les conventions ci-dessous sont **stables** et doivent être respectées par les futures features.
 
 ### Rôles utilisateurs
-- 4 rôles : `ADMIN`, `MONTEUR`, `CM`, `USER` (legacy). Définis dans `web/src/types/roles.ts`.
+- 5 rôles : `ADMIN`, `VIDEASTE`, `MONTEUR`, `CM`, `EXTERNAL_GENERATOR`. Définis dans `web/src/types/roles.ts`. (`USER` est l'ancien rôle legacy — ne pas le recréer.)
 - Filtrage par rôle des slots : `web/src/lib/permissions/slotScope.ts` (`whereClauseForUser`, `canUserAccessSlot`, `ALLOWED_PATCH_FIELDS_BY_ROLE`).
 - Permissions outils par rôle : `web/src/lib/permissions/tools.ts` (`ROLE_TOOL_SCOPE`).
 - Helpers publications : `web/src/lib/permissions/publications.ts` (`canSeePublication`, `canMarkPublished`, `canEditComment`).
@@ -109,7 +109,7 @@ dans les homes, pas de triage dans la fiche).
 | Surface | Rôle | Vocation |
 |---|---|---|
 | `/home` (HomeAdmin) | ADMIN | **Vue de pilotage** : KPI cards + versions à valider. Pas de worklist perso. |
-| `/home` (HomeMonteur / HomeCm / HomeVideaste) | rôle métier | **Worklist triage perso** — slots assignés, découpés par phase/urgence. Click → fiche. Aucune action surface (pas d'upload, pas de validation inline). |
+| `/home` (HomeMonteur / HomeCm / HomeVideaste) | MONTEUR / CM / VIDEASTE | **Worklist triage perso** — slots assignés, découpés par phase/urgence. Click → fiche. Aucune action surface (pas d'upload, pas de validation inline). |
 | `/home` (HomeExternalClient) | EXTERNAL_GENERATOR | **Gateway client externe** : templates accessibles + lien "Mes générations" → /listings. Hors pipeline éditoriale. |
 | `/calendar` | ADMIN principalement | **Orchestration** : création de slots, réassignation, génération de semaine. L'admin agit pour les autres rôles via le calendrier. |
 | `/publications/[id]` (fiche complète) | tous (filtré par rôle) | **Surface d'exécution unifiée**. `shouldRenderForRole` masque les sections hors-rôle. `ProductionChain` filtre les steps via `viewerRole`. ADMIN voit tout pour supervision/proxy. |
@@ -140,8 +140,8 @@ CONFIGURATION — Ressources (hub 4 cards) / Utilisateurs
 **Routes supprimées en Phase 1.7** (retournent 404) : `/admin/offer-schedule`, `/api/admin/offers`
 
 ### Dette technique
-- Phase 1.2 : voir mémoire `phase-1-2-technical-debt.md`
-- Phase 1.6 : voir mémoire `project_phase_1_6_technical_debt.md` — items résolus :
+- Phase 1.2 : voir entrée mémoire `project_phase_1_2_technical_debt_active.md` dans MEMORY.md
+- Phase 1.6 : voir entrée mémoire `project_phase_1_6_technical_debt.md` dans MEMORY.md — items résolus :
   - ~~Picker patterns dans `AddSlotModal`~~ → résolu Phase 1.7 C1
   - ~~Badge pattern absent dans `SlotCard`~~ → résolu Phase 1.7 C2
   - ~~`CloneDialog` ID CUID brut~~ → résolu Phase 1.7 C3
@@ -289,7 +289,7 @@ Skills (`.claude/skills/<area>/SKILL.md`) — these auto-load when their descrip
 - `app-hardening/` — defensive coding patterns
 - `security-review/` — OWASP-style audit playbook
 - `admin-permissions/` — admin gating, impersonation, permission enforcement
-- `content-library/` — MediaLibrary, MediaAsset, setTag, category, tags, setSequence, MediaAssetAccess, MediaAssetUsage, DataLibrary, DataCampaign, DataEntry, AccountLibraryCursor, builder bindings, selection rules (theme_sequence/oldest_used/least_used), generation pre-fill, recordLibraryUsage, offer-based automation, MediaAutocutJob batch autocut
+- `content-library/` — MediaLibrary, MediaAsset, setTag, category, tags, setSequence, MediaAssetAccess, MediaAssetUsage, DataLibrary, DataCampaign, DataEntry, AccountLibraryCursor, builder bindings, selection rules (theme_sequence/oldest_used/least_used), generation pre-fill, recordLibraryUsage, MediaAutocutJob batch autocut
 - `asset-rotation/` — rotation algorithm internals: auto mode (group discovery, category exclusion, per-account ordering), override mode (cursor), pickFromGroup, per-account isolation via MediaAssetUsage, rotation simulation, common bugs
 - `description-generation/` — DescriptionJob, DescriptionPrompt, Claude/GPT generation, transcript/image inputs, admin prompt management
 

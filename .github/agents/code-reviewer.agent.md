@@ -1,7 +1,7 @@
 ---
 name: code-reviewer
 description: Review code changes for quality, conventions, regressions, and over-engineering in the Toolbox Immo monorepo. Use when you want a second opinion on a file, a feature branch, a recent edit, or a specific module before merging or shipping. Does NOT implement fixes — produces a ranked report only.
-model: Claude Sonnet 4.6 (copilot)
+model: sonnet
 ---
 
 # Code Reviewer

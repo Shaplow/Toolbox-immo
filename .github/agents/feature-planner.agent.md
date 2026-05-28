@@ -1,7 +1,7 @@
 ---
 name: feature-planner
 description: Interview the user about a product feature or module to build, then produce a phased implementation plan with commit boundaries, layer ownership, risk zones, and an explicit agent handoff recommendation. Use before starting any significant development work.
-model: Claude Sonnet 4.6 (copilot)
+model: opus
 ---
 
 # Feature Planner

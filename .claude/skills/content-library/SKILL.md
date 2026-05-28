@@ -7,7 +7,7 @@ description: >
   in the builder, generation form pre-fill, asset rotation (auto mode or override mode),
   selection rules (theme_sequence, oldest_used, least_used, not_used_in_cycle, manual),
   AccountLibraryCursor, per-account usage isolation, bulk asset operations, asset editing
-  via RunPod, offer-based automation, or MediaAutocutJob batch autocut (Whisper-based
+  via RunPod, or MediaAutocutJob batch autocut (Whisper-based
   cut-point detection, review queue, and apply flow).
   For deep rotation algorithm details (auto mode, category exclusion, per-account ordering,
   how to simulate or debug rotation): load the asset-rotation skill instead.

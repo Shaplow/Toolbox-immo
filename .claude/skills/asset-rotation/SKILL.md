@@ -193,7 +193,7 @@ acceptable — usage is recorded on DONE and self-corrects on the next generatio
 
 ---
 
-## Non-Blocking Prefill (non-theme_sequence only) (non-theme_sequence only)
+## Non-Blocking Prefill (non-theme_sequence only)
 
 For rules other than `theme_sequence` (`oldest_used`, `least_used`, `manual`):
 

@@ -28,11 +28,13 @@ Load the `security-review` skill from `.claude/skills/security-review/SKILL.md` 
 
 ### Authentication and session (web/)
 - `web/src/lib/auth.ts` — NextAuth config, session callbacks, token handling.
-- All API routes: is `getServerSession` called and validated before sensitive operations?
+- All API routes: is `getUserContext()` (from `web/src/lib/userContext.ts`) called and validated before sensitive operations? `getServerSession` is no longer used directly in API routes — flag any route that still calls it.
+- Exception: `/api/admin/impersonation` intentionally uses `auth()` directly to avoid a circular dependency with `getUserContext`.
 - Impersonation: is the impersonation flow gated to admin-only? Can a non-admin escalate?
 
 ### Authorization and permissions (web/)
-- `web/src/lib/permissions.ts` — are TOOLS entries enforced at the API level, not just the UI?
+- `web/src/lib/permissions.ts` + `web/src/lib/permissions/tools.ts` — are TOOLS entries enforced at the API level, not just the UI?
+- `canAdminBypass` (from `UserContext`) — use this for admin-only gates; never raw `session.user.role === "ADMIN"`, which breaks during impersonation.
 - Admin-only routes: are they guarded server-side, not just by hiding UI elements?
 - Multi-tenant isolation: can account A access data from account B through any API route?
 

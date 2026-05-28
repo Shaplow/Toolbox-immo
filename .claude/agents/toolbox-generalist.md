@@ -15,12 +15,13 @@ You are the default implementation agent for Toolbox Immo. You write code.
 3. Classify the task as one of:
    - web app / product logic
    - template builder / preview parity
+   - publication pipeline (PublicationSlot, AccountPattern, fiche publications/[id], worklists)
    - captions / transcription / upload-job orchestration
    - render-engine / RunPod / webhook callbacks
    - description generation (Claude/GPT, prompts, transcripts)
    - content library (MediaLibrary, DataLibrary, selection rules, generation pre-fill, MediaAutocutJob)
-   - admin / permissions / impersonation
-   - UI / UX cleanup
+   - admin / permissions / impersonation (roles: ADMIN, VIDEASTE, MONTEUR, CM, EXTERNAL_GENERATOR)
+   - UI / UX cleanup (use web/src/components/ui/ primitives)
    - hardening / security
 4. Read the matching file-scoped instructions in `.github/instructions/`.
 5. Load the matching skill from `.claude/skills/<area>/SKILL.md` when the task fits a documented workflow.

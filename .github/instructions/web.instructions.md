@@ -35,8 +35,9 @@ applyTo: "web/**/*.ts,web/**/*.tsx,web/**/*.js,web/**/*.jsx,web/**/*.mjs,web/**/
   - `web/src/components/description/DescriptionTool.tsx`
 - For admin or permission-gated work, inspect these files early:
   - `web/src/lib/userContext.ts` (resolveUserContext, getUserContext, IMPERSONATION_COOKIE_NAME)
-  - `web/src/lib/permissions.ts` (TOOLS, hasTool, getUserTools)
-  - `web/src/app/api/admin/` (users, impersonation, accesses routes)
+  - `web/src/lib/permissions.ts` (TOOLS, hasTool, getUserTools) + `web/src/lib/permissions/tools.ts` (ROLE_TOOL_SCOPE), `slotScope.ts`, `publications.ts`
+  - `web/src/types/roles.ts` (UserRole: ADMIN, VIDEASTE, MONTEUR, CM, EXTERNAL_GENERATOR)
+  - `web/src/app/api/admin/` (users, impersonation, accounts, accesses routes)
 - If the request also touches description generation, check whether it reuses transcription artifacts before inventing a parallel workflow.
 - For Prisma changes, keep schema, migrations, and any API expectations aligned. Do not change persisted data shape casually to work around a UI issue.
 - For UI and UX work, prefer clearer hierarchy, spacing, copy, and state handling over decorative redesign. Reuse existing UI primitives when possible, but do not preserve obviously broken interaction patterns just for consistency.

@@ -72,7 +72,7 @@ POST /api/description/generate
   → validate referenceImage: base64 data URL, MIME in {png, jpeg, webp}, max 4 MB
   → fetch DescriptionPrompt from DB
   → buildUserMessage(promptText, transcriptText, personalization, hasImage)
-  → call Claude (claude-3-7-sonnet-latest) or GPT (gpt-4o) with vision support
+  → call Claude (model from env ANTHROPIC_MODEL, default "claude-sonnet-4-6") or GPT (gpt-4o) with vision support
   → DescriptionJob created with status COMPLETED + result
   → return { jobId, result }
   On error: DescriptionJob created with status FAILED + errorMsg
