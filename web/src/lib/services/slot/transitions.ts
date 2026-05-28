@@ -337,17 +337,31 @@ export async function syncSlotsPipelineStatuses(
   await Promise.all(
     targets.map(async (t) => {
       try {
-        await prisma.publicationSlot.update({
-          where: { id: t.id },
-          data: { status: t.to },
+        // Update + logActivity dans une seule transaction : sans ça, si le
+        // logActivity échoue après l'update, le statut est changé mais la
+        // trace d'audit est manquante (silencieusement). Le updateMany
+        // conditionnel sur `from` protège aussi contre une race avec une
+        // autre transition concurrente — count=0 signifie qu'un autre
+        // process a déjà fait évoluer le slot, on skip sans logger une
+        // transition fantôme.
+        await prisma.$transaction(async (tx) => {
+          const updated = await tx.publicationSlot.updateMany({
+            where: { id: t.id, status: t.from },
+            data: { status: t.to },
+          });
+          if (updated.count === 0) {
+            // Le slot a déjà bougé entre computeTarget et update — pas une
+            // erreur, juste une course perdue.
+            return;
+          }
+          await logActivity(tx as typeof prisma, {
+            slotId: t.id,
+            actorId: null,
+            type: "STATUS_CHANGED",
+            payload: { from: t.from, to: t.to, trigger: "BACKFILL_SYNC" },
+          });
+          updates.set(t.id, t.to);
         });
-        await logActivity(prisma, {
-          slotId: t.id,
-          actorId: null,
-          type: "STATUS_CHANGED",
-          payload: { from: t.from, to: t.to, trigger: "BACKFILL_SYNC" },
-        });
-        updates.set(t.id, t.to);
       } catch (err) {
         console.warn(
           `[syncSlotsPipelineStatuses] échec slot=${t.id} ${t.from}→${t.to}:`,

@@ -275,14 +275,19 @@ export function SlotDetailPanel({ slot, onUpdated, onDeleted, onClose, mode = "a
 
   async function handleDeleteConfirmed() {
     setDeleting(true);
+    setConfirmDeleteOpen(false);
     try {
       const res = await fetch(`/api/calendar/slots/${slot.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Erreur lors de la suppression");
       onDeleted(slot.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      // Reset garanti même en cas de succès : le composant peut rester monté
+      // si le parent ne ferme pas le panneau dans la foulée, ou si onDeleted
+      // throw synchronement. Sans ce finally, le bouton "Supprimer" reste
+      // disabled à vie.
       setDeleting(false);
-      setConfirmDeleteOpen(false);
     }
   }
 
