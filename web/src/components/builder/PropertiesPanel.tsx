@@ -43,20 +43,38 @@ export function PropertiesPanel({
           <div className="space-y-1">
             <p className="text-sm font-medium text-gray-800">Aucune sélection</p>
             <p className="text-xs text-gray-500 leading-5">
-              Sélectionnez un bloc ou un groupe pour éditer ses propriétés. Vous pouvez aussi naviguer plus vite dans le canvas avec les raccourcis ci-dessous.
+              Sélectionne un bloc ou un groupe pour éditer ses propriétés. Tu
+              peux aussi naviguer plus vite dans le canvas avec les raccourcis
+              ci-dessous.
             </p>
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Navigation</p>
-            <div className="space-y-1.5 text-[11px] text-gray-600">
-              <p><span className="font-medium text-gray-800">+</span> / <span className="font-medium text-gray-800">-</span> pour zoomer</p>
-              <p><span className="font-medium text-gray-800">0</span> ou <span className="font-medium text-gray-800">F</span> pour recentrer et ajuster</p>
-              <p><span className="font-medium text-gray-800">Cmd/Ctrl + molette</span> pour zoomer a la souris</p>
-              <p><span className="font-medium text-gray-800">Shift + molette</span> pour le deplacement horizontal</p>
-              <p><span className="font-medium text-gray-800">Fleches</span> pour scroller</p>
-              <p><span className="font-medium text-gray-800">Espace + glisser</span> pour deplacer la vue</p>
-            </div>
+            <ul className="space-y-1.5 text-[11px] text-gray-600">
+              {[
+                { keys: ["+", "−"], label: "Zoomer / dézoomer" },
+                { keys: ["0", "F"], label: "Recentrer et ajuster" },
+                { keys: ["⌘", "molette"], label: "Zoomer à la souris" },
+                { keys: ["⇧", "molette"], label: "Défilement horizontal" },
+                { keys: ["←", "→", "↑", "↓"], label: "Faire défiler" },
+                { keys: ["Espace", "glisser"], label: "Déplacer la vue" },
+              ].map((row) => (
+                <li key={row.label} className="flex items-center justify-between gap-2">
+                  <span>{row.label}</span>
+                  <span className="flex items-center gap-0.5 shrink-0">
+                    {row.keys.map((k, i) => (
+                      <kbd
+                        key={`${row.label}-${i}`}
+                        className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded border border-gray-300 bg-white text-[10px] font-medium text-gray-700 shadow-[0_1px_0_rgba(0,0,0,0.04)]"
+                      >
+                        {k}
+                      </kbd>
+                    ))}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
 
         </div>

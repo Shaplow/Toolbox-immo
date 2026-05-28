@@ -1,12 +1,13 @@
 ﻿"use client";
 
 import { useMemo, useState } from "react";
-import { Type, Image as ImageIcon, Video, Square, Zap, Music, Eye, EyeOff } from "lucide-react";
+import { Type, Image as ImageIcon, Video, Square, Zap, Music, Eye, EyeOff, ArrowUp, ArrowDown, Copy, Trash2, Minimize2, Scissors } from "lucide-react";
 import type { ReactNode } from "react";
 import { getAutoLayoutOrderedBlocks, isAutoLayoutGroup } from "@/lib/groupLayout";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import { nanoid } from "@/lib/utils";
 import type { AnyBlock, BlockType, LayerGroup } from "@/types/template";
+import { Button } from "@/components/ui/Button";
 
 const BLOCK_TYPES: { type: BlockType; label: string; icon: ReactNode }[] = [
   { type: "text",   label: "Texte",      icon: <Type size={16} /> },
@@ -369,7 +370,7 @@ export function BlocksPanel() {
                 <div className="px-2.5 pb-2 space-y-1">
                   {blocks.length === 0 ? (
                     <p className="ml-3 rounded-lg border border-dashed border-gray-200 px-2 py-2 text-[11px] text-gray-400">
-                      Aucun calque dans ce groupe.
+                      Dépose un calque ici pour l&apos;ajouter au groupe.
                     </p>
                   ) : (
                     blocks.map((block, index) => renderBlockRow(block, { nested: true, group, index, total: blocks.length }))
@@ -414,43 +415,65 @@ export function BlocksPanel() {
       </div>
 
       {selectedBlockId && (
-        <div className="px-3 pb-3 pt-2 border-t border-gray-100 space-y-1">
-          <div className="flex gap-1">
-            <button onClick={() => moveBlockZ(selectedBlockId, "up")} className="flex-1 text-xs py-1 border rounded hover:bg-gray-50">↑ Dessus</button>
-            <button onClick={() => moveBlockZ(selectedBlockId, "down")} className="flex-1 text-xs py-1 border rounded hover:bg-gray-50">↓ Dessous</button>
+        <div className="px-3 pb-3 pt-2 border-t border-gray-100 space-y-1.5">
+          <div className="flex gap-1.5">
+            <Button variant="secondary" size="sm" icon={ArrowUp} onClick={() => moveBlockZ(selectedBlockId, "up")} className="flex-1">
+              Dessus
+            </Button>
+            <Button variant="secondary" size="sm" icon={ArrowDown} onClick={() => moveBlockZ(selectedBlockId, "down")} className="flex-1">
+              Dessous
+            </Button>
           </div>
-          <div className="flex gap-1">
-            <button onClick={() => duplicateBlock(selectedBlockId)} className="flex-1 text-xs py-1 border rounded hover:bg-gray-50">Dupliquer</button>
-            <button onClick={() => { removeBlock(selectedBlockId); }} className="flex-1 text-xs py-1 border border-red-200 text-red-500 rounded hover:bg-red-50">Suppr.</button>
+          <div className="flex gap-1.5">
+            <Button variant="secondary" size="sm" icon={Copy} onClick={() => duplicateBlock(selectedBlockId)} className="flex-1">
+              Dupliquer
+            </Button>
+            <Button variant="danger" size="sm" icon={Trash2} onClick={() => { removeBlock(selectedBlockId); }} className="flex-1">
+              Suppr.
+            </Button>
           </div>
         </div>
       )}
 
       {selectedGroupId && !selectedBlockId && (
-        <div className="px-3 pb-3 pt-2 border-t border-gray-100 space-y-1">
-          <div className="flex gap-1">
-            <button
+        <div className="px-3 pb-3 pt-2 border-t border-gray-100 space-y-1.5">
+          <div className="flex gap-1.5">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Minimize2}
               onClick={() => {
                 const group = template.groups.find((item) => item.id === selectedGroupId);
                 if (!group) return;
                 updateGroup(group.id, { collapsed: !group.collapsed });
               }}
-              className="flex-1 text-xs py-1 border rounded hover:bg-gray-50"
+              className="flex-1"
             >
               Replier
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={EyeOff}
               onClick={() => {
                 const group = template.groups.find((item) => item.id === selectedGroupId);
                 if (!group) return;
                 updateGroup(group.id, { hidden: !group.hidden });
               }}
-              className="flex-1 text-xs py-1 border rounded hover:bg-gray-50"
+              className="flex-1"
             >
               Masquer
-            </button>
+            </Button>
           </div>
-          <button onClick={() => { removeGroup(selectedGroupId); }} className="w-full text-xs py-1 border border-red-200 text-red-500 rounded hover:bg-red-50">Dissoudre le groupe</button>
+          <Button
+            variant="danger"
+            size="sm"
+            icon={Scissors}
+            onClick={() => { removeGroup(selectedGroupId); }}
+            className="w-full"
+          >
+            Dissoudre le groupe
+          </Button>
         </div>
       )}
     </aside>
