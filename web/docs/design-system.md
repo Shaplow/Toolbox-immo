@@ -131,7 +131,9 @@ Interdiction de modifier :
 - `web/src/app/api/`
 - `web/prisma/`
 
-Cette règle est enforced par le hook pre-commit dans `web/scripts/scope-guard.sh`.
+Cette règle est enforced (en opt-in) par le hook pre-commit dans `web/scripts/scope-guard.sh`.
+Active la garde pendant ta session : `touch .ui-boost-active` à la racine.
+Désactive quand tu veux commit hors scope : `rm .ui-boost-active`.
 
 ## État du chantier
 

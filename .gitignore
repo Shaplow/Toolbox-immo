@@ -44,3 +44,6 @@ Thumbs.db
 web/test-results/
 web/playwright-report/
 web/coverage/
+
+# UI boost scope-guard toggle (cf. web/scripts/scope-guard.sh)
+.ui-boost-active
