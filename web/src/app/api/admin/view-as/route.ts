@@ -37,11 +37,17 @@ export async function POST(req: NextRequest) {
   });
 
   const response = NextResponse.json({ ok: true, role });
+  // maxAge obligatoire : sans expiration, le cookie devient un cookie de session
+  // navigateur qui survit aux restaurations d'onglets (Chrome/Firefox session
+  // restore) — un admin qui ferme son onglet "view-as MONTEUR" puis rouvre
+  // sa session se retrouve silencieusement bridé à canAdminBypass=false sur
+  // les routes admin. Même fix que celui appliqué côté impersonation.
   response.cookies.set(VIEW_AS_ROLE_COOKIE_NAME, role, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
+    maxAge: 8 * 60 * 60, // 8h — aligné sur l'impersonation
   });
   return response;
 }

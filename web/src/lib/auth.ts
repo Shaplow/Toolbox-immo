@@ -65,6 +65,48 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           console.warn(`[auth] Failed to parse permissions for user ${user.id} — defaulting to []`);
         }
         token.permissions = JSON.stringify(parsedPermissions);
+        token.refreshedAt = Math.floor(Date.now() / 1000);
+        return token;
+      }
+
+      // ─── Refresh role + permissions périodiquement depuis la DB ──────────────
+      // Sans ce check, un user dégradé d'ADMIN à MONTEUR garde session.user.role
+      // = "ADMIN" jusqu'à expiration du JWT (30j default). On re-lit toutes
+      // les 5 min : cadence assez longue pour ne pas plomber la perf serverless,
+      // assez courte pour qu'un revoke admin se propage en <5 min.
+      const REFRESH_INTERVAL_S = 5 * 60;
+      const lastRefresh = (token.refreshedAt as number | undefined) ?? 0;
+      const now = Math.floor(Date.now() / 1000);
+      if (token.id && now - lastRefresh > REFRESH_INTERVAL_S) {
+        try {
+          const fresh = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: { role: true, permissions: true },
+          });
+          if (!fresh) {
+            // Compte supprimé — invalider le token pour forcer un re-login.
+            // NextAuth ne supporte pas le throw clean ici ; on neutralise les
+            // claims pour que getUserContext renvoie 401 partout en amont.
+            token.id = undefined;
+            token.role = undefined;
+            token.permissions = undefined;
+          } else {
+            token.role = fresh.role;
+            try {
+              const parsed = JSON.parse(fresh.permissions);
+              if (Array.isArray(parsed) && parsed.every((p) => typeof p === "string")) {
+                token.permissions = JSON.stringify(parsed);
+              }
+            } catch {
+              token.permissions = "[]";
+            }
+            token.refreshedAt = now;
+          }
+        } catch (err) {
+          // En cas d'erreur DB transitoire, on garde le token actuel (best-effort).
+          // L'erreur sera retentée au prochain hit après la fenêtre de refresh.
+          console.warn("[auth/jwt] DB refresh failed, keeping cached token", err);
+        }
       }
       return token;
     },
