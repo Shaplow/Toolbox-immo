@@ -1,14 +1,18 @@
 /**
  * GET /api/worklist/count — nombre de publications actives concernant l'utilisateur.
  *
- * Sémantique par rôle (commit 1.2.8) :
- *   MONTEUR → slots où assigneeMonteurId = me, statut non-terminal
- *   CM      → slots où assigneeCmId = me, statut non-terminal
- *   ADMIN   → slots en alerte : scheduledAt dépassé ET statut non-terminal
- *   USER    → 0 (pas de worklist)
+ * Sémantique par rôle (Phase 6.1 audit Coquille) :
+ *   ADMIN              → slots en alerte : scheduledAt dépassé ET statut non-terminal
+ *   MONTEUR            → slots où assigneeMonteurId = me, statut non-terminal
+ *   CM                 → slots où assigneeCmId = me, statut non-terminal
+ *   VIDEASTE           → 0 (pas de slots assignés directement dans le schéma)
+ *   EXTERNAL_GENERATOR → 0 (pas de worklist)
  *
  * L'impersonation s'applique via effectiveUser (cohérent avec M2).
  * Pas de cache : count temps réel, base < 100 rows, < 10 utilisateurs.
+ *
+ * Fix Phase 6.1 : avant ce fix, VIDEASTE retournait silencieusement 0
+ * faute de branche dans le switch (bug runtime P1 audit bug-hunter).
  */
 import { NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
@@ -25,14 +29,14 @@ export async function GET() {
   const role = toUserRole(userContext.effectiveUser.role);
   const userId = userContext.effectiveUser.id;
 
-  // USER n'a pas de worklist — réponse immédiate
-  if (role === "EXTERNAL_GENERATOR") {
+  // Rôles sans worklist — réponse immédiate explicite.
+  if (role === "EXTERNAL_GENERATOR" || role === "VIDEASTE") {
     return NextResponse.json({ count: 0 }, {
       headers: { "Cache-Control": "no-store" },
     });
   }
 
-  // Filtre statuts non-terminaux commun à MONTEUR / CM
+  // Filtre statuts non-terminaux commun à MONTEUR / CM / ADMIN
   const notInTerminal = { notIn: TERMINAL_STATUSES as unknown as string[] };
 
   let count = 0;
@@ -59,6 +63,14 @@ export async function GET() {
         assigneeCmId: userId,
         status: notInTerminal,
       },
+    });
+  } else {
+    // Cas impossible avec UserRole connu — warning si un nouveau rôle est
+    // ajouté sans mise à jour de cette route.
+    console.warn("[worklist/count] unhandled role, returning 0", {
+      role,
+      effectiveUserId: userId,
+      rawRole: userContext.effectiveUser.role,
     });
   }
 
