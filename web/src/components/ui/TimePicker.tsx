@@ -128,7 +128,7 @@ export function TimePicker({
   }
 
   const triggerBase =
-    "relative inline-flex items-stretch h-12 w-fit min-w-[10rem] rounded-lg overflow-hidden transition-all cursor-pointer text-left";
+    "relative inline-flex items-stretch h-10 w-fit min-w-[9rem] rounded-lg overflow-hidden transition-all cursor-pointer text-left";
   const triggerBg =
     "bg-gradient-to-b from-white to-white/85 backdrop-blur-[12px] backdrop-saturate-150";
   const triggerState = error
@@ -149,31 +149,31 @@ export function TimePicker({
         aria-haspopup="dialog"
         className={[triggerBase, triggerBg, triggerState, triggerDisabled].filter(Boolean).join(" ")}
       >
-        <span className="shrink-0 flex items-center justify-center pl-3 pr-2.5 text-gray-500">
-          <Clock size={16} />
+        <span className="shrink-0 flex items-center justify-center pl-2.5 pr-2 text-gray-500">
+          <Clock size={14} />
         </span>
-        <span className="self-stretch w-px bg-gray-200/50 my-2.5" aria-hidden />
+        <span className="self-stretch w-px bg-gray-200/50 my-2" aria-hidden />
 
         {parsed ? (
-          <span className="flex-1 inline-flex items-center justify-start px-3">
-            <span className="text-[18px] font-semibold tracking-tight text-gray-950 leading-none tabular-nums">
+          <span className="flex-1 inline-flex items-center justify-start px-2.5">
+            <span className="text-[15px] font-semibold tracking-tight text-gray-950 leading-none tabular-nums">
               {String(parsed.h).padStart(2, "0")}
             </span>
-            <span className="px-1.5 text-[18px] font-semibold text-gray-300 leading-none" aria-hidden>
+            <span className="px-1 text-[15px] font-semibold text-gray-300 leading-none" aria-hidden>
               :
             </span>
-            <span className="text-[18px] font-semibold tracking-tight text-gray-950 leading-none tabular-nums">
+            <span className="text-[15px] font-semibold tracking-tight text-gray-950 leading-none tabular-nums">
               {String(parsed.m).padStart(2, "0")}
             </span>
           </span>
         ) : (
-          <span className="flex-1 flex items-center justify-start px-3 text-[13px] text-gray-400 leading-none">
+          <span className="flex-1 flex items-center justify-start px-2.5 text-[12px] text-gray-400 leading-none">
             {placeholder}
           </span>
         )}
 
-        <span className="shrink-0 flex items-center justify-center pr-3 pl-1.5 text-gray-400">
-          <ChevronDown size={14} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        <span className="shrink-0 flex items-center justify-center pr-2.5 pl-1 text-gray-400">
+          <ChevronDown size={12} className={`transition-transform ${open ? "rotate-180" : ""}`} />
         </span>
       </button>
 

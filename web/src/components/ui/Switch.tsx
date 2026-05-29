@@ -74,18 +74,33 @@ export function Switch({
 
   if (!label) return <span className={className}>{toggle}</span>;
 
+  // Cas simple : label sans description → simple inline-flex centré.
+  // Cas avec description : flex-col pour empiler label+description, mais on
+  // utilise items-start sur le wrapper pour aligner le toggle avec la 1ère
+  // ligne (sinon le toggle est centré sur 2 lignes → mal aligné).
+  if (!description) {
+    return (
+      <label
+        className={`inline-flex items-center gap-3 cursor-pointer ${
+          disabled ? "cursor-not-allowed opacity-60" : ""
+        } ${className ?? ""}`}
+      >
+        {toggle}
+        <span className="text-[13px] text-gray-950 font-medium leading-none">{label}</span>
+      </label>
+    );
+  }
+
   return (
     <label
-      className={`inline-flex items-center gap-3 cursor-pointer ${
+      className={`inline-flex items-start gap-3 cursor-pointer ${
         disabled ? "cursor-not-allowed opacity-60" : ""
       } ${className ?? ""}`}
     >
-      {toggle}
+      <span className="mt-0.5">{toggle}</span>
       <span className="flex flex-col">
         <span className="text-[13px] text-gray-950 font-medium leading-tight">{label}</span>
-        {description && (
-          <span className="text-[11px] text-gray-500 leading-tight mt-0.5">{description}</span>
-        )}
+        <span className="text-[11px] text-gray-500 leading-tight mt-0.5">{description}</span>
       </span>
     </label>
   );

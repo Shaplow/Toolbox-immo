@@ -128,7 +128,7 @@ export function DatePicker({
   }
 
   const triggerBase =
-    "relative inline-flex items-stretch h-12 w-fit min-w-[12rem] rounded-lg overflow-hidden transition-all cursor-pointer text-left";
+    "relative inline-flex items-stretch h-10 w-fit min-w-[11rem] rounded-lg overflow-hidden transition-all cursor-pointer text-left";
   const triggerBg =
     "bg-gradient-to-b from-white to-white/85 backdrop-blur-[12px] backdrop-saturate-150";
   const triggerState = error
@@ -150,38 +150,38 @@ export function DatePicker({
         className={[triggerBase, triggerBg, triggerState, triggerDisabled].filter(Boolean).join(" ")}
       >
         {/* Icône calendar leading */}
-        <span className="shrink-0 flex items-center justify-center pl-3 pr-2.5 text-gray-500">
-          <CalendarIcon size={16} />
+        <span className="shrink-0 flex items-center justify-center pl-2.5 pr-2 text-gray-500">
+          <CalendarIcon size={14} />
         </span>
 
         {/* Divider */}
-        <span className="self-stretch w-px bg-gray-200/50 my-2.5" aria-hidden />
+        <span className="self-stretch w-px bg-gray-200/50 my-2" aria-hidden />
 
         {parsed ? (
           <>
-            <span className="shrink-0 flex items-center justify-center px-3 min-w-[2.5rem]">
-              <span className="text-[18px] font-semibold tracking-tight text-gray-950 leading-none tabular-nums">
+            <span className="shrink-0 flex items-center justify-center px-2.5 min-w-[2rem]">
+              <span className="text-[15px] font-semibold tracking-tight text-gray-950 leading-none tabular-nums">
                 {String(parsed.getDate()).padStart(2, "0")}
               </span>
             </span>
-            <span className="self-stretch w-px bg-gray-200/50 my-2.5" aria-hidden />
-            <span className="flex-1 flex flex-col items-start justify-center px-3 min-w-[3.5rem]">
-              <span className="text-[12px] font-semibold uppercase tracking-widest text-gray-800 leading-none">
+            <span className="self-stretch w-px bg-gray-200/50 my-2" aria-hidden />
+            <span className="flex-1 flex flex-col items-start justify-center px-2.5 min-w-[3rem]">
+              <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-800 leading-none">
                 {MONTHS_FR_SHORT[parsed.getMonth()]}
               </span>
-              <span className="text-[10px] text-gray-500 mt-1 leading-none tabular-nums">
+              <span className="text-[9px] text-gray-500 mt-0.5 leading-none tabular-nums">
                 {parsed.getFullYear()}
               </span>
             </span>
           </>
         ) : (
-          <span className="flex-1 flex items-center justify-start px-3 text-[13px] text-gray-400 leading-none">
+          <span className="flex-1 flex items-center justify-start px-2.5 text-[12px] text-gray-400 leading-none">
             {placeholder}
           </span>
         )}
 
-        <span className="shrink-0 flex items-center justify-center pr-3 pl-1.5 text-gray-400">
-          <ChevronDown size={14} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        <span className="shrink-0 flex items-center justify-center pr-2.5 pl-1 text-gray-400">
+          <ChevronDown size={12} className={`transition-transform ${open ? "rotate-180" : ""}`} />
         </span>
       </button>
 
