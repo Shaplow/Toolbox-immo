@@ -1,5 +1,22 @@
 "use client";
 
+/**
+ * PublicationHeader — header sticky de la fiche publication.
+ *
+ * UX décisions Phase 3 (migration ui-boost) :
+ * - "Marquer publié" → Button primary (au lieu de CTA indigo custom).
+ *   L'action ne marque pas directement : elle scroll vers la section
+ *   Publish. Le tooltip natif clarifie.
+ * - Menu ⋯ → DropdownMenu primitive (au lieu d'un menu artisanal avec
+ *   backdrop fixed z-10 qui conflictait avec les modals).
+ * - Badge pattern → Badge primitive (au lieu de pill indigo inline).
+ * - Status badge garde STATUS_COLORS (palette auxiliaire, hors DS,
+ *   exception documentée).
+ * - Breadcrumb hover gray-950 mono (plus d'indigo).
+ * - Assignations "Non assigné" sans italic (lisibilité).
+ * - Density : py-3 → py-2.5, gap-3 → gap-2.5 (vibe Linear plus serré).
+ */
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -14,6 +31,10 @@ import {
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/slots/statusLabels";
 import type { SlotStatus, UserRole } from "@/types/roles";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Button } from "@/components/ui/Button";
+import { ButtonIcon } from "@/components/ui/ButtonIcon";
+import { Badge } from "@/components/ui/Badge";
+import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { toast } from "@/components/ui/Toast";
 import { AssigneeInlineEdit } from "./AssigneeInlineEdit";
 
@@ -68,7 +89,6 @@ export function PublicationHeader({
   canDelete,
   currentUserRole,
 }: PublicationHeaderProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
@@ -82,23 +102,17 @@ export function PublicationHeader({
       ? STATUS_COLORS[status]
       : "bg-gray-100 text-gray-600 border-gray-200";
 
-  // Priorité d'affichage du titre : titre custom > label du pattern > fallback générique.
-  // Cohérent avec les worklists et SlotCard qui affichent pattern.label en priorité.
   const title = slot.title ?? pattern?.label ?? "Publication sans titre";
-
-  function handleDeleteClick() {
-    setMenuOpen(false);
-    setConfirmDeleteOpen(true);
-  }
 
   async function handleDeleteConfirmed() {
     setDeleting(true);
     try {
       const res = await fetch(`/api/calendar/slots/${slot.id}`, { method: "DELETE" });
       if (!res.ok) {
-        const body = await res.json() as { error?: string };
+        const body = (await res.json()) as { error?: string };
         throw new Error(body.error ?? "Erreur lors de la suppression");
       }
+      toast.success("Publication supprimée.");
       router.push("/calendar");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur lors de la suppression");
@@ -108,10 +122,10 @@ export function PublicationHeader({
   }
 
   function handleMarkPublished() {
-    // Force d'abord l'ouverture de la CollapsibleSection cible avant de
-    // scroller — même pattern que ProductionChain.scrollToSection. Sans
-    // ça, si la section publish était fermée (préférence localStorage), le
-    // scroll landait sur un bandeau replié.
+    // L'action "Marquer publié" du header scrolle vers la section publish
+    // (et la déplie si elle est repliée par préférence localStorage).
+    // C'est intentionnel : le user fait la transition réelle dans la
+    // section dédiée, pas depuis un mini bouton header.
     if (typeof window !== "undefined") {
       window.dispatchEvent(
         new CustomEvent("pub:open-section", { detail: { sectionId: "publish" } }),
@@ -127,171 +141,160 @@ export function PublicationHeader({
 
   return (
     <>
-    <ConfirmDialog
-      open={confirmDeleteOpen}
-      title="Supprimer cette publication ?"
-      description="Cette action est irréversible. La publication et toutes ses données associées seront supprimées."
-      confirmLabel="Supprimer"
-      variant="danger"
-      loading={deleting}
-      onConfirm={() => { void handleDeleteConfirmed(); }}
-      onCancel={() => setConfirmDeleteOpen(false)}
-    />
-    <div className="sticky top-0 z-20 bg-white border-b border-gray-100 shadow-sm">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3">
-        {/* Breadcrumb + bouton retour role-aware */}
-        <nav className="flex items-center gap-1 text-xs text-gray-400 mb-2 flex-wrap">
-          <Link
-            href={currentUserRole === "ADMIN" ? "/calendar" : "/home"}
-            className="flex items-center gap-1 hover:text-indigo-600 transition-colors"
-          >
-            <ArrowLeft size={12} className="flex-shrink-0" />
-            {currentUserRole === "ADMIN" ? "Retour au calendrier" : "Retour à ma liste"}
-          </Link>
-          <ChevronRight size={12} className="flex-shrink-0" />
-          <span className="text-gray-500">
-            {formatDateFR(scheduledAt)} à {formatTimeFR(scheduledAt)}
-          </span>
-          <ChevronRight size={12} className="flex-shrink-0" />
-          <span className="text-gray-500 font-medium">@{account.handle}</span>
-        </nav>
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Supprimer cette publication ?"
+        description="Cette action est irréversible. La publication et toutes ses données associées seront supprimées."
+        confirmLabel="Supprimer"
+        variant="danger"
+        loading={deleting}
+        onConfirm={() => {
+          void handleDeleteConfirmed();
+        }}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
+      <div className="sticky top-0 z-20 bg-white border-b border-gray-200">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-2.5">
+          {/* Breadcrumb */}
+          <nav className="flex items-center gap-1 text-[11px] text-gray-400 mb-1.5 flex-wrap">
+            <Link
+              href={currentUserRole === "ADMIN" ? "/calendar" : "/home"}
+              className="inline-flex items-center gap-1 hover:text-gray-950 transition-colors"
+            >
+              <ArrowLeft size={11} className="flex-shrink-0" />
+              {currentUserRole === "ADMIN" ? "Calendrier" : "Ma liste"}
+            </Link>
+            <ChevronRight size={11} className="flex-shrink-0 text-gray-300" />
+            <span className="text-gray-500">
+              {formatDateFR(scheduledAt)} à {formatTimeFR(scheduledAt)}
+            </span>
+            <ChevronRight size={11} className="flex-shrink-0 text-gray-300" />
+            <span className="text-gray-700 font-medium">@{account.handle}</span>
+          </nav>
 
-        {/* Titre + actions */}
-        <div className="flex items-start gap-3">
-          <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-semibold text-gray-900 leading-tight truncate">
-              {title}
-            </h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {currentUserRole === "ADMIN" ? (
-                <Link
-                  href={`/admin/accounts/${account.id}`}
-                  className="hover:text-indigo-600 hover:underline transition-colors"
-                  title="Voir la fiche compte"
+          {/* Titre + actions */}
+          <div className="flex items-start gap-2.5">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-lg font-semibold tracking-tight text-gray-950 leading-tight truncate">
+                {title}
+              </h1>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                {currentUserRole === "ADMIN" ? (
+                  <Link
+                    href={`/admin/accounts/${account.id}`}
+                    className="text-[12px] text-gray-500 hover:text-gray-950 hover:underline transition-colors"
+                    title="Voir la fiche compte"
+                  >
+                    @{account.handle}
+                  </Link>
+                ) : (
+                  <span className="text-[12px] text-gray-500">@{account.handle}</span>
+                )}
+                <span
+                  className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[11px] border font-medium first-letter:uppercase ${statusColor}`}
                 >
-                  @{account.handle}
-                </Link>
-              ) : (
-                <span>@{account.handle}</span>
+                  {statusLabel}
+                </span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {canMarkPublished && slot.status !== "PUBLISHED" && (
+                <Button
+                  size="sm"
+                  icon={CheckCircle}
+                  onClick={handleMarkPublished}
+                  title="Aller à la section Publier"
+                >
+                  <span className="hidden sm:inline">Marquer publié</span>
+                </Button>
               )}
-              <span className="mx-1.5 text-gray-300">·</span>
-              <span
-                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs border font-medium ${statusColor}`}
-              >
-                {statusLabel}
-              </span>
-            </p>
+
+              {canDelete && (
+                <DropdownMenu
+                  align="end"
+                  trigger={
+                    <ButtonIcon
+                      icon={MoreHorizontal}
+                      label="Actions"
+                      size="sm"
+                    />
+                  }
+                  items={[
+                    {
+                      label: "Voir tous les jobs",
+                      icon: List,
+                      onClick: () => router.push(`/listings?slotId=${slot.id}`),
+                    },
+                    "separator",
+                    {
+                      label: "Supprimer",
+                      icon: Trash2,
+                      destructive: true,
+                      onClick: () => setConfirmDeleteOpen(true),
+                    },
+                  ]}
+                />
+              )}
+            </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Marquer publié */}
-            {canMarkPublished && slot.status !== "PUBLISHED" && (
-              <button
-                type="button"
-                onClick={handleMarkPublished}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors font-medium"
-              >
-                <CheckCircle size={14} />
-                <span className="hidden sm:inline">Marquer publié</span>
-              </button>
-            )}
-
-            {/* Menu ⋯ (admin only) */}
-            {canDelete && (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setMenuOpen((o) => !o)}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-                  aria-label="Actions"
-                >
-                  <MoreHorizontal size={16} />
-                </button>
-
-                {menuOpen && (
-                  <>
-                    {/* Backdrop invisible pour fermer */}
-                    <div
-                      className="fixed inset-0 z-10"
-                      onClick={() => setMenuOpen(false)}
-                    />
-                    <div className="absolute right-0 top-8 z-20 bg-white rounded-xl border border-gray-100 shadow-lg py-1 w-56">
-                      <Link
-                        href={`/listings?slotId=${slot.id}`}
-                        onClick={() => setMenuOpen(false)}
-                        className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                      >
-                        <List size={14} className="text-gray-400" />
-                        Voir tous les jobs
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteClick()}
-                        disabled={deleting}
-                        className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-                      >
-                        <Trash2 size={14} />
-                        {deleting ? "Suppression…" : "Supprimer"}
-                      </button>
-                    </div>
-                  </>
+          {/* Badges + assignations */}
+          <div className="flex flex-wrap items-center gap-3 mt-2.5">
+            {pattern && (
+              <div className="flex flex-wrap gap-1.5">
+                {currentUserRole === "ADMIN" ? (
+                  <Link
+                    href={`/admin/accounts/${account.id}`}
+                    title="Voir la fiche compte"
+                    className="focus-ring rounded-md"
+                  >
+                    <Badge>{pattern.label}</Badge>
+                  </Link>
+                ) : (
+                  <Badge>{pattern.label}</Badge>
                 )}
               </div>
             )}
-          </div>
-        </div>
 
-        {/* Badges + assignations */}
-        <div className="flex flex-wrap items-center gap-3 mt-3">
-          {/* Tags */}
-          <div className="flex flex-wrap gap-1.5">
             {pattern && (
-              currentUserRole === "ADMIN" ? (
-                <Link
-                  href={`/admin/accounts/${account.id}`}
-                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 transition-colors"
-                  title="Voir la fiche compte"
-                >
-                  {pattern.label}
-                </Link>
-              ) : (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border bg-indigo-50 text-indigo-700 border-indigo-200">
-                  {pattern.label}
-                </span>
-              )
+              <div className="hidden sm:block h-3 w-px bg-gray-200" />
             )}
-          </div>
 
-          {/* Séparateur visuel */}
-          <div className="hidden sm:block h-3 w-px bg-gray-200" />
-
-          {/* Assignations — inline edit pour ADMIN, lecture seule sinon */}
-          <div className="flex flex-wrap gap-3 text-xs text-gray-500">
-            <span className="flex items-center gap-1">
-              <span className="font-medium text-gray-600">Monteur :</span>{" "}
-              {currentUserRole === "ADMIN" ? (
-                <AssigneeInlineEdit slotId={slot.id} role="MONTEUR" current={assigneeMonteur} />
-              ) : assigneeMonteur ? (
-                <span>{assigneeMonteur.name ?? assigneeMonteur.email ?? assigneeMonteur.id}</span>
-              ) : (
-                <span className="text-gray-400 italic">Non assigné</span>
-              )}
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="font-medium text-gray-600">CM :</span>{" "}
-              {currentUserRole === "ADMIN" ? (
-                <AssigneeInlineEdit slotId={slot.id} role="CM" current={assigneeCm} />
-              ) : assigneeCm ? (
-                <span>{assigneeCm.name ?? assigneeCm.email ?? assigneeCm.id}</span>
-              ) : (
-                <span className="text-gray-400 italic">Non assigné</span>
-              )}
-            </span>
+            <div className="flex flex-wrap gap-3 text-[12px] text-gray-600">
+              <span className="inline-flex items-center gap-1">
+                <span className="text-[10px] uppercase tracking-widest text-gray-500 font-medium">
+                  Monteur
+                </span>
+                {currentUserRole === "ADMIN" ? (
+                  <AssigneeInlineEdit slotId={slot.id} role="MONTEUR" current={assigneeMonteur} />
+                ) : assigneeMonteur ? (
+                  <span className="text-gray-950">
+                    {assigneeMonteur.name ?? assigneeMonteur.email ?? assigneeMonteur.id}
+                  </span>
+                ) : (
+                  <span className="text-gray-400">non assigné</span>
+                )}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="text-[10px] uppercase tracking-widest text-gray-500 font-medium">
+                  CM
+                </span>
+                {currentUserRole === "ADMIN" ? (
+                  <AssigneeInlineEdit slotId={slot.id} role="CM" current={assigneeCm} />
+                ) : assigneeCm ? (
+                  <span className="text-gray-950">
+                    {assigneeCm.name ?? assigneeCm.email ?? assigneeCm.id}
+                  </span>
+                ) : (
+                  <span className="text-gray-400">non assigné</span>
+                )}
+              </span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
     </>
   );
 }

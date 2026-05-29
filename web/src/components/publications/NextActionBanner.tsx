@@ -1,19 +1,23 @@
 "use client";
 
 /**
- * NextActionBanner — bandeau "À ton tour" affiché sous le header de la fiche
- * publication quand l'utilisateur connecté est le owner du statut courant
- * (STATUS_OWNER) ET qu'il est assigné au slot pour ce rôle.
+ * NextActionBanner — bandeau "À ton tour" affiché sous le header.
  *
- * But : permettre au monteur/CM/vidéaste de voir immédiatement ce qu'il doit
- * faire sans avoir à interpréter la ProductionChain ni scroller dans la fiche.
+ * UX décisions Phase 3 (migration ui-boost) :
+ * - Bandeau bg-gray-950 text-white Linear-style (au lieu de bg-indigo-50)
+ *   — c'est un signal "c'est à toi", doit ressortir avec contraste max.
+ * - Badge owner sans couleur, simple pill bordered white/15
+ *   (OWNER_BADGE_CLS coloré ne marche pas sur fond dark, on neutralise).
+ * - Action en font medium gray-100.
+ * - Lien "Aller à la section" → button qui dispatch `pub:open-section`
+ *   AU LIEU d'un <a href="#..."> natif. Fix audit : sans dispatch, le
+ *   scroll landait sur une CollapsibleSection repliée.
  */
 
 import { ArrowRight } from "lucide-react";
 import {
   NEXT_ACTION,
   OWNER_LABEL,
-  OWNER_BADGE_CLS,
   type SlotStatus,
 } from "@/types/calendar";
 import { resolveSlotOwner } from "@/lib/slots/statusLabels";
@@ -28,7 +32,6 @@ interface Props {
   assigneeVideasteId?: string | null;
 }
 
-/** Détermine si l'utilisateur connecté est le owner attendu pour ce statut. */
 function isCurrentUserOwner(args: {
   slotStatus: string;
   currentUserId: string;
@@ -49,27 +52,35 @@ function isCurrentUserOwner(args: {
   return false;
 }
 
-/** Map statut → section de la fiche à scroller (anchor #id). */
 const STATUS_TO_SECTION: Record<string, string> = {
-  // Vidéaste : doit déposer les rushes
   RUSHES_EXPECTED: "rushes",
-  // Monteur : montage / version
   RUSHES_RECEIVED: "render",
   IN_EDIT: "render",
   EDIT_APPROVED: "render",
   CAPTIONS_PENDING: "captions",
   CLIENT_REVISION: "render",
-  // CM : validation / légende / publication
   EDIT_REVIEW: "render",
   READY_FOR_CM: "description",
   AWAITING_CLIENT: "client-validation",
   SCHEDULED: "publish",
-  // ADMIN
   DRAFT: "render",
   PLANNED: "brief",
   BLOCKED: "render",
   REJECTED: "render",
 };
+
+function goToSection(sectionId: string) {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("pub:open-section", { detail: { sectionId } }),
+    );
+  }
+  // Petit délai pour laisser la section se déplier avant le scroll.
+  setTimeout(() => {
+    const el = document.getElementById(sectionId);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 50);
+}
 
 export function NextActionBanner({
   slotStatus,
@@ -99,24 +110,26 @@ export function NextActionBanner({
   const sectionId = STATUS_TO_SECTION[slotStatus];
 
   return (
-    <div className="bg-indigo-50 border-y border-indigo-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <span
-            className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${OWNER_BADGE_CLS[owner]}`}
-          >
+    <div className="bg-gray-950 text-white">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-2 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2.5">
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-widest border border-white/20 text-white/90">
             À toi · {OWNER_LABEL[owner]}
           </span>
-          <span className="text-sm font-medium text-indigo-900">{action}</span>
+          <span className="text-[13px] font-medium text-gray-100">{action}</span>
         </div>
         {sectionId && (
-          <a
-            href={`#${sectionId}`}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-700 hover:text-indigo-900"
+          <button
+            type="button"
+            onClick={() => goToSection(sectionId)}
+            className="group inline-flex items-center gap-1.5 text-[12px] font-medium text-gray-300 hover:text-white transition-colors focus-ring rounded px-1 py-0.5"
           >
             Aller à la section
-            <ArrowRight size={13} />
-          </a>
+            <ArrowRight
+              size={13}
+              className="transition-transform group-hover:translate-x-0.5"
+            />
+          </button>
         )}
       </div>
     </div>

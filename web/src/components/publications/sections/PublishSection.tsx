@@ -1,15 +1,27 @@
 "use client";
 
 /**
- * PublishSection — section "Publication" de la fiche publication.
+ * PublishSection — section "Publication" de la fiche.
  *
- * Gère le marquage comme publié sur Instagram via POST /api/publications/[id]/mark-published.
- * Si le slot est déjà PUBLISHED, affiche l'URL et la date + permet de corriger l'URL.
+ * UX décisions Phase 3 (migration ui-boost) :
+ * - Header section uniformisé : icône Send + titre Geist + Badge success si publié.
+ * - Inputs natifs URL → <FormField> + <Input icon={ExternalLink}> (cohérent forms).
+ * - Erreurs portées par FormField (plus de <p> séparé).
+ * - Success → toast.success (au lieu de message inline qui disparaît au refresh).
+ * - Warning incompleteSteps reste amber (warning légitime, pattern Banner local).
+ * - 3 boutons custom → Button primary / Button ghost (Corriger) / Button secondary (Annuler).
+ * - Lien URL publié en gris mono (lien externe sobre, plus indigo).
+ * - "URL non renseignée" : text gray-400 sans italic (lisibilité).
  */
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Send, CheckCircle, ExternalLink, Edit2, Check, AlertTriangle } from "lucide-react";
+import { Send, ExternalLink, Edit2, CheckCircle, AlertTriangle, X } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { FormField } from "@/components/ui/FormField";
+import { Badge } from "@/components/ui/Badge";
+import { toast } from "@/components/ui/Toast";
 
 interface Props {
   slot: {
@@ -20,9 +32,7 @@ interface Props {
   };
   /** true pour CM assigné et ADMIN */
   canPublish: boolean;
-  /** Steps "amont" pas encore terminées au moment du rendu — utilisé pour
-   *  afficher un warning non-bloquant si le CM tente de publier alors que
-   *  cover/captions/description ne sont pas done. Si vide, pas de warning. */
+  /** Steps "amont" pas encore terminées au moment du rendu. */
   incompleteSteps?: Array<{ key: string; label: string; status: "todo" | "failed" }>;
 }
 
@@ -44,11 +54,9 @@ export function PublishSection({ slot, canPublish, incompleteSteps = [] }: Props
   const [url, setUrl] = useState(slot.publishedUrl ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   const [editingUrl, setEditingUrl] = useState(false);
   const [correctedUrl, setCorrectedUrl] = useState(slot.publishedUrl ?? "");
   const [correcting, setCorrecting] = useState(false);
-  const [corrected, setCorrected] = useState(false);
 
   async function handleMarkPublished() {
     if (!url.trim()) {
@@ -65,11 +73,12 @@ export function PublishSection({ slot, canPublish, incompleteSteps = [] }: Props
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Erreur lors du marquage");
-      setSuccess(true);
-      // Rafraîchit les server components sans rechargement full page
+      toast.success("Publication marquée — ✓");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur inconnue");
+      const msg = err instanceof Error ? err.message : "Erreur inconnue";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
@@ -90,102 +99,113 @@ export function PublishSection({ slot, canPublish, incompleteSteps = [] }: Props
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Erreur lors de la correction");
-      setCorrected(true);
+      toast.success("URL corrigée.");
       setEditingUrl(false);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur inconnue");
+      const msg = err instanceof Error ? err.message : "Erreur inconnue";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setCorrecting(false);
     }
   }
 
   return (
-    <section id="publish" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
+    <section
+      id="publish"
+      className="bg-white border border-gray-200 rounded-lg p-5"
+    >
       {/* En-tête section */}
       <div className="flex items-center gap-2 mb-4">
-        <Send size={16} className="text-gray-400" />
-        <h2 className="text-sm font-semibold text-gray-700">Publication</h2>
+        <Send size={14} className="text-gray-500" />
+        <h2 className="text-[13px] font-semibold text-gray-950">Publication</h2>
         {isPublished && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border font-medium bg-green-50 text-green-700 border-green-200">
-            <CheckCircle size={11} />
-            Publié
-          </span>
+          <Badge variant="success" icon={CheckCircle}>
+            publié
+          </Badge>
         )}
       </div>
 
-      {/* Slot déjà publié */}
+      {/* ── État publié ────────────────────────────────────────────── */}
       {isPublished && (
         <div className="space-y-4">
           {/* URL publiée */}
           <div className="space-y-1">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Lien Instagram</p>
+            <p className="text-[10px] font-medium text-gray-500 uppercase tracking-widest">
+              Lien Instagram
+            </p>
             {slot.publishedUrl ? (
               <a
                 href={slot.publishedUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 break-all transition-colors"
+                className="inline-flex items-center gap-1.5 text-[13px] text-gray-700 hover:text-gray-950 break-all transition-colors"
               >
                 <ExternalLink size={13} className="flex-shrink-0" />
                 {slot.publishedUrl}
               </a>
             ) : (
-              <p className="text-sm text-gray-400 italic">URL non renseignée</p>
+              <p className="text-[13px] text-gray-400">URL non renseignée</p>
             )}
           </div>
 
           {/* Date de publication */}
           {slot.publishedAt && (
             <div className="space-y-1">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Date de publication</p>
-              <p className="text-sm text-gray-600">{formatDateTimeFR(slot.publishedAt)}</p>
+              <p className="text-[10px] font-medium text-gray-500 uppercase tracking-widest">
+                Date de publication
+              </p>
+              <p className="text-[13px] text-gray-700">{formatDateTimeFR(slot.publishedAt)}</p>
             </div>
           )}
 
           {/* Correction URL (canPublish uniquement) */}
           {canPublish && (
-            <div className="pt-2 border-t border-gray-50">
+            <div className="pt-3 border-t border-gray-100">
               {!editingUrl ? (
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={Edit2}
                   onClick={() => setEditingUrl(true)}
-                  className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors"
                 >
-                  <Edit2 size={12} />
                   Corriger l&apos;URL
-                </button>
+                </Button>
               ) : (
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-500">URL corrigée</label>
-                  <input
-                    type="url"
-                    value={correctedUrl}
-                    onChange={(e) => {
-                      setCorrectedUrl(e.target.value);
-                      setCorrected(false);
-                    }}
-                    placeholder="https://www.instagram.com/p/..."
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 focus:outline-none"
-                  />
-                  {error && <p className="text-xs text-red-600">{error}</p>}
+                <div className="space-y-3">
+                  <FormField label="URL corrigée" error={error ?? undefined}>
+                    <Input
+                      type="url"
+                      value={correctedUrl}
+                      onChange={(v) => {
+                        setCorrectedUrl(v);
+                        setError(null);
+                      }}
+                      icon={ExternalLink}
+                      placeholder="https://www.instagram.com/p/..."
+                    />
+                  </FormField>
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
+                    <Button
+                      size="sm"
+                      icon={CheckCircle}
                       onClick={handleCorrectUrl}
-                      disabled={correcting}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50"
+                      loading={correcting}
                     >
-                      {corrected ? <Check size={14} /> : <Check size={14} />}
-                      {correcting ? "Correction…" : "Valider"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setEditingUrl(false); setError(null); }}
-                      className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                      Valider
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={X}
+                      onClick={() => {
+                        setEditingUrl(false);
+                        setError(null);
+                      }}
                     >
                       Annuler
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )}
@@ -194,76 +214,63 @@ export function PublishSection({ slot, canPublish, incompleteSteps = [] }: Props
         </div>
       )}
 
-      {/* Slot non encore publié — lecture seule informative pour les rôles
-          sans canPublish (ex. ADMIN qui regarde un slot dont il n'est pas CM
-          assigné). Pas de champ grisé + erreur de permission qui donne
-          l'impression d'un bug. */}
+      {/* ── Non publié + rôle sans canPublish (info read-only) ──────── */}
       {!isPublished && !canPublish && (
-        <p className="text-sm text-gray-500">
-          La publication sera marquée par le CM assigné une fois le contenu
-          posté sur Instagram.
+        <p className="text-[13px] text-gray-500 leading-relaxed">
+          La publication sera marquée par le CM assigné une fois le contenu posté
+          sur Instagram.
         </p>
       )}
 
+      {/* ── Non publié + canPublish (action principale) ─────────────── */}
       {!isPublished && canPublish && (
         <div className="space-y-4">
-          {/* Warning non-bloquant si des étapes amont sont incomplètes —
-              le CM peut toujours publier (cas légitime : il publie depuis
-              IG avec une cover par défaut), mais on signale ce qui manque. */}
+          {/* Warning si étapes amont incomplètes */}
           {incompleteSteps.length > 0 && (
-            <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
-              <AlertTriangle size={15} className="text-amber-500 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 text-[13px] text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2.5">
+              <AlertTriangle size={14} className="text-amber-700 shrink-0 mt-0.5" />
               <div>
-                <p className="font-medium">
+                <p className="font-medium leading-tight">
                   {incompleteSteps.length === 1
                     ? "Une étape n'est pas finalisée"
                     : `${incompleteSteps.length} étapes ne sont pas finalisées`}{" "}
                   : {incompleteSteps.map((s) => s.label).join(", ")}.
                 </p>
-                <p className="text-xs text-amber-700/80 mt-0.5">
+                <p className="text-[12px] text-amber-800/80 mt-0.5 leading-relaxed">
                   Tu peux quand même marquer publié — vérifie juste que c&apos;est
                   bien le contenu que tu veux figer.
                 </p>
               </div>
             </div>
           )}
-          <p className="text-sm text-gray-500">
-            Colle l&apos;URL Instagram de la publication une fois postée pour marquer ce slot comme publié.
-          </p>
 
-          <div className="space-y-2">
-            <label htmlFor={`publish-url-${slot.id}`} className="text-xs font-medium text-gray-600">
-              URL Instagram
-            </label>
-            <input
-              id={`publish-url-${slot.id}`}
+          <FormField
+            label="URL Instagram"
+            required
+            help="Colle l'URL une fois la publication postée."
+            error={error ?? undefined}
+          >
+            <Input
               type="url"
               value={url}
-              onChange={(e) => {
-                setUrl(e.target.value);
+              onChange={(v) => {
+                setUrl(v);
                 setError(null);
               }}
               disabled={submitting}
+              icon={ExternalLink}
               placeholder="https://www.instagram.com/p/..."
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 focus:outline-none disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
             />
-          </div>
+          </FormField>
 
-          {error && <p className="text-xs text-red-600">{error}</p>}
-
-          {success && (
-            <p className="text-xs text-green-600">Publication marquée — rechargement en cours…</p>
-          )}
-
-          <button
-            type="button"
+          <Button
+            icon={CheckCircle}
             onClick={handleMarkPublished}
-            disabled={submitting || !url.trim()}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            loading={submitting}
+            disabled={!url.trim()}
           >
-            <CheckCircle size={15} />
-            {submitting ? "Marquage…" : "Marquer publié"}
-          </button>
+            Marquer publié
+          </Button>
         </div>
       )}
     </section>
