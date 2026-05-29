@@ -38,6 +38,8 @@ interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, "onC
   error?: string;
   /** Permet de wrapper avec son propre contenu (rare). */
   trailing?: ReactNode;
+  /** Liquid Glass v2 — transparent + halo pastel au focus. */
+  variant?: "default" | "glass";
 }
 
 export function Select({
@@ -48,19 +50,29 @@ export function Select({
   placeholder,
   error,
   trailing,
+  variant = "default",
   className,
   disabled,
   ...rest
 }: SelectProps) {
   const wrapperBase =
-    "group/select flex items-center gap-2 w-full h-8 rounded-md border bg-white transition-colors";
+    "group/select flex items-center gap-2 w-full h-8 rounded-md border transition-colors";
+
+  const wrapperVariantBase =
+    variant === "glass"
+      ? "bg-[var(--surface-glass-medium)] backdrop-blur-[8px] backdrop-saturate-150"
+      : "bg-white";
+
   const wrapperState = error
     ? "border-danger-600 focus-within:shadow-[var(--shadow-focus-ring-danger)]"
-    : "border-gray-300 hover:border-gray-400 focus-within:border-gray-400 focus-within:shadow-[var(--shadow-focus-ring)]";
+    : variant === "glass"
+      ? "border-white/40 hover:border-sky-200 focus-within:border-sky-300 focus-within:shadow-[0_0_0_3px_rgba(169,209,230,0.32)]"
+      : "border-gray-300 hover:border-gray-400 focus-within:border-gray-400 focus-within:shadow-[var(--shadow-focus-ring)]";
+
   const wrapperDisabled = disabled ? "bg-gray-50 opacity-60 cursor-not-allowed" : "";
 
   return (
-    <div className={[wrapperBase, wrapperState, wrapperDisabled, className ?? ""].filter(Boolean).join(" ")}>
+    <div className={[wrapperBase, wrapperVariantBase, wrapperState, wrapperDisabled, className ?? ""].filter(Boolean).join(" ")}>
       {Icon && (
         <Icon
           size={14}

@@ -9,12 +9,17 @@ import { Loader2 } from "lucide-react";
  * Bouton primaire — doctrine SaaS d'équipe : Vercel · Linear · Apple.
  *
  * Variants :
- * - `primary`   — `bg-gray-950` flat. Le CTA principal de chaque page.
- *                  Sobre, lisible, intemporel. Aucun gradient, aucune
- *                  couleur, aucun glow.
- * - `secondary` — border gray-300. Action secondaire.
- * - `ghost`     — transparent hover gray-100. Action discrète.
- * - `danger`    — danger-600. Action destructive.
+ * - `primary`     — `bg-gray-800` graphite poli. Le CTA principal de chaque
+ *                    page. Sobre, lisible, intemporel.
+ * - `secondary`   — border gray-300. Action secondaire.
+ * - `ghost`       — transparent hover gray-100. Action discrète.
+ * - `danger`      — danger-600. Action destructive.
+ * - `glass`       — Liquid Glass v2. Transparent + backdrop-blur + ring
+ *                    intérieur. Pour actions secondaires sur surfaces glass.
+ *                    Jamais en CTA primary.
+ * - `softPrimary` — Liquid Glass v2. Graphite tinted warm (peach mix subtile).
+ *                    Variante chaleureuse du primary, utile sur surfaces
+ *                    pastel.
  *
  * Sizes : `sm` (toolbars compactes, h-7) | `md` (default, h-8) |
  * `lg` (CTA standout, h-9). Densité serrée Linear-style.
@@ -24,7 +29,7 @@ import { Loader2 } from "lucide-react";
  * Voir `ButtonIcon` pour l'icon-only carré.
  */
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "glass" | "softPrimary";
 type Size = "sm" | "md" | "lg";
 
 interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "size"> {
@@ -74,6 +79,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       "bg-transparent text-gray-700 hover:bg-gray-100 hover:text-gray-950 focus-ring",
     danger:
       "bg-danger-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] hover:bg-danger-700 focus-ring-danger",
+    // Liquid Glass v2 — verre transparent + ring intérieur signature.
+    glass:
+      "bg-[var(--surface-glass-medium)] text-gray-800 backdrop-blur-[12px] backdrop-saturate-150 shadow-[var(--ring-glass-edge)] hover:bg-[var(--surface-glass-strong)] hover:shadow-[var(--ring-glass-inset),var(--shadow-glass-sm)] focus-ring",
+    // Liquid Glass v2 — graphite tinted warm peach (signature "chaleur").
+    softPrimary:
+      "bg-gray-800 text-white shadow-[inset_0_1px_0_rgba(255,200,170,0.18)] hover:bg-gray-700 hover:shadow-[inset_0_1px_0_rgba(255,200,170,0.24),0_4px_16px_rgba(245,158,107,0.18)] focus-ring",
   }[variant];
 
   const iconSize = size === "sm" ? 12 : size === "lg" ? 15 : 14;

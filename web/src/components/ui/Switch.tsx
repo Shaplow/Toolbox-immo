@@ -11,6 +11,9 @@ import type { ReactNode } from "react";
  * - API contrôlée : `checked` + `onChange(checked: boolean)`.
  * - `label?` optionnel à côté (rend le whole-thing un label cliquable).
  * - `description?` sous le label (Geist text-[11px] gray-500).
+ * - `accent?: "default" | "sage"` (Liquid Glass v2) — `sage` rend la
+ *   track on en sage doux au lieu du graphite. Pour switches "positif
+ *   calme" (preferences, opt-in). Défaut "default" inchangé.
  */
 
 interface SwitchProps {
@@ -20,6 +23,7 @@ interface SwitchProps {
   description?: string;
   size?: "sm" | "md";
   disabled?: boolean;
+  accent?: "default" | "sage";
   className?: string;
 }
 
@@ -30,11 +34,17 @@ export function Switch({
   description,
   size = "md",
   disabled = false,
+  accent = "default",
   className,
 }: SwitchProps) {
   const trackSize = size === "sm" ? "w-7 h-4" : "w-9 h-5";
   const thumbSize = size === "sm" ? "h-3 w-3" : "h-4 w-4";
   const thumbTranslate = size === "sm" ? "translate-x-3" : "translate-x-4";
+
+  const onClass =
+    accent === "sage"
+      ? "bg-sage-500 border-sage-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
+      : "bg-gray-800 border-gray-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]";
 
   const toggle = (
     <button
@@ -44,9 +54,7 @@ export function Switch({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex shrink-0 items-center rounded-full border transition-colors focus-ring disabled:opacity-50 disabled:cursor-not-allowed ${trackSize} ${
-        checked
-          ? "bg-gray-800 border-gray-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
-          : "bg-gray-100 border-gray-300 hover:bg-gray-200"
+        checked ? onClass : "bg-gray-100 border-gray-300 hover:bg-gray-200"
       }`}
     >
       <span

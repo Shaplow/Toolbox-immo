@@ -13,9 +13,13 @@ import { Loader2 } from "lucide-react";
  * pour l'a11y.
  *
  * Variants : reprennent ceux de <Button>. Forme strictement carrée.
+ *
+ * Option `floating` : Liquid Glass v2. FAB style avec backdrop-blur +
+ * shadow-glass-md. Pour les actions flottantes au-dessus d'une zone
+ * de contenu (overlay player, surface glass).
  */
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "glass";
 type Size = "sm" | "md";
 
 interface ButtonIconProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "size" | "aria-label"> {
@@ -25,6 +29,8 @@ interface ButtonIconProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 
   variant?: Variant;
   size?: Size;
   loading?: boolean;
+  /** FAB style flottant (Liquid Glass v2) — shadow-glass-md + backdrop-blur. */
+  floating?: boolean;
 }
 
 export const ButtonIcon = forwardRef<HTMLButtonElement, ButtonIconProps>(function ButtonIcon(
@@ -34,6 +40,7 @@ export const ButtonIcon = forwardRef<HTMLButtonElement, ButtonIconProps>(functio
     variant = "ghost",
     size = "md",
     loading = false,
+    floating = false,
     disabled,
     className,
     ...rest
@@ -53,7 +60,14 @@ export const ButtonIcon = forwardRef<HTMLButtonElement, ButtonIconProps>(functio
       "bg-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-950 focus-ring",
     danger:
       "bg-transparent text-gray-500 hover:bg-danger-50 hover:text-danger-600 focus-ring-danger",
+    glass:
+      "bg-[var(--surface-glass-medium)] text-gray-700 backdrop-blur-[12px] backdrop-saturate-150 shadow-[var(--ring-glass-edge)] hover:bg-[var(--surface-glass-strong)] hover:text-gray-950 hover:shadow-[var(--ring-glass-inset),var(--shadow-glass-sm)] focus-ring",
   }[variant];
+
+  // FAB style — élévation glass-md + halo blur, rond pour signature flottante.
+  const floatingCls = floating
+    ? "rounded-full bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150 shadow-[var(--shadow-glass-md),var(--ring-glass-inset)] text-gray-800 hover:text-gray-950"
+    : "";
 
   const iconSize = size === "sm" ? 13 : 15;
 
@@ -65,7 +79,7 @@ export const ButtonIcon = forwardRef<HTMLButtonElement, ButtonIconProps>(functio
       title={label}
       aria-label={label}
       aria-busy={loading || undefined}
-      className={[base, sizeClasses, variantClasses, className ?? ""].filter(Boolean).join(" ")}
+      className={[base, sizeClasses, floating ? floatingCls : variantClasses, className ?? ""].filter(Boolean).join(" ")}
       {...rest}
     >
       {loading ? <Loader2 size={iconSize} className="animate-spin" /> : <Icon size={iconSize} />}

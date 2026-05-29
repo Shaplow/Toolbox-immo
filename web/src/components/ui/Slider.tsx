@@ -13,6 +13,9 @@ import type { CSSProperties } from "react";
  * - `min`/`max`/`step` : standard.
  * - `unit?` : suffixe affiché à droite (ex: "px", "s", "%").
  * - `showValue` : afficher la valeur numérique (default true).
+ * - `accent?: "default" | "peach" | "sage" | "sky"` (Liquid Glass v2) —
+ *   track filled passe en gradient soft de la teinte pastel choisie.
+ *   Défaut "default" (graphite) inchangé.
  */
 type SliderProps = {
   label?: string;
@@ -24,7 +27,15 @@ type SliderProps = {
   unit?: string;
   disabled?: boolean;
   showValue?: boolean;
+  accent?: "default" | "peach" | "sage" | "sky";
   className?: string;
+};
+
+const ACCENT_FILLED: Record<NonNullable<SliderProps["accent"]>, string> = {
+  default: "#1f2937",
+  peach:   "#f59e6b",
+  sage:    "#6fa280",
+  sky:     "#4d96bf",
 };
 
 export function Slider({
@@ -37,11 +48,15 @@ export function Slider({
   unit,
   disabled = false,
   showValue = true,
+  accent = "default",
   className,
 }: SliderProps) {
   const pct = max === min ? 0 : Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
+  const filledColor = ACCENT_FILLED[accent];
+  // CSS var consommée par les pseudo-elements via arbitrary value Tailwind.
   const trackStyle: CSSProperties = {
-    background: `linear-gradient(to right, #1f2937 0%, #1f2937 ${pct}%, #e5e7eb ${pct}%, #e5e7eb 100%)`,
+    background: `linear-gradient(to right, ${filledColor} 0%, ${filledColor} ${pct}%, #e5e7eb ${pct}%, #e5e7eb 100%)`,
+    ["--slider-thumb-bg" as string]: filledColor,
   };
 
   const displayValue = step < 1 ? value.toFixed(2) : String(Math.round(value));
@@ -68,12 +83,12 @@ export function Slider({
             "[&::-webkit-slider-thumb]:appearance-none",
             "[&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4",
             "[&::-webkit-slider-thumb]:rounded-full",
-            "[&::-webkit-slider-thumb]:bg-gray-800",
+            "[&::-webkit-slider-thumb]:bg-[var(--slider-thumb-bg)]",
             "[&::-webkit-slider-thumb]:cursor-pointer",
             "[&::-webkit-slider-thumb]:shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]",
             "[&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4",
             "[&::-moz-range-thumb]:rounded-full",
-            "[&::-moz-range-thumb]:bg-gray-800",
+            "[&::-moz-range-thumb]:bg-[var(--slider-thumb-bg)]",
             "[&::-moz-range-thumb]:border-0",
             "[&::-moz-range-thumb]:cursor-pointer",
             disabled ? "opacity-50 cursor-not-allowed [&::-webkit-slider-thumb]:cursor-not-allowed" : "",
