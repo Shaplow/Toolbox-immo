@@ -1,36 +1,30 @@
 "use client";
 
 /**
- * Pagination — navigation entre pages d'une liste/table.
+ * Pagination — pill glass flottante signature macOS Sonoma.
  *
  * Doctrine Liquid Glass v2 :
- * - Boutons : First / Prev / [pages] / Next / Last
- * - Pages courantes en mini-card glass tinted sky pour la page active.
- * - Ellipsis entre pages très éloignées de la courante.
- * - Density Linear : h-7 buttons, text-[12px].
+ * - Container rounded-full glass-strong + ring inset signature + halo
+ *   extérieur diffus (le pill flotte au-dessus du contenu).
+ * - Boutons ronds (h-7 w-7) sans border, inline dans le pill.
+ * - Page active : bulle blanche pressée — gradient + ring inset spéculaire
+ *   + ombre proche (effet "enfoncée dans le verre").
+ * - Pages voisines : transparent, hover white/50 + ring inset subtle.
+ * - First / Prev / Next / Last : chevrons compacts en début/fin du pill.
+ * - Ellipsis stylisée centrée verticalement.
  *
- * Algorithme d'affichage des pages :
- * - Toujours montrer la première et la dernière.
- * - Toujours montrer la courante ± 1.
- * - Combler avec "…" si trous.
- *
- * Optionnel : afficher le résumé "X-Y sur Z" à gauche (via `showRange`).
+ * showRange : affiche "X–Y sur Z" en dehors du pill (gauche), pour pied
+ * de table.
  */
 
 import { ChevronFirst, ChevronLeft, ChevronRight, ChevronLast } from "lucide-react";
-import { ButtonIcon } from "./ButtonIcon";
 
 interface PaginationProps {
-  /** Page courante (1-indexed). */
   page: number;
-  /** Nombre total d'items. */
   total: number;
-  /** Items par page. */
   pageSize: number;
   onPageChange: (page: number) => void;
-  /** Affiche le résumé "X-Y sur Z" à gauche. */
   showRange?: boolean;
-  /** Nombre de pages voisines visibles autour de la courante. Default 1. */
   siblingCount?: number;
   className?: string;
 }
@@ -78,37 +72,128 @@ export function Pagination({
           {total === 0 ? "Aucun résultat" : `${rangeStart}–${rangeEnd} sur ${total}`}
         </p>
       )}
-      <div className={["flex items-center gap-1", showRange ? "ml-auto" : ""].filter(Boolean).join(" ")}>
-        <ButtonIcon icon={ChevronFirst} label="Première page" variant="ghost" size="sm" disabled={isFirst} onClick={() => onPageChange(1)} />
-        <ButtonIcon icon={ChevronLeft} label="Page précédente" variant="ghost" size="sm" disabled={isFirst} onClick={() => onPageChange(safePage - 1)} />
-        <ol className="flex items-center gap-0.5 mx-1">
+
+      {/* Pill flottante glass-strong */}
+      <div
+        className={[
+          "inline-flex items-center gap-0.5 rounded-full p-1",
+          "bg-gradient-to-b from-white/80 to-white/55 backdrop-blur-[20px] backdrop-saturate-150",
+          "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.05),0_2px_6px_-1px_rgba(15,23,42,0.08),0_12px_28px_-8px_rgba(15,23,42,0.18)]",
+          showRange ? "ml-auto" : "",
+        ].filter(Boolean).join(" ")}
+        role="navigation"
+        aria-label="Pagination"
+      >
+        <PillNavButton
+          icon={ChevronFirst}
+          label="Première page"
+          disabled={isFirst}
+          onClick={() => onPageChange(1)}
+        />
+        <PillNavButton
+          icon={ChevronLeft}
+          label="Page précédente"
+          disabled={isFirst}
+          onClick={() => onPageChange(safePage - 1)}
+        />
+
+        <ol className="flex items-center gap-0.5 mx-0.5">
           {pages.map((p, i) =>
             p === "ellipsis" ? (
-              <li key={`ellipsis-${i}`} className="px-1 text-[12px] text-gray-400 select-none">
+              <li
+                key={`ellipsis-${i}`}
+                className="inline-flex items-center justify-center h-7 w-5 text-[12px] text-gray-400 select-none"
+                aria-hidden
+              >
                 …
               </li>
             ) : (
               <li key={p}>
-                <button
-                  type="button"
+                <PillPageButton
+                  page={p}
+                  active={p === safePage}
                   onClick={() => onPageChange(p)}
-                  aria-current={p === safePage ? "page" : undefined}
-                  className={[
-                    "inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-md text-[12px] font-medium tabular-nums transition-all focus-ring",
-                    p === safePage
-                      ? "bg-sky-50/65 text-sky-700 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.32)]"
-                      : "text-gray-600 hover:bg-white/60 hover:text-gray-950 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
-                  ].join(" ")}
-                >
-                  {p}
-                </button>
+                />
               </li>
             )
           )}
         </ol>
-        <ButtonIcon icon={ChevronRight} label="Page suivante" variant="ghost" size="sm" disabled={isLast} onClick={() => onPageChange(safePage + 1)} />
-        <ButtonIcon icon={ChevronLast} label="Dernière page" variant="ghost" size="sm" disabled={isLast} onClick={() => onPageChange(totalPages)} />
+
+        <PillNavButton
+          icon={ChevronRight}
+          label="Page suivante"
+          disabled={isLast}
+          onClick={() => onPageChange(safePage + 1)}
+        />
+        <PillNavButton
+          icon={ChevronLast}
+          label="Dernière page"
+          disabled={isLast}
+          onClick={() => onPageChange(totalPages)}
+        />
       </div>
     </div>
+  );
+}
+
+// ─── Boutons internes ──────────────────────────────────────────────────────
+
+function PillNavButton({
+  icon: Icon,
+  label,
+  disabled,
+  onClick,
+}: {
+  icon: typeof ChevronFirst;
+  label: string;
+  disabled?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={[
+        "inline-flex items-center justify-center h-7 w-7 rounded-full text-gray-500 transition-all focus-ring",
+        "hover:bg-white/60 hover:text-gray-950 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
+        "disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-500 disabled:hover:shadow-none",
+      ].join(" ")}
+    >
+      <Icon size={14} />
+    </button>
+  );
+}
+
+function PillPageButton({ page, active, onClick }: { page: number; active: boolean; onClick: () => void }) {
+  if (active) {
+    return (
+      <button
+        type="button"
+        aria-current="page"
+        className={[
+          "inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-full text-[12px] font-semibold tabular-nums text-gray-950 transition-all focus-ring",
+          // Bulle blanche "enfoncée" : gradient blanc + ring inset spéculaire + ombre proche.
+          "bg-gradient-to-b from-white to-white/85",
+          "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.55),inset_0_-1px_0_rgba(15,23,42,0.1),0_2px_4px_rgba(15,23,42,0.08)]",
+        ].join(" ")}
+      >
+        {page}
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-full text-[12px] font-medium tabular-nums text-gray-600 transition-all focus-ring",
+        "hover:bg-white/55 hover:text-gray-950 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
+      ].join(" ")}
+    >
+      {page}
+    </button>
   );
 }

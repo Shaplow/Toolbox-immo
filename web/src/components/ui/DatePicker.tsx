@@ -1,19 +1,22 @@
 "use client";
 
 /**
- * DatePicker — sélecteur de date wrappé autour de `<input type="date">`.
+ * DatePicker — sélecteur de date format "ticket calendrier".
  *
- * Doctrine Liquid Glass v2 :
- * - Look identique à Input default (bg sky-50/40 + ring inset + halo focus).
- * - Native picker du navigateur pour la sélection (zero-dep, a11y maximale).
- * - Format affiché : YYYY-MM-DD (HTML standard).
- * - Pour un picker calendrier custom plus riche, voir Phase 4 (TBD).
+ * Doctrine Liquid Glass v2 — signature DA :
+ * - Bandeau peach vertical à gauche (matière chaude signature).
+ * - Bloc JOUR (semibold 18px tabular).
+ * - Bloc MOIS / ANNÉE (11px gray, 2 lignes).
+ * - Chevron à droite (indique sélecteur natif).
+ * - Click n'importe où ouvre le picker natif (input opacity-0 en overlay).
  *
- * Props : value (ISO string YYYY-MM-DD), onChange, min?, max?.
+ * Native picker du navigateur → zero dep, a11y maximale, fonctionne offline.
+ *
+ * Props : value (ISO YYYY-MM-DD), onChange, min?, max?, error?, placeholder?.
  */
 
-import type { InputHTMLAttributes } from "react";
-import { Calendar } from "lucide-react";
+import { useRef, type InputHTMLAttributes } from "react";
+import { ChevronDown } from "lucide-react";
 
 interface DatePickerProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "value" | "onChange"> {
   value: string;
@@ -21,6 +24,21 @@ interface DatePickerProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "t
   min?: string;
   max?: string;
   error?: string;
+  /** Placeholder affiché si value est vide. Default "Choisir une date". */
+  placeholder?: string;
+}
+
+const MONTHS_FR_SHORT = ["jan", "fév", "mar", "avr", "mai", "juin", "juil", "aoû", "sep", "oct", "nov", "déc"];
+
+function parseISODate(iso: string): { day: string; month: string; year: string } | null {
+  if (!iso) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return null;
+  const year = m[1];
+  const monthIdx = parseInt(m[2], 10) - 1;
+  const day = m[3];
+  if (monthIdx < 0 || monthIdx > 11) return null;
+  return { day, month: MONTHS_FR_SHORT[monthIdx], year };
 }
 
 export function DatePicker({
@@ -29,26 +47,71 @@ export function DatePicker({
   min,
   max,
   error,
-  className,
+  placeholder = "Choisir une date",
   disabled,
+  className,
   ...rest
 }: DatePickerProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const parsed = parseISODate(value);
+
   const wrapperBase =
-    "group/dp flex items-center gap-2 w-full h-8 rounded-md px-2.5 transition-colors";
+    "relative inline-flex items-stretch h-12 w-fit min-w-[12rem] rounded-lg overflow-hidden transition-all cursor-pointer";
   const wrapperBg =
-    "bg-sky-50/40 backdrop-blur-[10px] backdrop-saturate-150";
+    "bg-gradient-to-b from-white to-white/85 backdrop-blur-[12px] backdrop-saturate-150";
   const wrapperState = error
-    ? "shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(220,38,38,0.55),0_1px_2px_rgba(220,38,38,0.1)] focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(220,38,38,0.7),0_0_0_3px_rgba(220,38,38,0.2)]"
-    : "shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.08)] hover:bg-sky-50/55 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.12)] focus-within:bg-sky-50/65 focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.45),0_0_0_3px_rgba(169,209,230,0.4)]";
+    ? "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(220,38,38,0.55),0_1px_2px_rgba(220,38,38,0.1)] focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(220,38,38,0.7),0_0_0_3px_rgba(220,38,38,0.2)]"
+    : "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1),inset_0_-1px_0_rgba(15,23,42,0.05),0_1px_3px_rgba(15,23,42,0.06)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.16),inset_0_-1px_0_rgba(15,23,42,0.06),0_2px_6px_rgba(15,23,42,0.08)] focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(245,158,107,0.4),0_0_0_3px_rgba(255,208,168,0.45)]";
   const wrapperDisabled = disabled ? "opacity-60 cursor-not-allowed" : "";
 
   return (
-    <label className={[wrapperBase, wrapperBg, wrapperState, wrapperDisabled, className ?? ""].filter(Boolean).join(" ")}>
-      <Calendar
-        size={14}
-        className="shrink-0 text-gray-400 group-focus-within/dp:text-gray-700 transition-colors"
+    <label
+      className={[wrapperBase, wrapperBg, wrapperState, wrapperDisabled, className ?? ""].filter(Boolean).join(" ")}
+    >
+      {/* Bandeau peach signature à gauche. */}
+      <span
+        className="shrink-0 w-1.5 bg-gradient-to-b from-peach-200 to-peach-500 shadow-[inset_-1px_0_0_rgba(15,23,42,0.04)]"
+        aria-hidden
       />
+
+      {/* Bloc JOUR */}
+      <span className="shrink-0 flex flex-col items-center justify-center px-3 min-w-[2.5rem]">
+        {parsed ? (
+          <span className="text-[18px] font-semibold tracking-tight text-gray-950 leading-none tabular-nums">
+            {parsed.day}
+          </span>
+        ) : (
+          <span className="text-[14px] text-gray-400 leading-none">—</span>
+        )}
+      </span>
+
+      {/* Divider subtle */}
+      <span className="self-stretch w-px bg-gray-200/50 my-2" aria-hidden />
+
+      {/* Bloc MOIS / ANNÉE */}
+      <span className="flex-1 flex flex-col items-start justify-center px-3 min-w-[3rem]">
+        {parsed ? (
+          <>
+            <span className="text-[12px] font-semibold uppercase tracking-widest text-gray-800 leading-none">
+              {parsed.month}
+            </span>
+            <span className="text-[10px] text-gray-500 mt-1 leading-none tabular-nums">
+              {parsed.year}
+            </span>
+          </>
+        ) : (
+          <span className="text-[12px] text-gray-400 leading-none">{placeholder}</span>
+        )}
+      </span>
+
+      {/* Chevron indicator */}
+      <span className="shrink-0 flex items-center justify-center pr-3 pl-1.5 text-gray-400 group-focus-within:text-gray-700 transition-colors">
+        <ChevronDown size={14} />
+      </span>
+
+      {/* Input natif overlay — opacity 0, full-area pour click partout. */}
       <input
+        ref={inputRef}
         type="date"
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -56,7 +119,7 @@ export function DatePicker({
         max={max}
         disabled={disabled}
         aria-invalid={error ? true : undefined}
-        className="flex-1 min-w-0 bg-transparent text-[13px] text-gray-950 placeholder:text-gray-400 outline-none [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+        className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-not-allowed"
         {...rest}
       />
     </label>
