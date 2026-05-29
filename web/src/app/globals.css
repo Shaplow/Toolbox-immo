@@ -15,46 +15,37 @@ html {
   /* ── Fonts ─────────────────────────────────────────────────────────────── */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  /* Serif éditoriale (Instrument Serif) pour les hero titles et display
-     marketing. Donne le côté studio créatif vs purement tech. Usage
-     chirurgical : titres hero + pull quotes uniquement. */
+  /* Réservées MARKETING ONLY — landing pages, hero éditoriaux. JAMAIS en
+     UI courante (dashboards, fiches, panneaux, formulaires). */
   --font-serif: var(--font-display-serif);
-  /* Signature handmade (Caveat) — accents signature style Excalidraw.
-     Usage chirurgical : logo, badges "Astuce", eyebrow décoratif,
-     légendes de schémas. JAMAIS en body ni UI fonctionnelle.
-     Accessible via `font-hand` utility. */
   --font-hand: var(--font-caveat);
 
-  /* ── Couleurs sémantiques (en plus de la palette Tailwind par défaut) ──── */
+  /* ── Couleurs sémantiques ──────────────────────────────────────────────── */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
 
-  /* Accent sémantique : succès (vert sobre type Vercel) */
+  /* Succès : validations, statuts OK */
   --color-success-50:  #f0fdf4;
   --color-success-100: #dcfce7;
   --color-success-600: #16a34a;
   --color-success-700: #15803d;
 
-  /* Accent sémantique : danger */
+  /* Danger : suppression, erreurs */
   --color-danger-50:   #fef2f2;
   --color-danger-100:  #fee2e2;
   --color-danger-600:  #dc2626;
   --color-danger-700:  #b91c1c;
 
-  /* Accent sémantique : info (bleu Vercel) */
+  /* Info : annotations neutres, hints */
   --color-info-50:     #eff6ff;
   --color-info-100:    #dbeafe;
   --color-info-600:    #2563eb;
   --color-info-700:    #1d4ed8;
 
-  /* ── Brand — couleur signature de l'agence ──────────────────────────────
-     Orange-corail mature : chaleur agence créative + premium (pas pop kid).
-     Réservée :
-       - CTA principal (primary brand)
-       - Liens narratifs / navigation principale
-       - Highlights marketing (badges "Nouveau", eyebrow, etc.)
-     Ne JAMAIS utiliser pour des signaux sémantiques (succès/erreur/info)
-     — c'est la couleur "Toolbox", pas un statut. */
+  /* ── Brand — orange signature ──────────────────────────────────────────
+     Usage strictement chirurgical : logo Toolbox + 1 dot indicateur dans
+     la nav. JAMAIS en CTA, JAMAIS en focus ring, JAMAIS en hover ou
+     accent partout. C'est sa rareté qui le rend mémorable. */
   --color-brand-50:   #fff4ed;
   --color-brand-100:  #ffe3d0;
   --color-brand-500:  #ff7a3c;
@@ -62,11 +53,10 @@ html {
   --color-brand-700:  #e04210;
   --color-brand-900:  #9c2b06;
 
-  /* ── Animations ─────────────────────────────────────────────────────────── */
-  /* Easing principal — smooth spring-like, jamais de bounce */
+  /* ── Animations ─────────────────────────────────────────────────────────
+     Easing unique, durations sémantiques. Privilégier opacity/scale,
+     jamais de slide ni de bounce. */
   --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
-
-  /* Durations sémantiques */
   --duration-fast: 150ms;
   --duration-base: 200ms;
   --duration-slow: 350ms;
@@ -75,51 +65,30 @@ html {
   --default-transition-duration: 200ms;
   --default-transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* ── Ombres ─────────────────────────────────────────────────────────────── */
+  /* ── Ombres UI ──────────────────────────────────────────────────────────
+     Sobres, dédiées aux overlays. Pas de glow coloré ni de halo brand. */
   --shadow-overlay: 0 1px 0 rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
   --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.08);
-
-  /* Card subtile pour les surfaces marketing (photos, hero, CTA cards) */
   --shadow-card-elevated: 0 4px 20px rgba(0, 0, 0, 0.04), 0 2px 6px rgba(0, 0, 0, 0.04);
 
-  /* Halo de focus / hover sur les CTA brand — donne le "peps" */
-  --shadow-glow-brand: 0 0 0 4px rgba(255, 90, 31, 0.12);
-  --shadow-glow-brand-strong: 0 0 0 5px rgba(255, 90, 31, 0.18), 0 6px 24px rgba(255, 90, 31, 0.18);
-
-  /* Focus rings — MONO DARK par défaut (cohérent avec la doctrine
-     "brand jamais en UI courante"). L'orange reste uniquement dans
-     --shadow-glow-brand pour les CTA brand explicites.
-     Utiliser via la classe utility `focus-ring` (cf. bas du fichier). */
+  /* Focus rings — mono dark partout dans l'UI. */
   --shadow-focus-ring: 0 0 0 3px rgba(10, 10, 10, 0.14);
   --shadow-focus-ring-danger: 0 0 0 3px rgba(220, 38, 38, 0.22);
-  /* Variant brand — réservé aux CTA brand (Button variant="brand"). */
-  --shadow-focus-ring-brand: 0 0 0 3px rgba(255, 90, 31, 0.22);
 
-  /* ── Gradients marketing ───────────────────────────────────────────────── */
-  /* Wash subtil pour les heros / sections de mise en avant (warm) */
-  --gradient-hero: linear-gradient(135deg, rgba(255, 90, 31, 0.06) 0%, rgba(255, 122, 60, 0.02) 100%);
-  /* Wash neutre pour les sections secondaires */
-  --gradient-subtle: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
-
-  /* ── Gradient primary (CTA Button variant=primary) ─────────────────────
-     Diagonale Instagram-style — orange-amber → rose magenta → violet.
-     C'est le "peps signature" du primary qui distingue les actions
-     principales de l'app du noir flat. */
-  --gradient-primary: linear-gradient(135deg, #fcaf45 0%, #e1306c 50%, #833ab4 100%);
-  --gradient-primary-hover: linear-gradient(135deg, #f59e0b 0%, #be185d 50%, #6b21a8 100%);
-  --shadow-glow-primary: 0 0 0 3px rgba(225, 48, 108, 0.12), 0 4px 16px rgba(131, 58, 180, 0.18);
-  --shadow-glow-primary-strong: 0 0 0 4px rgba(225, 48, 108, 0.18), 0 6px 24px rgba(131, 58, 180, 0.25);
-
-  /* ── Texture grain ───────────────────────────────────────────────────────
-     Noise SVG très subtil — donne le côté "matière" magazine sans
-     polluer la lecture. Utiliser avec opacity ≤ 0.6 sur les heros. */
-  --texture-grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='1'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.18 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-
-  /* ── Radius — sharp, peu de rondeur ─────────────────────────────────────── */
+  /* ── Radius — sharp, peu de rondeur ─────────────────────────────────────
+     L'app UI utilise sm/md/lg. Tailwind 2xl et full restent autorisés
+     pour modals (2xl) et pills/avatars (full). */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-xl: 10px;
+
+  /* ── Tokens MARKETING ONLY ──────────────────────────────────────────────
+     Réservés aux landing pages futures et aux hero éditoriaux. JAMAIS
+     en UI d'équipe courante. Documenté dans `/playground/marketing`. */
+  --gradient-hero: linear-gradient(135deg, rgba(255, 90, 31, 0.06) 0%, rgba(255, 122, 60, 0.02) 100%);
+  --gradient-subtle: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+  --texture-grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='1'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.18 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
 body {
@@ -147,8 +116,7 @@ textarea::placeholder {
 
 /* ── Focus ring utilities ────────────────────────────────────────────────
    `focus-ring`         — mono dark (default partout dans l'UI).
-   `focus-ring-danger`  — variant erreur (input invalide).
-   `focus-ring-brand`   — variant brand (CTA orange uniquement). */
+   `focus-ring-danger`  — variant erreur (input invalide). */
 .focus-ring:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus-ring);
@@ -156,8 +124,4 @@ textarea::placeholder {
 .focus-ring-danger:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus-ring-danger);
-}
-.focus-ring-brand:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus-ring-brand);
 }
