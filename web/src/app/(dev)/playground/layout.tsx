@@ -56,7 +56,7 @@ export default function PlaygroundLayout({ children }: { children: ReactNode }) 
       </header>
       <div className="mx-auto max-w-[1400px] grid lg:grid-cols-[260px_minmax(0,1fr)]">
         <PlaygroundSidebar />
-        <main className="px-8 py-10 lg:py-12 lg:pr-12 lg:pl-2 min-w-0">{children}</main>
+        <main className="px-8 pt-10 pb-32 lg:pt-12 lg:pb-40 lg:pr-12 lg:pl-2 min-w-0">{children}</main>
       </div>
     </div>
   );

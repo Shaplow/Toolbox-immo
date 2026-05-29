@@ -68,13 +68,13 @@ export function Sheet({
 
   const panelCls =
     style === "solid"
-      ? "bg-white shadow-[var(--shadow-modal)] border-t border-gray-200"
-      : "bg-[var(--surface-glass-strong)] backdrop-blur-[24px] backdrop-saturate-150 shadow-[var(--shadow-glass-lg),var(--ring-glass-inset)]";
+      ? "bg-white shadow-[var(--shadow-modal),0_24px_64px_-16px_rgba(15,23,42,0.18)] border-t border-gray-200"
+      : "bg-gradient-to-b from-white to-white/85 backdrop-blur-[24px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_-8px_24px_-4px_rgba(15,23,42,0.12),0_-32px_72px_-12px_rgba(15,23,42,0.22)]";
 
   return (
     <>
       <div
-        className="fixed inset-0 bg-[var(--scrim-dark)] backdrop-blur-[4px]"
+        className="fixed inset-0 backdrop-blur-[12px] backdrop-saturate-110"
         style={{ zIndex }}
         onClick={dismissOnBackdrop ? onClose : undefined}
         aria-hidden

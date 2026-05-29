@@ -54,7 +54,7 @@ export function ConfirmDialog({
   return (
     <>
       <div
-        className="fixed inset-0 bg-[var(--scrim-dark)] backdrop-blur-[4px] z-40"
+        className="fixed inset-0 backdrop-blur-[12px] backdrop-saturate-110 z-40"
         onClick={onCancel}
         aria-hidden="true"
       />
@@ -64,7 +64,7 @@ export function ConfirmDialog({
         aria-labelledby="confirm-dialog-title"
         className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none"
       >
-        <div className="bg-[var(--surface-glass-strong)] backdrop-blur-[24px] backdrop-saturate-150 rounded-xl shadow-[var(--shadow-glass-lg),var(--ring-glass-inset)] w-full max-w-md pointer-events-auto overflow-hidden">
+        <div className="bg-gradient-to-b from-white to-white/85 backdrop-blur-[24px] backdrop-saturate-150 rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_8px_24px_-4px_rgba(15,23,42,0.12),0_32px_72px_-12px_rgba(15,23,42,0.22)] w-full max-w-md pointer-events-auto overflow-hidden">
           <div className="px-5 pt-5 pb-3">
             <h2
               id="confirm-dialog-title"

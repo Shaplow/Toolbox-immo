@@ -38,7 +38,7 @@ export function PlaygroundSidebar() {
   }, [activeAnchorId, pathname]);
 
   return (
-    <aside className="sticky top-16 hidden lg:block max-h-[calc(100vh-4rem)] overflow-y-auto pl-8 pr-4 py-8 [scrollbar-width:thin]">
+    <aside className="sticky top-16 hidden lg:block max-h-[calc(100vh-4rem)] overflow-y-auto pl-8 pr-4 pt-8 pb-24 [scrollbar-width:thin]">
       <nav className="space-y-7 text-[13px]">
         {NAV.map((section) => (
           <div key={section.label} className="space-y-1.5">
