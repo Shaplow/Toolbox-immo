@@ -11,6 +11,10 @@ import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { DeleteButton } from "@/components/ui/DeleteButton";
+import { toast } from "@/components/ui/Toast";
 import { HandDrawn } from "@/components/ui/decor/HandDrawn";
 import {
   ArrowRight,
@@ -29,6 +33,8 @@ import {
   Download,
   Check,
   Send,
+  FileText,
+  Layers,
 } from "lucide-react";
 
 export default function PrimitivesPage() {
@@ -37,6 +43,8 @@ export default function PrimitivesPage() {
   const [emailError, setEmailError] = useState("Format invalide.");
   const [search, setSearch] = useState("");
   const [caption, setCaption] = useState("Un appartement plein de charme, vue dégagée sur le parc.");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmDangerOpen, setConfirmDangerOpen] = useState(false);
 
   return (
     <div className="space-y-12">
@@ -245,6 +253,102 @@ export default function PrimitivesPage() {
               </li>
             ))}
           </ul>
+        </div>
+      </section>
+
+      {/* ── EmptyState ─────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="EmptyState"
+          subtitle="Icône wrapper + titre + description + CTA optionnel. Pour les empty states signature (Caveat + Check handdraw), construire le markup directement chez le consommateur — section ci-dessous."
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <EmptyState
+            icon={FileText}
+            title="Aucun template disponible"
+            description="Crée un template pour commencer à générer des publications automatiquement."
+            cta={{ label: "Nouveau template", onClick: () => toast.info("Click sur CTA") }}
+          />
+          <EmptyState
+            icon={Layers}
+            title="Aucune bibliothèque"
+            description="Les bibliothèques permettent de réutiliser des médias entre comptes."
+          />
+        </div>
+      </section>
+
+      {/* ── ConfirmDialog + DeleteButton ───────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="ConfirmDialog · DeleteButton"
+          subtitle="Modal de confirmation centrée, ESC pour fermer, autofocus sur Confirmer. DeleteButton = icône Trash + dialog danger sous-jacent."
+        />
+        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-3">
+          <Eyebrow>Ouvrir un dialog</Eyebrow>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" onClick={() => setConfirmOpen(true)}>
+              Confirmer une action
+            </Button>
+            <Button variant="secondary" onClick={() => setConfirmDangerOpen(true)}>
+              Confirmer une action destructive
+            </Button>
+            <span className="text-[12px] text-gray-500 inline-flex items-center gap-2">
+              DeleteButton inline →
+              <DeleteButton
+                itemLabel="ce slot"
+                onConfirm={() => toast.success("Slot supprimé.")}
+              />
+            </span>
+          </div>
+        </div>
+        <ConfirmDialog
+          open={confirmOpen}
+          title="Marquer ce slot comme publié ?"
+          description="Le slot passera en statut Publié et apparaîtra dans la home des CM."
+          confirmLabel="Marquer publié"
+          onConfirm={() => {
+            toast.success("Slot marqué publié.");
+            setConfirmOpen(false);
+          }}
+          onCancel={() => setConfirmOpen(false)}
+        />
+        <ConfirmDialog
+          open={confirmDangerOpen}
+          variant="danger"
+          title="Supprimer cette publication ?"
+          description="Cette action est irréversible. Le slot, ses versions, brief et rushes seront supprimés."
+          confirmLabel="Supprimer définitivement"
+          onConfirm={() => {
+            toast.success("Publication supprimée.");
+            setConfirmDangerOpen(false);
+          }}
+          onCancel={() => setConfirmDangerOpen(false)}
+        />
+      </section>
+
+      {/* ── Toast ──────────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="Toast"
+          subtitle="Feedback transient. Trois types sémantiques (success, error, info) avec icône colorée + texte mono. Auto-dismiss 4s, click pour fermer."
+        />
+        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-3">
+          <Eyebrow>Déclencher un toast</Eyebrow>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" onClick={() => toast.success("Slot créé avec succès.")}>
+              toast.success
+            </Button>
+            <Button variant="secondary" onClick={() => toast.error("Échec : le compte n'existe plus.")}>
+              toast.error
+            </Button>
+            <Button variant="secondary" onClick={() => toast.info("Synchronisation en cours…")}>
+              toast.info
+            </Button>
+          </div>
+          <p className="text-[11px] text-gray-500 leading-relaxed">
+            Les toasts apparaissent en bas à droite. Container monté dans le
+            RootLayout — pas besoin de l&apos;importer manuellement.
+          </p>
         </div>
       </section>
 

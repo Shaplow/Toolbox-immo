@@ -1,7 +1,21 @@
-﻿"use client";
+"use client";
 
 import { create } from "zustand";
-import { useEffect } from "react";
+import { CheckCircle2, XCircle, Info, X } from "lucide-react";
+
+/**
+ * Système de toasts — feedback transient pour les actions utilisateur.
+ *
+ * - 3 types : success / error / info (sémantique uniquement).
+ * - Style aligné doctrine : monochrome avec icône sémantique colorée,
+ *   shadow-overlay, rounded-md, density Linear.
+ * - Auto-dismiss après 4s. Click pour fermer immédiatement.
+ * - Affiché via <ToastContainer /> en bas à droite (déjà inclus dans
+ *   le RootLayout).
+ *
+ * Usage : `toast.success("Slot créé.")` / `toast.error("Échec.")` /
+ *         `toast.info("Synchronisation en cours…")`.
+ */
 
 export type ToastType = "success" | "error" | "info";
 
@@ -20,9 +34,8 @@ interface ToastStore {
 export const useToastStore = create<ToastStore>()((set) => ({
   toasts: [],
   add: (message, type = "info") => {
-    const id = String(Date.now());
+    const id = String(Date.now()) + Math.random().toString(36).slice(2, 6);
     set((s) => ({ toasts: [...s.toasts, { id, message, type }] }));
-    // Auto-dismiss after 4 seconds
     setTimeout(() => {
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
     }, 4000);
@@ -30,42 +43,48 @@ export const useToastStore = create<ToastStore>()((set) => ({
   remove: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));
 
-/** Convenience helpers */
 export const toast = {
   success: (msg: string) => useToastStore.getState().add(msg, "success"),
-  error: (msg: string) => useToastStore.getState().add(msg, "error"),
-  info: (msg: string) => useToastStore.getState().add(msg, "info"),
+  error:   (msg: string) => useToastStore.getState().add(msg, "error"),
+  info:    (msg: string) => useToastStore.getState().add(msg, "info"),
 };
 
-const TYPE_STYLES: Record<ToastType, string> = {
-  success: "bg-emerald-600 text-white",
-  error: "bg-red-600 text-white",
-  info: "bg-gray-800 text-white",
+const TYPE_ICON = {
+  success: CheckCircle2,
+  error:   XCircle,
+  info:    Info,
+};
+
+const TYPE_ICON_CLS = {
+  success: "text-success-600",
+  error:   "text-danger-600",
+  info:    "text-info-600",
 };
 
 function ToastItem({ item, onRemove }: { item: ToastItem; onRemove: () => void }) {
-  useEffect(() => {
-    // Allow click to dismiss
-  }, []);
-
+  const Icon = TYPE_ICON[item.type];
   return (
     <div
-      className={`flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg text-sm max-w-sm cursor-pointer ${TYPE_STYLES[item.type]}`}
+      className="flex items-start gap-2.5 px-3 py-2.5 rounded-md shadow-[var(--shadow-overlay)] bg-white border border-gray-200 text-[13px] max-w-sm cursor-pointer text-gray-950"
       onClick={onRemove}
       role="alert"
     >
-      <span className="flex-1">{item.message}</span>
-      <button className="opacity-70 hover:opacity-100 ml-1 leading-none text-base">×</button>
+      <Icon size={15} className={`${TYPE_ICON_CLS[item.type]} shrink-0 mt-0.5`} />
+      <span className="flex-1 leading-relaxed">{item.message}</span>
+      <button
+        className="text-gray-400 hover:text-gray-700 shrink-0 mt-0.5"
+        aria-label="Fermer"
+      >
+        <X size={13} />
+      </button>
     </div>
   );
 }
 
-/** Drop this in your root layout once */
+/** Drop this in your root layout once. */
 export function ToastContainer() {
   const { toasts, remove } = useToastStore();
-
   if (toasts.length === 0) return null;
-
   return (
     <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-2">
       {toasts.map((t) => (

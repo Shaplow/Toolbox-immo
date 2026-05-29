@@ -2,13 +2,18 @@
 
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
-import { Button } from "./Button";
+import { ButtonIcon } from "./ButtonIcon";
 import { ConfirmDialog } from "./ConfirmDialog";
 
+/**
+ * Bouton de suppression — icône Trash + ConfirmDialog danger.
+ *
+ * Pattern courant pour les suppressions inline (rows hover, toolbars).
+ * Utilise ButtonIcon variant="danger" qui devient rouge au hover.
+ */
 interface DeleteButtonProps {
   /** Label de l'élément ciblé, ex: "ce client", "cette recette" */
   itemLabel: string;
-  /** Message affiché sous le titre du dialog. Défaut : "Cette action est irréversible." */
   description?: string;
   onConfirm: () => void | Promise<void>;
   size?: "sm" | "md";
@@ -19,7 +24,7 @@ export function DeleteButton({
   itemLabel,
   description = "Cette action est irréversible.",
   onConfirm,
-  size = "sm",
+  size = "md",
   loading = false,
 }: DeleteButtonProps) {
   const [open, setOpen] = useState(false);
@@ -34,16 +39,13 @@ export function DeleteButton({
 
   return (
     <>
-      <Button
-        variant="ghost"
+      <ButtonIcon
+        icon={Trash2}
+        label={`Supprimer ${itemLabel}`}
+        variant="danger"
         size={size}
         onClick={() => setOpen(true)}
-        icon={Trash2}
-        className="text-gray-400 hover:text-red-600"
-        title={`Supprimer ${itemLabel}`}
-      >
-        <span className="sr-only">Supprimer</span>
-      </Button>
+      />
       <ConfirmDialog
         open={open}
         variant="danger"

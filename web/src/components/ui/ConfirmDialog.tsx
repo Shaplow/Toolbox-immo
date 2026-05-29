@@ -3,11 +3,19 @@
 import { useEffect, useRef } from "react";
 import { Button } from "./Button";
 
+/**
+ * Modal de confirmation avec focus trap léger + ESC.
+ *
+ * - Overlay z-40 (sous le dialog mais au-dessus du header sticky).
+ * - Dialog z-50, centré, max-w-md, rounded-xl, shadow-modal.
+ * - Autofocus sur "Confirmer".
+ * - Variant `danger` → bouton de confirmation rouge sémantique.
+ */
 interface ConfirmDialogProps {
   open: boolean;
   title: string;
   description: string;
-  /** Contenu additionnel rendu entre la description et les boutons (ex: textarea). */
+  /** Contenu additionnel entre la description et les boutons (ex: textarea). */
   children?: React.ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
@@ -31,7 +39,6 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const confirmRef = useRef<HTMLButtonElement>(null);
 
-  // Autofocus sur "Confirmer" à l'ouverture + ESC pour fermer
   useEffect(() => {
     if (!open) return;
     confirmRef.current?.focus();
@@ -46,34 +53,34 @@ export function ConfirmDialog({
 
   return (
     <>
-      {/* Overlay — z-40 pour rester sous le dialog mais au-dessus du header sticky */}
       <div
-        className="fixed inset-0 bg-black/40 z-40"
+        className="fixed inset-0 bg-gray-950/40 z-40"
         onClick={onCancel}
         aria-hidden="true"
       />
-      {/* Dialog — z-50 */}
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none"
       >
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md pointer-events-auto overflow-hidden">
-          <div className="px-6 pt-6 pb-3">
+        <div className="bg-white rounded-xl shadow-[var(--shadow-modal)] w-full max-w-md pointer-events-auto overflow-hidden">
+          <div className="px-5 pt-5 pb-3">
             <h2
               id="confirm-dialog-title"
-              className="text-base font-semibold text-gray-900 mb-1"
+              className="text-sm font-semibold text-gray-950 mb-1"
             >
               {title}
             </h2>
-            <p className="text-sm text-gray-600">{description}</p>
+            <p className="text-[13px] text-gray-600 leading-relaxed">
+              {description}
+            </p>
             {children}
           </div>
-          <div className="flex items-center justify-end gap-2 px-6 py-4 bg-gray-50 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-2 px-5 py-3 bg-gray-50 border-t border-gray-100">
             <Button
               variant="secondary"
-              size="md"
+              size="sm"
               onClick={onCancel}
               disabled={loading}
             >
@@ -82,7 +89,7 @@ export function ConfirmDialog({
             <Button
               ref={confirmRef}
               variant={variant === "danger" ? "danger" : "primary"}
-              size="md"
+              size="sm"
               loading={loading}
               onClick={() => {
                 void onConfirm();
