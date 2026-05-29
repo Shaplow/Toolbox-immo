@@ -1,22 +1,42 @@
 "use client";
 
+/**
+ * ProductionChain — visualisation des steps de la fiche publication.
+ *
+ * UX décisions Phase 3 (migration ui-boost) :
+ * - Palette ramenée de 6 couleurs (indigo next + green done + red failed
+ *   + yellow processing/queued + purple blocked + gray todo) à 4 :
+ *   gray-950 (next, mono dark — sélection doctrine) + success done +
+ *   danger failed + default todo/queued/processing. "Blocked" hors
+ *   doctrine purple → danger soft.
+ * - Cards passent en bg-white border-gray-200 (au lieu de bg-pastel/border-
+ *   pastel par status). Le statut est lu sur l'icône et le badge interne,
+ *   pas sur le fond de card — beaucoup plus lisible dans une fiche dense.
+ * - StepIcon SVG inline custom → icônes Lucide (Check, X, Loader2 anim-
+ *   spin, Clock, Ban, Circle). Cohérence + perf (pas de SVG path inline
+ *   répétés, Lucide tree-shaken).
+ * - Badge inline status → Badge primitive avec variant sémantique.
+ * - Conteneur : rounded-xl shadow-sm → rounded-lg (cohérent fiche).
+ * - Title eyebrow text-xs → text-[10px] uppercase tracking-widest (doctrine).
+ */
+
+import {
+  Check,
+  X,
+  Loader2,
+  Clock,
+  Ban,
+  Circle,
+} from "lucide-react";
+import { Badge } from "@/components/ui/Badge";
 import type { PublicationStep, StepStatus } from "@/lib/publications/steps";
 import type { UserRole } from "@/types/roles";
 
 export interface ProductionChainProps {
   steps: PublicationStep[];
-  /**
-   * Si fourni, filtre les steps pour ne montrer que ceux où ce rôle est
-   * impliqué (sauf ADMIN qui voit tout — vue de supervision).
-   * Si absent, on affiche tous les steps visibles (compat callsites non
-   * mis à jour).
-   */
+  /** Si fourni, filtre les steps pour le rôle concerné (sauf ADMIN). */
   viewerRole?: UserRole;
 }
-
-// ---------------------------------------------------------------------------
-// Labels FR pour les statuts de step
-// ---------------------------------------------------------------------------
 
 const STEP_STATUS_LABELS: Record<StepStatus, string> = {
   todo: "À faire",
@@ -27,141 +47,56 @@ const STEP_STATUS_LABELS: Record<StepStatus, string> = {
   blocked: "Bloqué",
 };
 
-// ---------------------------------------------------------------------------
-// Couleurs par statut
-// ---------------------------------------------------------------------------
-
-function getStepColors(status: StepStatus, isNext: boolean) {
-  if (isNext) {
-    return {
-      card: "border-2 border-indigo-400 bg-indigo-50",
-      icon: "bg-indigo-100 text-indigo-600",
-      label: "text-indigo-800 font-semibold",
-      badge: "bg-indigo-100 text-indigo-700",
-    };
-  }
-
-  switch (status) {
-    case "done":
-      return {
-        card: "border border-green-200 bg-green-50",
-        icon: "bg-green-100 text-green-600",
-        label: "text-green-800 font-medium",
-        badge: "bg-green-100 text-green-700",
-      };
-    case "failed":
-      return {
-        card: "border border-red-200 bg-red-50",
-        icon: "bg-red-100 text-red-600",
-        label: "text-red-800 font-medium",
-        badge: "bg-red-100 text-red-700",
-      };
-    case "processing":
-    case "queued":
-      return {
-        card: "border border-yellow-200 bg-yellow-50",
-        icon: "bg-yellow-100 text-yellow-600",
-        label: "text-yellow-800 font-medium",
-        badge: "bg-yellow-100 text-yellow-700",
-      };
-    case "blocked":
-      return {
-        card: "border border-purple-200 bg-purple-50",
-        icon: "bg-purple-100 text-purple-600",
-        label: "text-purple-800 font-medium",
-        badge: "bg-purple-100 text-purple-700",
-      };
-    case "todo":
-    default:
-      return {
-        card: "border border-gray-200 bg-gray-50",
-        icon: "bg-gray-100 text-gray-500",
-        label: "text-gray-700 font-medium",
-        badge: "bg-gray-100 text-gray-500",
-      };
-  }
+function getStepBadgeVariant(
+  status: StepStatus,
+): "default" | "success" | "danger" | "info" {
+  if (status === "done") return "success";
+  if (status === "failed" || status === "blocked") return "danger";
+  if (status === "processing") return "info";
+  return "default";
 }
-
-// ---------------------------------------------------------------------------
-// Icône de statut (SVG inline minimal — pas de dépendance supplémentaire)
-// ---------------------------------------------------------------------------
 
 function StepIcon({ status }: { status: StepStatus }) {
+  const cls = "h-3.5 w-3.5";
   switch (status) {
     case "done":
-      return (
-        <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-          <path
-            fillRule="evenodd"
-            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-            clipRule="evenodd"
-          />
-        </svg>
-      );
+      return <Check className={cls} />;
     case "failed":
-      return (
-        <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-          <path
-            fillRule="evenodd"
-            d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-            clipRule="evenodd"
-          />
-        </svg>
-      );
+      return <X className={cls} />;
     case "processing":
-      return (
-        <svg
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className="w-4 h-4 animate-spin"
-        >
-          <circle cx="10" cy="10" r="7" strokeDasharray="44" strokeDashoffset="11" />
-        </svg>
-      );
+      return <Loader2 className={`${cls} animate-spin`} />;
     case "queued":
-      return (
-        <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-          <path
-            fillRule="evenodd"
-            d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
-            clipRule="evenodd"
-          />
-        </svg>
-      );
+      return <Clock className={cls} />;
     case "blocked":
-      return (
-        <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-          <path
-            fillRule="evenodd"
-            d="M13.477 14.89A6 6 0 015.11 6.524L13.477 14.89zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z"
-            clipRule="evenodd"
-          />
-        </svg>
-      );
+      return <Ban className={cls} />;
     case "todo":
     default:
-      return (
-        <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-          <path
-            fillRule="evenodd"
-            d="M10 18a8 8 0 100-16 8 8 0 000 16zm0-2a6 6 0 100-12 6 6 0 000 12z"
-            clipRule="evenodd"
-          />
-        </svg>
-      );
+      return <Circle className={cls} />;
   }
 }
 
-// ---------------------------------------------------------------------------
-// ProductionChain
-// ---------------------------------------------------------------------------
+function getCardClasses(status: StepStatus, isNext: boolean): string {
+  // Pattern : carte mono sobre + accent uniquement pour le "next" via
+  // border-gray-950. Le statut est porté par l'icône et le badge, pas
+  // par le fond.
+  if (isNext) {
+    return "border-2 border-gray-950 bg-white";
+  }
+  if (status === "done") return "border border-gray-200 bg-gray-50/40";
+  if (status === "failed" || status === "blocked")
+    return "border border-danger-100 bg-danger-50/40";
+  return "border border-gray-200 bg-white";
+}
 
-// B5 — Mapping step.key → SectionKey utilisé par CollapsibleSection.
-// `edit` n'a pas de section DOM dédiée (le step couvre les rushes+versions),
-// on scroll vers "versions". `validation` n'a pas encore de section (placeholder
-// Phase 2), donc cliquer dessus n'a aucun effet — c'est intentionnel.
+function getIconWrapperClasses(status: StepStatus, isNext: boolean): string {
+  if (isNext) return "bg-gray-950 text-white";
+  if (status === "done") return "bg-success-100 text-success-700";
+  if (status === "failed" || status === "blocked")
+    return "bg-danger-100 text-danger-700";
+  if (status === "processing") return "bg-info-100 text-info-700";
+  return "bg-gray-100 text-gray-500";
+}
+
 const STEP_TO_SECTION: Record<string, string> = {
   rushes: "rushes",
   render: "render",
@@ -172,13 +107,21 @@ const STEP_TO_SECTION: Record<string, string> = {
   publish: "publish",
 };
 
+function scrollToSection(stepKey: string) {
+  const sectionId = STEP_TO_SECTION[stepKey];
+  if (!sectionId) return;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("pub:open-section", { detail: { sectionId } }),
+    );
+  }
+  setTimeout(() => {
+    const el = document.getElementById(sectionId);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 50);
+}
+
 export function ProductionChain({ steps, viewerRole }: ProductionChainProps) {
-  // Filtrage en 2 passes :
-  // 1) visibilité par pattern (déjà décidée par computePublicationSteps)
-  // 2) filtrage par rôle viewer : ADMIN voit tout (supervision), les autres
-  //    ne voient que les steps où ils figurent dans step.roles.
-  //    Si viewerRole est absent (callsite pas mis à jour), on garde l'ancien
-  //    comportement = tous les visible-steps.
   const visibleSteps = steps.filter((s) => {
     if (!s.visible) return false;
     if (!viewerRole) return true;
@@ -186,85 +129,56 @@ export function ProductionChain({ steps, viewerRole }: ProductionChainProps) {
     return s.roles.includes(viewerRole);
   });
 
-  function scrollToSection(stepKey: string) {
-    const sectionId = STEP_TO_SECTION[stepKey];
-    if (!sectionId) return; // step sans section dédiée (ex: "validation")
-
-    // B5 — Force d'abord l'ouverture de la CollapsibleSection cible (event
-    // intercepté par CollapsibleSection.tsx) avant de scroller, pour éviter
-    // que le scroll arrive sur un bandeau replié.
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("pub:open-section", { detail: { sectionId } }),
-      );
-    }
-
-    // Petit délai pour laisser le state React se propager avant scroll.
-    setTimeout(() => {
-      const el = document.getElementById(sectionId);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    }, 50);
-  }
-
-  if (visibleSteps.length === 0) {
-    // Aucun step pertinent pour ce rôle (recipe sans rushes pour un vidéaste,
-    // etc.). On masque la chain plutôt que de montrer une carte vide.
-    return null;
-  }
+  if (visibleSteps.length === 0) return null;
 
   return (
-    <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
-      <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+    <div className="bg-white border border-gray-200 rounded-lg p-4">
+      <h2 className="text-[10px] font-medium text-gray-500 uppercase tracking-widest mb-3">
         Chaîne de production
         {viewerRole && viewerRole !== "ADMIN" && (
-          <span className="ml-2 text-[10px] font-normal normal-case text-gray-400">
+          <span className="ml-2 normal-case tracking-normal text-gray-400">
             · tes étapes
           </span>
         )}
       </h2>
 
-      {/* Compteur "N/M étapes" et lien "Étape en cours" retirés : redondants
-          avec le NextActionBanner au-dessus qui dit déjà "À toi · ROLE —
-          phrase d'action" et permet d'aller à la section. Cette ligne
-          créait deux fils d'attention concurrents juste en haut de fiche. */}
-
       <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
         {visibleSteps.map((step, idx) => {
-          const colors = getStepColors(step.status, step.nextAction);
+          const isNext = step.nextAction;
+          const cardCls = getCardClasses(step.status, isNext);
+          const iconWrapCls = getIconWrapperClasses(step.status, isNext);
+          const tooltip =
+            step.key === "validation"
+              ? `${step.label} — fonctionnalité à venir`
+              : `Aller à la section : ${step.label}`;
 
-          // F1.11 — Le step validation est un placeholder Phase 2 : tooltip
-          // explicite "À venir" pour ne pas laisser croire à une action possible.
-          const tooltip = step.key === "validation"
-            ? `${step.label} — fonctionnalité à venir`
-            : `Aller à la section : ${step.label}`;
           return (
             <button
               key={step.key}
               type="button"
               onClick={() => scrollToSection(step.key)}
-              className={`flex-shrink-0 sm:flex-shrink flex items-center gap-2 px-3 py-2 rounded-lg transition-all cursor-pointer text-left ${colors.card} hover:opacity-80`}
+              className={`flex-shrink-0 sm:flex-shrink flex items-center gap-2 px-3 py-1.5 rounded-md transition-all text-left focus-ring ${cardCls} hover:bg-gray-50`}
               title={tooltip}
             >
-              {/* Numéro de position */}
-              <span className="text-xs text-gray-400 font-mono w-4 text-center select-none">
+              <span className="text-[10px] text-gray-400 font-mono w-3.5 text-center select-none">
                 {idx + 1}
               </span>
-
-              {/* Icône statut */}
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${colors.icon}`}>
+              <span
+                className={`h-5 w-5 rounded-full flex items-center justify-center flex-shrink-0 ${iconWrapCls}`}
+              >
                 <StepIcon status={step.status} />
               </span>
-
-              {/* Texte */}
-              <span className="min-w-0">
-                <span className={`block text-sm ${colors.label} leading-tight`}>
+              <span className="min-w-0 flex flex-col items-start gap-0.5">
+                <span
+                  className={`text-[12px] leading-tight ${
+                    isNext ? "text-gray-950 font-semibold" : "text-gray-800 font-medium"
+                  }`}
+                >
                   {step.label}
                 </span>
-                <span className={`block text-xs mt-0.5 ${colors.badge} px-1.5 py-0.5 rounded-full w-fit`}>
+                <Badge size="sm" variant={getStepBadgeVariant(step.status)}>
                   {STEP_STATUS_LABELS[step.status]}
-                </span>
+                </Badge>
               </span>
             </button>
           );
