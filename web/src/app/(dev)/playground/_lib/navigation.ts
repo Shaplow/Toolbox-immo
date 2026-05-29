@@ -98,6 +98,15 @@ export const NAV: NavSection[] = [
       { label: "Sheet", href: "/playground/atoms-new#sheet" },
     ],
   },
+  {
+    label: "Phase 3 · Atomes visuels",
+    basePath: "/playground/atoms-new",
+    items: [
+      { label: "Avatar", href: "/playground/atoms-new#avatar" },
+      { label: "Alert", href: "/playground/atoms-new#alert" },
+      { label: "Progress", href: "/playground/atoms-new#progress" },
+    ],
+  },
 ];
 
 /** Tous les ids ancrables d'une page donnée. */

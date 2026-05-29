@@ -7,8 +7,8 @@
  * lots. Lot 1 : overlays (Modal, Drawer, Sheet) + hook useDialogStack.
  */
 
-import { useState } from "react";
-import { Settings, AlertCircle, Sparkles, ChevronRight, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Settings, AlertCircle, Sparkles, ChevronRight, Plus, ExternalLink } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -18,6 +18,9 @@ import { Switch } from "@/components/ui/Switch";
 import { Modal } from "@/components/ui/Modal";
 import { Drawer } from "@/components/ui/Drawer";
 import { Sheet } from "@/components/ui/Sheet";
+import { Avatar, AvatarGroup } from "@/components/ui/Avatar";
+import { Alert } from "@/components/ui/Alert";
+import { Progress } from "@/components/ui/Progress";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -322,17 +325,144 @@ export default function AtomsNewPage() {
         </Sheet>
       </Section>
 
+      {/* ━━━ AVATAR ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+
+      <Section id="avatar" eyebrow="Visual · P0" title="Avatar">
+        <Row label="Sizes (initials)">
+          <Avatar name="Mathis Barbet" size="xs" />
+          <Avatar name="Mathis Barbet" size="sm" />
+          <Avatar name="Mathis Barbet" size="md" />
+          <Avatar name="Mathis Barbet" size="lg" />
+          <Avatar name="Mathis Barbet" size="xl" />
+        </Row>
+        <Row label="Fallback icon">
+          <Avatar name="Inconnu" fallback="icon" size="sm" />
+          <Avatar name="Inconnu" fallback="icon" size="md" />
+          <Avatar name="Inconnu" fallback="icon" size="lg" />
+        </Row>
+        <Row label="Status">
+          <Avatar name="Alice Dubois" status="online" />
+          <Avatar name="Bob Martin" status="away" />
+          <Avatar name="Camille Petit" status="offline" />
+          <span className="text-[12px] text-gray-500">online · away · offline</span>
+        </Row>
+        <Row label="Ring (focus)">
+          <Avatar name="Mathis Barbet" ring />
+          <Avatar name="Sarah Lemoine" ring size="lg" />
+          <span className="text-[12px] text-gray-500">Halo sky-200 signature</span>
+        </Row>
+        <Row label="Group">
+          <AvatarGroup
+            avatars={[
+              { id: "1", name: "Alice Dubois" },
+              { id: "2", name: "Bob Martin" },
+              { id: "3", name: "Camille Petit" },
+              { id: "4", name: "Diane Roux" },
+              { id: "5", name: "Eric Lambert" },
+            ]}
+            max={3}
+          />
+          <span className="text-[12px] text-gray-500">Max 3 visibles + compteur</span>
+        </Row>
+      </Section>
+
+      {/* ━━━ ALERT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+
+      <Section id="alert" eyebrow="Visual · P0" title="Alert">
+        <div className="space-y-3">
+          <Alert variant="info" title="Information">
+            La fiche publication a été mise à jour il y a 2 minutes par un autre utilisateur.
+          </Alert>
+          <Alert variant="success" title="Publication validée" onDismiss={() => {}}>
+            Le slot @studio-paris a été marqué comme publié. Le client a été notifié par email.
+          </Alert>
+          <Alert variant="warning" title="Brief client manquant" actions={
+            <Button size="sm" variant="secondary" icon={ExternalLink}>Compléter</Button>
+          }>
+            Le brief n&apos;a pas été complété par le client depuis 3 jours. Un rappel sera envoyé demain à 9 h.
+          </Alert>
+          <Alert variant="danger" title="Erreur de rendu" onDismiss={() => {}}>
+            Le job de rendu a échoué : codec H.265 non supporté par le worker. Réessaie avec H.264.
+          </Alert>
+          <Alert variant="glass" title="Astuce">
+            Tu peux ouvrir n&apos;importe quelle section en cliquant sur son pill. La sticky-header arrive en Phase 6.
+          </Alert>
+        </div>
+        <div className="mt-4 space-y-2">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Sans titre, sans dismiss</p>
+          <Alert variant="info">
+            Synchronisation en cours… Les données seront actualisées dans quelques secondes.
+          </Alert>
+        </div>
+      </Section>
+
+      {/* ━━━ PROGRESS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+
+      <Section id="progress" eyebrow="Visual · P0" title="Progress">
+        <ProgressShowcase />
+      </Section>
+
       {/* Note pied de page */}
       <div className="surface-glass-soft rounded-xl p-5 mt-12">
         <p className="text-[11px] uppercase tracking-widest font-medium text-gray-500 mb-2">
           Lots restants Phase 3
         </p>
         <p className="text-[13px] text-gray-700 leading-relaxed">
-          Lot 2 (P0) → Avatar, Alert, Progress · Lot 3 (P1) → Combobox, Chip,
-          Breadcrumb, Stepper, CommandPalette · Lot 4 (P2) → Table, Pagination,
-          DatePicker, TimePicker, NumberStepper.
+          Lot 3 (P1) → Combobox, Chip, Breadcrumb, Stepper, CommandPalette ·
+          Lot 4 (P2) → Table, Pagination, DatePicker, TimePicker, NumberStepper.
         </p>
       </div>
     </div>
+  );
+}
+
+// ─── Showcase Progress avec animation ──────────────────────────────────────
+
+function ProgressShowcase() {
+  const [animated, setAnimated] = useState(20);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setAnimated((v) => (v >= 100 ? 0 : v + 5));
+    }, 600);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <>
+      <Row label="Linear default">
+        <div className="w-72"><Progress value={35} showValue /></div>
+        <div className="w-72"><Progress value={68} showValue /></div>
+      </Row>
+      <Row label="Linear accents">
+        <div className="w-72"><Progress value={30} accent="peach" showValue /></div>
+        <div className="w-72"><Progress value={60} accent="sage" showValue /></div>
+        <div className="w-72"><Progress value={85} accent="sky" showValue /></div>
+      </Row>
+      <Row label="Sizes">
+        <div className="w-72"><Progress value={50} size="sm" showValue /></div>
+        <div className="w-72"><Progress value={50} size="md" showValue /></div>
+        <div className="w-72"><Progress value={50} size="lg" showValue /></div>
+      </Row>
+      <Row label="Animé">
+        <div className="w-72"><Progress value={animated} accent="sky" showValue /></div>
+        <span className="text-[12px] text-gray-500">Update en boucle 0 → 100</span>
+      </Row>
+      <Row label="Indeterminate">
+        <div className="w-72"><Progress indeterminate /></div>
+        <div className="w-72"><Progress indeterminate accent="peach" /></div>
+        <span className="text-[12px] text-gray-500">Pour jobs sans % connu</span>
+      </Row>
+      <Row label="Circular">
+        <Progress variant="circular" value={25} size="sm" />
+        <Progress variant="circular" value={50} size="md" showValue />
+        <Progress variant="circular" value={75} size="lg" accent="sage" showValue />
+      </Row>
+      <Row label="Circular indeterminate">
+        <Progress variant="circular" indeterminate size="sm" />
+        <Progress variant="circular" indeterminate size="md" accent="peach" />
+        <Progress variant="circular" indeterminate size="lg" accent="sky" />
+      </Row>
+    </>
   );
 }
