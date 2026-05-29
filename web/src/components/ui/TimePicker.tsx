@@ -67,45 +67,30 @@ export function TimePicker({
     <label
       className={[wrapperBase, wrapperBg, wrapperState, wrapperDisabled, className ?? ""].filter(Boolean).join(" ")}
     >
-      {/* Bandeau sky signature à gauche. */}
+      {/* Bandeau sky signature à gauche — adouci, sans bord visible. */}
       <span
-        className="shrink-0 w-1.5 bg-gradient-to-b from-sky-200 to-sky-500 shadow-[inset_-1px_0_0_rgba(15,23,42,0.04)]"
+        className="shrink-0 w-1.5 bg-gradient-to-b from-sky-100 via-sky-200 to-sky-300"
         aria-hidden
       />
 
-      {/* Bloc HEURES */}
-      <span className="shrink-0 flex items-center justify-center pl-3 pr-1.5 min-w-[2.5rem]">
-        {parsed ? (
+      {parsed ? (
+        <span className="flex-1 inline-flex items-center justify-start px-3">
+          {/* HEURES */}
           <span className="text-[18px] font-semibold tracking-tight text-gray-950 leading-none tabular-nums">
             {parsed.hours}
           </span>
-        ) : (
-          <span className="text-[14px] text-gray-400 leading-none">—</span>
-        )}
-      </span>
-
-      {/* Separator ":" stylisé */}
-      <span className="shrink-0 flex items-center justify-center text-[18px] font-semibold text-gray-300 leading-none" aria-hidden>
-        :
-      </span>
-
-      {/* Bloc MINUTES */}
-      <span className="shrink-0 flex items-center justify-center pl-1.5 pr-3 min-w-[2.5rem]">
-        {parsed ? (
+          {/* Separator ":" stylisé */}
+          <span className="px-1.5 text-[18px] font-semibold text-gray-300 leading-none" aria-hidden>
+            :
+          </span>
+          {/* MINUTES */}
           <span className="text-[18px] font-semibold tracking-tight text-gray-950 leading-none tabular-nums">
             {parsed.minutes}
           </span>
-        ) : (
-          <span className="text-[14px] text-gray-400 leading-none">—</span>
-        )}
-      </span>
-
-      {/* Divider subtle */}
-      <span className="self-stretch w-px bg-gray-200/50 my-2" aria-hidden />
-
-      {/* Placeholder ou contexte (si pas de value) */}
-      {!parsed && (
-        <span className="flex-1 flex items-center justify-start pl-3 text-[12px] text-gray-400">
+        </span>
+      ) : (
+        /* État vide : placeholder unique, pas de blocs séparés ni dashes. */
+        <span className="flex-1 flex items-center justify-start px-3 text-[13px] text-gray-400 leading-none">
           {placeholder}
         </span>
       )}

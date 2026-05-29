@@ -68,41 +68,40 @@ export function DatePicker({
     <label
       className={[wrapperBase, wrapperBg, wrapperState, wrapperDisabled, className ?? ""].filter(Boolean).join(" ")}
     >
-      {/* Bandeau peach signature à gauche. */}
+      {/* Bandeau peach signature à gauche — gradient adouci, sans bord visible. */}
       <span
-        className="shrink-0 w-1.5 bg-gradient-to-b from-peach-200 to-peach-500 shadow-[inset_-1px_0_0_rgba(15,23,42,0.04)]"
+        className="shrink-0 w-1.5 bg-gradient-to-b from-peach-100 via-peach-200 to-peach-300"
         aria-hidden
       />
 
-      {/* Bloc JOUR */}
-      <span className="shrink-0 flex flex-col items-center justify-center px-3 min-w-[2.5rem]">
-        {parsed ? (
-          <span className="text-[18px] font-semibold tracking-tight text-gray-950 leading-none tabular-nums">
-            {parsed.day}
+      {parsed ? (
+        <>
+          {/* Bloc JOUR */}
+          <span className="shrink-0 flex items-center justify-center px-3 min-w-[2.75rem]">
+            <span className="text-[18px] font-semibold tracking-tight text-gray-950 leading-none tabular-nums">
+              {parsed.day}
+            </span>
           </span>
-        ) : (
-          <span className="text-[14px] text-gray-400 leading-none">—</span>
-        )}
-      </span>
 
-      {/* Divider subtle */}
-      <span className="self-stretch w-px bg-gray-200/50 my-2" aria-hidden />
+          {/* Divider subtle */}
+          <span className="self-stretch w-px bg-gray-200/50 my-2.5" aria-hidden />
 
-      {/* Bloc MOIS / ANNÉE */}
-      <span className="flex-1 flex flex-col items-start justify-center px-3 min-w-[3rem]">
-        {parsed ? (
-          <>
+          {/* Bloc MOIS / ANNÉE */}
+          <span className="flex-1 flex flex-col items-start justify-center px-3 min-w-[3.5rem]">
             <span className="text-[12px] font-semibold uppercase tracking-widest text-gray-800 leading-none">
               {parsed.month}
             </span>
             <span className="text-[10px] text-gray-500 mt-1 leading-none tabular-nums">
               {parsed.year}
             </span>
-          </>
-        ) : (
-          <span className="text-[12px] text-gray-400 leading-none">{placeholder}</span>
-        )}
-      </span>
+          </span>
+        </>
+      ) : (
+        /* État vide : un seul bloc placeholder centré, pas de blocs séparés. */
+        <span className="flex-1 flex items-center justify-start px-3 text-[13px] text-gray-400 leading-none">
+          {placeholder}
+        </span>
+      )}
 
       {/* Chevron indicator */}
       <span className="shrink-0 flex items-center justify-center pr-3 pl-1.5 text-gray-400 group-focus-within:text-gray-700 transition-colors">
