@@ -437,29 +437,29 @@ export function MediaDropzone({
           onClick={() => !disabled && inputRef.current?.click()}
           onKeyDown={(e) => e.key === "Enter" && !disabled && inputRef.current?.click()}
           className={[
-            "relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors cursor-pointer select-none",
+            "relative flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-8 text-center transition-colors cursor-pointer select-none focus-ring",
             isDragOver
-              ? "border-indigo-400 bg-indigo-50"
-              : "border-gray-300 bg-neutral-50 hover:border-indigo-300 hover:bg-indigo-50/40",
+              ? "border-gray-950 bg-gray-50"
+              : "border-gray-300 bg-gray-50/40 hover:border-gray-400 hover:bg-gray-50",
             disabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "",
           ]
             .filter(Boolean)
             .join(" ")}
         >
           <UploadCloud
-            size={28}
-            className={isDragOver ? "text-indigo-500" : "text-gray-400"}
+            size={24}
+            className={isDragOver ? "text-gray-950" : "text-gray-400"}
           />
           <div>
-            <p className="text-sm font-medium text-gray-700">
+            <p className="text-[13px] font-medium text-gray-950">
               {label ?? "Déposer vos fichiers ici"}
             </p>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-[11px] text-gray-500 mt-0.5">
               Glissez vos fichiers ici ou cliquez pour parcourir
             </p>
           </div>
           {maxSizeBytes < Infinity && (
-            <p className="text-xs text-gray-400">
+            <p className="text-[11px] text-gray-400">
               Max {formatBytes(maxSizeBytes)}
             </p>
           )}
@@ -483,39 +483,39 @@ export function MediaDropzone({
           {items.map((item) => (
             <li
               key={item.id}
-              className="flex items-center gap-3 rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm shadow-sm"
+              className="flex items-center gap-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-[13px]"
             >
               {/* Icône statut */}
               <div className="shrink-0">
                 {item.status === "done" && (
-                  <CheckCircle2 size={16} className="text-emerald-500" />
+                  <CheckCircle2 size={15} className="text-success-600" />
                 )}
                 {item.status === "error" && (
-                  <AlertCircle size={16} className="text-red-500" />
+                  <AlertCircle size={15} className="text-danger-600" />
                 )}
                 {(item.status === "uploading" || item.status === "pending") && (
-                  <div className="h-4 w-4 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" />
+                  <div className="h-3.5 w-3.5 rounded-full border-2 border-gray-300 border-t-gray-950 animate-spin" />
                 )}
               </div>
 
               {/* Nom + barre de progression */}
               <div className="min-w-0 flex-1">
-                <p className="truncate text-gray-800 font-medium leading-tight">
+                <p className="truncate text-gray-950 font-medium leading-tight">
                   {item.file.name}
                 </p>
-                <p className="text-xs text-gray-400">
+                <p className="text-[11px] text-gray-500">
                   {formatBytes(item.file.size)}
                 </p>
                 {item.status === "uploading" && (
-                  <div className="mt-1 h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                  <div className="mt-1 h-1 w-full rounded-full bg-gray-100 overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-indigo-500 transition-all"
+                      className="h-full rounded-full bg-gray-950 transition-all"
                       style={{ width: `${item.progress}%` }}
                     />
                   </div>
                 )}
                 {item.status === "error" && item.error && (
-                  <p className="text-xs text-red-500 mt-0.5">{item.error}</p>
+                  <p className="text-[11px] text-danger-600 mt-0.5">{item.error}</p>
                 )}
               </div>
 
@@ -535,10 +535,10 @@ export function MediaDropzone({
                   <button
                     type="button"
                     onClick={() => dismissItem(item.id)}
-                    className="text-gray-400 hover:text-gray-600 p-1 rounded"
+                    className="text-gray-400 hover:text-gray-700 hover:bg-gray-100 p-1 rounded focus-ring transition-colors"
                     aria-label="Fermer"
                   >
-                    <X size={14} />
+                    <X size={13} />
                   </button>
                 )}
               </div>

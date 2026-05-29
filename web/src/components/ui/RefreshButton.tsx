@@ -2,25 +2,24 @@
 
 /**
  * RefreshButton — bouton de refresh manuel pour les pages avec données
- * polling/SSE en arrière-plan.
+ * polling/SSE. Garde le spinner 800ms minimum pour donner un feedback
+ * visuel même sur connexion rapide.
  *
- * Le contenu est rafraîchi via `router.refresh()` (Next.js App Router)
- * qui re-fetch la page server side sans full reload. Le composant
- * affiche un spinner pendant 800ms pour donner un feedback visuel
- * (sinon le refresh est imperceptible sur connexions rapides).
+ * Utilise router.refresh() (Next.js App Router) qui re-fetch server side
+ * sans full reload.
  *
- * Utilisé sur les pages où le SSE/polling peut ne pas tout couvrir
- * (filter changes server side, items déjà completed before mount).
+ * Variants : compact (ButtonIcon ghost) | expanded (Button secondary
+ * avec label).
  */
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
+import { Button } from "./Button";
+import { ButtonIcon } from "./ButtonIcon";
 
 interface Props {
-  /** Titre tooltip pour l'icône. */
   title?: string;
-  /** Variant compact (icône seule) ou expanded (icône + label). */
   variant?: "compact" | "expanded";
 }
 
@@ -37,8 +36,6 @@ export function RefreshButton({
     startTransition(() => {
       router.refresh();
     });
-    // Garde le spinner visible un minimum de 800ms pour donner un feedback
-    // visible même sur connexion ultra-rapide.
     setTimeout(() => setSpinning(false), 800);
   }
 
@@ -46,29 +43,27 @@ export function RefreshButton({
 
   if (variant === "expanded") {
     return (
-      <button
-        type="button"
+      <Button
+        variant="secondary"
+        size="sm"
         onClick={handleClick}
         disabled={isSpinning}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:border-indigo-300 hover:text-indigo-700 transition-colors disabled:opacity-50"
+        icon={RefreshCw}
         title={title}
+        className={isSpinning ? "[&>svg]:animate-spin" : ""}
       >
-        <RefreshCw size={13} className={isSpinning ? "animate-spin" : ""} />
         Rafraîchir
-      </button>
+      </Button>
     );
   }
 
   return (
-    <button
-      type="button"
+    <ButtonIcon
+      icon={RefreshCw}
+      label={title}
       onClick={handleClick}
       disabled={isSpinning}
-      className="w-9 h-9 inline-flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-700 transition-colors disabled:opacity-50"
-      title={title}
-      aria-label={title}
-    >
-      <RefreshCw size={15} className={isSpinning ? "animate-spin" : ""} />
-    </button>
+      className={isSpinning ? "[&>svg]:animate-spin" : ""}
+    />
   );
 }
