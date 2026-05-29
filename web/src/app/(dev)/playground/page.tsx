@@ -4,8 +4,8 @@ import { ArrowRight, Palette, Layers, Boxes, Sparkles, FlaskConical } from "luci
 /**
  * Playground landing — hub Liquid Glass.
  *
- * Phase 1+2 livrées : tokens (foundations) + 22 primitives (atoms).
- * Phases 3-6 viennent ensuite.
+ * Phase 1+2 livrées : tokens + 22 primitives.
+ * Phase 3 en cours : 16 atomes nouveaux par lots.
  */
 
 const SECTIONS = [
@@ -25,10 +25,17 @@ const SECTIONS = [
     description: "Variants glass / tinted opt-in (Phase 2A) sur Button, ButtonIcon, Card, Badge, Input, Textarea, Select, Tabs, Switch, Slider. Migrations internes (Phase 2B) sur Tooltip, DropdownMenu, ConfirmDialog, Toast, Skeleton, Kbd, EmptyState, MediaDropzone, CollapsibleSection.",
     status: "Livré",
   },
+  {
+    href: "/playground/atoms-new",
+    eyebrow: "Phase 3 · Atomes nouveaux",
+    icon: Layers,
+    title: "Lot 1 — Modal · Drawer · Sheet",
+    description: "Overlays Liquid Glass partageant le hook useDialogStack (empilage z-index, ESC top-only, scroll lock). 3 sizes pour Modal, 3 sides pour Drawer, variants halfHeight/fullHeight pour Sheet. Lots suivants : Avatar/Alert/Progress puis P1/P2.",
+    status: "Lot 1 livré",
+  },
 ];
 
 const UPCOMING = [
-  { icon: Layers,        label: "Phase 3 · Atomes nouveaux", description: "Modal, Drawer, Sheet, Avatar, Alert, Progress, Combobox, Chip, Breadcrumb, Stepper, CommandPalette, Table, Pagination, DatePicker, TimePicker, NumberStepper" },
   { icon: Sparkles,      label: "Phase 4 · Molécules métier", description: "VideoPlayer, AssetCard, Section, StatusBadge, OverrideControl, TrimPlayer, AssigneePicker, FilterBar, JobQueueItem, EmptyHero, SoftPanel" },
   { icon: FlaskConical,  label: "Phases 5+ · Patterns + vibes + refonte modules", description: "Playground neuf (foundations/atoms/molecules/patterns/vibes) + refonte module par module (Coquille → Fiche → Drawer → Calendar → Home → Admin → Builder → Tools)" },
 ];

@@ -89,6 +89,15 @@ export const NAV: NavSection[] = [
       { label: "CollapsibleSection", href: "/playground/atoms#collapsible" },
     ],
   },
+  {
+    label: "Phase 3 · Overlays",
+    basePath: "/playground/atoms-new",
+    items: [
+      { label: "Modal", href: "/playground/atoms-new#modal" },
+      { label: "Drawer", href: "/playground/atoms-new#drawer" },
+      { label: "Sheet", href: "/playground/atoms-new#sheet" },
+    ],
+  },
 ];
 
 /** Tous les ids ancrables d'une page donnée. */
