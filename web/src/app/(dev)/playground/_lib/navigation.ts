@@ -129,6 +129,16 @@ export const NAV: NavSection[] = [
       { label: "NumberStepper", href: "/playground/atoms-new#number-stepper" },
     ],
   },
+  {
+    label: "Phase 4 · Molécules · Lot 1",
+    basePath: "/playground/molecules",
+    items: [
+      { label: "StatusBadge", href: "/playground/molecules#status-badge" },
+      { label: "Section", href: "/playground/molecules#section" },
+      { label: "SoftPanel", href: "/playground/molecules#soft-panel" },
+      { label: "EmptyHero", href: "/playground/molecules#empty-hero" },
+    ],
+  },
 ];
 
 /** Tous les ids ancrables d'une page donnée. */

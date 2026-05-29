@@ -29,14 +29,21 @@ const SECTIONS = [
     href: "/playground/atoms-new",
     eyebrow: "Phase 3 · Atomes nouveaux",
     icon: Layers,
-    title: "Lot 1 — Modal · Drawer · Sheet",
-    description: "Overlays Liquid Glass partageant le hook useDialogStack (empilage z-index, ESC top-only, scroll lock). 3 sizes pour Modal, 3 sides pour Drawer, variants halfHeight/fullHeight pour Sheet. Lots suivants : Avatar/Alert/Progress puis P1/P2.",
+    title: "16 atomes nouveaux",
+    description: "Overlays (Modal/Drawer/Sheet + useDialogStack), atomes visuels (Avatar/Alert/Progress), inputs avancés (Chip/Breadcrumb/Stepper/Combobox/CommandPalette via cmdk), data+temps (Table/Pagination/DatePicker/TimePicker/NumberStepper avec calendrier et sélecteur d'heure custom Liquid Glass).",
+    status: "Livré",
+  },
+  {
+    href: "/playground/molecules",
+    eyebrow: "Phase 4 · Molécules métier",
+    icon: Sparkles,
+    title: "Lot 1 — Section + SoftPanel + EmptyHero + StatusBadge",
+    description: "Wrappers factorisés (Section pour les sections fiche pub, SoftPanel pour pages d'édition longues), empty hero page-level avec halo signature, status badges centralisés via lib/ui/statusMapping (render/caption/description/cover/slot/transcription). Lots suivants : Média (VideoPlayer/AssetCard) puis Édition puis Métier.",
     status: "Lot 1 livré",
   },
 ];
 
 const UPCOMING = [
-  { icon: Sparkles,      label: "Phase 4 · Molécules métier", description: "VideoPlayer, AssetCard, Section, StatusBadge, OverrideControl, TrimPlayer, AssigneePicker, FilterBar, JobQueueItem, EmptyHero, SoftPanel" },
   { icon: FlaskConical,  label: "Phases 5+ · Patterns + vibes + refonte modules", description: "Playground neuf (foundations/atoms/molecules/patterns/vibes) + refonte module par module (Coquille → Fiche → Drawer → Calendar → Home → Admin → Builder → Tools)" },
 ];
 
