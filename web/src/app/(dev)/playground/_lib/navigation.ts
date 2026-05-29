@@ -164,6 +164,21 @@ export const NAV: NavSection[] = [
       { label: "JobQueueItem", href: "/playground/molecules#job-queue-item" },
     ],
   },
+  {
+    label: "Phase 5 · Audit",
+    basePath: "/playground/audit",
+    items: [
+      { label: "Heights", href: "/playground/audit#heights" },
+      { label: "Focus rings", href: "/playground/audit#focus" },
+      { label: "Ring inset ladder", href: "/playground/audit#ring-inset" },
+      { label: "Shadows glass", href: "/playground/audit#shadows" },
+      { label: "Backdrop blur ladder", href: "/playground/audit#blur" },
+      { label: "States matrix", href: "/playground/audit#states" },
+      { label: "Combinaisons", href: "/playground/audit#combo" },
+      { label: "Badges / Chips", href: "/playground/audit#badges-chips" },
+      { label: "Avatars", href: "/playground/audit#avatars" },
+    ],
+  },
 ];
 
 /** Tous les ids ancrables d'une page donnée. */
