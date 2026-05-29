@@ -6,17 +6,16 @@ import type { LucideIcon } from "lucide-react";
 import { Loader2 } from "lucide-react";
 
 /**
- * Bouton icon-only carré (pattern Linear · Raycast · Vercel).
+ * Bouton icon-only carré — pattern Linear · Raycast · Vercel.
  *
- * Pour les toolbars denses et actions secondaires (close, more, copy,
- * refresh, etc.). Le `label` est obligatoire mais visuellement masqué
- * (sr-only + title) pour l'accessibilité.
+ * Pour toolbars denses (close, more, copy, refresh) et icon actions
+ * dans les rows hover. Le `label` est obligatoire (sr-only + title)
+ * pour l'a11y.
  *
- * Variants : reprennent ceux de <Button>. Sizes : sm | md (md = défaut).
- * Forme strictement carrée pour rester dense.
+ * Variants : reprennent ceux de <Button>. Forme strictement carrée.
  */
 
-type Variant = "primary" | "brand" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md";
 
 interface ButtonIconProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "size" | "aria-label"> {
@@ -47,9 +46,7 @@ export const ButtonIcon = forwardRef<HTMLButtonElement, ButtonIconProps>(functio
 
   const variantClasses = {
     primary:
-      "bg-[image:var(--gradient-primary)] text-white shadow-[var(--shadow-glow-primary)] hover:bg-[image:var(--gradient-primary-hover)] hover:shadow-[var(--shadow-glow-primary-strong)] focus-ring",
-    brand:
-      "bg-brand-600 text-white shadow-[var(--shadow-glow-brand)] hover:bg-brand-700 hover:shadow-[var(--shadow-glow-brand-strong)] focus-ring-brand",
+      "bg-gray-950 text-white hover:bg-gray-800 focus-ring",
     secondary:
       "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:text-gray-950 hover:border-gray-400 focus-ring",
     ghost:

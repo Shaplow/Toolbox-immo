@@ -6,26 +6,25 @@ import type { LucideIcon } from "lucide-react";
 import { Loader2 } from "lucide-react";
 
 /**
- * Bouton primaire — direction Linear · Vercel · Raycast.
+ * Bouton primaire — doctrine SaaS d'équipe : Vercel · Linear · Apple.
  *
  * Variants :
- * - `primary`   — gray-950 mono. CTA standard. Focus ring mono.
- * - `brand`     — orange + glow. Réservé aux 2-3 spots signature de
- *                  toute l'app (S'inscrire, Démarrer onboarding,
- *                  Mark publié peut-être). Focus ring brand.
+ * - `primary`   — `bg-gray-950` flat. Le CTA principal de chaque page.
+ *                  Sobre, lisible, intemporel. Aucun gradient, aucune
+ *                  couleur, aucun glow.
  * - `secondary` — border gray-300. Action secondaire.
  * - `ghost`     — transparent hover gray-100. Action discrète.
  * - `danger`    — danger-600. Action destructive.
  *
- * Sizes : `sm` (toolbars compactes) | `md` (default UI) | `lg` (hero CTA).
- * Densité serrée par défaut — alignée Linear/Vercel.
+ * Sizes : `sm` (toolbars compactes, h-7) | `md` (default, h-8) |
+ * `lg` (CTA standout, h-9). Densité serrée Linear-style.
  *
- * Convention icon : tout button avec une action significative devrait
- * porter une `icon`. C'est ce qui distingue l'app dense d'une app à
- * label. Voir `ButtonIcon` pour l'icon-only carré.
+ * Convention icon : toute action significative DEVRAIT porter une
+ * `icon`. C'est ce qui distingue l'app dense d'une app à label.
+ * Voir `ButtonIcon` pour l'icon-only carré.
  */
 
-type Variant = "primary" | "brand" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md" | "lg";
 
 interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "size"> {
@@ -55,7 +54,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   const base =
     "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed";
 
-  // Density serrée à la Linear : h-7 / h-8 / h-9.
   const sizeClasses =
     size === "sm"
       ? "h-7 px-2.5 text-[12px]"
@@ -64,12 +62,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         : "h-8 px-3 text-[13px]";
 
   const variantClasses = {
-    // Primary : gradient Instagram-style (orange → rose → violet). Signature
-    // de l'app — c'est ce qui distingue les actions principales du noir flat.
     primary:
-      "bg-[image:var(--gradient-primary)] text-white shadow-[var(--shadow-glow-primary)] hover:bg-[image:var(--gradient-primary-hover)] hover:shadow-[var(--shadow-glow-primary-strong)] focus-ring",
-    brand:
-      "bg-brand-600 text-white shadow-[var(--shadow-glow-brand)] hover:bg-brand-700 hover:shadow-[var(--shadow-glow-brand-strong)] hover:-translate-y-[1px] focus-ring-brand",
+      "bg-gray-950 text-white hover:bg-gray-800 focus-ring",
     secondary:
       "bg-white text-gray-800 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 focus-ring",
     ghost:
