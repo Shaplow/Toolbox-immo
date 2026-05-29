@@ -194,10 +194,11 @@ export function AppNav({
   return (
     <aside
       className={[
-        "flex flex-col h-full shrink-0 transition-[width] duration-200",
+        // h-screen (100vh) au lieu de h-full pour échapper aux containing
+        // blocks éventuels (backdrop-filter parent peut casser h-full).
+        "flex flex-col h-screen shrink-0 transition-[width] duration-200",
         // Surface Liquid Glass : gradient blanc + ring inset signature à droite
-        // (pas de border-r solide). Backdrop-blur sur les surfaces glass
-        // partout dans l'app, mais ici on garde solide pour lisibilité dense.
+        // (pas de border-r solide).
         "bg-gradient-to-b from-white/90 to-white/75 backdrop-blur-[16px] backdrop-saturate-150",
         "shadow-[inset_-1px_0_0_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,1)]",
         collapsed ? "w-14" : "w-56",
@@ -226,10 +227,10 @@ export function AppNav({
               Toolbox
             </span>
           )}
-          {/* Indicateur "Vue: X" en collapsed — sage dot signature si view-as actif */}
+          {/* Indicateur "Vue: X" en collapsed — peach dot signature si view-as actif */}
           {collapsed && isRoleOverride && (
             <Tooltip content={`Vue ${viewAsRoleLabel}`} side="bottom">
-              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-sage-500 shadow-[0_0_0_2px_rgba(255,255,255,1)]" aria-label={`Vue ${viewAsRoleLabel}`} />
+              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-peach-500 shadow-[0_0_0_2px_rgba(255,255,255,1)]" aria-label={`Vue ${viewAsRoleLabel}`} />
             </Tooltip>
           )}
         </Link>
@@ -253,37 +254,9 @@ export function AppNav({
         </div>
       )}
 
-      {/* ── View As (admin uniquement, pas en impersonation, expanded) ── */}
-      {canSeeAdmin && !isImpersonating && !collapsed && (
-        <div className="px-3 py-2 shadow-[inset_0_-1px_0_rgba(15,23,42,0.04)]">
-          <DropdownMenu
-            trigger={
-              <button
-                type="button"
-                className={[
-                  "w-full inline-flex items-center justify-between gap-2 h-8 px-2.5 rounded-md text-[12px] text-left transition-all focus-ring",
-                  isRoleOverride
-                    ? "bg-sage-50/65 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(111,162,128,0.32)]"
-                    : "bg-white/65 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1)] hover:bg-white/85 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.16)]",
-                ].join(" ")}
-              >
-                <span className="inline-flex items-center gap-1.5 min-w-0">
-                  <Eye size={13} className={`shrink-0 ${isRoleOverride ? "text-sage-700" : "text-gray-500"}`} />
-                  <span className={`truncate font-medium ${isRoleOverride ? "text-sage-700" : "text-gray-950"}`}>
-                    Vue : {viewAsRoleLabel}
-                  </span>
-                </span>
-              </button>
-            }
-            items={[
-              { label: "Admin (par défaut)", onClick: () => void setViewAsRole(null) },
-              { label: "Vue Vidéaste",       onClick: () => void setViewAsRole("VIDEASTE") },
-              { label: "Vue Monteur",        onClick: () => void setViewAsRole("MONTEUR") },
-              { label: "Vue CM",             onClick: () => void setViewAsRole("CM") },
-            ]}
-          />
-        </div>
-      )}
+      {/* Vue-As dropdown — Phase 6.1 : déplacé dans le user footer (en bas
+          de la nav, à côté du profil). Plus naturel comme contrôle admin
+          attaché au profil, libère l'espace haut. */}
 
       {/* ── Navigation principale ──────────────────────────────────── */}
       <nav className={`flex-1 min-h-0 overflow-y-auto ${collapsed ? "px-1.5 py-3" : "px-2.5 py-3"} [scrollbar-width:thin]`}>
@@ -338,21 +311,52 @@ export function AppNav({
         </div>
       )}
 
-      {/* ── User footer ─────────────────────────────────────────────── */}
+      {/* ── User footer (avec menu Vue-As pour admin) ──────────────── */}
       <div className={`shadow-[inset_0_1px_0_rgba(15,23,42,0.04)] ${collapsed ? "p-2" : "p-3"}`}>
         {collapsed ? (
           <div className="flex flex-col items-center gap-2">
-            <Avatar
-              name={navUser.name ?? navUser.email ?? "?"}
-              size="sm"
-              status={isImpersonating ? "away" : undefined}
-            />
-            <ButtonIcon
-              icon={LogOut}
-              label="Se déconnecter"
-              size="sm"
-              onClick={() => signOut({ callbackUrl: "/login" })}
-            />
+            {canSeeAdmin && !isImpersonating ? (
+              <DropdownMenu
+                align="end"
+                trigger={
+                  <button type="button" className="relative inline-flex rounded-full focus-ring" title="Profil & vues">
+                    <Avatar
+                      name={navUser.name ?? navUser.email ?? "?"}
+                      size="sm"
+                      status={isImpersonating ? "away" : undefined}
+                      ring={isRoleOverride}
+                    />
+                    {isRoleOverride && (
+                      <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-peach-500 shadow-[0_0_0_2px_rgba(255,255,255,1)]" />
+                    )}
+                  </button>
+                }
+                items={[
+                  ...(isRoleOverride
+                    ? [{ label: "Vue : Admin (revenir)", icon: Eye, onClick: () => void setViewAsRole(null) }]
+                    : [{ label: "Vue : Admin", icon: Eye, onClick: () => void setViewAsRole(null) }]),
+                  { label: "Vue Vidéaste", onClick: () => void setViewAsRole("VIDEASTE") },
+                  { label: "Vue Monteur",  onClick: () => void setViewAsRole("MONTEUR") },
+                  { label: "Vue CM",       onClick: () => void setViewAsRole("CM") },
+                  "separator",
+                  { label: "Se déconnecter", icon: LogOut, onClick: () => signOut({ callbackUrl: "/login" }), destructive: true },
+                ]}
+              />
+            ) : (
+              <>
+                <Avatar
+                  name={navUser.name ?? navUser.email ?? "?"}
+                  size="sm"
+                  status={isImpersonating ? "away" : undefined}
+                />
+                <ButtonIcon
+                  icon={LogOut}
+                  label="Se déconnecter"
+                  size="sm"
+                  onClick={() => signOut({ callbackUrl: "/login" })}
+                />
+              </>
+            )}
           </div>
         ) : (
           <div className="space-y-2">
@@ -361,17 +365,39 @@ export function AppNav({
                 name={navUser.name ?? navUser.email ?? "?"}
                 size="sm"
                 status={isImpersonating ? "away" : undefined}
+                ring={isRoleOverride}
               />
               <div className="min-w-0 flex-1">
                 <p className="text-[12px] font-medium text-gray-950 truncate leading-tight">
                   {navUser.name ?? navUser.email}
                 </p>
-                <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-0.5">
+                <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-0.5 truncate">
                   {isImpersonating
                     ? `${navUser.role ?? "User"} · via admin`
-                    : (navUser.role ?? "Utilisateur")}
+                    : isRoleOverride
+                      ? `Vue ${viewAsRoleLabel}`
+                      : (navUser.role ?? "Utilisateur")}
                 </p>
               </div>
+              {canSeeAdmin && !isImpersonating && (
+                <DropdownMenu
+                  align="end"
+                  trigger={
+                    <ButtonIcon
+                      icon={Eye}
+                      label="Changer de vue"
+                      variant="ghost"
+                      size="sm"
+                    />
+                  }
+                  items={[
+                    { label: isRoleOverride ? "Vue : Admin (revenir)" : "Vue : Admin", onClick: () => void setViewAsRole(null) },
+                    { label: "Vue Vidéaste", onClick: () => void setViewAsRole("VIDEASTE") },
+                    { label: "Vue Monteur",  onClick: () => void setViewAsRole("MONTEUR") },
+                    { label: "Vue CM",       onClick: () => void setViewAsRole("CM") },
+                  ]}
+                />
+              )}
             </div>
             <Button
               variant="ghost"
@@ -433,7 +459,7 @@ function NavItemLink({
       className={[
         "flex items-center gap-2 h-8 rounded-md text-[13px] transition-all focus-ring",
         active
-          ? "bg-sky-50/65 backdrop-blur-[8px] text-sky-700 font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.32)]"
+          ? "bg-peach-50/70 backdrop-blur-[8px] text-peach-700 font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(245,158,107,0.32)]"
           : "text-gray-700 hover:bg-white/60 hover:backdrop-blur-[6px] hover:text-gray-950 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
         collapsed ? "justify-center px-0" : "px-2",
       ].join(" ")}
@@ -441,14 +467,14 @@ function NavItemLink({
       <span className="shrink-0 flex items-center relative">
         {item.icon}
         {showBadge && collapsed && (
-          <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-brand-600 shadow-[0_0_0_2px_rgba(255,255,255,1)]" />
+          <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-peach-500 shadow-[0_0_0_2px_rgba(255,255,255,1)]" />
         )}
       </span>
       {!collapsed && (
         <span className="flex-1 flex items-center justify-between">
           <span className="truncate">{item.label}</span>
           {showBadge && (
-            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-brand-600 text-white text-[10px] font-semibold leading-none px-1">
+            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-peach-500 text-white text-[10px] font-semibold leading-none px-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.32),0_1px_2px_rgba(245,158,107,0.32)]">
               {worklistCount > 99 ? "99+" : worklistCount}
             </span>
           )}
