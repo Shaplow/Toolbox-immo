@@ -31,14 +31,19 @@ export function PlaygroundSidebar() {
     return pathname === href;
   }
 
-  // Auto-scroll l'item actif dans la sidebar pour qu'il reste visible.
+  // Auto-scroll l'item actif uniquement au changement de page (pathname),
+  // pas à chaque update du scrollspy (sinon le scroll manuel est repris par
+  // le smooth-scroll en boucle, l'user ne peut plus atteindre la fin de la
+  // nav). `block: "center"` laisse de la marge dans les 2 sens pour que
+  // l'user puisse ensuite scroller librement vers le haut ou le bas.
   useEffect(() => {
     if (!activeRef.current) return;
-    activeRef.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [activeAnchorId, pathname]);
+    activeRef.current.scrollIntoView({ block: "center" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   return (
-    <aside className="sticky top-16 hidden lg:block max-h-[calc(100vh-4rem)] overflow-y-auto pl-8 pr-4 pt-8 pb-24 [scrollbar-width:thin]">
+    <aside className="sticky top-16 hidden lg:block max-h-[calc(100vh-4rem)] overflow-y-auto pl-8 pr-4 pt-8 pb-40 [scrollbar-width:thin]">
       <nav className="space-y-7 text-[13px]">
         {NAV.map((section) => (
           <div key={section.label} className="space-y-1.5">

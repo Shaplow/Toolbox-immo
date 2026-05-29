@@ -32,7 +32,7 @@ export default function PlaygroundLayout({ children }: { children: ReactNode }) 
         aria-hidden
       />
       <header className="sticky top-0 z-20 surface-glass-soft border-b border-white/40">
-        <div className="mx-auto flex max-w-[1400px] items-center gap-6 px-8 py-3 text-sm">
+        <div className="mx-auto flex max-w-[1400px] items-center gap-6 px-8 lg:pl-10 lg:pr-12 py-3 text-sm">
           <Link href="/playground" className="inline-flex items-center gap-2">
             <span className="h-6 w-6 rounded-md bg-brand-600 inline-flex items-center justify-center text-white text-[11px] font-bold">
               T
