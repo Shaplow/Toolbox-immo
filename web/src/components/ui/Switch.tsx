@@ -74,14 +74,15 @@ export function Switch({
 
   if (!label) return <span className={className}>{toggle}</span>;
 
-  // Cas simple : label sans description → simple inline-flex centré.
-  // Cas avec description : flex-col pour empiler label+description, mais on
-  // utilise items-start sur le wrapper pour aligner le toggle avec la 1ère
-  // ligne (sinon le toggle est centré sur 2 lignes → mal aligné).
+  // Cas simple : label sans description → inline-flex centré h-8 pour
+  // s'aligner avec Input / Select / NumberStepper / Button md sur une ligne
+  // form. Sans h-8, la <label> prend la hauteur du toggle (20px) et le tout
+  // remonte par rapport aux autres composants.
   if (!description) {
+    const heightCls = size === "sm" ? "h-7" : "h-8";
     return (
       <label
-        className={`inline-flex items-center gap-3 cursor-pointer ${
+        className={`inline-flex items-center gap-3 cursor-pointer ${heightCls} ${
           disabled ? "cursor-not-allowed opacity-60" : ""
         } ${className ?? ""}`}
       >
