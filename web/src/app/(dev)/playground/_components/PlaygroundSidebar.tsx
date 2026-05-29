@@ -18,7 +18,7 @@ import { useScrollSpy } from "../_lib/useScrollSpy";
  * interne desktop-first. À ajouter si besoin.
  */
 export function PlaygroundSidebar() {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "/playground";
   const ids = anchorIdsForPath(pathname);
   const activeAnchorId = useScrollSpy(ids, { offset: 120 });
   const activeRef = useRef<HTMLAnchorElement | null>(null);
