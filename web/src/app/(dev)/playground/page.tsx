@@ -1,39 +1,140 @@
+import Link from "next/link";
+import { ArrowRight, Palette, Layers, Boxes, Sparkles, FlaskConical } from "lucide-react";
+
 /**
- * Playground landing — placeholder pendant la refonte Liquid Glass.
+ * Playground landing — hub Liquid Glass.
  *
- * Phase 0 (cleanup) : table rase du playground v1 mono-dark.
- * Les vues foundations / atoms / molecules / patterns / vibes seront
- * reconstruites en Phase 5 sur la DA Liquid Glass + palette Coastal Studio.
+ * Phase 1+2 livrées : tokens (foundations) + 22 primitives (atoms).
+ * Phases 3-6 viennent ensuite.
  */
+
+const SECTIONS = [
+  {
+    href: "/playground/foundations",
+    eyebrow: "Phase 1 · Foundations",
+    icon: Palette,
+    title: "Tokens Liquid Glass",
+    description: "Palette Coastal Studio (peach, sage, sky, rose-dust), surfaces glass, backdrop blur, shadows verrerie, scrims et gradients washes. Référence visuelle des tokens dans globals.css.",
+    status: "Livré",
+  },
+  {
+    href: "/playground/atoms",
+    eyebrow: "Phase 2 · Atoms",
+    icon: Boxes,
+    title: "22 primitives",
+    description: "Variants glass / tinted opt-in (Phase 2A) sur Button, ButtonIcon, Card, Badge, Input, Textarea, Select, Tabs, Switch, Slider. Migrations internes (Phase 2B) sur Tooltip, DropdownMenu, ConfirmDialog, Toast, Skeleton, Kbd, EmptyState, MediaDropzone, CollapsibleSection.",
+    status: "Livré",
+  },
+];
+
+const UPCOMING = [
+  { icon: Layers,        label: "Phase 3 · Atomes nouveaux", description: "Modal, Drawer, Sheet, Avatar, Alert, Progress, Combobox, Chip, Breadcrumb, Stepper, CommandPalette, Table, Pagination, DatePicker, TimePicker, NumberStepper" },
+  { icon: Sparkles,      label: "Phase 4 · Molécules métier", description: "VideoPlayer, AssetCard, Section, StatusBadge, OverrideControl, TrimPlayer, AssigneePicker, FilterBar, JobQueueItem, EmptyHero, SoftPanel" },
+  { icon: FlaskConical,  label: "Phases 5+ · Patterns + vibes + refonte modules", description: "Playground neuf (foundations/atoms/molecules/patterns/vibes) + refonte module par module (Coquille → Fiche → Drawer → Calendar → Home → Admin → Builder → Tools)" },
+];
+
+const DOCTRINE = [
+  "Glass = matière flottante (popovers, modals, headers sticky, drawers). Jamais en grille dense ni en CTA.",
+  "Coastal Studio = palette pastel orchestrée pour tinted backgrounds et accents doux. Jamais en CTA, jamais en focus ring.",
+  "Brand orange #FF5A1F reste chirurgical : logo + dot notif. C'est sa rareté qui le rend mémorable.",
+  "Extension de la doctrine v1 (Linear / mono CTA gray-950 / accents sémantiques) — pas remplacement.",
+];
+
 export default function PlaygroundIndexPage() {
   return (
-    <div className="space-y-8 max-w-2xl">
-      <header className="space-y-3">
-        <p className="text-[10px] uppercase tracking-[0.16em] text-gray-400 font-medium">
-          Playground · Liquid Glass
+    <div className="space-y-14 max-w-4xl">
+      {/* ── Hero ────────────────────────────────────────────────────────── */}
+      <header className="space-y-4">
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">
+          Playground · Liquid Glass v2
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight text-gray-950">
-          En construction
+        <h1 className="text-4xl font-semibold tracking-tight text-gray-950">
+          Toolbox Immo — Design System
         </h1>
-        <p className="text-sm text-gray-600 leading-relaxed">
-          Le nouveau playground Liquid Glass est en cours de construction.
-          Les vues <em>foundations</em>, <em>atoms</em>, <em>molecules</em>,
-          <em> patterns</em> et <em>vibes</em> seront reconstruites au fil
-          de la refonte design system.
+        <p className="text-[15px] text-gray-700 max-w-2xl leading-relaxed">
+          Sandbox interne pour valider la refonte Liquid Glass phase par phase.
+          Tokens, primitives, molécules, patterns — chaque livraison passe par
+          ici avant migration des surfaces métier.
         </p>
       </header>
 
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-        <p className="text-[11px] uppercase tracking-wider text-gray-500 font-medium mb-2">
-          Doctrine
-        </p>
-        <ul className="space-y-1.5 text-[13px] text-gray-700 leading-relaxed">
-          <li>Liquid Glass = matière de surface opt-in (variants glass / tinted).</li>
-          <li>Ossature structurelle Linear conservée (density, mono CTA, accents sémantiques).</li>
-          <li>Palette Coastal Studio (peach, sage, sky, rose-dust) en pastel orchestré.</li>
-          <li>Brand orange <code className="text-[12px] font-mono">#FF5A1F</code> chirurgical conservé.</li>
-        </ul>
-      </div>
+      {/* ── Sections livrées ────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <header className="space-y-1">
+          <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">Vitrines</p>
+          <h2 className="text-xl font-semibold tracking-tight text-gray-950">Livré · validable maintenant</h2>
+        </header>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {SECTIONS.map((s) => {
+            const Icon = s.icon;
+            return (
+              <Link
+                key={s.href}
+                href={s.href}
+                className="group surface-glass rounded-xl p-6 transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-glass-md),var(--ring-glass-inset)]"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="h-10 w-10 rounded-lg bg-white/80 backdrop-blur-[8px] shadow-[var(--ring-glass-inset)] flex items-center justify-center text-gray-800">
+                    <Icon size={18} />
+                  </div>
+                  <span className="rounded-full bg-sage-100 px-2 py-0.5 text-[10px] font-medium text-sage-700 shadow-[var(--ring-glass-edge)]">
+                    {s.status}
+                  </span>
+                </div>
+                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1">{s.eyebrow}</p>
+                <h3 className="text-[17px] font-semibold tracking-tight text-gray-950 mb-2">{s.title}</h3>
+                <p className="text-[12px] text-gray-600 leading-relaxed">{s.description}</p>
+                <div className="mt-4 inline-flex items-center gap-1 text-[12px] font-medium text-gray-950 group-hover:gap-2 transition-all">
+                  Voir
+                  <ArrowRight size={12} />
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ── Doctrine ────────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <header className="space-y-1">
+          <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">Doctrine</p>
+          <h2 className="text-xl font-semibold tracking-tight text-gray-950">4 règles cardinales</h2>
+        </header>
+        <ol className="surface-glass-soft rounded-xl p-6 space-y-3">
+          {DOCTRINE.map((rule, i) => (
+            <li key={i} className="flex items-start gap-3 text-[13px] text-gray-700 leading-relaxed">
+              <span className="shrink-0 inline-flex items-center justify-center h-5 w-5 rounded-md bg-white/70 backdrop-blur-[6px] shadow-[var(--ring-glass-edge)] text-[10px] font-mono font-medium text-gray-700 mt-0.5">
+                {i + 1}
+              </span>
+              <span>{rule}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      {/* ── Upcoming ────────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <header className="space-y-1">
+          <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">Roadmap</p>
+          <h2 className="text-xl font-semibold tracking-tight text-gray-950">À venir</h2>
+        </header>
+        <div className="space-y-3">
+          {UPCOMING.map((p) => {
+            const Icon = p.icon;
+            return (
+              <div key={p.label} className="surface-glass-soft rounded-xl p-4 flex items-start gap-4">
+                <div className="h-9 w-9 shrink-0 rounded-lg bg-white/70 backdrop-blur-[6px] shadow-[var(--ring-glass-edge)] flex items-center justify-center text-gray-600">
+                  <Icon size={16} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold text-gray-950">{p.label}</p>
+                  <p className="text-[12px] text-gray-600 mt-0.5 leading-relaxed">{p.description}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }

@@ -17,8 +17,18 @@ export default function PlaygroundLayout({ children }: { children: ReactNode }) 
     notFound();
   }
   return (
-    <div className="min-h-screen bg-white text-gray-900 antialiased">
-      <header className="sticky top-0 z-20 border-b border-gray-200/70 bg-white/80 backdrop-blur-md">
+    <div className="relative min-h-screen text-gray-900 antialiased">
+      {/* Fond Liquid Glass — base blanche + wash aurora subtle pour que
+          les surfaces glass et tinted aient un contraste perceptible. */}
+      <div
+        className="fixed inset-0 -z-10 bg-white"
+        aria-hidden
+      />
+      <div
+        className="fixed inset-0 -z-10 bg-[var(--gradient-aurora)] opacity-60"
+        aria-hidden
+      />
+      <header className="sticky top-0 z-20 surface-glass-soft border-b border-white/40">
         <div className="mx-auto flex max-w-[1400px] items-center gap-6 px-8 py-3 text-sm">
           <Link href="/playground" className="inline-flex items-center gap-2">
             <span className="h-6 w-6 rounded-md bg-brand-600 inline-flex items-center justify-center text-white text-[11px] font-bold">
@@ -26,7 +36,7 @@ export default function PlaygroundLayout({ children }: { children: ReactNode }) 
             </span>
             <span className="font-hand text-xl leading-none text-gray-950">Toolbox</span>
             <span className="text-gray-300">/</span>
-            <span className="text-[13px] text-gray-500 font-medium">Design</span>
+            <span className="text-[13px] text-gray-500 font-medium">Design · Liquid Glass</span>
           </Link>
           <div className="ml-auto flex items-center gap-3">
             <Link
@@ -35,7 +45,7 @@ export default function PlaygroundLayout({ children }: { children: ReactNode }) 
             >
               ← Retour à l&apos;app
             </Link>
-            <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+            <span className="rounded-full bg-peach-100 px-2 py-0.5 text-[10px] font-medium text-peach-700 shadow-[var(--ring-glass-edge)]">
               DEV
             </span>
           </div>
