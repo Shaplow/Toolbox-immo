@@ -156,6 +156,14 @@ export const NAV: NavSection[] = [
       { label: "AssigneePicker", href: "/playground/molecules#assignee-picker" },
     ],
   },
+  {
+    label: "Phase 4 · Molécules · Lot 4",
+    basePath: "/playground/molecules",
+    items: [
+      { label: "FilterBar", href: "/playground/molecules#filter-bar" },
+      { label: "JobQueueItem", href: "/playground/molecules#job-queue-item" },
+    ],
+  },
 ];
 
 /** Tous les ids ancrables d'une page donnée. */

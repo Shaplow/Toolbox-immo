@@ -36,9 +36,12 @@ import { AssetCard } from "@/components/ui/molecules/AssetCard";
 import { TrimPlayer } from "@/components/ui/molecules/TrimPlayer";
 import { OverrideControl } from "@/components/ui/molecules/OverrideControl";
 import { AssigneePicker } from "@/components/ui/molecules/AssigneePicker";
+import { FilterBar } from "@/components/ui/molecules/FilterBar";
+import { JobQueueItem } from "@/components/ui/molecules/JobQueueItem";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { Combobox } from "@/components/ui/Combobox";
-import { Eye, MoreHorizontal, Trash2 } from "lucide-react";
+import { Chip } from "@/components/ui/Chip";
+import { Eye, MoreHorizontal, Trash2, Search as SearchIcon, X as XIcon, RotateCw } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -379,14 +382,211 @@ export default function MoleculesPage() {
         <AssigneePickerShowcase />
       </PageSection>
 
-      {/* Note pied de page */}
-      <div className="surface-glass-soft rounded-xl p-5 mt-12">
-        <p className="text-[11px] uppercase tracking-widest font-medium text-gray-500 mb-2">
-          Lot restant Phase 4
+      {/* ━━━ FILTER BAR ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+
+      <PageSection id="filter-bar" eyebrow="Lot 4 · Métier" title="FilterBar">
+        <FilterBarShowcase />
+      </PageSection>
+
+      {/* ━━━ JOB QUEUE ITEM ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+
+      <PageSection id="job-queue-item" eyebrow="Lot 4 · Métier" title="JobQueueItem">
+        <JobQueueShowcase />
+      </PageSection>
+
+      {/* Note pied de page — Phase 4 clôturée */}
+      <div className="surface-glass rounded-xl p-5 mt-12">
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-sage-700 mb-2">
+          Phase 4 · clôturée
         </p>
         <p className="text-[13px] text-gray-700 leading-relaxed">
-          Lot 4 (Métier) → FilterBar, JobQueueItem
+          11 molécules métier livrées en 4 lots (Structurels, Média, Édition,
+          Métier) + 2 helpers (lib/ui/statusMapping, Checkbox primitive).
+          Prochain chantier : Phase 5 — playground refondu (foundations /
+          atoms / molecules / patterns / vibes) puis Phase 6 — refonte module
+          par module dans les surfaces métier.
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Showcase FilterBar ────────────────────────────────────────────────────
+
+function FilterBarShowcase() {
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [showProgrammed, setShowProgrammed] = useState(true);
+  const [showPublished, setShowPublished] = useState(false);
+  const [showDraft, setShowDraft] = useState(false);
+
+  const activeCount = [
+    search ? 1 : 0,
+    status ? 1 : 0,
+    showProgrammed ? 1 : 0,
+    showPublished ? 1 : 0,
+    showDraft ? 1 : 0,
+  ].reduce((a, b) => a + b, 0);
+
+  function reset() {
+    setSearch("");
+    setStatus("");
+    setShowProgrammed(false);
+    setShowPublished(false);
+    setShowDraft(false);
+  }
+
+  return (
+    <>
+      <FilterBar activeCount={activeCount} onReset={reset}>
+        <div className="w-60 shrink-0">
+          <Input value={search} onChange={setSearch} placeholder="Rechercher…" icon={SearchIcon} />
+        </div>
+        <div className="w-48 shrink-0">
+          <Combobox
+            value={status}
+            onChange={setStatus}
+            placeholder="Compte IG"
+            options={[
+              { value: "studio-paris", label: "@studio-paris" },
+              { value: "luxe-immo", label: "@luxe-immo" },
+              { value: "appart-lyon", label: "@appart-lyon" },
+            ]}
+          />
+        </div>
+        <Chip variant="sky" selected={showProgrammed} onClick={() => setShowProgrammed((v) => !v)}>
+          Programmé
+        </Chip>
+        <Chip variant="sage" selected={showPublished} onClick={() => setShowPublished((v) => !v)}>
+          Publié
+        </Chip>
+        <Chip variant="default" selected={showDraft} onClick={() => setShowDraft((v) => !v)}>
+          Brouillon
+        </Chip>
+      </FilterBar>
+
+      <div className="mt-6 space-y-2">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="panel" (intérieur d&apos;une fiche)</p>
+        <FilterBar activeCount={2} onReset={() => {}} variant="panel" sticky={false}>
+          <Chip variant="peach" selected onClick={() => {}}>À faire</Chip>
+          <Chip variant="sky" selected onClick={() => {}}>Cette semaine</Chip>
+          <Chip variant="default" onClick={() => {}}>Tous types</Chip>
+        </FilterBar>
+      </div>
+
+      <p className="text-[11px] text-gray-500 mt-3 leading-relaxed">
+        Le compteur "X filtres" et bouton Réinitialiser apparaissent dès
+        qu&apos;activeCount &gt; 0. Sticky top par défaut (configurable via
+        stickyTop pour offset header parent).
+      </p>
+    </>
+  );
+}
+
+// ─── Showcase JobQueueItem ─────────────────────────────────────────────────
+
+function JobQueueShowcase() {
+  const now = new Date();
+  const oneMinAgo = new Date(now.getTime() - 60_000);
+  const fiveMinAgo = new Date(now.getTime() - 5 * 60_000);
+  const tenMinAgo = new Date(now.getTime() - 10 * 60_000);
+  const fifteenMinAgo = new Date(now.getTime() - 15 * 60_000);
+
+  return (
+    <div className="space-y-3 max-w-3xl">
+      <JobQueueItem
+        job={{
+          id: "j1",
+          domain: "render",
+          status: "IN_PROGRESS",
+          title: "Story carrousel #18 — @studio-paris",
+          description: "Template Vidéo Story · résolution 1080×1920 · NVENC H.264",
+          progress: 65,
+          createdAt: tenMinAgo,
+          startedAt: fiveMinAgo,
+        }}
+        actions={
+          <ButtonIcon icon={XIcon} label="Annuler" variant="ghost" size="sm" />
+        }
+        onClick={() => {}}
+      />
+
+      <JobQueueItem
+        job={{
+          id: "j2",
+          domain: "caption",
+          status: "GENERATING",
+          title: "Captions @luxe-immo · slot 24",
+          description: "Whisper large-v3 · 47 mots détectés · 18s",
+          progress: 30,
+          createdAt: fifteenMinAgo,
+          startedAt: tenMinAgo,
+        }}
+        actions={<ButtonIcon icon={XIcon} label="Annuler" variant="ghost" size="sm" />}
+      />
+
+      <JobQueueItem
+        job={{
+          id: "j3",
+          domain: "render",
+          status: "COMPLETED",
+          title: "Story #14 — @appart-lyon",
+          description: "Rendu terminé · 4.2 MB · prêt pour publish",
+          progress: 100,
+          createdAt: fifteenMinAgo,
+          startedAt: tenMinAgo,
+          endedAt: oneMinAgo,
+        }}
+        actions={<ButtonIcon icon={Eye} label="Voir" variant="ghost" size="sm" />}
+        onClick={() => {}}
+      />
+
+      <JobQueueItem
+        job={{
+          id: "j4",
+          domain: "description",
+          status: "FAILED",
+          title: "Description @marseille-vue",
+          description: "Claude 3.5 Sonnet · prompt 'Story vue mer'",
+          createdAt: tenMinAgo,
+          startedAt: fiveMinAgo,
+          endedAt: oneMinAgo,
+          error: "Claude API quota exceeded — réessayer dans 5 min ou changer de modèle.",
+        }}
+        actions={
+          <>
+            <ButtonIcon icon={RotateCw} label="Réessayer" variant="ghost" size="sm" />
+            <ButtonIcon icon={Trash2} label="Supprimer" variant="ghost" size="sm" />
+          </>
+        }
+      />
+
+      <JobQueueItem
+        job={{
+          id: "j5",
+          domain: "transcription",
+          status: "QUEUED",
+          title: "Transcription brief client #18",
+          createdAt: oneMinAgo,
+        }}
+        actions={<ButtonIcon icon={XIcon} label="Retirer de la file" variant="ghost" size="sm" />}
+      />
+
+      <div className="mt-6 space-y-2">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant compact (h-row sans description ni timestamps)</p>
+        {[
+          { id: "c1", status: "IN_PROGRESS", title: "Job render #18", domain: "render" as const },
+          { id: "c2", status: "GENERATING", title: "Caption @luxe-immo", domain: "caption" as const },
+          { id: "c3", status: "COMPLETED", title: "Story #14 fait", domain: "render" as const },
+          { id: "c4", status: "FAILED", title: "Description échec", domain: "description" as const },
+        ].map((j) => (
+          <JobQueueItem
+            key={j.id}
+            job={j}
+            compact
+            actions={<ButtonIcon icon={MoreHorizontal} label="Plus" variant="ghost" size="sm" />}
+          />
+        ))}
       </div>
     </div>
   );
