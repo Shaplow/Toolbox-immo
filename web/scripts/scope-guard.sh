@@ -41,7 +41,7 @@ while IFS= read -r file; do
     web/src/styles/*|\
     web/tailwind.config.*|\
     web/postcss.config.*|\
-    web/docs/design-system.md|\
+    web/docs/*.md|\
     web/package.json|\
     web/package-lock.json|\
     web/scripts/scope-guard.sh|\
