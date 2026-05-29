@@ -26,6 +26,11 @@ import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { Stepper } from "@/components/ui/Stepper";
 import { Combobox } from "@/components/ui/Combobox";
 import { CommandPalette, type CommandAction } from "@/components/ui/CommandPalette";
+import { Table, type TableColumn } from "@/components/ui/Table";
+import { Pagination } from "@/components/ui/Pagination";
+import { DatePicker } from "@/components/ui/DatePicker";
+import { TimePicker } from "@/components/ui/TimePicker";
+import { NumberStepper } from "@/components/ui/NumberStepper";
 import { toast } from "@/components/ui/Toast";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -479,18 +484,244 @@ export default function AtomsNewPage() {
         <CommandPaletteShowcase />
       </Section>
 
-      {/* Note pied de page */}
-      <div className="surface-glass-soft rounded-xl p-5 mt-12">
-        <p className="text-[11px] uppercase tracking-widest font-medium text-gray-500 mb-2">
-          Lot restant Phase 3
+      {/* ━━━ TABLE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+
+      <Section id="table" eyebrow="Data + temps · P2" title="Table">
+        <TableShowcase />
+      </Section>
+
+      {/* ━━━ PAGINATION ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+
+      <Section id="pagination" eyebrow="Data + temps · P2" title="Pagination">
+        <PaginationShowcase />
+      </Section>
+
+      {/* ━━━ DATE PICKER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+
+      <Section id="date-picker" eyebrow="Data + temps · P2" title="DatePicker">
+        <DatePickerShowcase />
+      </Section>
+
+      {/* ━━━ TIME PICKER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+
+      <Section id="time-picker" eyebrow="Data + temps · P2" title="TimePicker">
+        <TimePickerShowcase />
+      </Section>
+
+      {/* ━━━ NUMBER STEPPER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+
+      <Section id="number-stepper" eyebrow="Data + temps · P2" title="NumberStepper">
+        <NumberStepperShowcase />
+      </Section>
+
+      {/* Note pied de page — Phase 3 complète */}
+      <div className="surface-glass rounded-xl p-5 mt-12">
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-sage-700 mb-2">
+          Phase 3 · clôturée
         </p>
         <p className="text-[13px] text-gray-700 leading-relaxed">
-          Lot 4 (P2) → Table, Pagination, DatePicker, TimePicker, NumberStepper.
+          16 atomes nouveaux livrés en 4 lots. Prochain chantier : Phase 4 — 11 molécules métier
+          (VideoPlayer, AssetCard, Section, StatusBadge, OverrideControl, TrimPlayer, AssigneePicker,
+          FilterBar, JobQueueItem, EmptyHero, SoftPanel).
         </p>
       </div>
     </div>
   );
 }
+
+// ─── Showcase Table ────────────────────────────────────────────────────────
+
+type RowData = {
+  id: string;
+  account: string;
+  date: string;
+  status: "Programmé" | "En cours" | "Publié" | "Refusé";
+  assignee: string;
+};
+
+function TableShowcase() {
+  const allRows: RowData[] = [
+    { id: "1", account: "@studio-paris",      date: "2026-03-12", status: "Publié",     assignee: "Alice"  },
+    { id: "2", account: "@luxe-immo",         date: "2026-03-13", status: "Programmé",  assignee: "Bob"    },
+    { id: "3", account: "@appart-lyon",       date: "2026-03-14", status: "En cours",   assignee: "Camille"},
+    { id: "4", account: "@marseille-vue",     date: "2026-03-15", status: "Refusé",     assignee: "Diane"  },
+    { id: "5", account: "@bordeaux-design",   date: "2026-03-16", status: "Programmé",  assignee: "Eric"   },
+  ];
+
+  const [selected, setSelected] = useState<Set<string>>(new Set(["2"]));
+
+  const columns: TableColumn<RowData>[] = [
+    { id: "account", label: "Compte IG", sortable: true, width: "30%" },
+    { id: "date", label: "Date", sortable: true, width: "20%" },
+    {
+      id: "status",
+      label: "Statut",
+      sortable: true,
+      width: "20%",
+      cell: (row) => {
+        const variantMap = {
+          "Programmé":  "sky",
+          "En cours":   "peach",
+          "Publié":     "sage",
+          "Refusé":     "rose",
+        } as const;
+        return <Chip variant={variantMap[row.status]}>{row.status}</Chip>;
+      },
+    },
+    { id: "assignee", label: "Assigné à", sortable: true },
+  ];
+
+  return (
+    <>
+      <Row label="Sortable + selectable">
+        <div className="flex-1 max-w-3xl">
+          <Table
+            columns={columns}
+            rows={allRows}
+            rowKey={(r) => r.id}
+            selectable
+            selectedKeys={selected}
+            onSelectionChange={setSelected}
+            onRowClick={(r) => toast.info(`Clicked ${r.account}`)}
+          />
+        </div>
+      </Row>
+      <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
+        Header glass sticky · sort cycle asc/desc/null · selection multiple
+        avec toggle-all · row hover white/50 backdrop-blur · click row →
+        toast (mais checkbox stops propagation).
+      </p>
+
+      <div className="mt-6 space-y-2">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Empty state</p>
+        <Table columns={columns} rows={[]} empty="Aucune publication dans cette période." />
+      </div>
+    </>
+  );
+}
+
+// ─── Showcase Pagination ───────────────────────────────────────────────────
+
+function PaginationShowcase() {
+  const [page1, setPage1] = useState(1);
+  const [page2, setPage2] = useState(7);
+
+  return (
+    <>
+      <Row label="Default">
+        <div className="flex-1 max-w-2xl">
+          <Pagination page={page1} total={42} pageSize={10} onPageChange={setPage1} />
+        </div>
+      </Row>
+      <Row label="Avec résumé">
+        <div className="flex-1 max-w-2xl">
+          <Pagination page={page2} total={148} pageSize={10} onPageChange={setPage2} showRange />
+        </div>
+      </Row>
+      <Row label="Beaucoup de pages">
+        <div className="flex-1 max-w-2xl">
+          <Pagination page={page2} total={500} pageSize={10} onPageChange={setPage2} showRange siblingCount={1} />
+        </div>
+      </Row>
+      <Row label="Une seule page">
+        <div className="flex-1 max-w-2xl">
+          <Pagination page={1} total={5} pageSize={10} onPageChange={() => {}} showRange />
+        </div>
+      </Row>
+    </>
+  );
+}
+
+// ─── Showcase DatePicker / TimePicker ──────────────────────────────────────
+
+function DatePickerShowcase() {
+  const [date1, setDate1] = useState("");
+  const [date2, setDate2] = useState("2026-06-15");
+
+  return (
+    <>
+      <Row label="Vide">
+        <div className="w-60"><DatePicker value={date1} onChange={setDate1} /></div>
+        <span className="text-[12px] text-gray-500">Valeur : {date1 || "(vide)"}</span>
+      </Row>
+      <Row label="Pré-rempli">
+        <div className="w-60"><DatePicker value={date2} onChange={setDate2} /></div>
+      </Row>
+      <Row label="Min / Max (semaine en cours)">
+        <div className="w-60">
+          <DatePicker
+            value={date2}
+            onChange={setDate2}
+            min="2026-06-15"
+            max="2026-06-21"
+          />
+        </div>
+        <span className="text-[12px] text-gray-500">Borné 15→21 juin 2026</span>
+      </Row>
+      <Row label="Error">
+        <div className="w-60"><DatePicker value="" onChange={() => {}} error="Date requise" /></div>
+      </Row>
+      <Row label="Disabled">
+        <div className="w-60"><DatePicker value="2026-01-01" onChange={() => {}} disabled /></div>
+      </Row>
+    </>
+  );
+}
+
+function TimePickerShowcase() {
+  const [time1, setTime1] = useState("");
+  const [time2, setTime2] = useState("18:00");
+
+  return (
+    <>
+      <Row label="Vide">
+        <div className="w-44"><TimePicker value={time1} onChange={setTime1} /></div>
+        <span className="text-[12px] text-gray-500">Valeur : {time1 || "(vide)"}</span>
+      </Row>
+      <Row label="Pré-rempli (18:00)">
+        <div className="w-44"><TimePicker value={time2} onChange={setTime2} /></div>
+      </Row>
+      <Row label="Step 15 min">
+        <div className="w-44"><TimePicker value={time2} onChange={setTime2} step={15 * 60} /></div>
+      </Row>
+      <Row label="Disabled">
+        <div className="w-44"><TimePicker value="09:00" onChange={() => {}} disabled /></div>
+      </Row>
+    </>
+  );
+}
+
+// ─── Showcase NumberStepper ────────────────────────────────────────────────
+
+function NumberStepperShowcase() {
+  const [px, setPx] = useState(24);
+  const [duration, setDuration] = useState(3.5);
+  const [percent, setPercent] = useState(50);
+  const [count, setCount] = useState(1);
+
+  return (
+    <>
+      <Row label="Sans unité">
+        <NumberStepper value={count} onChange={setCount} min={0} />
+        <span className="text-[12px] text-gray-500">Valeur : {count}</span>
+      </Row>
+      <Row label="Unité px (step 4)">
+        <NumberStepper value={px} onChange={setPx} step={4} min={0} max={200} unit="px" />
+      </Row>
+      <Row label="Unité s (step 0.5, décimal)">
+        <NumberStepper value={duration} onChange={setDuration} step={0.5} min={0} max={60} unit="s" />
+      </Row>
+      <Row label="Unité % (clamped 0-100)">
+        <NumberStepper value={percent} onChange={setPercent} step={5} min={0} max={100} unit="%" />
+      </Row>
+      <Row label="Disabled">
+        <NumberStepper value={42} onChange={() => {}} disabled unit="px" />
+      </Row>
+    </>
+  );
+}
+
+// ─── Showcase Chip ─────────────────────────────────────────────────────────
 
 // ─── Showcase Chip ─────────────────────────────────────────────────────────
 

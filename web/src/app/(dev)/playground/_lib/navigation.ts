@@ -118,6 +118,17 @@ export const NAV: NavSection[] = [
       { label: "CommandPalette", href: "/playground/atoms-new#command-palette" },
     ],
   },
+  {
+    label: "Phase 3 · Data + temps",
+    basePath: "/playground/atoms-new",
+    items: [
+      { label: "Table", href: "/playground/atoms-new#table" },
+      { label: "Pagination", href: "/playground/atoms-new#pagination" },
+      { label: "DatePicker", href: "/playground/atoms-new#date-picker" },
+      { label: "TimePicker", href: "/playground/atoms-new#time-picker" },
+      { label: "NumberStepper", href: "/playground/atoms-new#number-stepper" },
+    ],
+  },
 ];
 
 /** Tous les ids ancrables d'une page donnée. */
