@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
+import { useImpersonation } from "@/hooks/useImpersonation";
 import { type ReactNode } from "react";
 import {
   Home,
@@ -21,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
+import { parsePermissions } from "@/lib/permissions/parsePermissions";
 import { TOOL_META } from "@/lib/toolMeta";
 import { useWorklistCount } from "@/hooks/useWorklistCount";
 import { useState } from "react";
@@ -87,45 +89,20 @@ export function AppNav({
   isRoleOverride?: boolean;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const { count: worklistCount } = useWorklistCount();
+  const { stopImpersonation, setViewAsRole } = useImpersonation();
 
   const canSeeAdmin = actualUser.role === "ADMIN";
   const navUser = isImpersonating || isRoleOverride ? effectiveUser : actualUser;
   const isAdminView = canSeeAdmin && !isImpersonating && !isRoleOverride;
 
-  async function setViewAsRole(role: "VIDEASTE" | "MONTEUR" | "CM" | null) {
-    if (role === null) {
-      await fetch("/api/admin/view-as", { method: "DELETE" });
-    } else {
-      await fetch("/api/admin/view-as", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role }),
-      });
-    }
-    router.refresh();
-  }
-
-  const rawPerms = navUser.permissions ?? "[]";
-  let userPerms: string[] = [];
-  try {
-    userPerms = JSON.parse(rawPerms) as string[];
-  } catch {
-    userPerms = [];
-  }
+  const userPerms = parsePermissions(navUser.permissions);
   const hasCaptions = userPerms.includes("captions");
   const hasCovers = userPerms.includes("covers");
   const hasTranscription = userPerms.includes("transcription");
   const hasDescription = userPerms.includes("description");
   const hasTemplates = userPerms.includes("templates");
-
-  async function stopImpersonation() {
-    await fetch("/api/admin/impersonation", { method: "DELETE" });
-    router.push("/admin/users");
-    router.refresh();
-  }
 
   // ── Structure de nav consolidée ──────────────────────────────────────
   const navSections: NavSection[] = isAdminView

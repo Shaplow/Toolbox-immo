@@ -121,10 +121,7 @@ export async function getUserContext(): Promise<UserContext | null> {
   return resolveUserContext(session, impersonatedUserId, viewAsRole);
 }
 
-export function parsePermissions(rawPermissions: string | null | undefined): string[] {
-  try {
-    return JSON.parse(rawPermissions ?? "[]") as string[];
-  } catch {
-    return [];
-  }
-}
+// parsePermissions a été déplacée dans lib/permissions/parsePermissions.ts
+// (helper neutre client + server). Le re-export ci-dessous évite de casser
+// les imports existants.
+export { parsePermissions } from "@/lib/permissions/parsePermissions";

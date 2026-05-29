@@ -14,6 +14,7 @@
  */
 
 import type { UserRole } from "@/types/roles";
+import { parsePermissions } from "@/lib/permissions/parsePermissions";
 
 // Identité minimale lue depuis la session — duplique le shape de
 // userContext.AppUserIdentity pour éviter de pull userContext.ts (qui
@@ -25,15 +26,6 @@ export type ToolUserIdentity = {
   role: string;
   permissions: string;
 };
-
-/** JSON-array parse tolérant pour User.permissions. */
-function parsePermissions(rawPermissions: string | null | undefined): string[] {
-  try {
-    return JSON.parse(rawPermissions ?? "[]") as string[];
-  } catch {
-    return [];
-  }
-}
 
 /** Sentinelle : l'ADMIN a accès à TOUS les outils sans liste explicite. */
 export const ROLE_TOOL_SCOPE_ALL = "*" as const;

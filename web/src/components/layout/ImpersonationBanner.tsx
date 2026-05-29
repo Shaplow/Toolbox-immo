@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { UserCog, Eye } from "lucide-react";
+import { useImpersonation } from "@/hooks/useImpersonation";
 
 interface ImpersonationBannerProps {
   effectiveUserLabel: string;
@@ -13,19 +13,12 @@ export function ImpersonationBanner({
   effectiveUserLabel,
   variant = "impersonation",
 }: ImpersonationBannerProps) {
-  const router = useRouter();
+  const { stopImpersonation, setViewAsRole } = useImpersonation();
   const isRoleOverride = variant === "roleOverride";
 
-  async function stopActiveMode() {
-    if (isRoleOverride) {
-      await fetch("/api/admin/view-as", { method: "DELETE" });
-      router.refresh();
-    } else {
-      await fetch("/api/admin/impersonation", { method: "DELETE" });
-      router.push("/admin/users");
-      router.refresh();
-    }
-  }
+  const stopActiveMode = isRoleOverride
+    ? () => void setViewAsRole(null)
+    : () => void stopImpersonation();
 
   const wrapperClass = isRoleOverride
     ? "bg-fuchsia-50 border-b border-fuchsia-200"
@@ -52,7 +45,7 @@ export function ImpersonationBanner({
       </div>
       <button
         type="button"
-        onClick={() => void stopActiveMode()}
+        onClick={stopActiveMode}
         className={btnClass}
       >
         {isRoleOverride ? "Revenir en admin" : "Quitter l'impersonation"}
