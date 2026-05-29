@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 // (it would read the cookie being set/cleared in this very response).
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { IMPERSONATION_COOKIE_NAME } from "@/lib/userContext";
+import { IMPERSONATION_COOKIE_NAME, VIEW_AS_ROLE_COOKIE_NAME } from "@/lib/userContext";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -56,6 +56,16 @@ export async function POST(req: NextRequest) {
     // de session de Chrome/Firefox, exposant l'admin à reprendre l'identité
     // impersonnée sans le savoir.
     maxAge: 8 * 60 * 60,
+  });
+  // Phase 6.1 — clear le cookie view-as si présent. Sinon : après un stop
+  // d'impersonation, l'admin se retrouvait silencieusement en mode view-as
+  // d'un rôle qu'il avait choisi avant l'impersonation, sans l'avoir voulu.
+  response.cookies.set(VIEW_AS_ROLE_COOKIE_NAME, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
   });
   return response;
 }
