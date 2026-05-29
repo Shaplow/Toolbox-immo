@@ -3,11 +3,13 @@
 import type { ReactNode } from "react";
 
 /**
- * Wrapper de champ formulaire — label + obligatoire + aide + erreur.
+ * Wrapper de champ formulaire — pattern Linear : label eyebrow tiny
+ * uppercase, gap serré, help/error en text micro.
  *
- * - Label en text-xs gray-700, asterisk danger si required.
- * - Help texte gray-500 sous le champ (caché si error présent).
- * - Error texte danger-600 sous le champ.
+ * - Label en text-[10px] uppercase tracking-widest gray-500 font-medium.
+ * - Required : petit point danger sans asterisk (plus sobre).
+ * - Help : text-[11px] gray-500, caché si error.
+ * - Error : text-[11px] danger-600, role=alert.
  */
 interface FormFieldProps {
   label: string;
@@ -19,10 +21,16 @@ interface FormFieldProps {
 
 export function FormField({ label, required = false, help, error, children }: FormFieldProps) {
   return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-xs text-gray-700 font-medium">
+    <label className="flex flex-col gap-1">
+      <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest font-medium text-gray-500">
         {label}
-        {required && <span className="text-danger-600 ml-0.5" aria-hidden>*</span>}
+        {required && (
+          <span
+            className="inline-block h-1 w-1 rounded-full bg-danger-600"
+            aria-hidden
+            title="Requis"
+          />
+        )}
       </span>
       {children}
       {help && !error && <span className="text-[11px] text-gray-500">{help}</span>}

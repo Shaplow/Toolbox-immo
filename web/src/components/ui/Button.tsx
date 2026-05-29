@@ -6,22 +6,23 @@ import type { LucideIcon } from "lucide-react";
 import { Loader2 } from "lucide-react";
 
 /**
- * Bouton primaire du design system.
+ * Bouton primaire — direction Linear · Vercel · Raycast.
  *
  * Variants :
- * - `primary`   — action principale standard, **mono dark** (gray-950). C'est le
- *                  CTA par défaut dans l'app. Sobre, Apple-like.
- * - `brand`     — CTA signature (orange brand) réservé aux moments forts
- *                  (S'inscrire, Mark publié, Démarrer un onboarding). Glow au
- *                  hover pour le "peps". À utiliser parcimonieusement.
- * - `secondary` — action secondaire, border gray-300, fond blanc.
- * - `ghost`     — action discrète, transparent hover gray-100.
- * - `danger`    — action destructive irréversible (suppression).
+ * - `primary`   — gray-950 mono. CTA standard. Focus ring mono.
+ * - `brand`     — orange + glow. Réservé aux 2-3 spots signature de
+ *                  toute l'app (S'inscrire, Démarrer onboarding,
+ *                  Mark publié peut-être). Focus ring brand.
+ * - `secondary` — border gray-300. Action secondaire.
+ * - `ghost`     — transparent hover gray-100. Action discrète.
+ * - `danger`    — danger-600. Action destructive.
  *
- * Sizes : `sm` (compact toolbars) | `md` (default) | `lg` (hero CTA).
+ * Sizes : `sm` (toolbars compactes) | `md` (default UI) | `lg` (hero CTA).
+ * Densité serrée par défaut — alignée Linear/Vercel.
  *
- * États gérés : loading (spinner + cursor-wait), disabled (opacity-50),
- * focus-visible (anneau brand). Tous alignés sur la doctrine `États UI`.
+ * Convention icon : tout button avec une action significative devrait
+ * porter une `icon`. C'est ce qui distingue l'app dense d'une app à
+ * label. Voir `ButtonIcon` pour l'icon-only carré.
  */
 
 type Variant = "primary" | "brand" | "secondary" | "ghost" | "danger";
@@ -32,6 +33,8 @@ interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "siz
   size?: Size;
   loading?: boolean;
   icon?: LucideIcon;
+  /** Place l'icône à droite (par défaut à gauche). Pour les liens "Voir →". */
+  iconRight?: boolean;
   children: ReactNode;
 }
 
@@ -42,6 +45,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     loading = false,
     disabled,
     icon: Icon,
+    iconRight = false,
     children,
     className,
     ...rest
@@ -49,29 +53,36 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   ref,
 ) {
   const base =
-    "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-all focus-ring disabled:opacity-50 disabled:cursor-not-allowed";
+    "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed";
 
+  // Density serrée à la Linear : h-7 / h-8 / h-9.
   const sizeClasses =
     size === "sm"
-      ? "px-3 py-1.5 text-xs"
+      ? "h-7 px-2.5 text-[12px]"
       : size === "lg"
-        ? "px-5 py-2.5 text-sm"
-        : "px-4 py-2 text-sm";
+        ? "h-9 px-4 text-sm"
+        : "h-8 px-3 text-[13px]";
 
   const variantClasses = {
     primary:
-      "bg-gray-950 text-white hover:bg-gray-800",
+      "bg-gray-950 text-white hover:bg-gray-800 focus-ring",
     brand:
-      "bg-brand-600 text-white shadow-[var(--shadow-glow-brand)] hover:bg-brand-700 hover:shadow-[var(--shadow-glow-brand-strong)] hover:-translate-y-0.5",
+      "bg-brand-600 text-white shadow-[var(--shadow-glow-brand)] hover:bg-brand-700 hover:shadow-[var(--shadow-glow-brand-strong)] hover:-translate-y-[1px] focus-ring-brand",
     secondary:
-      "bg-white text-gray-800 border border-gray-300 hover:bg-gray-50 hover:border-gray-400",
+      "bg-white text-gray-800 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 focus-ring",
     ghost:
-      "bg-transparent text-gray-700 hover:bg-gray-100 hover:text-gray-950",
+      "bg-transparent text-gray-700 hover:bg-gray-100 hover:text-gray-950 focus-ring",
     danger:
-      "bg-danger-600 text-white hover:bg-danger-700",
+      "bg-danger-600 text-white hover:bg-danger-700 focus-ring-danger",
   }[variant];
 
-  const iconSize = size === "sm" ? 12 : size === "lg" ? 16 : 14;
+  const iconSize = size === "sm" ? 12 : size === "lg" ? 15 : 14;
+
+  const iconNode = loading ? (
+    <Loader2 size={iconSize} className="animate-spin" />
+  ) : Icon ? (
+    <Icon size={iconSize} />
+  ) : null;
 
   return (
     <button
@@ -82,12 +93,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       className={[base, sizeClasses, variantClasses, className ?? ""].filter(Boolean).join(" ")}
       {...rest}
     >
-      {loading ? (
-        <Loader2 size={iconSize} className="animate-spin" />
-      ) : Icon ? (
-        <Icon size={iconSize} />
-      ) : null}
+      {!iconRight && iconNode}
       {children}
+      {iconRight && iconNode}
     </button>
   );
 });
