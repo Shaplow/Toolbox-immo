@@ -22,6 +22,8 @@ import { Skeleton, SkeletonRow } from "@/components/ui/Skeleton";
 import { Tabs } from "@/components/ui/Tabs";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
+import { Switch } from "@/components/ui/Switch";
+import { Slider } from "@/components/ui/Slider";
 import { HandDrawn } from "@/components/ui/decor/HandDrawn";
 import {
   ArrowRight,
@@ -62,6 +64,10 @@ export default function PrimitivesPage() {
   const [confirmDangerOpen, setConfirmDangerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const [activeFiltersTab, setActiveFiltersTab] = useState("active");
+  const [autoCover, setAutoCover] = useState(true);
+  const [notifications, setNotifications] = useState(false);
+  const [volume, setVolume] = useState(0.6);
+  const [frames, setFrames] = useState(36);
 
   return (
     <div className="space-y-12">
@@ -577,6 +583,72 @@ export default function PrimitivesPage() {
                 "separator",
                 { label: "Désactivé", disabled: true,    onClick: () => {} },
               ]}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Switch + Slider ──────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="Switch · Slider"
+          subtitle="Switch (toggle mono) + Slider (range gradient mono dark). Pour les options et configurations de panneaux."
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+            <Eyebrow>Switch</Eyebrow>
+            <Switch
+              checked={autoCover}
+              onChange={setAutoCover}
+              label="Cover auto"
+              description="Génère un pack de frames cover à chaque rendu vidéo."
+            />
+            <Switch
+              checked={notifications}
+              onChange={setNotifications}
+              label="Notifications email"
+              description="Recevoir un email à chaque slot publié."
+            />
+            <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+              <Switch checked={autoCover} onChange={setAutoCover} size="sm" />
+              <span className="text-[12px] text-gray-600">Switch sm sans label (toolbar compact)</span>
+            </div>
+            <Switch
+              checked={false}
+              onChange={() => {}}
+              label="Désactivé"
+              description="Switch disabled prop."
+              disabled
+            />
+          </div>
+
+          <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+            <Eyebrow>Slider</Eyebrow>
+            <Slider
+              label="Volume musique"
+              value={volume}
+              onChange={setVolume}
+              min={0}
+              max={1}
+              step={0.05}
+              unit="%"
+              showValue={false}
+            />
+            <Slider
+              label="Frames cover proposées"
+              value={frames}
+              onChange={setFrames}
+              min={6}
+              max={72}
+            />
+            <Slider
+              label="Slider disabled"
+              value={42}
+              onChange={() => {}}
+              min={0}
+              max={100}
+              unit="px"
+              disabled
             />
           </div>
         </div>

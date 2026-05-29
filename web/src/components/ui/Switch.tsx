@@ -1,0 +1,75 @@
+"use client";
+
+import type { ReactNode } from "react";
+
+/**
+ * Switch (toggle) — pattern Linear / Vercel.
+ *
+ * - Track gray-200 off → gray-950 on. Thumb white avec shadow subtle.
+ * - Animation slide + scale au hover.
+ * - Sizes : sm (w-7 h-4) | md (w-9 h-5, default).
+ * - API contrôlée : `checked` + `onChange(checked: boolean)`.
+ * - `label?` optionnel à côté (rend le whole-thing un label cliquable).
+ * - `description?` sous le label (Geist text-[11px] gray-500).
+ */
+
+interface SwitchProps {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label?: ReactNode;
+  description?: string;
+  size?: "sm" | "md";
+  disabled?: boolean;
+  className?: string;
+}
+
+export function Switch({
+  checked,
+  onChange,
+  label,
+  description,
+  size = "md",
+  disabled = false,
+  className,
+}: SwitchProps) {
+  const trackSize = size === "sm" ? "w-7 h-4" : "w-9 h-5";
+  const thumbSize = size === "sm" ? "h-3 w-3" : "h-4 w-4";
+  const thumbTranslate = size === "sm" ? "translate-x-3" : "translate-x-4";
+
+  const toggle = (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex shrink-0 items-center rounded-full transition-colors focus-ring disabled:opacity-50 disabled:cursor-not-allowed ${trackSize} ${
+        checked ? "bg-gray-950" : "bg-gray-200 hover:bg-gray-300"
+      }`}
+    >
+      <span
+        className={`absolute left-0.5 inline-block rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.18)] transition-transform ${thumbSize} ${
+          checked ? thumbTranslate : "translate-x-0"
+        }`}
+      />
+    </button>
+  );
+
+  if (!label) return <span className={className}>{toggle}</span>;
+
+  return (
+    <label
+      className={`inline-flex items-center gap-3 cursor-pointer ${
+        disabled ? "cursor-not-allowed opacity-60" : ""
+      } ${className ?? ""}`}
+    >
+      {toggle}
+      <span className="flex flex-col">
+        <span className="text-[13px] text-gray-950 font-medium leading-tight">{label}</span>
+        {description && (
+          <span className="text-[11px] text-gray-500 leading-tight mt-0.5">{description}</span>
+        )}
+      </span>
+    </label>
+  );
+}
