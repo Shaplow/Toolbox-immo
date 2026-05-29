@@ -5,9 +5,19 @@
  * ADMIN sur clients, comptes IG, templates, presets et slots récents.
  *
  * Mounté dans (app)/layout uniquement pour ADMIN réel (pas en impersonation).
+ *
+ * Phase 6.1 Session 3 :
+ * - Migration visuelle Liquid Glass (cohérent CommandPalette primitive
+ *   Phase 3 Lot 3) sans toucher à la logique métier (fetch /api/admin/search).
+ * - Portal vers document.body (échappe au containing block backdrop-filter).
+ * - Listener event "admin:open-palette" pour permettre l'ouverture depuis
+ *   le bouton "Rechercher [⌘K]" dans AppNav (audit UX important #6 —
+ *   palette discoverable).
+ * - Kbd primitive pour ⌘K / ↑↓ / ↵ / ESC.
  */
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   Search,
@@ -22,6 +32,7 @@ import {
   Loader2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { Kbd } from "@/components/ui/Kbd";
 
 type Kind =
   | "client"
@@ -77,13 +88,18 @@ const KIND_ORDER: Kind[] = [
 export function AdminCommandPalette() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [focusIdx, setFocusIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Cmd+K / Ctrl+K pour ouvrir
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Cmd+K / Ctrl+K + ESC.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -97,7 +113,14 @@ export function AdminCommandPalette() {
     return () => window.removeEventListener("keydown", handler);
   }, [open]);
 
-  // Focus input à l'ouverture
+  // Listener custom : permet l'ouverture depuis la nav (bouton ⌘K).
+  useEffect(() => {
+    const handler = () => setOpen(true);
+    window.addEventListener("admin:open-palette", handler);
+    return () => window.removeEventListener("admin:open-palette", handler);
+  }, []);
+
+  // Focus input à l'ouverture.
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 50);
@@ -108,7 +131,7 @@ export function AdminCommandPalette() {
     }
   }, [open]);
 
-  // Debounce search
+  // Debounce search.
   useEffect(() => {
     if (!open) return;
     const q = query.trim();
@@ -126,7 +149,6 @@ export function AdminCommandPalette() {
           return;
         }
         const data = (await res.json()) as { results: SearchResultItem[] };
-        // Réordonner par catégorie (slots d'abord pour les recherches contextuelles)
         data.results.sort(
           (a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind),
         );
@@ -159,7 +181,7 @@ export function AdminCommandPalette() {
     }
   }
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
   // Group results by kind, dans l'ordre KIND_ORDER, en gardant l'index global
   // (pour l'arrow-nav qui parcourt la liste plate).
@@ -173,42 +195,51 @@ export function AdminCommandPalette() {
     }
   });
 
-  return (
+  return createPortal(
     <>
+      {/* Backdrop : juste blur, pas de dim gris (cohérent Modal/Drawer
+          Liquid Glass — le panel ressort par son halo). */}
       <div
-        className="fixed inset-0 bg-black/40 z-50"
+        className="fixed inset-0 backdrop-blur-[12px] backdrop-saturate-110 z-50"
         onClick={() => setOpen(false)}
         aria-hidden="true"
       />
       <div
         role="dialog"
         aria-modal="true"
-        className="fixed inset-x-0 top-20 z-50 flex justify-center px-4 pointer-events-none"
+        aria-label="Recherche admin"
+        className="fixed inset-x-0 top-[15vh] z-50 flex justify-center px-4 pointer-events-none"
       >
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl pointer-events-auto overflow-hidden">
+        <div
+          className={[
+            "pointer-events-auto w-full max-w-xl rounded-2xl overflow-hidden",
+            "bg-gradient-to-b from-white to-white/85 backdrop-blur-[24px] backdrop-saturate-150",
+            "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_8px_24px_-4px_rgba(15,23,42,0.12),0_32px_72px_-12px_rgba(15,23,42,0.22)]",
+          ].join(" ")}
+        >
           {/* Input */}
-          <div className="flex items-center gap-2 px-4 border-b border-gray-100">
-            <Search size={16} className="text-gray-400 shrink-0" />
+          <div className="flex items-center gap-2.5 px-4 py-3 shadow-[inset_0_-1px_0_rgba(255,255,255,0.4)]">
+            <Search size={16} className="text-gray-500 shrink-0" />
             <input
               ref={inputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Rechercher clients, comptes, templates, presets, publications…"
-              className="flex-1 py-4 text-sm focus:outline-none placeholder:text-gray-400"
+              className="flex-1 py-1 text-[14px] text-gray-950 bg-transparent focus:outline-none placeholder:text-gray-400"
             />
             {loading && <Loader2 size={14} className="text-gray-400 animate-spin shrink-0" />}
-            <kbd className="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">ESC</kbd>
+            <Kbd>Esc</Kbd>
           </div>
 
           {/* Results */}
-          <div className="max-h-96 overflow-y-auto py-1">
+          <div className="max-h-[60vh] overflow-y-auto py-2 [scrollbar-width:thin]">
             {query.trim().length < 2 ? (
-              <p className="px-4 py-6 text-xs text-gray-400 text-center">
+              <p className="px-4 py-6 text-[12px] text-gray-500 text-center">
                 Tapez au moins 2 caractères pour rechercher.
               </p>
             ) : !loading && results.length === 0 ? (
-              <p className="px-4 py-6 text-xs text-gray-400 text-center">
+              <p className="px-4 py-6 text-[12px] text-gray-500 text-center">
                 Aucun résultat pour « {query.trim()} ».
               </p>
             ) : (
@@ -216,30 +247,45 @@ export function AdminCommandPalette() {
                 const Icon = KIND_ICON[group.kind];
                 return (
                   <div key={group.kind} className="py-1">
-                    <p className="px-4 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                    <p className="px-4 py-1.5 text-[10px] font-medium uppercase tracking-widest text-gray-500">
                       {KIND_LABEL[group.kind]}
                     </p>
-                    {group.items.map(({ item, idx }) => (
-                      <button
-                        key={`${item.kind}-${item.id}`}
-                        type="button"
-                        onClick={() => navigate(item)}
-                        onMouseEnter={() => setFocusIdx(idx)}
-                        className={`w-full flex items-center gap-3 px-4 py-2 text-left text-sm transition-colors ${
-                          idx === focusIdx ? "bg-indigo-50 text-indigo-700" : "text-gray-700 hover:bg-gray-50"
-                        }`}
-                      >
-                        <Icon size={14} className={idx === focusIdx ? "text-indigo-500" : "text-gray-400"} />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium">{item.label}</p>
-                          {item.sublabel && (
-                            <p className={`text-xs truncate ${idx === focusIdx ? "text-indigo-500" : "text-gray-400"}`}>
-                              {item.sublabel}
-                            </p>
-                          )}
-                        </div>
-                      </button>
-                    ))}
+                    {group.items.map(({ item, idx }) => {
+                      const isFocused = idx === focusIdx;
+                      return (
+                        <button
+                          key={`${item.kind}-${item.id}`}
+                          type="button"
+                          onClick={() => navigate(item)}
+                          onMouseEnter={() => setFocusIdx(idx)}
+                          className={[
+                            "w-[calc(100%-1rem)] mx-2 my-0.5 rounded-md inline-flex items-center gap-3 px-3 py-2 text-left text-[13px] transition-colors",
+                            isFocused
+                              ? "bg-white/80 backdrop-blur-[8px] text-gray-950 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)]"
+                              : "text-gray-700",
+                          ].join(" ")}
+                        >
+                          <span
+                            className={[
+                              "shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-md backdrop-blur-[6px]",
+                              isFocused
+                                ? "bg-sky-100/70 text-sky-700 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.18)]"
+                                : "bg-white/60 text-gray-600 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
+                            ].join(" ")}
+                          >
+                            <Icon size={14} />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-medium leading-tight">{item.label}</p>
+                            {item.sublabel && (
+                              <p className="text-[11px] text-gray-500 truncate leading-tight mt-0.5">
+                                {item.sublabel}
+                              </p>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 );
               })
@@ -247,20 +293,23 @@ export function AdminCommandPalette() {
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-100 text-[10px] text-gray-400">
-            <span className="flex items-center gap-2">
-              <kbd className="font-mono bg-white border border-gray-200 px-1 rounded">↑↓</kbd>
+          <div className="flex items-center justify-between px-4 py-2.5 bg-white/40 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] text-[10px] text-gray-500">
+            <span className="inline-flex items-center gap-1.5">
+              <Kbd>↑</Kbd>
+              <Kbd>↓</Kbd>
               naviguer
-              <kbd className="font-mono bg-white border border-gray-200 px-1 rounded">↵</kbd>
+              <Kbd>↵</Kbd>
               ouvrir
             </span>
-            <span>
-              <kbd className="font-mono bg-white border border-gray-200 px-1 rounded">⌘K</kbd>
+            <span className="inline-flex items-center gap-1.5">
+              <Kbd>⌘</Kbd>
+              <Kbd>K</Kbd>
               ouvrir
             </span>
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
