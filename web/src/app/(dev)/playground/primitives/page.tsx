@@ -19,6 +19,9 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Kbd, KbdChord } from "@/components/ui/Kbd";
 import { Skeleton, SkeletonRow } from "@/components/ui/Skeleton";
+import { Tabs } from "@/components/ui/Tabs";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { HandDrawn } from "@/components/ui/decor/HandDrawn";
 import {
   ArrowRight,
@@ -41,6 +44,12 @@ import {
   Layers,
   CheckCircle2,
   AlertCircle,
+  List,
+  CheckSquare,
+  Archive,
+  Eye,
+  Pencil,
+  ExternalLink,
 } from "lucide-react";
 
 export default function PrimitivesPage() {
@@ -51,6 +60,8 @@ export default function PrimitivesPage() {
   const [caption, setCaption] = useState("Un appartement plein de charme, vue dégagée sur le parc.");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmDangerOpen, setConfirmDangerOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("all");
+  const [activeFiltersTab, setActiveFiltersTab] = useState("active");
 
   return (
     <div className="space-y-12">
@@ -468,6 +479,105 @@ export default function PrimitivesPage() {
             <SkeletonRow />
             <SkeletonRow />
             <SkeletonRow />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Tabs ──────────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="Tabs"
+          subtitle="2 variants : line (default, underline Linear-like) pour la navigation principale, pill (segmented) pour filtres compacts."
+        />
+        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-5">
+          <div className="space-y-3">
+            <Eyebrow>Line tabs · navigation principale</Eyebrow>
+            <Tabs
+              value={activeTab}
+              onChange={setActiveTab}
+              items={[
+                { id: "all",     label: "Tous",      icon: List,         badge: <Badge size="sm">12</Badge> },
+                { id: "active",  label: "En cours",  icon: CheckSquare,  badge: <Badge size="sm" variant="info">4</Badge> },
+                { id: "archived", label: "Archivés", icon: Archive },
+                { id: "deleted", label: "Supprimés", disabled: true },
+              ]}
+            />
+            <p className="text-[12px] text-gray-500">Tab actif : <code className="font-mono">{activeTab}</code></p>
+          </div>
+          <div className="space-y-3 border-t border-gray-100 pt-5">
+            <Eyebrow>Pill tabs · filtres compacts</Eyebrow>
+            <Tabs
+              variant="pill"
+              size="sm"
+              value={activeFiltersTab}
+              onChange={setActiveFiltersTab}
+              items={[
+                { id: "active",   label: "Actifs" },
+                { id: "all",      label: "Tous" },
+                { id: "archived", label: "Archivés" },
+              ]}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Tooltip ───────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="Tooltip"
+          subtitle="Apparaît au hover/focus avec délai 200ms. Position top par défaut, fallback bottom si pas la place. bg-gray-950, text-[11px], shadow-overlay."
+        />
+        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-3">
+          <Eyebrow>Démos</Eyebrow>
+          <div className="flex flex-wrap items-center gap-3">
+            <Tooltip content="Action rapide depuis n'importe où">
+              <ButtonIcon icon={Plus} label="Nouveau" />
+            </Tooltip>
+            <Tooltip content="Rafraîchir la liste">
+              <ButtonIcon icon={RefreshCw} label="Rafraîchir" />
+            </Tooltip>
+            <Tooltip content={<><span>Ouvrir la palette</span> <kbd className="ml-1.5 font-mono text-[10px] opacity-70">⌘K</kbd></>}>
+              <Button variant="secondary" size="sm" icon={Search}>Rechercher</Button>
+            </Tooltip>
+            <Tooltip content="Tooltip en dessous" side="bottom">
+              <span className="cursor-help underline decoration-dotted text-[12px] text-gray-700">survol moi (bottom)</span>
+            </Tooltip>
+          </div>
+        </div>
+      </section>
+
+      {/* ── DropdownMenu ──────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="DropdownMenu"
+          subtitle="Menu d'actions au click. Items : action, séparateur, destructive. Click outside et ESC ferment."
+        />
+        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-3">
+          <Eyebrow>Trigger varié</Eyebrow>
+          <div className="flex flex-wrap items-center gap-4">
+            <DropdownMenu
+              trigger={<ButtonIcon icon={MoreHorizontal} label="Plus d'actions" />}
+              items={[
+                { label: "Aperçu",       icon: Eye,           onClick: () => toast.info("Aperçu") },
+                { label: "Éditer",       icon: Pencil,        onClick: () => toast.info("Éditer"), kbd: "E" },
+                { label: "Dupliquer",    icon: Copy,          onClick: () => toast.info("Dupliquer"), kbd: "⌘D" },
+                "separator",
+                { label: "Ouvrir dans une fiche", icon: ExternalLink, onClick: () => toast.info("Ouvrir") },
+                "separator",
+                { label: "Supprimer",    icon: Trash2,        destructive: true, onClick: () => toast.error("Supprimé.") },
+              ]}
+            />
+            <DropdownMenu
+              align="end"
+              trigger={<Button variant="secondary" size="sm" icon={Filter}>Filtrer</Button>}
+              items={[
+                { label: "Tous",      icon: List,         onClick: () => toast.info("Tous") },
+                { label: "Actifs",    icon: CheckSquare,  onClick: () => toast.info("Actifs") },
+                { label: "Archivés",  icon: Archive,      onClick: () => toast.info("Archivés") },
+                "separator",
+                { label: "Désactivé", disabled: true,    onClick: () => {} },
+              ]}
+            />
           </div>
         </div>
       </section>
