@@ -55,11 +55,11 @@ const COVER_STATUS_LABELS: Record<string, string> = {
 };
 
 const COVER_STATUS_COLORS: Record<string, string> = {
-  QUEUED: "bg-yellow-50 text-yellow-700 border-yellow-200",
-  PROCESSING: "bg-blue-50 text-blue-700 border-blue-200",
-  READY: "bg-indigo-50 text-indigo-700 border-indigo-200",
-  SELECTED: "bg-green-50 text-green-700 border-green-200",
-  FAILED: "bg-red-50 text-red-700 border-red-200",
+  QUEUED:     "bg-gray-100 text-gray-700 border-gray-200",
+  PROCESSING: "bg-gray-100 text-gray-700 border-gray-200",
+  READY:      "bg-gray-100 text-gray-700 border-gray-200",
+  SELECTED:   "bg-success-50 text-success-700 border-success-200",
+  FAILED:     "bg-danger-50 text-danger-700 border-danger-200",
 };
 
 export function CoverSection({ slot, pattern, coverPack, coverConfigError, canEdit, canMonteurUpload = false, viewerRole, currentVersion }: Props) {
@@ -116,17 +116,17 @@ export function CoverSection({ slot, pattern, coverPack, coverConfigError, canEd
   // ── Branche monteurUpload : dropzone pour le monteur ───────────────────────
   if (mode === "monteurUpload") {
     return (
-      <section id="cover" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
+      <section id="cover" className="bg-white border border-gray-100 rounded-2xl p-8">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <ImageIcon size={16} className="text-gray-400" />
             <h2 className="text-sm font-semibold text-gray-700">Cover</h2>
-            <span className="text-[10px] uppercase tracking-wide text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2 py-0.5 font-medium">
+            <span className="text-[10px] uppercase tracking-[0.14em] text-gray-600 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5 font-medium">
               Monteur
             </span>
           </div>
           {coverPack?.finalCoverUrl && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border font-medium bg-green-50 text-green-700 border-green-200">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border font-medium bg-success-50 text-success-700 border-success-200">
               Livrée
             </span>
           )}
@@ -162,13 +162,13 @@ export function CoverSection({ slot, pattern, coverPack, coverConfigError, canEd
             <div
               className={`w-full flex flex-col items-center gap-2 py-10 px-6 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
                 uploading
-                  ? "border-orange-300 bg-orange-50"
-                  : "border-gray-200 hover:border-orange-300 hover:bg-orange-50/20"
+                  ? "border-gray-400 bg-gray-50"
+                  : "border-gray-200 hover:border-gray-400 hover:bg-gray-50"
               }`}
             >
               {uploading ? (
                 <>
-                  <Loader2 size={22} className="text-orange-500 animate-spin" />
+                  <Loader2 size={22} className="text-gray-700 animate-spin" />
                   <span className="text-sm text-gray-500">Upload en cours…</span>
                 </>
               ) : (
@@ -200,14 +200,14 @@ export function CoverSection({ slot, pattern, coverPack, coverConfigError, canEd
   }
 
   return (
-    <section id="cover" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
+    <section id="cover" className="bg-white border border-gray-100 rounded-2xl p-8">
       {/* En-tête section */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <ImageIcon size={16} className="text-gray-400" />
           <h2 className="text-sm font-semibold text-gray-700">Cover</h2>
           {currentVersion && (
-            <span className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full font-medium">
+            <span className="text-xs text-gray-600 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full font-medium">
               Lié à V{currentVersion.versionNumber}
             </span>
           )}
@@ -267,14 +267,14 @@ export function CoverSection({ slot, pattern, coverPack, coverConfigError, canEd
 
       {/* Cover pack FAILED — bandeau d'erreur d'extraction */}
       {coverPack?.status === "FAILED" && (
-        <div className="flex items-start gap-2 text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
-          <AlertTriangle size={15} className="text-red-500 mt-0.5 flex-shrink-0" />
+        <div className="flex items-start gap-2 text-sm text-danger-700 bg-danger-50 border border-danger-200 rounded-lg p-3 mb-3">
+          <AlertTriangle size={15} className="text-danger-600 mt-0.5 flex-shrink-0" />
           <div>
             <p className="font-medium">Extraction des frames échouée</p>
             {coverPack.errorMsg && (
-              <p className="text-red-700 mt-0.5">{coverPack.errorMsg}</p>
+              <p className="text-danger-700 mt-0.5">{coverPack.errorMsg}</p>
             )}
-            <p className="text-xs text-red-600 mt-1">
+            <p className="text-xs text-danger-700/80 mt-1">
               Relancez la sélection ou choisissez une cover manuellement.
             </p>
           </div>
@@ -317,7 +317,7 @@ export function CoverSection({ slot, pattern, coverPack, coverConfigError, canEd
               {canEdit && (
                 <Link
                   href={coverToolHref}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors font-medium border border-indigo-200"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-white bg-gray-950 rounded-md hover:bg-gray-800 transition-colors font-medium"
                 >
                   <ExternalLink size={14} />
                   Continuer la sélection

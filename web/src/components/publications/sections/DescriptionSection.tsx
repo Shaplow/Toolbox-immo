@@ -211,7 +211,7 @@ function DescriptionSectionInner({
   const isDirty = value !== initialDescription;
 
   return (
-    <section id="description" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
+    <section id="description" className="bg-white border border-gray-100 rounded-2xl p-8">
       {/* En-tête section */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
@@ -251,7 +251,7 @@ function DescriptionSectionInner({
                 <button
                   type="button"
                   onClick={() => setShowAi(true)}
-                  className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xs text-gray-700 hover:text-gray-950 font-medium transition-colors"
                 >
                   <Sparkles size={12} />
                   Générer avec IA
@@ -261,7 +261,7 @@ function DescriptionSectionInner({
             // verdict.enabled=false → badge intent (ex. "Auto")
             return (
               <span
-                className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5"
+                className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-600 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5"
                 title={verdict.reason}
               >
                 <Sparkles size={10} />
@@ -298,7 +298,7 @@ function DescriptionSectionInner({
           }
           className={`w-full border rounded-lg px-3 py-2 text-sm resize-y font-mono leading-relaxed transition-colors ${
             canEdit
-              ? "border-gray-200 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 focus:outline-none text-gray-700"
+              ? "border-gray-200 focus:border-gray-400 focus-ring text-gray-700"
               : "border-gray-100 bg-gray-50 text-gray-600 cursor-default"
           } disabled:opacity-70`}
         />
@@ -307,7 +307,7 @@ function DescriptionSectionInner({
         <p className="text-xs text-gray-400 text-right">{value.length} / 2 200 caractères</p>
 
         {error && (
-          <p className="text-xs text-red-600">{error}</p>
+          <p className="text-xs text-danger-700">{error}</p>
         )}
 
         {canEdit && (
@@ -316,14 +316,14 @@ function DescriptionSectionInner({
               type="button"
               onClick={handleSave}
               disabled={saving || !isDirty}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-white bg-gray-950 rounded-md hover:bg-gray-800 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed focus-ring"
             >
               {saved ? <Check size={14} /> : <Save size={14} />}
               {saving ? "Enregistrement…" : saved ? "Enregistré" : "Enregistrer"}
             </button>
 
             {saved && (
-              <span className="text-xs text-green-600">Légende sauvegardée.</span>
+              <span className="text-xs text-success-700">Légende sauvegardée.</span>
             )}
           </div>
         )}
@@ -346,7 +346,7 @@ function DescriptionSectionInner({
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg pointer-events-auto overflow-hidden">
               <div className="px-6 pt-6 pb-3">
                 <h2 id="ai-description-title" className="text-base font-semibold text-gray-900 mb-1 flex items-center gap-2">
-                  <Sparkles size={16} className="text-indigo-500" />
+                  <Sparkles size={16} className="text-gray-700" />
                   Générer avec IA
                 </h2>
                 <p className="text-sm text-gray-600">
@@ -369,12 +369,12 @@ function DescriptionSectionInner({
                       <Loader2 size={14} className="animate-spin" /> Chargement…
                     </div>
                   ) : promptsError ? (
-                    <p className="text-sm text-red-600 py-2">{promptsError}</p>
+                    <p className="text-sm text-danger-700 py-2">{promptsError}</p>
                   ) : prompts.length === 0 ? (
                     <p className="text-sm text-gray-500 py-2">
                       Aucun prompt actif. Vérifie que tes prompts sont activés (icône œil)
                       depuis{" "}
-                      <Link href="/admin/prompts" className="text-indigo-600 hover:underline">
+                      <Link href="/admin/prompts" className="text-gray-950 underline hover:no-underline">
                         /admin/prompts
                       </Link>
                       .
@@ -383,7 +383,7 @@ function DescriptionSectionInner({
                     <select
                       value={selectedPromptId}
                       onChange={(e) => setSelectedPromptId(e.target.value)}
-                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                      className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus-ring"
                     >
                       {prompts.map((p) => (
                         <option key={p.id} value={p.id}>{p.name}</option>
@@ -401,7 +401,7 @@ function DescriptionSectionInner({
                   />
                 </FormField>
 
-                {genError && <p className="text-xs text-red-600">{genError}</p>}
+                {genError && <p className="text-xs text-danger-700">{genError}</p>}
               </div>
               <div className="flex items-center justify-end gap-2 px-6 py-4 bg-gray-50 border-t border-gray-100">
                 <Button

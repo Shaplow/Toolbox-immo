@@ -83,7 +83,7 @@ export function CaptionsSection({
   const canRegenerate = isDone || isError;
 
   return (
-    <section id="captions" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
+    <section id="captions" className="bg-white border border-gray-100 rounded-2xl p-8">
       {/* En-tête section */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
@@ -91,7 +91,7 @@ export function CaptionsSection({
           <h2 className="text-sm font-semibold text-gray-700">Sous-titres</h2>
         </div>
         {currentVersion && (
-          <span className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full font-medium">
+          <span className="text-xs text-gray-600 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full font-medium">
             Lié à V{currentVersion.versionNumber} — {currentVersion.fileName}
           </span>
         )}
@@ -102,7 +102,7 @@ export function CaptionsSection({
         {latestCaptionJob && (
           <div className="rounded-lg border p-3 text-sm">
             {isInProgress && (
-              <div className="flex items-center gap-2 text-blue-700 bg-blue-50 border-blue-200 -m-3 p-3 rounded-lg">
+              <div className="flex items-center gap-2 text-gray-700 bg-gray-50 border-gray-200 -m-3 p-3 rounded-lg">
                 <Loader2 size={15} className="animate-spin shrink-0" />
                 <span>
                   {latestCaptionJob.status === "QUEUED"
@@ -112,7 +112,7 @@ export function CaptionsSection({
               </div>
             )}
             {isDone && (
-              <div className="flex items-center justify-between gap-3 text-green-700 bg-green-50 border-green-200 -m-3 p-3 rounded-lg">
+              <div className="flex items-center justify-between gap-3 text-success-700 bg-success-50 border-success-200 -m-3 p-3 rounded-lg">
                 <div className="flex items-center gap-2">
                   <CheckCircle size={15} className="shrink-0" />
                   <span>Sous-titres générés</span>
@@ -122,7 +122,7 @@ export function CaptionsSection({
                     href={latestCaptionJob.outputUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs text-green-800 underline hover:no-underline"
+                    className="text-xs text-success-700 underline hover:no-underline"
                   >
                     Télécharger
                   </a>
@@ -130,13 +130,13 @@ export function CaptionsSection({
               </div>
             )}
             {isError && (
-              <div className="text-red-700 bg-red-50 border-red-200 -m-3 p-3 rounded-lg">
+              <div className="text-danger-700 bg-danger-50 border-danger-200 -m-3 p-3 rounded-lg">
                 <div className="flex items-center gap-2 mb-1">
                   <AlertCircle size={15} className="shrink-0" />
                   <span className="font-medium">Échec du traitement</span>
                 </div>
                 {latestCaptionJob.errorMsg && (
-                  <p className="text-xs text-red-600 ml-5">{latestCaptionJob.errorMsg}</p>
+                  <p className="text-xs text-danger-700/80 ml-5">{latestCaptionJob.errorMsg}</p>
                 )}
               </div>
             )}
@@ -148,7 +148,7 @@ export function CaptionsSection({
         {!latestCaptionJob && verdict.visible && verdict.enabled === false && (
           <div className="flex items-start gap-2 text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
             {verdict.intent === "auto" && (
-              <Sparkles size={14} className="text-indigo-500 shrink-0 mt-0.5" />
+              <Sparkles size={14} className="text-gray-500 shrink-0 mt-0.5" />
             )}
             <span>{verdict.reason}</span>
           </div>
@@ -185,7 +185,7 @@ export function CaptionsSection({
         {!canEdit && latestCaptionJob && (
           <Link
             href={captionsHref}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors font-medium border border-indigo-200"
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors font-medium"
           >
             <ExternalLink size={14} />
             Voir les sous-titres

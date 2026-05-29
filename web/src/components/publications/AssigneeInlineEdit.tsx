@@ -111,7 +111,7 @@ export function AssigneeInlineEdit({ slotId, role, current }: Props) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-indigo-50 transition-colors cursor-pointer text-left"
+        className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-gray-100 transition-colors cursor-pointer text-left"
       >
         {currentLabel ? (
           <span className="text-gray-700">{currentLabel}</span>
@@ -138,7 +138,7 @@ export function AssigneeInlineEdit({ slotId, role, current }: Props) {
                 {saving === "__unassign__" ? (
                   <Loader2 size={12} className="animate-spin" />
                 ) : current === null ? (
-                  <Check size={12} className="text-indigo-500" />
+                  <Check size={12} className="text-gray-950" />
                 ) : (
                   <span className="w-3" />
                 )}
@@ -163,7 +163,7 @@ export function AssigneeInlineEdit({ slotId, role, current }: Props) {
                       {isSaving ? (
                         <Loader2 size={12} className="animate-spin shrink-0" />
                       ) : isCurrent ? (
-                        <Check size={12} className="text-indigo-500 shrink-0" />
+                        <Check size={12} className="text-gray-950 shrink-0" />
                       ) : (
                         <span className="w-3 shrink-0" />
                       )}

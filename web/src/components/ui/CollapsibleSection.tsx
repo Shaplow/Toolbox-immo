@@ -1,14 +1,17 @@
 "use client";
 
 /**
- * CollapsibleSection — wrapper accordéon pour les sections de fiche
- * publication. Persistance optionnelle via localStorage.
+ * CollapsibleSection — wrapper accordéon pour les sections de fiche.
  *
- * - Quand ouverte : affiche les children + un petit lien "Réduire" en bas.
- * - Quand fermée : pill cliquable avec eyebrow + chevron + "Afficher".
+ * UX :
+ * - Quand fermée : pill compact avec titre + chevron, click n'importe où
+ *   pour ouvrir.
+ * - Quand ouverte : un mini bouton chevron flottant en haut à droite du
+ *   contenu permet de la refermer. Pas de lien "Réduire" qui prend une
+ *   ligne entière en bas.
  * - storageKey : persiste l'état entre les visites de la fiche.
- * - sectionId : permet à un autre composant (ProductionChain) de force
- *   ouvrir via l'event window `pub:open-section`.
+ * - sectionId : permet à un autre composant (ProductionChain, header)
+ *   d'ouvrir via event window `pub:open-section`.
  */
 
 import { useEffect, useState } from "react";
@@ -64,18 +67,17 @@ export function CollapsibleSection({
 
   if (open) {
     return (
-      <div>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          aria-label={`Réduire ${title}`}
+          title={`Réduire ${title}`}
+          className="absolute top-5 right-5 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors focus-ring"
+        >
+          <ChevronDown size={14} />
+        </button>
         {children}
-        <div className="flex justify-end mt-1">
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="inline-flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-700 transition-colors py-0.5 focus-ring rounded"
-          >
-            <ChevronDown size={11} />
-            Réduire
-          </button>
-        </div>
       </div>
     );
   }
@@ -84,13 +86,10 @@ export function CollapsibleSection({
     <button
       type="button"
       onClick={() => setOpen(true)}
-      className="w-full flex items-center justify-between px-4 py-2.5 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors text-left focus-ring"
+      className="w-full flex items-center justify-between px-5 py-3 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 hover:border-gray-300 transition-colors text-left focus-ring"
     >
-      <span className="text-[13px] font-medium text-gray-700">{title}</span>
-      <span className="inline-flex items-center gap-1 text-[11px] text-gray-400">
-        <ChevronRight size={12} />
-        Afficher
-      </span>
+      <span className="text-[13px] font-semibold text-gray-700">{title}</span>
+      <ChevronRight size={14} className="text-gray-400" />
     </button>
   );
 }

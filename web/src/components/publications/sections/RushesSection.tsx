@@ -147,7 +147,7 @@ export function RushesSection({
   const isVideo = (mime: string) => mime.startsWith("video/");
 
   return (
-    <section id="rushes" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
+    <section id="rushes" className="bg-white border border-gray-100 rounded-2xl p-8">
       {/* En-tête */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
@@ -210,8 +210,8 @@ export function RushesSection({
                 className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
               >
                 {/* Icône type */}
-                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50">
-                  <Clapperboard size={14} className="text-indigo-500" />
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100">
+                  <Clapperboard size={14} className="text-gray-600" />
                 </div>
 
                 {/* Infos */}

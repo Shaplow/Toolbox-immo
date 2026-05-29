@@ -180,11 +180,11 @@ export function ClientValidationSection({
   return (
     <section
       id="client-validation"
-      className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm"
+      className="bg-white border border-gray-100 rounded-2xl p-8"
     >
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <ShieldCheck size={16} className="text-fuchsia-500" />
+          <ShieldCheck size={16} className="text-gray-500" />
           <h2 className="text-sm font-semibold text-gray-700">Validation client</h2>
         </div>
         <span className="text-xs text-gray-500">
@@ -194,12 +194,12 @@ export function ClientValidationSection({
 
       {/* ── État courant ───────────────────────────────────────────────────── */}
       {isAwaiting && (
-        <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-lg p-3 mb-4">
-          <p className="text-sm text-fuchsia-800">
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+          <p className="text-sm text-amber-800">
             En attente de la réponse du client.
           </p>
           {activeToken && (
-            <p className="text-xs text-fuchsia-700 mt-1">
+            <p className="text-xs text-amber-700 mt-1">
               Lien valide jusqu&apos;au{" "}
               {new Date(activeToken.expiresAt).toLocaleString("fr-FR", {
                 day: "numeric",
@@ -213,8 +213,8 @@ export function ClientValidationSection({
       )}
 
       {slotStatus === "CLIENT_REVISION" && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 mb-4">
-          <p className="text-sm text-rose-800">
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+          <p className="text-sm text-amber-800">
             Le client a demandé des modifications. Corrigez puis renvoyez pour validation.
           </p>
         </div>
@@ -233,8 +233,8 @@ export function ClientValidationSection({
 
       {/* ── Lien actif (admin uniquement) ──────────────────────────────────── */}
       {isAdmin && activeToken && validationUrl && (
-        <div className="border border-fuchsia-100 bg-fuchsia-50/30 rounded-lg p-3 mb-4">
-          <p className="text-xs font-medium text-fuchsia-900 mb-2">
+        <div className="border border-gray-200 bg-gray-50 rounded-lg p-3 mb-4">
+          <p className="text-xs font-medium text-gray-700 mb-2">
             Lien à partager au client
           </p>
           <div className="flex items-center gap-2">
@@ -242,7 +242,7 @@ export function ClientValidationSection({
               type="text"
               readOnly
               value={validationUrl}
-              className="flex-1 px-2 py-1.5 text-xs border border-fuchsia-200 rounded bg-white font-mono text-gray-700"
+              className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded bg-white font-mono text-gray-700"
               onFocus={(e) => e.currentTarget.select()}
             />
             <Button
@@ -343,10 +343,10 @@ export function ClientValidationSection({
                   <span
                     className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
                       r.action === "approved"
-                        ? "bg-emerald-50 text-emerald-700"
+                        ? "bg-success-50 text-success-700"
                         : r.action === "rejected"
                           ? "bg-amber-50 text-amber-700"
-                          : "bg-red-50 text-red-700"
+                          : "bg-danger-50 text-danger-700"
                     }`}
                   >
                     Round {r.roundNumber} ·{" "}

@@ -367,15 +367,12 @@ export function PublicationFiche({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       {/* Header sticky */}
       <PublicationHeader
         slot={slot}
         account={account}
-        listing={listing}
         pattern={pattern ? { id: pattern.id, label: pattern.label } : null}
-        assigneeMonteur={assigneeMonteur}
-        assigneeCm={assigneeCm}
         canMarkPublished={canMarkPublished}
         canDelete={canDelete}
         currentUserRole={currentUserRole}
@@ -398,15 +395,15 @@ export function PublicationFiche({
       {/* ProductionChain — non sticky : vue d'ensemble du pipeline visible
           en haut puis libère l'espace vertical au scroll. Le NextActionBanner
           au-dessus reste sticky avec le header pour le rappel d'action. */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 pt-10">
         <ProductionChain steps={steps} viewerRole={currentUserRole} />
       </div>
 
       {/* Corps de la fiche — 2 colonnes en xl, stack vertical en dessous. */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-        <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 py-10">
+        <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-10">
           {/* Colonne workflow — sections d'action */}
-          <div className="space-y-6 min-w-0">
+          <div className="space-y-10 min-w-0">
             {/* Brief éditorial — Phase B3, conditionné par pattern.needsBrief */}
             {pattern?.needsBrief &&
               wrap(
@@ -610,8 +607,8 @@ export function PublicationFiche({
           </div>
 
           {/* Colonne droite — Conversation + Activité, sticky en xl. */}
-          <aside className="mt-6 xl:mt-0 space-y-6">
-            <div className="xl:sticky xl:top-[200px] space-y-6 xl:max-h-[calc(100vh-220px)] xl:overflow-y-auto xl:pr-1">
+          <aside className="mt-10 xl:mt-0 space-y-8">
+            <div className="xl:sticky xl:top-[160px] space-y-8 xl:max-h-[calc(100vh-180px)] xl:overflow-y-auto xl:pr-1 [scrollbar-width:thin]">
               {wrap(
                 "comments",
                 <CommentsSection

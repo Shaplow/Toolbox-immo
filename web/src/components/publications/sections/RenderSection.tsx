@@ -151,7 +151,7 @@ export function RenderSection({
   const statusBadge = render ? getRenderStatusBadge(render.status) : null;
 
   return (
-    <section id="render" className="bg-white border border-gray-200 rounded-lg p-5">
+    <section id="render" className="bg-white border border-gray-100 rounded-2xl p-8">
       {/* En-tête section */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">

@@ -109,13 +109,13 @@ export function OneOffTriggerButtons({
   }
 
   return (
-    <section className="bg-fuchsia-50/30 border border-fuchsia-100 rounded-xl p-4">
+    <section className="bg-gray-50 border border-gray-200 rounded-xl p-4">
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-fuchsia-900">
+          <h3 className="text-sm font-semibold text-gray-950">
             Slot one-off — Lancer la production manuellement
           </h3>
-          <p className="text-xs text-fuchsia-700/80 mt-0.5">
+          <p className="text-xs text-gray-600 mt-0.5">
             La vidéo a été uploadée manuellement (pas de render auto).
             Lance les jobs de production sur la version courante.
           </p>

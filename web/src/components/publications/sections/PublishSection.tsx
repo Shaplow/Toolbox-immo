@@ -114,7 +114,7 @@ export function PublishSection({ slot, canPublish, incompleteSteps = [] }: Props
   return (
     <section
       id="publish"
-      className="bg-white border border-gray-200 rounded-lg p-5"
+      className="bg-white border border-gray-100 rounded-2xl p-8"
     >
       {/* En-tête section */}
       <div className="flex items-center gap-2 mb-4">

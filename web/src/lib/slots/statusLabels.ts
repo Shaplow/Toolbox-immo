@@ -46,32 +46,37 @@ export const STATUS_LABELS: Record<SlotStatus, string> = {
 // Colors (Tailwind utility classes)
 // ---------------------------------------------------------------------------
 
+// Doctrine : monochrome par défaut + accent sémantique chirurgical sur les
+// statuts critiques uniquement (publié, refusé, bloqué, attente client,
+// programmé). Tous les statuts d'étapes neutres restent en gris.
 export const STATUS_COLORS: Record<SlotStatus, string> = {
-  // ── New pipeline statuses ──────────────────────────────────────────────
-  DRAFT: "bg-gray-100 text-gray-600 border-gray-200",
-  PLANNED: "bg-sky-100 text-sky-700 border-sky-200",
-  RUSHES_EXPECTED: "bg-yellow-100 text-yellow-700 border-yellow-200",
-  RUSHES_RECEIVED: "bg-yellow-100 text-yellow-800 border-yellow-300",
-  IN_EDIT: "bg-orange-100 text-orange-700 border-orange-200",
-  EDIT_REVIEW: "bg-amber-100 text-amber-700 border-amber-200",
-  EDIT_APPROVED: "bg-blue-100 text-blue-700 border-blue-200",
-  CAPTIONS_PENDING: "bg-purple-100 text-purple-700 border-purple-200",
-  READY_FOR_CM: "bg-indigo-100 text-indigo-700 border-indigo-200",
-  AWAITING_CLIENT: "bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200",
-  CLIENT_REVISION: "bg-rose-100 text-rose-700 border-rose-200",
-  SCHEDULED: "bg-teal-100 text-teal-700 border-teal-200",
-  PUBLISHED: "bg-green-100 text-green-700 border-green-200",
-  REJECTED: "bg-red-100 text-red-700 border-red-200",
-  CANCELLED: "bg-gray-100 text-gray-500 border-gray-200",
-  BLOCKED: "bg-red-100 text-red-800 border-red-300",
-  ARCHIVED: "bg-gray-100 text-gray-400 border-gray-200",
+  // ── Statuts neutres (étapes du pipeline) ──────────────────────────────
+  DRAFT:            "bg-gray-100 text-gray-600 border-gray-200",
+  PLANNED:          "bg-gray-100 text-gray-700 border-gray-200",
+  RUSHES_EXPECTED:  "bg-gray-100 text-gray-700 border-gray-200",
+  RUSHES_RECEIVED:  "bg-gray-100 text-gray-700 border-gray-200",
+  IN_EDIT:          "bg-gray-100 text-gray-700 border-gray-200",
+  EDIT_REVIEW:      "bg-gray-100 text-gray-700 border-gray-200",
+  EDIT_APPROVED:    "bg-gray-100 text-gray-700 border-gray-200",
+  CAPTIONS_PENDING: "bg-gray-100 text-gray-700 border-gray-200",
+  READY_FOR_CM:     "bg-gray-100 text-gray-700 border-gray-200",
+  CANCELLED:        "bg-gray-50 text-gray-500 border-gray-200",
+  ARCHIVED:         "bg-gray-50 text-gray-400 border-gray-200",
+
+  // ── Statuts critiques (accent sémantique chirurgical) ─────────────────
+  AWAITING_CLIENT:  "bg-amber-50 text-amber-700 border-amber-200",
+  CLIENT_REVISION:  "bg-amber-50 text-amber-700 border-amber-200",
+  SCHEDULED:        "bg-info-50 text-info-700 border-info-200",
+  PUBLISHED:        "bg-success-50 text-success-700 border-success-200",
+  REJECTED:         "bg-danger-50 text-danger-700 border-danger-200",
+  BLOCKED:          "bg-danger-50 text-danger-700 border-danger-200",
 
   // ── Legacy aliases ─────────────────────────────────────────────────────
-  TO_DO: "bg-red-100 text-red-700 border-red-200",
-  IN_PROGRESS: "bg-orange-100 text-orange-700 border-orange-200",
-  READY: "bg-blue-100 text-blue-700 border-blue-200",
-  CHECKING: "bg-amber-100 text-amber-700 border-amber-200",
-  DONE: "bg-green-100 text-green-700 border-green-200",
+  TO_DO:            "bg-gray-100 text-gray-700 border-gray-200",
+  IN_PROGRESS:      "bg-gray-100 text-gray-700 border-gray-200",
+  READY:            "bg-gray-100 text-gray-700 border-gray-200",
+  CHECKING:         "bg-gray-100 text-gray-700 border-gray-200",
+  DONE:             "bg-success-50 text-success-700 border-success-200",
 };
 
 // ---------------------------------------------------------------------------

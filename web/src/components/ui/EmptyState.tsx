@@ -41,7 +41,7 @@ export function EmptyState({ icon, title, description, cta }: EmptyStateProps) {
       <div className="h-11 w-11 rounded-lg bg-white border border-gray-200 flex items-center justify-center mb-3">
         {iconNode}
       </div>
-      <h3 className="font-hand text-2xl text-gray-950 leading-none">{title}</h3>
+      <h3 className="font-hand text-lg text-gray-950 leading-none">{title}</h3>
       {description && (
         <p className="text-[12px] text-gray-500 max-w-sm mt-2 leading-relaxed">
           {description}

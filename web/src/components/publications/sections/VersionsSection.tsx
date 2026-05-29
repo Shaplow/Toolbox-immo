@@ -231,25 +231,25 @@ function VersionCard({
     >
       <div className="flex items-start gap-3">
         {/* Icône version */}
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50">
-          <Film size={14} className="text-indigo-500" />
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100">
+          <Film size={14} className="text-gray-600" />
         </div>
 
         {/* Infos */}
         <div className="min-w-0 flex-1">
           {/* Badges et filename */}
           <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-200">
               V{version.versionNumber}
             </span>
             {isCurrent && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 border border-green-200">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-success-50 text-success-700 border border-success-200">
                 <Star size={10} />
                 Courante
               </span>
             )}
             {isDeleted && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600 border border-red-200">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-danger-50 text-danger-700 border border-danger-200">
                 Supprimée
               </span>
             )}
@@ -436,7 +436,7 @@ export function VersionsSection({
     : versions.filter((v) => v.deletedAt === null);
 
   return (
-    <section id="edit" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
+    <section id="edit" className="bg-white border border-gray-100 rounded-2xl p-8">
       {/* En-tête */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
