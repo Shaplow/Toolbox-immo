@@ -5,15 +5,18 @@ import type { LucideIcon } from "lucide-react";
 import { Button } from "./Button";
 
 /**
- * Empty state standard — icône wrapper + titre + description + CTA optionnel.
+ * Empty state avec signature discrète — titre en Caveat (font-hand)
+ * pour la touche personnalité. Description Geist en dessous, plus
+ * sobre.
  *
- * Pour les empty states "signature" (titre Caveat + HandDrawn.Check pour
- * un état résolu), construire le markup directement chez le consommateur
- * — c'est trop spécifique pour passer en API. Voir
- * `/playground/primitives` § "Signature discrète" pour les patterns.
+ * Pour les empty states résolus (état OK, "Tout est à jour"), utiliser
+ * `<HandDrawn.Check />` au lieu d'une icône Lucide.
  *
- * - icon : LucideIcon (Client Component) ou ReactElement déjà rendu (Server).
- * - title / description : Geist, sobre, pas de Caveat.
+ * API :
+ * - icon : LucideIcon ou ReactElement déjà rendu (utile pour passer un
+ *   <HandDrawn.Check /> ou un <Image />).
+ * - title : Caveat font-hand par défaut.
+ * - description : Geist gray-500.
  * - cta : Button primary size sm.
  */
 interface EmptyStateProps {
@@ -29,18 +32,20 @@ export function EmptyState({ icon, title, description, cta }: EmptyStateProps) {
   ) : (
     (() => {
       const Icon = icon as LucideIcon;
-      return <Icon size={20} className="text-gray-500" />;
+      return <Icon size={22} className="text-gray-500" />;
     })()
   );
 
   return (
     <div className="flex flex-col items-center justify-center text-center py-10 px-4 border border-dashed border-gray-200 rounded-lg bg-gray-50/40">
-      <div className="h-10 w-10 rounded-md bg-white border border-gray-200 flex items-center justify-center mb-3">
+      <div className="h-11 w-11 rounded-lg bg-white border border-gray-200 flex items-center justify-center mb-3">
         {iconNode}
       </div>
-      <h3 className="text-[13px] font-medium text-gray-950">{title}</h3>
+      <h3 className="font-hand text-2xl text-gray-950 leading-none">{title}</h3>
       {description && (
-        <p className="text-[12px] text-gray-500 max-w-sm mt-1">{description}</p>
+        <p className="text-[12px] text-gray-500 max-w-sm mt-2 leading-relaxed">
+          {description}
+        </p>
       )}
       {cta && (
         <div className="mt-4">

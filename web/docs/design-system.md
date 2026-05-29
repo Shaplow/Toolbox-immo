@@ -107,19 +107,57 @@ Gérées hors design system (`web/src/lib/slots/phase.ts`, `web/src/types/calend
 
 ## Primitives
 
-| Composant | Variants | Sizes |
-|---|---|---|
-| `Button` | `primary` (gray-950) / `secondary` / `ghost` / `danger` | sm / md / lg |
-| `ButtonIcon` | idem (4 variants) | sm / md |
-| `Input` | icône leading optionnelle, trailing optionnel | — (h-8) |
-| `Textarea` | resize-y | — |
-| `FormField` | wrapper label eyebrow + required + help + error | — |
-| `EmptyState` | icône + titre + description + CTA | — |
-| `ConfirmDialog` | focus trap, ESC, variant danger | — |
-| `DeleteButton` | Trash + ConfirmDialog | — |
-| `Toast` | success / error / info | — |
+Toutes dans `web/src/components/ui/`. Showcase exhaustif sur `/playground/primitives`.
 
-Convention : **toute action significative porte une icône Lucide**. C'est ce qui distingue l'app dense d'une app à label.
+### Boutons & actions
+
+| Composant | API | Sizes |
+|---|---|---|
+| `Button` | 4 variants `primary` (gray-950 métal poli) / `secondary` / `ghost` / `danger` ; `icon?`, `iconRight?`, `loading`, `disabled` | sm (h-7) / md (h-8) / lg (h-9) |
+| `ButtonIcon` | Icon-only carré, `label` obligatoire (sr-only + title) ; mêmes variants | sm (h-7 w-7) / md (h-8 w-8) |
+| `DeleteButton` | ButtonIcon danger + ConfirmDialog danger sous-jacent | sm / md |
+| `RefreshButton` | Bouton refresh manuel (`router.refresh()`) avec spinner 800ms ; variants `compact` (ButtonIcon) / `expanded` (Button label) | — |
+
+### Forms
+
+| Composant | API |
+|---|---|
+| `Input` | `value`/`onChange(string)`, `icon?` leading, `trailing?` (kbd, badge), `error?` |
+| `Textarea` | même API que Input + resize-y |
+| `FormField` | wrapper `label` eyebrow uppercase tiny + `required?` (dot danger) + `help?` + `error?` (role=alert) |
+| `Switch` | `checked`/`onChange(bool)`, `label?`, `description?`, sm/md, mono dark on/off |
+| `Slider` | range mono, `value`/`onChange(num)`, `min`/`max`/`step`/`unit?`/`showValue` |
+
+### Conteneurs & atomes visuels
+
+| Composant | Description |
+|---|---|
+| `Card` | conteneur sobre, props `interactive` (hover lift) / `padded` / `border` ; `CardHeader` composé pour eyebrow + actions |
+| `Badge` | pill sémantique 4 variants (default/success/danger/info), sizes sm/md, support `icon?` ou `dot` |
+| `Kbd` + `KbdChord` | raccourcis clavier mono compacts |
+| `Skeleton` + `SkeletonRow` | loading placeholders, shapes line/block/circle |
+| `CollapsibleSection` | accordéon avec persist localStorage et écoute event `pub:open-section` |
+| `EmptyState` | icône wrapper + titre + description + CTA optionnel |
+
+### Overlays & navigation
+
+| Composant | Description |
+|---|---|
+| `Tabs` | 2 variants `line` (underline) / `pill` (segmented), sizes sm/md, items avec icon + badge |
+| `Tooltip` | hover/focus 200ms délai, side top/bottom auto-flip, mono dark |
+| `DropdownMenu` | menu d'actions click, click-outside + ESC, items + separator + destructive |
+| `ConfirmDialog` | modal centrée, focus trap, ESC, variant danger |
+| `Toast` + `ToastContainer` | feedback transient, 3 types sémantiques (success/error/info), auto-dismiss 4s |
+
+### Spécialisés
+
+| Composant | Description |
+|---|---|
+| `MediaDropzone` | upload drag&drop avec multipart, retries, concurrence ; styles alignés mono dark |
+| `useConfirm` | hook utilitaire pour confirmation impérative |
+| `HandDrawn` (signature) | Sparkle / Arrow / Underline / WavyRule / Check — usage chirurgical (cf. signature discrète) |
+
+**Convention universelle** : toute action significative porte une icône Lucide. C'est ce qui distingue l'app dense d'une app à label.
 
 ## Signature discrète dans le SaaS (autorisée chirurgicalement)
 

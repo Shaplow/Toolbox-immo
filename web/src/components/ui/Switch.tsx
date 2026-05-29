@@ -43,12 +43,14 @@ export function Switch({
       aria-checked={checked}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex shrink-0 items-center rounded-full transition-colors focus-ring disabled:opacity-50 disabled:cursor-not-allowed ${trackSize} ${
-        checked ? "bg-gray-950" : "bg-gray-200 hover:bg-gray-300"
+      className={`relative inline-flex shrink-0 items-center rounded-full border transition-colors focus-ring disabled:opacity-50 disabled:cursor-not-allowed ${trackSize} ${
+        checked
+          ? "bg-gray-800 border-gray-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+          : "bg-gray-100 border-gray-300 hover:bg-gray-200"
       }`}
     >
       <span
-        className={`absolute left-0.5 inline-block rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.18)] transition-transform ${thumbSize} ${
+        className={`absolute left-0.5 inline-block rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.2),0_0_0_1px_rgba(0,0,0,0.04)] transition-transform ${thumbSize} ${
           checked ? thumbTranslate : "translate-x-0"
         }`}
       />

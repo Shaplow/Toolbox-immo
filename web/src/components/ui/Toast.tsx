@@ -65,14 +65,14 @@ function ToastItem({ item, onRemove }: { item: ToastItem; onRemove: () => void }
   const Icon = TYPE_ICON[item.type];
   return (
     <div
-      className="flex items-start gap-2.5 px-3 py-2.5 rounded-md shadow-[var(--shadow-overlay)] bg-white border border-gray-200 text-[13px] max-w-sm cursor-pointer text-gray-950"
+      className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg shadow-[var(--shadow-overlay),inset_0_1px_0_rgba(255,255,255,0.06)] bg-gray-900 text-[13px] max-w-sm cursor-pointer text-white"
       onClick={onRemove}
       role="alert"
     >
       <Icon size={15} className={`${TYPE_ICON_CLS[item.type]} shrink-0 mt-0.5`} />
       <span className="flex-1 leading-relaxed">{item.message}</span>
       <button
-        className="text-gray-400 hover:text-gray-700 shrink-0 mt-0.5"
+        className="text-gray-400 hover:text-white shrink-0 mt-0.5"
         aria-label="Fermer"
       >
         <X size={13} />

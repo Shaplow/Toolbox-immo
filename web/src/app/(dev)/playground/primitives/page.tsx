@@ -382,21 +382,21 @@ export default function PrimitivesPage() {
           subtitle="Pill sémantique pour statuts, comptes, tags. 4 variants (default + 3 accents). Sizes sm/md. Pas de variant brand."
         />
         <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
-          <Eyebrow>Variants</Eyebrow>
+          <Eyebrow>Variants · première lettre capitalize auto</Eyebrow>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge>default</Badge>
-            <Badge variant="success">success</Badge>
-            <Badge variant="danger">danger</Badge>
-            <Badge variant="info">info</Badge>
+            <Badge>brouillon</Badge>
+            <Badge variant="success">validé</Badge>
+            <Badge variant="danger">refusé</Badge>
+            <Badge variant="info">programmé</Badge>
             <Badge variant="success" dot>publié</Badge>
-            <Badge variant="info" dot>programmé</Badge>
-            <Badge variant="danger" dot>refusé</Badge>
-            <Badge dot>brouillon</Badge>
+            <Badge variant="info" dot>en attente</Badge>
+            <Badge variant="danger" dot>annulé</Badge>
+            <Badge dot>nouveau</Badge>
           </div>
           <Eyebrow>Sizes</Eyebrow>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge size="sm">sm</Badge>
-            <Badge size="md">md</Badge>
+            <Badge size="sm">petit</Badge>
+            <Badge size="md">moyen</Badge>
             <Badge size="sm" variant="success" icon={CheckCircle2}>validé</Badge>
             <Badge size="md" variant="danger" icon={AlertCircle}>erreur</Badge>
           </div>

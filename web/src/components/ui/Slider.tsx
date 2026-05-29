@@ -41,7 +41,7 @@ export function Slider({
 }: SliderProps) {
   const pct = max === min ? 0 : Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
   const trackStyle: CSSProperties = {
-    background: `linear-gradient(to right, #0a0a0a 0%, #0a0a0a ${pct}%, #e5e7eb ${pct}%, #e5e7eb 100%)`,
+    background: `linear-gradient(to right, #1f2937 0%, #1f2937 ${pct}%, #e5e7eb ${pct}%, #e5e7eb 100%)`,
   };
 
   const displayValue = step < 1 ? value.toFixed(2) : String(Math.round(value));
@@ -68,12 +68,12 @@ export function Slider({
             "[&::-webkit-slider-thumb]:appearance-none",
             "[&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4",
             "[&::-webkit-slider-thumb]:rounded-full",
-            "[&::-webkit-slider-thumb]:bg-gray-950",
+            "[&::-webkit-slider-thumb]:bg-gray-800",
             "[&::-webkit-slider-thumb]:cursor-pointer",
             "[&::-webkit-slider-thumb]:shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]",
             "[&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4",
             "[&::-moz-range-thumb]:rounded-full",
-            "[&::-moz-range-thumb]:bg-gray-950",
+            "[&::-moz-range-thumb]:bg-gray-800",
             "[&::-moz-range-thumb]:border-0",
             "[&::-moz-range-thumb]:cursor-pointer",
             disabled ? "opacity-50 cursor-not-allowed [&::-webkit-slider-thumb]:cursor-not-allowed" : "",

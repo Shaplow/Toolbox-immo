@@ -62,12 +62,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         : "h-8 px-3 text-[13px]";
 
   const variantClasses = {
-    // Primary "métal poli" — noir avec une ombre intérieure blanche
-    // subtile (8% en haut) qui donne du caractère sans rompre la
-    // sobriété. Au hover, l'inset s'éclaircit + une ombre extérieure
-    // discrète. Effet "bouton premium" qui se sent sous la souris.
+    // Primary "graphite chaud" — gray-800 au lieu de noir mort. Ombre
+    // intérieure blanche subtle pour caractère, hover plus clair +
+    // ombre extérieure douce. Donne le "métal poli" sans tomber dans
+    // le shadcn brut.
     primary:
-      "bg-gray-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-gray-900 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_4px_12px_rgba(0,0,0,0.12)] focus-ring",
+      "bg-gray-800 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] hover:bg-gray-700 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_4px_12px_rgba(0,0,0,0.1)] focus-ring",
     secondary:
       "bg-white text-gray-800 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 focus-ring",
     ghost:
