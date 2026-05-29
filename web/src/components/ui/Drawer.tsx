@@ -49,11 +49,11 @@ const SIZE_PX: Record<Size, string> = {
 };
 
 const SIZE_PX_BOTTOM: Record<Size, string> = {
-  sm:   "h-1/3",
-  md:   "h-1/2",
-  lg:   "h-2/3",
-  xl:   "h-3/4",
-  full: "h-full",
+  sm:   "h-[33vh]",
+  md:   "h-[50vh]",
+  lg:   "h-[66vh]",
+  xl:   "h-[75vh]",
+  full: "h-screen",
 };
 
 export function Drawer({
@@ -82,9 +82,12 @@ export function Drawer({
       : "bg-gradient-to-b from-white to-white/85 backdrop-blur-[24px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_8px_24px_-4px_rgba(15,23,42,0.12),0_32px_72px_-12px_rgba(15,23,42,0.22)]";
 
   // Positionnement + sizing + radius selon le side.
+  // h-screen (100vh) au lieu de h-full (100%) : un ancêtre avec backdrop-filter
+  // peut devenir le containing block d'un fixed element, ce qui rend h-full
+  // relatif à ce parent et non au viewport → drawer tronqué.
   const positionCls = {
-    right:  `fixed top-0 right-0 h-full ${SIZE_PX[size]} rounded-l-2xl`,
-    left:   `fixed top-0 left-0 h-full ${SIZE_PX[size]} rounded-r-2xl`,
+    right:  `fixed top-0 right-0 h-screen ${SIZE_PX[size]} rounded-l-2xl`,
+    left:   `fixed top-0 left-0 h-screen ${SIZE_PX[size]} rounded-r-2xl`,
     bottom: `fixed bottom-0 left-0 right-0 ${SIZE_PX_BOTTOM[size]} rounded-t-2xl`,
   }[side];
 
