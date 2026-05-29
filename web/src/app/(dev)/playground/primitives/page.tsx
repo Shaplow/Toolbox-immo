@@ -15,6 +15,10 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { toast } from "@/components/ui/Toast";
+import { Badge } from "@/components/ui/Badge";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { Kbd, KbdChord } from "@/components/ui/Kbd";
+import { Skeleton, SkeletonRow } from "@/components/ui/Skeleton";
 import { HandDrawn } from "@/components/ui/decor/HandDrawn";
 import {
   ArrowRight,
@@ -35,6 +39,8 @@ import {
   Send,
   FileText,
   Layers,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 
 export default function PrimitivesPage() {
@@ -349,6 +355,120 @@ export default function PrimitivesPage() {
             Les toasts apparaissent en bas à droite. Container monté dans le
             RootLayout — pas besoin de l&apos;importer manuellement.
           </p>
+        </div>
+      </section>
+
+      {/* ── Badge ──────────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="Badge"
+          subtitle="Pill sémantique pour statuts, comptes, tags. 4 variants (default + 3 accents). Sizes sm/md. Pas de variant brand."
+        />
+        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+          <Eyebrow>Variants</Eyebrow>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge>default</Badge>
+            <Badge variant="success">success</Badge>
+            <Badge variant="danger">danger</Badge>
+            <Badge variant="info">info</Badge>
+            <Badge variant="success" dot>publié</Badge>
+            <Badge variant="info" dot>programmé</Badge>
+            <Badge variant="danger" dot>refusé</Badge>
+            <Badge dot>brouillon</Badge>
+          </div>
+          <Eyebrow>Sizes</Eyebrow>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge size="sm">sm</Badge>
+            <Badge size="md">md</Badge>
+            <Badge size="sm" variant="success" icon={CheckCircle2}>validé</Badge>
+            <Badge size="md" variant="danger" icon={AlertCircle}>erreur</Badge>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Card ───────────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="Card"
+          subtitle="Conteneur sobre. `interactive` ajoute le hover lift. CardHeader pour les patterns avec header + actions."
+        />
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Card>
+            <h3 className="text-sm font-medium text-gray-950">Card standard</h3>
+            <p className="mt-1 text-[12px] text-gray-500">Sobre, pas cliquable. Le conteneur par défaut.</p>
+          </Card>
+          <Card interactive>
+            <h3 className="text-sm font-medium text-gray-950">Card interactive</h3>
+            <p className="mt-1 text-[12px] text-gray-500">Hover lift + cursor pointer. Pour cards cliquables.</p>
+          </Card>
+          <Card border={false} className="bg-gray-50/40">
+            <h3 className="text-sm font-medium text-gray-950">Card sans border</h3>
+            <p className="mt-1 text-[12px] text-gray-500">Fond subtle pour distinguer sans border.</p>
+          </Card>
+        </div>
+        <Card padded={false}>
+          <CardHeader
+            title="Slots cette semaine"
+            actions={
+              <>
+                <ButtonIcon icon={Filter} label="Filtrer" size="sm" />
+                <ButtonIcon icon={RefreshCw} label="Rafraîchir" size="sm" />
+                <Button size="sm" icon={Plus}>Nouveau</Button>
+              </>
+            }
+          />
+          <div className="p-5 text-[13px] text-gray-700">
+            <p>Body de la card. Le pattern padded=false + CardHeader permet d&apos;avoir un header différencié.</p>
+          </div>
+        </Card>
+      </section>
+
+      {/* ── Kbd ────────────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="Kbd"
+          subtitle="Raccourci clavier mono. Kbd seul ou KbdChord pour un combo."
+        />
+        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-3">
+          <Eyebrow>Touches isolées</Eyebrow>
+          <div className="flex flex-wrap items-center gap-3 text-[12px] text-gray-700">
+            <span>Ouvrir la palette : <Kbd>⌘</Kbd> <Kbd>K</Kbd></span>
+            <span>Sauver : <KbdChord keys={["⌘", "S"]} /></span>
+            <span>Annuler : <KbdChord keys={["⌘", "Z"]} /></span>
+            <span>Refaire : <KbdChord keys={["⌘", "⇧", "Z"]} /></span>
+          </div>
+          <Eyebrow>Size md (eyebrow help, tip callout)</Eyebrow>
+          <p className="text-[13px] text-gray-700">
+            Duplique un slot avec <KbdChord size="md" keys={["⌘", "D"]} /> depuis le calendrier.
+          </p>
+        </div>
+      </section>
+
+      {/* ── Skeleton ──────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="Skeleton"
+          subtitle="Loading placeholder. Shapes line / block / circle. SkeletonRow pour les rows de listes."
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+            <Eyebrow>Shapes</Eyebrow>
+            <div className="space-y-2">
+              <Skeleton className="w-3/4" />
+              <Skeleton className="w-1/2" />
+              <Skeleton className="w-2/3" />
+            </div>
+            <div className="flex items-center gap-3">
+              <Skeleton shape="circle" className="h-10 w-10" />
+              <Skeleton shape="block" className="h-10 flex-1" />
+            </div>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-3">
+            <Eyebrow>SkeletonRow (helper)</Eyebrow>
+            <SkeletonRow />
+            <SkeletonRow />
+            <SkeletonRow />
+          </div>
         </div>
       </section>
 
