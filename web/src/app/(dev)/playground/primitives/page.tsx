@@ -24,6 +24,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { Switch } from "@/components/ui/Switch";
 import { Slider } from "@/components/ui/Slider";
+import { Select } from "@/components/ui/Select";
 import { HandDrawn } from "@/components/ui/decor/HandDrawn";
 import {
   ArrowRight,
@@ -68,6 +69,9 @@ export default function PrimitivesPage() {
   const [notifications, setNotifications] = useState(false);
   const [volume, setVolume] = useState(0.6);
   const [frames, setFrames] = useState(36);
+  const [status, setStatus] = useState("planned");
+  const [pattern, setPattern] = useState("");
+  const [selectError, setSelectError] = useState("manual");
 
   return (
     <div className="space-y-12">
@@ -584,6 +588,75 @@ export default function PrimitivesPage() {
                 { label: "Désactivé", disabled: true,    onClick: () => {} },
               ]}
             />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Select ────────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="Select"
+          subtitle="Wrapper du native <select> avec tokens UI. Icon leading optionnelle. Pour menus avec icônes par option ou items custom, utiliser DropdownMenu à la place."
+        />
+        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+          <Eyebrow>Select · icon-first cohérent avec Input</Eyebrow>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField label="Statut" required>
+              <Select
+                value={status}
+                onChange={setStatus}
+                options={[
+                  { value: "planned",  label: "Planifié" },
+                  { value: "shooting", label: "Tournage" },
+                  { value: "edit",     label: "En montage" },
+                  { value: "review",   label: "À valider" },
+                  { value: "ready",    label: "Prêt" },
+                ]}
+              />
+            </FormField>
+            <FormField label="Pattern" help="Sélectionne le pattern de publication.">
+              <Select
+                value={pattern}
+                onChange={setPattern}
+                placeholder="Choisis un pattern…"
+                options={[
+                  { value: "rpi",   label: "RPI · auto template" },
+                  { value: "rtips", label: "RTIPS · auto template" },
+                  { value: "manual", label: "Manual rushes" },
+                  { value: "ext",   label: "External upload", disabled: true },
+                ]}
+              />
+            </FormField>
+            <FormField label="Vidéaste assigné">
+              <Select
+                value="vid-2"
+                onChange={() => {}}
+                icon={Eye}
+                options={[
+                  { value: "vid-1", label: "Léa Vasseur" },
+                  { value: "vid-2", label: "Marc Dubois" },
+                  { value: "vid-3", label: "Sophie Martin" },
+                ]}
+              />
+            </FormField>
+            <FormField label="Champ obligatoire (erreur)" error="Choisis une option valide.">
+              <Select
+                value={selectError}
+                onChange={setSelectError}
+                options={[
+                  { value: "manual", label: "Manual (invalide)" },
+                  { value: "ok",     label: "OK option" },
+                ]}
+              />
+            </FormField>
+            <FormField label="Disabled">
+              <Select
+                value="locked"
+                onChange={() => {}}
+                disabled
+                options={[{ value: "locked", label: "Verrouillé" }]}
+              />
+            </FormField>
           </div>
         </div>
       </section>
