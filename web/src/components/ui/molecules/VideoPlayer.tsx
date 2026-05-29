@@ -1,0 +1,487 @@
+"use client";
+
+/**
+ * VideoPlayer — lecteur vidéo polyvalent Liquid Glass.
+ *
+ * Factorise ~15 surfaces qui utilisent `<video>` custom aujourd'hui
+ * (RushesSection, VersionsSection, MediaAssetsVideoCard, CoverGenerator,
+ * MediaAssetEditModal, AutocutReviewCard, validate/[token]…).
+ *
+ * Doctrine Liquid Glass v2 :
+ * - Chrome glass (controls) optionnel — bandeau bas backdrop-blur + ring inset.
+ * - Play button center : FAB rond glass-strong avec halo extérieur.
+ * - Progress bar : track ring inset + fill gradient color + thumb spéculaire.
+ * - Caption layer : badge glass tinted bas (au-dessus des controls).
+ * - Trim controls : dual-range glass + handles ronds glass spéculaires.
+ *
+ * 5 variants :
+ * - `native`     : controls HTML natifs (rapide, mais hideux — debug only)
+ * - `minimal`    : play/pause center + progress bar bas glass (default)
+ * - `captions`   : minimal + caption layer animée à partir de `captions[]`
+ * - `trim`       : minimal + dual-range trimmer (rushes/édition)
+ * - `fullscreen` : minimal + chrome étendu (volume + fullscreen toggle)
+ *
+ * Props notables :
+ * - `aspect` : "9:16" (default) | "16:9" | "1:1" | "auto"
+ * - `glassChrome` : si true, chrome bottom passe en glass-tinted
+ * - `trimStart` / `trimEnd` (variant="trim") : init du dual-range
+ * - `onTrimChange` (variant="trim") : callback dual-range
+ * - `captions` : array { start, end, text } pour variant="captions"
+ */
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+  Maximize,
+  Minimize,
+} from "lucide-react";
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+type Aspect = "9:16" | "16:9" | "1:1" | "auto";
+type Variant = "native" | "minimal" | "captions" | "trim" | "fullscreen";
+
+export interface CaptionLine {
+  start: number;
+  end: number;
+  text: string;
+}
+
+interface VideoPlayerProps {
+  src: string | string[];
+  poster?: string;
+  aspect?: Aspect;
+  variant?: Variant;
+  loop?: boolean;
+  /** Default true (muet pour permettre l'autoplay). */
+  muted?: boolean;
+  autoplay?: boolean;
+  /** Seek initial (seconds). */
+  startAt?: number;
+  trimStart?: number;
+  trimEnd?: number;
+  captions?: CaptionLine[];
+  /** Chrome controls glass-tinted (au lieu de gray-950 backdrop). */
+  glassChrome?: boolean;
+  /** Callback de mise à jour du temps (variant=trim/captions souvent utile). */
+  onTimeUpdate?: (currentTime: number) => void;
+  /** Callback fin de lecture. */
+  onEnded?: () => void;
+  /** Callback dual-range trim (variant="trim"). */
+  onTrimChange?: (start: number, end: number) => void;
+  /** Classes additionnelles sur le wrapper. */
+  className?: string;
+}
+
+const ASPECT_CLS: Record<Aspect, string> = {
+  "9:16": "aspect-[9/16]",
+  "16:9": "aspect-video",
+  "1:1":  "aspect-square",
+  "auto": "",
+};
+
+function formatTime(s: number): string {
+  if (!Number.isFinite(s) || s < 0) return "0:00";
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+// ─── Composant principal ────────────────────────────────────────────────────
+
+export function VideoPlayer({
+  src,
+  poster,
+  aspect = "9:16",
+  variant = "minimal",
+  loop = false,
+  muted = true,
+  autoplay = false,
+  startAt,
+  trimStart,
+  trimEnd,
+  captions = [],
+  glassChrome = true,
+  onTimeUpdate,
+  onEnded,
+  onTrimChange,
+  className,
+}: VideoPlayerProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isMuted, setIsMuted] = useState(muted);
+  const [volume, setVolume] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Trim state (controlled via props si fourni, sinon local).
+  const [trimRange, setTrimRange] = useState<[number, number]>([
+    trimStart ?? 0,
+    trimEnd ?? Number.POSITIVE_INFINITY,
+  ]);
+
+  const sources = Array.isArray(src) ? src : [src];
+
+  // Sync trim state when props change.
+  useEffect(() => {
+    if (variant !== "trim") return;
+    setTrimRange([trimStart ?? 0, trimEnd ?? duration ?? 0]);
+  }, [trimStart, trimEnd, duration, variant]);
+
+  // Seek to startAt on load.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || startAt === undefined) return;
+    const handler = () => {
+      v.currentTime = startAt;
+    };
+    v.addEventListener("loadedmetadata", handler);
+    return () => v.removeEventListener("loadedmetadata", handler);
+  }, [startAt]);
+
+  // Sync isMuted with video element on mount.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = isMuted;
+    v.volume = volume;
+  }, [isMuted, volume]);
+
+  // Fullscreen change listener.
+  useEffect(() => {
+    function handler() {
+      setIsFullscreen(document.fullscreenElement === wrapperRef.current);
+    }
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  // Trim mode : clamp playback to trimRange.
+  useEffect(() => {
+    if (variant !== "trim") return;
+    const v = videoRef.current;
+    if (!v) return;
+    const onUpdate = () => {
+      if (v.currentTime < trimRange[0]) v.currentTime = trimRange[0];
+      if (v.currentTime > trimRange[1]) {
+        v.currentTime = trimRange[0];
+        v.pause();
+        setPlaying(false);
+      }
+    };
+    v.addEventListener("timeupdate", onUpdate);
+    return () => v.removeEventListener("timeupdate", onUpdate);
+  }, [variant, trimRange]);
+
+  // ─── Handlers ────────────────────────────────────────────────────────────
+
+  const togglePlay = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) {
+      v.play().catch(() => {});
+    } else {
+      v.pause();
+    }
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    setIsMuted((m) => !m);
+  }, []);
+
+  const seek = useCallback((time: number) => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = time;
+  }, []);
+
+  const seekToPercent = useCallback(
+    (pct: number) => {
+      const t = (Math.max(0, Math.min(100, pct)) / 100) * duration;
+      seek(t);
+    },
+    [duration, seek],
+  );
+
+  const toggleFullscreen = useCallback(() => {
+    const w = wrapperRef.current;
+    if (!w) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      w.requestFullscreen().catch(() => {});
+    }
+  }, []);
+
+  // ─── Caption courante (variant captions) ─────────────────────────────────
+
+  const currentCaption = captions.find(
+    (c) => currentTime >= c.start && currentTime < c.end,
+  );
+
+  // ─── Rendu ───────────────────────────────────────────────────────────────
+
+  const showNativeControls = variant === "native";
+  const showOverlayControls = variant !== "native";
+
+  return (
+    <div
+      ref={wrapperRef}
+      className={[
+        "relative overflow-hidden rounded-xl bg-black",
+        ASPECT_CLS[aspect],
+        // Ring inset signature autour de la vidéo (matière liquid glass).
+        "shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_0_0_1px_rgba(255,255,255,0.08),0_8px_24px_-6px_rgba(15,23,42,0.18)]",
+        className ?? "",
+      ].filter(Boolean).join(" ")}
+    >
+      <video
+        ref={videoRef}
+        loop={loop}
+        muted={isMuted}
+        autoPlay={autoplay}
+        playsInline
+        controls={showNativeControls}
+        poster={poster}
+        className="h-full w-full object-cover"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onTimeUpdate={(e) => {
+          const t = (e.currentTarget as HTMLVideoElement).currentTime;
+          setCurrentTime(t);
+          onTimeUpdate?.(t);
+        }}
+        onLoadedMetadata={(e) => setDuration((e.currentTarget as HTMLVideoElement).duration)}
+        onEnded={() => {
+          setPlaying(false);
+          onEnded?.();
+        }}
+      >
+        {sources.map((s) => (
+          <source key={s} src={s} />
+        ))}
+      </video>
+
+      {/* Caption layer */}
+      {variant === "captions" && currentCaption && (
+        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 max-w-[90%] pointer-events-none">
+          <p
+            className={[
+              "px-3 py-1.5 rounded-md text-[13px] font-medium text-white text-center leading-tight",
+              "bg-gray-950/55 backdrop-blur-[8px] backdrop-saturate-150",
+              "shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_4px_12px_-2px_rgba(0,0,0,0.32)]",
+            ].join(" ")}
+          >
+            {currentCaption.text}
+          </p>
+        </div>
+      )}
+
+      {/* Overlay play button center (visible quand pas en lecture, ou en hover) */}
+      {showOverlayControls && !playing && (
+        <button
+          type="button"
+          onClick={togglePlay}
+          aria-label="Lire"
+          className={[
+            "absolute inset-0 flex items-center justify-center transition-opacity",
+            "bg-black/20 backdrop-blur-[2px] hover:bg-black/30",
+          ].join(" ")}
+        >
+          <span
+            className={[
+              "inline-flex h-14 w-14 items-center justify-center rounded-full",
+              "bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[20px] backdrop-saturate-150",
+              "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-2px_0_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.08),0_16px_40px_-12px_rgba(15,23,42,0.32)]",
+              "text-gray-900",
+            ].join(" ")}
+          >
+            <Play size={22} strokeWidth={2.4} className="ml-0.5" fill="currentColor" />
+          </span>
+        </button>
+      )}
+
+      {/* Chrome bottom — overlay controls */}
+      {showOverlayControls && (
+        <div
+          className={[
+            "absolute left-0 right-0 bottom-0 px-3 py-2.5",
+            glassChrome
+              ? "bg-gradient-to-t from-black/55 to-transparent backdrop-blur-[6px]"
+              : "bg-gradient-to-t from-black/65 to-transparent",
+          ].join(" ")}
+        >
+          {/* Progress bar */}
+          <div className="flex items-center gap-3 mb-1.5">
+            <span className="text-[10px] font-mono text-white/80 tabular-nums shrink-0 min-w-[2.5rem]">
+              {formatTime(currentTime)}
+            </span>
+            <ProgressBar
+              value={duration > 0 ? (currentTime / duration) * 100 : 0}
+              onChange={seekToPercent}
+            />
+            <span className="text-[10px] font-mono text-white/80 tabular-nums shrink-0 min-w-[2.5rem] text-right">
+              {formatTime(duration)}
+            </span>
+          </div>
+
+          {/* Buttons row */}
+          <div className="flex items-center gap-1">
+            <ChromeButton onClick={togglePlay} label={playing ? "Pause" : "Lire"}>
+              {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+            </ChromeButton>
+            <ChromeButton onClick={toggleMute} label={isMuted ? "Activer le son" : "Couper le son"}>
+              {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+            </ChromeButton>
+
+            {variant === "fullscreen" && (
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={volume}
+                onChange={(e) => setVolume(Number(e.target.value))}
+                className="w-20 h-1 ml-1 accent-white opacity-70 hover:opacity-100"
+                aria-label="Volume"
+              />
+            )}
+
+            <div className="flex-1" />
+
+            {variant === "fullscreen" && (
+              <ChromeButton onClick={toggleFullscreen} label={isFullscreen ? "Quitter" : "Plein écran"}>
+                {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+              </ChromeButton>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Trim controls — overlay au-dessus du chrome bottom */}
+      {variant === "trim" && duration > 0 && (
+        <div className="absolute left-3 right-3 bottom-14 z-10">
+          <DualRangeTrim
+            min={0}
+            max={duration}
+            valueStart={trimRange[0]}
+            valueEnd={trimRange[1] === Number.POSITIVE_INFINITY ? duration : trimRange[1]}
+            onChange={(s, e) => {
+              setTrimRange([s, e]);
+              onTrimChange?.(s, e);
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Sub-components ────────────────────────────────────────────────────────
+
+function ProgressBar({ value, onChange }: { value: number; onChange: (pct: number) => void }) {
+  const trackRef = useRef<HTMLDivElement>(null);
+
+  function handleClick(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = trackRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const pct = ((e.clientX - rect.left) / rect.width) * 100;
+    onChange(pct);
+  }
+
+  return (
+    <div
+      ref={trackRef}
+      onClick={handleClick}
+      className="flex-1 h-1.5 rounded-full bg-white/20 cursor-pointer overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
+      role="progressbar"
+      aria-valuenow={value}
+      aria-valuemin={0}
+      aria-valuemax={100}
+    >
+      <div
+        className="h-full bg-gradient-to-r from-white/95 to-white/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] transition-[width]"
+        style={{ width: `${value}%` }}
+      />
+    </div>
+  );
+}
+
+function ChromeButton({
+  children,
+  onClick,
+  label,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className="inline-flex items-center justify-center h-7 w-7 rounded-md text-white/85 hover:text-white hover:bg-white/15 transition-all focus-ring"
+    >
+      {children}
+    </button>
+  );
+}
+
+function DualRangeTrim({
+  min,
+  max,
+  valueStart,
+  valueEnd,
+  onChange,
+}: {
+  min: number;
+  max: number;
+  valueStart: number;
+  valueEnd: number;
+  onChange: (start: number, end: number) => void;
+}) {
+  const startPct = max === min ? 0 : ((valueStart - min) / (max - min)) * 100;
+  const endPct = max === min ? 100 : ((valueEnd - min) / (max - min)) * 100;
+
+  return (
+    <div className="relative h-6">
+      {/* Track */}
+      <div className="absolute inset-y-1/2 left-0 right-0 h-1.5 -translate-y-1/2 rounded-full bg-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]" />
+      {/* Selected range */}
+      <div
+        className="absolute inset-y-1/2 h-1.5 -translate-y-1/2 rounded-full bg-gradient-to-r from-peach-300 to-peach-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
+        style={{ left: `${startPct}%`, right: `${100 - endPct}%` }}
+      />
+      {/* Start handle */}
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={0.1}
+        value={valueStart}
+        onChange={(e) => onChange(Math.min(Number(e.target.value), valueEnd - 0.1), valueEnd)}
+        className="absolute inset-0 w-full appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.18)] [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:cursor-grab"
+        aria-label="Début du trim"
+      />
+      {/* End handle */}
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={0.1}
+        value={valueEnd}
+        onChange={(e) => onChange(valueStart, Math.max(Number(e.target.value), valueStart + 0.1))}
+        className="absolute inset-0 w-full appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.18)] [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:cursor-grab"
+        aria-label="Fin du trim"
+      />
+    </div>
+  );
+}

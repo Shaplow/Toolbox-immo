@@ -139,6 +139,14 @@ export const NAV: NavSection[] = [
       { label: "EmptyHero", href: "/playground/molecules#empty-hero" },
     ],
   },
+  {
+    label: "Phase 4 · Molécules · Lot 2",
+    basePath: "/playground/molecules",
+    items: [
+      { label: "VideoPlayer", href: "/playground/molecules#video-player" },
+      { label: "AssetCard", href: "/playground/molecules#asset-card" },
+    ],
+  },
 ];
 
 /** Tous les ids ancrables d'une page donnée. */

@@ -31,6 +31,10 @@ import { Section } from "@/components/ui/molecules/Section";
 import { SoftPanel } from "@/components/ui/molecules/SoftPanel";
 import { EmptyHero } from "@/components/ui/molecules/EmptyHero";
 import { StatusBadge } from "@/components/ui/molecules/StatusBadge";
+import { VideoPlayer, type CaptionLine } from "@/components/ui/molecules/VideoPlayer";
+import { AssetCard } from "@/components/ui/molecules/AssetCard";
+import { ButtonIcon } from "@/components/ui/ButtonIcon";
+import { Eye, MoreHorizontal, Trash2 } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -317,17 +321,264 @@ export default function MoleculesPage() {
         </div>
       </PageSection>
 
+      {/* ━━━ VIDEO PLAYER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+
+      <PageSection id="video-player" eyebrow="Lot 2 · Média" title="VideoPlayer">
+        <p className="text-[12px] text-gray-600 mb-4 leading-relaxed">
+          5 variants — démos avec Big Buck Bunny sample (CDN public). Aspect
+          9:16 par défaut (format story IG). Chrome bottom glass + play button
+          center FAB glass-strong avec halo signature.
+        </p>
+        <VideoPlayerShowcase />
+      </PageSection>
+
+      {/* ━━━ ASSET CARD ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+
+      <PageSection id="asset-card" eyebrow="Lot 2 · Média" title="AssetCard">
+        <AssetCardShowcase />
+      </PageSection>
+
       {/* Note pied de page */}
       <div className="surface-glass-soft rounded-xl p-5 mt-12">
         <p className="text-[11px] uppercase tracking-widest font-medium text-gray-500 mb-2">
           Lots restants Phase 4
         </p>
         <p className="text-[13px] text-gray-700 leading-relaxed">
-          Lot 2 (Média) → VideoPlayer, AssetCard ·
           Lot 3 (Édition) → TrimPlayer, OverrideControl, AssigneePicker ·
           Lot 4 (Métier) → FilterBar, JobQueueItem
         </p>
       </div>
     </div>
+  );
+}
+
+// ─── Showcase VideoPlayer ──────────────────────────────────────────────────
+
+const SAMPLE_VIDEO = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+const SAMPLE_POSTER = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg";
+
+const SAMPLE_CAPTIONS: CaptionLine[] = [
+  { start: 0,  end: 3,  text: "Bienvenue dans cette visite." },
+  { start: 3,  end: 6,  text: "Vue panoramique sur Paris depuis le toit." },
+  { start: 6,  end: 10, text: "Cuisine ouverte 25 m² + îlot central." },
+  { start: 10, end: 14, text: "Vidéo de démo cmdk Big Buck Bunny." },
+  { start: 14, end: 20, text: "Toutes les captions sont animées en temps réel." },
+];
+
+function VideoPlayerShowcase() {
+  return (
+    <>
+      <div className="space-y-2">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="minimal" · aspect 9:16 (story)</p>
+        <div className="w-48"><VideoPlayer src={SAMPLE_VIDEO} poster={SAMPLE_POSTER} variant="minimal" aspect="9:16" /></div>
+      </div>
+
+      <div className="mt-6 space-y-2">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="minimal" · aspect 16:9</p>
+        <div className="max-w-2xl"><VideoPlayer src={SAMPLE_VIDEO} poster={SAMPLE_POSTER} variant="minimal" aspect="16:9" /></div>
+      </div>
+
+      <div className="mt-6 space-y-2">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="captions" · captions inline animées</p>
+        <div className="max-w-2xl"><VideoPlayer src={SAMPLE_VIDEO} poster={SAMPLE_POSTER} variant="captions" aspect="16:9" captions={SAMPLE_CAPTIONS} /></div>
+      </div>
+
+      <div className="mt-6 space-y-2">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="trim" · dual-range trimmer</p>
+        <div className="max-w-2xl">
+          <VideoPlayer
+            src={SAMPLE_VIDEO}
+            poster={SAMPLE_POSTER}
+            variant="trim"
+            aspect="16:9"
+            trimStart={2}
+            trimEnd={8}
+          />
+        </div>
+        <p className="text-[11px] text-gray-500">Dual-range avec handles ronds glass — la lecture clamp entre trim start/end.</p>
+      </div>
+
+      <div className="mt-6 space-y-2">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="fullscreen" · chrome étendu (volume + plein écran)</p>
+        <div className="max-w-2xl"><VideoPlayer src={SAMPLE_VIDEO} poster={SAMPLE_POSTER} variant="fullscreen" aspect="16:9" /></div>
+      </div>
+
+      <div className="mt-6 space-y-2">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="native" · controls HTML natifs (debug)</p>
+        <div className="max-w-md"><VideoPlayer src={SAMPLE_VIDEO} poster={SAMPLE_POSTER} variant="native" aspect="16:9" /></div>
+      </div>
+    </>
+  );
+}
+
+// ─── Showcase AssetCard ────────────────────────────────────────────────────
+
+function AssetCardShowcase() {
+  const [selected, setSelected] = useState<Set<string>>(new Set(["asset-2"]));
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const assets = [
+    {
+      id: "asset-1",
+      url: SAMPLE_VIDEO,
+      filename: "rooftop-paris-final.mp4",
+      duration: 18,
+      thumbnail: "https://picsum.photos/seed/paris1/400/600",
+      mimeType: "video/mp4",
+    },
+    {
+      id: "asset-2",
+      url: SAMPLE_VIDEO,
+      filename: "cuisine-ouverte-v3.mp4",
+      duration: 24,
+      thumbnail: "https://picsum.photos/seed/cuisine/400/600",
+      mimeType: "video/mp4",
+    },
+    {
+      id: "asset-3",
+      url: SAMPLE_VIDEO,
+      filename: "salon-vue-final.mp4",
+      duration: 42,
+      thumbnail: "https://picsum.photos/seed/salon/400/600",
+      mimeType: "video/mp4",
+    },
+    {
+      id: "asset-4",
+      url: "https://picsum.photos/seed/cover1/800/800",
+      filename: "cover-v2.jpg",
+      thumbnail: "https://picsum.photos/seed/cover1/400/400",
+      mimeType: "image/jpeg",
+    },
+  ];
+
+  return (
+    <>
+      {/* Compact */}
+      <div className="space-y-2">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="compact" · liste dense</p>
+        <div className="space-y-1.5 max-w-2xl">
+          {assets.map((a) => (
+            <AssetCard
+              key={a.id}
+              asset={a}
+              variant="compact"
+              selectable
+              selected={selected.has(a.id)}
+              onSelect={() => toggle(a.id)}
+              onPlay={() => {}}
+              actions={
+                <>
+                  <ButtonIcon icon={Eye} label="Voir" variant="ghost" size="sm" />
+                  <ButtonIcon icon={MoreHorizontal} label="Plus" variant="ghost" size="sm" />
+                </>
+              }
+              badges={
+                a.mimeType?.startsWith("video/") ? (
+                  <StatusBadge domain="render" status="COMPLETED" hideIcon size="sm" />
+                ) : undefined
+              }
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Default grid 9:16 */}
+      <div className="mt-8 space-y-2">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="default" · grid 9:16</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-w-3xl">
+          {assets.slice(0, 4).map((a) => (
+            <AssetCard
+              key={a.id}
+              asset={a}
+              variant="default"
+              aspect="9:16"
+              selectable
+              selected={selected.has(a.id)}
+              onSelect={() => toggle(a.id)}
+              onPlay={() => {}}
+              badges={<StatusBadge domain="render" status="COMPLETED" size="sm" />}
+              actions={
+                <>
+                  <ButtonIcon icon={MoreHorizontal} label="Plus" variant="ghost" size="sm" />
+                </>
+              }
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Default grid 1:1 */}
+      <div className="mt-8 space-y-2">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="default" · aspect 1:1 (cover)</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-w-2xl">
+          {assets.slice(0, 3).map((a) => (
+            <AssetCard
+              key={a.id}
+              asset={a}
+              variant="default"
+              aspect="1:1"
+              onPlay={() => {}}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Expanded */}
+      <div className="mt-8 space-y-2">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="expanded" · preview vidéo inline + metadata détaillé</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl">
+          <AssetCard
+            asset={{
+              ...assets[0],
+              metadata: {
+                "Importé": "Hier, 14h32",
+                "Compte": "@studio-paris",
+                "Format": "1920×1080",
+                "Codec": "H.264",
+              },
+            }}
+            variant="expanded"
+            aspect="16:9"
+            selected={selected.has(assets[0].id)}
+            selectable
+            onSelect={() => toggle(assets[0].id)}
+            badges={
+              <>
+                <StatusBadge domain="render" status="COMPLETED" />
+                <StatusBadge domain="caption" status="GENERATING" />
+              </>
+            }
+            actions={
+              <>
+                <ButtonIcon icon={Eye} label="Aperçu" variant="secondary" size="sm" />
+                <ButtonIcon icon={Trash2} label="Supprimer" variant="danger" size="sm" />
+              </>
+            }
+          />
+          <AssetCard
+            asset={{
+              ...assets[1],
+              metadata: {
+                "Slot": "Story #18",
+                "Statut": "Validé",
+                "Durée": "24 s",
+              },
+            }}
+            variant="expanded"
+            aspect="9:16"
+            selectable
+            badges={<StatusBadge domain="slot" status="PUBLISHED" />}
+          />
+        </div>
+      </div>
+    </>
   );
 }
