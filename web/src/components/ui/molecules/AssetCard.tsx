@@ -32,6 +32,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { FileText, Image as ImageIcon, Play, Video, Music } from "lucide-react";
 import { VideoPlayer } from "./VideoPlayer";
+import { Checkbox } from "../Checkbox";
 
 type Variant = "compact" | "default" | "expanded";
 type Aspect = "9:16" | "16:9" | "1:1" | "auto";
@@ -183,16 +184,11 @@ function CompactCard({
       ].filter(Boolean).join(" ")}
     >
       {selectable && (
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={(e) => {
-            e.stopPropagation();
-            onSelect?.();
-          }}
-          onClick={(e) => e.stopPropagation()}
-          className="h-3.5 w-3.5 rounded accent-gray-900 cursor-pointer shrink-0"
-          aria-label={`Sélectionner ${asset.filename}`}
+        <Checkbox
+          checked={!!selected}
+          onChange={() => onSelect?.()}
+          size="sm"
+          label={`Sélectionner ${asset.filename}`}
         />
       )}
       {/* Thumbnail */}
@@ -300,16 +296,11 @@ function DefaultCard({
         {/* Selection checkbox overlay top-left */}
         {selectable && (
           <div className="absolute top-2 left-2">
-            <input
-              type="checkbox"
-              checked={selected}
-              onChange={(e) => {
-                e.stopPropagation();
-                onSelect?.();
-              }}
-              onClick={(e) => e.stopPropagation()}
-              className="h-4 w-4 rounded accent-gray-900 cursor-pointer shadow-[0_0_0_2px_rgba(255,255,255,0.65)]"
-              aria-label={`Sélectionner ${asset.filename}`}
+            <Checkbox
+              checked={!!selected}
+              onChange={() => onSelect?.()}
+              size="md"
+              label={`Sélectionner ${asset.filename}`}
             />
           </div>
         )}
@@ -436,13 +427,14 @@ function ExpandedCard({
             )}
           </div>
           {selectable && (
-            <input
-              type="checkbox"
-              checked={selected}
-              onChange={onSelect}
-              className="h-4 w-4 rounded accent-gray-900 cursor-pointer shrink-0 mt-1"
-              aria-label={`Sélectionner ${asset.filename}`}
-            />
+            <div className="shrink-0 mt-1">
+              <Checkbox
+                checked={!!selected}
+                onChange={() => onSelect?.()}
+                size="md"
+                label={`Sélectionner ${asset.filename}`}
+              />
+            </div>
           )}
         </div>
 

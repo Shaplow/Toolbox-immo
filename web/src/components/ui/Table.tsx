@@ -19,6 +19,7 @@
 
 import { useState, useMemo, type ReactNode } from "react";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { Checkbox } from "./Checkbox";
 
 type SortDir = "asc" | "desc" | null;
 
@@ -138,15 +139,11 @@ export function Table<Row>({
             <tr className="surface-glass-soft border-b border-white/40">
               {selectable && (
                 <th className="w-9 px-3 py-2.5 text-left">
-                  <input
-                    type="checkbox"
-                    checked={allSelected ?? false}
-                    ref={(el) => {
-                      if (el) el.indeterminate = !!someSelected;
-                    }}
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
                     onChange={toggleAll}
-                    className="h-3.5 w-3.5 rounded accent-gray-900 cursor-pointer"
-                    aria-label="Tout sélectionner"
+                    size="sm"
+                    label="Tout sélectionner"
                   />
                 </th>
               )}
@@ -211,12 +208,11 @@ export function Table<Row>({
                   >
                     {selectable && (
                       <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={isSelected}
                           onChange={() => toggleRow(key)}
-                          className="h-3.5 w-3.5 rounded accent-gray-900 cursor-pointer"
-                          aria-label="Sélectionner"
+                          size="sm"
+                          label="Sélectionner"
                         />
                       </td>
                     )}
