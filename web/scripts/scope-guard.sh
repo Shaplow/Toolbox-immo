@@ -45,7 +45,10 @@ while IFS= read -r file; do
     web/package.json|\
     web/package-lock.json|\
     web/scripts/scope-guard.sh|\
+    web/scripts/screenshot.ts|\
+    web/scripts/screenshot-login.ts|\
     .gitignore|\
+    web/.gitignore|\
     .env.example)
       ;;
     *)

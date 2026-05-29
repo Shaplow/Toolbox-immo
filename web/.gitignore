@@ -48,3 +48,6 @@ backups/
 # Local dev uploads — fallback quand R2 n'est pas configuré.
 # Servi par Next.js static à /uploads/{key}. Jamais déployé en prod.
 /public/uploads/
+
+# Playwright auth state for screenshot scripts (local only)
+.playwright-auth.json
