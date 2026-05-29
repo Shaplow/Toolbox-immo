@@ -60,13 +60,16 @@ export const ButtonIcon = forwardRef<HTMLButtonElement, ButtonIconProps>(functio
       "bg-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-950 focus-ring",
     danger:
       "bg-transparent text-gray-500 hover:bg-danger-50 hover:text-danger-600 focus-ring-danger",
+    // Liquid Glass v2 — même signature liquide que Button glass : gradient
+    // frosted + ring inset top blanc prononcé + halo extérieur diffus.
     glass:
-      "bg-[var(--surface-glass-medium)] text-gray-700 backdrop-blur-[12px] backdrop-saturate-150 shadow-[var(--ring-glass-edge)] hover:bg-[var(--surface-glass-strong)] hover:text-gray-950 hover:shadow-[var(--ring-glass-inset),var(--shadow-glass-sm)] focus-ring",
+      "bg-gradient-to-b from-white/70 to-white/40 text-gray-800 backdrop-blur-[18px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(255,255,255,0.35),inset_0_-1px_0_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_-8px_rgba(15,23,42,0.18)] hover:from-white/85 hover:to-white/55 hover:text-gray-950 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.5),inset_0_-1px_0_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.06),0_12px_32px_-8px_rgba(15,23,42,0.22)] focus-ring",
   }[variant];
 
-  // FAB style — élévation glass-md + halo blur, rond pour signature flottante.
+  // FAB style — élévation forte + gradient frosted + halo diffus rond pour
+  // signature flottante macOS Sequoia. Rond pour distinguer du carré.
   const floatingCls = floating
-    ? "rounded-full bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150 shadow-[var(--shadow-glass-md),var(--ring-glass-inset)] text-gray-800 hover:text-gray-950"
+    ? "rounded-full bg-gradient-to-b from-white/80 to-white/50 text-gray-800 backdrop-blur-[24px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-2px_0_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.08),0_16px_40px_-12px_rgba(15,23,42,0.28)] hover:text-gray-950 hover:from-white/95 hover:to-white/65 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.55),inset_0_-2px_0_rgba(15,23,42,0.1),0_4px_8px_rgba(15,23,42,0.1),0_24px_56px_-12px_rgba(15,23,42,0.36)]"
     : "";
 
   const iconSize = size === "sm" ? 13 : 15;

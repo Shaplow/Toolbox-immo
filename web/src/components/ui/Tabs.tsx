@@ -131,8 +131,8 @@ function GlassTabs({ items, value, onChange, size, className }: Required<Pick<Ta
     <div
       className={[
         "inline-flex items-center rounded-md p-0.5 gap-0.5",
-        "bg-[var(--surface-glass-medium)] backdrop-blur-[12px] backdrop-saturate-150",
-        "shadow-[var(--shadow-glass-sm),var(--ring-glass-edge)]",
+        "bg-gradient-to-b from-white/55 to-white/30 backdrop-blur-[18px] backdrop-saturate-150",
+        "shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(255,255,255,0.3),inset_0_-1px_0_rgba(15,23,42,0.05),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-10px_rgba(15,23,42,0.16)]",
         className ?? "",
       ].filter(Boolean).join(" ")}
     >
@@ -149,7 +149,7 @@ function GlassTabs({ items, value, onChange, size, className }: Required<Pick<Ta
             role="tab"
             className={`inline-flex items-center gap-1.5 rounded font-medium transition-all focus-ring disabled:opacity-50 disabled:cursor-not-allowed ${sizeCls} ${
               isActive
-                ? "bg-white text-gray-950 shadow-[var(--ring-glass-inset),0_1px_2px_rgba(15,23,42,0.06)]"
+                ? "bg-gradient-to-b from-white to-white/85 text-gray-950 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.6),inset_0_-1px_0_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.08),0_6px_16px_-8px_rgba(15,23,42,0.18)]"
                 : "bg-transparent text-gray-600 hover:text-gray-950"
             }`}
           >

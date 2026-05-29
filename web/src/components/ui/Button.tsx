@@ -79,12 +79,16 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       "bg-transparent text-gray-700 hover:bg-gray-100 hover:text-gray-950 focus-ring",
     danger:
       "bg-danger-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] hover:bg-danger-700 focus-ring-danger",
-    // Liquid Glass v2 — verre transparent + ring intérieur signature.
+    // Liquid Glass v2 — vrai verre macOS Tahoe / iOS 18 :
+    // ring intérieur top blanc prononcé (highlight spéculaire) + ring edge
+    // subtle + halo extérieur diffus. Background gradient frosted blanc
+    // top → translucide bottom donne l'impression d'épaisseur réelle.
     glass:
-      "bg-[var(--surface-glass-medium)] text-gray-800 backdrop-blur-[12px] backdrop-saturate-150 shadow-[var(--ring-glass-edge)] hover:bg-[var(--surface-glass-strong)] hover:shadow-[var(--ring-glass-inset),var(--shadow-glass-sm)] focus-ring",
+      "bg-gradient-to-b from-white/70 to-white/40 text-gray-900 backdrop-blur-[18px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(255,255,255,0.35),inset_0_-1px_0_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_-8px_rgba(15,23,42,0.18)] hover:from-white/85 hover:to-white/55 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.5),inset_0_-1px_0_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.06),0_12px_32px_-8px_rgba(15,23,42,0.22)] focus-ring",
     // Liquid Glass v2 — graphite tinted warm peach (signature "chaleur").
+    // Highlight intérieur teinté + halo extérieur peach diffus au hover.
     softPrimary:
-      "bg-gray-800 text-white shadow-[inset_0_1px_0_rgba(255,200,170,0.18)] hover:bg-gray-700 hover:shadow-[inset_0_1px_0_rgba(255,200,170,0.24),0_4px_16px_rgba(245,158,107,0.18)] focus-ring",
+      "bg-gradient-to-b from-gray-700 to-gray-900 text-white shadow-[inset_0_1px_0_rgba(255,200,170,0.28),inset_0_0_0_1px_rgba(255,200,170,0.08),0_1px_2px_rgba(15,23,42,0.12),0_6px_20px_-8px_rgba(245,158,107,0.45)] hover:from-gray-600 hover:to-gray-800 hover:shadow-[inset_0_1px_0_rgba(255,200,170,0.42),inset_0_0_0_1px_rgba(255,200,170,0.12),0_2px_4px_rgba(15,23,42,0.16),0_10px_28px_-8px_rgba(245,158,107,0.6)] focus-ring",
   }[variant];
 
   const iconSize = size === "sm" ? 12 : size === "lg" ? 15 : 14;

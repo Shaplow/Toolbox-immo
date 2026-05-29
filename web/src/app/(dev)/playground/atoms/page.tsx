@@ -99,20 +99,41 @@ export default function AtomsPage() {
           <Button variant="ghost" icon={Copy}>Ghost</Button>
           <Button variant="danger" icon={Trash2}>Danger</Button>
         </Row>
-        <Row label="Glass v2">
-          <Button variant="glass" icon={Bookmark}>Glass</Button>
-          <Button variant="softPrimary" icon={Zap}>Soft primary</Button>
-        </Row>
-        <Row label="Sizes">
-          <Button size="sm">Small</Button>
-          <Button size="md">Medium</Button>
-          <Button size="lg">Large</Button>
-        </Row>
-        <Row label="States">
-          <Button loading>Loading</Button>
-          <Button disabled>Disabled</Button>
-          <Button icon={ArrowRight} iconRight>Continuer</Button>
-        </Row>
+
+        {/* Glass + softPrimary mis en scène sur fond coloré pour révéler le vrai verre */}
+        <div className="mt-4 space-y-2">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Glass v2 · sur fond coloré</p>
+          <div
+            className="rounded-2xl p-6 ring-1 ring-white/30"
+            style={{ backgroundImage: "linear-gradient(135deg, #f59e6b 0%, #c97185 35%, #4d96bf 70%, #6fa280 100%)" }}
+          >
+            <div className="flex flex-wrap items-center gap-3">
+              <Button variant="glass" icon={Bookmark}>Marquer</Button>
+              <Button variant="glass" icon={Eye} size="lg">Aperçu détaillé</Button>
+              <Button variant="glass" icon={Download} size="sm">Export</Button>
+              <Button variant="softPrimary" icon={Zap}>Soft primary</Button>
+              <Button variant="softPrimary" icon={Plus} size="lg">Action chaude</Button>
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-500 leading-relaxed">
+            Vrai verre macOS Tahoe : gradient blanc top → translucide bottom,
+            ring inset spéculaire prononcé, halo extérieur diffus. Le fond
+            derrière est blurred et désaturé.
+          </p>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Row label="Sizes">
+            <Button size="sm">Small</Button>
+            <Button size="md">Medium</Button>
+            <Button size="lg">Large</Button>
+          </Row>
+          <Row label="States">
+            <Button loading>Loading</Button>
+            <Button disabled>Disabled</Button>
+            <Button icon={ArrowRight} iconRight>Continuer</Button>
+          </Row>
+        </div>
       </Section>
 
       <Section id="button-icon" eyebrow="Actions" title="ButtonIcon">
@@ -121,12 +142,31 @@ export default function AtomsPage() {
           <ButtonIcon icon={Eye} label="Voir" variant="secondary" />
           <ButtonIcon icon={Copy} label="Copier" variant="ghost" />
           <ButtonIcon icon={Trash2} label="Supprimer" variant="danger" />
-          <ButtonIcon icon={Bookmark} label="Glass" variant="glass" />
         </Row>
-        <Row label="Floating (FAB)">
-          <ButtonIcon icon={Plus} label="Nouvel élément" floating />
-          <ButtonIcon icon={Download} label="Télécharger" floating size="sm" />
-        </Row>
+
+        {/* Glass + Floating mis en scène sur image / dégradé pour vrai effet FAB */}
+        <div className="mt-4 space-y-2">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Glass + Floating · sur fond coloré</p>
+          <div
+            className="relative rounded-2xl p-10 ring-1 ring-white/30 min-h-[140px]"
+            style={{ backgroundImage: "linear-gradient(135deg, #f59e6b 0%, #c97185 50%, #4d96bf 100%)" }}
+          >
+            <div className="flex items-center gap-3">
+              <ButtonIcon icon={Bookmark} label="Glass" variant="glass" />
+              <ButtonIcon icon={Eye} label="Voir glass" variant="glass" />
+              <ButtonIcon icon={Copy} label="Copier glass" variant="glass" />
+            </div>
+            {/* FABs flottants en bas droite, comme un vrai overlay */}
+            <div className="absolute bottom-4 right-4 flex flex-col gap-2 items-end">
+              <ButtonIcon icon={Plus} label="Nouvel élément" floating />
+              <ButtonIcon icon={Download} label="Télécharger" floating size="sm" />
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-500 leading-relaxed">
+            Variant glass = même signature liquide que Button glass.
+            Option <code className="text-[11px] font-mono">floating</code> = FAB rond avec blur 24px et ombre diffuse — flotte vraiment au-dessus du contenu.
+          </p>
+        </div>
       </Section>
 
       <Section id="dropdown-menu" eyebrow="Actions" title="DropdownMenu">
@@ -364,46 +404,93 @@ export default function AtomsPage() {
       </Section>
 
       <Section id="card" eyebrow="Data" title="Card">
-        <Row label="Variants">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+        {/* ── Solid sur fond neutre ──────────────────────────────────── */}
+        <div className="mb-6 space-y-2">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Solid (défaut)</p>
+          <div className="rounded-2xl bg-gray-50 p-6 ring-1 ring-gray-200/60">
             <Card variant="solid">
-              <CardHeader title="Solid" />
-              <p className="text-[12px] text-gray-600 mt-3">Défaut white + border gray-200. Inchangé.</p>
-            </Card>
-            <Card variant="glass" border={false}>
-              <CardHeader title="Glass" borderless />
-              <p className="text-[12px] text-gray-700 mt-3">Surface-glass-strong + backdrop-blur 20 px + ring inset.</p>
-            </Card>
-            <Card variant="frosted" border={false}>
-              <CardHeader title="Frosted" borderless />
-              <p className="text-[12px] text-gray-700 mt-3">Gradient frosted blanc + backdrop-blur + ring edge.</p>
-            </Card>
-            <Card variant="tinted" tint="peach">
-              <CardHeader title="Tinted peach" />
-              <p className="text-[12px] text-gray-700 mt-3">bg-peach-50 + border peach-100. Tinted sage / sky / rose disponibles.</p>
+              <CardHeader title="Pattern Vidéo Story" />
+              <div className="mt-4 space-y-3">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[13px] text-gray-700">Publications cette semaine</span>
+                  <span className="text-2xl font-semibold tracking-tight text-gray-950 tabular-nums">14</span>
+                </div>
+                <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                  <Badge variant="success" dot>Validé</Badge>
+                  <Badge variant="info" dot>3 programmés</Badge>
+                </div>
+              </div>
             </Card>
           </div>
-        </Row>
-        <Row label="Glass × tint">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 w-full">
-            {(["peach", "sage", "sky", "rose"] as const).map((t) => (
-              <Card key={t} variant="glass" tint={t} border={false}>
-                <CardHeader title={`Glass ${t}`} borderless />
-                <p className="text-[12px] text-gray-700 mt-3">Glass + wash {t} subtle.</p>
+          <p className="text-[11px] text-gray-500 leading-relaxed">Posée sur fond gray-50 → look document classique, border gray-200, density Linear.</p>
+        </div>
+
+        {/* ── Glass sur fond aurora ──────────────────────────────────── */}
+        <div className="mb-6 space-y-2">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Glass + Frosted</p>
+          <div
+            className="rounded-2xl p-6 ring-1 ring-white/30"
+            style={{ backgroundImage: "linear-gradient(135deg, #f59e6b 0%, #c97185 35%, #4d96bf 70%, #6fa280 100%)" }}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card variant="glass" border={false}>
+                <CardHeader title="Glass · strong" borderless />
+                <p className="text-[12px] text-gray-700 mt-3 leading-relaxed">
+                  surface-glass-strong + blur 20px + ring inset. Posée sur dégradé pour révéler la matière verre — l'arrière est blurred et désaturé.
+                </p>
+                <div className="mt-3 flex items-center gap-2">
+                  <Button variant="glass" size="sm" icon={Eye}>Aperçu</Button>
+                  <Button variant="softPrimary" size="sm" icon={Plus}>Action</Button>
+                </div>
+              </Card>
+              <Card variant="frosted" border={false}>
+                <CardHeader title="Frosted" borderless />
+                <p className="text-[12px] text-gray-700 mt-3 leading-relaxed">
+                  gradient-frosted blanc + blur 12px + ring edge. Plus opaque que glass-strong, parfait pour panneaux secondaires sans perdre la transparence.
+                </p>
+                <div className="mt-3">
+                  <Badge variant="sky" glass dot>Cover prête</Badge>
+                </div>
+              </Card>
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-500 leading-relaxed">Sur fond coloré → vrai effet liquide visible : blur, ring inset, gradient frosted top.</p>
+        </div>
+
+        {/* ── Tinted × 4 ─────────────────────────────────────────────── */}
+        <div className="mb-6 space-y-2">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Tinted × Coastal Studio</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {([
+              { tint: "peach" as const, title: "Brief client", note: "À faire" },
+              { tint: "sage" as const, title: "Captions OK", note: "Validé" },
+              { tint: "sky" as const, title: "Programmé", note: "Demain 18 h" },
+              { tint: "rose" as const, title: "Override actif", note: "Cover custom" },
+            ]).map((c) => (
+              <Card key={c.tint} variant="tinted" tint={c.tint}>
+                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1">{c.tint}</p>
+                <p className="text-[14px] font-semibold text-gray-950 leading-tight">{c.title}</p>
+                <p className="text-[11px] text-gray-700 mt-2">{c.note}</p>
               </Card>
             ))}
           </div>
-        </Row>
-        <Row label="Interactive">
-          <div className="grid grid-cols-2 gap-4 w-full max-w-xl">
+          <p className="text-[11px] text-gray-500 leading-relaxed">Background pastel + border même teinte. Idéal pour catégoriser des cards en un coup d'œil sans saturer.</p>
+        </div>
+
+        {/* ── Interactive ────────────────────────────────────────────── */}
+        <div className="space-y-2">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Interactive · hover</p>
+          <div className="grid grid-cols-2 gap-4">
             <Card interactive>
-              <p className="text-[12px] text-gray-700">Solid · hover lift</p>
+              <p className="text-[12px] font-medium text-gray-950">Solid · hover lift</p>
+              <p className="text-[11px] text-gray-500 mt-1">translate-y + shadow-card-elevated + border gray-300</p>
             </Card>
             <Card interactive variant="glass" border={false}>
-              <p className="text-[12px] text-gray-700">Glass · hover shadow-glass-md</p>
+              <p className="text-[12px] font-medium text-gray-950">Glass · hover lift</p>
+              <p className="text-[11px] text-gray-600 mt-1">translate-y + shadow-glass-md + ring intérieur prononcé</p>
             </Card>
           </div>
-        </Row>
+        </div>
       </Section>
 
       <Section id="tabs" eyebrow="Data" title="Tabs">
@@ -430,37 +517,113 @@ export default function AtomsPage() {
             ]}
           />
         </Row>
-        <Row label="Glass v2">
-          <Tabs
-            variant="glass"
-            value={glassTab}
-            onChange={setGlassTab}
-            items={[
-              { id: "now", label: "Maintenant" },
-              { id: "week", label: "Semaine" },
-              { id: "month", label: "Mois" },
-            ]}
-          />
-        </Row>
+        {/* Glass mis en scène sur fond aurora pour révéler le verre */}
+        <div className="mt-4 space-y-2">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Glass v2 — sur fond coloré</p>
+          <div
+            className="rounded-2xl p-6 ring-1 ring-white/30"
+            style={{ backgroundImage: "linear-gradient(135deg, #f59e6b 0%, #c97185 50%, #4d96bf 100%)" }}
+          >
+            <Tabs
+              variant="glass"
+              value={glassTab}
+              onChange={setGlassTab}
+              items={[
+                { id: "now", label: "Maintenant" },
+                { id: "week", label: "Semaine" },
+                { id: "month", label: "Mois" },
+              ]}
+            />
+          </div>
+          <p className="text-[11px] text-gray-500 leading-relaxed">
+            Pill segmenté flottant : gradient frosted + ring inset top + halo
+            diffus. Tab actif = pastille blanche solide qui semble pressée dans
+            le verre.
+          </p>
+        </div>
       </Section>
 
       <Section id="kbd" eyebrow="Data" title="Kbd">
-        <Row label="Migration interne">
+        <Row label="Touches isolées">
           <Kbd>⌘</Kbd>
           <Kbd>K</Kbd>
-          <KbdChord keys={["⌘", "Shift", "P"]} />
-          <span className="text-[12px] text-gray-500">Verre transparent + ring inset signature.</span>
+          <Kbd>↵</Kbd>
+          <Kbd>Esc</Kbd>
+          <Kbd size="md">Tab</Kbd>
         </Row>
+        <Row label="Chords">
+          <KbdChord keys={["⌘", "K"]} />
+          <KbdChord keys={["⌘", "Shift", "P"]} />
+          <KbdChord keys={["⌥", "Tab"]} separator="·" />
+        </Row>
+        <div className="mt-4 space-y-2">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Dans un contexte réel</p>
+          <div className="rounded-2xl bg-gray-50 p-5 ring-1 ring-gray-200/60">
+            <div className="space-y-2.5 text-[13px] text-gray-700">
+              <p className="flex items-center gap-2">Ouvrir la palette de commandes <KbdChord keys={["⌘", "K"]} /></p>
+              <p className="flex items-center gap-2">Aller au listing suivant <Kbd>J</Kbd></p>
+              <p className="flex items-center gap-2">Revenir au listing précédent <Kbd>K</Kbd></p>
+              <p className="flex items-center gap-2">Fermer un dialogue <Kbd>Esc</Kbd></p>
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-500 leading-relaxed">
+            Vraies touches macOS Sequoia : gradient blanc top, ring inset
+            spéculaire, ombre bas marquée pour relief tactile.
+          </p>
+        </div>
       </Section>
 
       <Section id="collapsible" eyebrow="Data" title="CollapsibleSection">
-        <CollapsibleSection title="Une section pliable" defaultOpen={false}>
-          <div className="px-5 py-4 rounded-2xl bg-white/60 backdrop-blur-[8px] shadow-[var(--ring-glass-edge)]">
-            <p className="text-[13px] text-gray-700">Contenu de la section. Le pill fermé passe en surface-glass-faint + backdrop-blur.</p>
+        {/* Mini fiche publication simulée — 4 sections, 2 ouvertes, 2 fermées */}
+        <div className="space-y-3 max-w-2xl">
+          {/* Header de fiche mock */}
+          <div className="surface-glass rounded-2xl px-5 py-4 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Publication</p>
+              <h3 className="text-[15px] font-semibold tracking-tight text-gray-950 mt-0.5">Story carrousel #18 — @studio-paris</h3>
+            </div>
+            <Badge variant="info" dot>Programmé</Badge>
           </div>
-        </CollapsibleSection>
-        <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
-          Sticky-header-au-scroll prévu Phase 6 (nécessite IntersectionObserver).
+
+          {/* Section ouverte */}
+          <CollapsibleSection title="Brief client" defaultOpen={true}>
+            <div className="px-5 py-4 rounded-2xl bg-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[var(--ring-glass-edge)]">
+              <p className="text-[13px] text-gray-800 leading-relaxed">
+                Visite guidée de l'appartement 3 pièces, 65 m². Mise en avant
+                de la cuisine ouverte et de la vue Sacré-Cœur.
+              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <Badge variant="sage" glass dot>3 pièces</Badge>
+                <Badge variant="peach" glass>Tour parisien</Badge>
+              </div>
+            </div>
+          </CollapsibleSection>
+
+          {/* Section fermée */}
+          <CollapsibleSection title="Rushes" defaultOpen={false}>
+            <></>
+          </CollapsibleSection>
+
+          {/* Section fermée */}
+          <CollapsibleSection title="Captions" defaultOpen={false}>
+            <></>
+          </CollapsibleSection>
+
+          {/* Section ouverte */}
+          <CollapsibleSection title="Description IG" defaultOpen={true}>
+            <div className="px-5 py-4 rounded-2xl bg-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[var(--ring-glass-edge)]">
+              <p className="text-[13px] text-gray-800 leading-relaxed italic">
+                ✨ Un trois pièces qui sent bon Paris. Cuisine ouverte, lumière
+                travaillée et vue toits sur Montmartre — disponible pour visite
+                cette semaine.
+              </p>
+            </div>
+          </CollapsibleSection>
+        </div>
+        <p className="text-[11px] text-gray-500 mt-4 leading-relaxed">
+          Mini fiche simulée — voir le contraste entre les pills glass-faint
+          (fermées) et le contenu glass-soft (ouvert). Sticky-header-au-scroll
+          prévu Phase 6.
         </p>
       </Section>
 
