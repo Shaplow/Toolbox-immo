@@ -19,13 +19,12 @@ import {
   Eye,
   PanelLeftClose,
   PanelLeft,
-  X,
 } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { parsePermissions } from "@/lib/permissions/parsePermissions";
 import { TOOL_META } from "@/lib/toolMeta";
 import { useWorklistCount } from "@/hooks/useWorklistCount";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { Badge } from "@/components/ui/Badge";
@@ -77,6 +76,18 @@ function toolNavItem(key: keyof typeof TOOL_META, opts?: { disabled?: boolean })
   return { href, label: navLabel, icon: <Icon size={14} />, ...opts };
 }
 
+/**
+ * Phase 6.1 — Le badge worklist apparaissait seulement sur /home. Un admin
+ * qui passe sa journée sur /calendar ne voyait jamais le signal. Étendu :
+ * - Tout user → badge sur /home (worklist perso)
+ * - ADMIN → badge aussi sur /calendar (page principale d'orchestration)
+ */
+function shouldShowWorklistBadge(href: string, canSeeAdmin: boolean): boolean {
+  if (href === "/home") return true;
+  if (canSeeAdmin && href === "/calendar") return true;
+  return false;
+}
+
 export function AppNav({
   actualUser,
   effectiveUser,
@@ -89,9 +100,20 @@ export function AppNav({
   isRoleOverride?: boolean;
 }) {
   const pathname = usePathname();
+  // Collapse state persisté en localStorage (Phase 6.1 — avant : useState
+  // local perdu au hard refresh, friction quotidienne).
   const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("toolbox_nav_collapsed");
+    if (stored === "true") setCollapsed(true);
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("toolbox_nav_collapsed", String(collapsed));
+  }, [collapsed]);
   const { count: worklistCount } = useWorklistCount();
-  const { stopImpersonation, setViewAsRole } = useImpersonation();
+  const { setViewAsRole } = useImpersonation();
 
   const canSeeAdmin = actualUser.role === "ADMIN";
   const navUser = isImpersonating || isRoleOverride ? effectiveUser : actualUser;
@@ -212,46 +234,9 @@ export function AppNav({
         </div>
       )}
 
-      {/* ── Impersonation banner ────────────────────────────────────── */}
-      {isImpersonating && (
-        <div className="px-2 py-2 border-b border-gray-100">
-          <div
-            className={`rounded-md border border-amber-300 bg-amber-50 flex items-center ${
-              collapsed ? "p-1.5 justify-center" : "px-2.5 py-2 gap-2"
-            }`}
-          >
-            {!collapsed ? (
-              <>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] uppercase tracking-widest text-amber-700 font-medium">
-                    Impersonation
-                  </p>
-                  <p className="text-[12px] text-amber-900 truncate leading-tight">
-                    {effectiveUser.name ?? effectiveUser.email ?? effectiveUser.id}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void stopImpersonation()}
-                  title="Quitter l'impersonation"
-                  className="shrink-0 text-amber-700 hover:text-amber-900 rounded p-1 focus-ring"
-                >
-                  <X size={13} />
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => void stopImpersonation()}
-                title="Quitter l'impersonation"
-                className="text-amber-700 hover:text-amber-900"
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Impersonation banner — supprimé en Phase 6.1 (single source of
+          truth = banner top dans (app)/layout.tsx). Évite la duplication
+          de contrôle et la divergence des points de sortie. */}
 
       {/* ── View As (admin uniquement, pas en impersonation, expanded) ── */}
       {canSeeAdmin && !isImpersonating && !collapsed && (
@@ -308,7 +293,7 @@ export function AppNav({
                     item={item}
                     pathname={pathname ?? ""}
                     collapsed={collapsed}
-                    worklistCount={item.href === "/home" ? worklistCount : 0}
+                    worklistCount={shouldShowWorklistBadge(item.href, canSeeAdmin) ? worklistCount : 0}
                   />
                 ))}
               </div>
