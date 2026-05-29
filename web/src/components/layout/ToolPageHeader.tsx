@@ -1,49 +1,94 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
-const BG_MAP: Record<string, string> = {
-  indigo:  "bg-indigo-600",
-  violet:  "bg-violet-600",
-  teal:    "bg-teal-600",
-  emerald: "bg-emerald-600",
-  amber:   "bg-amber-600",
-  rose:    "bg-rose-600",
+/**
+ * ToolPageHeader — header standard partagé par les pages d'outils et d'admin.
+ *
+ * Doctrine Liquid Glass v2 (refactor Phase 6.1) :
+ * - Icône dans wrapper carré glass-tinted Coastal Studio (peach / sage / sky
+ *   / rose / neutral) + ring inset spéculaire signature.
+ * - Plus de couleurs Tailwind hardcodées (indigo / violet / teal / emerald /
+ *   amber / rose-600) qui étaient hors palette.
+ *
+ * Backward compat : la prop `iconColor` (string libre) est conservée pour
+ * que les ~15 call sites existants continuent de compiler. Elle est mappée
+ * vers `iconTint` en interne et marquée @deprecated. Les nouveaux call sites
+ * doivent utiliser `iconTint`.
+ *
+ * Fonctionne en server components ET client components (pas de "use client").
+ */
+
+type IconTint = "peach" | "sage" | "sky" | "rose" | "neutral";
+
+/** Mapping iconColor legacy → iconTint Liquid Glass. */
+const LEGACY_COLOR_MAP: Record<string, IconTint> = {
+  indigo:  "sky",
+  violet:  "rose",
+  teal:    "sage",
+  emerald: "sage",
+  amber:   "peach",
+  rose:    "rose",
 };
 
-/**
- * Standard page header shared by all tool pages.
- * Renders a coloured icon, title, optional subtitle, and optional actions slot.
- * Works in both server components and client components.
- */
-export function ToolPageHeader({
-  icon: Icon,
-  iconColor = "indigo",
-  title,
-  subtitle,
-  actions,
-}: {
+const TINT_WRAPPER: Record<IconTint, string> = {
+  peach:   "bg-peach-100/70 text-peach-700",
+  sage:    "bg-sage-100/70 text-sage-700",
+  sky:     "bg-sky-100/70 text-sky-700",
+  rose:    "bg-rose-100/70 text-rose-700",
+  neutral: "bg-white/70 text-gray-700",
+};
+
+export interface ToolPageHeaderProps {
   icon: LucideIcon;
-  iconColor?: string;
   title: string;
   subtitle?: ReactNode;
   actions?: ReactNode;
-}) {
-  const bg = BG_MAP[iconColor] ?? "bg-indigo-600";
+  /**
+   * Teinte Coastal Studio de l'icône. Default "neutral".
+   * Préférer ce prop à `iconColor` (legacy) sur tout nouveau call site.
+   */
+  iconTint?: IconTint;
+  /**
+   * @deprecated Utiliser `iconTint` (peach / sage / sky / rose / neutral).
+   * Mappage automatique : indigo/violet→sky/rose · teal/emerald→sage ·
+   * amber→peach · rose→rose. Toute autre valeur tombe sur "neutral".
+   */
+  iconColor?: string;
+}
+
+export function ToolPageHeader({
+  icon: Icon,
+  title,
+  subtitle,
+  actions,
+  iconTint,
+  iconColor,
+}: ToolPageHeaderProps) {
+  // Résolution : iconTint explicite > iconColor legacy mappé > "neutral".
+  const tint: IconTint =
+    iconTint ?? (iconColor ? LEGACY_COLOR_MAP[iconColor] ?? "neutral" : "neutral");
+
   return (
-    <div className="flex items-center justify-between mb-8">
-      <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 ${bg} rounded-xl flex items-center justify-center text-white shrink-0`}>
-          <Icon size={20} />
+    <div className="flex items-center justify-between mb-8 gap-3">
+      <div className="flex items-center gap-3 min-w-0">
+        <div
+          className={[
+            "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 backdrop-blur-[10px]",
+            "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.06)]",
+            TINT_WRAPPER[tint],
+          ].join(" ")}
+        >
+          <Icon size={20} strokeWidth={1.8} />
         </div>
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">{title}</h1>
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight text-gray-950 truncate">{title}</h1>
           {subtitle && (
             <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>
           )}
         </div>
       </div>
       {actions && (
-        <div className="flex items-center gap-2">{actions}</div>
+        <div className="flex items-center gap-2 shrink-0">{actions}</div>
       )}
     </div>
   );
