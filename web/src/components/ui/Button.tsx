@@ -67,12 +67,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         : "h-8 px-3 text-[13px]";
 
   const variantClasses = {
-    // Primary "graphite chaud" — gray-800 au lieu de noir mort. Ombre
-    // intérieure blanche subtle pour caractère, hover plus clair +
-    // ombre extérieure douce. Donne le "métal poli" sans tomber dans
-    // le shadcn brut.
+    // Primary "liquid graphite" — gradient gray-700 → gray-900 + ring inset
+    // top blanc 0.18 visible (highlight signature), edge subtle, ombre
+    // intérieure bottom + ombre proche + halo extérieur diffus. Le primary
+    // gagne lui aussi la signature liquide sans renier la doctrine mono dark.
     primary:
-      "bg-gray-800 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] hover:bg-gray-700 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_4px_12px_rgba(0,0,0,0.1)] focus-ring",
+      "bg-gradient-to-b from-gray-700 to-gray-900 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_0_0_1px_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.12),0_4px_12px_-4px_rgba(15,23,42,0.22)] hover:from-gray-600 hover:to-gray-800 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.24),inset_0_0_0_1px_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(0,0,0,0.2),0_2px_4px_rgba(15,23,42,0.16),0_8px_20px_-4px_rgba(15,23,42,0.28)] focus-ring",
     secondary:
       "bg-white text-gray-800 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 focus-ring",
     ghost:

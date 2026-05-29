@@ -105,7 +105,7 @@ export default function AtomsPage() {
           <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Glass v2 · sur fond coloré</p>
           <div
             className="rounded-2xl p-6 ring-1 ring-white/30"
-            style={{ backgroundImage: "linear-gradient(135deg, #f59e6b 0%, #c97185 35%, #4d96bf 70%, #6fa280 100%)" }}
+            style={{ backgroundImage: "linear-gradient(135deg, #ffe6d0 0%, #f7dde2 50%, #d4e8f3 100%)" }}
           >
             <div className="flex flex-wrap items-center gap-3">
               <Button variant="glass" icon={Bookmark}>Marquer</Button>
@@ -149,7 +149,7 @@ export default function AtomsPage() {
           <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Glass + Floating · sur fond coloré</p>
           <div
             className="relative rounded-2xl p-10 ring-1 ring-white/30 min-h-[140px]"
-            style={{ backgroundImage: "linear-gradient(135deg, #f59e6b 0%, #c97185 50%, #4d96bf 100%)" }}
+            style={{ backgroundImage: "linear-gradient(135deg, #ffe6d0 0%, #f7dde2 50%, #d4e8f3 100%)" }}
           >
             <div className="flex items-center gap-3">
               <ButtonIcon icon={Bookmark} label="Glass" variant="glass" />
@@ -430,7 +430,7 @@ export default function AtomsPage() {
           <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Glass + Frosted</p>
           <div
             className="rounded-2xl p-6 ring-1 ring-white/30"
-            style={{ backgroundImage: "linear-gradient(135deg, #f59e6b 0%, #c97185 35%, #4d96bf 70%, #6fa280 100%)" }}
+            style={{ backgroundImage: "linear-gradient(135deg, #ffe6d0 0%, #f7dde2 50%, #d4e8f3 100%)" }}
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Card variant="glass" border={false}>
@@ -522,7 +522,7 @@ export default function AtomsPage() {
           <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Glass v2 — sur fond coloré</p>
           <div
             className="rounded-2xl p-6 ring-1 ring-white/30"
-            style={{ backgroundImage: "linear-gradient(135deg, #f59e6b 0%, #c97185 50%, #4d96bf 100%)" }}
+            style={{ backgroundImage: "linear-gradient(135deg, #ffe6d0 0%, #f7dde2 50%, #d4e8f3 100%)" }}
           >
             <Tabs
               variant="glass"

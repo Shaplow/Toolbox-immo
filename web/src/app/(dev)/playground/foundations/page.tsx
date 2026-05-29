@@ -186,7 +186,7 @@ function BlurSection() {
             className="relative h-28 rounded-xl overflow-hidden"
             style={{
               backgroundImage:
-                "linear-gradient(135deg, #f59e6b 0%, #c97185 35%, #4d96bf 70%, #6fa280 100%)",
+                "linear-gradient(135deg, #ffe6d0 0%, #f7dde2 50%, #d4e8f3 100%)",
             }}
           >
             <div className={`absolute inset-0 ${b.cls} backdrop-saturate-150 bg-white/40 flex flex-col justify-end p-3`}>
@@ -251,7 +251,7 @@ function ScrimsSection() {
               className="relative h-28 rounded-xl overflow-hidden"
               style={{
                 backgroundImage:
-                  "linear-gradient(135deg, #f59e6b 0%, #c97185 35%, #4d96bf 70%, #6fa280 100%)",
+                  "linear-gradient(135deg, #ffe6d0 0%, #f7dde2 50%, #d4e8f3 100%)",
               }}
             >
               <div className={`absolute inset-0 ${s.cls} flex items-center justify-center`}>

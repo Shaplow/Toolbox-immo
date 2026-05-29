@@ -52,8 +52,9 @@ export const ButtonIcon = forwardRef<HTMLButtonElement, ButtonIconProps>(functio
   const sizeClasses = size === "sm" ? "h-7 w-7" : "h-8 w-8";
 
   const variantClasses = {
+    // Primary "liquid graphite" — aligné avec Button primary.
     primary:
-      "bg-gray-800 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] hover:bg-gray-700 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_4px_12px_rgba(0,0,0,0.1)] focus-ring",
+      "bg-gradient-to-b from-gray-700 to-gray-900 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_0_0_1px_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.12),0_4px_12px_-4px_rgba(15,23,42,0.22)] hover:from-gray-600 hover:to-gray-800 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.24),inset_0_0_0_1px_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(0,0,0,0.2),0_2px_4px_rgba(15,23,42,0.16),0_8px_20px_-4px_rgba(15,23,42,0.28)] focus-ring",
     secondary:
       "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:text-gray-950 hover:border-gray-400 focus-ring",
     ghost:
