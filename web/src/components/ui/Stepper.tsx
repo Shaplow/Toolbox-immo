@@ -128,6 +128,26 @@ export function Stepper({
 
 // ─── Horizontal ────────────────────────────────────────────────────────────
 
+// Card variant — chaque step est une mini-card glass tintée par status.
+const STATUS_CARD_CLS: Record<StepStatus, string> = {
+  todo:
+    "bg-white/45 border border-white/50 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.04),inset_0_-1px_0_rgba(15,23,42,0.04)]",
+  in_progress:
+    // Halo glow signature pour le step actif.
+    "bg-sky-50/65 border border-sky-200/50 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.22),inset_0_-1px_0_rgba(77,150,191,0.1),0_2px_8px_-2px_rgba(77,150,191,0.22),0_8px_24px_-8px_rgba(77,150,191,0.28)]",
+  done:
+    "bg-sage-50/60 border border-sage-200/45 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(111,162,128,0.16),inset_0_-1px_0_rgba(111,162,128,0.08)]",
+  blocked:
+    "bg-rose-50/60 border border-rose-200/45 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(201,113,133,0.18),inset_0_-1px_0_rgba(201,113,133,0.1)]",
+};
+
+const STATUS_CARD_HOVER: Record<StepStatus, string> = {
+  todo:        "hover:bg-white/65 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_1px_3px_rgba(15,23,42,0.04)]",
+  in_progress: "hover:bg-sky-50/75 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.3),0_2px_8px_-2px_rgba(77,150,191,0.28),0_12px_28px_-8px_rgba(77,150,191,0.34)]",
+  done:        "hover:bg-sage-50/75 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(111,162,128,0.22)]",
+  blocked:     "hover:bg-rose-50/75 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(201,113,133,0.24)]",
+};
+
 function HorizontalStepper({
   steps,
   variant,
@@ -141,64 +161,144 @@ function HorizontalStepper({
   onClickStep?: (step: Step) => void;
   className?: string;
 }) {
-  const containerCls =
+  // Compact = dots-only (inchangé), pas de cards.
+  if (variant === "compact") {
+    return (
+      <CompactDots
+        steps={steps}
+        resolveStatus={resolveStatus}
+        onClickStep={onClickStep}
+        className={className}
+      />
+    );
+  }
+
+  const wrapperCls =
     variant === "glass"
-      ? "surface-glass-soft rounded-xl p-4"
+      ? "surface-glass-soft rounded-xl p-3"
       : "";
 
-  const dotSize = variant === "compact" ? "h-5 w-5" : "h-7 w-7";
-  const dotIconSize = variant === "compact" ? 10 : 14;
+  const interactive = !!onClickStep;
 
   return (
-    <div className={[containerCls, className ?? ""].filter(Boolean).join(" ")}>
-      <ol className="flex items-start gap-2">
+    <div className={[wrapperCls, className ?? ""].filter(Boolean).join(" ")}>
+      <ol className="flex items-stretch">
         {steps.map((step, i) => {
           const status = resolveStatus(step, i);
           const isLast = i === steps.length - 1;
-          const interactive = !!onClickStep;
           return (
-            <li key={step.id} className="flex-1 min-w-0 flex items-start gap-2">
-              <div className="flex flex-col items-start min-w-0 flex-1">
-                <button
-                  type="button"
-                  disabled={!interactive}
-                  onClick={() => onClickStep?.(step)}
-                  className={[
-                    "shrink-0 inline-flex items-center justify-center rounded-full backdrop-blur-[8px] transition-all",
-                    dotSize,
-                    STATUS_DOT[status],
-                    STATUS_DOT_RING[status],
-                    interactive ? "cursor-pointer hover:scale-105 focus-ring" : "cursor-default",
-                  ].join(" ")}
-                  aria-current={status === "in_progress" ? "step" : undefined}
-                >
-                  <StatusIcon status={status} fallback={step.icon} size={dotIconSize} />
-                </button>
-                {variant !== "compact" && (
-                  <div className="mt-2 min-w-0">
-                    <p className={`text-[11px] uppercase tracking-widest font-medium ${STATUS_LABEL[status]}`}>
-                      {step.label}
+            <li key={step.id} className="flex-1 min-w-0 flex items-stretch">
+              <button
+                type="button"
+                disabled={!interactive}
+                onClick={() => onClickStep?.(step)}
+                aria-current={status === "in_progress" ? "step" : undefined}
+                className={[
+                  "flex-1 flex flex-col items-start gap-2 p-3 rounded-lg text-left transition-all",
+                  "backdrop-blur-[12px] backdrop-saturate-150",
+                  STATUS_CARD_CLS[status],
+                  interactive ? `cursor-pointer ${STATUS_CARD_HOVER[status]} focus-ring` : "cursor-default",
+                ].join(" ")}
+              >
+                <div className="flex items-center gap-2 w-full">
+                  <span
+                    className={[
+                      "shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full backdrop-blur-[6px]",
+                      STATUS_DOT[status],
+                      STATUS_DOT_RING[status],
+                    ].join(" ")}
+                  >
+                    <StatusIcon status={status} fallback={step.icon} size={12} />
+                  </span>
+                  {status === "in_progress" && (
+                    <span
+                      className="shrink-0 h-1.5 w-1.5 rounded-full bg-sky-500 animate-pulse shadow-[0_0_0_3px_rgba(169,209,230,0.4)]"
+                      aria-hidden
+                    />
+                  )}
+                </div>
+                <div className="min-w-0 w-full">
+                  <p className={`text-[13px] font-semibold leading-tight ${STATUS_LABEL[status]}`}>
+                    {step.label}
+                  </p>
+                  {step.description && (
+                    <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                      {step.description}
                     </p>
-                    {step.description && (
-                      <p className="text-[11px] text-gray-500 mt-0.5 leading-tight">
-                        {step.description}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-              {!isLast && (
-                <span
-                  className={`shrink-0 h-px self-center min-w-[2rem] flex-1 rounded-full ${STATUS_LINE[status]}`}
-                  style={{ marginTop: variant === "compact" ? "0" : "10px" }}
-                  aria-hidden
-                />
-              )}
+                  )}
+                </div>
+              </button>
+              {!isLast && <CardConnector status={status} />}
             </li>
           );
         })}
       </ol>
     </div>
+  );
+}
+
+// Connecteur subtle entre cards — petite ligne horizontale à mi-hauteur
+// gradient color du status de gauche.
+function CardConnector({ status }: { status: StepStatus }) {
+  return (
+    <div className="flex items-center px-1.5 shrink-0" aria-hidden>
+      <span
+        className={`h-px w-4 rounded-full ${
+          status === "done"        ? "bg-gradient-to-r from-sage-300 to-sage-200/40"
+          : status === "in_progress" ? "bg-gradient-to-r from-sky-300 to-gray-200/40"
+          : status === "blocked"     ? "bg-gradient-to-r from-rose-300 to-rose-200/40"
+          :                            "bg-gray-200/50"
+        }`}
+      />
+    </div>
+  );
+}
+
+// Compact variant — extracted to keep HorizontalStepper readable.
+function CompactDots({
+  steps,
+  resolveStatus,
+  onClickStep,
+  className,
+}: {
+  steps: Step[];
+  resolveStatus: (step: Step, idx: number) => StepStatus;
+  onClickStep?: (step: Step) => void;
+  className?: string;
+}) {
+  const interactive = !!onClickStep;
+  return (
+    <ol className={["flex items-center gap-2", className ?? ""].filter(Boolean).join(" ")}>
+      {steps.map((step, i) => {
+        const status = resolveStatus(step, i);
+        const isLast = i === steps.length - 1;
+        return (
+          <li key={step.id} className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={!interactive}
+              onClick={() => onClickStep?.(step)}
+              aria-label={typeof step.label === "string" ? step.label : undefined}
+              aria-current={status === "in_progress" ? "step" : undefined}
+              className={[
+                "shrink-0 inline-flex h-5 w-5 items-center justify-center rounded-full backdrop-blur-[8px] transition-all",
+                STATUS_DOT[status],
+                STATUS_DOT_RING[status],
+                interactive ? "cursor-pointer hover:scale-105 focus-ring" : "cursor-default",
+              ].join(" ")}
+            >
+              <StatusIcon status={status} fallback={step.icon} size={10} />
+            </button>
+            {!isLast && (
+              <span
+                className={`shrink-0 h-px w-8 rounded-full ${STATUS_LINE[status]}`}
+                aria-hidden
+              />
+            )}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
