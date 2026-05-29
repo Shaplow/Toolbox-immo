@@ -3,13 +3,21 @@
 /**
  * CommentComposer — formulaire d'ajout d'un nouveau commentaire.
  *
- * - Textarea + bouton "Envoyer".
- * - Raccourci Cmd+Enter (Mac) / Ctrl+Enter (Windows).
- * - Bouton désactivé tant que body vide ou submit en cours.
- * - Affiche erreur API si POST échoue.
+ * UX décisions Phase 3 :
+ * - Textarea natif → <Textarea> primitive (focus ring mono).
+ * - Bouton Envoyer indigo → <Button icon={Send}>.
+ * - Erreur sous textarea → toast.error (au lieu de <p> inline).
+ * - Help "Cmd+Entrée pour envoyer" → Kbd primitive (au lieu du
+ *   placeholder qui obscurcit le textarea).
+ * - Cmd+Enter (Mac) / Ctrl+Enter (Windows) raccourci préservé.
  */
 
-import { useState, useRef, KeyboardEvent } from "react";
+import { useState, KeyboardEvent } from "react";
+import { Send } from "lucide-react";
+import { Textarea } from "@/components/ui/Textarea";
+import { Button } from "@/components/ui/Button";
+import { KbdChord } from "@/components/ui/Kbd";
+import { toast } from "@/components/ui/Toast";
 import type { CommentData } from "./CommentItem";
 
 interface CommentComposerProps {
@@ -20,16 +28,12 @@ interface CommentComposerProps {
 export function CommentComposer({ slotId, onCreated }: CommentComposerProps) {
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   async function submit() {
     const trimmed = body.trim();
     if (!trimmed || submitting) return;
 
     setSubmitting(true);
-    setError(null);
-
     try {
       const res = await fetch(`/api/publications/${slotId}/comments`, {
         method: "POST",
@@ -43,9 +47,8 @@ export function CommentComposer({ slotId, onCreated }: CommentComposerProps) {
       const data = (await res.json()) as { comment: CommentData };
       onCreated(data.comment);
       setBody("");
-      textareaRef.current?.focus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur inconnue");
+      toast.error(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {
       setSubmitting(false);
     }
@@ -59,26 +62,28 @@ export function CommentComposer({ slotId, onCreated }: CommentComposerProps) {
   }
 
   return (
-    <div className="mt-4 pt-4 border-t border-gray-100">
-      <textarea
-        ref={textareaRef}
+    <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
+      <Textarea
         value={body}
-        onChange={(e) => setBody(e.target.value)}
+        onChange={(v) => setBody(v)}
         onKeyDown={handleKeyDown}
-        placeholder="Ajouter un commentaire… (Cmd+Entrée pour envoyer)"
+        placeholder="Ajouter un commentaire…"
         rows={3}
         disabled={submitting}
-        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none placeholder:text-gray-400 disabled:opacity-60 transition-colors"
       />
-      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
-      <div className="mt-2 flex justify-end">
-        <button
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] text-gray-500 inline-flex items-center gap-1.5">
+          <KbdChord keys={["⌘", "↵"]} /> pour envoyer
+        </span>
+        <Button
+          size="sm"
+          icon={Send}
           onClick={() => void submit()}
-          disabled={!body.trim() || submitting}
-          className="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          disabled={!body.trim()}
+          loading={submitting}
         >
-          {submitting ? "Envoi…" : "Envoyer"}
-        </button>
+          Envoyer
+        </Button>
       </div>
     </div>
   );

@@ -3,22 +3,26 @@
 /**
  * CommentsSection — liste de commentaires + composer.
  *
- * Reçoit les commentaires initiaux du server component (page.tsx) et gère
- * les optimistic updates en local (create / edit / delete).
- *
- * Aucun dangerouslySetInnerHTML — le body est rendu via {comment.body} en JSX.
+ * UX décisions Phase 3 (migration ui-boost) :
+ * - Empty state custom italic gray-400 → EmptyState primitive (titre
+ *   Caveat hand-signature "Aucun commentaire").
+ * - Pagination hint amber-600 → Badge variant="info" (l'amber décoratif
+ *   est hors doctrine).
+ * - Section conteneur : px-6 rounded-xl shadow-sm → px-5 rounded-lg.
  */
 
 import { useState } from "react";
+import { MessageSquare } from "lucide-react";
 import { CommentItem, type CommentData } from "./CommentItem";
 import { CommentComposer } from "./CommentComposer";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Badge } from "@/components/ui/Badge";
 import type { UserRole } from "@/types/roles";
 
 interface CommentsSectionProps {
   slotId: string;
   initialComments: CommentData[];
-  /** True si le serveur a tronqué la liste à 50 (rawComments.length > 50).
-   *  Affiche un hint pagination en haut de la liste pour informer l'user. */
+  /** True si le serveur a tronqué la liste à 50. */
   initialHasMore?: boolean;
   currentUserId: string;
   currentUserRole: UserRole;
@@ -42,38 +46,36 @@ export function CommentsSection({
   }
 
   function handleDeleted(id: string) {
-    // Marque le commentaire comme soft-deleted localement pour l'affichage cohérent.
     setComments((prev) =>
       prev.map((c) =>
-        c.id === id ? { ...c, deletedAt: new Date().toISOString() } : c
-      )
+        c.id === id ? { ...c, deletedAt: new Date().toISOString() } : c,
+      ),
     );
   }
 
   return (
     <section
       id="comments"
-      className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm"
+      className="bg-white border border-gray-200 rounded-lg p-5"
     >
-      <h2 className="text-sm font-semibold text-gray-700 mb-1">Conversation</h2>
+      <h2 className="text-[13px] font-semibold text-gray-950 mb-3">Conversation</h2>
 
-      {/* Hint pagination — affiché au-dessus de la liste si le serveur a
-          tronqué (slot avec > 50 commentaires). On affiche seulement les
-          50 plus anciens ; les plus récents apparaîtraient avec une vraie
-          pagination, reportée. */}
       {initialHasMore && (
-        <p className="mb-3 text-[11px] text-amber-600">
-          Affichage des 50 plus anciens commentaires — il en existe d&apos;autres
-          non listés ici.
-        </p>
+        <div className="mb-3">
+          <Badge variant="info">
+            Affichage des 50 plus anciens commentaires
+          </Badge>
+        </div>
       )}
 
       {comments.length === 0 ? (
-        <p className="text-sm text-gray-400 italic mt-2">
-          Aucun commentaire pour le moment. Ajoutez-en un.
-        </p>
+        <EmptyState
+          icon={MessageSquare}
+          title="Aucun commentaire"
+          description="Lance la conversation pour partager du contexte à l'équipe."
+        />
       ) : (
-        <div className="divide-y divide-gray-50">
+        <div className="divide-y divide-gray-100">
           {comments.map((comment) => {
             const canEdit =
               currentUserRole === "ADMIN" || comment.authorId === currentUserId;
