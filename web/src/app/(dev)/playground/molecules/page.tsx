@@ -33,7 +33,11 @@ import { EmptyHero } from "@/components/ui/molecules/EmptyHero";
 import { StatusBadge } from "@/components/ui/molecules/StatusBadge";
 import { VideoPlayer, type CaptionLine } from "@/components/ui/molecules/VideoPlayer";
 import { AssetCard } from "@/components/ui/molecules/AssetCard";
+import { TrimPlayer } from "@/components/ui/molecules/TrimPlayer";
+import { OverrideControl } from "@/components/ui/molecules/OverrideControl";
+import { AssigneePicker } from "@/components/ui/molecules/AssigneePicker";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
+import { Combobox } from "@/components/ui/Combobox";
 import { Eye, MoreHorizontal, Trash2 } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -338,16 +342,180 @@ export default function MoleculesPage() {
         <AssetCardShowcase />
       </PageSection>
 
+      {/* ━━━ TRIM PLAYER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+
+      <PageSection id="trim-player" eyebrow="Lot 3 · Édition" title="TrimPlayer">
+        <p className="text-[12px] text-gray-600 mb-4 leading-relaxed">
+          Éditeur de trim vidéo dédié — dual-range timeline séparée + frame
+          nudge ±1f + transport jump start/play/end + timecode display
+          HH:MM:SS.FF + durée du trim sélectionné.
+        </p>
+        <div className="max-w-3xl">
+          <TrimPlayer
+            src={SAMPLE_VIDEO}
+            poster={SAMPLE_POSTER}
+            fps={30}
+            start={2}
+            end={8}
+            aspect="16:9"
+          />
+        </div>
+        <p className="text-[11px] text-gray-500 mt-3">
+          fps={30} configurable · drag handles ou click ± frame · playhead noir
+          visible sur la timeline · durée du trim affichée à droite du
+          transport.
+        </p>
+      </PageSection>
+
+      {/* ━━━ OVERRIDE CONTROL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+
+      <PageSection id="override-control" eyebrow="Lot 3 · Édition" title="OverrideControl">
+        <OverrideControlShowcase />
+      </PageSection>
+
+      {/* ━━━ ASSIGNEE PICKER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+
+      <PageSection id="assignee-picker" eyebrow="Lot 3 · Édition" title="AssigneePicker">
+        <AssigneePickerShowcase />
+      </PageSection>
+
       {/* Note pied de page */}
       <div className="surface-glass-soft rounded-xl p-5 mt-12">
         <p className="text-[11px] uppercase tracking-widest font-medium text-gray-500 mb-2">
-          Lots restants Phase 4
+          Lot restant Phase 4
         </p>
         <p className="text-[13px] text-gray-700 leading-relaxed">
-          Lot 3 (Édition) → TrimPlayer, OverrideControl, AssigneePicker ·
           Lot 4 (Métier) → FilterBar, JobQueueItem
         </p>
       </div>
+    </div>
+  );
+}
+
+// ─── Showcase OverrideControl ──────────────────────────────────────────────
+
+function OverrideControlShowcase() {
+  const [override1, setOverride1] = useState(false);
+  const [notify, setNotify] = useState(true);
+
+  const [override2, setOverride2] = useState(true);
+  const [presetId, setPresetId] = useState("custom-cover-v2");
+
+  const [override3, setOverride3] = useState(false);
+  const [maxDuration, setMaxDuration] = useState(30);
+
+  return (
+    <div className="space-y-3 max-w-2xl">
+      <OverrideControl
+        label="Notifier le client"
+        description="Envoyer un email au déclenchement du publish"
+        inheritedValue="Hérité du pattern : actif"
+        isOverriden={override1}
+        onToggleOverride={setOverride1}
+      >
+        <Switch
+          checked={notify}
+          onChange={setNotify}
+          label={notify ? "Activé (override)" : "Désactivé (override)"}
+          description="L'override remplace la valeur du pattern parent"
+        />
+      </OverrideControl>
+
+      <OverrideControl
+        label="Preset cover"
+        description="Choix du template de cover utilisé pour ce slot"
+        inheritedValue="Hérité du pattern : Story propre"
+        isOverriden={override2}
+        onToggleOverride={setOverride2}
+      >
+        <Combobox
+          value={presetId}
+          onChange={setPresetId}
+          placeholder="Sélectionner un preset…"
+          options={[
+            { value: "story-propre", label: "Story propre" },
+            { value: "story-luxe", label: "Story luxe" },
+            { value: "custom-cover-v2", label: "Custom cover v2 (créé le 12 mars)" },
+            { value: "minimal", label: "Minimal sans texte" },
+          ]}
+        />
+      </OverrideControl>
+
+      <OverrideControl
+        label="Durée max vidéo"
+        description="Limite la durée des rushes acceptés"
+        inheritedValue="Hérité du pattern : 60 secondes"
+        isOverriden={override3}
+        onToggleOverride={setOverride3}
+      >
+        <div className="flex items-center gap-3">
+          <input
+            type="number"
+            value={maxDuration}
+            onChange={(e) => setMaxDuration(Number(e.target.value))}
+            className="w-24 h-8 rounded-md px-2 text-[13px] bg-white/60 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)] outline-none focus-ring"
+          />
+          <span className="text-[12px] text-gray-600">secondes (override : {maxDuration}s)</span>
+        </div>
+      </OverrideControl>
+    </div>
+  );
+}
+
+// ─── Showcase AssigneePicker ───────────────────────────────────────────────
+
+function AssigneePickerShowcase() {
+  const [monteurId, setMonteurId] = useState<string | null>("u-bob");
+  const [cmId, setCmId] = useState<string | null>(null);
+
+  const users = [
+    { id: "u-alice", name: "Alice Dubois",     email: "alice@toolbox.fr",   role: "MONTEUR" as const },
+    { id: "u-bob",   name: "Bob Martin",       email: "bob@toolbox.fr",     role: "MONTEUR" as const },
+    { id: "u-clara", name: "Clara Petit",      email: "clara@toolbox.fr",   role: "MONTEUR" as const },
+    { id: "u-diane", name: "Diane Roux",       email: "diane@toolbox.fr",   role: "CM" as const },
+    { id: "u-eric",  name: "Eric Lambert",     email: "eric@toolbox.fr",    role: "CM" as const },
+    { id: "u-fabio", name: "Fabio Cinque",     email: "fabio@toolbox.fr",   role: "VIDEASTE" as const },
+    { id: "u-greg",  name: "Grégoire Vacher",  email: "greg@toolbox.fr",    role: "VIDEASTE" as const },
+    { id: "u-helen", name: "Hélène Bernard",   email: "helen@toolbox.fr",   role: "ADMIN" as const },
+  ];
+
+  return (
+    <div className="space-y-4 max-w-md">
+      <Row label="Monteur (filtré)">
+        <div className="flex-1">
+          <AssigneePicker
+            value={monteurId}
+            onChange={setMonteurId}
+            users={users}
+            allowedRoles={["MONTEUR"]}
+            placeholder="Assigner un monteur…"
+            groupByRole={false}
+          />
+        </div>
+      </Row>
+      <Row label="CM (filtré)">
+        <div className="flex-1">
+          <AssigneePicker
+            value={cmId}
+            onChange={setCmId}
+            users={users}
+            allowedRoles={["CM"]}
+            placeholder="Assigner un CM…"
+            groupByRole={false}
+          />
+        </div>
+      </Row>
+      <Row label="Tous (groupé par rôle)">
+        <div className="flex-1">
+          <AssigneePicker
+            value={null}
+            onChange={() => {}}
+            users={users}
+            placeholder="Chercher (nom, email, rôle)…"
+            groupByRole
+          />
+        </div>
+      </Row>
     </div>
   );
 }

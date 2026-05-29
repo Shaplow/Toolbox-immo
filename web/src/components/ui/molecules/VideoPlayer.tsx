@@ -72,6 +72,8 @@ interface VideoPlayerProps {
   onEnded?: () => void;
   /** Callback dual-range trim (variant="trim"). */
   onTrimChange?: (start: number, end: number) => void;
+  /** Callback duration connue (loadedmetadata). Utile pour TrimPlayer. */
+  onDurationChange?: (duration: number) => void;
   /** Classes additionnelles sur le wrapper. */
   className?: string;
 }
@@ -108,6 +110,7 @@ export function VideoPlayer({
   onTimeUpdate,
   onEnded,
   onTrimChange,
+  onDurationChange,
   className,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -257,7 +260,11 @@ export function VideoPlayer({
           setCurrentTime(t);
           onTimeUpdate?.(t);
         }}
-        onLoadedMetadata={(e) => setDuration((e.currentTarget as HTMLVideoElement).duration)}
+        onLoadedMetadata={(e) => {
+          const d = (e.currentTarget as HTMLVideoElement).duration;
+          setDuration(d);
+          onDurationChange?.(d);
+        }}
         onEnded={() => {
           setPlaying(false);
           onEnded?.();

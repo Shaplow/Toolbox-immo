@@ -147,6 +147,15 @@ export const NAV: NavSection[] = [
       { label: "AssetCard", href: "/playground/molecules#asset-card" },
     ],
   },
+  {
+    label: "Phase 4 · Molécules · Lot 3",
+    basePath: "/playground/molecules",
+    items: [
+      { label: "TrimPlayer", href: "/playground/molecules#trim-player" },
+      { label: "OverrideControl", href: "/playground/molecules#override-control" },
+      { label: "AssigneePicker", href: "/playground/molecules#assignee-picker" },
+    ],
+  },
 ];
 
 /** Tous les ids ancrables d'une page donnée. */
