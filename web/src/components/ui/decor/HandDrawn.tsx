@@ -68,6 +68,31 @@ function WavyRule({ className, ...rest }: DecorProps) {
 }
 
 /**
+ * Coche dessinée à la main — pour les statuts "fait", "validé", "OK"
+ * dans les contextes signature (empty states résolus, success callouts).
+ * Préférer Check (Lucide) dans les listes denses et l'UI courante.
+ */
+function Check({ className, ...rest }: DecorProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden
+      {...rest}
+    >
+      <path
+        d="M4 13 C 6 14.5, 8 16.5, 10.5 18.5 C 13.5 12, 17 7, 21 4"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/**
  * Sparkle 4-pointes designer — twinkle organique inspiré des "marks"
  * éditoriaux (Notion, Apple Music). Pour les eyebrows, badges "nouveau",
  * accents dans les avatars.
@@ -112,6 +137,7 @@ function Arrow({ className, ...rest }: DecorProps) {
 }
 
 export const HandDrawn = {
+  Check,
   Sparkle,
   Arrow,
   Underline,

@@ -11,6 +11,7 @@ import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
+import { HandDrawn } from "@/components/ui/decor/HandDrawn";
 import {
   ArrowRight,
   Search,
@@ -244,6 +245,112 @@ export default function PrimitivesPage() {
               </li>
             ))}
           </ul>
+        </div>
+      </section>
+
+      {/* ── Signature discrète SaaS ──────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="Signature discrète"
+          subtitle="Caveat + 1 décor handdraw autorisés en SaaS, mais uniquement sur ces micro-spots. Le reste reste pour /playground/marketing."
+        />
+
+        {/* Empty state avec Caveat + Check handdraw */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center space-y-3">
+            <Eyebrow>Empty state résolu</Eyebrow>
+            <HandDrawn.Check className="h-7 w-7 text-gray-950 mx-auto" />
+            <p className="font-hand text-2xl text-gray-950 leading-none">Tout est à jour</p>
+            <p className="text-[12px] text-gray-500 max-w-xs mx-auto">
+              Aucun slot en attente de ton attention pour cette semaine.
+            </p>
+          </div>
+
+          {/* Empty state action attendue (sans Check) */}
+          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center space-y-3">
+            <Eyebrow>Empty state action</Eyebrow>
+            <p className="font-hand text-2xl text-gray-950 leading-none">Aucun template ici</p>
+            <p className="text-[12px] text-gray-500 max-w-xs mx-auto">
+              Crée un template pour commencer.
+            </p>
+            <div className="pt-2">
+              <Button size="sm" icon={Plus}>Nouveau template</Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Pills "Astuce / Beta" + lien narratif */}
+        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
+          <Eyebrow>Pills signature · lien narratif</Eyebrow>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-2 py-0.5">
+              <span className="font-hand text-[13px] text-gray-950 leading-none">astuce</span>
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-2 py-0.5">
+              <span className="font-hand text-[13px] text-gray-950 leading-none">beta</span>
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-2 py-0.5">
+              <span className="font-hand text-[13px] text-gray-950 leading-none">nouveau</span>
+            </span>
+            <a className="group inline-flex items-center gap-1.5 font-hand text-[15px] text-gray-700 hover:text-gray-950 transition-colors">
+              voir tout
+              <HandDrawn.Arrow className="h-2.5 w-6 transition-transform group-hover:translate-x-0.5" />
+            </a>
+          </div>
+          <p className="text-[11px] text-gray-500 leading-relaxed">
+            Pills <code className="font-mono">astuce</code> /{" "}
+            <code className="font-mono">beta</code> /{" "}
+            <code className="font-mono">nouveau</code> — utilisables sur des
+            features signature ou annotations. Lien narratif court (
+            <em>&quot;voir tout&quot;</em>) — pour un &quot;voir plus&quot;
+            de section, pas un CTA fonctionnel.
+          </p>
+        </div>
+
+        {/* Tip callout avec Caveat label */}
+        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-3">
+          <Eyebrow>Tip callout</Eyebrow>
+          <div className="border-l-2 border-gray-950 bg-gray-50/60 pl-4 py-3 pr-4 rounded-r-md">
+            <p className="font-hand text-[15px] text-gray-950 leading-none mb-1">astuce</p>
+            <p className="text-[13px] text-gray-700 leading-relaxed">
+              Tu peux dupliquer un slot existant via{" "}
+              <kbd className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-[10px] font-mono">⌘D</kbd>
+              {" "}depuis le calendrier.
+            </p>
+          </div>
+        </div>
+
+        {/* Status done dans une row (Check handdraw au lieu de Lucide) */}
+        <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-3">
+          <Eyebrow>Status &laquo; fait &raquo; · row signature</Eyebrow>
+          <ul className="divide-y divide-gray-100 -mx-2">
+            {[
+              { task: "Brief rédigé", done: true },
+              { task: "Rushes uploadés", done: true },
+              { task: "Montage validé", done: false },
+              { task: "Légende relue", done: false },
+            ].map((step) => (
+              <li
+                key={step.task}
+                className="flex items-center gap-3 px-2 py-2 text-[13px]"
+              >
+                {step.done ? (
+                  <HandDrawn.Check className="h-4 w-4 text-gray-950 shrink-0" />
+                ) : (
+                  <span className="h-3.5 w-3.5 rounded-full border border-gray-300 shrink-0" />
+                )}
+                <span className={step.done ? "text-gray-500 line-through" : "text-gray-950"}>
+                  {step.task}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[11px] text-gray-500 leading-relaxed">
+            <code className="font-mono">HandDrawn.Check</code> — réservée aux
+            contextes signature (steps d&apos;une publication, milestones).
+            Dans les listes denses (tableau slot calendar), utiliser{" "}
+            <code className="font-mono">Check</code> Lucide standard.
+          </p>
         </div>
       </section>
 

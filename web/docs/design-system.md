@@ -121,6 +121,24 @@ Gérées hors design system (`web/src/lib/slots/phase.ts`, `web/src/types/calend
 
 Convention : **toute action significative porte une icône Lucide**. C'est ce qui distingue l'app dense d'une app à label.
 
+## Signature discrète dans le SaaS (autorisée chirurgicalement)
+
+Caveat (`font-hand`) et **un** décor handdraw (`HandDrawn.Check`) sont autorisés dans l'UI courante UNIQUEMENT sur les micro-spots ci-dessous. Tout autre usage = violation.
+
+| Spot autorisé | Composant / Style |
+|---|---|
+| Logo Toolbox (nom) | `<span className="font-hand text-xl">Toolbox</span>` |
+| Titre d'empty state | `<p className="font-hand text-2xl">Tout est à jour</p>` |
+| Pill signature (astuce, beta, nouveau) | `<span className="font-hand text-[13px]">astuce</span>` dans pill borderless |
+| Tip callout (label) | `<p className="font-hand text-[15px]">astuce</p>` |
+| Lien narratif court ("voir tout") | `<a className="font-hand text-[15px]">voir tout</a>` |
+| Status "fait" sur step signature | `<HandDrawn.Check />` (PAS dans tableaux denses → Check Lucide) |
+
+**Critères d'usage** : Caveat reste **petit** (text-[13px] à text-2xl max), **discret**, **dans des contextes signature** (états résolus, milestones, annotations). Jamais en label de form, jamais en bouton, jamais en titre de page.
+
+**Décors handdraw interdits en SaaS** : `Sparkle`, `Arrow` *en gros*, `Underline`, `WavyRule`. Restent réservés au marketing.
+**`HandDrawn.Arrow` autorisé seulement** dans les liens narratifs courts type "voir tout →", à la fin d'une section.
+
 ## Tokens MARKETING ONLY
 
 Disponibles mais **jamais en UI d'équipe**. Réservés aux landing pages futures et aux pages éditoriales hors `/publications/*`, `/calendar`, `/admin/*`, `/home`, builder.
