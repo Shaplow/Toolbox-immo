@@ -25,7 +25,7 @@ export function Textarea({ value, onChange, error, variant = "default", classNam
   const variantBase =
     variant === "glass"
       ? "bg-[var(--surface-glass-medium)] backdrop-blur-[8px] backdrop-saturate-150 border border-white/40"
-      : "bg-gradient-to-b from-white to-white/85 backdrop-blur-[8px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_1px_2px_rgba(15,23,42,0.04)]";
+      : "bg-gradient-to-b from-white to-white/85 backdrop-blur-[8px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.16),inset_0_-1px_0_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.06)]";
 
   const stateClass = error
     ? variant === "glass"
@@ -33,7 +33,7 @@ export function Textarea({ value, onChange, error, variant = "default", classNam
       : "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(220,38,38,0.6),0_1px_2px_rgba(220,38,38,0.12)] focus:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(220,38,38,0.8),0_0_0_3px_rgba(220,38,38,0.22)]"
     : variant === "glass"
       ? "hover:border-sky-200 focus:border-sky-300 focus:shadow-[0_0_0_3px_rgba(169,209,230,0.32)]"
-      : "hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.14),0_1px_2px_rgba(15,23,42,0.05)] focus:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.2),0_0_0_3px_rgba(10,10,10,0.12)]";
+      : "hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.22),inset_0_-1px_0_rgba(15,23,42,0.08),0_1px_2px_rgba(15,23,42,0.06)] focus:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.28),inset_0_-1px_0_rgba(15,23,42,0.08),0_0_0_3px_rgba(10,10,10,0.14)]";
 
   const disabledClass = disabled ? "opacity-60 cursor-not-allowed" : "";
 

@@ -67,9 +67,10 @@ export function Card({
 }: CardProps) {
   // Base par variant.
   // Solid = semi-verre subtil : gradient blanc + backdrop-blur léger + ring
-  // inset signature. Garde le look "carte document" mais avec matière.
+  // inset signature (top blanc + edge 0.1α + bottom subtle + ombre proche
+  // diffuse). Garde le look "carte document" mais avec matière visible.
   const variantBase = {
-    solid:   "bg-gradient-to-b from-white to-white/85 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_-1px_0_rgba(15,23,42,0.04),0_1px_2px_rgba(15,23,42,0.04)]",
+    solid:   "bg-gradient-to-b from-white to-white/85 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1),inset_0_-1px_0_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.08)]",
     glass:   "bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150 shadow-[var(--ring-glass-inset)]",
     frosted: "bg-[var(--gradient-frosted)] backdrop-blur-[12px] backdrop-saturate-150 shadow-[var(--ring-glass-edge)]",
     tinted:  tint ? TINT_BG[tint] : "bg-gray-50",

@@ -18,14 +18,17 @@ export default function PlaygroundLayout({ children }: { children: ReactNode }) 
   }
   return (
     <div className="relative min-h-screen text-gray-900 antialiased">
-      {/* Fond Liquid Glass — base blanche + wash aurora subtle pour que
-          les surfaces glass et tinted aient un contraste perceptible. */}
+      {/* Fond Liquid Glass — wash pastel macOS Tahoe : peach-100 → rose-100
+          → sky-100 à 40% opacity sur base blanche. Donne un fond chromatique
+          léger mais perceptible pour que les surfaces glass aient quelque
+          chose à révéler par contraste. */}
       <div
         className="fixed inset-0 -z-10 bg-white"
         aria-hidden
       />
       <div
-        className="fixed inset-0 -z-10 bg-[var(--gradient-aurora)] opacity-60"
+        className="fixed inset-0 -z-10 opacity-50"
+        style={{ background: "linear-gradient(135deg, #ffe6d0 0%, #f7dde2 50%, #d4e8f3 100%)" }}
         aria-hidden
       />
       <header className="sticky top-0 z-20 surface-glass-soft border-b border-white/40">
