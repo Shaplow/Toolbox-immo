@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "./Button";
 
 /**
@@ -38,6 +39,11 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -49,9 +55,9 @@ export function ConfirmDialog({
     return () => window.removeEventListener("keydown", handler);
   }, [open, onCancel]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  return createPortal(
     <>
       <div
         className="fixed inset-0 backdrop-blur-[12px] backdrop-saturate-110 z-40"
@@ -100,6 +106,7 @@ export function ConfirmDialog({
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

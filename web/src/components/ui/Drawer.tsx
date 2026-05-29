@@ -20,7 +20,8 @@
  * - <Drawer.Footer>          — barre actions
  */
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { ButtonIcon } from "./ButtonIcon";
 import { useRegisterDialog } from "./useDialogStack";
@@ -68,13 +69,18 @@ export function Drawer({
 }: DrawerProps) {
   const { zIndex } = useRegisterDialog(open, onClose);
   const panelRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     panelRef.current?.focus();
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
   const panelCls =
     variant === "solid"
@@ -91,7 +97,10 @@ export function Drawer({
     bottom: `fixed bottom-0 left-0 right-0 ${SIZE_PX_BOTTOM[size]} rounded-t-2xl`,
   }[side];
 
-  return (
+  // Portail vers document.body → échappe au containing block d'un ancêtre
+  // avec backdrop-filter / transform / filter, qui sinon casse le
+  // positionnement fixed top-0/right-0/h-screen.
+  return createPortal(
     <>
       <div
         className="fixed inset-0 backdrop-blur-[12px] backdrop-saturate-110"
@@ -114,7 +123,8 @@ export function Drawer({
       >
         {children}
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 

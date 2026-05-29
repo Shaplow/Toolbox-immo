@@ -18,7 +18,8 @@
  * Sizes : sm (384) | md (448, default) | lg (672) | xl (896) | full (viewport).
  */
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { ButtonIcon } from "./ButtonIcon";
 import { useRegisterDialog } from "./useDialogStack";
@@ -56,6 +57,11 @@ export function Modal({
 }: ModalProps) {
   const { zIndex } = useRegisterDialog(open, onClose);
   const panelRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Auto-focus panel à l'ouverture (focus-trap basique).
   useEffect(() => {
@@ -63,7 +69,7 @@ export function Modal({
     panelRef.current?.focus();
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
   // Panel : signature glass forte (gradient blanc + ring spéculaire + halo
   // extérieur large) pour qu'il ressorte sans avoir besoin d'un scrim dim.
@@ -72,7 +78,9 @@ export function Modal({
       ? "bg-white shadow-[var(--shadow-modal),0_24px_64px_-16px_rgba(15,23,42,0.18)] border border-gray-200"
       : "bg-gradient-to-b from-white to-white/85 backdrop-blur-[24px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_8px_24px_-4px_rgba(15,23,42,0.12),0_32px_72px_-12px_rgba(15,23,42,0.22)]";
 
-  return (
+  // Portail vers document.body (échappe au containing block des ancêtres
+  // avec backdrop-filter / transform / filter).
+  return createPortal(
     <>
       {/* Backdrop : juste backdrop-blur sans dim gris. Le contenu reste
           visible derrière, juste flouté. Le panel ressort par son halo. */}
@@ -101,7 +109,8 @@ export function Modal({
           {children}
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 

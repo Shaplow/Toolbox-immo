@@ -31,7 +31,8 @@
  * ```
  */
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Command } from "cmdk";
 import { Search } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -71,13 +72,18 @@ export function CommandPalette({
   emptyMessage = "Aucune action trouvée.",
 }: CommandPaletteProps) {
   const { zIndex } = useRegisterDialog(open, onClose);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Auto-focus à l'ouverture (cmdk gère ça naturellement mais on s'assure).
   useEffect(() => {
     if (!open) return;
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
   // Group actions par `group`.
   const groups = (() => {
@@ -91,7 +97,7 @@ export function CommandPalette({
     return Array.from(map.entries());
   })();
 
-  return (
+  return createPortal(
     <>
       <div
         className="fixed inset-0 backdrop-blur-[12px] backdrop-saturate-110"
@@ -178,6 +184,7 @@ export function CommandPalette({
           </Command>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

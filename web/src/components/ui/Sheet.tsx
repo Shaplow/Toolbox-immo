@@ -23,7 +23,8 @@
  * - <Sheet.Footer>          — barre actions
  */
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { ButtonIcon } from "./ButtonIcon";
 import { useRegisterDialog } from "./useDialogStack";
@@ -58,20 +59,25 @@ export function Sheet({
 }: SheetProps) {
   const { zIndex } = useRegisterDialog(open, onClose);
   const panelRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     panelRef.current?.focus();
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
   const panelCls =
     style === "solid"
       ? "bg-white shadow-[var(--shadow-modal),0_24px_64px_-16px_rgba(15,23,42,0.18)] border-t border-gray-200"
       : "bg-gradient-to-b from-white to-white/85 backdrop-blur-[24px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_-8px_24px_-4px_rgba(15,23,42,0.12),0_-32px_72px_-12px_rgba(15,23,42,0.22)]";
 
-  return (
+  return createPortal(
     <>
       <div
         className="fixed inset-0 backdrop-blur-[12px] backdrop-saturate-110"
@@ -98,7 +104,8 @@ export function Sheet({
         </div>
         {children}
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 
