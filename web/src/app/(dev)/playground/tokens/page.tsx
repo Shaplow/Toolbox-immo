@@ -379,21 +379,46 @@ export default function TokensPage() {
           subtitle="Une couleur signature (brand) + une serif éditoriale + une texture grain — le côté studio créatif, sans rompre l'épuré."
         />
 
-        {/* Brand color stops */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-3 inline-flex items-center gap-1.5">
-            <span className="text-brand-700">✦</span>
-            Brand · Orange corail
-          </p>
-          <div className="grid grid-cols-2 gap-1 sm:grid-cols-6">
-            {(["50", "100", "500", "600", "700", "900"] as const).map((stop) => (
-              <div
-                key={stop}
-                className={`rounded-md px-3 py-3 text-[11px] font-mono bg-brand-${stop} ${["500", "600", "700", "900"].includes(stop) ? "text-white" : "text-gray-700"}`}
-              >
-                {stop}
+        {/* Brand color stops + Primary gradient */}
+        <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-3 inline-flex items-center gap-1.5">
+              <span className="text-brand-700">✦</span>
+              Brand · Orange corail (flat)
+            </p>
+            <div className="grid grid-cols-2 gap-1 sm:grid-cols-6">
+              {(["50", "100", "500", "600", "700", "900"] as const).map((stop) => (
+                <div
+                  key={stop}
+                  className={`rounded-md px-3 py-3 text-[11px] font-mono bg-brand-${stop} ${["500", "600", "700", "900"].includes(stop) ? "text-white" : "text-gray-700"}`}
+                >
+                  {stop}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-3 inline-flex items-center gap-1.5">
+              <span className="text-brand-700">✦</span>
+              Primary · Gradient Instagram-style
+            </p>
+            <div className="grid gap-1 sm:grid-cols-2">
+              <div className="rounded-md bg-[image:var(--gradient-primary)] px-4 py-4 text-[11px] font-mono text-white">
+                --gradient-primary
+                <span className="opacity-70 ml-2">#FCAF45 → #E1306C → #833AB4</span>
               </div>
-            ))}
+              <div className="rounded-md bg-[image:var(--gradient-primary-hover)] px-4 py-4 text-[11px] font-mono text-white">
+                --gradient-primary-hover
+                <span className="opacity-70 ml-2">hover state</span>
+              </div>
+            </div>
+            <p className="mt-2 text-[11px] text-gray-500 leading-relaxed">
+              Réservé au <code className="font-mono">Button variant=&quot;primary&quot;</code>
+              {" "}(et ButtonIcon primary). Pas de halo orange — le glow utilise
+              ses propres tokens <code className="font-mono">shadow-glow-primary</code>
+              {" "}(rose/violet).
+            </p>
           </div>
         </div>
 
@@ -466,11 +491,11 @@ export default function TokensPage() {
         <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-5">
           <p className="text-[11px] uppercase tracking-widest text-gray-400">Patterns d&apos;action</p>
           <div className="flex flex-wrap items-center gap-3">
+            <button className="rounded-md bg-[image:var(--gradient-primary)] px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-glow-primary)] transition-all hover:bg-[image:var(--gradient-primary-hover)] hover:shadow-[var(--shadow-glow-primary-strong)]">
+              Action principale
+            </button>
             <button className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-glow-brand)] transition-all hover:bg-brand-700 hover:shadow-[var(--shadow-glow-brand-strong)]">
               Brand CTA
-            </button>
-            <button className="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800">
-              Action principale
             </button>
             <button className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-50">
               Secondaire
@@ -483,6 +508,14 @@ export default function TokensPage() {
               <span className="transition-transform group-hover:translate-x-0.5">→</span>
             </a>
           </div>
+          <p className="text-[11px] text-gray-500 leading-relaxed">
+            <strong className="text-gray-950">Hiérarchie</strong> :
+            <code className="font-mono mx-1">primary</code>
+            (gradient signature) pour les actions principales courantes ;
+            <code className="font-mono mx-1">brand</code>
+            (orange flat) pour les 2-3 moments forts seulement (S&apos;inscrire,
+            Marquer publié) ; les autres en mono.
+          </p>
         </div>
 
         {/* Eyebrow / display typo */}

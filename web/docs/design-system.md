@@ -50,6 +50,22 @@ Trois familles uniquement. Tout signal coloré doit tomber dans l'une des trois.
 
 Utilisation : `bg-success-100 text-success-700` pour un badge soft, `bg-success-600 text-white` pour un bouton plein, etc.
 
+### Primary gradient
+
+L'action principale courante du design system utilise un **gradient Instagram-style** diagonale orange → rose magenta → violet. C'est la couleur signature de `Button variant="primary"` et `ButtonIcon primary`. Donne le "peps" qui distingue le bouton primaire du noir flat sans rompre le monochrome global de l'app (le gradient est porté par le seul Button primary).
+
+| Token | Valeur | Usage |
+|---|---|---|
+| `--gradient-primary` | `linear-gradient(135deg, #fcaf45, #e1306c, #833ab4)` | Background du Button primary |
+| `--gradient-primary-hover` | Version foncée | Hover state |
+| `--shadow-glow-primary` | rose/violet à 12-18% | Halo de focus / repos sur Button primary |
+| `--shadow-glow-primary-strong` | idem renforcé | Halo au hover |
+
+**Hiérarchie d'usage** :
+- `primary` (gradient) : action principale standard de chaque page / formulaire / panneau. Le défaut.
+- `brand` (orange flat) : ultra chirurgical — 2-3 moments forts dans toute l'app (S'inscrire, Marquer publié, Démarrer onboarding).
+- Le reste : `secondary`, `ghost`, `danger` en mono.
+
 ### Brand color
 
 Une couleur signature en plus des accents sémantiques — orange-corail mature, le peps "agence créative" sans tomber dans le pop kid. Réservée aux CTA principaux, liens narratifs et highlights marketing. **Jamais** utilisée pour communiquer un statut (succès / erreur / info), **jamais** pour la sélection d'un élément UI (item de nav actif, slot sélectionné — cf. "États UI" plus bas).

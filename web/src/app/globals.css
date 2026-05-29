@@ -101,6 +101,15 @@ html {
   /* Wash neutre pour les sections secondaires */
   --gradient-subtle: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
 
+  /* ── Gradient primary (CTA Button variant=primary) ─────────────────────
+     Diagonale Instagram-style — orange-amber → rose magenta → violet.
+     C'est le "peps signature" du primary qui distingue les actions
+     principales de l'app du noir flat. */
+  --gradient-primary: linear-gradient(135deg, #fcaf45 0%, #e1306c 50%, #833ab4 100%);
+  --gradient-primary-hover: linear-gradient(135deg, #f59e0b 0%, #be185d 50%, #6b21a8 100%);
+  --shadow-glow-primary: 0 0 0 3px rgba(225, 48, 108, 0.12), 0 4px 16px rgba(131, 58, 180, 0.18);
+  --shadow-glow-primary-strong: 0 0 0 4px rgba(225, 48, 108, 0.18), 0 6px 24px rgba(131, 58, 180, 0.25);
+
   /* ── Texture grain ───────────────────────────────────────────────────────
      Noise SVG très subtil — donne le côté "matière" magazine sans
      polluer la lecture. Utiliser avec opacity ≤ 0.6 sur les heros. */

@@ -64,8 +64,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         : "h-8 px-3 text-[13px]";
 
   const variantClasses = {
+    // Primary : gradient Instagram-style (orange → rose → violet). Signature
+    // de l'app — c'est ce qui distingue les actions principales du noir flat.
     primary:
-      "bg-gray-950 text-white hover:bg-gray-800 focus-ring",
+      "bg-[image:var(--gradient-primary)] text-white shadow-[var(--shadow-glow-primary)] hover:bg-[image:var(--gradient-primary-hover)] hover:shadow-[var(--shadow-glow-primary-strong)] focus-ring",
     brand:
       "bg-brand-600 text-white shadow-[var(--shadow-glow-brand)] hover:bg-brand-700 hover:shadow-[var(--shadow-glow-brand-strong)] hover:-translate-y-[1px] focus-ring-brand",
     secondary:

@@ -47,7 +47,7 @@ export const ButtonIcon = forwardRef<HTMLButtonElement, ButtonIconProps>(functio
 
   const variantClasses = {
     primary:
-      "bg-gray-950 text-white hover:bg-gray-800 focus-ring",
+      "bg-[image:var(--gradient-primary)] text-white shadow-[var(--shadow-glow-primary)] hover:bg-[image:var(--gradient-primary-hover)] hover:shadow-[var(--shadow-glow-primary-strong)] focus-ring",
     brand:
       "bg-brand-600 text-white shadow-[var(--shadow-glow-brand)] hover:bg-brand-700 hover:shadow-[var(--shadow-glow-brand-strong)] focus-ring-brand",
     secondary:
