@@ -18,9 +18,11 @@ interface KbdProps {
 export function Kbd({ size = "sm", children }: KbdProps) {
   const sizeCls =
     size === "sm" ? "h-4 px-1 text-[10px]" : "h-5 px-1.5 text-[11px]";
+  // Style verre Liquid Glass v2 : transparent légèrement teinté + ring
+  // intérieur signature. Lit comme une touche physique posée sur la surface.
   return (
     <kbd
-      className={`inline-flex items-center justify-center rounded border border-gray-300 bg-white font-mono text-gray-700 ${sizeCls}`}
+      className={`inline-flex items-center justify-center rounded bg-white/60 backdrop-blur-[6px] font-mono text-gray-700 shadow-[var(--ring-glass-edge),inset_0_-1px_0_rgba(15,23,42,0.06)] ${sizeCls}`}
     >
       {children}
     </kbd>

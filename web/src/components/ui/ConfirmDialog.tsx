@@ -54,7 +54,7 @@ export function ConfirmDialog({
   return (
     <>
       <div
-        className="fixed inset-0 bg-gray-950/40 z-40"
+        className="fixed inset-0 bg-[var(--scrim-dark)] backdrop-blur-[4px] z-40"
         onClick={onCancel}
         aria-hidden="true"
       />
@@ -64,7 +64,7 @@ export function ConfirmDialog({
         aria-labelledby="confirm-dialog-title"
         className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none"
       >
-        <div className="bg-white rounded-xl shadow-[var(--shadow-modal)] w-full max-w-md pointer-events-auto overflow-hidden">
+        <div className="bg-[var(--surface-glass-strong)] backdrop-blur-[24px] backdrop-saturate-150 rounded-xl shadow-[var(--shadow-glass-lg),var(--ring-glass-inset)] w-full max-w-md pointer-events-auto overflow-hidden">
           <div className="px-5 pt-5 pb-3">
             <h2
               id="confirm-dialog-title"
@@ -77,7 +77,7 @@ export function ConfirmDialog({
             </p>
             {children}
           </div>
-          <div className="flex items-center justify-end gap-2 px-5 py-3 bg-gray-50 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-2 px-5 py-3 bg-white/40 border-t border-white/40">
             <Button
               variant="secondary"
               size="sm"

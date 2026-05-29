@@ -437,10 +437,10 @@ export function MediaDropzone({
           onClick={() => !disabled && inputRef.current?.click()}
           onKeyDown={(e) => e.key === "Enter" && !disabled && inputRef.current?.click()}
           className={[
-            "relative flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-8 text-center transition-colors cursor-pointer select-none focus-ring",
+            "relative flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-8 text-center transition-all cursor-pointer select-none focus-ring backdrop-blur-[8px]",
             isDragOver
-              ? "border-gray-950 bg-gray-50"
-              : "border-gray-300 bg-gray-50/40 hover:border-gray-400 hover:bg-gray-50",
+              ? "border-gray-950 bg-[var(--gradient-aurora)] shadow-[var(--shadow-glass-md)]"
+              : "border-gray-300 bg-[var(--surface-glass-soft)] hover:border-gray-400 hover:bg-[var(--gradient-aurora)] hover:shadow-[var(--shadow-glass-sm)]",
             disabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "",
           ]
             .filter(Boolean)

@@ -60,7 +60,7 @@ export function DropdownMenu({ trigger, items, align = "start" }: DropdownMenuPr
       {open && (
         <div
           role="menu"
-          className={`absolute top-full mt-1.5 z-50 min-w-[180px] rounded-md border border-gray-200 bg-white shadow-[var(--shadow-overlay)] py-1 ${
+          className={`absolute top-full mt-1.5 z-50 min-w-[180px] rounded-md bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150 shadow-[var(--shadow-glass-popover),var(--ring-glass-inset)] py-1 ${
             align === "end" ? "right-0" : "left-0"
           }`}
         >

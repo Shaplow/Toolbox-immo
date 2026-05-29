@@ -37,8 +37,8 @@ export function EmptyState({ icon, title, description, cta }: EmptyStateProps) {
   );
 
   return (
-    <div className="flex flex-col items-center justify-center text-center py-10 px-4 border border-dashed border-gray-200 rounded-lg bg-gray-50/40">
-      <div className="h-11 w-11 rounded-lg bg-white border border-gray-200 flex items-center justify-center mb-3">
+    <div className="flex flex-col items-center justify-center text-center py-10 px-4 rounded-lg bg-[var(--surface-glass-medium)] backdrop-blur-[12px] backdrop-saturate-150 shadow-[var(--ring-glass-edge),inset_0_0_0_1px_rgba(255,255,255,0.4)] border border-dashed border-gray-200/60">
+      <div className="h-11 w-11 rounded-lg bg-white/80 backdrop-blur-[8px] border border-white/60 shadow-[var(--ring-glass-inset)] flex items-center justify-center mb-3">
         {iconNode}
       </div>
       <h3 className="font-hand text-lg text-gray-950 leading-none">{title}</h3>

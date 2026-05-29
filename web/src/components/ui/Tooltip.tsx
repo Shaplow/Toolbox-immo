@@ -69,7 +69,7 @@ export function Tooltip({ content, side = "top", delay = 200, children, classNam
       {open && (
         <span
           role="tooltip"
-          className={`absolute left-1/2 -translate-x-1/2 z-50 pointer-events-none whitespace-nowrap rounded-md bg-gray-950 px-2 py-1 text-[11px] font-medium text-white shadow-[var(--shadow-overlay)] ${
+          className={`absolute left-1/2 -translate-x-1/2 z-50 pointer-events-none whitespace-nowrap rounded-md bg-gray-950/90 backdrop-blur-[8px] backdrop-saturate-150 px-2 py-1 text-[11px] font-medium text-white shadow-[var(--shadow-overlay),inset_0_1px_0_rgba(255,255,255,0.08)] ${
             actualSide === "top" ? "bottom-full mb-1.5" : "top-full mt-1.5"
           }`}
         >

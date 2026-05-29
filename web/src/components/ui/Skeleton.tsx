@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * Loading placeholder — pulse subtil sur fond gray-100.
+ * Loading placeholder — pulse subtil sur wash gradient aurora léger
+ * (Liquid Glass v2). Donne plus de matière qu'un pulse gray-100 plat.
  *
  * Variants de shape : line (default, hauteur configurable), block (carré
  * avec ratio configurable), circle (pour avatars).
@@ -19,7 +20,12 @@ interface SkeletonProps {
 }
 
 export function Skeleton({ className, shape = "line" }: SkeletonProps) {
-  const base = "animate-pulse bg-gray-100";
+  // Aurora léger : gradient peach-soft → sage-soft → sky-soft à très basse
+  // opacité (1-2%), invisible à l'œil sans le pulse, mais qui donne une
+  // matière chaleureuse pendant l'animation. Combo avec `animate-pulse`
+  // (Tailwind default opacity 1↔0.5) pour effet shimmer signature.
+  const base =
+    "animate-pulse bg-gray-100 bg-[linear-gradient(120deg,rgba(255,230,208,0.18),rgba(220,238,224,0.12)_50%,rgba(212,232,243,0.18))]";
   const shapeCls = {
     line:   "h-3 rounded-sm",
     block:  "rounded-md",

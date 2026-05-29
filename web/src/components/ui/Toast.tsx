@@ -55,24 +55,33 @@ const TYPE_ICON = {
   info:    Info,
 };
 
+// Icône sémantique (sens) — gardée pour distinguer success / error / info.
 const TYPE_ICON_CLS = {
-  success: "text-success-600",
-  error:   "text-danger-600",
-  info:    "text-info-600",
+  success: "text-sage-700",
+  error:   "text-rose-700",
+  info:    "text-sky-700",
+};
+
+// Accent gauche pastel (Coastal Studio) — bordure gauche colorée qui
+// signale le type sans imposer une couleur de fond saturée.
+const TYPE_ACCENT_CLS = {
+  success: "border-l-sage-500",
+  error:   "border-l-rose-500",
+  info:    "border-l-sky-500",
 };
 
 function ToastItem({ item, onRemove }: { item: ToastItem; onRemove: () => void }) {
   const Icon = TYPE_ICON[item.type];
   return (
     <div
-      className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg shadow-[var(--shadow-overlay),inset_0_1px_0_rgba(255,255,255,0.06)] bg-gray-900 text-[13px] max-w-sm cursor-pointer text-white"
+      className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border-l-2 bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150 shadow-[var(--shadow-glass-popover),var(--ring-glass-inset)] text-[13px] max-w-sm cursor-pointer text-gray-900 ${TYPE_ACCENT_CLS[item.type]}`}
       onClick={onRemove}
       role="alert"
     >
       <Icon size={15} className={`${TYPE_ICON_CLS[item.type]} shrink-0 mt-0.5`} />
       <span className="flex-1 leading-relaxed">{item.message}</span>
       <button
-        className="text-gray-400 hover:text-white shrink-0 mt-0.5"
+        className="text-gray-400 hover:text-gray-700 shrink-0 mt-0.5"
         aria-label="Fermer"
       >
         <X size={13} />
