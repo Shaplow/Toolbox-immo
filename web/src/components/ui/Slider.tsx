@@ -79,18 +79,28 @@ export function Slider({
           onChange={(e) => onChange(Number(e.target.value))}
           style={trackStyle}
           className={[
-            "flex-1 h-1.5 rounded-full appearance-none cursor-pointer focus-ring",
+            "flex-1 h-2 rounded-full appearance-none cursor-pointer focus-ring",
+            // Ring inset signature autour du track (rail glass).
+            "shadow-[inset_0_1px_0_rgba(255,255,255,0.6),inset_0_-1px_0_rgba(15,23,42,0.06),inset_0_0_0_1px_rgba(15,23,42,0.05)]",
+            // Thumb webkit — bouton blanc liquid avec ring inset spéculaire
+            // + ombre proche forte (relief tactile macOS).
             "[&::-webkit-slider-thumb]:appearance-none",
-            "[&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4",
+            "[&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5",
             "[&::-webkit-slider-thumb]:rounded-full",
-            "[&::-webkit-slider-thumb]:bg-[var(--slider-thumb-bg)]",
+            "[&::-webkit-slider-thumb]:bg-white",
             "[&::-webkit-slider-thumb]:cursor-pointer",
-            "[&::-webkit-slider-thumb]:shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]",
-            "[&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4",
+            "[&::-webkit-slider-thumb]:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),inset_0_-1px_0_rgba(15,23,42,0.1),0_1px_2px_rgba(15,23,42,0.18),0_2px_6px_-1px_rgba(15,23,42,0.16)]",
+            "[&::-webkit-slider-thumb]:border-0",
+            "[&::-webkit-slider-thumb]:transition-transform",
+            "hover:[&::-webkit-slider-thumb]:scale-110",
+            "active:[&::-webkit-slider-thumb]:scale-105",
+            // Thumb firefox.
+            "[&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5",
             "[&::-moz-range-thumb]:rounded-full",
-            "[&::-moz-range-thumb]:bg-[var(--slider-thumb-bg)]",
+            "[&::-moz-range-thumb]:bg-white",
             "[&::-moz-range-thumb]:border-0",
             "[&::-moz-range-thumb]:cursor-pointer",
+            "[&::-moz-range-thumb]:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_1px_2px_rgba(15,23,42,0.18),0_2px_6px_-1px_rgba(15,23,42,0.16)]",
             disabled ? "opacity-50 cursor-not-allowed [&::-webkit-slider-thumb]:cursor-not-allowed" : "",
           ].filter(Boolean).join(" ")}
         />

@@ -37,8 +37,8 @@ export function EmptyState({ icon, title, description, cta }: EmptyStateProps) {
   );
 
   return (
-    <div className="flex flex-col items-center justify-center text-center py-10 px-4 rounded-lg bg-[var(--surface-glass-medium)] backdrop-blur-[12px] backdrop-saturate-150 shadow-[var(--ring-glass-edge),inset_0_0_0_1px_rgba(255,255,255,0.4)] border border-dashed border-gray-200/60">
-      <div className="h-11 w-11 rounded-lg bg-white/80 backdrop-blur-[8px] border border-white/60 shadow-[var(--ring-glass-inset)] flex items-center justify-center mb-3">
+    <div className="flex flex-col items-center justify-center text-center py-10 px-4 rounded-lg bg-gradient-to-b from-white/70 to-white/40 backdrop-blur-[14px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(15,23,42,0.04),0_2px_8px_-2px_rgba(15,23,42,0.08)] border border-dashed border-white/40">
+      <div className="h-11 w-11 rounded-lg bg-gradient-to-b from-white to-white/80 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),inset_0_-1px_0_rgba(15,23,42,0.08),0_1px_2px_rgba(15,23,42,0.06)] flex items-center justify-center mb-3">
         {iconNode}
       </div>
       <h3 className="font-hand text-lg text-gray-950 leading-none">{title}</h3>

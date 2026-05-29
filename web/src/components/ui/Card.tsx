@@ -66,8 +66,10 @@ export function Card({
   className,
 }: CardProps) {
   // Base par variant.
+  // Solid = semi-verre subtil : gradient blanc + backdrop-blur léger + ring
+  // inset signature. Garde le look "carte document" mais avec matière.
   const variantBase = {
-    solid:   "bg-white",
+    solid:   "bg-gradient-to-b from-white to-white/85 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_-1px_0_rgba(15,23,42,0.04),0_1px_2px_rgba(15,23,42,0.04)]",
     glass:   "bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150 shadow-[var(--ring-glass-inset)]",
     frosted: "bg-[var(--gradient-frosted)] backdrop-blur-[12px] backdrop-saturate-150 shadow-[var(--ring-glass-edge)]",
     tinted:  tint ? TINT_BG[tint] : "bg-gray-50",
@@ -75,13 +77,13 @@ export function Card({
 
   const base = `${variantBase} rounded-lg overflow-hidden`;
 
-  // Border par variant : tinted utilise la teinte légère ; glass/frosted
+  // Border par variant : tinted utilise la teinte légère ; glass/frosted/solid
   // hide la border classique (le ring intérieur fait la séparation).
   const borderCls = !border
     ? ""
     : variant === "tinted" && tint
       ? `border ${TINT_BORDER[tint]}`
-      : variant === "glass" || variant === "frosted"
+      : variant === "glass" || variant === "frosted" || variant === "solid"
         ? ""
         : "border border-gray-200";
 

@@ -82,8 +82,8 @@ export function DropdownMenu({ trigger, items, align = "start" }: DropdownMenuPr
                 }}
                 className={`w-full inline-flex items-center gap-2 px-3 py-1.5 text-[13px] text-left transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                   item.destructive
-                    ? "text-danger-600 hover:bg-danger-50"
-                    : "text-gray-700 hover:bg-gray-100 hover:text-gray-950"
+                    ? "text-danger-600 hover:bg-danger-50/70 hover:backdrop-blur-[8px] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.5),inset_0_0_0_1px_rgba(220,38,38,0.12)]"
+                    : "text-gray-700 hover:bg-white/70 hover:backdrop-blur-[8px] hover:text-gray-950 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]"
                 }`}
               >
                 {Icon && <Icon size={14} className="shrink-0" />}

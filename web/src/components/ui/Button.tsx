@@ -73,12 +73,19 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     // gagne lui aussi la signature liquide sans renier la doctrine mono dark.
     primary:
       "bg-gradient-to-b from-gray-700 to-gray-900 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_0_0_1px_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.12),0_4px_12px_-4px_rgba(15,23,42,0.22)] hover:from-gray-600 hover:to-gray-800 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.24),inset_0_0_0_1px_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(0,0,0,0.2),0_2px_4px_rgba(15,23,42,0.16),0_8px_20px_-4px_rgba(15,23,42,0.28)] focus-ring",
+    // Secondary "semi-verre" — gradient white + ring inset signature
+    // (top blanc + edge subtle) + halo extérieur diffus. Garde le poids
+    // d'un bouton secondaire sans la sécheresse du bord plat.
     secondary:
-      "bg-white text-gray-800 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 focus-ring",
+      "bg-gradient-to-b from-white/90 to-white/70 text-gray-800 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.08),0_1px_2px_rgba(15,23,42,0.05),0_4px_12px_-4px_rgba(15,23,42,0.12)] hover:from-white hover:to-white/85 hover:text-gray-950 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.6),inset_0_-1px_0_rgba(15,23,42,0.1),0_2px_4px_rgba(15,23,42,0.08),0_8px_20px_-4px_rgba(15,23,42,0.18)] focus-ring",
+    // Ghost — transparent au repos, verre soft au hover. Subtle ring inset
+    // edge même au repos pour signaler que c'est un bouton actionnable.
     ghost:
-      "bg-transparent text-gray-700 hover:bg-gray-100 hover:text-gray-950 focus-ring",
+      "bg-transparent text-gray-700 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.04)] hover:bg-[var(--surface-glass-medium)] hover:backdrop-blur-[8px] hover:text-gray-950 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),inset_0_0_0_1px_rgba(255,255,255,0.3)] focus-ring",
+    // Danger — rouge sémantique + signature glass : ring inset top blanc
+    // 0.18α + halo extérieur teinté rouge.
     danger:
-      "bg-danger-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] hover:bg-danger-700 focus-ring-danger",
+      "bg-gradient-to-b from-danger-600 to-danger-700 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),inset_0_0_0_1px_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(0,0,0,0.12),0_1px_2px_rgba(220,38,38,0.18),0_6px_16px_-6px_rgba(220,38,38,0.32)] hover:from-danger-500 hover:to-danger-600 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),inset_0_0_0_1px_rgba(255,255,255,0.08),inset_0_-1px_0_rgba(0,0,0,0.14),0_2px_4px_rgba(220,38,38,0.22),0_10px_24px_-6px_rgba(220,38,38,0.42)] focus-ring-danger",
     // Liquid Glass v2 — vrai verre macOS Tahoe / iOS 18 :
     // ring intérieur top blanc prononcé (highlight spéculaire) + ring edge
     // subtle + halo extérieur diffus. Background gradient frosted blanc

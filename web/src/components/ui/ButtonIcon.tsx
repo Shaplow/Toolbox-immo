@@ -55,12 +55,15 @@ export const ButtonIcon = forwardRef<HTMLButtonElement, ButtonIconProps>(functio
     // Primary "liquid graphite" — aligné avec Button primary.
     primary:
       "bg-gradient-to-b from-gray-700 to-gray-900 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_0_0_1px_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.12),0_4px_12px_-4px_rgba(15,23,42,0.22)] hover:from-gray-600 hover:to-gray-800 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.24),inset_0_0_0_1px_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(0,0,0,0.2),0_2px_4px_rgba(15,23,42,0.16),0_8px_20px_-4px_rgba(15,23,42,0.28)] focus-ring",
+    // Secondary "semi-verre" — aligné avec Button secondary.
     secondary:
-      "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:text-gray-950 hover:border-gray-400 focus-ring",
+      "bg-gradient-to-b from-white/90 to-white/70 text-gray-700 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.08),0_1px_2px_rgba(15,23,42,0.05),0_4px_12px_-4px_rgba(15,23,42,0.12)] hover:from-white hover:to-white/85 hover:text-gray-950 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.6),inset_0_-1px_0_rgba(15,23,42,0.1),0_2px_4px_rgba(15,23,42,0.08),0_8px_20px_-4px_rgba(15,23,42,0.18)] focus-ring",
+    // Ghost — subtile ring inset edge + hover semi-verre.
     ghost:
-      "bg-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-950 focus-ring",
+      "bg-transparent text-gray-500 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.04)] hover:bg-[var(--surface-glass-medium)] hover:backdrop-blur-[8px] hover:text-gray-950 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),inset_0_0_0_1px_rgba(255,255,255,0.3)] focus-ring",
+    // Danger — hover wash danger glass.
     danger:
-      "bg-transparent text-gray-500 hover:bg-danger-50 hover:text-danger-600 focus-ring-danger",
+      "bg-transparent text-gray-500 shadow-[inset_0_0_0_1px_rgba(220,38,38,0.08)] hover:bg-danger-50/70 hover:backdrop-blur-[8px] hover:text-danger-600 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.5),inset_0_0_0_1px_rgba(220,38,38,0.18)] focus-ring-danger",
     // Liquid Glass v2 — même signature liquide que Button glass : gradient
     // frosted + ring inset top blanc prononcé + halo extérieur diffus.
     glass:

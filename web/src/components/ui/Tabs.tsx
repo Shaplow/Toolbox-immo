@@ -90,7 +90,12 @@ function PillTabs({ items, value, onChange, size, className }: Required<Pick<Tab
   const iconSize = size === "sm" ? 12 : 14;
 
   return (
-    <div className={["inline-flex items-center rounded-md border border-gray-200 bg-gray-50/60 p-0.5 gap-0.5", className ?? ""].filter(Boolean).join(" ")}>
+    <div className={[
+      // Container semi-verre : ring inset signature + ombre proche subtile.
+      "inline-flex items-center rounded-md bg-gradient-to-b from-white/70 to-white/40 backdrop-blur-[12px] backdrop-saturate-150 p-0.5 gap-0.5",
+      "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),inset_0_-1px_0_rgba(15,23,42,0.04),0_1px_2px_rgba(15,23,42,0.04)]",
+      className ?? "",
+    ].filter(Boolean).join(" ")}>
       {items.map((item) => {
         const isActive = item.id === value;
         const Icon = item.icon;
@@ -104,7 +109,7 @@ function PillTabs({ items, value, onChange, size, className }: Required<Pick<Tab
             role="tab"
             className={`inline-flex items-center gap-1.5 rounded font-medium transition-all focus-ring disabled:opacity-50 disabled:cursor-not-allowed ${sizeCls} ${
               isActive
-                ? "bg-white text-gray-950 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+                ? "bg-gradient-to-b from-white to-white/85 text-gray-950 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.5),inset_0_-1px_0_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.06)]"
                 : "bg-transparent text-gray-600 hover:text-gray-950"
             }`}
           >
