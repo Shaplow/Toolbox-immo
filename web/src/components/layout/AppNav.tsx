@@ -19,15 +19,20 @@ import {
   Eye,
   PanelLeftClose,
   PanelLeft,
+  Search,
 } from "lucide-react";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { parsePermissions } from "@/lib/permissions/parsePermissions";
 import { TOOL_META } from "@/lib/toolMeta";
 import { useWorklistCount } from "@/hooks/useWorklistCount";
 import { useEffect, useState } from "react";
+import { Avatar } from "@/components/ui/Avatar";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
-import { Badge } from "@/components/ui/Badge";
+import { Kbd } from "@/components/ui/Kbd";
+import { Tooltip } from "@/components/ui/Tooltip";
 
 /**
  * AppNav — navigation latérale principale.
@@ -188,30 +193,44 @@ export function AppNav({
 
   return (
     <aside
-      className={`bg-white border-r border-gray-200 flex flex-col h-full shrink-0 transition-[width] duration-200 ${
-        collapsed ? "w-14" : "w-56"
-      }`}
+      className={[
+        "flex flex-col h-full shrink-0 transition-[width] duration-200",
+        // Surface Liquid Glass : gradient blanc + ring inset signature à droite
+        // (pas de border-r solide). Backdrop-blur sur les surfaces glass
+        // partout dans l'app, mais ici on garde solide pour lisibilité dense.
+        "bg-gradient-to-b from-white/90 to-white/75 backdrop-blur-[16px] backdrop-saturate-150",
+        "shadow-[inset_-1px_0_0_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,1)]",
+        collapsed ? "w-14" : "w-56",
+      ].join(" ")}
     >
       {/* ── Logo + collapse trigger ─────────────────────────────────── */}
       <div
-        className={`border-b border-gray-100 flex items-center ${
-          collapsed ? "justify-center px-2 py-3" : "justify-between px-3 py-3"
-        }`}
+        className={[
+          "flex items-center shrink-0",
+          "shadow-[inset_0_-1px_0_rgba(15,23,42,0.04)]",
+          collapsed ? "justify-center px-2 py-3" : "justify-between px-3 py-3",
+        ].join(" ")}
       >
         <Link
           href="/home"
-          className={`inline-flex items-center gap-2 focus-ring rounded-md ${
+          className={`inline-flex items-center gap-2 focus-ring rounded-md relative ${
             collapsed ? "" : "min-w-0"
           }`}
           title="Toolbox · Accueil"
         >
-          <span className="h-7 w-7 rounded-md bg-brand-600 inline-flex items-center justify-center text-white text-[13px] font-bold shrink-0">
+          <span className="h-7 w-7 rounded-md bg-brand-600 inline-flex items-center justify-center text-white text-[13px] font-bold shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_1px_2px_rgba(224,66,16,0.18)]">
             T
           </span>
           {!collapsed && (
             <span className="font-hand text-xl leading-none text-gray-950 truncate">
               Toolbox
             </span>
+          )}
+          {/* Indicateur "Vue: X" en collapsed — sage dot signature si view-as actif */}
+          {collapsed && isRoleOverride && (
+            <Tooltip content={`Vue ${viewAsRoleLabel}`} side="bottom">
+              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-sage-500 shadow-[0_0_0_2px_rgba(255,255,255,1)]" aria-label={`Vue ${viewAsRoleLabel}`} />
+            </Tooltip>
           )}
         </Link>
         {!collapsed && (
@@ -224,7 +243,7 @@ export function AppNav({
         )}
       </div>
       {collapsed && (
-        <div className="border-b border-gray-100 flex justify-center py-2">
+        <div className="flex justify-center py-2 shadow-[inset_0_-1px_0_rgba(15,23,42,0.04)]">
           <ButtonIcon
             icon={PanelLeft}
             label="Ouvrir la navigation"
@@ -234,25 +253,25 @@ export function AppNav({
         </div>
       )}
 
-      {/* Impersonation banner — supprimé en Phase 6.1 (single source of
-          truth = banner top dans (app)/layout.tsx). Évite la duplication
-          de contrôle et la divergence des points de sortie. */}
-
       {/* ── View As (admin uniquement, pas en impersonation, expanded) ── */}
       {canSeeAdmin && !isImpersonating && !collapsed && (
-        <div className="px-3 py-2 border-b border-gray-100">
+        <div className="px-3 py-2 shadow-[inset_0_-1px_0_rgba(15,23,42,0.04)]">
           <DropdownMenu
             trigger={
               <button
                 type="button"
-                className="w-full inline-flex items-center justify-between gap-2 h-8 px-2.5 rounded-md border border-gray-300 hover:border-gray-400 bg-white text-[12px] text-gray-700 focus-ring transition-colors"
+                className={[
+                  "w-full inline-flex items-center justify-between gap-2 h-8 px-2.5 rounded-md text-[12px] text-left transition-all focus-ring",
+                  isRoleOverride
+                    ? "bg-sage-50/65 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(111,162,128,0.32)]"
+                    : "bg-white/65 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1)] hover:bg-white/85 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.16)]",
+                ].join(" ")}
               >
                 <span className="inline-flex items-center gap-1.5 min-w-0">
-                  <Eye size={13} className="shrink-0 text-gray-500" />
-                  <span className="truncate text-gray-950 font-medium">
+                  <Eye size={13} className={`shrink-0 ${isRoleOverride ? "text-sage-700" : "text-gray-500"}`} />
+                  <span className={`truncate font-medium ${isRoleOverride ? "text-sage-700" : "text-gray-950"}`}>
                     Vue : {viewAsRoleLabel}
                   </span>
-                  {isRoleOverride && <Badge variant="info" size="sm">override</Badge>}
                 </span>
               </button>
             }
@@ -267,7 +286,7 @@ export function AppNav({
       )}
 
       {/* ── Navigation principale ──────────────────────────────────── */}
-      <nav className={`flex-1 min-h-0 overflow-y-auto ${collapsed ? "px-1.5 py-3" : "px-2.5 py-3"}`}>
+      <nav className={`flex-1 min-h-0 overflow-y-auto ${collapsed ? "px-1.5 py-3" : "px-2.5 py-3"} [scrollbar-width:thin]`}>
         {navSections.map(({ title, items }, index) => {
           if (items.length === 0) return null;
           return (
@@ -277,8 +296,8 @@ export function AppNav({
                 index === 0
                   ? ""
                   : collapsed
-                    ? "mt-3 pt-3 border-t border-gray-100"
-                    : "mt-4 pt-3 border-t border-gray-100"
+                    ? "mt-3 pt-3 shadow-[inset_0_1px_0_rgba(15,23,42,0.04)]"
+                    : "mt-4 pt-3 shadow-[inset_0_1px_0_rgba(15,23,42,0.04)]"
               }
             >
               {title && !collapsed && (
@@ -302,11 +321,32 @@ export function AppNav({
         })}
       </nav>
 
+      {/* ── ⌘K command palette discoverability (admin uniquement) ────── */}
+      {canSeeAdmin && !collapsed && (
+        <div className="px-3 py-2 shadow-[inset_0_1px_0_rgba(15,23,42,0.04)]">
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event("admin:open-palette"))}
+            className="w-full inline-flex items-center justify-between gap-2 h-7 px-2.5 rounded-md text-[11px] text-gray-500 hover:text-gray-950 hover:bg-white/60 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)] backdrop-blur-[6px] transition-all focus-ring"
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <Search size={11} />
+              Rechercher
+            </span>
+            <Kbd size="sm">⌘K</Kbd>
+          </button>
+        </div>
+      )}
+
       {/* ── User footer ─────────────────────────────────────────────── */}
-      <div className={`border-t border-gray-100 ${collapsed ? "p-2" : "p-3"}`}>
+      <div className={`shadow-[inset_0_1px_0_rgba(15,23,42,0.04)] ${collapsed ? "p-2" : "p-3"}`}>
         {collapsed ? (
           <div className="flex flex-col items-center gap-2">
-            <UserAvatar user={navUser} />
+            <Avatar
+              name={navUser.name ?? navUser.email ?? "?"}
+              size="sm"
+              status={isImpersonating ? "away" : undefined}
+            />
             <ButtonIcon
               icon={LogOut}
               label="Se déconnecter"
@@ -317,23 +357,31 @@ export function AppNav({
         ) : (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <UserAvatar user={navUser} />
+              <Avatar
+                name={navUser.name ?? navUser.email ?? "?"}
+                size="sm"
+                status={isImpersonating ? "away" : undefined}
+              />
               <div className="min-w-0 flex-1">
                 <p className="text-[12px] font-medium text-gray-950 truncate leading-tight">
                   {navUser.name ?? navUser.email}
                 </p>
                 <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-0.5">
-                  {isImpersonating ? "Admin · mode user" : (navUser.role ?? "Utilisateur")}
+                  {isImpersonating
+                    ? `${navUser.role ?? "User"} · via admin`
+                    : (navUser.role ?? "Utilisateur")}
                 </p>
               </div>
             </div>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={LogOut}
               onClick={() => signOut({ callbackUrl: "/login" })}
-              className="w-full inline-flex items-center justify-center gap-1.5 h-7 px-2 rounded-md text-[12px] text-gray-600 hover:bg-gray-100 hover:text-gray-950 transition-colors focus-ring"
+              className="w-full justify-center"
             >
-              <LogOut size={12} />
               Se déconnecter
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -382,16 +430,18 @@ function NavItemLink({
     <Link
       href={item.href}
       title={item.label}
-      className={`flex items-center gap-2 h-8 rounded-md text-[13px] transition-colors focus-ring ${
+      className={[
+        "flex items-center gap-2 h-8 rounded-md text-[13px] transition-all focus-ring",
         active
-          ? "bg-gray-950 text-white font-medium"
-          : "text-gray-700 hover:bg-gray-100 hover:text-gray-950"
-      } ${collapsed ? "justify-center px-0" : "px-2"}`}
+          ? "bg-sky-50/65 backdrop-blur-[8px] text-sky-700 font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.32)]"
+          : "text-gray-700 hover:bg-white/60 hover:backdrop-blur-[6px] hover:text-gray-950 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
+        collapsed ? "justify-center px-0" : "px-2",
+      ].join(" ")}
     >
       <span className="shrink-0 flex items-center relative">
         {item.icon}
         {showBadge && collapsed && (
-          <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-brand-600 ring-2 ring-white" />
+          <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-brand-600 shadow-[0_0_0_2px_rgba(255,255,255,1)]" />
         )}
       </span>
       {!collapsed && (
@@ -408,14 +458,4 @@ function NavItemLink({
   );
 }
 
-function UserAvatar({ user }: { user: AppUserIdentity }) {
-  const initial = (user.name ?? user.email ?? "?").trim().charAt(0).toUpperCase();
-  return (
-    <span
-      className="shrink-0 h-7 w-7 rounded-full bg-gray-100 border border-gray-200 inline-flex items-center justify-center text-[11px] font-semibold text-gray-700"
-      title={user.name ?? user.email ?? undefined}
-    >
-      {initial}
-    </span>
-  );
-}
+// UserAvatar inline supprimé — Phase 6.1 utilise Avatar primitive (Phase 3 Lot 2).
