@@ -1,9 +1,77 @@
 # Toolbox Immo — Design System
 
 > SaaS d'équipe pour agence social media. Sobre, dense, fonctionnel, avec une identité reconnaissable au détail près. Doctrine figée — toute évolution doit la respecter ou la modifier explicitement ici.
-> Plan vivant : `/Users/mathis/.claude/plans/ui-boost-plan.md`. Playground : `/playground` (gated `NEXT_PUBLIC_DEV_PLAYGROUND=1`).
+> Plan vivant : `/Users/mathis/.claude/plans/wobbly-wishing-eich.md` (Liquid Glass). Plan v1 archive : `/Users/mathis/.claude/plans/ui-boost-plan.md`. Playground : `/playground` (gated `NEXT_PUBLIC_DEV_PLAYGROUND=1`).
 
-## Doctrine — en 5 phrases
+## Liquid Glass — extension v2
+
+**Statut** : en cours de déploiement (Phase 1 — tokens). La doctrine v1 ci-dessous reste **ossature structurelle** valide. Liquid Glass + palette Coastal Studio s'ajoutent comme **matière de surface opt-in**.
+
+### Philosophie
+
+- **Glass = matière flottante.** Surfaces qui méritent d'être perçues comme posées au-dessus du contenu : popovers, modals, headers sticky, drawers, FAB, panels d'overview. **Pas** en grille dense (perf Safari iPad), **pas** en CTA (verre = passif), **pas** sur fond variable sans scrim opaque (contraste WCAG).
+- **Coastal Studio = palette pastel orchestrée.** 4 teintes (peach, sage, sky, rose-dust) à saturation basse, utilisées en tinted backgrounds (`bg-peach-50/40`), en accents de statut doux, et en gradients washes. **Jamais** en CTA, **jamais** en focus ring.
+- **Brand orange `#FF5A1F`** chirurgical conservé exactement aux mêmes 2 spots (logo + dot notif) — devient encore plus signature dans une UI pastel.
+- **Extension, pas remplacement.** La rigueur Linear (density, mono CTA `gray-950` flat, accents sémantiques success/danger/info pour statuts) reste l'ossature. Glass est opt-in via variants à partir de Phase 2.
+
+### Quand utiliser glass vs solide
+
+| Surface | Choix | Pourquoi |
+|---|---|---|
+| Modal, drawer, sheet | **Glass** (`surface-glass` ou variant `glass`) | Flottent au-dessus de l'app |
+| Popover, dropdown, tooltip, command palette | **Glass popover** | Détail signature macOS Sequoia |
+| Header sticky d'une fiche/section | **Glass faint** au scroll | Solide en haut, glass quand on s'enfonce |
+| Section interne (Brief, Captions, Description sur fiche) | **Glass-soft** ou solide selon contexte | Glass-soft = wash subtil ; solide reste OK |
+| Card de liste (worklist, slot calendar) | **Solide** | Densité, perf, lisibilité prime |
+| CTA primary | **Solide `gray-950`** | Le CTA reste flat, immédiat, lisible |
+| Builder Canvas (rendu de blocs) | **Hors scope** | Logique user-facing, pas chrome |
+
+### Palette Coastal Studio — usage
+
+| Teinte | Stops | Usage typique |
+|---|---|---|
+| **Peach** | 50 / 100 / 200 / 500 / 700 | Chaleur, statuts "à faire", tinted background warm |
+| **Sage**  | 50 / 100 / 200 / 500 / 700 | Calme, statuts "ok" doux, accent switch positif |
+| **Sky**   | 50 / 100 / 200 / 500 / 700 | Info, planning, programmé, sélection bloc builder |
+| **Rose-dust** | 50 / 100 / 200 / 500 / 700 | Accent rare, signature, drawer override |
+
+Classes Tailwind disponibles : `bg-peach-50`, `text-peach-700`, `border-sage-200`, etc. (générées automatiquement par Tailwind v4 depuis les tokens `@theme`).
+
+### Tokens glass — référence
+
+Tous dans `web/src/app/globals.css` (bloc `@theme inline`).
+
+| Famille | Tokens | Usage |
+|---|---|---|
+| Surfaces | `--surface-glass-strong` (0.85α) / `medium` (0.65α) / `soft` (0.45α) / `faint` (0.25α) | Background du verre |
+| Blur | `--backdrop-blur-xs` (8px) / `sm` (12px) / `md` (20px) / `lg` (32px) + `--backdrop-saturate` (140%) | `backdrop-filter` |
+| Scrims | `--scrim-light` (0.65α blanc) / `dark` (0.45α noir) / `deep` (0.65α noir) | Backdrop modal/drawer |
+| Shadows verrerie | `--shadow-glass-sm` / `md` / `lg` / `popover` | Élévation glass |
+| Ring inset | `--ring-glass-inset` (top) / `edge` (full) / `bottom` | Détail signature verre |
+| Gradients | `--gradient-peach-soft` / `sage-soft` / `sky-soft` / `frosted` / `aurora` | Washes décoratifs (jamais en CTA) |
+
+### Classes utilitaires
+
+Préférer ces classes à du `bg-white/80 backdrop-blur-md` ad hoc — ça centralise via tokens et garantit le ring intérieur signature.
+
+| Classe | Composition | Quand |
+|---|---|---|
+| `.surface-glass` | strong + blur-md + saturate + shadow-glass-md + ring-inset | Popovers, modals, headers sticky |
+| `.surface-glass-soft` | medium + blur-sm + saturate + shadow-glass-sm + ring-edge | Sections internes, panneaux secondaires |
+
+Composer avec `bg-peach-50/40`, `bg-sage-50/40` etc. pour la version tinted.
+
+### Risques surveillés
+
+1. **Perf `backdrop-filter` sur Safari iPad** — limiter glass aux surfaces flottantes, pas grilles denses.
+2. **Contraste WCAG sur glass au-dessus d'images user** — règle : si fond variable, ajouter scrim opaque sous le glass.
+3. **Régression silencieuse sur les défauts** — Phase 2 ajoute des variants opt-in, défauts inchangés. Tests visuels avant/après sur 5 surfaces pivots (PublicationFiche, CalendarView, AppNav, HomeAdmin, AdminUsersPanel).
+
+---
+
+## Doctrine structurelle — en 5 phrases
+
+> Toujours valide. Liquid Glass étend cette doctrine sans la remplacer.
 
 1. **L'UI Toolbox = Geist Sans + monochrome + density Linear + icon-first.** Pas un seul élément de plus.
 2. **Le primary CTA = `bg-gray-950` flat.** Vercel, Linear, Apple le font, on le fait. Aucun gradient, aucune couleur, aucun glow.
@@ -194,12 +262,24 @@ Disponibles mais **jamais en UI d'équipe**. Réservés aux landing pages future
 
 ## État du chantier
 
-- [x] Phase 0 : setup
-- [x] Phase 1 : tokens + primitives (lot 1 Button + lot 2 forms commités)
-- [x] Doctrine harmonisée (suite à retour critique)
-- [ ] Phase 1 suite : ConfirmDialog, DeleteButton, EmptyState, Toast, Badge, Card, Tabs, Tooltip, DropdownMenu, Skeleton, Switch, Kbd
-- [ ] GATE 1 final
-- [ ] Phase 2-6 (audit, surfaces, polish)
+### v1 ui-boost — clôturé
+
+- [x] Tokens UI mono dark + brand chirurgical
+- [x] 22 primitives migrées (Button, Input, Textarea, Select, Switch, Slider, Tabs, Toast, ConfirmDialog, DeleteButton, EmptyState, Badge, Card, Tooltip, DropdownMenu, Skeleton, Kbd, MediaDropzone, RefreshButton, CollapsibleSection, FormField, ButtonIcon)
+- [x] Playground v1 (tokens / primitives / marketing)
+- [x] AppNav mono dark + brand chirurgical
+- [x] Publications sections + ProductionChain refonte
+
+### v2 Liquid Glass — en cours
+
+- [x] Phase 0 : cleanup playground v1 + sentinelle
+- [x] Phase 1 : tokens Liquid Glass + palette Coastal Studio + doc DS
+- [ ] Phase 2 : variants `glass`/`tinted` sur les 22 primitives existantes (opt-in)
+- [ ] Phase 3 : atomes nouveaux (Modal, Drawer, Sheet, Avatar, Alert, Progress, Combobox, Chip, Breadcrumb, Stepper, CommandPalette, Table, Pagination, DatePicker, TimePicker, NumberStepper)
+- [ ] Phase 4 : molécules métier (VideoPlayer, AssetCard, Section, StatusBadge, OverrideControl, TrimPlayer, AssigneePicker, FilterBar, JobQueueItem, EmptyHero, SoftPanel)
+- [ ] Phase 5 : playground neuf (foundations / atoms / molecules / patterns / vibes)
+- [ ] Phase 6 : refonte module par module (Coquille → Fiche → Drawer → Calendar → Home → Admin libraries → Builder → Tools → Listings → Auxiliaires)
+- [ ] Phase 7 : cleanup couleurs hard-codées + ESLint rule + doctrine consolidée
 
 ## Scope guard
 

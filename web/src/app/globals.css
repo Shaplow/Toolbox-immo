@@ -89,6 +89,87 @@ html {
   --gradient-hero: linear-gradient(135deg, rgba(255, 90, 31, 0.06) 0%, rgba(255, 122, 60, 0.02) 100%);
   --gradient-subtle: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
   --texture-grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='1'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.18 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+
+  /* ════════════════════════════════════════════════════════════════════════
+     LIQUID GLASS — extension v2 (matière de surface opt-in)
+     ════════════════════════════════════════════════════════════════════════
+
+     Doctrine : extension, pas remplacement. L'ossature structurelle Linear
+     (density, mono CTA, accents sémantiques success/danger/info) reste la
+     base. Glass + Coastal Studio s'ajoutent comme matière opt-in via
+     variants (Phase 2+) — aucune surface existante n'est altérée tant
+     qu'on ne migre pas son call site.
+
+     Règle perf : limiter `backdrop-filter` aux surfaces flottantes (popovers,
+     modals, headers sticky, drawers). Pas en grille dense (Safari iPad).
+
+     Règle contraste : si fond variable (image, vidéo), empiler scrim opaque
+     sous le glass pour garantir WCAG. */
+
+  /* ── Surfaces glass (white-based, préfigure dark) ──────────────────── */
+  --surface-glass-strong: rgba(255, 255, 255, 0.85);
+  --surface-glass-medium: rgba(255, 255, 255, 0.65);
+  --surface-glass-soft:   rgba(255, 255, 255, 0.45);
+  --surface-glass-faint:  rgba(255, 255, 255, 0.25);
+
+  /* ── Backdrop filters ──────────────────────────────────────────────── */
+  --backdrop-blur-xs: blur(8px);
+  --backdrop-blur-sm: blur(12px);
+  --backdrop-blur-md: blur(20px);
+  --backdrop-blur-lg: blur(32px);
+  --backdrop-saturate: saturate(140%);
+
+  /* ── Scrims (modal/drawer backdrops) ───────────────────────────────── */
+  --scrim-light: rgba(255, 255, 255, 0.65);
+  --scrim-dark:  rgba(10, 10, 10, 0.45);
+  --scrim-deep:  rgba(10, 10, 10, 0.65);
+
+  /* ── Shadows verrerie (diffuses + ring intérieur) ──────────────────── */
+  --shadow-glass-sm: 0 1px 0 rgba(255, 255, 255, 0.4) inset, 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.04);
+  --shadow-glass-md: 0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 2px 8px rgba(15, 23, 42, 0.06), 0 12px 32px rgba(15, 23, 42, 0.08);
+  --shadow-glass-lg: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 8px 24px rgba(15, 23, 42, 0.08), 0 24px 64px rgba(15, 23, 42, 0.12);
+  --shadow-glass-popover: 0 0 0 1px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.08), 0 32px 64px rgba(15, 23, 42, 0.12);
+
+  /* ── Ring inset (le détail signature verre) ────────────────────────── */
+  --ring-glass-inset:  inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --ring-glass-edge:   inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+  --ring-glass-bottom: inset 0 -1px 0 rgba(15, 23, 42, 0.04);
+
+  /* ── Palette Coastal Studio — pastels orchestrés ───────────────────── */
+  /* Peach — chaleur, statuts "à faire". */
+  --color-peach-50:  #fff5ed;
+  --color-peach-100: #ffe6d0;
+  --color-peach-200: #ffd0a8;
+  --color-peach-500: #f59e6b;
+  --color-peach-700: #b9560a;
+
+  /* Sage — calme, statuts "ok" doux. */
+  --color-sage-50:  #f1f7f2;
+  --color-sage-100: #dceee0;
+  --color-sage-200: #b9dcc1;
+  --color-sage-500: #6fa280;
+  --color-sage-700: #2f5f3f;
+
+  /* Sky — info, planning, programmé. */
+  --color-sky-50:  #eff6fb;
+  --color-sky-100: #d4e8f3;
+  --color-sky-200: #a9d1e6;
+  --color-sky-500: #4d96bf;
+  --color-sky-700: #1f5d7d;
+
+  /* Rose-dust — accent rare, signature. */
+  --color-rose-50:  #fdf2f4;
+  --color-rose-100: #f7dde2;
+  --color-rose-200: #ecbac4;
+  --color-rose-500: #c97185;
+  --color-rose-700: #863346;
+
+  /* ── Gradients signature (washes, JAMAIS en CTA) ───────────────────── */
+  --gradient-peach-soft: linear-gradient(135deg, rgba(255, 230, 208, 0.45), rgba(255, 245, 237, 0.15));
+  --gradient-sage-soft:  linear-gradient(135deg, rgba(220, 238, 224, 0.45), rgba(241, 247, 242, 0.15));
+  --gradient-sky-soft:   linear-gradient(135deg, rgba(212, 232, 243, 0.45), rgba(239, 246, 251, 0.15));
+  --gradient-frosted:    linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.45));
+  --gradient-aurora:     linear-gradient(135deg, rgba(255, 230, 208, 0.35), rgba(220, 238, 224, 0.25) 50%, rgba(212, 232, 243, 0.35));
 }
 
 body {
@@ -124,4 +205,28 @@ textarea::placeholder {
 .focus-ring-danger:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus-ring-danger);
+}
+
+/* ── Liquid Glass — surfaces utilitaires ─────────────────────────────────
+   Classes pour appliquer la matière verre sur n'importe quelle surface.
+   Préférer ces classes à du `bg-white/80 backdrop-blur-md` ad hoc — c'est
+   centralisé via tokens et conserve la signature ring intérieur.
+
+   Usage :
+   - `.surface-glass`       — popovers, modals, headers sticky (strong + ring inset)
+   - `.surface-glass-soft`  — sections internes, panneaux secondaires (medium + edge)
+
+   Composer avec `bg-peach-50/40`, `bg-sage-50/40` etc. pour la version tinted. */
+.surface-glass {
+  background: var(--surface-glass-strong);
+  backdrop-filter: var(--backdrop-blur-md) var(--backdrop-saturate);
+  -webkit-backdrop-filter: var(--backdrop-blur-md) var(--backdrop-saturate);
+  box-shadow: var(--shadow-glass-md), var(--ring-glass-inset);
+}
+
+.surface-glass-soft {
+  background: var(--surface-glass-medium);
+  backdrop-filter: var(--backdrop-blur-sm) var(--backdrop-saturate);
+  -webkit-backdrop-filter: var(--backdrop-blur-sm) var(--backdrop-saturate);
+  box-shadow: var(--shadow-glass-sm), var(--ring-glass-edge);
 }
