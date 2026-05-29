@@ -190,6 +190,16 @@ export const NAV: NavSection[] = [
       { label: "Admin table", href: "/playground/patterns#admin-table" },
     ],
   },
+  {
+    label: "Phase 5 · Vibes",
+    basePath: "/playground/vibes",
+    items: [
+      { label: "Hero landing", href: "/playground/vibes#hero-landing" },
+      { label: "Control center", href: "/playground/vibes#control-center" },
+      { label: "Gallery", href: "/playground/vibes#gallery" },
+      { label: "Empty signature", href: "/playground/vibes#empty-hero-signature" },
+    ],
+  },
 ];
 
 /** Tous les ids ancrables d'une page donnée. */
