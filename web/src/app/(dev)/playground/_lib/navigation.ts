@@ -2,6 +2,10 @@
  * Source de vérité unique de la nav playground.
  * - Les `items` peuvent être un lien externe (autre page) ou une ancre (#id) de la page courante.
  * - Le scrollspy utilise les ids des items pour déterminer la section active.
+ *
+ * Phase 0 (cleanup) : NAV vidé pendant la refonte Liquid Glass.
+ * Sera reconstruite en Phase 5 avec les sections foundations / atoms /
+ * molecules / patterns / vibes.
  */
 
 export type NavItem = {
@@ -25,86 +29,6 @@ export const NAV: NavSection[] = [
     label: "Playground",
     basePath: "/playground",
     items: [{ label: "Overview", href: "/playground" }],
-  },
-  {
-    label: "Foundations",
-    basePath: "/playground/tokens",
-    items: [
-      { label: "Doctrine", href: "/playground/tokens#doctrine" },
-      { label: "Colors", href: "/playground/tokens#colors" },
-      { label: "Brand", href: "/playground/tokens#brand" },
-      { label: "Accents", href: "/playground/tokens#accents" },
-      { label: "Typography", href: "/playground/tokens#typography" },
-      { label: "Spacing", href: "/playground/tokens#spacing" },
-      { label: "Radius", href: "/playground/tokens#radius" },
-      { label: "Elevation", href: "/playground/tokens#elevation" },
-      { label: "Motion", href: "/playground/tokens#motion" },
-      { label: "States", href: "/playground/tokens#states" },
-    ],
-  },
-  {
-    label: "Components / Actions",
-    basePath: "/playground/primitives",
-    items: [
-      { label: "Button", href: "/playground/primitives#button" },
-      { label: "ButtonIcon", href: "/playground/primitives#button-icon" },
-      { label: "DropdownMenu", href: "/playground/primitives#dropdown-menu" },
-    ],
-  },
-  {
-    label: "Components / Forms",
-    basePath: "/playground/primitives",
-    items: [
-      { label: "Input", href: "/playground/primitives#input" },
-      { label: "Textarea", href: "/playground/primitives#textarea" },
-      { label: "Select", href: "/playground/primitives#select" },
-      { label: "FormField", href: "/playground/primitives#form-field" },
-      { label: "Switch", href: "/playground/primitives#switch" },
-      { label: "Slider", href: "/playground/primitives#slider" },
-    ],
-  },
-  {
-    label: "Components / Feedback",
-    basePath: "/playground/primitives",
-    items: [
-      { label: "Toast", href: "/playground/primitives#toast" },
-      { label: "EmptyState", href: "/playground/primitives#empty-state" },
-      { label: "Skeleton", href: "/playground/primitives#skeleton" },
-      { label: "Tooltip", href: "/playground/primitives#tooltip" },
-    ],
-  },
-  {
-    label: "Components / Overlays",
-    basePath: "/playground/primitives",
-    items: [
-      { label: "ConfirmDialog", href: "/playground/primitives#confirm-dialog" },
-      { label: "DeleteButton", href: "/playground/primitives#delete-button" },
-    ],
-  },
-  {
-    label: "Components / Data",
-    basePath: "/playground/primitives",
-    items: [
-      { label: "Badge", href: "/playground/primitives#badge" },
-      { label: "Card", href: "/playground/primitives#card" },
-      { label: "Tabs", href: "/playground/primitives#tabs" },
-      { label: "Kbd", href: "/playground/primitives#kbd" },
-    ],
-  },
-  {
-    label: "Components / Signature",
-    basePath: "/playground/primitives",
-    items: [{ label: "Signature discrète", href: "/playground/primitives#signature" }],
-  },
-  {
-    label: "Marketing",
-    basePath: "/playground/marketing",
-    items: [
-      { label: "Typography", href: "/playground/marketing#typography" },
-      { label: "Hero pattern", href: "/playground/marketing#hero" },
-      { label: "Pull quote", href: "/playground/marketing#pull-quote" },
-      { label: "Décors", href: "/playground/marketing#decorations" },
-    ],
   },
 ];
 
