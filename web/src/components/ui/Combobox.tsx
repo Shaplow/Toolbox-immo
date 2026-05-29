@@ -1,0 +1,202 @@
+"use client";
+
+/**
+ * Combobox — Select avec recherche fuzzy basée sur cmdk.
+ *
+ * À utiliser à la place de Select natif quand :
+ * - La liste d'options est longue (> 10)
+ * - On veut une recherche par mot-clé
+ * - On veut autoriser une valeur custom (allowCustom)
+ *
+ * Doctrine Liquid Glass v2 :
+ * - Trigger button : même look que Input/Select default (glass tinté sky).
+ * - Popover : surface-glass-strong + shadow-glass-popover + ring inset.
+ * - Items : hover white/70 + ring inset spéculaire (cohérent DropdownMenu).
+ * - cmdk fait le matching fuzzy automatiquement.
+ */
+
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Command } from "cmdk";
+import { Check, ChevronDown, Loader2, Search } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
+interface ComboboxOption {
+  value: string;
+  label: string;
+  /** Mots-clés additionnels pour le fuzzy match. */
+  keywords?: string[];
+  /** Group label — items du même group sont rassemblés visuellement. */
+  group?: string;
+  /** Icône optionnelle à gauche de l'item dans la liste. */
+  icon?: LucideIcon;
+  disabled?: boolean;
+}
+
+interface ComboboxProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: ComboboxOption[] | ReadonlyArray<ComboboxOption>;
+  placeholder?: string;
+  /** Message quand aucun résultat. */
+  emptyMessage?: ReactNode;
+  /** Autorise une valeur tapée non présente dans les options. */
+  allowCustom?: boolean;
+  /** Affiche un spinner dans le trigger. */
+  loading?: boolean;
+  /** Désactive entièrement le combobox. */
+  disabled?: boolean;
+  className?: string;
+}
+
+export function Combobox({
+  value,
+  onChange,
+  options,
+  placeholder = "Sélectionner…",
+  emptyMessage = "Aucun résultat.",
+  allowCustom = false,
+  loading = false,
+  disabled = false,
+  className,
+}: ComboboxProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // Close on outside click / ESC.
+  useEffect(() => {
+    if (!open) return;
+    function onClickOutside(e: MouseEvent) {
+      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("mousedown", onClickOutside);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, [open]);
+
+  // Group options par `group`.
+  const groups = (() => {
+    const map = new Map<string, ComboboxOption[]>();
+    for (const opt of options) {
+      const key = opt.group ?? "";
+      const arr = map.get(key) ?? [];
+      arr.push(opt);
+      map.set(key, arr);
+    }
+    return Array.from(map.entries());
+  })();
+
+  const selectedLabel = options.find((o) => o.value === value)?.label ?? (allowCustom ? value : "");
+
+  return (
+    <div ref={containerRef} className={["relative w-full", className ?? ""].filter(Boolean).join(" ")}>
+      <button
+        ref={triggerRef}
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        className={[
+          "group/cmb flex items-center gap-2 w-full h-8 rounded-md px-2.5 text-[13px] text-left transition-colors",
+          "bg-sky-50/40 backdrop-blur-[10px] backdrop-saturate-150",
+          "shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.08)]",
+          "hover:bg-sky-50/55 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.12)]",
+          open ? "bg-sky-50/65 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.45),0_0_0_3px_rgba(169,209,230,0.4)]" : "",
+          "focus-ring disabled:opacity-50 disabled:cursor-not-allowed",
+        ].join(" ")}
+      >
+        <span className={selectedLabel ? "flex-1 text-gray-950 truncate" : "flex-1 text-gray-400 truncate"}>
+          {selectedLabel || placeholder}
+        </span>
+        {loading ? (
+          <Loader2 size={14} className="shrink-0 text-gray-400 animate-spin" />
+        ) : (
+          <ChevronDown
+            size={14}
+            className={`shrink-0 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
+          />
+        )}
+      </button>
+
+      {open && (
+        <div
+          className={[
+            "absolute top-full left-0 right-0 mt-1.5 z-50 rounded-md overflow-hidden",
+            "bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150",
+            "shadow-[var(--shadow-glass-popover),var(--ring-glass-inset)]",
+          ].join(" ")}
+        >
+          <Command shouldFilter={true}>
+            <div className="flex items-center gap-2 border-b border-white/30 px-2.5 py-2">
+              <Search size={14} className="shrink-0 text-gray-400" />
+              <Command.Input
+                value={search}
+                onValueChange={setSearch}
+                placeholder="Rechercher…"
+                className="flex-1 bg-transparent text-[13px] text-gray-950 placeholder:text-gray-400 outline-none"
+              />
+            </div>
+            <Command.List className="max-h-60 overflow-y-auto py-1">
+              <Command.Empty className="px-3 py-3 text-[12px] text-gray-500">
+                {emptyMessage}
+              </Command.Empty>
+              {allowCustom && search && !options.some((o) => o.value === search) && (
+                <Command.Item
+                  value={`__custom_${search}`}
+                  onSelect={() => {
+                    onChange(search);
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                  className="cursor-pointer px-3 py-1.5 text-[13px] text-gray-700 data-[selected=true]:bg-white/70 data-[selected=true]:backdrop-blur-[8px] data-[selected=true]:text-gray-950 data-[selected=true]:shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+                >
+                  <span>Utiliser « {search} »</span>
+                </Command.Item>
+              )}
+              {groups.map(([groupName, items]) => (
+                <Command.Group
+                  key={groupName || "_default"}
+                  heading={groupName || undefined}
+                  className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-widest [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-gray-500"
+                >
+                  {items.map((opt) => {
+                    const isSelected = opt.value === value;
+                    const Icon = opt.icon;
+                    return (
+                      <Command.Item
+                        key={opt.value}
+                        value={opt.value}
+                        keywords={[opt.label, ...(opt.keywords ?? [])]}
+                        disabled={opt.disabled}
+                        onSelect={() => {
+                          if (opt.disabled) return;
+                          onChange(opt.value);
+                          setOpen(false);
+                          setSearch("");
+                        }}
+                        className="cursor-pointer inline-flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-gray-700 transition-colors data-[selected=true]:bg-white/70 data-[selected=true]:backdrop-blur-[8px] data-[selected=true]:text-gray-950 data-[selected=true]:shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] data-[disabled=true]:opacity-50 data-[disabled=true]:cursor-not-allowed"
+                      >
+                        {Icon && <Icon size={14} className="shrink-0 text-gray-400" />}
+                        <span className="flex-1">{opt.label}</span>
+                        {isSelected && <Check size={14} className="shrink-0 text-gray-700" />}
+                      </Command.Item>
+                    );
+                  })}
+                </Command.Group>
+              ))}
+            </Command.List>
+          </Command>
+        </div>
+      )}
+    </div>
+  );
+}

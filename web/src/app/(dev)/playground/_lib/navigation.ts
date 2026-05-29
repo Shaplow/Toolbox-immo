@@ -107,6 +107,17 @@ export const NAV: NavSection[] = [
       { label: "Progress", href: "/playground/atoms-new#progress" },
     ],
   },
+  {
+    label: "Phase 3 · Inputs avancés",
+    basePath: "/playground/atoms-new",
+    items: [
+      { label: "Chip", href: "/playground/atoms-new#chip" },
+      { label: "Breadcrumb", href: "/playground/atoms-new#breadcrumb" },
+      { label: "Stepper", href: "/playground/atoms-new#stepper" },
+      { label: "Combobox", href: "/playground/atoms-new#combobox" },
+      { label: "CommandPalette", href: "/playground/atoms-new#command-palette" },
+    ],
+  },
 ];
 
 /** Tous les ids ancrables d'une page donnée. */
