@@ -682,7 +682,7 @@ function TimePickerShowcase() {
         <div className="w-44"><TimePicker value={time2} onChange={setTime2} /></div>
       </Row>
       <Row label="Step 15 min">
-        <div className="w-44"><TimePicker value={time2} onChange={setTime2} step={15 * 60} /></div>
+        <div className="w-44"><TimePicker value={time2} onChange={setTime2} minuteStep={15} /></div>
       </Row>
       <Row label="Disabled">
         <div className="w-44"><TimePicker value="09:00" onChange={() => {}} disabled /></div>
