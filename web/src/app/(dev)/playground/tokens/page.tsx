@@ -1,11 +1,13 @@
 /**
- * Visualisation des tokens du design system (Phase 1).
+ * Visualisation des tokens UI du design system.
  *
- * Sert de référence visuelle pour valider la DA avant migration des
- * surfaces. Synchronisé avec `web/src/app/globals.css` et la doc
- * `web/docs/design-system.md`.
+ * Surface SaaS d'équipe — tout ce qui apparaît ici est utilisable dans
+ * l'app courante (dashboards, panneaux, formulaires). Pour les tokens
+ * marketing (serif, hand, gradients, grain, décors), voir
+ * `/playground/marketing`.
+ *
+ * Synchronisé avec `web/src/app/globals.css` et `web/docs/design-system.md`.
  */
-import { HandDrawn } from "@/components/ui/decor/HandDrawn";
 
 const GRAY_SCALE = [
   { name: "white",    hex: "#ffffff", usage: "Fond principal" },
@@ -18,7 +20,7 @@ const GRAY_SCALE = [
   { name: "gray-600", hex: "#4b5563", usage: "Texte secondaire" },
   { name: "gray-700", hex: "#374151", usage: "Labels forts" },
   { name: "gray-900", hex: "#111827", usage: "Texte primaire alt" },
-  { name: "gray-950", hex: "#0a0a0a", usage: "Texte primaire / titres" },
+  { name: "gray-950", hex: "#0a0a0a", usage: "Texte primaire, CTA primary" },
 ];
 
 const ACCENTS = [
@@ -55,27 +57,28 @@ const ACCENTS = [
 ] as const;
 
 const TYPE_SCALE = [
-  { token: "text-xs",   sample: "Métadonnées / labels", className: "text-xs" },
-  { token: "text-sm",   sample: "Corps secondaire", className: "text-sm" },
-  { token: "text-base", sample: "Corps principal — paragraphes", className: "text-base" },
-  { token: "text-lg",   sample: "Sous-titres", className: "text-lg" },
-  { token: "text-xl",   sample: "Titres de section", className: "text-xl" },
-  { token: "text-2xl",  sample: "Titres de page", className: "text-2xl font-semibold tracking-tight" },
-  { token: "text-3xl",  sample: "Hero", className: "text-3xl font-semibold tracking-tight" },
+  { token: "text-xs",   sample: "Métadonnées / labels" },
+  { token: "text-sm",   sample: "Corps secondaire" },
+  { token: "text-base", sample: "Corps principal — paragraphes" },
+  { token: "text-lg",   sample: "Sous-titres" },
+  { token: "text-xl",   sample: "Titres de section" },
+  { token: "text-2xl",  sample: "Titres de page" },
+  { token: "text-3xl",  sample: "Hero" },
 ];
 
 const SPACING = [1, 2, 3, 4, 6, 8, 10, 12, 16, 20, 24];
 
 const SHADOWS = [
-  { token: "shadow-overlay", cls: "shadow-overlay", usage: "Dropdowns, popovers, tooltips" },
-  { token: "shadow-modal",   cls: "shadow-modal",   usage: "Modals, dialogs" },
+  { token: "shadow-overlay",       cls: "shadow-overlay",       usage: "Dropdowns, popovers, tooltips" },
+  { token: "shadow-modal",         cls: "shadow-modal",         usage: "Modals, dialogs" },
+  { token: "shadow-card-elevated", cls: "shadow-card-elevated", usage: "Cards interactives au hover" },
 ];
 
 const RADII = [
   { token: "rounded-sm", cls: "rounded-sm", value: "4px",  usage: "Inputs serrés, kbd" },
-  { token: "rounded-md", cls: "rounded-md", value: "6px",  usage: "Boutons, inputs" },
+  { token: "rounded-md", cls: "rounded-md", value: "6px",  usage: "Boutons, inputs, badges" },
   { token: "rounded-lg", cls: "rounded-lg", value: "8px",  usage: "Cards" },
-  { token: "rounded-xl", cls: "rounded-xl", value: "10px", usage: "Modals" },
+  { token: "rounded-xl", cls: "rounded-xl", value: "10px", usage: "Cards élevées" },
 ];
 
 const DURATIONS = [
@@ -88,31 +91,41 @@ export default function TokensPage() {
   return (
     <div className="space-y-12">
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Tokens</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Tokens UI</h1>
         <p className="max-w-prose text-sm text-gray-500">
-          Source de vérité visuelle du design system. Toute valeur utilisée
-          dans les composants doit venir d&apos;ici. Si tu hésites entre
-          plusieurs nuances pour un usage, c&apos;est probablement que le
-          token sémantique manque — ajoute-le ici avant de l&apos;utiliser.
+          Surface SaaS d&apos;équipe — tout ici est utilisable dans l&apos;app
+          courante (dashboards, panneaux, formulaires). Pour les tokens
+          marketing (serif éditoriale, signature hand, gradients, grain,
+          décors), voir <a href="/playground/marketing" className="underline hover:text-gray-950">/playground/marketing</a>.
         </p>
       </header>
 
+      {/* Doctrine résumée */}
+      <div className="rounded-lg border border-gray-200 bg-gray-50/40 p-5 space-y-2">
+        <p className="text-[10px] uppercase tracking-widest text-gray-400 font-medium">Doctrine</p>
+        <ol className="space-y-1.5 text-[13px] text-gray-700 leading-relaxed list-decimal pl-4">
+          <li>Geist Sans + monochrome + density Linear + icon-first.</li>
+          <li>Primary CTA = <code className="font-mono text-gray-950">bg-gray-950</code> flat. Aucun gradient, aucune couleur, aucun glow.</li>
+          <li>Brand orange #FF5A1F apparaît à 2 endroits dans toute l&apos;app : logo + dot indicateur dans la nav.</li>
+          <li>Accents sémantiques (success / danger / info) = statuts uniquement.</li>
+          <li>L&apos;effet &laquo; wahou &raquo; vient de la rigueur, pas de la couleur.</li>
+        </ol>
+      </div>
+
       {/* ── Typo ───────────────────────────────────────────────────────────── */}
       <section className="space-y-4">
-        <SectionHeading title="Typographie" subtitle="Geist Sans (texte) + Geist Mono (raccourcis, IDs)" />
+        <SectionHeading title="Typographie" subtitle="Geist Sans (texte) + Geist Mono (raccourcis, IDs, valeurs hex)." />
         <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-6">
           {TYPE_SCALE.map((row) => (
             <div key={row.token} className="flex items-baseline gap-4">
               <code className="w-24 shrink-0 text-[11px] text-gray-400 font-mono">{row.token}</code>
-              <span className={row.className}>{row.sample}</span>
+              <span className={`${row.token} ${["text-2xl", "text-3xl"].includes(row.token) ? "font-semibold tracking-tight" : ""}`}>{row.sample}</span>
             </div>
           ))}
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm">
           <p className="font-mono text-gray-500 mb-2 text-[11px]">font-mono</p>
-          <p className="font-mono">
-            const handle = &quot;@lola_caupert&quot;;
-          </p>
+          <p className="font-mono">const handle = &quot;@lola_caupert&quot;;</p>
         </div>
       </section>
 
@@ -120,7 +133,7 @@ export default function TokensPage() {
       <section className="space-y-4">
         <SectionHeading
           title="Palette monochrome"
-          subtitle="L'ossature visuelle de l'app. Pas d'accent ici — réservés à la palette sémantique."
+          subtitle="L'ossature visuelle de l'app. 95% de l'UI est ici."
         />
         <div className="overflow-hidden rounded-lg border border-gray-200">
           {GRAY_SCALE.map((row, i) => {
@@ -144,7 +157,7 @@ export default function TokensPage() {
       <section className="space-y-4">
         <SectionHeading
           title="Accents sémantiques"
-          subtitle="Trois accents seulement. Tout signal coloré doit tomber dans une de ces 3 familles."
+          subtitle="Statuts uniquement. Jamais des CTA, jamais de la décoration."
         />
         <div className="grid gap-4 sm:grid-cols-3">
           {ACCENTS.map((accent) => (
@@ -169,12 +182,146 @@ export default function TokensPage() {
         </div>
       </section>
 
-      {/* ── Spacing ────────────────────────────────────────────────────────── */}
+      {/* ── Brand chirurgical ──────────────────────────────────────────────── */}
       <section className="space-y-4">
         <SectionHeading
-          title="Espacements"
-          subtitle="Échelle 4px (Tailwind par défaut). Privilégier 4/6/8/10/12/16 pour cohérence."
+          title="Brand"
+          subtitle="Orange signature. Réservé au logo Toolbox et 1 dot indicateur dans la nav. Toute autre apparition est une violation de doctrine."
         />
+        <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <div className="grid grid-cols-2 gap-1 sm:grid-cols-6">
+            {(["50", "100", "500", "600", "700", "900"] as const).map((stop) => (
+              <div
+                key={stop}
+                className={`rounded-md px-3 py-3 text-[11px] font-mono bg-brand-${stop} ${["500", "600", "700", "900"].includes(stop) ? "text-white" : "text-gray-700"}`}
+              >
+                {stop}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Exemples d'usage légitimes — strictement 2 */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-5">
+          <p className="text-[10px] uppercase tracking-widest text-gray-400 font-medium">
+            Usages légitimes (les seuls)
+          </p>
+
+          {/* Logo */}
+          <div className="flex items-center gap-3 pb-4 border-b border-gray-100">
+            <span className="h-8 w-8 rounded-md bg-brand-600 inline-flex items-center justify-center text-white text-[13px] font-bold">T</span>
+            <div className="space-y-0">
+              <p className="font-hand text-2xl text-gray-950 leading-none">Toolbox</p>
+              <p className="text-[10px] text-gray-400 mt-1">Logo signature · 1 endroit dans l&apos;app (carré brand + nom hand)</p>
+            </div>
+          </div>
+
+          {/* Dot indicateur nav */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-gray-50">
+              <span className="relative inline-flex h-2 w-2">
+                <span className="absolute inset-0 rounded-full bg-brand-600" />
+                <span className="absolute inset-0 rounded-full bg-brand-600 animate-ping opacity-50" />
+              </span>
+              <span className="text-[13px] font-medium text-gray-950">Notifications</span>
+              <span className="text-[10px] text-gray-400">3</span>
+            </div>
+            <p className="text-[10px] text-gray-400">Dot indicateur · 1 endroit dans l&apos;app (nav)</p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── États UI ──────────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading
+          title="États UI"
+          subtitle="Patterns uniformisés à appliquer partout."
+        />
+
+        {/* Focus ring */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+          <p className="text-[11px] uppercase tracking-widest text-gray-400">Focus ring · classe utility</p>
+          <div className="flex flex-wrap items-center gap-4">
+            <button className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-[13px] font-medium text-gray-800 focus-ring transition-colors hover:bg-gray-50">
+              Tab pour focus
+            </button>
+            <input
+              type="text"
+              placeholder="Tab pour focus"
+              className="rounded-md border border-gray-300 px-2.5 py-1.5 text-[13px] focus-ring"
+            />
+            <input
+              type="text"
+              placeholder="Erreur"
+              className="rounded-md border border-danger-600 px-2.5 py-1.5 text-[13px] focus-ring-danger"
+            />
+          </div>
+          <p className="text-[11px] text-gray-500 leading-relaxed">
+            <code className="font-mono">focus-ring</code> = mono dark partout.
+            <code className="font-mono ml-1">focus-ring-danger</code> sur les inputs en erreur.
+          </p>
+        </div>
+
+        {/* Sélection mono */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+          <p className="text-[11px] uppercase tracking-widest text-gray-400">Sélection · état actif</p>
+          <p className="text-[12px] text-gray-600 leading-relaxed max-w-prose">
+            Toujours <strong className="text-gray-950">mono dark</strong> (gray-950). Jamais coloré.
+          </p>
+          <div className="rounded-md border border-gray-200 bg-gray-50/40 p-2 max-w-sm space-y-1">
+            {["Calques", "Formulaire", "Séquence", "Musique"].map((item, i) => (
+              <div
+                key={item}
+                className={`rounded-md px-3 py-1.5 text-[13px] flex items-center justify-between transition-colors ${
+                  i === 2 ? "bg-gray-950 text-white" : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                <span>{item}</span>
+                {i === 2 && <span className="text-[10px] uppercase tracking-widest opacity-60">Sélectionné</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Disabled / loading */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+          <p className="text-[11px] uppercase tracking-widest text-gray-400">Désactivé · chargement</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              disabled
+              className="rounded-md bg-gray-950 px-3 py-1.5 text-[13px] font-medium text-white opacity-50 cursor-not-allowed"
+            >
+              Disabled
+            </button>
+            <button className="rounded-md bg-gray-950 px-3 py-1.5 text-[13px] font-medium text-white opacity-70 cursor-wait inline-flex items-center gap-2">
+              <span className="h-3 w-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+              Chargement
+            </button>
+          </div>
+        </div>
+
+        {/* Hover lift */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+          <p className="text-[11px] uppercase tracking-widest text-gray-400">Hover lift (cards interactives)</p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {["Module A", "Module B", "Module C"].map((m) => (
+              <div
+                key={m}
+                className="cursor-pointer rounded-lg border border-gray-200 bg-white p-4 transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-elevated)] hover:border-gray-300"
+              >
+                <p className="text-[13px] font-medium text-gray-950">{m}</p>
+                <p className="mt-1 text-[11px] text-gray-500">
+                  Subtil. Pas de couleur, juste l&apos;élévation.
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Spacing ────────────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <SectionHeading title="Espacements" subtitle="Échelle 4px Tailwind. Privilégier 4/6/8/10/12/16 pour cohérence." />
         <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-2">
           {SPACING.map((s) => (
             <div key={s} className="flex items-center gap-3 text-[11px]">
@@ -188,7 +335,7 @@ export default function TokensPage() {
 
       {/* ── Radius ─────────────────────────────────────────────────────────── */}
       <section className="space-y-4">
-        <SectionHeading title="Border-radius" subtitle="Sharp, peu de rondeur — un look précis et net." />
+        <SectionHeading title="Border-radius" subtitle="Sharp, précis." />
         <div className="grid gap-3 sm:grid-cols-4">
           {RADII.map((r) => (
             <div key={r.token} className="space-y-2">
@@ -204,8 +351,8 @@ export default function TokensPage() {
 
       {/* ── Shadows ────────────────────────────────────────────────────────── */}
       <section className="space-y-4">
-        <SectionHeading title="Ombres" subtitle="Élévation discrète — overlays uniquement, jamais sur du contenu inline." />
-        <div className="grid gap-4 sm:grid-cols-2">
+        <SectionHeading title="Ombres" subtitle="Élévation sobre. Overlays uniquement." />
+        <div className="grid gap-4 sm:grid-cols-3">
           {SHADOWS.map((s) => (
             <div key={s.token} className="space-y-2">
               <div className={`h-24 rounded-lg border border-gray-200 bg-white ${s.cls}`} />
@@ -222,7 +369,7 @@ export default function TokensPage() {
       <section className="space-y-4">
         <SectionHeading
           title="Animations"
-          subtitle="Easing unique : cubic-bezier(0.16, 1, 0.3, 1). Opacity/scale > slide. Jamais de bounce."
+          subtitle="Easing unique cubic-bezier(0.16, 1, 0.3, 1). Opacity/scale > slide. Jamais de bounce."
         />
         <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
@@ -235,508 +382,13 @@ export default function TokensPage() {
             ))}
           </div>
           <div className="border-t border-gray-200 pt-4 space-y-2">
-            <p className="text-[11px] text-gray-500">Survol la pastille pour voir l&apos;easing en action :</p>
+            <p className="text-[11px] text-gray-500">Survol la pastille pour voir l&apos;easing :</p>
             <div className="group inline-block">
               <div className="h-10 w-10 rounded-md bg-gray-900 transition-transform duration-200 group-hover:scale-110 group-hover:rounded-xl" />
             </div>
           </div>
         </div>
       </section>
-
-      {/* ── States UI ──────────────────────────────────────────────────── */}
-      <section className="space-y-4">
-        <SectionHeading
-          title="États UI"
-          subtitle="Patterns à appliquer uniformément dans tous les composants. La cohérence des états (focus, sélection, disabled, loading, erreur) est ce qui distingue un design system tenu d'un patchwork."
-        />
-
-        {/* Focus ring */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
-          <p className="text-[11px] uppercase tracking-widest text-gray-400">
-            Focus ring · classe utility <code className="font-mono text-gray-600">focus-ring</code>
-          </p>
-          <div className="flex flex-wrap items-center gap-4">
-            <button className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 focus-ring transition-colors hover:bg-gray-50">
-              Tab pour me focus
-            </button>
-            <input
-              type="text"
-              placeholder="Tab pour focus"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm focus-ring"
-            />
-            <input
-              type="text"
-              placeholder="Erreur (danger)"
-              className="rounded-md border border-danger-600 px-3 py-2 text-sm focus-ring-danger"
-            />
-          </div>
-          <p className="text-[11px] text-gray-500 leading-relaxed">
-            La classe globale <code className="font-mono">focus-ring</code> applique
-            l&apos;anneau brand sur <code className="font-mono">:focus-visible</code>.
-            Pour les inputs en erreur, utiliser <code className="font-mono">focus-ring-danger</code>.
-          </p>
-        </div>
-
-        {/* Sélection mono — IMPORTANT : brand n'est PAS pour la sélection UI */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
-          <p className="text-[11px] uppercase tracking-widest text-gray-400">
-            Sélection · état actif
-          </p>
-          <p className="text-[12px] text-gray-600 leading-relaxed max-w-prose">
-            <strong className="text-gray-950">Le brand n&apos;est PAS la couleur de sélection.</strong>
-            {" "}Une nav, une liste, un onglet sélectionné se rend en{" "}
-            <strong className="text-gray-950">mono dark</strong> (gray-950 ou
-            gray-100). Sinon l&apos;app vire orange-pop. Reserve le brand aux
-            CTA primary et highlights marketing.
-          </p>
-          {/* Sample nav list */}
-          <div className="rounded-md border border-gray-200 bg-gray-50/40 p-2 max-w-sm space-y-1">
-            {["Calques", "Formulaire", "Séquence", "Musique"].map((item, i) => (
-              <div
-                key={item}
-                className={`rounded-md px-3 py-1.5 text-sm flex items-center justify-between transition-colors ${
-                  i === 2
-                    ? "bg-gray-950 text-white"
-                    : "text-gray-700 hover:bg-gray-100"
-                }`}
-              >
-                <span>{item}</span>
-                {i === 2 && <span className="text-[10px] uppercase tracking-widest opacity-60">Sélectionné</span>}
-              </div>
-            ))}
-          </div>
-          {/* Sample tab */}
-          <div className="flex items-center border-b border-gray-200 max-w-md">
-            {["Aperçu", "Versions", "Activité"].map((tab, i) => (
-              <button
-                key={tab}
-                className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-                  i === 0
-                    ? "border-gray-950 text-gray-950"
-                    : "border-transparent text-gray-500 hover:text-gray-800"
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Disabled / Loading */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
-          <p className="text-[11px] uppercase tracking-widest text-gray-400">
-            Désactivé · chargement
-          </p>
-          <div className="flex flex-wrap items-center gap-4">
-            <button
-              disabled
-              className="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white opacity-50 cursor-not-allowed"
-            >
-              Disabled
-            </button>
-            <button className="rounded-md bg-gray-950 px-4 py-2 text-sm font-medium text-white opacity-70 cursor-wait inline-flex items-center gap-2">
-              <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-              Chargement
-            </button>
-            <input
-              type="text"
-              disabled
-              placeholder="Input désactivé"
-              className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-400 cursor-not-allowed"
-            />
-          </div>
-          <p className="text-[11px] text-gray-500 leading-relaxed">
-            Disabled : <code className="font-mono">opacity-50 cursor-not-allowed</code>.
-            Loading : spinner inline + <code className="font-mono">opacity-70</code>.
-          </p>
-        </div>
-
-        {/* Hover lift */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
-          <p className="text-[11px] uppercase tracking-widest text-gray-400">
-            Hover lift (cards interactives)
-          </p>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {["Module A", "Module B", "Module C"].map((m) => (
-              <div
-                key={m}
-                className="cursor-pointer rounded-lg border border-gray-200 bg-white p-4 transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-elevated)] hover:border-gray-300"
-              >
-                <p className="text-sm font-medium text-gray-950">{m}</p>
-                <p className="mt-1 text-[11px] text-gray-500">
-                  Subtil. Pas de couleur, juste l&apos;élévation.
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Brand & marketing ──────────────────────────────────────────── */}
-      <section className="space-y-4">
-        <SectionHeading
-          title="Brand & expression marketing"
-          subtitle="Une couleur signature (brand) + une serif éditoriale + une texture grain — le côté studio créatif, sans rompre l'épuré."
-        />
-
-        {/* Brand color stops + Primary gradient */}
-        <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-4">
-          <div>
-            <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-3 inline-flex items-center gap-1.5">
-              <span className="text-brand-700">✦</span>
-              Brand · Orange corail (flat)
-            </p>
-            <div className="grid grid-cols-2 gap-1 sm:grid-cols-6">
-              {(["50", "100", "500", "600", "700", "900"] as const).map((stop) => (
-                <div
-                  key={stop}
-                  className={`rounded-md px-3 py-3 text-[11px] font-mono bg-brand-${stop} ${["500", "600", "700", "900"].includes(stop) ? "text-white" : "text-gray-700"}`}
-                >
-                  {stop}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-3 inline-flex items-center gap-1.5">
-              <span className="text-brand-700">✦</span>
-              Primary · Gradient Instagram-style
-            </p>
-            <div className="grid gap-1 sm:grid-cols-2">
-              <div className="rounded-md bg-[image:var(--gradient-primary)] px-4 py-4 text-[11px] font-mono text-white">
-                --gradient-primary
-                <span className="opacity-70 ml-2">#FCAF45 → #E1306C → #833AB4</span>
-              </div>
-              <div className="rounded-md bg-[image:var(--gradient-primary-hover)] px-4 py-4 text-[11px] font-mono text-white">
-                --gradient-primary-hover
-                <span className="opacity-70 ml-2">hover state</span>
-              </div>
-            </div>
-            <p className="mt-2 text-[11px] text-gray-500 leading-relaxed">
-              Réservé au <code className="font-mono">Button variant=&quot;primary&quot;</code>
-              {" "}(et ButtonIcon primary). Pas de halo orange — le glow utilise
-              ses propres tokens <code className="font-mono">shadow-glow-primary</code>
-              {" "}(rose/violet).
-            </p>
-          </div>
-        </div>
-
-        {/* Hero pattern */}
-        <div className="relative overflow-hidden rounded-xl border border-gray-200 bg-[var(--gradient-hero)] p-10 sm:p-14">
-          {/* Grain noise overlay — texture studio sans casser la lecture */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 opacity-50 mix-blend-multiply"
-            style={{ backgroundImage: "var(--texture-grain)" }}
-          />
-          <div className="relative">
-            <p className="text-[11px] uppercase tracking-widest text-brand-700 font-medium inline-flex items-center gap-1.5">
-              <span>✦</span>
-              Nouveau · Mise à jour
-            </p>
-            <h3 className="mt-3 font-serif italic text-4xl sm:text-5xl tracking-tight text-gray-950 leading-[1.05]">
-              Vos publications,<br />du shoot au feed.
-            </h3>
-            <p className="mt-4 max-w-xl text-sm text-gray-600 leading-relaxed">
-              Une régie éditoriale qui orchestre vos comptes, vos équipes et
-              vos contenus. Pensée pour les agences qui voient grand.
-            </p>
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-glow-brand)] transition-all duration-200 hover:bg-brand-700 hover:shadow-[var(--shadow-glow-brand-strong)] hover:-translate-y-0.5"
-              >
-                Démarrer
-              </button>
-              <button
-                type="button"
-                className="rounded-md border border-gray-300 bg-white/70 px-4 py-2 text-sm font-medium text-gray-800 backdrop-blur transition-colors hover:bg-white hover:border-gray-400"
-              >
-                Voir un exemple →
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Card grid avec photos placeholder + hover effect */}
-        <div className="grid gap-4 sm:grid-cols-3">
-          {[
-            { label: "Templates", color: "from-blue-400 to-indigo-500" },
-            { label: "Cover auto", color: "from-amber-400 to-rose-500" },
-            { label: "Captions", color: "from-emerald-400 to-cyan-500" },
-          ].map((card) => (
-            <div
-              key={card.label}
-              className="group cursor-pointer overflow-hidden rounded-xl border border-gray-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-card-elevated)] hover:border-gray-300"
-            >
-              <div className={`aspect-[16/10] bg-gradient-to-br ${card.color} relative`}>
-                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-              </div>
-              <div className="p-4">
-                <p className="text-[10px] uppercase tracking-widest text-gray-400 font-medium">Module</p>
-                <h4 className="mt-1 font-semibold tracking-tight text-gray-950 group-hover:text-brand-900 transition-colors">
-                  {card.label}
-                </h4>
-                <p className="mt-1 text-xs text-gray-500">
-                  Description courte du module — explique en une ligne ce
-                  qu&apos;on y fait.
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* CTAs et liens */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-5">
-          <p className="text-[11px] uppercase tracking-widest text-gray-400">Patterns d&apos;action</p>
-          <div className="flex flex-wrap items-center gap-3">
-            <button className="rounded-md bg-[image:var(--gradient-primary)] px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-glow-primary)] transition-all hover:bg-[image:var(--gradient-primary-hover)] hover:shadow-[var(--shadow-glow-primary-strong)]">
-              Action principale
-            </button>
-            <button className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-glow-brand)] transition-all hover:bg-brand-700 hover:shadow-[var(--shadow-glow-brand-strong)]">
-              Brand CTA
-            </button>
-            <button className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-50">
-              Secondaire
-            </button>
-            <button className="rounded-md px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100">
-              Ghost
-            </button>
-            <a className="group inline-flex items-center gap-1 text-sm font-medium text-brand-700 hover:text-brand-900">
-              Lien narratif
-              <span className="transition-transform group-hover:translate-x-0.5">→</span>
-            </a>
-          </div>
-          <p className="text-[11px] text-gray-500 leading-relaxed">
-            <strong className="text-gray-950">Hiérarchie</strong> :
-            <code className="font-mono mx-1">primary</code>
-            (gradient signature) pour les actions principales courantes ;
-            <code className="font-mono mx-1">brand</code>
-            (orange flat) pour les 2-3 moments forts seulement (S&apos;inscrire,
-            Marquer publié) ; les autres en mono.
-          </p>
-        </div>
-
-        {/* Eyebrow / display typo */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-5">
-          <p className="text-[11px] uppercase tracking-widest text-gray-400">Typographie marketing</p>
-
-          <div className="space-y-2">
-            <p className="text-[11px] uppercase tracking-widest text-brand-700 font-medium inline-flex items-center gap-1.5">
-              <span>✦</span>
-              Display serif italique
-            </p>
-            <h3 className="font-serif italic text-4xl tracking-tight text-gray-950 leading-[1.05]">
-              On crée, vous diffusez.
-            </h3>
-            <p className="text-sm text-gray-600 leading-relaxed max-w-prose">
-              La serif italique sur les hero — c&apos;est ce qui dit
-              &laquo; studio créatif &raquo;. À garder pour les moments
-              clés, jamais pour du body texte.
-            </p>
-          </div>
-
-          <div className="border-t border-gray-200 pt-5 space-y-1">
-            <p className="text-[11px] uppercase tracking-widest text-gray-400">Display sans semibold</p>
-            <h3 className="text-3xl font-semibold tracking-tight text-gray-950">
-              Pour les titres techniques.
-            </h3>
-            <p className="text-sm text-gray-600 leading-relaxed max-w-prose">
-              Geist Sans semibold pour les sections plus opérationnelles
-              (dashboard, fiche publication, panneaux). Plus neutre, plus
-              fonctionnel.
-            </p>
-          </div>
-
-          <div className="border-t border-gray-200 pt-5">
-            <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">Pull quote serif</p>
-            <p className="font-serif italic text-xl text-gray-800 leading-relaxed">
-              &ldquo;Une régie qui fait le travail ingrat à votre place,
-              sans abandonner les détails qui font la différence.&rdquo;
-            </p>
-            <p className="mt-2 text-[11px] uppercase tracking-widest text-gray-400">— Pull quote · Hero</p>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Signature handmade ────────────────────────────────────────── */}
-      <section className="space-y-4">
-        <SectionHeading
-          title="Signature handmade · style Excalidraw"
-          subtitle="Le 3e registre — caractère agence. Apparitions chirurgicales dans l'app : logo, badges « Astuce », eyebrows, légendes. JAMAIS en body ni UI fonctionnelle."
-        />
-
-        {/* Doctrine d'usage des 3 registres typo */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-4">
-            Discipline d&apos;usage des 3 registres
-          </p>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-gray-700">Tech functional</p>
-              <p className="text-2xl font-semibold tracking-tight text-gray-950">Geist Sans</p>
-              <p className="text-[11px] text-gray-500 leading-relaxed">
-                UI courante : 90% de l&apos;app. Dashboards, panneaux,
-                fiches, formulaires.
-              </p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-gray-700">Marketing editorial</p>
-              <p className="font-serif italic text-2xl tracking-tight text-gray-950">Instrument Serif</p>
-              <p className="text-[11px] text-gray-500 leading-relaxed">
-                Hero titles, pull quotes, landing pages. Studio créatif.
-              </p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-gray-700">Signature handmade</p>
-              <p className="font-hand text-3xl text-gray-950">Caveat</p>
-              <p className="text-[11px] text-gray-500 leading-relaxed">
-                Logo, badges « Astuce », eyebrows, légendes. Touches
-                agence ponctuelles.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Vignettes magazine — décors réduits au strict signature
-            (Sparkle + Arrow). Le reste de la personnalité passe par les
-            typos (Serif italic + Caveat hand) et la composition. */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          {/* Vignette 1 — Instagram post mockup */}
-          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-            <div className="aspect-square bg-gradient-to-br from-stone-200 via-amber-100 to-rose-200 relative">
-              <div className="absolute inset-0 bg-gradient-to-t from-black/15 to-transparent" />
-              <div className="absolute bottom-3 left-4 right-4 text-white">
-                <p className="font-serif italic text-2xl leading-tight drop-shadow-sm">
-                  Un appartement<br />
-                  qui se raconte.
-                </p>
-              </div>
-            </div>
-            <div className="p-4 space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="h-7 w-7 rounded-full bg-gray-950 inline-flex items-center justify-center">
-                  <HandDrawn.Sparkle className="h-3.5 w-3.5 text-brand-500" />
-                </span>
-                <div>
-                  <p className="text-sm font-medium text-gray-950 leading-none">toolbox.studio</p>
-                  <p className="text-[10px] text-gray-400">Régie éditoriale · il y a 2h</p>
-                </div>
-              </div>
-              <p className="text-[13px] text-gray-700 leading-relaxed">
-                <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-brand-700 font-medium mr-1">
-                  <HandDrawn.Sparkle className="h-2.5 w-2.5" />
-                  Nouveau
-                </span>
-                3 pièces lumineux, 60m², vue dégagée — Bron Centre.
-              </p>
-            </div>
-          </div>
-
-          {/* Vignette 2 — Moodboard signature */}
-          <div className="relative rounded-xl border border-gray-200 bg-[var(--gradient-hero)] p-6 overflow-hidden">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 opacity-50 mix-blend-multiply"
-              style={{ backgroundImage: "var(--texture-grain)" }}
-            />
-            <div className="relative space-y-5">
-              <p className="text-[10px] uppercase tracking-widest text-gray-500 font-medium inline-flex items-center gap-1.5">
-                <HandDrawn.Sparkle className="h-2.5 w-2.5 text-brand-700" />
-                Moodboard · brief client
-              </p>
-              <p className="font-serif italic text-3xl leading-[1.1] text-gray-950">
-                On veut de l&apos;audace,<br />
-                pas du tape-à-l&apos;œil.
-              </p>
-              {/* Palette inline */}
-              <div className="flex items-center gap-1.5">
-                {["bg-gray-950", "bg-brand-600", "bg-stone-200", "bg-amber-50"].map((c) => (
-                  <span key={c} className={`h-6 w-6 rounded-full ring-1 ring-gray-200 ${c}`} />
-                ))}
-                <span className="ml-2 text-[10px] text-gray-500">3 couleurs max · noir + signature</span>
-              </div>
-              {/* Note hand discrète */}
-              <p className="font-hand text-xl text-brand-700 leading-none pt-1">
-                la serif, jamais en body.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Vignette 3 — Testimonial pull quote pleine largeur */}
-        <div className="rounded-xl border border-gray-200 bg-white p-10 sm:p-14">
-          <div className="max-w-2xl mx-auto text-center space-y-5">
-            <p className="text-[10px] uppercase tracking-widest text-gray-400 inline-flex items-center gap-1.5">
-              <HandDrawn.Sparkle className="h-3 w-3 text-brand-700" />
-              Ce qu&apos;en disent nos clients
-            </p>
-            <p className="font-serif italic text-2xl sm:text-3xl leading-relaxed text-gray-950">
-              &ldquo;Avant Toolbox, on perdait des heures à coordonner.
-              Maintenant on{" "}
-              <span className="relative inline-block">
-                crée
-                <HandDrawn.Underline className="absolute -bottom-1.5 left-0 h-2 w-full text-brand-700" />
-              </span>
-              , ils diffusent.&rdquo;
-            </p>
-            <HandDrawn.WavyRule className="h-2 w-32 mx-auto text-gray-300" />
-            <div className="space-y-1.5">
-              <p className="font-hand text-2xl text-gray-950 leading-none">— Léa Vasseur</p>
-              <p className="text-[11px] uppercase tracking-widest text-gray-400">
-                Directrice · Studio La Mira
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Patterns concrets : éléments app habillés en signature */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-5">
-          <p className="text-[11px] uppercase tracking-widest text-gray-400">
-            Application dans l&apos;app — exemples
-          </p>
-
-          {/* Logo agence */}
-          <div className="flex items-center gap-4 border-b border-gray-100 pb-5">
-            <span className="h-8 w-8 rounded-md bg-gray-950 inline-flex items-center justify-center">
-              <HandDrawn.Sparkle className="h-4 w-4 text-brand-500" />
-            </span>
-            <div>
-              <p className="font-hand text-2xl text-gray-950 leading-none">Toolbox</p>
-              <p className="text-[10px] uppercase tracking-widest text-gray-400">Régie éditoriale</p>
-            </div>
-          </div>
-
-          {/* Tip callout */}
-          <div className="border-l-2 border-brand-600 bg-brand-50 pl-4 py-3 pr-4 rounded-r-lg">
-            <p className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-brand-700 font-medium mb-1">
-              <HandDrawn.Sparkle className="h-3 w-3" />
-              Astuce
-            </p>
-            <p className="text-sm text-gray-800 leading-relaxed">
-              Tu peux dupliquer un slot existant via{" "}
-              <kbd className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-[10px] font-mono">⌘D</kbd>
-              {" "}depuis le calendrier.
-            </p>
-          </div>
-
-          {/* Empty state friendly */}
-          <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center space-y-3">
-            <HandDrawn.Sparkle className="h-6 w-6 text-gray-300 mx-auto" />
-            <p className="font-hand text-2xl text-gray-700">Aucun slot ici pour l&apos;instant</p>
-            <p className="text-xs text-gray-500 max-w-sm mx-auto">
-              Crée ton premier slot depuis le calendrier ou attends que la
-              prochaine génération hebdo soit lancée.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <p className="border-t border-gray-200 pt-6 text-[11px] text-gray-400">
-        Ces tokens doivent être validés (GATE 1) avant de migrer une seule
-        surface de l&apos;app. Itère ici tant que tu n&apos;es pas satisfait.
-      </p>
     </div>
   );
 }

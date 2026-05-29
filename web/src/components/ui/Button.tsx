@@ -62,14 +62,18 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         : "h-8 px-3 text-[13px]";
 
   const variantClasses = {
+    // Primary "métal poli" — noir avec une ombre intérieure blanche
+    // subtile (8% en haut) qui donne du caractère sans rompre la
+    // sobriété. Au hover, l'inset s'éclaircit + une ombre extérieure
+    // discrète. Effet "bouton premium" qui se sent sous la souris.
     primary:
-      "bg-gray-950 text-white hover:bg-gray-800 focus-ring",
+      "bg-gray-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-gray-900 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_4px_12px_rgba(0,0,0,0.12)] focus-ring",
     secondary:
       "bg-white text-gray-800 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 focus-ring",
     ghost:
       "bg-transparent text-gray-700 hover:bg-gray-100 hover:text-gray-950 focus-ring",
     danger:
-      "bg-danger-600 text-white hover:bg-danger-700 focus-ring-danger",
+      "bg-danger-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] hover:bg-danger-700 focus-ring-danger",
   }[variant];
 
   const iconSize = size === "sm" ? 12 : size === "lg" ? 15 : 14;

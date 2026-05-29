@@ -46,7 +46,7 @@ export const ButtonIcon = forwardRef<HTMLButtonElement, ButtonIconProps>(functio
 
   const variantClasses = {
     primary:
-      "bg-gray-950 text-white hover:bg-gray-800 focus-ring",
+      "bg-gray-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-gray-900 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_4px_12px_rgba(0,0,0,0.12)] focus-ring",
     secondary:
       "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:text-gray-950 hover:border-gray-400 focus-ring",
     ghost:

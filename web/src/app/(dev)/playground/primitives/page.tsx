@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Showcase des primitives — direction Linear · Vercel · Raycast.
- * Density élevée, icon-first, monochrome strict, brand chirurgical.
+ * Showcase des primitives — doctrine SaaS d'équipe.
+ * Mono · density Linear · icon-first.
  */
 
 import { useState } from "react";
@@ -19,7 +19,6 @@ import {
   Hash,
   Lock,
   Plus,
-  Send,
   Trash2,
   Copy,
   MoreHorizontal,
@@ -28,6 +27,7 @@ import {
   Filter,
   Download,
   Check,
+  Send,
 } from "lucide-react";
 
 export default function PrimitivesPage() {
@@ -42,10 +42,10 @@ export default function PrimitivesPage() {
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">Primitives</h1>
         <p className="max-w-prose text-sm text-gray-500">
-          Direction monochrome stricte · density Linear · icônes
-          systématiques. Le brand n&apos;apparaît qu&apos;en{" "}
-          <code className="font-mono">variant=&quot;brand&quot;</code> et reste réservé aux 2-3 spots
-          signature de toute l&apos;app.
+          Mono dark + density Linear + icon-first. Le primary est{" "}
+          <code className="font-mono">bg-gray-950</code> flat — pas de gradient,
+          pas de couleur, pas de glow. La signature passe par la rigueur, pas
+          par la déco.
         </p>
       </header>
 
@@ -53,15 +53,14 @@ export default function PrimitivesPage() {
       <section className="space-y-4">
         <SectionHeading
           title="Button"
-          subtitle="5 variants · 3 sizes · density serrée (h-7 / h-8 / h-9). Focus mono dark sauf brand."
+          subtitle="4 variants (primary · secondary · ghost · danger) × 3 sizes (sm · md · lg). Focus mono dark."
         />
 
         {/* Grille variants × sizes */}
         <div className="rounded-lg border border-gray-200 bg-white p-5">
-          <div className="grid grid-cols-[60px_repeat(5,minmax(0,1fr))] items-center gap-2 text-xs">
+          <div className="grid grid-cols-[60px_repeat(4,minmax(0,1fr))] items-center gap-2 text-xs">
             <span className="text-[10px] uppercase tracking-widest text-gray-400">Size</span>
             <span className="text-[10px] uppercase tracking-widest text-gray-400">primary</span>
-            <span className="text-[10px] uppercase tracking-widest text-gray-400">brand</span>
             <span className="text-[10px] uppercase tracking-widest text-gray-400">secondary</span>
             <span className="text-[10px] uppercase tracking-widest text-gray-400">ghost</span>
             <span className="text-[10px] uppercase tracking-widest text-gray-400">danger</span>
@@ -102,22 +101,19 @@ export default function PrimitivesPage() {
         {/* États */}
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-3">
-            <Eyebrow>Loading · disabled</Eyebrow>
+            <Eyebrow>Loading</Eyebrow>
             <div className="flex flex-wrap items-center gap-2">
               <Button loading>Sauvegarder</Button>
-              <Button variant="brand" loading icon={Send}>Envoi…</Button>
-              <Button variant="secondary" disabled icon={Lock}>Verrouillé</Button>
+              <Button variant="secondary" loading icon={Send}>Envoi…</Button>
+              <ButtonIcon icon={RefreshCw} label="Rafraîchir" loading />
             </div>
           </div>
           <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-3">
-            <Eyebrow>Brand · usage chirurgical</Eyebrow>
-            <p className="text-[12px] text-gray-500 leading-relaxed">
-              Garder pour 2-3 moments signature de toute l&apos;app : onboarding,
-              S&apos;inscrire, Mark publié. Pas dans la nav, pas dans les modals
-              courants.
-            </p>
-            <div>
-              <Button variant="brand" size="lg" icon={Send}>Marquer publié</Button>
+            <Eyebrow>Disabled</Eyebrow>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button disabled>Sauvegarder</Button>
+              <Button variant="secondary" disabled icon={Lock}>Verrouillé</Button>
+              <Button variant="ghost" disabled>Disabled ghost</Button>
             </div>
           </div>
         </div>
@@ -205,7 +201,7 @@ export default function PrimitivesPage() {
           </FormField>
         </div>
 
-        {/* Mockup Linear : entry list dense */}
+        {/* Mockup liste dense Linear */}
         <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
           <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50/40 px-4 py-2.5">
             <div className="flex items-center gap-2">
@@ -215,7 +211,7 @@ export default function PrimitivesPage() {
             <div className="flex items-center gap-1">
               <ButtonIcon icon={Filter} label="Filtrer" size="sm" />
               <ButtonIcon icon={RefreshCw} label="Rafraîchir" size="sm" />
-              <ButtonIcon icon={Plus} label="Nouveau slot" size="sm" variant="secondary" />
+              <Button size="sm" icon={Plus}>Nouveau</Button>
             </div>
           </div>
           <ul className="divide-y divide-gray-100">
@@ -231,17 +227,20 @@ export default function PrimitivesPage() {
                 <span className="font-mono text-[11px] text-gray-400 w-12">{s.time}</span>
                 <span className="font-medium text-gray-950 flex-1 truncate">{s.title}</span>
                 <span className="text-gray-500">{s.account}</span>
-                <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold ${
-                  s.role === "M" ? "bg-gray-100 text-gray-700" :
-                  s.role === "C" ? "bg-gray-100 text-gray-700" :
-                  "bg-gray-100 text-gray-700"
-                }`}>{s.role}</span>
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-[10px] font-semibold text-gray-700">
+                  {s.role}
+                </span>
                 {s.done ? (
                   <Check size={14} className="text-gray-950" />
                 ) : (
                   <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
                 )}
-                <ButtonIcon icon={MoreHorizontal} label="Plus" size="sm" className="opacity-0 group-hover/row:opacity-100" />
+                <ButtonIcon
+                  icon={MoreHorizontal}
+                  label="Plus"
+                  size="sm"
+                  className="opacity-0 group-hover/row:opacity-100"
+                />
               </li>
             ))}
           </ul>
@@ -249,9 +248,8 @@ export default function PrimitivesPage() {
       </section>
 
       <p className="border-t border-gray-200 pt-6 text-[11px] text-gray-400">
-        Density Linear · icon-first · mono dark. Le brand orange apparaît
-        uniquement quand un CTA mérite vraiment l&apos;attention — c&apos;est sa
-        rareté qui fait sa puissance.
+        Cette page grossira au fil de la Phase 1. Chaque nouvelle primitive
+        ajoute une section ici avant d&apos;être propagée dans l&apos;app.
       </p>
     </div>
   );
@@ -262,7 +260,6 @@ function ButtonRow({ size }: { size: "sm" | "md" | "lg" }) {
     <>
       <code className="text-[10px] font-mono text-gray-400">{size}</code>
       <Button size={size} icon={Plus}>Button</Button>
-      <Button variant="brand" size={size} icon={Send}>Button</Button>
       <Button variant="secondary" size={size}>Button</Button>
       <Button variant="ghost" size={size}>Button</Button>
       <Button variant="danger" size={size} icon={Trash2}>Button</Button>

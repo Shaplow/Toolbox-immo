@@ -7,7 +7,7 @@
 
 1. **L'UI Toolbox = Geist Sans + monochrome + density Linear + icon-first.** Pas un seul élément de plus.
 2. **Le primary CTA = `bg-gray-950` flat.** Vercel, Linear, Apple le font, on le fait. Aucun gradient, aucune couleur, aucun glow.
-3. **Le brand orange `#FF5A1F` apparaît à 2 endroits dans toute l'app :** le logo Toolbox et un dot indicateur dans la nav. C'est sa rareté qui le rend mémorable.
+3. **Le brand orange `#FF5A1F` apparaît à 2 endroits dans toute l'app :** le logo Toolbox (carré orange + nom en `font-hand` Caveat) et un dot indicateur dans la nav. C'est sa rareté qui le rend mémorable.
 4. **Les accents sémantiques (success / danger / info) ne sont QUE des statuts.** Jamais des CTA, jamais une couleur décorative.
 5. **L'effet "wahou" vient de la rigueur, pas de la couleur.** Density Linear + transitions soignées + micro-interactions soignées + density qui fait voir 20 slots en un coup d'œil.
 
@@ -29,7 +29,12 @@ Tailwind `gray-*` par défaut. `gray-950` (`#0a0a0a`) pour le texte primaire et 
 
 ### Brand orange — la signature chirurgicale
 
-`brand-50` à `brand-900` disponibles. **Mais utilisé à 2 endroits seulement dans toute l'app** : logo Toolbox et 1 dot indicateur dans la nav. Toute autre apparition est un bug de discipline.
+`brand-50` à `brand-900` disponibles. **Mais utilisé à 2 endroits seulement dans toute l'app** :
+
+1. **Logo Toolbox** : carré `bg-brand-600` + nom "Toolbox" en `font-hand` (Caveat). C'est l'unique endroit où Caveat et brand orange cohabitent dans l'UI courante. Pattern figé.
+2. **Dot indicateur dans la nav** : petite pastille `bg-brand-600` (avec animation ping discrète pour les nouvelles notifications).
+
+Toute autre apparition de `bg-brand-*`, `text-brand-*`, ou `font-hand` dans `app/(app|admin)/*` ou `components/(builder|calendar|publications|admin)/*` est un bug de discipline → rollback.
 
 ### Typographie UI
 
