@@ -179,6 +179,17 @@ export const NAV: NavSection[] = [
       { label: "Avatars", href: "/playground/audit#avatars" },
     ],
   },
+  {
+    label: "Phase 5 · Patterns",
+    basePath: "/playground/patterns",
+    items: [
+      { label: "Fiche détail", href: "/playground/patterns#fiche-detail" },
+      { label: "Quick edit drawer", href: "/playground/patterns#quick-edit-drawer" },
+      { label: "Listing grid", href: "/playground/patterns#listing-grid" },
+      { label: "Tool page", href: "/playground/patterns#tool-page" },
+      { label: "Admin table", href: "/playground/patterns#admin-table" },
+    ],
+  },
 ];
 
 /** Tous les ids ancrables d'une page donnée. */
