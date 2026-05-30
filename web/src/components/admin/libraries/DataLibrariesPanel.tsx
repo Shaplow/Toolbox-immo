@@ -1,23 +1,44 @@
 "use client";
 
+/**
+ * DataLibrariesPanel — liste des bibliothèques de données (refonte MID Glass).
+ *
+ * Cards glass franches avec édition inline (nom/description) + Modal molecule
+ * pour création. Toolbar glass avec search.
+ */
+
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Trash2, Database, ChevronRight, Search, Pencil, X, Check } from "lucide-react";
+import Link from "next/link";
+import { Plus, Trash2, Database, ChevronRight, Search, Pencil, Check } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/useConfirm";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { FormField } from "@/components/ui/FormField";
 import { EmptyState } from "@/components/ui/EmptyState";
-import Link from "next/link";
-import { LibraryExportButton } from "./LibraryExportButton";
+import { Modal } from "@/components/ui/Modal";
+import { Chip } from "@/components/ui/Chip";
+import { DataLibrarySettingsDrawer } from "./DataLibrarySettingsDrawer";
 
 interface DataLibrary {
   id: string;
   name: string;
   templateType: string;
   description: string | null;
+  /** Mode de rotation (Phase 1.x — mirror MediaLibrary). */
+  rotationMode: "auto" | "override" | "none";
+  /** Portée de la rotation (Phase 1.x — mirror MediaLibrary). */
+  rotationScope: "shared" | "per_account";
+  /** Consommation max par fiche. null = infini, 1 = strict, N>1 = soft cap V2. */
+  maxUsageCount: number | null;
+  /** JSON FieldDef[] — schéma des champs d'une fiche (Phase 1.x). */
+  fieldsSchema: string;
+  /** Token public de remplissage (Phase 1.x Vague 3). Null = pas de lien actif. */
+  publicFillToken: string | null;
   createdAt: string;
   _count: { campaigns: number };
+  /** Campagne active (1 max par lib enforced backend). Null si aucune campagne active. */
+  activeCampaign: { id: string; name: string; entryCount: number } | null;
 }
 
 export function DataLibrariesPanel() {
@@ -27,12 +48,11 @@ export function DataLibrariesPanel() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: "", templateType: "", description: "" });
-  const [error, setError] = useState<string | null>(null);
+  const [creatingSaving, setCreatingSaving] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", description: "" });
-  const [editError, setEditError] = useState<string | null>(null);
-  const [editSaving, setEditSaving] = useState(false);
+  // Phase 1.x — édition via drawer settings (rotation + identité), plus de modal nom/desc seul.
+  const [settingsTargetId, setSettingsTargetId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,7 +60,7 @@ export function DataLibrariesPanel() {
     try {
       const res = await fetch("/api/admin/libraries/data");
       if (!res.ok) throw new Error(`Erreur serveur (HTTP ${res.status})`);
-      const data = await res.json() as DataLibrary[];
+      const data = (await res.json()) as DataLibrary[];
       setLibraries(data);
     } catch (err) {
       console.error("[DataLibrariesPanel] load error:", err);
@@ -50,54 +70,50 @@ export function DataLibrariesPanel() {
     }
   }, []);
 
-  useEffect(() => { (async () => { await load(); })(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const filtered = search.trim()
-    ? libraries.filter((l) => l.name.toLowerCase().includes(search.toLowerCase()) || l.templateType.toLowerCase().includes(search.toLowerCase()))
+    ? libraries.filter(
+        (l) =>
+          l.name.toLowerCase().includes(search.toLowerCase()) ||
+          l.templateType.toLowerCase().includes(search.toLowerCase()),
+      )
     : libraries;
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
-    const res = await fetch("/api/admin/libraries/data", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: form.name, templateType: form.templateType, description: form.description }),
-    });
-    if (!res.ok) {
-      const d = await res.json() as { error?: string };
-      setError(d.error ?? "Erreur");
-      return;
+    setCreateError(null);
+    setCreatingSaving(true);
+    try {
+      const res = await fetch("/api/admin/libraries/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          templateType: form.templateType,
+          description: form.description,
+        }),
+      });
+      if (!res.ok) {
+        const d = (await res.json()) as { error?: string };
+        setCreateError(d.error ?? "Erreur");
+        return;
+      }
+      setCreating(false);
+      setForm({ name: "", templateType: "", description: "" });
+      toast.success("Bibliothèque créée");
+      void load();
+    } catch {
+      setCreateError("Erreur réseau");
+    } finally {
+      setCreatingSaving(false);
     }
-    setCreating(false);
-    setForm({ name: "", templateType: "", description: "" });
-    void load();
   }
 
   function startEdit(lib: DataLibrary) {
-    setEditingId(lib.id);
-    setEditForm({ name: lib.name, description: lib.description ?? "" });
-    setEditError(null);
-  }
-
-  async function handleSaveEdit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editForm.name.trim()) return;
-    setEditSaving(true);
-    setEditError(null);
-    const res = await fetch(`/api/admin/libraries/data/${editingId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: editForm.name, description: editForm.description }),
-    });
-    setEditSaving(false);
-    if (!res.ok) {
-      const d = await res.json() as { error?: string };
-      setEditError(d.error ?? "Erreur");
-      return;
-    }
-    setEditingId(null);
-    void load();
+    setSettingsTargetId(lib.id);
   }
 
   async function handleDelete(id: string, name: string) {
@@ -110,7 +126,7 @@ export function DataLibrariesPanel() {
     if (!ok) return;
     const res = await fetch(`/api/admin/libraries/data/${id}`, { method: "DELETE" });
     if (!res.ok) {
-      const d = await res.json() as { error?: string };
+      const d = (await res.json()) as { error?: string };
       toast.error(d.error ?? "Erreur lors de la suppression");
       return;
     }
@@ -118,203 +134,235 @@ export function DataLibrariesPanel() {
   }
 
   return (
-    <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Bibliothèques de données</h2>
-          <p className="text-xs text-gray-500 mt-0.5">{libraries.length} bibliothèque{libraries.length !== 1 ? "s" : ""}</p>
+    <div className="space-y-5">
+      {/* Toolbar glass */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="w-[300px]">
+            <Input
+              value={search}
+              onChange={setSearch}
+              placeholder="Rechercher (nom, type)"
+              icon={Search}
+            />
+          </div>
+          <span className="text-[10.5px] text-gray-500 tabular-nums">
+            {filtered.length}/{libraries.length} bibliothèques
+          </span>
         </div>
-        <Button onClick={() => setCreating(true)} icon={Plus} size="sm">
+        <Button variant="primary" size="sm" icon={Plus} onClick={() => setCreating(true)}>
           Nouvelle bibliothèque
         </Button>
       </div>
 
-      {/* Create form */}
-      {creating && (
-        <form onSubmit={(e) => { void handleCreate(e); }} className="mb-6 p-5 border border-indigo-200 rounded-xl bg-indigo-50">
-          <p className="text-sm font-semibold text-indigo-800 mb-4">Nouvelle bibliothèque de données</p>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <FormField label="Nom" required>
-              <Input
+      {/* Error */}
+      {loadError && (
+        <div className="rounded-xl bg-rose-50/70 backdrop-blur-[8px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.22)]">
+          <p className="text-[12.5px] font-semibold text-rose-900">
+            Impossible de charger les bibliothèques
+          </p>
+          <p className="text-[11px] font-mono text-rose-800 mt-1">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="text-[11px] text-rose-700 underline mt-2"
+          >
+            Réessayer
+          </button>
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading ? (
+        <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] py-16 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] flex items-center justify-center text-gray-500 gap-3">
+          <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+          <span className="text-[12.5px]">Chargement…</span>
+        </div>
+      ) : libraries.length === 0 ? (
+        <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+          <EmptyState
+            icon={Database}
+            title="Aucune bibliothèque de données"
+            description="Créez-en une pour importer vos données RPI, RTIPS…"
+            cta={{ label: "Nouvelle bibliothèque", onClick: () => setCreating(true) }}
+          />
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="text-[12px] text-gray-500 italic text-center py-8">
+          Aucune bibliothèque correspondant à « {search} ».
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {filtered.map((lib) => (
+            <DataLibraryCard
+              key={lib.id}
+              lib={lib}
+              onStartEdit={() => startEdit(lib)}
+              onDelete={() => void handleDelete(lib.id, lib.name)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Modal création */}
+      <Modal open={creating} onClose={() => !creatingSaving && setCreating(false)} size="md">
+        <Modal.Header onClose={() => !creatingSaving && setCreating(false)}>
+          Nouvelle bibliothèque de données
+        </Modal.Header>
+        <form
+          onSubmit={(e) => {
+            void handleCreate(e);
+          }}
+          className="contents"
+        >
+          <Modal.Body>
+            <div className="space-y-3">
+              <FormField label="Nom" required>
+                <Input
+                  required
+                  value={form.name}
+                  onChange={(v) => setForm((f) => ({ ...f, name: v }))}
+                  placeholder="Ex: Données RPI"
+                />
+              </FormField>
+              <FormField
+                label="Type de template"
                 required
-                value={form.name}
-                onChange={(v) => setForm((f) => ({ ...f, name: v }))}
-                placeholder="Ex: Données RPI"
-              />
-            </FormField>
-            <FormField
-              label="Type de template"
-              required
-              help="Identifiant métier (mis en majuscules automatiquement)"
-            >
-              <Input
-                required
-                value={form.templateType}
-                onChange={(v) => setForm((f) => ({ ...f, templateType: v }))}
-                placeholder="Ex: RPI, RTIPS, RPOD"
-              />
-            </FormField>
-            <div className="col-span-2">
+                help="Identifiant métier (mis en majuscules automatiquement)"
+              >
+                <Input
+                  required
+                  value={form.templateType}
+                  onChange={(v) => setForm((f) => ({ ...f, templateType: v }))}
+                  placeholder="Ex: RPI, RTIPS, RPOD"
+                />
+              </FormField>
               <FormField label="Description (optionnel)">
                 <Input
                   value={form.description}
                   onChange={(v) => setForm((f) => ({ ...f, description: v }))}
                 />
               </FormField>
+              {createError && (
+                <p className="text-[11px] text-rose-700">{createError}</p>
+              )}
             </div>
-          </div>
-          {error && <p className="text-red-600 text-xs mb-3">{error}</p>}
-          <div className="flex gap-2">
-            <Button type="submit" size="sm">Créer</Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setCreating(false)}>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setCreating(false)}
+              disabled={creatingSaving}
+            >
               Annuler
             </Button>
-          </div>
+            <Button type="submit" variant="primary" icon={Plus} loading={creatingSaving}>
+              Créer
+            </Button>
+          </Modal.Footer>
         </form>
-      )}
+      </Modal>
 
-      {/* Error */}
-      {loadError && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 mb-4">
-          <p className="font-medium">Impossible de charger les bibliothèques</p>
-          <p className="font-mono text-xs mt-1">{loadError}</p>
-          <button onClick={() => { void load(); }} className="text-xs underline mt-2">Réessayer</button>
-        </div>
-      )}
+      {/* Settings drawer (déclenché par Pencil sur card) — Phase 1.x : couvre
+          identité + rotation (mode + scope + maxUsage). */}
+      <DataLibrarySettingsDrawer
+        open={settingsTargetId !== null}
+        onClose={() => setSettingsTargetId(null)}
+        library={
+          settingsTargetId
+            ? (() => {
+                const lib = libraries.find((l) => l.id === settingsTargetId);
+                return lib
+                  ? {
+                      id: lib.id,
+                      name: lib.name,
+                      description: lib.description,
+                      rotationMode: lib.rotationMode,
+                      rotationScope: lib.rotationScope,
+                      maxUsageCount: lib.maxUsageCount,
+                      fieldsSchema: lib.fieldsSchema,
+                      publicFillToken: lib.publicFillToken,
+                    }
+                  : null;
+              })()
+            : null
+        }
+        onUpdated={() => void load()}
+      />
 
-      {/* Search */}
-      {!loading && libraries.length > 0 && (
-        <div className="relative mb-5">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
-          <Input
-            value={search}
-            onChange={setSearch}
-            placeholder="Rechercher une bibliothèque…"
-            className="pl-8"
-          />
-        </div>
-      )}
-
-      {/* Loading */}
-      {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : libraries.length === 0 ? (
-        <EmptyState
-          icon={Database}
-          title="Aucune bibliothèque de données"
-          description="Créez-en une pour importer vos données RPI, RTIPS…"
-          cta={{ label: "Nouvelle bibliothèque", onClick: () => setCreating(true) }}
-        />
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((lib) => (
-            <div
-              key={lib.id}
-              className="group flex flex-col bg-white border border-gray-200 rounded-2xl overflow-hidden hover:border-indigo-300 hover:shadow-sm transition-all"
-            >
-              {/* Visual header */}
-              <div className="h-20 flex items-center justify-center bg-gradient-to-br from-violet-50 to-indigo-50">
-                <Database size={32} className="text-violet-300" />
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 p-4">
-                {editingId === lib.id ? (
-                  <form onSubmit={(e) => { void handleSaveEdit(e); }} className="space-y-2">
-                    <Input
-                      required
-                      autoFocus
-                      value={editForm.name}
-                      onChange={(v) => setEditForm((f) => ({ ...f, name: v }))}
-                      placeholder="Nom"
-                    />
-                    <Input
-                      value={editForm.description}
-                      onChange={(v) => setEditForm((f) => ({ ...f, description: v }))}
-                      placeholder="Description (optionnel)"
-                    />
-                    {editError && <p className="text-red-600 text-[10px]">{editError}</p>}
-                    <div className="flex items-center gap-1 pt-0.5">
-                      <Button
-                        type="submit"
-                        size="sm"
-                        icon={Check}
-                        loading={editSaving}
-                        disabled={!editForm.name.trim()}
-                      >
-                        Enregistrer
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        icon={X}
-                        onClick={() => setEditingId(null)}
-                      >
-                        Annuler
-                      </Button>
-                    </div>
-                  </form>
-                ) : (
-                  <>
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-semibold text-gray-900 leading-snug">{lib.name}</p>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded border text-violet-600 bg-violet-50 border-violet-200">
-                          {lib.templateType}
-                        </span>
-                        <button
-                          onClick={() => startEdit(lib)}
-                          className="p-0.5 text-gray-300 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100"
-                          title="Modifier"
-                        >
-                          <Pencil size={12} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {lib.description && (
-                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{lib.description}</p>
-                    )}
-
-                    <p className="text-xs text-gray-400 mt-3">
-                      {lib._count.campaigns} campagne{lib._count.campaigns !== 1 ? "s" : ""}
-                    </p>
-                  </>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div className="flex items-center border-t border-gray-100">
-                <Link
-                  href={`/admin/libraries/data/${lib.id}`}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs text-indigo-600 font-medium hover:bg-indigo-50 transition-colors"
-                >
-                  Voir les campagnes <ChevronRight size={13} />
-                </Link>
-                <div className="w-px h-5 bg-gray-100" />
-                <LibraryExportButton libraryId={lib.id} libraryName={lib.name} libraryType="data" />
-                <div className="w-px h-5 bg-gray-100" />
-                <button
-                  onClick={() => { void handleDelete(lib.id, lib.name); }}
-                  className="px-3.5 py-2.5 text-gray-300 hover:text-red-500 transition-colors"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
-          {filtered.length === 0 && (
-            <p className="col-span-full text-center text-sm text-gray-400 py-8">
-              Aucune bibliothèque correspondant à &laquo;&nbsp;{search}&nbsp;&raquo;
-            </p>
-          )}
-        </div>
-      )}
       {confirmDialog}
     </div>
+  );
+}
+
+// ─── DataLibraryCard ────────────────────────────────────────────────────────
+
+function DataLibraryCard({
+  lib,
+  onStartEdit,
+  onDelete,
+}: {
+  lib: DataLibrary;
+  onStartEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <Link
+      href={`/admin/libraries/data/${lib.id}`}
+      className="group relative flex flex-col gap-2.5 p-3.5 rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[14px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.08)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1),0_4px_12px_-4px_rgba(15,23,42,0.12),0_16px_36px_-12px_rgba(15,23,42,0.18)] hover:-translate-y-0.5 transition-all"
+    >
+      {/* Header — icône type + actions hover */}
+      <div className="flex items-start gap-2.5">
+        <span className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-sage-100/70 text-sage-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.04)]">
+          <Database size={14} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[14px] font-semibold text-gray-950 leading-tight truncate" title={lib.name}>
+            {lib.name}
+          </p>
+          <Chip variant="sage" size="sm" className="mt-1">
+            {lib.templateType}
+          </Chip>
+        </div>
+        <div className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onStartEdit(); }}
+            className="p-1 text-gray-300 hover:text-gray-700 transition-colors"
+            title="Modifier"
+          >
+            <Pencil size={12} />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
+            className="p-1 text-gray-300 hover:text-rose-600 transition-colors"
+            title="Supprimer"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      </div>
+
+      {/* Compteur fiches — info clé : combien de fiches tournent dans cette lib.
+          Phase 1.x : le concept campagne est invisible côté UI, on ne montre
+          plus que le compteur de fiches actives. */}
+      <div className="rounded-xl bg-gradient-to-b from-sage-50/85 to-sage-50/45 backdrop-blur-[8px] px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(111,162,128,0.22)]">
+        <p className="text-[9px] uppercase tracking-widest font-semibold text-sage-700 inline-flex items-center gap-1">
+          <Check size={9} /> Active
+        </p>
+        <p className="text-[18px] font-semibold text-sage-900 tabular-nums mt-0.5 leading-tight">
+          {lib.activeCampaign?.entryCount ?? 0}
+        </p>
+        <p className="text-[10.5px] text-sage-700/80 mt-0">
+          fiche{(lib.activeCampaign?.entryCount ?? 0) !== 1 ? "s" : ""}
+        </p>
+      </div>
+
+      <div className="flex items-center justify-end mt-auto pt-1">
+        <ChevronRight size={12} className="text-gray-300 group-hover:text-gray-700 transition-colors" />
+      </div>
+    </Link>
   );
 }

@@ -20,16 +20,20 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   Film,
-  LayoutTemplate,
+  Clapperboard,
   Mic,
   AlignLeft,
-  Image as ImageIcon,
   ChevronRight,
   Loader2,
   CheckCircle2,
   AlertCircle,
   Clock,
+  Search,
 } from "lucide-react";
+import { Combobox } from "@/components/ui/Combobox";
+import { Input } from "@/components/ui/Input";
+import { Chip } from "@/components/ui/Chip";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -139,7 +143,10 @@ const GROUP_ORDER = ["Aujourd'hui", "Cette semaine", "Plus tôt"];
 
 // ── Timeline entry shape ──────────────────────────────────────────────────────
 
-type Tone = "indigo" | "violet" | "teal" | "sky";
+// Phase B refonte 2026-05-30 — palette Coastal Studio v2 par type de job.
+// peach = création vidéo (renders), sky = sous-titres (captions),
+// sage = parole / transcription, rose = génération texte long (descriptions).
+type Tone = "peach" | "sky" | "sage" | "rose";
 
 interface TimelineEntry {
   id: string;
@@ -155,20 +162,29 @@ interface TimelineEntry {
   errorMsg?: string | null;
 }
 
-const TONE_BG: Record<Tone, string> = {
-  indigo: "bg-indigo-50 text-indigo-600",
-  violet: "bg-violet-50 text-violet-600",
-  teal: "bg-teal-50 text-teal-600",
-  sky: "bg-sky-50 text-sky-600",
+const TONE_ICON_BG: Record<Tone, string> = {
+  peach: "bg-peach-100/70 text-peach-700",
+  sky:   "bg-sky-100/70 text-sky-700",
+  sage:  "bg-sage-100/70 text-sage-700",
+  rose:  "bg-rose-100/70 text-rose-700",
+};
+
+// Bord gauche signature glass v2 — apparaît en <span> absolute dans TimelineRow
+// (pas en `border-l` classique pour ne pas casser le padding sticky col).
+const TONE_LEFT_BAR: Record<Tone, string> = {
+  peach: "bg-peach-400",
+  sky:   "bg-sky-400",
+  sage:  "bg-sage-400",
+  rose:  "bg-rose-400",
 };
 
 // Tab badge styles — classes statiques explicites (Tailwind purge ne supporte
 // pas les interpolations dynamiques bg-${tone}-100).
 const TAB_BADGE_ACTIVE: Record<Tone, string> = {
-  indigo: "bg-indigo-100 text-indigo-600",
-  violet: "bg-violet-100 text-violet-600",
-  teal: "bg-teal-100 text-teal-600",
-  sky: "bg-sky-100 text-sky-600",
+  peach: "bg-peach-100 text-peach-700",
+  sky:   "bg-sky-100 text-sky-700",
+  sage:  "bg-sage-100 text-sage-700",
+  rose:  "bg-rose-100 text-rose-700",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -189,16 +205,17 @@ function StatusBadge({ status }: { status: string }) {
   const isError = ["FAILED", "ERROR"].includes(status);
 
   const Icon = isInProgress ? Loader2 : isDone ? CheckCircle2 : isError ? AlertCircle : Clock;
+  // Glass v2 pastilles — backdrop-blur + ring inset signature au lieu de border solide.
   const cls = isInProgress
-    ? "bg-amber-50 text-amber-700 border-amber-200"
+    ? "bg-peach-50/70 text-peach-700 shadow-[inset_0_0_0_1px_rgba(221,140,90,0.22)]"
     : isDone
-    ? "bg-green-50 text-green-700 border-green-200"
+    ? "bg-sage-50/70 text-sage-700 shadow-[inset_0_0_0_1px_rgba(111,162,128,0.22)]"
     : isError
-    ? "bg-red-50 text-red-700 border-red-200"
-    : "bg-gray-50 text-gray-600 border-gray-200";
+    ? "bg-rose-50/70 text-rose-700 shadow-[inset_0_0_0_1px_rgba(201,113,133,0.28)]"
+    : "bg-white/60 text-gray-600 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]";
 
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${cls}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full backdrop-blur-[6px] px-2 py-0.5 text-[10.5px] font-medium ${cls}`}>
       <Icon size={10} className={isInProgress ? "animate-spin" : ""} />
       {label}
     </span>
@@ -212,31 +229,36 @@ function TimelineRow({ entry }: { entry: TimelineEntry }) {
   return (
     <Link
       href={entry.href}
-      className={`group block rounded-xl border bg-white px-4 py-3 hover:shadow-sm transition-all ${
-        isError ? "border-red-100 hover:border-red-300" : "border-gray-100 hover:border-indigo-200"
-      }`}
+      className="group relative block rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.10),0_4px_12px_-4px_rgba(15,23,42,0.10),0_12px_28px_-12px_rgba(15,23,42,0.14)] hover:-translate-y-0.5 transition-all overflow-hidden pl-4 pr-3.5 py-3"
     >
+      {/* Bord gauche signature couleur par type (3px) — span absolute pour ne
+          pas perturber le calcul du padding et permettre l'effet hover smooth. */}
+      <span className={`absolute inset-y-2.5 left-0 w-[3px] rounded-r-full ${TONE_LEFT_BAR[entry.iconTone]}`} />
       <div className="flex items-center gap-3">
-        <div className={`shrink-0 flex items-center justify-center w-9 h-9 rounded-lg ${TONE_BG[entry.iconTone]}`}>
-          <Icon size={16} />
+        <div className={`shrink-0 flex items-center justify-center w-9 h-9 rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.04)] ${TONE_ICON_BG[entry.iconTone]}`}>
+          <Icon size={15} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm font-medium text-gray-900 truncate">{entry.title}</p>
+            <p className="text-[13px] font-semibold text-gray-950 truncate">{entry.title}</p>
             <StatusBadge status={entry.status} />
           </div>
-          <p className="text-xs text-gray-400 mt-0.5 truncate">
+          <p className="text-[11.5px] text-gray-500 mt-0.5 truncate">
             {entry.sublabel ?? "—"}
-            {entry.ownerName && <span className="ml-1.5">· {entry.ownerName}</span>}
+            {entry.ownerName && (
+              <span className="ml-1.5 inline-flex items-center gap-1 text-gray-400">
+                <span className="text-gray-300">·</span> {entry.ownerName}
+              </span>
+            )}
           </p>
         </div>
-        <div className="shrink-0 flex items-center gap-2 text-xs text-gray-400">
-          <span className="hidden sm:inline">{formatDate(entry.createdAt)}</span>
-          <ChevronRight size={14} className="text-gray-300 group-hover:text-indigo-400 transition-colors" />
+        <div className="shrink-0 flex items-center gap-2 text-[11px] text-gray-400">
+          <span className="hidden sm:inline tabular-nums">{formatDate(entry.createdAt)}</span>
+          <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-700 transition-colors" />
         </div>
       </div>
       {showError && (
-        <p className="mt-2 pl-12 text-xs text-red-600 line-clamp-2" title={entry.errorMsg ?? undefined}>
+        <p className="mt-2 pl-12 text-[11.5px] text-rose-700 line-clamp-2" title={entry.errorMsg ?? undefined}>
           {entry.errorMsg}
         </p>
       )}
@@ -261,8 +283,8 @@ function listingToEntry(item: GridItem): TimelineEntry {
   }
   return {
     id: item.id,
-    icon: LayoutTemplate,
-    iconTone: "indigo",
+    icon: Clapperboard,
+    iconTone: "peach",
     title: titleBase,
     sublabel: sublabelParts.join(" · ") || null,
     status: item.render?.status ?? "PENDING",
@@ -276,7 +298,7 @@ function captionToEntry(job: CaptionJobRow): TimelineEntry {
   return {
     id: job.id,
     icon: Film,
-    iconTone: "violet",
+    iconTone: "sky",
     title: job.inputName ?? "Caption sans nom",
     sublabel: job.presetId ? `Preset ${job.presetId.slice(0, 8)}…` : null,
     status: job.status,
@@ -295,7 +317,7 @@ function transcriptionToEntry(job: TranscriptionJobRow): TimelineEntry {
   return {
     id: job.id,
     icon: Mic,
-    iconTone: "teal",
+    iconTone: "sage",
     title: job.inputFilename ?? "Transcription sans nom",
     sublabel: parts.join(" · ") || null,
     status: job.status,
@@ -313,7 +335,7 @@ function descriptionToEntry(job: DescriptionJobRow): TimelineEntry {
   return {
     id: job.id,
     icon: AlignLeft,
-    iconTone: "sky",
+    iconTone: "rose",
     title: job.inputFilename ?? job.prompt?.name ?? "Description sans titre",
     sublabel: parts.join(" · ") || null,
     status: job.status,
@@ -351,6 +373,9 @@ export function ListingsClient({
 }) {
   const [tab, setTab] = useState<TabKey>("templates");
   const [userFilter, setUserFilter] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  // Filtre status : "all" | "in_progress" | "done" | "failed".
+  const [statusFilter, setStatusFilter] = useState<"all" | "in_progress" | "done" | "failed">("all");
 
   // ── Render states (live polling) ─────────────────────────────────────────
   const [renderStates, setRenderStates] = useState<Record<string, RenderRow>>(() => {
@@ -492,7 +517,7 @@ export function ListingsClient({
     [filteredDescriptions],
   );
 
-  const activeEntries: TimelineEntry[] =
+  const rawEntries: TimelineEntry[] =
     tab === "templates"
       ? listingEntries
       : tab === "captions"
@@ -501,19 +526,33 @@ export function ListingsClient({
       ? transcriptionEntries
       : descriptionEntries;
 
+  const activeEntries = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rawEntries.filter((e) => {
+      if (statusFilter === "in_progress" && !["PENDING", "QUEUED", "PROCESSING", "RUNNING"].includes(e.status)) return false;
+      if (statusFilter === "done" && !["COMPLETED", "DONE"].includes(e.status)) return false;
+      if (statusFilter === "failed" && !["FAILED", "ERROR"].includes(e.status)) return false;
+      if (q) {
+        const haystack = [e.title, e.sublabel ?? "", e.ownerName ?? ""].join(" ").toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [rawEntries, search, statusFilter]);
+
   const activeGroups = useMemo(() => groupByDate(activeEntries), [activeEntries]);
   const isEmpty = GROUP_ORDER.every((g) => !activeGroups[g]?.length);
 
   // ── Tab definitions ──────────────────────────────────────────────────────
   const tabs: { id: TabKey; label: string; count: number; tone: Tone; show: boolean }[] = [
-    { id: "templates", label: "Générations", count: filteredListings.length, tone: "indigo", show: true },
-    { id: "captions", label: "Captions", count: filteredCaptions.length, tone: "violet", show: hasCaptions },
-    { id: "transcription", label: "Transcriptions", count: filteredTranscriptions.length, tone: "teal", show: hasTranscription },
-    { id: "description", label: "Descriptions", count: filteredDescriptions.length, tone: "sky", show: hasDescription },
+    { id: "templates", label: "Générations", count: filteredListings.length, tone: "peach", show: true },
+    { id: "captions", label: "Captions", count: filteredCaptions.length, tone: "sky", show: hasCaptions },
+    { id: "transcription", label: "Transcriptions", count: filteredTranscriptions.length, tone: "sage", show: hasTranscription },
+    { id: "description", label: "Descriptions", count: filteredDescriptions.length, tone: "rose", show: hasDescription },
   ].filter((t) => t.show) as { id: TabKey; label: string; count: number; tone: Tone; show: boolean }[];
 
   const emptyConfig = {
-    templates: { icon: LayoutTemplate, label: "Aucune génération pour l'instant", linkHref: "/templates", linkLabel: "Templates" },
+    templates: { icon: Clapperboard, label: "Aucune génération pour l'instant", linkHref: "/templates", linkLabel: "Studio" },
     captions: { icon: Film, label: "Aucun caption généré", linkHref: "/captions", linkLabel: "Captions" },
     transcription: { icon: Mic, label: "Aucune transcription", linkHref: "/transcriptions", linkLabel: "Transcriptions" },
     description: { icon: AlignLeft, label: "Aucune description générée", linkHref: "/descriptions", linkLabel: "Descriptions" },
@@ -523,79 +562,105 @@ export function ListingsClient({
 
   return (
     <div>
-      {/* Tabs */}
-      <div className="flex items-center gap-1 mb-6 bg-gray-100 p-1 rounded-xl w-fit">
-        {tabs.map((t) => {
-          const active = tab === t.id;
-          const badgeBg = active ? TAB_BADGE_ACTIVE[t.tone] : "bg-gray-200 text-gray-500";
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                active ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {t.label}
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${badgeBg}`}>{t.count}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Admin user filter pills */}
-      {isAdmin && allUsers.length > 1 && (
-        <div className="flex items-center gap-2 mb-5 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setUserFilter(null)}
-            className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-              userFilter === null
-                ? "bg-gray-900 text-white border-gray-900"
-                : "border-gray-200 text-gray-600 hover:border-gray-400"
-            }`}
-          >
-            Tous
-          </button>
-          {allUsers.map((name) => (
-            <button
-              key={name}
-              type="button"
-              onClick={() => setUserFilter(userFilter === name ? null : name)}
-              className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                userFilter === name
-                  ? "bg-gray-900 text-white border-gray-900"
-                  : "border-gray-200 text-gray-600 hover:border-gray-400"
-              }`}
-            >
-              {name}
-            </button>
-          ))}
+      {/* Toolbar glass v2 : tabs + filtres (search / status / user admin) */}
+      <div className="mb-6 rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] p-3 space-y-3">
+        {/* Tabs */}
+        <div className="flex items-center gap-1 flex-wrap">
+          {tabs.map((t) => {
+            const active = tab === t.id;
+            const badgeBg = active ? TAB_BADGE_ACTIVE[t.tone] : "bg-white/60 text-gray-500";
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[12.5px] font-medium transition-all ${
+                  active
+                    ? "bg-gradient-to-b from-white/95 to-white/70 backdrop-blur-[8px] text-gray-950 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_-2px_rgba(15,23,42,0.06)]"
+                    : "text-gray-500 hover:text-gray-900 hover:bg-white/50"
+                }`}
+              >
+                {t.label}
+                <span className={`text-[10px] tabular-nums px-1.5 py-0.5 rounded-full ${badgeBg}`}>{t.count}</span>
+              </button>
+            );
+          })}
         </div>
-      )}
+
+        {/* Filtres : search + status chips + user admin */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex-1 min-w-[200px] max-w-[320px]">
+            <Input value={search} onChange={setSearch} placeholder="Rechercher (titre, template, user)" icon={Search} />
+          </div>
+          <div className="inline-flex items-center gap-1">
+            {([
+              { id: "all", label: "Tous" },
+              { id: "in_progress", label: "En cours" },
+              { id: "done", label: "Terminés" },
+              { id: "failed", label: "Échec" },
+            ] as const).map((s) => (
+              <Chip
+                key={s.id}
+                variant={statusFilter === s.id ? "sky" : "default"}
+                selected={statusFilter === s.id}
+                onClick={() => setStatusFilter(s.id)}
+                size="sm"
+              >
+                {s.label}
+              </Chip>
+            ))}
+          </div>
+          {isAdmin && allUsers.length > 0 && (
+            <div className="w-[200px]">
+              <Combobox
+                value={userFilter ?? ""}
+                onChange={(v) => setUserFilter(v || null)}
+                options={[
+                  { value: "", label: "Tous les users" },
+                  ...allUsers.map((n) => ({ value: n, label: n })),
+                ]}
+                placeholder="Filtrer par user"
+                emptyMessage="Aucun user"
+              />
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Empty state */}
       {isEmpty && (
-        <div className="text-center py-24 text-gray-400">
-          <EmptyIcon size={40} className="mx-auto mb-4 opacity-30" />
-          <p className="font-medium">{empty.label}</p>
-          <p className="text-sm mt-1">
-            Rendez-vous dans{" "}
-            <Link href={empty.linkHref} className="text-indigo-600 hover:underline">
-              {empty.linkLabel}
-            </Link>
+        <div className="text-center py-20 rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+          <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/70 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] text-gray-400 mb-3">
+            <EmptyIcon size={20} />
+          </div>
+          <p className="text-[14px] font-semibold text-gray-700">{empty.label}</p>
+          <p className="mt-1 text-[12.5px] text-gray-500">
+            {search || statusFilter !== "all" || userFilter ? (
+              <button type="button" onClick={() => { setSearch(""); setStatusFilter("all"); setUserFilter(null); }} className="text-sky-700 hover:text-sky-900 transition-colors">
+                Réinitialiser les filtres
+              </button>
+            ) : (
+              <>
+                Rendez-vous dans{" "}
+                <Link href={empty.linkHref} className="text-sky-700 hover:text-sky-900 transition-colors">
+                  {empty.linkLabel}
+                </Link>
+              </>
+            )}
           </p>
         </div>
       )}
 
-      {/* Date groups — uniform timeline */}
-      <div className="space-y-10">
+      {/* Date groups — uniform timeline avec headers sticky glass */}
+      <div className="space-y-8">
         {GROUP_ORDER.filter((g) => activeGroups[g]?.length).map((group) => (
           <section key={group}>
-            <div className="flex items-center gap-3 mb-3">
-              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide shrink-0">{group}</h2>
-              <div className="flex-1 border-t border-gray-100" />
+            <div className="flex items-center gap-3 mb-3 sticky top-2 z-10">
+              <h2 className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/70 backdrop-blur-[10px] text-[10px] font-semibold text-gray-600 uppercase tracking-widest shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] shrink-0">
+                {group}
+                <span className="tabular-nums text-gray-400">({activeGroups[group]!.length})</span>
+              </h2>
+              <div className="flex-1 border-t border-white/40" />
             </div>
             <div className="space-y-2">
               {activeGroups[group]!.map((entry) => (
@@ -619,7 +684,6 @@ export function ListingsClient({
       {/* Bandeau "lecture seule" pour rappeler que les actions se font sur les pages détail */}
       {!isEmpty && (
         <p className="mt-4 text-center text-[11px] text-gray-400">
-          <ImageIcon size={11} className="inline-block mr-1 align-text-bottom" />
           Cliquez sur un élément pour ouvrir la page détail (regénération, suppression et actions y sont disponibles).
         </p>
       )}

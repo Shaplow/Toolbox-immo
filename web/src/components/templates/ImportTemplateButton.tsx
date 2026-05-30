@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { toast } from "@/components/ui/Toast";
 
 export function ImportTemplateButton() {
@@ -49,15 +50,15 @@ export function ImportTemplateButton() {
           void handleFileChange(event);
         }}
       />
-      <button
-        type="button"
+      <Button
+        variant="secondary"
+        size="sm"
+        icon={Upload}
         onClick={() => inputRef.current?.click()}
-        disabled={loading}
-        className="flex items-center gap-1.5 text-sm border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
+        loading={loading}
       >
-        <Upload size={14} />
         {loading ? "Import…" : "Importer"}
-      </button>
+      </Button>
     </>
   );
 }

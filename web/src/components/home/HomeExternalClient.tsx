@@ -4,7 +4,7 @@ import { TOOL_LABELS, TOOL_DESCRIPTIONS, type Tool } from "@/lib/permissions";
 import { TOOL_META } from "@/lib/toolMeta";
 
 // parsePermissions inliné — évite de pull userContext.ts (qui importe
-// next/headers et casse le bundle client). Même approche que tools.ts.
+// next/headers et casse le bundle client).
 function parsePermissions(raw: string | null | undefined): string[] {
   try {
     return JSON.parse(raw ?? "[]") as string[];
@@ -27,135 +27,164 @@ interface HomeExternalClientProps {
 /**
  * Page d'accueil pour le rôle EXTERNAL_GENERATOR (client externe).
  *
- * Ces utilisateurs ne font pas partie de l'équipe éditoriale — ils ont juste
- * accès à un ou plusieurs templates pour générer manuellement du contenu.
- *
- * Affiche :
+ * Pattern gateway — distinct des worklists pipeline. Affiche :
  *  1. CTA "Mes générations" → /listings (historique de leurs renders)
  *  2. Liste des templates accessibles (click → /generate/[id])
- *  3. Liste des outils granulaires éventuellement attribués (covers, etc.)
+ *  3. Liste des outils granulaires éventuellement attribués
  *
- * Out of scope : presets sous-titres (réservés à l'équipe interne), pipeline
- * éditoriale (calendrier, fiches publications).
+ * Out of scope : presets sous-titres, pipeline éditoriale.
  */
 export function HomeExternalClient({ permissions, access }: HomeExternalClientProps) {
   const userPerms = parsePermissions(permissions) as Tool[];
   const knownTools = userPerms.filter((p): p is Tool => p in TOOL_LABELS);
-  // Le tool TEMPLATES est exposé via la section dédiée ci-dessous —
-  // on l'exclut de la section "Mes outils" pour ne pas le dupliquer.
   const otherTools = knownTools.filter((t) => t !== "templates");
   const hasOtherTools = otherTools.length > 0;
   const hasTemplates = access.templates.length > 0;
   const hasAnyAccess = hasOtherTools || hasTemplates;
 
+  // ── Empty state — aucun accès attribué ────────────────────────────────
   if (!hasAnyAccess) {
     return (
-      <div className="max-w-md mx-auto px-4 py-16 flex flex-col items-center text-center gap-6">
-        <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
-          <ShieldAlert size={22} className="text-amber-500" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Aucun accès actif</h1>
-          <p className="text-sm text-gray-500 leading-relaxed">
-            Aucun template ne vous a été attribué pour le moment. Contactez
-            votre administrateur pour activer vos accès.
-          </p>
+      <div className="min-h-screen">
+        <div
+          className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)] flex items-center justify-center"
+          style={{
+            background: "var(--gradient-page-shell)",
+          }}
+        >
+          <div className="max-w-md mx-auto px-6 flex flex-col items-center text-center gap-5">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-peach-50/80 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(245,158,107,0.22)]">
+              <ShieldAlert size={20} className="text-peach-700" />
+            </span>
+            <div>
+              <h1 className="text-[20px] font-semibold text-gray-950 mb-2">
+                Aucun accès actif
+              </h1>
+              <p className="text-[13px] text-gray-500 leading-relaxed">
+                Aucun template ne vous a été attribué pour le moment. Contactez votre
+                administrateur pour activer vos accès.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-12 flex flex-col gap-8">
-      <header className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
-            <Wrench size={22} className="text-indigo-500" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Bienvenue</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Vos templates et générations en un coup d&apos;œil.
-            </p>
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
+        style={{
+          background: "var(--gradient-page-shell)",
+        }}
+      >
+        {/* Header Control Center */}
+        <div className="rounded-t-3xl overflow-hidden">
+          <div className="max-w-5xl mx-auto px-6 sm:px-8 pt-6 pb-2">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                  Mon espace
+                </p>
+                <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
+                  Bienvenue
+                </h1>
+                <p className="mt-2 text-[13px] text-gray-500">
+                  Vos templates et générations en un coup d&apos;œil.
+                </p>
+              </div>
+
+              {/* CTA Mes générations en pill glass */}
+              <Link
+                href="/listings"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/55 backdrop-blur-[12px] text-gray-700 hover:text-gray-950 text-[12px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.14),0_2px_6px_rgba(15,23,42,0.06)] transition-all"
+              >
+                Mes générations
+                <ArrowRight size={13} />
+              </Link>
+            </div>
           </div>
         </div>
-        <Link
-          href="/listings"
-          className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100 transition-colors shrink-0"
-        >
-          Mes générations
-          <ArrowRight size={14} />
-        </Link>
-      </header>
 
-      {/* CTA mobile (l'inline est masqué en xs) */}
-      <Link
-        href="/listings"
-        className="sm:hidden inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100 transition-colors"
-      >
-        Mes générations
-        <ArrowRight size={14} />
-      </Link>
+        <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
+          <div className="max-w-5xl mx-auto space-y-6">
+            {hasTemplates && (
+              <section className="rounded-2xl bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-[8px] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)]">
+                <div className="flex items-center justify-between gap-2 mb-4">
+                  <div>
+                    <p className="text-[13px] font-semibold tracking-tight text-gray-950">
+                      Templates accessibles
+                    </p>
+                    <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mt-0.5">
+                      {access.templates.length} disponible
+                      {access.templates.length > 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <LayoutTemplate size={16} className="text-gray-400" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {access.templates.map((t) => (
+                    <Link
+                      key={t.id}
+                      href={`/generate/${t.id}`}
+                      className="group flex items-center justify-between gap-2 px-4 py-3 rounded-xl bg-white shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.04),0_8px_20px_-12px_rgba(15,23,42,0.14)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.14),0_4px_8px_rgba(15,23,42,0.06),0_12px_28px_-12px_rgba(15,23,42,0.22)] hover:-translate-y-px transition-all"
+                    >
+                      <span className="text-[13px] font-medium text-gray-950 truncate">
+                        {t.name}
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 group-hover:text-gray-950 transition-colors shrink-0">
+                        Générer
+                        <ArrowRight size={12} />
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
 
-      {hasTemplates && (
-        <section className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <LayoutTemplate size={16} className="text-gray-400" />
-            <h2 className="text-sm font-semibold text-gray-700">
-              Templates accessibles
-            </h2>
-            <span className="text-xs text-gray-400">
-              ({access.templates.length})
-            </span>
+            {hasOtherTools && (
+              <section className="rounded-2xl bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-[8px] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)]">
+                <div className="flex items-center justify-between gap-2 mb-4">
+                  <div>
+                    <p className="text-[13px] font-semibold tracking-tight text-gray-950">
+                      Mes outils
+                    </p>
+                    <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mt-0.5">
+                      {otherTools.length} accès
+                    </p>
+                  </div>
+                  <Wrench size={16} className="text-gray-400" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {otherTools.map((tool) => {
+                    const meta = TOOL_META[tool];
+                    return (
+                      <Link
+                        key={tool}
+                        href={meta.href}
+                        className="group flex items-start gap-3 px-4 py-3 rounded-xl bg-white shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.04),0_8px_20px_-12px_rgba(15,23,42,0.14)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.14),0_4px_8px_rgba(15,23,42,0.06),0_12px_28px_-12px_rgba(15,23,42,0.22)] hover:-translate-y-px transition-all"
+                      >
+                        <span className="shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-md bg-gray-100/60 text-gray-700 group-hover:bg-gray-100 transition-colors">
+                          <meta.Icon size={14} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] font-medium text-gray-950 truncate">
+                            {TOOL_LABELS[tool]}
+                          </p>
+                          <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                            {TOOL_DESCRIPTIONS[tool]}
+                          </p>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
           </div>
-          <ul className="space-y-1">
-            {access.templates.map((t) => (
-              <li key={t.id}>
-                <Link
-                  href={`/generate/${t.id}`}
-                  className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-                >
-                  <span className="truncate">{t.name}</span>
-                  <span className="text-xs text-gray-400 shrink-0">Générer</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {hasOtherTools && (
-        <section className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <Wrench size={16} className="text-gray-400" />
-            <h2 className="text-sm font-semibold text-gray-700">Mes outils</h2>
-            <span className="text-xs text-gray-400">({otherTools.length})</span>
-          </div>
-          <ul className="space-y-1">
-            {otherTools.map((tool) => {
-              const meta = TOOL_META[tool];
-              return (
-                <li key={tool}>
-                  <Link
-                    href={meta.href}
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-                  >
-                    <meta.Icon size={16} className="text-gray-400 shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-sm text-gray-700 truncate">
-                        {TOOL_LABELS[tool]}
-                      </p>
-                      <p className="text-xs text-gray-400 truncate">
-                        {TOOL_DESCRIPTIONS[tool]}
-                      </p>
-                    </div>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
+        </div>
+      </div>
     </div>
   );
 }

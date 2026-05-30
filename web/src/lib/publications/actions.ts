@@ -119,11 +119,25 @@ export function canTriggerCaptions(ctx: ActionContext): ActionVerdict {
   if (!ctx.pattern || !ctx.pattern.needsCaptions) return { visible: false };
 
   if (isAutoPipeline(ctx) && !ctx.latestCaptionJob) {
+    // Message contextualisé selon l'état du render :
+    // - pas de render → en attente du lancement
+    // - render PENDING/PROCESSING → en attente fin du rendu
+    // - render DONE → captions vont se lancer (transcription en cours côté webhook)
+    // - render ERROR → bloqué tant que le rendu n'est pas relancé
+    const renderStatus = ctx.render?.status;
+    let reason = "Les sous-titres seront générés automatiquement après le rendu.";
+    if (renderStatus === "DONE") {
+      reason = "Sous-titres en cours de génération automatique…";
+    } else if (renderStatus === "PROCESSING" || renderStatus === "PENDING") {
+      reason = "Rendu en cours — sous-titres lancés automatiquement à la fin.";
+    } else if (renderStatus === "ERROR") {
+      reason = "Rendu en échec — relancer le rendu pour générer les sous-titres.";
+    }
     return {
       visible: true,
       enabled: false,
       intent: "auto",
-      reason: "Les sous-titres seront générés automatiquement après le rendu.",
+      reason,
     };
   }
   if (isJobActive(ctx.latestCaptionJob?.status)) {

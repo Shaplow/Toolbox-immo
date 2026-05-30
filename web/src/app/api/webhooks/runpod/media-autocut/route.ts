@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runpod";
+import { notifyAll } from "@/lib/sseStore";
 
 /**
  * POST /api/webhooks/runpod/media-autocut
@@ -79,6 +80,10 @@ export async function POST(req: NextRequest) {
       });
     });
 
+    // Fix bug audit 2026-05-30 (M2) : SSE notify (broadcast — pas d'userId
+    // trackable sur le batch). L'admin connecté voit le batch passer FAILED.
+    notifyAll({ jobType: "media-autocut", jobId: batch.id, status: "FAILED", errorMsg });
+
     return NextResponse.json({ ok: true });
   }
 
@@ -138,6 +143,16 @@ export async function POST(req: NextRequest) {
       console.info(
         `[webhook/media-autocut] batch=${batch!.id} done=${doneCount} failed=${failCount}`
       );
+
+      // SSE notify post-tx (out of band). batchStatus capturé dans la closure.
+      // notifyAll broadcast car le modèle ne tracke pas l'admin déclencheur.
+      notifyAll({
+        jobType: "media-autocut",
+        jobId: batch!.id,
+        status: batchStatus.toUpperCase(),
+        doneCount,
+        failCount,
+      });
     });
   } catch (txErr) {
     console.error(`[webhook/media-autocut] transaction failed for batch=${batch.id}:`, txErr);

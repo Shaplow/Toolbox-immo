@@ -23,6 +23,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { notifyUser } from "@/lib/sseStore";
 import { getFromR2, r2Configured } from "@/lib/r2";
 import { logActivity } from "@/lib/services/slot/activity";
 
@@ -39,7 +40,8 @@ type SkipReason =
   | "prompt_inactive"
   | "no_transcription_output"
   | "r2_not_configured"
-  | "no_anthropic_key";
+  | "no_anthropic_key"
+  | "awaiting_client_validation";
 
 function logSkip(jobId: string, reason: SkipReason, extra?: Record<string, unknown>) {
   console.info(
@@ -113,13 +115,16 @@ export async function triggerAutoDescriptionForTranscription(
     where: { id: slotId },
     select: {
       id: true,
+      status: true,
       description: true,
       descriptionPromptIdOverride: true,
       needsDescriptionOverride: true,
+      needsClientValidationOverride: true,
       pattern: {
         select: {
           needsDescription: true,
           descriptionPromptId: true,
+          needsClientValidation: true,
         },
       },
     },
@@ -136,6 +141,22 @@ export async function triggerAutoDescriptionForTranscription(
     logSkip(transcriptionJobId, "needs_description_not_auto", {
       slotId,
       effective: effectiveNeedsDescription,
+    });
+    return;
+  }
+
+  // Garde "post-validation client" (2026-05-30) : si validation client requise
+  // et pas encore approuvée (SCHEDULED / PUBLISHED / DONE), on diffère le job
+  // description — il sera lancé par /api/validate/[token] après approve.
+  const needsValidation =
+    slot.needsClientValidationOverride ??
+    slot.pattern?.needsClientValidation ??
+    false;
+  const POST_VALIDATION_STATUSES = new Set(["SCHEDULED", "PUBLISHED", "DONE"]);
+  if (needsValidation && !POST_VALIDATION_STATUSES.has(slot.status)) {
+    logSkip(transcriptionJobId, "awaiting_client_validation", {
+      slotId,
+      status: slot.status,
     });
     return;
   }
@@ -233,6 +254,12 @@ export async function triggerAutoDescriptionForTranscription(
     data: { description: result },
   });
 
+  // Fix bug audit 2026-05-30 (H5) : on créait le job en COMPLETED systématiquement,
+  // même quand update.count === 0 (description manuelle déjà saisie). Le statut
+  // était trompeur. On garde COMPLETED (le job IA a abouti) mais on stocke un
+  // errorMsg explicite signalant que le résultat n'a pas été appliqué au slot,
+  // pour distinguer dans l'UI / les logs.
+  const wasApplied = update.count > 0;
   const job_ = await prisma.descriptionJob.create({
     data: {
       userId: job.userId,
@@ -244,10 +271,21 @@ export async function triggerAutoDescriptionForTranscription(
       promptSnapshot: prompt.prompt,
       model: "claude",
       result,
+      errorMsg: wasApplied
+        ? null
+        : "Description IA générée mais non appliquée — le slot a été rempli manuellement pendant la génération.",
     },
   });
 
-  if (update.count > 0) {
+  // SSE — la fiche publication écoute jobType=description pour refresh auto.
+  notifyUser(job.userId, {
+    jobType: "description",
+    jobId: job_.id,
+    status: "COMPLETED",
+    slotId,
+  });
+
+  if (wasApplied) {
     await logActivity(prisma, {
       slotId,
       actorId: null, // auto-trigger système
@@ -262,7 +300,7 @@ export async function triggerAutoDescriptionForTranscription(
     console.info(`[autoDescription] slot=${slotId} description filled via auto-trigger`);
   } else {
     console.info(
-      `[autoDescription] slot=${slotId} description was filled manually mid-generation — kept user input, IA result logged in DescriptionJob ${job_.id}`,
+      `[autoDescription] slot=${slotId} description was filled manually mid-generation — kept user input, IA result logged in DescriptionJob ${job_.id} (errorMsg set)`,
     );
   }
 }

@@ -44,11 +44,26 @@ if (!process.env.NEXTAUTH_URL && process.env.NODE_ENV === "production") {
  * RunPod does not support custom request headers in webhooks — the secret is
  * embedded in the webhook URL as a query parameter by getRunpodWebhookUrl and
  * forwarded verbatim by RunPod when it POSTs the callback.
- * Returns a 401 NextResponse if verification fails, null if OK.
- * If RUNPOD_WEBHOOK_SECRET is not set, the check is skipped (dev / unprotected).
+ * Returns a NextResponse 4xx/5xx if verification fails, null if OK.
+ *
+ * Fix bug audit 2026-05-30 (M3) : si RUNPOD_WEBHOOK_SECRET absent en prod,
+ * on retourne 503 au lieu d'accepter aveuglément. En dev (NODE_ENV !== "production"),
+ * on tolère l'absence du secret (log warning) pour faciliter le développement local.
  */
 export function verifyRunpodWebhook(req: NextRequest): NextResponse | null {
-  if (!WEBHOOK_SECRET) return null;
+  if (!WEBHOOK_SECRET) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[verifyRunpodWebhook] RUNPOD_WEBHOOK_SECRET non défini en PROD — webhook refusé.");
+      return NextResponse.json(
+        { error: "Webhook secret not configured on server" },
+        { status: 503 },
+      );
+    }
+    console.warn(
+      "[verifyRunpodWebhook] RUNPOD_WEBHOOK_SECRET non défini — vérification désactivée (dev only).",
+    );
+    return null;
+  }
   const provided = req.nextUrl.searchParams.get("secret");
   if (!provided) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

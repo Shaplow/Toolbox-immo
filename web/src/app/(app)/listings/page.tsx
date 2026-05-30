@@ -6,7 +6,7 @@ import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { RefreshButton } from "@/components/ui/RefreshButton";
 import { toUserRole } from "@/lib/permissions/role";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
-import { List, Info, ChevronLeft, X } from "lucide-react";
+import { History, Info, ChevronLeft, X } from "lucide-react";
 
 const LISTING_INCLUDE = {
   template: { select: { id: true, name: true, client: true, formats: true } },
@@ -277,65 +277,78 @@ export default async function ListingsPage({ searchParams }: PageProps) {
   if (inProgressCount > 0) subtitleParts.push(`${inProgressCount} en cours`);
 
   return (
-    <div>
-      {slotBannerContext && (
-        <div className="bg-indigo-50 border-b border-indigo-100 px-4 py-3">
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2 min-w-0 text-sm">
-              <Info size={14} className="text-indigo-500 shrink-0" />
-              <span className="text-indigo-900">
-                Jobs filtrés pour{" "}
-                <span className="font-semibold">
-                  {slotBannerContext.title ?? `@${slotBannerContext.handle}`}
-                </span>
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link
-                href={`/publications/${slotBannerContext.id}`}
-                className="inline-flex items-center gap-1 text-xs font-medium text-indigo-700 hover:text-indigo-900 transition-colors"
-              >
-                <ChevronLeft size={12} />
-                Retour à la publication
-              </Link>
-              <Link
-                href="/listings"
-                className="inline-flex items-center gap-1 text-xs font-medium text-indigo-700 hover:text-indigo-900 transition-colors"
-                title="Effacer le filtre"
-              >
-                <X size={12} />
-                Tout voir
-              </Link>
-            </div>
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
+        style={{ background: "var(--gradient-page-shell)" }}
+      >
+        {/* Header (icône + titre + subtitle + actions) */}
+        <div className="rounded-t-3xl overflow-hidden">
+          <div className="px-6 sm:px-8 pt-6 pb-2">
+            <ToolPageHeader
+              icon={History}
+              iconColor="peach"
+              title={
+                slotBannerContext
+                  ? "Jobs de cette publication"
+                  : isAdmin
+                    ? "Historique des générations"
+                    : "Mon historique"
+              }
+              subtitle={subtitleParts.join(" · ")}
+              actions={<RefreshButton title="Rafraîchir la liste" />}
+            />
           </div>
         </div>
-      )}
-      <div className="p-8">
-        <ToolPageHeader
-          icon={List}
-          iconColor="indigo"
-          title={
-            slotBannerContext
-              ? "Jobs de cette publication"
-              : isAdmin
-                ? "Historique des générations"
-                : "Mon historique"
-          }
-          subtitle={subtitleParts.join(" · ")}
-          actions={<RefreshButton title="Rafraîchir la liste" />}
-        />
 
-        <ListingsClient
-          initialListings={rows}
-          initialCaptionJobs={captionRows}
-          initialTranscriptionJobs={transcriptionRows}
-          initialDescriptionJobs={descriptionRows}
-          isAdmin={isAdmin}
-          hasCaptions={hasCaptions}
-          hasTranscription={hasTranscription}
-          hasDescription={hasDescription}
-          hasCovers={hasCovers}
-        />
+        {/* Banner filtre slot (glass v2 sky) */}
+        {slotBannerContext && (
+          <div className="px-6 sm:px-8 pb-3">
+            <div className="rounded-2xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.32)] px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0 text-[12.5px]">
+                <Info size={13} className="text-sky-600 shrink-0" />
+                <span className="text-sky-900">
+                  Jobs filtrés pour{" "}
+                  <span className="font-semibold">
+                    {slotBannerContext.title ?? `@${slotBannerContext.handle}`}
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Link
+                  href={`/publications/${slotBannerContext.id}`}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 hover:text-sky-900 transition-colors"
+                >
+                  <ChevronLeft size={11} />
+                  Retour à la publication
+                </Link>
+                <Link
+                  href="/listings"
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 hover:text-sky-900 transition-colors"
+                  title="Effacer le filtre"
+                >
+                  <X size={11} />
+                  Tout voir
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Body : timeline */}
+        <div className="px-4 sm:px-6 md:px-8 pt-2 pb-12">
+          <ListingsClient
+            initialListings={rows}
+            initialCaptionJobs={captionRows}
+            initialTranscriptionJobs={transcriptionRows}
+            initialDescriptionJobs={descriptionRows}
+            isAdmin={isAdmin}
+            hasCaptions={hasCaptions}
+            hasTranscription={hasTranscription}
+            hasDescription={hasDescription}
+            hasCovers={hasCovers}
+          />
+        </div>
       </div>
     </div>
   );

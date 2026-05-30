@@ -15,9 +15,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, Copy, Check, RefreshCw, X, AlertTriangle, ExternalLink } from "lucide-react";
+import { ShieldCheck, Copy, Check, CheckCircle, XCircle, RefreshCw, X, AlertTriangle, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Section } from "@/components/ui/molecules/Section";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Textarea } from "@/components/ui/Textarea";
 import { toast } from "@/components/ui/Toast";
 import type { UserRole } from "@/types/roles";
 
@@ -48,6 +50,10 @@ interface Props {
   /** Historique des rounds de validation client (du plus récent au plus ancien). */
   rounds: ClientValidationRound[];
   currentUserRole: UserRole;
+  sectionId?: string;
+  storageKey?: string;
+  defaultOpen?: boolean;
+  collapsible?: boolean;
 }
 
 // ─── Composant ────────────────────────────────────────────────────────────────
@@ -60,6 +66,10 @@ export function ClientValidationSection({
   initialActiveToken,
   rounds,
   currentUserRole,
+  sectionId = "client-validation",
+  storageKey,
+  defaultOpen = true,
+  collapsible = false,
 }: Props) {
   const router = useRouter();
   const isAdmin = currentUserRole === "ADMIN";
@@ -178,19 +188,19 @@ export function ClientValidationSection({
   const isResolved = ["SCHEDULED", "PUBLISHED", "CANCELLED", "ARCHIVED"].includes(slotStatus);
 
   return (
-    <section
-      id="client-validation"
-      className="bg-white border border-gray-100 rounded-2xl p-8"
-    >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <ShieldCheck size={16} className="text-gray-500" />
-          <h2 className="text-sm font-semibold text-gray-700">Validation client</h2>
-        </div>
-        <span className="text-xs text-gray-500">
+    <Section
+      title="Validation client"
+      icon={ShieldCheck}
+      sectionId={sectionId}
+      storageKey={storageKey}
+      defaultOpen={defaultOpen}
+      collapsible={collapsible}
+      actions={
+        <span className="text-[11px] text-gray-500">
           {allowsClientRevision ? "Avec révisions" : "Validation simple"}
         </span>
-      </div>
+      }
+    >
 
       {/* ── État courant ───────────────────────────────────────────────────── */}
       {isAwaiting && (
@@ -222,10 +232,25 @@ export function ClientValidationSection({
 
       {isResolved && (
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
-          <p className="text-sm text-gray-700">
-            {slotStatus === "SCHEDULED" && "✓ Validée par le client."}
-            {slotStatus === "PUBLISHED" && "✓ Publiée (validée auparavant)."}
-            {slotStatus === "CANCELLED" && "✕ Annulée par le client."}
+          <p className="text-sm text-gray-700 inline-flex items-center gap-1.5">
+            {slotStatus === "SCHEDULED" && (
+              <>
+                <CheckCircle size={14} className="text-success-700" />
+                Validée par le client.
+              </>
+            )}
+            {slotStatus === "PUBLISHED" && (
+              <>
+                <CheckCircle size={14} className="text-success-700" />
+                Publiée (validée auparavant).
+              </>
+            )}
+            {slotStatus === "CANCELLED" && (
+              <>
+                <XCircle size={14} className="text-danger-700" />
+                Annulée par le client.
+              </>
+            )}
             {slotStatus === "ARCHIVED" && "Archivée."}
           </p>
         </div>
@@ -411,19 +436,17 @@ export function ClientValidationSection({
           setManualComment("");
         }}
       >
-        <div className="mt-3">
-          <label className="block">
-            <span className="text-xs text-gray-600">Commentaire (optionnel)</span>
-            <textarea
-              value={manualComment}
-              onChange={(e) => setManualComment(e.target.value)}
-              placeholder="Raison de la décision manuelle…"
-              className="mt-1 w-full min-h-[60px] px-2 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              maxLength={2000}
-            />
-          </label>
+        <div className="mt-3 space-y-1">
+          <span className="text-xs text-gray-600">Commentaire (optionnel)</span>
+          <Textarea
+            value={manualComment}
+            onChange={setManualComment}
+            placeholder="Raison de la décision manuelle…"
+            rows={3}
+            maxLength={2000}
+          />
         </div>
       </ConfirmDialog>
-    </section>
+    </Section>
   );
 }

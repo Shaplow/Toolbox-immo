@@ -3,14 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "./Button";
+import { useRegisterDialog } from "./useDialogStack";
 
 /**
  * Modal de confirmation avec focus trap léger + ESC.
  *
- * - Overlay z-40 (sous le dialog mais au-dessus du header sticky).
- * - Dialog z-50, centré, max-w-md, rounded-xl, shadow-modal.
+ * Z-index dynamique via useRegisterDialog : le ConfirmDialog s'empile au-dessus
+ * de tout autre dialogue (Drawer, Modal) déjà ouvert. Sans ça, un confirm
+ * déclenché depuis un Drawer apparaissait DERRIÈRE le Drawer (z-40/z-50
+ * statiques inférieurs au Drawer stacké à z-60+).
+ *
  * - Autofocus sur "Confirmer".
  * - Variant `danger` → bouton de confirmation rouge sémantique.
+ * - ESC géré par le hook (ne ferme QUE le dialog au sommet de la pile).
  */
 interface ConfirmDialogProps {
   open: boolean;
@@ -40,6 +45,9 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const confirmRef = useRef<HTMLButtonElement>(null);
   const [mounted, setMounted] = useState(false);
+  // Stack dynamique : ce dialog passe au-dessus de tout Drawer/Modal déjà ouvert.
+  // ESC géré par le hook (ne ferme que le top de la pile).
+  const { zIndex } = useRegisterDialog(open, onCancel);
 
   useEffect(() => {
     setMounted(true);
@@ -48,19 +56,15 @@ export function ConfirmDialog({
   useEffect(() => {
     if (!open) return;
     confirmRef.current?.focus();
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, onCancel]);
+  }, [open]);
 
   if (!open || !mounted) return null;
 
   return createPortal(
     <>
       <div
-        className="fixed inset-0 backdrop-blur-[12px] backdrop-saturate-110 z-40"
+        className="fixed inset-0 backdrop-blur-[12px] backdrop-saturate-110"
+        style={{ zIndex }}
         onClick={onCancel}
         aria-hidden="true"
       />
@@ -68,7 +72,8 @@ export function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
-        className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none"
+        className="fixed inset-0 flex items-center justify-center px-4 pointer-events-none"
+        style={{ zIndex: zIndex + 1 }}
       >
         <div className="bg-gradient-to-b from-white to-white/85 backdrop-blur-[24px] backdrop-saturate-150 rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_8px_24px_-4px_rgba(15,23,42,0.12),0_32px_72px_-12px_rgba(15,23,42,0.22)] w-full max-w-md pointer-events-auto overflow-hidden">
           <div className="px-5 pt-5 pb-3">

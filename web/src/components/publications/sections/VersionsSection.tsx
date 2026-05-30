@@ -14,6 +14,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Film, Download, Star, RotateCcw } from "lucide-react";
 import { MediaDropzone } from "@/components/ui/MediaDropzone";
+import { Section } from "@/components/ui/molecules/Section";
 import type { UploadResult } from "@/components/ui/MediaDropzone";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -56,6 +57,10 @@ interface VersionsSectionProps {
    *  dans le ConfirmDialog quand l'admin promote une nouvelle version alors
    *  que des jobs (captions/cover) ont déjà été générés sur l'ancienne. */
   promoteCoherenceWarning?: string | null;
+  sectionId?: string;
+  storageKey?: string;
+  defaultOpen?: boolean;
+  collapsible?: boolean;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -404,6 +409,10 @@ export function VersionsSection({
   isAdmin,
   currentUserId,
   promoteCoherenceWarning,
+  sectionId = "versions",
+  storageKey,
+  defaultOpen = true,
+  collapsible = false,
 }: VersionsSectionProps) {
   const router = useRouter();
   // Les listes sont lues depuis les props serveur — router.refresh() déclenche un re-render
@@ -436,21 +445,19 @@ export function VersionsSection({
     : versions.filter((v) => v.deletedAt === null);
 
   return (
-    <section id="edit" className="bg-white border border-gray-100 rounded-2xl p-8">
-      {/* En-tête */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Film size={16} className="text-gray-400" />
-          <h2 className="text-sm font-semibold text-gray-700">
-            Versions livrées
-            {activeVersions.length > 0 && (
-              <span className="ml-1.5 text-xs font-normal text-gray-400">
-                ({activeVersions.length})
-              </span>
-            )}
-          </h2>
-        </div>
-      </div>
+    <Section
+      title="Versions livrées"
+      icon={Film}
+      sectionId={sectionId}
+      storageKey={storageKey}
+      defaultOpen={defaultOpen}
+      collapsible={collapsible}
+      actions={
+        activeVersions.length > 0 ? (
+          <span className="text-xs text-gray-400 tabular-nums">{activeVersions.length}</span>
+        ) : null
+      }
+    >
 
       {/* Zone upload (MONTEUR assigné ou ADMIN) */}
       {canUploadVersion && (
@@ -492,6 +499,6 @@ export function VersionsSection({
           ))}
         </ul>
       )}
-    </section>
+    </Section>
   );
 }

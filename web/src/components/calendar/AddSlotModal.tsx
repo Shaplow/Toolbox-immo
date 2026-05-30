@@ -1,12 +1,28 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
-import { Plus, X, AlertCircle, Sparkles, PenLine, Clock, Users } from "lucide-react";
+/**
+ * AddSlotModal — création de slot (Phase 8 refonte Liquid Glass MID).
+ *
+ * Wrappers :
+ * - Modal molecule (au lieu de fixed div)
+ * - Tabs primitive pour "Depuis un pattern" vs "Manuel one-off"
+ * - Combobox pour compte / preset / prompt
+ * - DatePicker / TimePicker (zero-dep) pour planning
+ * - FormField + Input pour le titre
+ */
+
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { AlertCircle, Sparkles, PenLine, Clock, Users, Plus } from "lucide-react";
 import type { PublicationSlot } from "@/types/calendar";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+import { Tabs } from "@/components/ui/Tabs";
+import { Combobox } from "@/components/ui/Combobox";
+import { DatePicker } from "@/components/ui/DatePicker";
+import { TimePicker } from "@/components/ui/TimePicker";
 
 interface Account {
   id: string;
@@ -43,8 +59,6 @@ interface AddSlotModalProps {
 type Mode = "pattern" | "manual";
 
 const DAYS = ["", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-const SELECT_CLS =
-  "w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white";
 
 const SOURCE_LABEL: Record<string, string> = {
   auto_template: "Template auto",
@@ -52,29 +66,51 @@ const SOURCE_LABEL: Record<string, string> = {
   external_upload: "Upload externe",
 };
 
-export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddSlotModalProps) {
+const COVER_MODE_OPTIONS = [
+  { value: "", label: "Hérite du pattern" },
+  { value: "none", label: "Pas de cover" },
+  { value: "manualSelect", label: "Sélection libre (CM)" },
+  { value: "autoPack", label: "Pack auto → sélection (CM)" },
+  { value: "monteurUpload", label: "Upload par le monteur" },
+];
+
+const DESCRIPTION_OPTIONS = [
+  { value: "", label: "Aucune" },
+  { value: "none", label: "Aucune" },
+  { value: "preFilled", label: "Pré-remplie" },
+  { value: "autoGenerate", label: "Auto-générée" },
+  { value: "manualWrite", label: "Manuelle" },
+];
+
+const BOOL_OVERRIDE_OPTIONS = [
+  { value: "default", label: "Défaut (non)" },
+  { value: "true", label: "Forcer : Oui" },
+  { value: "false", label: "Forcer : Non" },
+];
+
+export function AddSlotModal({
+  accounts,
+  defaultDate,
+  onCreated,
+  onClose,
+}: AddSlotModalProps) {
   const today = defaultDate ?? new Date().toISOString().slice(0, 10);
 
-  // Mode (tab actif)
   const [mode, setMode] = useState<Mode>("pattern");
 
-  // Form base
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [date, setDate] = useState(today);
   const [time, setTime] = useState("19:00");
   const [title, setTitle] = useState("");
 
-  // Pattern picker
   const [patterns, setPatterns] = useState<PatternOption[]>([]);
   const [selectedPatternId, setSelectedPatternId] = useState<string>("");
   const [loadingPatterns, setLoadingPatterns] = useState(false);
 
-  // Assignees
   const [assigneeMonteurId, setAssigneeMonteurId] = useState<string>("");
   const [assigneeCmId, setAssigneeCmId] = useState<string>("");
   const [assigneeVideasteId, setAssigneeVideasteId] = useState<string>("");
 
-  // Overrides one-off (Manuel)
   const [oneOffNeedsCaptions, setOneOffNeedsCaptions] = useState<boolean | null>(null);
   const [oneOffNeedsRushes, setOneOffNeedsRushes] = useState<boolean | null>(null);
   const [oneOffNeedsBrief, setOneOffNeedsBrief] = useState<boolean | null>(null);
@@ -83,7 +119,6 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
   const [oneOffNeedsDescription, setOneOffNeedsDescription] = useState<string>("");
   const [oneOffDescriptionPromptId, setOneOffDescriptionPromptId] = useState<string>("");
 
-  // Meta data
   const [users, setUsers] = useState<UserOption[]>([]);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [captionPresets, setCaptionPresets] = useState<Array<{ id: string; name: string }>>([]);
@@ -105,13 +140,17 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
         ]);
         if (cancelled) return;
         if (usersRes.ok) {
-          setUsers(await usersRes.json() as UserOption[]);
+          setUsers((await usersRes.json()) as UserOption[]);
         }
         if (presetsRes.ok) {
-          setCaptionPresets(await presetsRes.json() as Array<{ id: string; name: string }>);
+          setCaptionPresets((await presetsRes.json()) as Array<{ id: string; name: string }>);
         }
         if (promptsRes.ok) {
-          const prompts = await promptsRes.json() as Array<{ id: string; name: string; isActive: boolean }>;
+          const prompts = (await promptsRes.json()) as Array<{
+            id: string;
+            name: string;
+            isActive: boolean;
+          }>;
           setDescriptionPrompts(prompts.filter((p) => p.isActive));
         }
       } catch {
@@ -121,7 +160,9 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
       }
     }
     void load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ─── Patterns du compte ─────────────────────────────────────────────────
@@ -135,7 +176,7 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     setAssigneeVideasteId("");
 
     void fetch(`/api/admin/accounts/${accountId}/patterns`)
-      .then((r) => (r.ok ? r.json() as Promise<PatternOption[]> : []))
+      .then((r) => (r.ok ? (r.json() as Promise<PatternOption[]>) : []))
       .then((data) => {
         if (cancelled) return;
         const active = data.filter((p) => p.isActive);
@@ -146,17 +187,19 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
           setAssigneeMonteurId(first.defaultAssigneeMonteur?.id ?? "");
           setAssigneeCmId(first.defaultAssigneeCm?.id ?? "");
           setAssigneeVideasteId(first.defaultAssigneeVideaste?.id ?? "");
-          // Pré-remplit l'heure depuis le pattern
           if (first.publishTime) setTime(first.publishTime);
         } else if (mode === "pattern") {
-          // Pas de pattern actif → bascule en manuel automatiquement
           setMode("manual");
         }
       })
       .catch(() => {})
-      .finally(() => { if (!cancelled) setLoadingPatterns(false); });
+      .finally(() => {
+        if (!cancelled) setLoadingPatterns(false);
+      });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId]);
 
@@ -169,10 +212,16 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     }
     let cancelled = false;
     void fetch(`/api/templates/${tplId}/cover-presets`)
-      .then((r) => (r.ok ? r.json() as Promise<Array<{ id: string; name: string }>> : []))
-      .then((data) => { if (!cancelled) setCoverPresets(data); })
+      .then((r) =>
+        r.ok ? (r.json() as Promise<Array<{ id: string; name: string }>>) : [],
+      )
+      .then((data) => {
+        if (!cancelled) setCoverPresets(data);
+      })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [patterns, selectedPatternId]);
 
   function handlePatternSelect(patternId: string) {
@@ -186,21 +235,26 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
     }
   }
 
-  // Filtrage des users par rôle
-  const monteurs = useMemo(() => users.filter((u) => u.role === "MONTEUR" || u.role === "ADMIN"), [users]);
-  const cms = useMemo(() => users.filter((u) => u.role === "CM" || u.role === "ADMIN"), [users]);
-  const videastes = useMemo(() => users.filter((u) => u.role === "VIDEASTE" || u.role === "ADMIN"), [users]);
+  const monteurs = useMemo(
+    () => users.filter((u) => u.role === "MONTEUR" || u.role === "ADMIN"),
+    [users],
+  );
+  const cms = useMemo(
+    () => users.filter((u) => u.role === "CM" || u.role === "ADMIN"),
+    [users],
+  );
+  const videastes = useMemo(
+    () => users.filter((u) => u.role === "VIDEASTE" || u.role === "ADMIN"),
+    [users],
+  );
 
   const hasNoPatterns = !loadingPatterns && patterns.length === 0 && !!accountId;
   const isPatternMode = mode === "pattern" && !hasNoPatterns;
 
-  // ─── Submit ─────────────────────────────────────────────────────────────
   const canSubmit = useCallback(() => {
     if (!accountId) return false;
     if (isPatternMode) return !!selectedPatternId;
     if (!title.trim()) return false;
-    // Phase 2.6 — coverMode=autoPack ne requiert plus de presetId : le slot
-    // hérite automatiquement du preset par défaut du template.
     if (oneOffCoverMode === "autoPack" && coverPresets.length === 0) return false;
     if (oneOffNeedsCaptions === true && !oneOffCaptionPresetId) return false;
     if (oneOffNeedsDescription === "autoGenerate" && !oneOffDescriptionPromptId) return false;
@@ -220,15 +274,7 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // Anti double-submit : l'utilisateur peut soumettre via Entrée pendant
-    // qu'un POST est en vol (le bouton "Créer" est disabled mais pas le
-    // form). Sans ce guard, 2 slots dupliqués peuvent être créés pour le
-    // même {accountId, scheduledAt, patternId}.
     if (saving) return;
-    // Anti-race : en mode pattern, si la fetch des patterns d'un compte
-    // n'est pas encore terminée, les assignees IDs sont à "" (reset au
-    // début de l'effect d'account change). Soumettre maintenant créerait
-    // un slot sans assignations même si le pattern par défaut en a.
     if (isPatternMode && loadingPatterns) {
       setError("Chargement des patterns du compte en cours…");
       return;
@@ -267,10 +313,10 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        const err = await res.json() as { error?: string };
+        const err = (await res.json()) as { error?: string };
         throw new Error(err.error ?? "Erreur lors de la création");
       }
-      const slot = await res.json() as PublicationSlot;
+      const slot = (await res.json()) as PublicationSlot;
       onCreated(slot);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inconnue");
@@ -281,169 +327,163 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
 
   const selectedPattern = patterns.find((p) => p.id === selectedPatternId);
 
+  // ─── Options pour Combobox ──────────────────────────────────────────────
+  const accountOptions = accounts.map((a) => ({
+    value: a.id,
+    label: `@${a.handle} — ${a.name}`,
+    keywords: [a.handle, a.name],
+  }));
+
+  const videasteOptions = [
+    { value: "", label: "— Aucun —" },
+    ...videastes.map((u) => ({ value: u.id, label: u.name })),
+  ];
+  const monteurOptions = [
+    { value: "", label: "— Aucun —" },
+    ...monteurs.map((u) => ({ value: u.id, label: u.name })),
+  ];
+  const cmOptions = [
+    { value: "", label: "— Aucun —" },
+    ...cms.map((u) => ({ value: u.id, label: u.name })),
+  ];
+
+  const tabItems: { id: Mode; label: string; icon: typeof Sparkles; disabled?: boolean }[] = [
+    { id: "pattern", label: "Depuis un pattern", icon: Sparkles, disabled: hasNoPatterns },
+    { id: "manual", label: "Manuel (one-off)", icon: PenLine },
+  ];
+
   return (
-    <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
+    <Modal open onClose={onClose} size="lg">
+      <Modal.Header onClose={onClose}>Nouveau slot</Modal.Header>
+
+      <form
+        onSubmit={(e) => {
+          void handleSubmit(e);
+        }}
+        className="contents"
       >
-        {/* Header avec tabs */}
-        <div className="sticky top-0 bg-white border-b border-gray-100 px-6 pt-5 pb-3 z-10">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-gray-900">Nouveau slot</h2>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-              aria-label="Fermer"
-            >
-              <X size={16} />
-            </button>
-          </div>
+        <div className="px-5 py-4 max-h-[70vh] overflow-y-auto space-y-4">
+          <Tabs
+            items={tabItems}
+            value={mode}
+            onChange={(v) => setMode(v as Mode)}
+            variant="glass"
+            size="sm"
+          />
 
-          {/* Tab nav */}
-          <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
-            <button
-              type="button"
-              onClick={() => setMode("pattern")}
-              disabled={hasNoPatterns}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                mode === "pattern"
-                  ? "bg-white text-indigo-600 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"
-              }`}
-            >
-              <Sparkles size={12} />
-              Depuis un pattern
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("manual")}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                mode === "manual"
-                  ? "bg-white text-indigo-600 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              <PenLine size={12} />
-              Manuel (one-off)
-            </button>
-          </div>
-        </div>
-
-        <form onSubmit={(e) => { void handleSubmit(e); }} className="p-6 space-y-4">
-          {/* Compte (commun aux 2 modes) */}
           <FormField label="Compte Instagram" required>
-            <select
+            <Combobox
               value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              required
-              className={SELECT_CLS}
-            >
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>@{a.handle} — {a.name}</option>
-              ))}
-            </select>
+              onChange={setAccountId}
+              options={accountOptions}
+              placeholder="Choisir un compte"
+            />
           </FormField>
 
-          {/* Mode PATTERN */}
+          {/* Mode PATTERN — picker visuel */}
           {isPatternMode && (
-            <>
-              <FormField label="Pattern" required help="Le pattern fixe le template, les sous-titres et la cover par défaut.">
-                {loadingPatterns ? (
-                  <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
-                    <div className="w-4 h-4 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin" />
-                    Chargement…
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {patterns.map((p) => {
-                      const isSelected = p.id === selectedPatternId;
-                      return (
-                        <button
-                          type="button"
-                          key={p.id}
-                          onClick={() => handlePatternSelect(p.id)}
-                          className={`w-full text-left p-3 rounded-lg border transition-all ${
-                            isSelected
-                              ? "border-indigo-400 bg-indigo-50/50 ring-2 ring-indigo-200"
-                              : "border-gray-200 hover:border-indigo-300 hover:bg-gray-50"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-sm font-medium text-gray-900">{p.label}</span>
-                            {p.source && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200">
-                                {SOURCE_LABEL[p.source] ?? p.source}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 text-xs text-gray-500">
-                            <span className="inline-flex items-center gap-1">
-                              <Clock size={11} />
-                              {p.dayOfWeek.length === 0
-                                ? "Pattern manuel (pas de planning auto)"
-                                : `${p.dayOfWeek.map((d) => DAYS[d] ?? `J${d}`).join("/")} · ${p.publishTime}`}
+            <FormField
+              label="Pattern"
+              required
+              help="Le pattern fixe le template, les sous-titres et la cover par défaut."
+            >
+              {loadingPatterns ? (
+                <div className="flex items-center gap-2 text-[12px] text-gray-400 py-2">
+                  <div className="w-4 h-4 border-2 border-sky-300 border-t-transparent rounded-full animate-spin" />
+                  Chargement…
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {patterns.map((p) => {
+                    const isSelected = p.id === selectedPatternId;
+                    return (
+                      <button
+                        type="button"
+                        key={p.id}
+                        onClick={() => handlePatternSelect(p.id)}
+                        className={[
+                          "w-full text-left p-3 rounded-xl transition-all",
+                          "bg-white/60 backdrop-blur-[8px]",
+                          isSelected
+                            ? "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_2px_rgba(77,150,191,0.5),0_4px_12px_-2px_rgba(125,180,210,0.25)]"
+                            : "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.12),0_2px_6px_rgba(15,23,42,0.08)]",
+                        ].join(" ")}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[13px] font-semibold text-gray-950">
+                            {p.label}
+                          </span>
+                          {p.source && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50/70 text-rose-700 shadow-[inset_0_0_0_1px_rgba(201,113,133,0.18)]">
+                              {SOURCE_LABEL[p.source] ?? p.source}
                             </span>
-                            {(p.defaultAssigneeVideaste || p.defaultAssigneeMonteur || p.defaultAssigneeCm) && (
-                              <span className="inline-flex items-center gap-1">
-                                <Users size={11} />
-                                {[
-                                  p.defaultAssigneeVideaste?.name,
-                                  p.defaultAssigneeMonteur?.name,
-                                  p.defaultAssigneeCm?.name,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ") || "—"}
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </FormField>
-            </>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] text-gray-500">
+                          <span className="inline-flex items-center gap-1">
+                            <Clock size={11} />
+                            {p.dayOfWeek.length === 0
+                              ? "Pattern manuel (pas de planning auto)"
+                              : `${p.dayOfWeek.map((d) => DAYS[d] ?? `J${d}`).join("/")} · ${p.publishTime}`}
+                          </span>
+                          {(p.defaultAssigneeVideaste ||
+                            p.defaultAssigneeMonteur ||
+                            p.defaultAssigneeCm) && (
+                            <span className="inline-flex items-center gap-1">
+                              <Users size={11} />
+                              {[
+                                p.defaultAssigneeVideaste?.name,
+                                p.defaultAssigneeMonteur?.name,
+                                p.defaultAssigneeCm?.name,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ") || "—"}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </FormField>
           )}
 
-          {/* Mode MANUAL — info pas de pattern */}
+          {/* Info pas de pattern */}
           {hasNoPatterns && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <div className="flex items-start gap-2 rounded-xl bg-peach-50/70 backdrop-blur-[8px] px-3 py-2.5 text-[12px] text-peach-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(245,158,107,0.2)]">
               <AlertCircle size={14} className="mt-0.5 shrink-0" />
               <span>
                 Pas de pattern actif sur ce compte. Tu peux créer un slot manuel, ou{" "}
                 <Link
                   href={`/admin/accounts/${accountId}`}
                   target="_blank"
-                  className="underline hover:text-amber-900"
+                  className="underline hover:text-peach-900"
                 >
                   configurer un pattern
-                </Link>.
+                </Link>
+                .
               </span>
             </div>
           )}
 
-          {/* Date + Heure (commun) */}
+          {/* Date + Heure */}
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Date" required>
-              <Input type="date" value={date} onChange={setDate} required />
+              <DatePicker value={date} onChange={setDate} />
             </FormField>
             <FormField label="Heure" required>
-              <Input type="time" value={time} onChange={setTime} required />
+              <TimePicker value={time} onChange={setTime} />
             </FormField>
           </div>
 
-          {/* Titre — toujours visible, optionnel en mode pattern */}
+          {/* Titre */}
           <FormField
             label="Titre"
             required={!isPatternMode}
             help={
               isPatternMode
-                ? "Optionnel : surcharge le label du pattern pour ce slot."
+                ? "Optionnel : surcharge le label du pattern."
                 : "Nom du bien, propriétaire, sujet…"
             }
           >
@@ -458,91 +498,75 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
             />
           </FormField>
 
-          {/* Assignés (commun, pré-rempli en mode pattern) */}
-          <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 space-y-3">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
-              <Users size={12} />
+          {/* Assignés (commun) */}
+          <div className="rounded-xl bg-white/40 backdrop-blur-[8px] p-3 space-y-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+            <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-widest font-medium text-gray-500">
+              <Users size={11} />
               Équipe assignée
               {isPatternMode && (
-                <span className="text-[10px] text-gray-400 font-normal">
+                <span className="ml-1 normal-case tracking-normal text-[10px] text-gray-400 font-normal">
                   pré-remplie depuis le pattern · modifiable
                 </span>
               )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <FormField label="Vidéaste">
-                <select
+                <Combobox
                   value={assigneeVideasteId}
-                  onChange={(e) => setAssigneeVideasteId(e.target.value)}
-                  className={SELECT_CLS}
+                  onChange={setAssigneeVideasteId}
+                  options={videasteOptions}
+                  placeholder="— Aucun —"
                   disabled={loadingMeta}
-                >
-                  <option value="">— Aucun —</option>
-                  {videastes.map((u) => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                  ))}
-                </select>
+                />
               </FormField>
               <FormField label="Monteur">
-                <select
+                <Combobox
                   value={assigneeMonteurId}
-                  onChange={(e) => setAssigneeMonteurId(e.target.value)}
-                  className={SELECT_CLS}
+                  onChange={setAssigneeMonteurId}
+                  options={monteurOptions}
+                  placeholder="— Aucun —"
                   disabled={loadingMeta}
-                >
-                  <option value="">— Aucun —</option>
-                  {monteurs.map((u) => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                  ))}
-                </select>
+                />
               </FormField>
               <div className="col-span-2">
                 <FormField label="Community manager">
-                  <select
+                  <Combobox
                     value={assigneeCmId}
-                    onChange={(e) => setAssigneeCmId(e.target.value)}
-                    className={SELECT_CLS}
+                    onChange={setAssigneeCmId}
+                    options={cmOptions}
+                    placeholder="— Aucun —"
                     disabled={loadingMeta}
-                  >
-                    <option value="">— Aucun —</option>
-                    {cms.map((u) => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
-                    ))}
-                  </select>
+                  />
                 </FormField>
               </div>
             </div>
             {!assigneeMonteurId && (
-              <div className="flex items-start gap-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+              <div className="flex items-start gap-2 text-[11px] text-peach-700 bg-peach-50/70 rounded-md px-2 py-1.5 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.18)]">
                 <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                Sans monteur assigné, ce slot n&apos;apparaîtra dans la worklist d&apos;aucun monteur.
+                Sans monteur assigné, ce slot n&apos;apparaîtra dans la worklist d&apos;aucun
+                monteur.
               </div>
             )}
           </div>
 
-          {/* Options de production — uniquement mode MANUEL */}
+          {/* Options de production (manuel only) */}
           {!isPatternMode && (
-            <details className="rounded-lg border border-fuchsia-200 bg-fuchsia-50/30 p-3 group" open>
-              <summary className="cursor-pointer text-xs font-medium text-fuchsia-900 select-none">
+            <details className="rounded-xl bg-rose-50/40 backdrop-blur-[8px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.18)]" open>
+              <summary className="cursor-pointer text-[12px] font-semibold text-rose-700 select-none">
                 Options de production
-                <span className="ml-1 text-fuchsia-700/70 font-normal text-[10px]">
-                  · pré-régler la cover, les captions, la description…
+                <span className="ml-1 text-rose-700/70 font-normal text-[11px]">
+                  · pré-régler cover, captions, description…
                 </span>
               </summary>
               <div className="mt-3 space-y-3">
                 <div className="grid grid-cols-2 gap-2">
                   <FormField label="Cover automatique">
-                    <select
+                    <Combobox
                       value={oneOffCoverMode}
-                      onChange={(e) => setOneOffCoverMode(e.target.value)}
-                      className={SELECT_CLS}
-                    >
-                      <option value="">— Hérite du pattern —</option>
-                      <option value="none">Pas de cover</option>
-                      <option value="manualSelect">Sélection libre (CM)</option>
-                      <option value="autoPack">Pack auto → sélection (CM)</option>
-                      <option value="monteurUpload">Upload par le monteur</option>
-                    </select>
+                      onChange={setOneOffCoverMode}
+                      options={COVER_MODE_OPTIONS}
+                      placeholder="Hérite du pattern"
+                    />
                   </FormField>
                   <OneOffToggle
                     label="Sous-titres auto"
@@ -562,7 +586,7 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
                 </div>
 
                 {oneOffCoverMode === "autoPack" && coverPresets.length === 0 && (
-                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  <p className="text-[11px] text-peach-700 bg-peach-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.2)]">
                     Aucune config cover sur ce template. Active-la dans le builder
                     (onglet « Cover auto ») avant de créer ce slot.
                   </p>
@@ -570,45 +594,35 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
 
                 {oneOffNeedsCaptions === true && (
                   <FormField label="Preset captions" required>
-                    <select
+                    <Combobox
                       value={oneOffCaptionPresetId}
-                      onChange={(e) => setOneOffCaptionPresetId(e.target.value)}
-                      className={SELECT_CLS}
-                    >
-                      <option value="">— Choisir un preset —</option>
-                      {captionPresets.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
+                      onChange={setOneOffCaptionPresetId}
+                      options={[
+                        { value: "", label: "— Choisir un preset —" },
+                        ...captionPresets.map((p) => ({ value: p.id, label: p.name })),
+                      ]}
+                    />
                   </FormField>
                 )}
 
                 <div className="grid grid-cols-2 gap-2">
                   <FormField label="Mode description">
-                    <select
+                    <Combobox
                       value={oneOffNeedsDescription}
-                      onChange={(e) => setOneOffNeedsDescription(e.target.value)}
-                      className={SELECT_CLS}
-                    >
-                      <option value="">— Aucune —</option>
-                      <option value="none">Aucune</option>
-                      <option value="preFilled">Pré-remplie</option>
-                      <option value="autoGenerate">Auto-générée</option>
-                      <option value="manualWrite">Manuelle</option>
-                    </select>
+                      onChange={setOneOffNeedsDescription}
+                      options={DESCRIPTION_OPTIONS}
+                    />
                   </FormField>
                   {oneOffNeedsDescription === "autoGenerate" && (
                     <FormField label="Prompt IA" required>
-                      <select
+                      <Combobox
                         value={oneOffDescriptionPromptId}
-                        onChange={(e) => setOneOffDescriptionPromptId(e.target.value)}
-                        className={SELECT_CLS}
-                      >
-                        <option value="">— Choisir un prompt —</option>
-                        {descriptionPrompts.map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
+                        onChange={setOneOffDescriptionPromptId}
+                        options={[
+                          { value: "", label: "— Choisir un prompt —" },
+                          ...descriptionPrompts.map((p) => ({ value: p.id, label: p.name })),
+                        ]}
+                      />
                     </FormField>
                   )}
                 </div>
@@ -617,35 +631,32 @@ export function AddSlotModal({ accounts, defaultDate, onCreated, onClose }: AddS
           )}
 
           {error && (
-            <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+            <p className="text-[12px] text-rose-700 bg-rose-50/80 backdrop-blur-[8px] rounded-md px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.18)]">
+              {error}
+            </p>
           )}
+        </div>
 
-          <div className="flex gap-2 pt-1">
-            <Button
-              variant="secondary"
-              onClick={onClose}
-              className="flex-1"
-              disabled={saving}
-            >
-              Annuler
-            </Button>
-            <Button
-              type="submit"
-              icon={Plus}
-              loading={saving}
-              disabled={!canSubmit() || loadingMeta || loadingPatterns}
-              className="flex-1"
-            >
-              {saving ? "Création…" : "Créer le slot"}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <Modal.Footer>
+          <Button variant="ghost" onClick={onClose} disabled={saving}>
+            Annuler
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            icon={Plus}
+            loading={saving}
+            disabled={!canSubmit() || loadingMeta || loadingPatterns}
+          >
+            {saving ? "Création…" : "Créer le slot"}
+          </Button>
+        </Modal.Footer>
+      </form>
+    </Modal>
   );
 }
 
-// ─── OneOffToggle ────────────────────────────────────────────────────────────
+// ─── OneOffToggle (Combobox version) ────────────────────────────────────────
 
 function OneOffToggle({
   label,
@@ -656,20 +667,16 @@ function OneOffToggle({
   value: boolean | null;
   onChange: (v: boolean | null) => void;
 }) {
+  const selectValue = value === null ? "default" : value ? "true" : "false";
   return (
     <FormField label={label}>
-      <select
-        value={value === null ? "default" : value ? "true" : "false"}
-        onChange={(e) => {
-          const v = e.target.value;
+      <Combobox
+        value={selectValue}
+        onChange={(v) => {
           onChange(v === "default" ? null : v === "true");
         }}
-        className={SELECT_CLS}
-      >
-        <option value="default">— Défaut (non) —</option>
-        <option value="true">Forcer : Oui</option>
-        <option value="false">Forcer : Non</option>
-      </select>
+        options={BOOL_OVERRIDE_OPTIONS}
+      />
     </FormField>
   );
 }

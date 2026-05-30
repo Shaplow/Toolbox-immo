@@ -19,7 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // peu importe la hauteur du body (qui est min-h-screen extensible).
     // Sans ça, l'aside h-screen interne se positionnait sur le body étiré
     // et le footer user dépassait sous la zone visible.
-    <div className="fixed inset-0 flex bg-gray-50">
+    <div className="fixed inset-0 flex bg-gray-100/60">
       <AppNav
         actualUser={userContext.actualUser}
         effectiveUser={userContext.effectiveUser}

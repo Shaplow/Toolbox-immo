@@ -13,6 +13,7 @@
  */
 
 import { PublicationHeader } from "@/components/publications/PublicationHeader";
+import { PublicationLiveRefresh } from "@/components/publications/PublicationLiveRefresh";
 import { NextActionBanner } from "@/components/publications/NextActionBanner";
 import { ProductionChain } from "@/components/publications/ProductionChain";
 import { RenderSection } from "@/components/publications/sections/RenderSection";
@@ -29,7 +30,8 @@ import { VersionsSection } from "@/components/publications/sections/VersionsSect
 import type { VersionItem } from "@/components/publications/sections/VersionsSection";
 import { CommentsSection } from "@/components/publications/CommentsSection";
 import { ActivityTimeline } from "@/components/publications/ActivityTimeline";
-import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
+import { cloneElement } from "react";
+import type { ReactElement } from "react";
 import type { PublicationStep } from "@/lib/publications/steps";
 import { promoteVersionWarning } from "@/lib/publications/actions";
 import type { CommentData } from "@/components/publications/CommentItem";
@@ -88,7 +90,10 @@ const PRIMARY_SECTIONS_BY_ROLE: Record<Exclude<UserRole, "ADMIN">, SectionKey[]>
   // si le mode n'est pas monteurUpload, donc pas de bruit pour les autres
   // patterns.
   MONTEUR: ["brief", "rushes", "versions", "render", "cover", "comments"],
-  CM: ["render", "rushes", "versions", "cover", "captions", "description", "clientValidation", "publish", "comments"],
+  // Ordre du process (2026-05-30) : render → captions → clientValidation
+  // → description → cover → publish (les versions/rushes restent en amont,
+  // comments à la fin de la fiche).
+  CM: ["render", "rushes", "versions", "captions", "clientValidation", "description", "cover", "publish", "comments"],
   EXTERNAL_GENERATOR: [],
 };
 
@@ -105,20 +110,6 @@ function shouldRenderForRole(section: SectionKey, role: UserRole): boolean {
   return list?.includes(section) ?? false;
 }
 
-/** Labels lisibles pour les sections repliées. */
-const SECTION_LABELS: Record<SectionKey, string> = {
-  brief: "Brief éditorial",
-  rushes: "Rushes",
-  versions: "Versions livrées",
-  render: "Rendu vidéo",
-  cover: "Cover Instagram",
-  captions: "Sous-titres",
-  description: "Légende Instagram",
-  clientValidation: "Validation client",
-  publish: "Publication",
-  comments: "Commentaires",
-  activity: "Historique d'activité",
-};
 
 interface AssigneeInfo {
   id: string;
@@ -254,7 +245,7 @@ export interface PublicationFicheProps {
   // Phase C1 — Versions
   versions: VersionItem[];
   currentVersionId: string | null;
-  // Phase 1.9 A2 — Dernier job captions lié
+  // Phase 1.9 A2 — Dernier job captions lié (peut être PROCESSING/FAILED après retry).
   latestCaptionJob: {
     id: string;
     status: string;
@@ -262,6 +253,15 @@ export interface PublicationFicheProps {
     errorMsg: string | null;
     createdAt: string;
   } | null;
+  // Fix bug 2026-05-30 — dernier CaptionJob COMPLETED avec outputUrl.
+  // Source de vérité pour getSlotFinalVideoUrl (le bon outputUrl à utiliser
+  // comme rendu final, même si un retry plus récent est en cours/échec).
+  latestCompletedCaptionJob: {
+    status: string;
+    outputUrl: string | null;
+  } | null;
+  /** Dernier DescriptionJob auto pour ce slot (status pour la section). */
+  latestDescriptionJob: { status: string } | null;
   // W2 — Validation client (résolu pattern + override)
   clientValidation: {
     needsClientValidation: boolean;
@@ -317,6 +317,8 @@ export function PublicationFiche({
   versions,
   currentVersionId,
   latestCaptionJob,
+  latestCompletedCaptionJob,
+  latestDescriptionJob,
   clientValidation,
   resolvedConfig,
   comments,
@@ -341,67 +343,185 @@ export function PublicationFiche({
     ? (versions.find((v) => v.id === currentVersionId && v.deletedAt === null) ?? null)
     : null;
 
-  // Helper pour wrap conditionnel selon le rôle.
-  // Le storageKey persiste l'état open/closed par slot + key dans
-  // localStorage, donc l'user qui réduit "Render" sur une fiche A
-  // retrouve "Render" réduit la prochaine fois qu'il ouvre la même
-  // fiche A. La préférence est par-slot (pas globale) pour ne pas
-  // surprendre quand on change de publication.
-  //
-  // shouldRenderForRole filtre les sections qui n'ont aucun sens pour
-  // ce rôle (ex. VIDÉASTE qui voit Cover/Captions/Description). Le wrap
-  // retourne null dans ce cas — la section n'apparaît pas du tout, et
-  // pas seulement repliée avec un chevron à ignorer.
-  const wrap = (key: SectionKey, node: React.ReactNode) => {
+  // Set des sections rendues dans le DOM — passé au NextActionBanner pour
+  // masquer le lien "Aller à la section" si la cible n'existe pas (sinon
+  // scroll mort sur slot CM en READY_FOR_CM + needsDescription="none").
+  const visibleSectionIds = new Set<string>();
+  const trackVisible = (key: SectionKey, condition: boolean) => {
+    if (condition && shouldRenderForRole(key, currentUserRole)) {
+      visibleSectionIds.add(key);
+    }
+  };
+  trackVisible("brief", !!pattern?.needsBrief);
+  trackVisible(
+    "rushes",
+    !!pattern?.needsRushes ||
+      slot.status === "RUSHES_EXPECTED" ||
+      slot.status === "RUSHES_RECEIVED" ||
+      rushes.length > 0,
+  );
+  trackVisible(
+    "versions",
+    pattern?.source === "manual_rushes" ||
+      !!pattern?.needsRushes ||
+      !!pattern?.needsBrief ||
+      slot.status === "RUSHES_EXPECTED" ||
+      slot.status === "RUSHES_RECEIVED" ||
+      slot.status === "IN_EDIT" ||
+      slot.status === "EDIT_REVIEW" ||
+      slot.status === "EDIT_APPROVED" ||
+      versions.length > 0,
+  );
+  trackVisible("render", true);
+  trackVisible("cover", true);
+  trackVisible("captions", pattern?.needsCaptions === true);
+  trackVisible("description", true);
+  trackVisible("clientValidation", true);
+  trackVisible("publish", true);
+  trackVisible("comments", true);
+  trackVisible("activity", true);
+
+  // Helper pour wrap conditionnel : chaque section enfant utilise la molécule
+  // Section (icon + title + actions + collapsible). wrap() injecte les props
+  // de collapse/storage via cloneElement et retourne null si le rôle ne doit
+  // pas voir la section.
+  const wrap = (key: SectionKey, node: ReactElement): ReactElement | null => {
     if (!shouldRenderForRole(key, currentUserRole)) return null;
-    return (
-      <CollapsibleSection
-        title={SECTION_LABELS[key]}
-        defaultOpen={isPrimaryForRole(key, currentUserRole)}
-        storageKey={`pub-section:${slot.id}:${key}`}
-        sectionId={key}
-      >
-        {node}
-      </CollapsibleSection>
-    );
+    return cloneElement(node, {
+      sectionId: key,
+      storageKey: `pub-section:${slot.id}:${key}`,
+      defaultOpen: isPrimaryForRole(key, currentUserRole),
+      collapsible: true,
+    } as Record<string, unknown>);
   };
 
-  return (
-    <div className="min-h-screen bg-white">
-      {/* Header sticky */}
-      <PublicationHeader
-        slot={slot}
-        account={account}
-        pattern={pattern ? { id: pattern.id, label: pattern.label } : null}
-        canMarkPublished={canMarkPublished}
-        canDelete={canDelete}
-        currentUserRole={currentUserRole}
-      />
+  // Ordre du process éditorial (2026-05-30) — la chaîne effective dépend du
+  // pattern (captions seulement si needsCaptions, etc.). Permet de calculer
+  // pour chaque section quelle est la "suivante" et d'afficher un mini lien
+  // discret "Étape suivante : XXX ↓" en bas de chaque card.
+  const processOrder: { key: SectionKey; label: string; visible: boolean }[] = [
+    { key: "render", label: "Rendu vidéo", visible: shouldRenderForRole("render", currentUserRole) },
+    {
+      key: "captions",
+      label: "Sous-titres",
+      visible: pattern?.needsCaptions === true && shouldRenderForRole("captions", currentUserRole),
+    },
+    {
+      key: "clientValidation",
+      label: "Validation client",
+      visible: clientValidation.needsClientValidation && shouldRenderForRole("clientValidation", currentUserRole),
+    },
+    {
+      key: "description",
+      label: "Description",
+      visible: pattern != null && pattern.needsDescription !== "none" && shouldRenderForRole("description", currentUserRole),
+    },
+    {
+      key: "cover",
+      label: "Cover",
+      visible: pattern != null && pattern.coverMode !== "none" && shouldRenderForRole("cover", currentUserRole),
+    },
+    { key: "publish", label: "Publier", visible: shouldRenderForRole("publish", currentUserRole) },
+  ];
 
-      {/* Bandeau "À ton tour" — affiché si l'user est le owner du statut actuel.
-          Permet au monteur/CM/vidéaste de voir immédiatement ce qu'il doit faire,
-          avec un lien direct vers la section concernée. C'est la SEULE source
-          d'attention contextuelle : ProductionChain en dessous est informatif
-          (vue globale du pipeline) et ne doit plus rivaliser visuellement. */}
-      <NextActionBanner
-        slotStatus={slot.status}
-        currentUserId={currentUserId}
-        currentUserRole={currentUserRole}
-        assigneeMonteurId={assigneeMonteur?.id ?? null}
-        assigneeCmId={assigneeCm?.id ?? null}
-        assigneeVideasteId={assigneeVideaste?.id ?? null}
-      />
+  function getNextProcessStep(currentKey: SectionKey): { key: SectionKey; label: string } | null {
+    const idx = processOrder.findIndex((s) => s.key === currentKey);
+    if (idx === -1) return null;
+    for (let i = idx + 1; i < processOrder.length; i++) {
+      if (processOrder[i].visible) return { key: processOrder[i].key, label: processOrder[i].label };
+    }
+    return null;
+  }
 
-      {/* ProductionChain — non sticky : vue d'ensemble du pipeline visible
-          en haut puis libère l'espace vertical au scroll. Le NextActionBanner
-          au-dessus reste sticky avec le header pour le rappel d'action. */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-8 pt-10">
-        <ProductionChain steps={steps} viewerRole={currentUserRole} />
+  // Helper inline (pas un composant React) — évite l'erreur lint
+  // react-hooks/static-components qui interdit de déclarer un composant
+  // pendant le render du parent.
+  function renderNextStepHint(currentKey: SectionKey) {
+    const next = getNextProcessStep(currentKey);
+    if (!next) return null;
+    return (
+      <div className="mt-1.5 mb-3 flex justify-end pr-2">
+        <button
+          type="button"
+          onClick={() => {
+            const el = document.getElementById(next.key);
+            window.dispatchEvent(new CustomEvent("pub:open-section", { detail: { sectionId: next.key } }));
+            requestAnimationFrame(() => {
+              el?.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
+          }}
+          className="inline-flex items-center gap-1 text-[10.5px] text-gray-400 hover:text-sky-700 transition-colors"
+        >
+          Étape suivante : <span className="font-medium">{next.label}</span>
+          <span aria-hidden="true">↓</span>
+        </button>
       </div>
+    );
+  }
 
-      {/* Corps de la fiche — 2 colonnes en xl, stack vertical en dessous. */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-8 py-10">
-        <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-10">
+  return (
+    <div className="min-h-screen">
+      {/* Refresh live de la fiche sur events SSE — supprime le besoin de F5
+          pour voir l'avancement du pipeline (render/captions/description/cover). */}
+      <PublicationLiveRefresh
+        knownJobIds={[
+          render?.id,
+          coverPack?.id,
+          latestCaptionJob?.id,
+        ]}
+        expectedJobTypes={["captions", "transcription", "render", "cover", "description"]}
+      />
+      {/* Wrapper ControlCenter (niveau MID). Card flottante : margin autour
+          pour qu'on voit le fond gris léger derrière, rounded-3xl all corners,
+          ring inset spéculaire + ombre subtle pour la matière des bords. */}
+      <div
+        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
+        style={{
+          background:
+            "var(--gradient-page-shell)",
+        }}
+      >
+        {/* Header shell — non sticky (Mathis 2026-05-29). Le header
+            scrolle naturellement avec le contenu. */}
+        <div className="rounded-t-3xl overflow-hidden">
+          <PublicationHeader
+            slot={slot}
+            account={account}
+            pattern={pattern ? { id: pattern.id, label: pattern.label } : null}
+            canMarkPublished={canMarkPublished}
+            canDelete={canDelete}
+            currentUserRole={currentUserRole}
+          />
+          <NextActionBanner
+            slotStatus={slot.status}
+            currentUserId={currentUserId}
+            currentUserRole={currentUserRole}
+            assigneeMonteurId={assigneeMonteur?.id ?? null}
+            assigneeCmId={assigneeCm?.id ?? null}
+            assigneeVideasteId={assigneeVideaste?.id ?? null}
+            visibleSectionIds={visibleSectionIds}
+          />
+        </div>
+
+        <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
+        <div className="max-w-6xl mx-auto">
+          {/* ProductionChain dans une card glass — référence playground
+              vibes#control-center "Pipeline Story" : eyebrow + title + Stepper. */}
+          <div className="p-5 rounded-2xl bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)]">
+            <div className="flex items-baseline justify-between mb-4 gap-3">
+              <div>
+                <p className="text-[13px] font-semibold tracking-tight text-gray-950">
+                  Chaîne de production
+                </p>
+                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mt-0.5">
+                  Suivi temps réel
+                </p>
+              </div>
+            </div>
+            <ProductionChain steps={steps} viewerRole={currentUserRole} />
+          </div>
+
+          <div className="mt-8 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-8">
           {/* Colonne workflow — sections d'action */}
           <div className="space-y-10 min-w-0">
             {/* Brief éditorial — Phase B3, conditionné par pattern.needsBrief */}
@@ -460,8 +580,25 @@ export function PublicationFiche({
                   isAdmin={currentUserRole === "ADMIN"}
                   currentUserId={currentUserId}
                   promoteCoherenceWarning={promoteVersionWarning({
-                    pattern: null,
-                    resolved: null,
+                    pattern: pattern
+                      ? {
+                          source: pattern.source,
+                          needsCaptions: pattern.needsCaptions,
+                          needsDescription: pattern.needsDescription,
+                          coverMode: pattern.coverMode,
+                        }
+                      : null,
+                    resolved: {
+                      needsCaptions: resolvedConfig.needsCaptions,
+                      needsDescription: pattern?.needsDescription ?? "none",
+                      coverMode: resolvedConfig.coverMode,
+                      coverPresetId: resolvedConfig.coverPresetId,
+                      captionPresetId: resolvedConfig.captionPresetId,
+                      descriptionPromptId:
+                        slot.descriptionPromptIdOverride ??
+                        pattern?.descriptionPromptId ??
+                        null,
+                    },
                     render: render ? { status: render.status } : null,
                     currentVersion: currentVersion ? { id: currentVersion.id } : null,
                     coverPack: coverPack ? { status: coverPack.status } : null,
@@ -472,56 +609,43 @@ export function PublicationFiche({
                 />
               )}
 
-            {/* Rendu vidéo — version finale (avec captions incrustées si dispo) */}
+            {/* Ordre process (2026-05-30) : Render → Captions → Validation client
+                → Description → Cover → Publier. Le sous-titrage précède la
+                validation pour que le client reçoive la vidéo finale (avec
+                sous-titres si requis). */}
+
+            {/* 1. Rendu vidéo — version finale (avec captions incrustées si dispo) */}
             {wrap(
               "render",
               <RenderSection
                 slot={{ id: slot.id }}
                 pattern={pattern ? { source: pattern.source, templateId: pattern.templateId } : null}
                 render={render}
+                /* Fix 2026-05-30 : on passe latestCompletedCaptionJob (dernier
+                   CaptionJob COMPLETED), pas latestCaptionJob (qui peut être
+                   PROCESSING/FAILED après retry et masquait la version finale). */
                 finalVideoUrl={getSlotFinalVideoUrl({
                   render,
-                  latestCaptionJob: latestCaptionJob
-                    ? { status: latestCaptionJob.status, outputUrl: latestCaptionJob.outputUrl }
-                    : null,
+                  latestCaptionJob: latestCompletedCaptionJob,
                 })}
                 isCaptioned={isFinalVideoCaptioned({
                   render,
-                  latestCaptionJob: latestCaptionJob
-                    ? { status: latestCaptionJob.status, outputUrl: latestCaptionJob.outputUrl }
-                    : null,
+                  latestCaptionJob: latestCompletedCaptionJob,
                 })}
                 listingId={listing?.id ?? null}
                 canEdit={canEditRender}
               />
             )}
+            {shouldRenderForRole("render", currentUserRole) && renderNextStepHint("render")}
 
-            {/* Cover Instagram */}
-            {wrap(
-              "cover",
-              <CoverSection
-                slot={{ id: slot.id }}
-                pattern={pattern ? { coverMode: pattern.coverMode } : null}
-                coverPack={coverPack}
-                coverConfigError={coverConfigError}
-                canEdit={canEditCover}
-                viewerRole={currentUserRole}
-                canMonteurUpload={
-                  currentUserRole === "ADMIN" ||
-                  (currentUserRole === "MONTEUR" &&
-                    assigneeMonteur?.id === currentUserId)
-                }
-                currentVersion={currentVersion}
-              />
-            )}
-
-            {/* Sous-titres — conditionné par pattern.needsCaptions */}
+            {/* 2. Sous-titres — conditionné par pattern.needsCaptions */}
             {pattern?.needsCaptions === true &&
               wrap(
                 "captions",
                 <CaptionsSection
                   slot={{ id: slot.id }}
                   renderId={render?.id ?? null}
+                  renderStatus={render?.status ?? null}
                   pattern={pattern ? { needsCaptions: pattern.needsCaptions, source: pattern.source } : null}
                   canEdit={canEditCaptions}
                   currentVersion={currentVersion}
@@ -533,8 +657,26 @@ export function PublicationFiche({
                   }
                 />
               )}
+            {pattern?.needsCaptions === true && shouldRenderForRole("captions", currentUserRole) &&
+              renderNextStepHint("captions")}
 
-            {/* Description de publication */}
+            {/* 3. Validation client externe — masquée si needsClientValidation false */}
+            {wrap(
+              "clientValidation",
+              <ClientValidationSection
+                slotId={slot.id}
+                slotStatus={slot.status}
+                needsClientValidation={clientValidation.needsClientValidation}
+                allowsClientRevision={clientValidation.allowsClientRevision}
+                initialActiveToken={clientValidation.activeToken}
+                rounds={clientValidation.rounds}
+                currentUserRole={currentUserRole}
+              />
+            )}
+            {clientValidation.needsClientValidation && shouldRenderForRole("clientValidation", currentUserRole) &&
+              renderNextStepHint("clientValidation")}
+
+            {/* 4. Description de publication */}
             {wrap(
               "description",
               <DescriptionSection
@@ -553,22 +695,33 @@ export function PublicationFiche({
                   pattern?.descriptionPromptId ??
                   null
                 }
-              />
-            )}
-
-            {/* Validation client externe (W2) — masquée si needsClientValidation false */}
-            {wrap(
-              "clientValidation",
-              <ClientValidationSection
-                slotId={slot.id}
+                descriptionJobStatus={latestDescriptionJob?.status ?? null}
                 slotStatus={slot.status}
                 needsClientValidation={clientValidation.needsClientValidation}
-                allowsClientRevision={clientValidation.allowsClientRevision}
-                initialActiveToken={clientValidation.activeToken}
-                rounds={clientValidation.rounds}
-                currentUserRole={currentUserRole}
               />
             )}
+            {shouldRenderForRole("description", currentUserRole) && renderNextStepHint("description")}
+
+            {/* 5. Cover Instagram */}
+            {wrap(
+              "cover",
+              <CoverSection
+                slot={{ id: slot.id }}
+                pattern={pattern ? { coverMode: pattern.coverMode } : null}
+                coverPack={coverPack}
+                coverConfigError={coverConfigError}
+                canEdit={canEditCover}
+                viewerRole={currentUserRole}
+                canMonteurUpload={
+                  currentUserRole === "ADMIN" ||
+                  (currentUserRole === "MONTEUR" &&
+                    assigneeMonteur?.id === currentUserId)
+                }
+                currentVersion={currentVersion}
+              />
+            )}
+            {pattern != null && pattern.coverMode !== "none" && shouldRenderForRole("cover", currentUserRole) &&
+              renderNextStepHint("cover")}
 
             {/* Phase 6 — Boutons triggers manuels pour slots one-off (ADMIN only)
                 Utilise resolvedConfig (override slot + pattern) au lieu de pattern brut
@@ -606,9 +759,11 @@ export function PublicationFiche({
             )}
           </div>
 
-          {/* Colonne droite — Conversation + Activité, sticky en xl. */}
+          {/* Colonne droite — Conversation + Activité, sticky en xl.
+              Pas de max-h + overflow-y-auto interne : laisse scroller la page
+              naturellement. Sinon scrollbar visible + activité tronquée. */}
           <aside className="mt-10 xl:mt-0 space-y-8">
-            <div className="xl:sticky xl:top-[160px] space-y-8 xl:max-h-[calc(100vh-180px)] xl:overflow-y-auto xl:pr-1 [scrollbar-width:thin]">
+            <div className="xl:sticky xl:top-[160px] space-y-8">
               {wrap(
                 "comments",
                 <CommentsSection
@@ -630,6 +785,8 @@ export function PublicationFiche({
               )}
             </div>
           </aside>
+          </div>
+        </div>
         </div>
       </div>
     </div>

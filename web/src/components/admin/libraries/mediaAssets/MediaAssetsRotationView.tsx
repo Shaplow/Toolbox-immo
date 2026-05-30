@@ -103,18 +103,20 @@ export function MediaAssetsRotationView({
         <div className="mt-2 text-[11px] text-indigo-900/90 leading-relaxed space-y-1.5">
           <p>
             Chaque rush est rangé dans une <b>catégorie</b> (ex.&nbsp;: <i>Extérieur</i>)
-            puis dans un <b>set</b> (ex.&nbsp;: <i>Maison-Provence</i>). Un même set
-            regroupe les plans d&apos;un même tournage.
+            puis dans un <b>pack</b> (ex.&nbsp;: <i>Maison-Provence</i>). Un même pack
+            regroupe les plans d&apos;un même tournage qui doivent être joués ensemble.
           </p>
           <p>
-            <b>Rotation auto</b>&nbsp;: à chaque génération, le moteur prend le
-            prochain set non utilisé pour ce compte, en alternant les catégories.
-            Le rush effectivement choisi dans le set suit la règle de sélection
-            (<i>theme_sequence</i>, <i>least_used</i>…) définie sur la library.
+            <b>Auto · moins utilisé</b>&nbsp;: à chaque génération, le moteur prend
+            le pack <i>le plus stale</i> (catégorie la plus ancienne en termes de
+            <code>lastUsedAt</code>) parmi ceux qui sont accessibles. Il évite
+            de répéter deux fois la même catégorie de suite. Ce n&apos;est pas
+            un cycle déterministe — l&apos;ajout de nouveaux rushes décale l&apos;ordre.
           </p>
           <p>
             <b>Ordre personnalisé</b>&nbsp;: tu fixes manuellement la séquence des
-            sets, le moteur respecte cet ordre au lieu d&apos;alterner par catégorie.
+            packs, le moteur cycle dessus sans dévier (Tenue1/Set1 → Tenue2/Set1 →
+            Tenue1/Set2 → … → loop).
           </p>
         </div>
       </details>
@@ -148,7 +150,7 @@ export function MediaAssetsRotationView({
                   <ListOrdered size={12} className="text-indigo-500" /> Ordre personnalisé
                 </span>
                 <span className="text-gray-300 text-xs">·</span>
-                <span className="text-xs text-gray-500">{seqState.length} set{seqState.length !== 1 ? "s" : ""} fixés</span>
+                <span className="text-xs text-gray-500">{seqState.length} pack{seqState.length !== 1 ? "s" : ""} fixés</span>
                 {nextLabel && (
                   <>
                     <span className="text-gray-300 text-xs">·</span>
@@ -215,7 +217,7 @@ export function MediaAssetsRotationView({
                 </div>
               )}
             </div>
-            {/* Set + category info */}
+            {/* Pack + category info */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 mb-1.5">
                 {g.category && cls && !dimmed && (
@@ -303,7 +305,7 @@ export function MediaAssetsRotationView({
           key={g.key || "__unset__"}
           className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-400"
         >
-          <span className="font-medium">Sans set</span>
+          <span className="font-medium">Sans pack</span>
           <span>— {g.accessibleCount} rush{g.accessibleCount !== 1 ? "es" : ""}</span>
         </div>
       ))}

@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation";
-import { getUserContext } from "@/lib/userContext";
-import { MediaLibrariesPanel } from "@/components/admin/libraries/MediaLibrariesPanel";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
-import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
-import { Film } from "lucide-react";
+import { getUserContext } from "@/lib/userContext";
+import { prisma } from "@/lib/prisma";
+import { MediaLibrariesPanel } from "@/components/admin/libraries/MediaLibrariesPanel";
 
 export default async function MediaLibrariesPage() {
   const userContext = await getUserContext();
@@ -12,18 +11,57 @@ export default async function MediaLibrariesPage() {
     redirect("/templates");
   }
 
+  const [libCount, assetCount] = await Promise.all([
+    prisma.mediaLibrary.count({ where: { type: "video" } }),
+    prisma.mediaAsset.count({ where: { library: { type: "video" } } }),
+  ]);
+
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <Link href="/admin/libraries" className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 mb-6 transition-colors">
-        <ChevronLeft size={13} /> Ressources
-      </Link>
-      <ToolPageHeader
-        icon={Film}
-        iconColor="indigo"
-        title="Bibliothèques médias"
-        subtitle="Vos vidéos et musiques disponibles pour la génération."
-      />
-      <MediaLibrariesPanel />
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
+        style={{
+          background: "var(--gradient-page-shell)",
+        }}
+      >
+        <div className="rounded-t-3xl overflow-hidden">
+          <div className="max-w-6xl mx-auto px-6 sm:px-8 pt-6 pb-2">
+            <nav className="flex items-center gap-1.5 text-[10px] text-gray-400 mb-3 flex-wrap">
+              <Link
+                href="/admin/libraries"
+                className="inline-flex items-center gap-1 hover:text-gray-700 transition-colors"
+              >
+                <ChevronLeft size={10} className="flex-shrink-0" />
+                Médiathèque
+              </Link>
+            </nav>
+
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                  Médiathèque · Vidéo
+                </p>
+                <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
+                  Bibliothèques vidéo
+                </h1>
+              </div>
+
+              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+                <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sky-500 shadow-[0_0_6px_rgba(125,180,210,0.6)]" />
+                <span className="text-[11px] font-mono text-gray-700 tabular-nums">
+                  {libCount} libs · {assetCount} vidéos
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
+          <div className="max-w-6xl mx-auto">
+            <MediaLibrariesPanel typeFilter="video" />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

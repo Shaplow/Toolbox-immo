@@ -16,6 +16,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ImageIcon, ExternalLink, AlertTriangle, Loader2, Upload } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
+import { Section } from "@/components/ui/molecules/Section";
+import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Alert } from "@/components/ui/Alert";
 
 interface Props {
   slot: { id: string };
@@ -44,6 +48,10 @@ interface Props {
   viewerRole?: string;
   /** Version courante promue par l'ADMIN (si needsRushes=true). */
   currentVersion?: { versionNumber: number; fileName: string } | null;
+  sectionId?: string;
+  storageKey?: string;
+  defaultOpen?: boolean;
+  collapsible?: boolean;
 }
 
 const COVER_STATUS_LABELS: Record<string, string> = {
@@ -62,7 +70,13 @@ const COVER_STATUS_COLORS: Record<string, string> = {
   FAILED:     "bg-danger-50 text-danger-700 border-danger-200",
 };
 
-export function CoverSection({ slot, pattern, coverPack, coverConfigError, canEdit, canMonteurUpload = false, viewerRole, currentVersion }: Props) {
+export function CoverSection({
+  slot, pattern, coverPack, coverConfigError, canEdit, canMonteurUpload = false, viewerRole, currentVersion,
+  sectionId = "cover",
+  storageKey,
+  defaultOpen = true,
+  collapsible = false,
+}: Props) {
   const router = useRouter();
   const [uploading, setUploading] = useState(false);
 
@@ -115,23 +129,27 @@ export function CoverSection({ slot, pattern, coverPack, coverConfigError, canEd
 
   // ── Branche monteurUpload : dropzone pour le monteur ───────────────────────
   if (mode === "monteurUpload") {
-    return (
-      <section id="cover" className="bg-white border border-gray-100 rounded-2xl p-8">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <ImageIcon size={16} className="text-gray-400" />
-            <h2 className="text-sm font-semibold text-gray-700">Cover</h2>
-            <span className="text-[10px] uppercase tracking-[0.14em] text-gray-600 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5 font-medium">
-              Monteur
-            </span>
-          </div>
-          {coverPack?.finalCoverUrl && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border font-medium bg-success-50 text-success-700 border-success-200">
-              Livrée
-            </span>
-          )}
-        </div>
+    const monteurBadge = (
+      <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-gray-600 bg-white/60 backdrop-blur-[6px] border border-white/50 rounded-full px-2 py-0.5 font-medium shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+        Monteur
+      </span>
+    );
+    const deliveredBadge = coverPack?.finalCoverUrl ? (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-sage-100/70 text-sage-700 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(111,162,128,0.22)]">
+        Livrée
+      </span>
+    ) : null;
 
+    return (
+      <Section
+        title="Cover"
+        icon={ImageIcon}
+        sectionId={sectionId}
+        storageKey={storageKey}
+        defaultOpen={defaultOpen}
+        collapsible={collapsible}
+        actions={<>{monteurBadge}{deliveredBadge}</>}
+      >
         {coverPack?.finalCoverUrl ? (
           <div className="space-y-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -195,74 +213,73 @@ export function CoverSection({ slot, pattern, coverPack, coverConfigError, canEd
             Le monteur uploadera la cover en livrant son montage.
           </p>
         )}
-      </section>
+      </Section>
     );
   }
 
-  return (
-    <section id="cover" className="bg-white border border-gray-100 rounded-2xl p-8">
-      {/* En-tête section */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <ImageIcon size={16} className="text-gray-400" />
-          <h2 className="text-sm font-semibold text-gray-700">Cover</h2>
-          {currentVersion && (
-            <span className="text-xs text-gray-600 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full font-medium">
-              Lié à V{currentVersion.versionNumber}
-            </span>
-          )}
-        </div>
+  const linkedBadge = currentVersion ? (
+    <span className="text-[11px] text-gray-600 bg-white/60 backdrop-blur-[6px] border border-white/50 px-2 py-0.5 rounded-full font-medium shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+      Lié à V{currentVersion.versionNumber}
+    </span>
+  ) : null;
+  const statusBadge = coverPack ? (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] border font-medium ${
+        COVER_STATUS_COLORS[coverPack.status] ?? "bg-gray-50 text-gray-600 border-gray-200"
+      }`}
+    >
+      {COVER_STATUS_LABELS[coverPack.status] ?? coverPack.status}
+    </span>
+  ) : null;
 
-        {coverPack && (
-          <span
-            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs border font-medium ${
-              COVER_STATUS_COLORS[coverPack.status] ?? "bg-gray-50 text-gray-600 border-gray-200"
-            }`}
-          >
-            {COVER_STATUS_LABELS[coverPack.status] ?? coverPack.status}
-          </span>
-        )}
-      </div>
+  return (
+    <Section
+      title="Cover"
+      icon={ImageIcon}
+      sectionId={sectionId}
+      storageKey={storageKey}
+      defaultOpen={defaultOpen}
+      collapsible={collapsible}
+      actions={<>{linkedBadge}{statusBadge}</>}
+    >
 
       {/* Pas de cover pack — soit non démarré (config OK), soit config error */}
       {!coverPack && coverConfigError && (
         <div className="space-y-3">
-          <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
-            <AlertTriangle size={15} className="text-amber-500 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="font-medium">Cover auto bloquée</p>
-              <p className="text-amber-700 mt-0.5">{coverConfigError.message}</p>
-              <p className="text-xs text-amber-600 mt-1">
-                Vérifiez la configuration cover du pattern lié à ce slot
-                (preset référencé manquant ou supprimé).
-              </p>
-            </div>
-          </div>
+          <Alert
+            variant="warning"
+            icon={AlertTriangle}
+            title="Cover auto bloquée"
+          >
+            {coverConfigError.message} — vérifiez la configuration cover du pattern (preset référencé manquant ou supprimé).
+          </Alert>
           {canEdit && (
-            <Link
-              href={coverToolHref}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-            >
-              <ExternalLink size={14} />
-              Choisir une cover manuellement
+            <Link href={coverToolHref}>
+              <Button variant="secondary" size="sm" icon={ExternalLink}>
+                Choisir une cover manuellement
+              </Button>
             </Link>
           )}
         </div>
       )}
 
       {!coverPack && !coverConfigError && (
-        <div className="space-y-3">
-          <p className="text-sm text-gray-500">Aucune cover sélectionnée pour ce slot.</p>
-          {canEdit && (
-            <Link
-              href={coverToolHref}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-            >
-              <ExternalLink size={14} />
-              Choisir une cover
-            </Link>
-          )}
-        </div>
+        canEdit ? (
+          <EmptyState
+            icon={ImageIcon}
+            title="Aucune cover"
+            cta={{
+              label: "Choisir une cover",
+              onClick: () => router.push(coverToolHref),
+            }}
+          />
+        ) : (
+          <EmptyState
+            icon={ImageIcon}
+            title="Aucune cover"
+            description="Aucune cover n'a encore été sélectionnée."
+          />
+        )
       )}
 
       {/* Cover pack FAILED — bandeau d'erreur d'extraction */}
@@ -315,12 +332,10 @@ export function CoverSection({ slot, pattern, coverPack, coverConfigError, canEd
                 Les frames sont prêtes — choisis la meilleure cover dans l&apos;outil dédié.
               </p>
               {canEdit && (
-                <Link
-                  href={coverToolHref}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-white bg-gray-950 rounded-md hover:bg-gray-800 transition-colors font-medium"
-                >
-                  <ExternalLink size={14} />
-                  Continuer la sélection
+                <Link href={coverToolHref}>
+                  <Button variant="primary" size="sm" icon={ExternalLink}>
+                    Continuer la sélection
+                  </Button>
                 </Link>
               )}
             </>
@@ -334,6 +349,6 @@ export function CoverSection({ slot, pattern, coverPack, coverConfigError, canEd
           )}
         </div>
       )}
-    </section>
+    </Section>
   );
 }

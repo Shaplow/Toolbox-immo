@@ -13,7 +13,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
-import { verifyClientValidationToken } from "@/lib/publications/clientValidation";
+import { verifyClientValidationToken, hashToken } from "@/lib/publications/clientValidation";
 import { resolveClientValidationConfig } from "@/lib/services/slot/config";
 import { getSlotFinalVideoUrl } from "@/lib/publications/finalVideo";
 import { ValidationActions } from "./ValidationActions";
@@ -30,13 +30,27 @@ export default async function ValidatePage({ params }: PageProps) {
   const { token } = await params;
 
   const result = await verifyClientValidationToken(prisma, token);
-  if (!result.valid) {
-    notFound();
+
+  // Fix bug 2026-05-30 : si le token est révoqué (ce qui arrive juste après
+  // l'approve via POST /api/validate/[token]) ou expiré, on tombait sur 404
+  // au router.refresh() côté client. À la place, on retrouve le slot via le
+  // tokenHash (même révoqué/expiré) pour afficher l'état "résolu". Seul
+  // "not_found" (token inexistant) reste un vrai 404.
+  let slotId: string | null = null;
+  if (result.valid) {
+    slotId = result.slotId;
+  } else if (result.reason === "revoked" || result.reason === "expired") {
+    const fallback = await prisma.clientValidationToken.findUnique({
+      where: { tokenHash: hashToken(token) },
+      select: { slotId: true },
+    });
+    slotId = fallback?.slotId ?? null;
   }
+  if (!slotId) notFound();
 
   // Charger le slot avec ses infos affichables
   const slot = await prisma.publicationSlot.findUnique({
-    where: { id: result.slotId },
+    where: { id: slotId },
     select: {
       id: true,
       status: true,
@@ -54,9 +68,12 @@ export default async function ValidatePage({ params }: PageProps) {
         },
       },
       render: { select: { videoUrl: true, pngUrl: true } },
+      // Fix bug 2026-05-30 : take: 5 pour pouvoir distinguer le dernier
+      // CaptionJob COMPLETED (utilisé pour la vidéo envoyée au client) du
+      // dernier job tout court (qui peut être PROCESSING/FAILED après retry).
       captionJobs: {
         orderBy: { createdAt: "desc" },
-        take: 1,
+        take: 5,
         select: { status: true, outputUrl: true },
       },
       // Pour afficher l'historique des rounds si le client revient sur la page
@@ -79,10 +96,14 @@ export default async function ValidatePage({ params }: PageProps) {
     slot.pattern,
   );
 
-  // Vidéo finale (avec captions si dispo)
+  // Vidéo finale (avec captions si dispo) — on cherche le dernier CaptionJob
+  // COMPLETED+outputUrl plutôt que le tout dernier, pour ne pas afficher la
+  // brute si un retry est en PROCESSING.
+  const latestCompletedCaptionJob =
+    slot.captionJobs.find((j) => j.status === "COMPLETED" && j.outputUrl) ?? null;
   const finalVideoUrl = getSlotFinalVideoUrl({
     render: slot.render,
-    latestCaptionJob: slot.captionJobs[0] ?? null,
+    latestCaptionJob: latestCompletedCaptionJob,
   });
 
   // Statut effectif du slot pour décider quoi afficher

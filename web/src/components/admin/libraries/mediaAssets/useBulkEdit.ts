@@ -2,7 +2,7 @@
 
 /**
  * useBulkEdit — état + handlers pour la sélection multiple et les actions
- * bulk (apply set tag, tags, category, access, delete) sur les MediaAsset.
+ * bulk (apply pack/setTag, tags, category, access, delete) sur les MediaAsset.
  *
  * Phase D4 (plan §19). Le hook isole 8 useState + 6 handlers async qui
  * appellent /api/admin/libraries/media/[id]/assets/bulk. Après chaque
@@ -77,6 +77,10 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      // Phase D — auto-active selectMode dès qu'au moins 1 asset est sélectionné,
+      // pour que la BulkActionBar s'affiche sans toggle manuel. exitSelectMode()
+      // remet à false + clear.
+      if (next.size > 0) setSelectMode(true);
       return next;
     });
   }, []);
@@ -107,7 +111,7 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
       return;
     }
     setAssets((prev) => prev.map((a) => (selectedIds.has(a.id) ? { ...a, setTag: value } : a)));
-    setBulkSuccess(value ? `Set « ${value} » appliqué` : "Set retiré");
+    setBulkSuccess(value ? `Pack « ${value} » appliqué` : "Pack retiré");
     setTimeout(() => setBulkSuccess(null), 2500);
   }, [bulkSetTagInput, libraryId, selectedIds, setAssets]);
 

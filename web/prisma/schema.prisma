@@ -8,36 +8,36 @@ datasource db {
 }
 
 model User {
-  id                        String                @id @default(cuid())
-  username                  String?               @unique
-  email                     String?               @unique
-  passwordHash              String
-  name                      String
-  role                      String                @default("EXTERNAL_GENERATOR")
+  id                            String                  @id @default(cuid())
+  username                      String?                 @unique
+  email                         String?                 @unique
+  passwordHash                  String
+  name                          String
+  role                          String                  @default("EXTERNAL_GENERATOR")
   /// JSON array of tool strings — ex: ["templates","captions"]
-  permissions               String                @default("[]")
-  createdAt                 DateTime              @default(now())
-  templates                 Template[]
-  listings                  Listing[]
-  accesses                  TemplateAccess[]
-  captionJobs               CaptionJob[]
-  captionPresets            CaptionPreset[]
-  captionPresetAccesses     CaptionPresetAccess[]
-  transcriptionJobs         TranscriptionJob[]
-  descriptionJobs           DescriptionJob[]
-  coverFramePacks           CoverFramePack[]
-  defaultMonteurForPatterns AccountPattern[]      @relation("PatternDefaultMonteur")
-  defaultCmForPatterns      AccountPattern[]      @relation("PatternDefaultCm")
-  uploadedVersions          PublicationVersion[]  @relation("VersionUploader")
-  assignedAsMonteur         PublicationSlot[]     @relation("SlotMonteur")
-  assignedAsCm              PublicationSlot[]     @relation("SlotCm")
-  publicationComments       PublicationComment[]  @relation("PublicationCommentAuthor")
-  publicationActivities     PublicationActivity[] @relation("PublicationActivityActor")
-  briefsUpdated             PublicationBrief[]    @relation("BriefUpdatedBy")
-  rushesUploaded            PublicationRush[]     @relation("RushUploadedBy")
+  permissions                   String                  @default("[]")
+  createdAt                     DateTime                @default(now())
+  templates                     Template[]
+  listings                      Listing[]
+  accesses                      TemplateAccess[]
+  captionJobs                   CaptionJob[]
+  captionPresets                CaptionPreset[]
+  captionPresetAccesses         CaptionPresetAccess[]
+  transcriptionJobs             TranscriptionJob[]
+  descriptionJobs               DescriptionJob[]
+  coverFramePacks               CoverFramePack[]
+  defaultMonteurForPatterns     AccountPattern[]        @relation("PatternDefaultMonteur")
+  defaultCmForPatterns          AccountPattern[]        @relation("PatternDefaultCm")
+  uploadedVersions              PublicationVersion[]    @relation("VersionUploader")
+  assignedAsMonteur             PublicationSlot[]       @relation("SlotMonteur")
+  assignedAsCm                  PublicationSlot[]       @relation("SlotCm")
+  publicationComments           PublicationComment[]    @relation("PublicationCommentAuthor")
+  publicationActivities         PublicationActivity[]   @relation("PublicationActivityActor")
+  briefsUpdated                 PublicationBrief[]      @relation("BriefUpdatedBy")
+  rushesUploaded                PublicationRush[]       @relation("RushUploadedBy")
   clientValidationTokensCreated ClientValidationToken[] @relation("ClientValidationTokenCreator")
-  assignedAsVideaste        PublicationSlot[]     @relation("SlotVideaste")
-  defaultVideasteForPatterns AccountPattern[]     @relation("PatternDefaultVideaste")
+  assignedAsVideaste            PublicationSlot[]       @relation("SlotVideaste")
+  defaultVideasteForPatterns    AccountPattern[]        @relation("PatternDefaultVideaste")
 }
 
 model CaptionJob {
@@ -236,66 +236,66 @@ enum RenderStatus {
 }
 
 model TranscriptionJob {
-  id                String           @id @default(cuid())
-  userId            String
-  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status            String           @default("QUEUED") // QUEUED | PROCESSING | COMPLETED | FAILED
-  inputKey          String? // clé R2 du fichier audio source
-  inputFilename     String? // nom original pour l'affichage
-  model             String           @default("turbo") // ex: "turbo", "large-v3"
-  language          String           @default("fr")
-  enableDiarization Boolean          @default(false) // demande de segmentation par speaker
-  hasDiarization    Boolean          @default(false) // résultat effectif (false si pas de HF_TOKEN)
-  runpodJobId       String?          @unique // ID job RunPod pour polling
-  outputJsonKey     String? // clé R2 du JSON segments brut (persistant)
-  segmentCount      Int?
-  duration          Float? // durée audio en secondes
-  errorMsg          String?
+  id                   String              @id @default(cuid())
+  userId               String
+  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status               String              @default("QUEUED") // QUEUED | PROCESSING | COMPLETED | FAILED
+  inputKey             String? // clé R2 du fichier audio source
+  inputFilename        String? // nom original pour l'affichage
+  model                String              @default("turbo") // ex: "turbo", "large-v3"
+  language             String              @default("fr")
+  enableDiarization    Boolean             @default(false) // demande de segmentation par speaker
+  hasDiarization       Boolean             @default(false) // résultat effectif (false si pas de HF_TOKEN)
+  runpodJobId          String?             @unique // ID job RunPod pour polling
+  outputJsonKey        String? // clé R2 du JSON segments brut (persistant)
+  segmentCount         Int?
+  duration             Float? // durée audio en secondes
+  errorMsg             String?
   /// Render à l'origine de ce job (si déclenché automatiquement via captionAutoConfig)
-  renderId          String?          @unique
-  render            Render?          @relation(fields: [renderId], references: [id], onDelete: SetNull)
+  renderId             String?             @unique
+  render               Render?             @relation(fields: [renderId], references: [id], onDelete: SetNull)
   /// PublicationVersion à l'origine de ce job (Phase 2.4 — chaîne auto pour
   /// les patterns manual_rushes / external_upload, alternative à renderId).
   /// Mutuellement exclusif avec renderId en pratique.
-  publicationVersionId String?       @unique
+  publicationVersionId String?             @unique
   publicationVersion   PublicationVersion? @relation("VersionTranscriptionJob", fields: [publicationVersionId], references: [id], onDelete: SetNull)
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  descriptionJobs   DescriptionJob[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  descriptionJobs      DescriptionJob[]
 }
 
 model CoverFramePack {
-  id                  String                @id @default(cuid())
-  userId              String
-  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String                @id @default(cuid())
+  userId               String
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Render lié au pack — null pour les packs créés manuellement sur une
   /// version uploadée (slot one-off sans render auto, ex: rush externe monté).
-  renderId            String?               @unique
-  render              Render?               @relation(fields: [renderId], references: [id], onDelete: SetNull)
+  renderId             String?               @unique
+  render               Render?               @relation(fields: [renderId], references: [id], onDelete: SetNull)
   /// PublicationVersion lié (alternative à renderId pour les packs manuels).
-  publicationVersionId String?              @unique
-  publicationVersion  PublicationVersion?   @relation("VersionCoverFramePack", fields: [publicationVersionId], references: [id], onDelete: SetNull)
-  templateId          String?
-  template            Template?             @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  status              String                @default("QUEUED") // QUEUED | PROCESSING | READY | SELECTED | FAILED
-  sourceVideoUrl      String?
-  duration            Float?
-  frameCount          Int                   @default(36)
+  publicationVersionId String?               @unique
+  publicationVersion   PublicationVersion?   @relation("VersionCoverFramePack", fields: [publicationVersionId], references: [id], onDelete: SetNull)
+  templateId           String?
+  template             Template?             @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  status               String                @default("QUEUED") // QUEUED | PROCESSING | READY | SELECTED | FAILED
+  sourceVideoUrl       String?
+  duration             Float?
+  frameCount           Int                   @default(36)
   /// JSON string[] — timestamps déjà proposés, pour les tirages suivants.
-  usedTimestamps      String                @default("[]")
+  usedTimestamps       String                @default("[]")
   /// JSON — snapshot de la config cover au moment de la génération.
-  config              String                @default("{}")
+  config               String                @default("{}")
   /// JSON string[] — groupes de blocs utilisés comme overlay texte cover.
-  overlayGroupIds     String                @default("[]")
-  overlayOffsetX      Float                 @default(0)
-  overlayOffsetY      Float                 @default(0)
-  selectedCandidateId String?
-  finalCoverUrl       String?
-  finalCoverKey       String?
-  errorMsg            String?
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-  candidates          CoverFrameCandidate[]
+  overlayGroupIds      String                @default("[]")
+  overlayOffsetX       Float                 @default(0)
+  overlayOffsetY       Float                 @default(0)
+  selectedCandidateId  String?
+  finalCoverUrl        String?
+  finalCoverKey        String?
+  errorMsg             String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  candidates           CoverFrameCandidate[]
 
   @@index([userId, status])
   @@index([templateId])
@@ -319,19 +319,19 @@ model CoverFrameCandidate {
 
 /// Prompt personnalisé pour la génération de descriptions (géré par les admins)
 model DescriptionPrompt {
-  id              String           @id @default(cuid())
+  id              String            @id @default(cuid())
   name            String
   prompt          String // Instructions pour le LLM
-  isActive        Boolean          @default(true)
+  isActive        Boolean           @default(true)
   /// Recipe d'exécution bundlée au prompt (P6).
   /// Valeurs : "transcript_only" (défaut, comportement historique) |
   /// "transcript_and_frame" | "transcript_multi_frame" | "two_pass_reformulate" |
   /// "context_enriched". L'executor lit ce champ pour choisir la stratégie.
-  recipeKind      String           @default("transcript_only")
+  recipeKind      String            @default("transcript_only")
   /// Config JSON spécifique à la recipe (frame count, fields à injecter, etc.)
   recipeConfig    Json?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
   jobs            DescriptionJob[]
   accountPatterns AccountPattern[]
   /// Slots one-off référençant ce prompt via override (Phase 5 Workflows).
@@ -390,6 +390,21 @@ model MediaLibrary {
   /// JSON { key: string; label: string; type: "text" | "number" | "url" }[] — champs de
   /// métadonnées structurées pouvant être remplis sur chaque asset de cette bibliothèque.
   metadataSchema String                 @default("[]")
+  /// Burn-once / consommation max par asset.
+  /// - `null` (défaut) : rotation infinie, les assets sont recyclés quand tous épuisés.
+  /// - `N > 0` : chaque asset peut être utilisé max N fois avant d'être filtré de la rotation.
+  /// La sémantique dépend de rotationScope :
+  /// - `per_account` : N usages MAX par compte (MediaAssetUsage.usageCount par (asset, account))
+  /// - `shared`      : N usages MAX au total tous comptes confondus (MediaAsset.usageCount global)
+  maxUsageCount  Int?
+  /// Mode de rotation explicite :
+  /// - `"auto"` (défaut) : least-used round-robin (déduit aussi de setSequence vide en legacy).
+  /// - `"override"` : ordre fixe défini par setSequence.
+  /// - `"none"` : pas de rotation auto. La sélection se fait via `selectMediaAssetByMetadataValue`
+  ///   (champ formulaire du builder). selectMediaAsset() et selectMediaAssetBySetSequence()
+  ///   retournent null directement pour cette lib.
+  /// - `null` : back-compat — comportement déduit du contenu de setSequence (vide=auto, rempli=override).
+  rotationMode   String?
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
   assets         MediaAsset[]
@@ -510,14 +525,38 @@ model MediaAutocutJob {
 
 /// Bibliothèque de données texte, rattachée à un type de template (RPI, RTIPS…).
 model DataLibrary {
-  id           String         @id @default(cuid())
-  name         String
+  id             String         @id @default(cuid())
+  name           String
   /// Identifiant métier du type : "RPI" | "RTIPS" | "RPOD" | etc.
-  templateType String
-  description  String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  campaigns    DataCampaign[]
+  templateType   String
+  description    String?
+  /// Mode de rotation explicite (mirror MediaLibrary) :
+  /// - "auto"     : least-used round-robin (défaut).
+  /// - "override" : ordre fixe (TODO V2 : nécessitera DataEntry.position).
+  /// - "none"     : pas de rotation auto, sélection manuelle uniquement.
+  rotationMode   String         @default("auto")
+  /// Portée de la rotation (mirror MediaLibrary) :
+  /// - "shared" (défaut)  : pool partagé entre tous les comptes (compteur global DataEntry.usageCount).
+  /// - "per_account"      : chaque compte tourne indépendamment (DataEntryUsage par compte).
+  rotationScope  String         @default("shared")
+  /// Burn-once / consommation max par fiche.
+  /// - `null` (défaut) : rotation infinie, fiches recyclées (least-used).
+  /// - `N > 0` : chaque fiche peut être utilisée max N fois (filtrée au-delà).
+  /// Sémantique dépend de rotationScope (shared → global / per_account → per-account).
+  maxUsageCount  Int?
+  /// JSON `{ key, label, type, required? }[]` — schéma des champs d'une fiche.
+  /// Sert à : générer le modèle CSV (même lib vide), construire le form de
+  /// création/édition d'une fiche, valider l'import.
+  /// types supportés : "text" | "number" | "url" | "textarea".
+  /// Si vide → fallback rétrocompatible (déduction depuis la première entry).
+  fieldsSchema   String         @default("[]")
+  /// Token de remplissage public (Phase 1.x Vague 3). Si non-null, la lib
+  /// expose une page sans auth à `/data-fill/<token>` où un externe peut
+  /// soumettre des fiches. Le token est révocable / régénérable depuis l'admin.
+  publicFillToken String?       @unique
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  campaigns      DataCampaign[]
 }
 
 /// Cycle de données (ex: "RPI Q1 2026"). Une fiche active à la fois par library.
@@ -659,48 +698,48 @@ model AccountLibraryCursor {
 
 /// Slot réel dans le calendrier opérationnel pour un compte Instagram donné.
 model PublicationSlot {
-  id                String                @id @default(cuid())
-  accountId         String
-  account           InstagramAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  id                 String           @id @default(cuid())
+  accountId          String
+  account            InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   /// Date et heure cible de publication (UTC)
-  scheduledAt       DateTime
+  scheduledAt        DateTime
   /// "TO_DO" | "IN_PROGRESS" | "READY" | "CHECKING" | "DONE"
-  status            String                @default("TO_DO")
-  title             String?
+  status             String           @default("TO_DO")
+  title              String?
   /// Texte de la légende Instagram (rédigée par la CM ou générée par IA).
   /// Anciennement scindée en `caption` + `description` — fusionnée Phase 2.1.
   /// Distinct de `notes` qui reste réservé aux notes internes.
-  description       String?
+  description        String?
   /// Champs libres saisis par l'utilisateur (JSON Record<string, string>)
   /// ex: {"adresse":"12 rue ...","prix":"350 000 €","propriétaire":"Dupont"}
-  fields            String                @default("{}")
+  fields             String           @default("{}")
   /// Noms des champs définis par l'admin ou l'utilisateur (JSON string[])
   /// ex: ["adresse","prix","propriétaire"]
-  fieldSchema       String                @default("[]")
+  fieldSchema        String           @default("[]")
   /// Template lié (optionnel — peut être déterminé après création du slot)
-  templateId        String?
-  template          Template?             @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  templateId         String?
+  template           Template?        @relation(fields: [templateId], references: [id], onDelete: SetNull)
   /// Render final rattaché au slot (relation inverse de Render.publicationSlotId)
-  render            Render?
+  render             Render?
   /// true = créé automatiquement par le moteur de génération / cron
-  isAuto            Boolean               @default(false)
-  notes             String?
+  isAuto             Boolean          @default(false)
+  notes              String?
   /// URL Instagram de la publication (renseignée via mark-published)
-  publishedUrl      String?
+  publishedUrl       String?
   /// Date effective de publication sur Instagram (renseignée via mark-published)
-  publishedAt       DateTime?
+  publishedAt        DateTime?
   /// Monteur assigné à ce slot
-  assigneeMonteurId String?
-  assigneeMonteur   User?                 @relation("SlotMonteur", fields: [assigneeMonteurId], references: [id], onDelete: SetNull)
+  assigneeMonteurId  String?
+  assigneeMonteur    User?            @relation("SlotMonteur", fields: [assigneeMonteurId], references: [id], onDelete: SetNull)
   /// Community manager assigné à ce slot
-  assigneeCmId      String?
-  assigneeCm        User?                 @relation("SlotCm", fields: [assigneeCmId], references: [id], onDelete: SetNull)
+  assigneeCmId       String?
+  assigneeCm         User?            @relation("SlotCm", fields: [assigneeCmId], references: [id], onDelete: SetNull)
   /// Vidéaste assigné au shoot (celui qui filme + upload les rushs)
   assigneeVideasteId String?
-  assigneeVideaste  User?                 @relation("SlotVideaste", fields: [assigneeVideasteId], references: [id], onDelete: SetNull)
+  assigneeVideaste   User?            @relation("SlotVideaste", fields: [assigneeVideasteId], references: [id], onDelete: SetNull)
   /// Pattern de contenu associé à ce slot
-  patternId         String?
-  pattern           AccountPattern?       @relation(fields: [patternId], references: [id], onDelete: SetNull)
+  patternId          String?
+  pattern            AccountPattern?  @relation(fields: [patternId], references: [id], onDelete: SetNull)
 
   /// Override per-slot de needsAdminValidation du pattern. null = hérite.
   /// Phase 2.3 : permet d'activer la validation admin du montage (status
@@ -724,32 +763,32 @@ model PublicationSlot {
   coverModeOverride             String?
   /// Override per-slot de l'ID du preset cover utilisé. null = hérite.
   coverPresetIdOverride         String?
-  coverPresetOverride           TemplateCoverPreset? @relation("SlotCoverPresetOverride", fields: [coverPresetIdOverride], references: [id], onDelete: SetNull)
+  coverPresetOverride           TemplateCoverPreset?    @relation("SlotCoverPresetOverride", fields: [coverPresetIdOverride], references: [id], onDelete: SetNull)
   /// Override per-slot de l'ID du preset captions utilisé. null = hérite.
   captionPresetIdOverride       String?
-  captionPresetOverride         CaptionPreset?     @relation("SlotCaptionPresetOverride", fields: [captionPresetIdOverride], references: [id], onDelete: SetNull)
+  captionPresetOverride         CaptionPreset?          @relation("SlotCaptionPresetOverride", fields: [captionPresetIdOverride], references: [id], onDelete: SetNull)
   /// Override per-slot de l'ID du prompt description IA. null = hérite.
   descriptionPromptIdOverride   String?
-  descriptionPromptOverride     DescriptionPrompt? @relation("SlotDescriptionPromptOverride", fields: [descriptionPromptIdOverride], references: [id], onDelete: SetNull)
+  descriptionPromptOverride     DescriptionPrompt?      @relation("SlotDescriptionPromptOverride", fields: [descriptionPromptIdOverride], references: [id], onDelete: SetNull)
   /// Tokens magic link pour validation client (un seul actif via clause unique conditionnelle)
   clientValidationTokens        ClientValidationToken[]
   /// Historique des rounds de validation client (un round = une action client)
   clientValidationRounds        ClientValidationRound[]
   /// Version courante sélectionnée (parmi les versions uploadées)
-  currentVersionId  String?               @unique
-  currentVersion    PublicationVersion?   @relation("SlotCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  currentVersionId              String?                 @unique
+  currentVersion                PublicationVersion?     @relation("SlotCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
   /// Toutes les versions uploadées pour ce slot
-  versions          PublicationVersion[]  @relation("SlotVersions")
-  comments          PublicationComment[]
-  activities        PublicationActivity[]
-  brief             PublicationBrief?
-  rushes            PublicationRush[]
+  versions                      PublicationVersion[]    @relation("SlotVersions")
+  comments                      PublicationComment[]
+  activities                    PublicationActivity[]
+  brief                         PublicationBrief?
+  rushes                        PublicationRush[]
   /// Jobs captions liés à ce slot (Phase 1.9 — A2)
-  captionJobs       CaptionJob[]
+  captionJobs                   CaptionJob[]
   /// Jobs description IA liés à ce slot (alimente la ProductionChain)
-  descriptionJobs   DescriptionJob[]
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
+  descriptionJobs               DescriptionJob[]
+  createdAt                     DateTime                @default(now())
+  updatedAt                     DateTime                @updatedAt
 
   @@index([accountId, scheduledAt])
   @@index([status, scheduledAt])
@@ -847,10 +886,10 @@ model AccountPattern {
   isActive    Boolean @default(true)
 
   // Assignations par défaut
-  defaultAssigneeMonteurId String?
-  defaultAssigneeMonteur   User?   @relation("PatternDefaultMonteur", fields: [defaultAssigneeMonteurId], references: [id], onDelete: SetNull)
-  defaultAssigneeCmId      String?
-  defaultAssigneeCm        User?   @relation("PatternDefaultCm", fields: [defaultAssigneeCmId], references: [id], onDelete: SetNull)
+  defaultAssigneeMonteurId  String?
+  defaultAssigneeMonteur    User?   @relation("PatternDefaultMonteur", fields: [defaultAssigneeMonteurId], references: [id], onDelete: SetNull)
+  defaultAssigneeCmId       String?
+  defaultAssigneeCm         User?   @relation("PatternDefaultCm", fields: [defaultAssigneeCmId], references: [id], onDelete: SetNull)
   defaultAssigneeVideasteId String?
   defaultAssigneeVideaste   User?   @relation("PatternDefaultVideaste", fields: [defaultAssigneeVideasteId], references: [id], onDelete: SetNull)
 
@@ -876,18 +915,18 @@ model AccountPattern {
 /// Un seul token actif (non révoqué) par slot via clause unique conditionnelle.
 /// Le tokenHash est un sha256 ; le rawToken n'est jamais stocké.
 model ClientValidationToken {
-  id               String          @id @default(cuid())
-  slotId           String
-  slot             PublicationSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  id              String          @id @default(cuid())
+  slotId          String
+  slot            PublicationSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
   /// sha256(rawToken). Permet lookup safe (timing-safe equal côté code).
-  tokenHash        String          @unique
-  createdAt        DateTime        @default(now())
-  expiresAt        DateTime
+  tokenHash       String          @unique
+  createdAt       DateTime        @default(now())
+  expiresAt       DateTime
   /// Si non null, le token est révoqué et ne doit plus matcher.
-  revokedAt        DateTime?
+  revokedAt       DateTime?
   /// ADMIN qui a généré ce token (audit).
-  createdByUserId  String
-  createdBy        User            @relation("ClientValidationTokenCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdByUserId String
+  createdBy       User            @relation("ClientValidationTokenCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
 
   @@index([slotId, revokedAt])
 }
@@ -895,14 +934,14 @@ model ClientValidationToken {
 /// Round de validation client : une action (approve/reject/cancel) effectuée par le client
 /// via le magic link. roundNumber = 1 pour le premier round, incrémenté à chaque renvoi.
 model ClientValidationRound {
-  id           String          @id @default(cuid())
-  slotId       String
-  slot         PublicationSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
-  roundNumber  Int
+  id          String          @id @default(cuid())
+  slotId      String
+  slot        PublicationSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  roundNumber Int
   /// "approved" | "rejected" (avec comment, allowsClientRevision=true) | "cancelled"
-  action       String
-  comment      String?
-  respondedAt  DateTime        @default(now())
+  action      String
+  comment     String?
+  respondedAt DateTime        @default(now())
 
   @@unique([slotId, roundNumber])
   @@index([slotId, respondedAt])
@@ -913,26 +952,26 @@ model ClientValidationRound {
 /// Version d'un fichier uploadé pour un slot de publication.
 /// Chaque upload crée une nouvelle version numérotée ; la version active est pointée par PublicationSlot.currentVersionId.
 model PublicationVersion {
-  id               String           @id @default(cuid())
+  id               String            @id @default(cuid())
   slotId           String
-  slot             PublicationSlot  @relation("SlotVersions", fields: [slotId], references: [id], onDelete: Cascade)
+  slot             PublicationSlot   @relation("SlotVersions", fields: [slotId], references: [id], onDelete: Cascade)
   versionNumber    Int
   /// Clé R2 déterministe : "publications/<slotId>/versions/<n>.<ext>"
-  r2Key            String           @unique
+  r2Key            String            @unique
   fileUrl          String
   fileName         String
   fileSizeBytes    Int?
   mimeType         String
   durationSec      Float?
   uploadedByUserId String
-  uploadedBy       User             @relation("VersionUploader", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+  uploadedBy       User              @relation("VersionUploader", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
   notes            String?
-  createdAt        DateTime         @default(now())
+  createdAt        DateTime          @default(now())
   deletedAt        DateTime?
   /// Slot qui pointe cette version comme courante (relation inverse de PublicationSlot.currentVersionId)
-  currentForSlot   PublicationSlot? @relation("SlotCurrentVersion")
+  currentForSlot   PublicationSlot?  @relation("SlotCurrentVersion")
   /// CoverFramePack créé manuellement sur cette version (Phase 5 slots one-off).
-  coverFramePack   CoverFramePack?  @relation("VersionCoverFramePack")
+  coverFramePack   CoverFramePack?   @relation("VersionCoverFramePack")
   /// TranscriptionJob auto-déclenché sur cette version (Phase 2.4 — chaîne
   /// auto pour manual_rushes / external_upload).
   transcriptionJob TranscriptionJob? @relation("VersionTranscriptionJob")

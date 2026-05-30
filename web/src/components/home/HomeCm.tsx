@@ -13,13 +13,6 @@ import {
   TERMINAL_STATUSES,
 } from "@/types/worklist";
 
-// Statuts à inclure dans la worklist CM. Doit rester aligné avec
-// CM_SECTION_MAP dans worklist.ts (sinon un statut mappé en section
-// mais absent du filtre Prisma cause une perte silencieuse de slots).
-//
-// AWAITING_CLIENT / CLIENT_REVISION : le CM continue de bosser sur
-// cover/légende/description pendant la validation client.
-// READY / CHECKING / DONE : aliases legacy (Phase 1.2 backfill).
 const CM_STATUSES: SlotStatus[] = [
   "EDIT_APPROVED",
   "CAPTIONS_PENDING",
@@ -34,7 +27,6 @@ const CM_STATUSES: SlotStatus[] = [
   "DONE",
 ];
 
-// Fenêtre "Publié récemment" : 14 jours glissants.
 const PUBLISHED_WINDOW_DAYS = 14;
 
 interface HomeCmProps {
@@ -55,26 +47,15 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
       status: { in: CM_STATUSES },
     },
     include: {
-      account: {
-        select: { id: true, handle: true, name: true },
-      },
-      pattern: {
-        select: { label: true, coverMode: true },
-      },
-      // Cover à choisir : on charge le coverFramePack du dernier render pour
-      // savoir si des frames sont prêtes mais non encore sélectionnées par le CM.
+      account: { select: { id: true, handle: true, name: true } },
+      pattern: { select: { label: true, coverMode: true } },
       render: {
-        select: {
-          coverFramePack: {
-            select: { status: true, finalCoverUrl: true },
-          },
-        },
+        select: { coverFramePack: { select: { status: true, finalCoverUrl: true } } },
       },
     },
     orderBy: { scheduledAt: "asc" },
   });
 
-  // Cast Prisma result → WorklistSlot.
   const slots: WorklistSlot[] = rawSlots.map((s) => ({
     id: s.id,
     title: s.title,
@@ -88,68 +69,56 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
     pattern: s.pattern,
   }));
 
-  // ── Découpe en sections ────────────────────────────────────────────────────
-
-  /** En retard : passé, non-terminal, statut CM actif (pas PUBLISHED) */
+  // ── Découpe en sections ────────────────────────────────────────────────
   const overdue = slots.filter(
     (s) =>
       !(TERMINAL_STATUSES as readonly string[]).includes(s.status) &&
       s.status !== "PUBLISHED" &&
-      s.scheduledAt < now
+      s.scheduledAt < now,
   );
 
   const nonOverdue = slots.filter((s) => !isSlotOverdue(s));
 
-  /** À préparer : statuts d'entrée CM (EDIT_APPROVED, CAPTIONS_PENDING, READY_FOR_CM) */
-  const toPrepare = nonOverdue.filter(
-    (s) => getCmSection(s.status) === "to_prepare"
-  );
-
-  /** À publier cette semaine : SCHEDULED dans [lundi, dimanche] de la semaine courante */
+  const toPrepare = nonOverdue.filter((s) => getCmSection(s.status) === "to_prepare");
   const toPublishThisWeek = nonOverdue.filter(
     (s) =>
       getCmSection(s.status) === "to_publish" &&
       s.scheduledAt >= weekMonday &&
-      s.scheduledAt <= weekSunday
+      s.scheduledAt <= weekSunday,
   );
-
-  /** Publié récemment : PUBLISHED dans les 14 derniers jours */
   const publishedRecently = slots.filter(
-    (s) => s.status === "PUBLISHED" && s.scheduledAt >= publishedSince
+    (s) => s.status === "PUBLISHED" && s.scheduledAt >= publishedSince,
   );
 
   const totalActive = overdue.length + toPrepare.length + toPublishThisWeek.length;
   const isFullyEmpty = totalActive === 0 && publishedRecently.length === 0;
 
-  // ── Badges CM pour la section "À préparer" ───────────────────────────────────
+  // ── Badges CM ─────────────────────────────────────────────────────────
   const CM_STATUS_BADGES: Record<string, WorklistCmBadges> = {
     EDIT_APPROVED: {
       statusLabel: "À sous-titrer",
-      statusClasses: "bg-violet-100 text-violet-700 border border-violet-200",
+      statusClasses: "bg-sky-50/80 text-sky-700 shadow-[inset_0_0_0_1px_rgba(77,150,191,0.22)]",
     },
     CAPTIONS_PENDING: {
       statusLabel: "Captions en cours",
-      statusClasses: "bg-blue-100 text-blue-600 border border-blue-200",
+      statusClasses: "bg-sky-50/80 text-sky-700 shadow-[inset_0_0_0_1px_rgba(77,150,191,0.22)]",
     },
     READY_FOR_CM: {
       statusLabel: "Prêt à publier",
-      statusClasses: "bg-green-100 text-green-700 border border-green-200",
+      statusClasses: "bg-success-50/80 text-success-700 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.22)]",
     },
   };
 
-  // Override : si une cover frame pack est READY (frames dispo) et finalCoverUrl
-  // pas encore renseignée, la mission CM prioritaire est "Cover à choisir" —
-  // devant les badges "À sous-titrer" / "Captions en cours" / "Prêt à publier".
   const COVER_TO_PICK_BADGE: WorklistCmBadges = {
     statusLabel: "Cover à choisir",
-    statusClasses: "bg-amber-100 text-amber-700 border border-amber-200",
+    statusClasses: "bg-peach-50/80 text-peach-700 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.22)]",
   };
 
   const coverPackBySlot = new Map<string, { status: string; finalCoverUrl: string | null } | null>(
-    rawSlots.map((s) => [s.id, s.render?.coverFramePack ?? null])
+    rawSlots.map((s) => [s.id, s.render?.coverFramePack ?? null]),
   );
   const coverModeBySlot = new Map<string, string | null>(
-    rawSlots.map((s) => [s.id, s.pattern?.coverMode ?? null])
+    rawSlots.map((s) => [s.id, s.pattern?.coverMode ?? null]),
   );
 
   function cmBadgeForSlot(slotId: string, status: string): WorklistCmBadges {
@@ -168,79 +137,106 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
   }
 
   const cmBadgesMap = new Map<string, WorklistCmBadges>(
-    toPrepare.map((s) => [s.id, cmBadgeForSlot(s.id, s.status)])
+    toPrepare.map((s) => [s.id, cmBadgeForSlot(s.id, s.status)]),
   );
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Bonjour{userName ? `, ${userName.split(" ")[0]}` : ""}
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {totalActive === 0
-              ? "Aucune publication en cours."
-              : `${totalActive} publication${totalActive > 1 ? "s" : ""} active${totalActive > 1 ? "s" : ""}`}
-          </p>
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
+        style={{
+          background: "var(--gradient-page-shell)",
+        }}
+      >
+        {/* Header Control Center */}
+        <div className="rounded-t-3xl overflow-hidden">
+          <div className="max-w-5xl mx-auto px-6 sm:px-8 pt-6 pb-2">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                  Ma worklist
+                </p>
+                <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
+                  Bonjour{userName ? `, ${userName.split(" ")[0]}` : ""}
+                </h1>
+                <p className="mt-2 text-[13px] text-gray-500">
+                  {totalActive === 0
+                    ? "Aucune publication en cours."
+                    : `${totalActive} publication${totalActive > 1 ? "s" : ""} active${totalActive > 1 ? "s" : ""}`}
+                  {overdue.length > 0 && (
+                    <>
+                      {" · "}
+                      <span className="text-rose-700 tabular-nums">
+                        {overdue.length} en retard
+                      </span>
+                    </>
+                  )}
+                </p>
+              </div>
+
+              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+                {totalActive > 0 && (
+                  <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
+                )}
+                <span className="text-[11px] font-mono text-gray-700 tabular-nums">
+                  CM
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
+        <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
+          <div className="max-w-5xl mx-auto space-y-8">
+            {isFullyEmpty ? (
+              <EmptyState
+                icon={<CheckCircle2 size={20} className="text-gray-400" />}
+                title="Rien à publier pour le moment"
+                description="Aucune publication ne t'attend. Reviens plus tard ou consulte le calendrier pour anticiper la suite."
+              />
+            ) : (
+              <>
+                {overdue.length > 0 && (
+                  <WorklistSection
+                    title="En retard"
+                    slots={overdue}
+                    mode="cm"
+                    tone="danger"
+                  />
+                )}
+
+                <WorklistSection
+                  title="À préparer"
+                  slots={toPrepare}
+                  mode="cm"
+                  tone="default"
+                  emptyMessage="Aucune publication à préparer."
+                  cmBadgesMap={cmBadgesMap}
+                />
+
+                <WorklistSection
+                  title="À publier cette semaine"
+                  slots={toPublishThisWeek}
+                  mode="cm"
+                  tone="default"
+                  emptyMessage="Aucune publication prévue cette semaine."
+                />
+
+                {publishedRecently.length > 0 && (
+                  <WorklistSection
+                    title="Publications récentes (2 dernières semaines)"
+                    slots={publishedRecently}
+                    mode="cm"
+                    tone="muted"
+                    collapsible
+                    defaultOpen={false}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        </div>
       </div>
-
-      {isFullyEmpty ? (
-        <EmptyState
-          // Pré-rendu requis : HomeCm est un Server Component, on ne peut pas
-          // passer le composant Lucide directement (Next.js refuse de
-          // sérialiser les fonctions à travers la frontière server→client).
-          icon={<CheckCircle2 size={20} className="text-gray-400" />}
-          title="Rien à publier pour le moment"
-          description="Aucune publication ne t'attend. Reviens plus tard ou consulte le calendrier pour anticiper la suite."
-        />
-      ) : (
-        <>
-      {/* Section En retard */}
-      {overdue.length > 0 && (
-        <WorklistSection
-          title="En retard"
-          slots={overdue}
-          mode="cm"
-          tone="danger"
-        />
-      )}
-
-      {/* Section À préparer */}
-      <WorklistSection
-        title="À préparer"
-        slots={toPrepare}
-        mode="cm"
-        tone="default"
-        emptyMessage="Aucune publication à préparer."
-        cmBadgesMap={cmBadgesMap}
-      />
-
-      {/* Section À publier cette semaine */}
-      <WorklistSection
-        title="À publier cette semaine"
-        slots={toPublishThisWeek}
-        mode="cm"
-        tone="default"
-        emptyMessage="Aucune publication prévue cette semaine."
-      />
-
-      {/* Section Publié récemment */}
-      {publishedRecently.length > 0 && (
-        <WorklistSection
-          title="Publications récentes (2 dernières semaines)"
-          slots={publishedRecently}
-          mode="cm"
-          tone="muted"
-          collapsible
-          defaultOpen={false}
-        />
-      )}
-        </>
-      )}
     </div>
   );
 }

@@ -438,6 +438,8 @@ export async function triggerAutoCaptionForTranscription(transcriptionJobId: str
             srtFilename: `auto-transcription-${job.id}.json`,
             previewMode: false,
             presetId:    captionAutoConfig.presetId,
+            // Fix 2026-05-30 : même rationale que ci-dessous — lier au slot.
+            slotId:      render.publicationSlotId ?? null,
           },
         });
         notifyUser(job.userId, { jobType: "captions", jobId: failedJob.id, status: "FAILED", errorMsg: errMsg });
@@ -474,6 +476,11 @@ export async function triggerAutoCaptionForTranscription(transcriptionJobId: str
       srtFilename,
       previewMode: false,
       presetId:    captionAutoConfig.presetId,
+      // Fix bug 2026-05-30 : lier le CaptionJob auto au slot du render parent
+      // pour que la fiche publication le voie dans slot.captionJobs[]. Sans ça,
+      // le job COMPLETED reste orphelin (slotId=null) et la "version sous-titrée"
+      // ne remplace jamais la brute dans RenderSection / page de validation.
+      slotId:      render.publicationSlotId ?? null,
     },
   });
 

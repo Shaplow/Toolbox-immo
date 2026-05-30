@@ -1,9 +1,9 @@
 import { redirect, notFound } from "next/navigation";
+import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { DataEntriesPanel } from "@/components/admin/libraries/DataEntriesPanel";
-import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 
 type Props = { params: Promise<{ id: string; campaignId: string }> };
 
@@ -16,44 +16,70 @@ export default async function DataCampaignDetailPage({ params }: Props) {
   const { id, campaignId } = await params;
   const [library, campaign] = await Promise.all([
     prisma.dataLibrary.findUnique({ where: { id } }),
-    prisma.dataCampaign.findUnique({ where: { id: campaignId } }),
+    prisma.dataCampaign.findUnique({
+      where: { id: campaignId },
+      include: { _count: { select: { entries: true } } },
+    }),
   ]);
   if (!library || !campaign || campaign.libraryId !== id) notFound();
 
-  // Breadcrumb complet : Ressources > Données > [Library] > [Campaign]
-  const breadcrumb = [
-    { href: "/admin/libraries", label: "Ressources" },
-    { href: "/admin/libraries/data", label: "Données" },
-    { href: `/admin/libraries/data/${id}`, label: library.name },
-  ];
-
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <div className="mb-6 space-y-1.5">
-        <Link
-          href={`/admin/libraries/data/${id}`}
-          className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          <ChevronLeft size={14} /> {library.name}
-        </Link>
-        <nav className="flex items-center gap-1 text-xs text-gray-400 flex-wrap">
-          {breadcrumb.map((item) => (
-            <span key={item.href} className="flex items-center gap-1">
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
+        style={{
+          background: "var(--gradient-page-shell)",
+        }}
+      >
+        <div className="rounded-t-3xl overflow-hidden">
+          <div className="max-w-6xl mx-auto px-6 sm:px-8 pt-6 pb-2">
+            <nav className="flex items-center gap-1.5 text-[10px] text-gray-400 mb-3 flex-wrap">
               <Link
-                href={item.href}
-                className="hover:text-indigo-600 transition-colors truncate max-w-[200px]"
+                href={`/admin/libraries/data/${id}`}
+                className="inline-flex items-center gap-1 hover:text-gray-700 transition-colors"
               >
-                {item.label}
+                <ChevronLeft size={10} className="flex-shrink-0" />
+                {library.name}
               </Link>
-              <ChevronRight size={11} className="text-gray-300" />
-            </span>
-          ))}
-          <span className="text-gray-600 font-medium truncate max-w-[240px]">
-            {campaign.name}
-          </span>
-        </nav>
+            </nav>
+
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                  Médiathèque · Données · {library.templateType} · Campagne
+                </p>
+                <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
+                  {campaign.name}
+                </h1>
+                <p className="mt-2 text-[13px] text-gray-500">
+                  {campaign._count.entries} entrée
+                  {campaign._count.entries !== 1 ? "s" : ""}
+                </p>
+              </div>
+
+              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+                {campaign.isActive ? (
+                  <>
+                    <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_6px_rgba(111,162,128,0.6)]" />
+                    <span className="text-[11px] font-mono text-gray-700">Active</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="inline-flex h-1.5 w-1.5 rounded-full bg-gray-400" />
+                    <span className="text-[11px] font-mono text-gray-700">Inactive</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
+          <div className="max-w-6xl mx-auto">
+            <DataEntriesPanel campaignId={campaignId} libraryId={id} />
+          </div>
+        </div>
       </div>
-      <DataEntriesPanel campaignId={campaignId} libraryId={id} />
     </div>
   );
 }

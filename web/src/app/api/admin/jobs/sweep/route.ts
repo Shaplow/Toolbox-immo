@@ -20,8 +20,12 @@ import { NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
-const PROCESSING_STALL_MS  = 2 * 60 * 60 * 1000;  // 2 h
-const QUEUED_STALL_MS      = 30 * 60 * 1000;       // 30 min
+// Fix bug 2026-05-30 : seuils réduits — l'UI alerte déjà dès 30min, et les
+// jobs PROCESSING > 30min sont en pratique morts (Next hot-reload, render-engine
+// down, webhook RunPod jamais reçu). Garder 2h c'était trop permissif et
+// laissait s'accumuler des zombies.
+const PROCESSING_STALL_MS  = 30 * 60 * 1000;       // 30 min (était 2h)
+const QUEUED_STALL_MS      = 10 * 60 * 1000;       // 10 min (était 30min)
 // Seuil pour qu'un job orphelin (slotId=null) soit considéré "vieux".
 // 30 jours après la cassure du lien slot, le job est très probablement
 // inutilisé — flaggué dans le summary pour monitoring (pas supprimé
@@ -100,6 +104,22 @@ export async function POST() {
     }),
   ]);
 
+  // ── CoverFramePack ────────────────────────────────────────────────────────
+  // Fix bug 2026-05-30 : packs cover absents du sweep auparavant → si le
+  // render-engine local crash pendant extractFrames ou si triggerAutoCover
+  // est appelé alors que le render est mort, le pack reste PROCESSING/QUEUED
+  // indéfiniment. Mêmes seuils que les autres jobs pour cohérence.
+  const [coverProcessing, coverQueued] = await Promise.all([
+    prisma.coverFramePack.updateMany({
+      where: { status: "PROCESSING", updatedAt: { lt: processingCutoff } },
+      data:  { status: "FAILED", errorMsg: "Cover pack bloqué en PROCESSING — extraction frames jamais finalisée (sweep automatique)" },
+    }),
+    prisma.coverFramePack.updateMany({
+      where: { status: "QUEUED", updatedAt: { lt: queuedCutoff } },
+      data:  { status: "FAILED", errorMsg: "Cover pack bloqué en QUEUED — préparation jamais déclenchée (sweep automatique)" },
+    }),
+  ]);
+
   // ── MediaAutocutBatch ─────────────────────────────────────────────────────
   // Batch d'analyse Whisper de plusieurs assets. Si le batch reste processing
   // au-delà du seuil, on le passe failed. Pas de revert sur les jobs internes
@@ -157,6 +177,10 @@ export async function POST() {
       processing: mediaEditProcessing.count,
       pending:    mediaEditPending.count,
     },
+    coverPacks: {
+      processing: coverProcessing.count,
+      queued:     coverQueued.count,
+    },
     autocutBatch: {
       processing: autocutBatchProcessing.count,
       pending:    autocutBatchPending.count,
@@ -173,7 +197,8 @@ export async function POST() {
       transcriptionProcessing.count + transcriptionQueued.count +
       renderProcessing.count + renderPending.count +
       mediaEditProcessing.count + mediaEditPending.count +
-      autocutBatchProcessing.count + autocutBatchPending.count,
+      autocutBatchProcessing.count + autocutBatchPending.count +
+      coverProcessing.count + coverQueued.count,
   };
 
   console.info("[admin/jobs/sweep] Sweep terminé par", userContext.actualUser.id, "—", JSON.stringify(summary));

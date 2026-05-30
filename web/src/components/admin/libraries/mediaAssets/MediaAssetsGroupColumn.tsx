@@ -7,7 +7,7 @@
  * (~135 LOC inline) en composant réutilisable consommé par la vue
  * grouped (via MediaAssetsGroupedView en prop callback).
  *
- * Rend : header de colonne (catégorie inline edit + nom du set/pool +
+ * Rend : header de colonne (catégorie inline edit + nom du pack/pool +
  * count + badge rotation + last used) + section "Rushes" (tags rôles
  * détectés automatiquement) + main assets via renderVideoCard callback.
  *
@@ -89,7 +89,7 @@ export function MediaAssetsGroupColumn({
   const seqIdx = setTag ? seqState.indexOf(setTag) : -1;
   const isSequenced = seqIdx !== -1;
 
-  // Smart rush detection : un tag est "role" si présent sur SOME mais pas ALL des assets du set.
+  // Smart rush detection : un tag est "role" si présent sur SOME mais pas ALL des assets du pack.
   const tagFreq = new Map<string, MediaAsset[]>();
   for (const a of groupAssets) {
     for (const t of a.tags) {
@@ -119,7 +119,7 @@ export function MediaAssetsGroupColumn({
       >
         {!isAccessible && accountFilter && (
           groupAssets.every((a) => a.disabled)
-            ? <span className="text-[9px] text-red-400 flex items-center gap-0.5 mb-0.5"><AlertTriangle size={8} /> Set désactivé — bloque la rotation</span>
+            ? <span className="text-[9px] text-red-400 flex items-center gap-0.5 mb-0.5"><AlertTriangle size={8} /> Pack désactivé — bloque la rotation</span>
             : <span className="text-[9px] text-gray-400 flex items-center gap-0.5 mb-0.5"><Lock size={8} /> Hors accès pour ce compte</span>
         )}
         {/* Category */}
@@ -153,7 +153,7 @@ export function MediaAssetsGroupColumn({
                     ? "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100 font-medium"
                     : "text-gray-400 border-dashed border-gray-200 hover:border-violet-200 hover:text-violet-500"
                 }`}
-                title="Catégorie du set — deux sets de la même catégorie ne se suivent jamais dans la rotation"
+                title="Catégorie du pack — deux packs de la même catégorie ne se suivent jamais dans la rotation"
               >
                 <FolderOpen size={10} className="shrink-0" />
                 <span className="truncate">{category || "Catégorie…"}</span>
@@ -163,7 +163,7 @@ export function MediaAssetsGroupColumn({
         )}
         {/* Divider */}
         {(setTag || category) && !inSection && <div className="h-px bg-gray-200" />}
-        {/* Set name */}
+        {/* Pack name */}
         {setTag ? (
           <div className="flex items-center gap-1.5">
             <Layers size={11} className="text-pink-400 shrink-0" />
@@ -172,7 +172,7 @@ export function MediaAssetsGroupColumn({
         ) : category ? (
           <span className="text-xs font-medium text-gray-500 italic">Pool catégorie</span>
         ) : (
-          <span className="text-xs font-medium text-gray-400">Sans set</span>
+          <span className="text-xs font-medium text-gray-400">Sans pack</span>
         )}
         <div className="flex flex-wrap items-center gap-1">
           <span className="text-[10px] text-gray-400">

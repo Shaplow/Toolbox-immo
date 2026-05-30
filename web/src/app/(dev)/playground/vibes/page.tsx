@@ -223,7 +223,7 @@ function ControlCenter() {
     <div
       className="rounded-3xl p-6 md:p-8"
       style={{
-        background: "linear-gradient(135deg, #f1f7f2 0%, #eff6fb 50%, #fdf2f4 100%)",
+        background: "var(--gradient-page-shell)",
       }}
     >
       {/* Top bar */}

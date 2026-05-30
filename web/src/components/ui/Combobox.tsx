@@ -15,7 +15,8 @@
  * - cmdk fait le matching fuzzy automatiquement.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Command } from "cmdk";
 import { Check, ChevronDown, Loader2, Search } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -63,12 +64,59 @@ export function Combobox({
   const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  // Position du popover (portalé sur body) : recalculée from trigger rect.
+  // Position absolue dans le viewport — évite tout clipping par overflow ancestors.
+  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  // Mounted gate pour SSR (createPortal a besoin de document).
+  const [mounted, setMounted] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setMounted(true); }, []);
 
-  // Close on outside click / ESC.
+  // Recalcule la position du popover en fonction de la position du trigger.
+  // On utilise les coords ABSOLUES (rect + window.scrollX/Y) car le popover est
+  // portalé dans document.body avec `position: absolute`. Cette approche est
+  // robuste contre les containing blocks parents (transform, backdrop-filter)
+  // qui cassent `position: fixed` dans certains navigateurs.
+  const updatePosition = () => {
+    const trig = triggerRef.current;
+    if (!trig) return;
+    const rect = trig.getBoundingClientRect();
+    const POPOVER_MAX_HEIGHT = 280; // matches max-h-60 (240px) + header ~40px
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const flipUp = spaceBelow < POPOVER_MAX_HEIGHT && rect.top > spaceBelow;
+    const gap = 6;
+    const topInViewport = flipUp ? rect.top - gap - POPOVER_MAX_HEIGHT : rect.bottom + gap;
+    setPopoverPos({
+      top: topInViewport + window.scrollY,
+      left: rect.left + window.scrollX,
+      width: rect.width,
+    });
+  };
+
+  // Initial position + recalc sur scroll/resize tant que le popover est ouvert.
+  useLayoutEffect(() => {
+    if (!open) return;
+    updatePosition();
+    const onScroll = () => updatePosition();
+    const onResize = () => updatePosition();
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [open]);
+
+  // Close on outside click / ESC. Le popover étant portalé, il faut aussi
+  // vérifier que le click n'est pas dedans (sinon click sur option fermerait).
   useEffect(() => {
     if (!open) return;
     function onClickOutside(e: MouseEvent) {
-      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (containerRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setOpen(false);
     }
     function onEscape(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -107,10 +155,10 @@ export function Combobox({
         onClick={() => setOpen((o) => !o)}
         className={[
           "group/cmb flex items-center gap-2 w-full h-8 rounded-md px-2.5 text-[13px] text-left transition-colors",
-          "bg-sky-50/40 backdrop-blur-[10px] backdrop-saturate-150",
+          "bg-white/65 backdrop-blur-[10px] backdrop-saturate-150",
           "shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.08)]",
-          "hover:bg-sky-50/55 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.12)]",
-          open ? "bg-sky-50/65 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.45),0_0_0_3px_rgba(169,209,230,0.4)]" : "",
+          "hover:bg-white/80 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_0_0_1px_rgba(15,23,42,0.12)]",
+          open ? "bg-white/95 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.45),0_0_0_3px_rgba(169,209,230,0.4)]" : "",
           "focus-ring disabled:opacity-50 disabled:cursor-not-allowed",
         ].join(" ")}
       >
@@ -127,10 +175,20 @@ export function Combobox({
         )}
       </button>
 
-      {open && (
+      {/* Popover portalé sur document.body : évite tout clipping par overflow ancestors
+          (Modal Body, Drawer scroll, etc.) et tout conflit de stacking context. */}
+      {open && mounted && popoverPos && createPortal(
         <div
+          ref={popoverRef}
+          style={{
+            position: "absolute",
+            top: popoverPos.top,
+            left: popoverPos.left,
+            width: popoverPos.width,
+            zIndex: 9999,
+          }}
           className={[
-            "absolute top-full left-0 right-0 mt-1.5 z-50 rounded-md overflow-hidden",
+            "rounded-md overflow-hidden",
             "bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150",
             "shadow-[var(--shadow-glass-popover),var(--ring-glass-inset)]",
           ].join(" ")}
@@ -195,7 +253,8 @@ export function Combobox({
               ))}
             </Command.List>
           </Command>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

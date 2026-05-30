@@ -1,18 +1,37 @@
-﻿"use client";
+"use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { ChevronDown, ChevronUp, X, Plus, UserPlus } from "lucide-react";
+/**
+ * UsersPanel — gestion des utilisateurs (refonte MID Liquid Glass).
+ *
+ * Cards user en glass franc + accordéon expanded pour la config (compte, outils,
+ * templates, presets captions). Modal molecule pour création. Combobox pour
+ * role, Switch primitive pour toggles outils, Chip pour assignations.
+ */
+
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { ChevronDown, ChevronUp, Plus, UserPlus, Search, Edit, Eye } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { TOOLS, TOOL_LABELS, TOOL_DESCRIPTIONS, EXTERNAL_GENERATOR_ALLOWED_TOOLS, type Tool } from "@/lib/permissions";
+import {
+  TOOLS,
+  TOOL_LABELS,
+  TOOL_DESCRIPTIONS,
+  EXTERNAL_GENERATOR_ALLOWED_TOOLS,
+  type Tool,
+} from "@/lib/permissions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { FormField } from "@/components/ui/FormField";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Modal } from "@/components/ui/Modal";
+import { Combobox } from "@/components/ui/Combobox";
+import { Switch } from "@/components/ui/Switch";
+import { Chip } from "@/components/ui/Chip";
+import { Avatar } from "@/components/ui/Avatar";
 import { toast } from "@/components/ui/Toast";
 
 type TemplateStub = { id: string; name: string; client: string };
-type PresetStub   = { id: string; name: string; isBuiltin: boolean };
+type PresetStub = { id: string; name: string; isBuiltin: boolean };
 
 type User = {
   id: string;
@@ -20,12 +39,10 @@ type User = {
   name: string;
   email: string | null;
   role: string;
-  permissions: string; // JSON: ["templates","captions"]
+  permissions: string;
   createdAt: string;
   accesses: { templateId: string; template: TemplateStub }[];
-  captionPresetAccesses: string[]; // array of presetIds
-  // Phase 5 cohérence rôles — compteur "casquettes assumées" (slots où ce user
-  // est assigneeVideaste/Monteur/Cm). Optionnel pour back-compat.
+  captionPresetAccesses: string[];
   _count?: {
     assignedAsVideaste?: number;
     assignedAsMonteur?: number;
@@ -42,34 +59,83 @@ interface Props {
 
 const ALL_TOOLS = Object.values(TOOLS) as Tool[];
 
+const ROLE_OPTIONS = [
+  { value: "EXTERNAL_GENERATOR", label: "Client externe" },
+  { value: "VIDEASTE", label: "Vidéaste" },
+  { value: "MONTEUR", label: "Monteur" },
+  { value: "CM", label: "CM" },
+  { value: "ADMIN", label: "Admin" },
+];
+
+const ROLE_VARIANT: Record<string, "default" | "peach" | "sage" | "sky" | "rose"> = {
+  ADMIN: "rose",
+  VIDEASTE: "peach",
+  MONTEUR: "peach",
+  CM: "sage",
+  EXTERNAL_GENERATOR: "sky",
+  USER: "default",
+};
+
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN: "Admin",
+  VIDEASTE: "Vidéaste",
+  MONTEUR: "Monteur",
+  CM: "CM",
+  EXTERNAL_GENERATOR: "Client externe",
+  USER: "User",
+};
+
 export function UsersPanel({ templates, presets, currentUserId, impersonatedUserId }: Props) {
   const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [newUser, setNewUser] = useState({ username: "", name: "", email: "", password: "", role: "EXTERNAL_GENERATOR" });
+  const [newUser, setNewUser] = useState({
+    username: "",
+    name: "",
+    email: "",
+    password: "",
+    role: "EXTERNAL_GENERATOR",
+  });
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", username: "", email: "", password: "" });
-  const [activeImpersonationId, setActiveImpersonationId] = useState<string | null>(impersonatedUserId);
+  const [activeImpersonationId, setActiveImpersonationId] = useState<string | null>(
+    impersonatedUserId,
+  );
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
 
   const fetchUsers = useCallback(async () => {
     const res = await fetch("/api/admin/users");
-    const data = await res.json() as Omit<User, "captionPresetAccesses">[];
-    // Fetch caption preset accesses for each user
+    const data = (await res.json()) as Omit<User, "captionPresetAccesses">[];
     const withAccesses: User[] = await Promise.all(
       data.map(async (u) => {
         const r = await fetch(`/api/admin/users/${u.id}/caption-preset-accesses`);
-        const presetIds: string[] = r.ok ? (await r.json() as string[]) : [];
+        const presetIds: string[] = r.ok ? ((await r.json()) as string[]) : [];
         return { ...u, captionPresetAccesses: presetIds };
-      })
+      }),
     );
     setUsers(withAccesses);
     setLoading(false);
   }, []);
 
-  useEffect(() => { void fetchUsers(); }, [fetchUsers]);
+  useEffect(() => {
+    void fetchUsers();
+  }, [fetchUsers]);
+
+  const filteredUsers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return users.filter((u) => {
+      if (roleFilter && u.role !== roleFilter) return false;
+      if (q) {
+        const hay = `${u.name} ${u.username} ${u.email ?? ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [users, search, roleFilter]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -80,8 +146,11 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newUser),
       });
-      const data = await res.json() as { error?: string };
-      if (data.error) { toast.error(data.error); return; }
+      const data = (await res.json()) as { error?: string };
+      if (data.error) {
+        toast.error(data.error);
+        return;
+      }
       setNewUser({ username: "", name: "", email: "", password: "", role: "EXTERNAL_GENERATOR" });
       setCreating(false);
       toast.success("Utilisateur créé.");
@@ -95,29 +164,44 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
 
   async function handleDelete(userId: string) {
     const res = await fetch(`/api/admin/users/${userId}`, { method: "DELETE" });
-    if (!res.ok) { toast.error("Erreur lors de la suppression."); return; }
+    if (!res.ok) {
+      toast.error("Erreur lors de la suppression.");
+      return;
+    }
     toast.success("Utilisateur supprimé.");
     await fetchUsers();
   }
 
   function startEdit(user: User) {
     setEditingId(user.id);
-    setEditForm({ name: user.name, username: user.username, email: user.email ?? "", password: "" });
+    setEditForm({
+      name: user.name,
+      username: user.username,
+      email: user.email ?? "",
+      password: "",
+    });
   }
 
   async function handleEdit(e: React.FormEvent, userId: string) {
     e.preventDefault();
     setSaving(true);
     try {
-      const body: Record<string, string> = { name: editForm.name, username: editForm.username, email: editForm.email };
+      const body: Record<string, string> = {
+        name: editForm.name,
+        username: editForm.username,
+        email: editForm.email,
+      };
       if (editForm.password) body.password = editForm.password;
       const res = await fetch(`/api/admin/users/${userId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json() as { error?: string };
-      if (data.error) { toast.error(data.error); return; }
+      const data = (await res.json()) as { error?: string };
+      if (data.error) {
+        toast.error(data.error);
+        return;
+      }
       setEditingId(null);
       toast.success("Compte mis à jour.");
       await fetchUsers();
@@ -135,7 +219,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
       body: JSON.stringify({ role: newRole }),
     });
     if (!res.ok) {
-      const d = await res.json().catch(() => ({})) as { error?: string };
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
       toast.error(d.error ?? "Erreur lors du changement de rôle");
       return;
     }
@@ -153,7 +237,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
       body: JSON.stringify({ permissions: next }),
     });
     if (!res.ok) {
-      const d = await res.json().catch(() => ({})) as { error?: string };
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
       toast.error(d.error ?? "Erreur lors de la modification de l'outil");
       return;
     }
@@ -239,182 +323,155 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-48 text-gray-400">
-        <div className="w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin mr-3" />
-        Chargement...
+      <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] py-12 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] flex items-center justify-center text-gray-500 gap-3">
+        <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+        <span className="text-[12.5px]">Chargement…</span>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header + create button */}
-      <div className="flex justify-end">
-        <Button
-          variant="primary"
-          icon={UserPlus}
-          onClick={() => setCreating(true)}
-        >
+    <div className="space-y-5">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="w-[260px]">
+            <Input
+              value={search}
+              onChange={setSearch}
+              placeholder="Rechercher (nom, identifiant, email)"
+              icon={Search}
+            />
+          </div>
+          <div className="w-[180px]">
+            <Combobox
+              value={roleFilter}
+              onChange={setRoleFilter}
+              options={[{ value: "", label: "Tous les rôles" }, ...ROLE_OPTIONS]}
+              placeholder="Tous les rôles"
+              emptyMessage="—"
+            />
+          </div>
+          <span className="text-[10.5px] text-gray-500 tabular-nums">
+            {filteredUsers.length}/{users.length} utilisateurs
+          </span>
+        </div>
+        <Button variant="primary" size="sm" icon={UserPlus} onClick={() => setCreating(true)}>
           Créer un utilisateur
         </Button>
       </div>
 
-      {/* Create form */}
-      {creating && (
-        <form onSubmit={(e) => { void handleCreate(e); }} className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 space-y-3">
-          <p className="text-sm font-semibold text-indigo-800">Nouvel utilisateur</p>
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="Identifiant" required>
-              <Input type="text" required value={newUser.username}
-                onChange={(v) => setNewUser({ ...newUser, username: v })}
-                placeholder="marie.dupont" />
-            </FormField>
-            <FormField label="Nom" required>
-              <Input type="text" required value={newUser.name}
-                onChange={(v) => setNewUser({ ...newUser, name: v })}
-                placeholder="Marie Dupont" />
-            </FormField>
-            <FormField label="Email" help="Optionnel">
-              <Input type="email" value={newUser.email}
-                onChange={(v) => setNewUser({ ...newUser, email: v })}
-                placeholder="marie@agence.fr" />
-            </FormField>
-            <FormField label="Mot de passe" required>
-              <Input type="password" required value={newUser.password}
-                onChange={(v) => setNewUser({ ...newUser, password: v })}
-                placeholder="..." />
-            </FormField>
-            <FormField label="Rôle">
-              <select value={newUser.role}
-                onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
-                <option value="EXTERNAL_GENERATOR">Client externe</option>
-                <option value="VIDEASTE">Vidéaste</option>
-                <option value="MONTEUR">Monteur</option>
-                <option value="CM">CM</option>
-                <option value="ADMIN">Administrateur</option>
-              </select>
-              <p className="text-[10px] text-gray-500 mt-1 leading-snug">
-                💡 Un <strong>Admin</strong> peut être assigné comme vidéaste, monteur ou CM
-                sur n&apos;importe quel slot (et basculer en vue dédiée via la navbar).
-                Choisissez un rôle dédié pour un user qui assume une seule casquette.
-              </p>
-            </FormField>
-          </div>
-          <div className="flex gap-2 justify-end pt-1">
-            <Button type="button" variant="secondary" onClick={() => setCreating(false)}>
-              Annuler
-            </Button>
-            <Button type="submit" variant="primary" loading={saving}>
-              Créer
-            </Button>
-          </div>
-        </form>
-      )}
-
-      {/* Users list */}
+      {/* Liste */}
       {users.length === 0 ? (
-        <EmptyState
-          icon={UserPlus}
-          title="Aucun utilisateur"
-          description="Créez le premier utilisateur pour commencer."
-          cta={{ label: "Créer un utilisateur", onClick: () => setCreating(true) }}
-        />
+        <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+          <EmptyState
+            icon={UserPlus}
+            title="Aucun utilisateur"
+            description="Créez le premier utilisateur pour commencer."
+            cta={{ label: "Créer un utilisateur", onClick: () => setCreating(true) }}
+          />
+        </div>
+      ) : filteredUsers.length === 0 ? (
+        <p className="text-[12px] text-gray-500 italic text-center py-8">
+          Aucun utilisateur ne correspond à la recherche.
+        </p>
       ) : (
         <div className="space-y-3">
-          {users.map((user) => {
+          {filteredUsers.map((user) => {
             const isExpanded = expandedId === user.id;
             const isAdmin = user.role === "ADMIN";
-            const userTools: Tool[] = (() => { try { return JSON.parse(user.permissions) as Tool[]; } catch { return []; } })();
+            const userTools: Tool[] = (() => {
+              try {
+                return JSON.parse(user.permissions) as Tool[];
+              } catch {
+                return [];
+              }
+            })();
             const assignedTemplateIds = new Set(user.accesses.map((a) => a.templateId));
             const unassignedTemplates = templates.filter((t) => !assignedTemplateIds.has(t.id));
             const assignedPresetIds = new Set(user.captionPresetAccesses);
             const unassignedPresets = presets.filter((p) => !assignedPresetIds.has(p.id));
 
+            // Casquettes
+            const wornHats: string[] = [];
+            if ((user._count?.assignedAsVideaste ?? 0) > 0) {
+              wornHats.push(`V·${user._count!.assignedAsVideaste}`);
+            }
+            if ((user._count?.assignedAsMonteur ?? 0) > 0) {
+              wornHats.push(`M·${user._count!.assignedAsMonteur}`);
+            }
+            if ((user._count?.assignedAsCm ?? 0) > 0) {
+              wornHats.push(`CM·${user._count!.assignedAsCm}`);
+            }
+
             return (
-              <div key={user.id} className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+              <div
+                key={user.id}
+                className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[14px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.06),inset_0_-1px_0_rgba(15,23,42,0.04),0_2px_8px_-2px_rgba(15,23,42,0.08)] overflow-hidden"
+              >
                 {/* User header row */}
                 <div className="px-5 py-4 flex items-center gap-4">
-                  <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold text-sm shrink-0">
-                    {user.name.charAt(0).toUpperCase()}
-                  </div>
+                  <Avatar
+                    name={user.name}
+                    size="md"
+                    status={
+                      activeImpersonationId === user.id
+                        ? "away"
+                        : user.id === currentUserId
+                        ? "online"
+                        : undefined
+                    }
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-medium text-gray-900 truncate">{user.name}</p>
-                      {/* Phase 5 — badge "casquettes assumées" :
-                          montre les rôles que ce user assume réellement via ses
-                          assignations sur des slots, indépendamment de user.role.
-                          Utile pour visualiser qu'un ADMIN qui shoote a "V" affiché. */}
-                      {user._count && (() => {
-                        const tags: string[] = [];
-                        if ((user._count.assignedAsVideaste ?? 0) > 0) {
-                          tags.push(`V·${user._count.assignedAsVideaste}`);
-                        }
-                        if ((user._count.assignedAsMonteur ?? 0) > 0) {
-                          tags.push(`M·${user._count.assignedAsMonteur}`);
-                        }
-                        if ((user._count.assignedAsCm ?? 0) > 0) {
-                          tags.push(`CM·${user._count.assignedAsCm}`);
-                        }
-                        if (tags.length === 0) return null;
-                        return (
-                          <span
-                            className="text-[10px] font-medium text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 rounded px-1.5 py-0.5"
-                            title={`Casquettes assumées :\n${tags.map(t => {
-                              if (t.startsWith("V·")) return `Vidéaste (${user._count!.assignedAsVideaste} slots)`;
-                              if (t.startsWith("M·")) return `Monteur (${user._count!.assignedAsMonteur} slots)`;
-                              return `CM (${user._count!.assignedAsCm} slots)`;
-                            }).join("\n")}`}
-                          >
-                            {tags.join(" · ")}
-                          </span>
-                        );
-                      })()}
+                      <p className="text-[14px] font-semibold text-gray-950 truncate">{user.name}</p>
+                      <Chip variant={ROLE_VARIANT[user.role] ?? "default"} size="sm">
+                        {ROLE_LABEL[user.role] ?? user.role}
+                      </Chip>
+                      {wornHats.length > 0 && (
+                        <Chip variant="rose" size="sm">
+                          {wornHats.join(" · ")}
+                        </Chip>
+                      )}
                     </div>
-                    <p className="text-xs text-gray-400 truncate">
+                    <p className="text-[11px] text-gray-500 truncate mt-0.5">
                       {user.username && <span className="font-mono">{user.username}</span>}
                       {user.username && user.email && " · "}
                       {user.email}
                     </p>
                   </div>
+
                   {!isAdmin && user.id !== currentUserId && (
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={Eye}
                       onClick={() => void handleImpersonation(user)}
-                      className={`shrink-0 text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${
+                      title={
                         activeImpersonationId === user.id
-                          ? "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100"
-                          : "bg-white border-gray-200 text-gray-600 hover:border-amber-300 hover:text-amber-800"
-                      }`}
+                          ? "Arrêter l'impersonation"
+                          : "Voir l'app en tant que cet utilisateur"
+                      }
                     >
-                      {activeImpersonationId === user.id ? "Arrêter" : "Impersonate"}
-                    </button>
+                      {activeImpersonationId === user.id ? "Arrêter" : "Voir comme"}
+                    </Button>
                   )}
-                  {/* Role dropdown */}
-                  <select
-                    value={user.role}
-                    onChange={(e) => void handleRoleChange(user, e.target.value)}
-                    disabled={user.id === currentUserId}
-                    title="Rôle"
-                    className="shrink-0 text-xs px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
-                  >
-                    <option value="EXTERNAL_GENERATOR">Client externe</option>
-                    <option value="VIDEASTE">Vidéaste</option>
-                    <option value="MONTEUR">Monteur</option>
-                    <option value="CM">CM</option>
-                    <option value="ADMIN">Admin</option>
-                  </select>
+
                   <Button
                     variant="ghost"
                     size="sm"
                     icon={isExpanded ? ChevronUp : ChevronDown}
-                    onClick={() => { setExpandedId(isExpanded ? null : user.id); setEditingId(null); }}
-                    className="shrink-0 text-gray-400 hover:text-indigo-700"
+                    onClick={() => {
+                      setExpandedId(isExpanded ? null : user.id);
+                      setEditingId(null);
+                    }}
                   >
                     {isExpanded ? "Fermer" : "Configurer"}
                   </Button>
+
                   {user.id !== currentUserId && (
                     <DeleteButton
-                      itemLabel="cet utilisateur"
+                      itemLabel={`l'utilisateur "${user.name}"`}
                       description="L'utilisateur sera définitivement supprimé ainsi que tous ses accès."
                       onConfirm={() => handleDelete(user.id)}
                     />
@@ -423,34 +480,62 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
 
                 {/* Expanded panel */}
                 {isExpanded && (
-                  <div className="border-t border-gray-50 bg-gray-50/50 divide-y divide-gray-100">
-
+                  <div className="border-t border-white/40 bg-white/30 backdrop-blur-[6px] divide-y divide-white/30">
                     {/* Edit account section */}
                     <div className="px-5 py-4">
                       {editingId === user.id ? (
-                        <form onSubmit={(e) => { void handleEdit(e, user.id); }} className="space-y-3">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Modifier le compte</p>
+                        <form
+                          onSubmit={(e) => {
+                            void handleEdit(e, user.id);
+                          }}
+                          className="space-y-3"
+                        >
+                          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                            Modifier le compte
+                          </p>
                           <div className="grid grid-cols-2 gap-3">
                             <FormField label="Nom" required>
-                              <Input type="text" required value={editForm.name}
-                                onChange={(v) => setEditForm({ ...editForm, name: v })} />
+                              <Input
+                                type="text"
+                                required
+                                value={editForm.name}
+                                onChange={(v) => setEditForm({ ...editForm, name: v })}
+                              />
                             </FormField>
                             <FormField label="Identifiant" required>
-                              <Input type="text" required value={editForm.username}
-                                onChange={(v) => setEditForm({ ...editForm, username: v })} />
+                              <Input
+                                type="text"
+                                required
+                                value={editForm.username}
+                                onChange={(v) => setEditForm({ ...editForm, username: v })}
+                              />
                             </FormField>
                             <FormField label="Email">
-                              <Input type="email" value={editForm.email}
-                                onChange={(v) => setEditForm({ ...editForm, email: v })} />
+                              <Input
+                                type="email"
+                                value={editForm.email}
+                                onChange={(v) => setEditForm({ ...editForm, email: v })}
+                              />
                             </FormField>
-                            <FormField label="Nouveau mot de passe" help="Laisser vide pour ne pas changer">
-                              <Input type="password" value={editForm.password}
+                            <FormField
+                              label="Nouveau mot de passe"
+                              help="Laisser vide pour ne pas changer"
+                            >
+                              <Input
+                                type="password"
+                                value={editForm.password}
                                 onChange={(v) => setEditForm({ ...editForm, password: v })}
-                                placeholder="••••••••" />
+                                placeholder="••••••••"
+                              />
                             </FormField>
                           </div>
                           <div className="flex gap-2 justify-end">
-                            <Button type="button" variant="secondary" size="sm" onClick={() => setEditingId(null)}>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingId(null)}
+                            >
                               Annuler
                             </Button>
                             <Button type="submit" variant="primary" size="sm" loading={saving}>
@@ -459,9 +544,21 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                           </div>
                         </form>
                       ) : (
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Compte</p>
-                          <Button variant="ghost" size="sm" onClick={() => startEdit(user)}>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                              Compte
+                            </p>
+                            <div className="w-[180px]">
+                              <Combobox
+                                value={user.role}
+                                onChange={(v) => void handleRoleChange(user, v)}
+                                options={ROLE_OPTIONS}
+                                disabled={user.id === currentUserId}
+                              />
+                            </div>
+                          </div>
+                          <Button variant="ghost" size="sm" icon={Edit} onClick={() => startEdit(user)}>
                             Modifier
                           </Button>
                         </div>
@@ -469,9 +566,10 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                     </div>
 
                     {isAdmin ? (
-                      <div className="px-5 py-3">
-                        <p className="text-xs text-indigo-700 font-medium">
-                          Administrateur — tous les outils et templates sont accessibles automatiquement.
+                      <div className="px-5 py-4 bg-rose-50/40">
+                        <p className="text-[12px] text-rose-800">
+                          <span className="font-semibold">Administrateur</span> — tous les outils
+                          et templates sont accessibles automatiquement.
                         </p>
                       </div>
                     ) : (
@@ -479,64 +577,79 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                         {/* Tools section */}
                         <div className="px-5 py-4 space-y-3">
                           <div className="flex items-center justify-between">
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Outils</p>
+                            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                              Outils
+                            </p>
                             {user.role === "EXTERNAL_GENERATOR" && (
                               <p className="text-[10px] text-gray-400 italic">
-                                Rôle Client externe : seuls {EXTERNAL_GENERATOR_ALLOWED_TOOLS.join(", ")} sont attribuables
+                                Client externe : {EXTERNAL_GENERATOR_ALLOWED_TOOLS.join(", ")} uniquement
                               </p>
                             )}
                           </div>
-                          <div className="flex flex-col gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {ALL_TOOLS.map((tool) => {
                               const active = userTools.includes(tool);
-                              // D4 étape 1 : USER ne peut pas se voir ajouter captions/transcription/description.
-                              // Les héritées (active && !allowed) restent décochables pour permettre le nettoyage.
-                              const isAllowedForRole = user.role !== "EXTERNAL_GENERATOR" || (EXTERNAL_GENERATOR_ALLOWED_TOOLS as readonly Tool[]).includes(tool);
+                              const isAllowedForRole =
+                                user.role !== "EXTERNAL_GENERATOR" ||
+                                (EXTERNAL_GENERATOR_ALLOWED_TOOLS as readonly Tool[]).includes(tool);
                               const isLegacy = active && !isAllowedForRole;
                               const isBlocked = !active && !isAllowedForRole;
                               return (
-                                <label
+                                <div
                                   key={tool}
-                                  className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                                  className={[
+                                    "flex items-center gap-3 p-3 rounded-xl transition-all",
                                     isBlocked
-                                      ? "bg-gray-50 border-gray-100 cursor-not-allowed opacity-60"
+                                      ? "bg-gray-100/40 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.04)] opacity-60"
                                       : isLegacy
-                                        ? "bg-amber-50 border-amber-200 cursor-pointer"
-                                        : active
-                                          ? "bg-indigo-50 border-indigo-200 cursor-pointer"
-                                          : "bg-white border-gray-100 hover:border-gray-200 cursor-pointer"
-                                  }`}
+                                      ? "bg-peach-50/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(245,158,107,0.22)]"
+                                      : active
+                                      ? "bg-sky-50/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(77,150,191,0.22)]"
+                                      : "bg-white/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
+                                  ].join(" ")}
                                   title={
                                     isBlocked
                                       ? "Non attribuable au rôle Client externe"
                                       : isLegacy
-                                        ? "Permission héritée — peut être retirée mais pas re-ajoutée pour ce rôle"
-                                        : undefined
+                                      ? "Permission héritée — peut être retirée mais pas re-ajoutée"
+                                      : undefined
                                   }
                                 >
-                                  <input
-                                    type="checkbox"
+                                  <Switch
                                     checked={active}
                                     onChange={() => handleToolToggle(user, tool)}
                                     disabled={isBlocked}
-                                    className="accent-indigo-600 shrink-0"
+                                    size="sm"
+                                    accent="default"
                                   />
-                                  <div>
-                                    <p className={`text-xs font-semibold flex items-center gap-1.5 ${
-                                      isBlocked ? "text-gray-400" : isLegacy ? "text-amber-800" : active ? "text-indigo-800" : "text-gray-700"
-                                    }`}>
+                                  <div className="min-w-0">
+                                    <p
+                                      className={`text-[12px] font-semibold flex items-center gap-1.5 ${
+                                        isBlocked
+                                          ? "text-gray-400"
+                                          : isLegacy
+                                          ? "text-peach-800"
+                                          : active
+                                          ? "text-sky-800"
+                                          : "text-gray-700"
+                                      }`}
+                                    >
                                       {TOOL_LABELS[tool]}
                                       {isLegacy && (
-                                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-200 text-amber-900">
+                                        <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-peach-100/80 text-peach-900">
                                           legacy
                                         </span>
                                       )}
                                     </p>
-                                    <p className={`text-[10px] mt-0.5 ${isBlocked ? "text-gray-300" : "text-gray-400"}`}>
+                                    <p
+                                      className={`text-[10.5px] mt-0.5 ${
+                                        isBlocked ? "text-gray-300" : "text-gray-500"
+                                      }`}
+                                    >
                                       {TOOL_DESCRIPTIONS[tool]}
                                     </p>
                                   </div>
-                                </label>
+                                </div>
                               );
                             })}
                           </div>
@@ -544,70 +657,109 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
 
                         {/* Templates section */}
                         <div className="px-5 py-4 space-y-3">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Templates assignés</p>
+                          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                            Templates assignés
+                          </p>
                           {user.accesses.length === 0 ? (
-                            <p className="text-xs text-gray-400">Aucun template assigné.</p>
+                            <p className="text-[12px] text-gray-400 italic">
+                              Aucun template assigné.
+                            </p>
                           ) : (
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-wrap gap-1.5">
                               {user.accesses.map((a) => (
-                                <div key={a.templateId} className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
-                                  <span className="text-xs text-gray-700 font-medium">{a.template.name}</span>
-                                  {a.template.client && <span className="text-xs text-indigo-700">· {a.template.client}</span>}
-                                  <button onClick={() => void handleRevokeTemplate(user.id, a.templateId)}
-                                    className="text-gray-300 hover:text-red-400 transition-colors ml-1"><X size={10} /></button>
-                                </div>
+                                <Chip
+                                  key={a.templateId}
+                                  variant="sky"
+                                  onRemove={() => void handleRevokeTemplate(user.id, a.templateId)}
+                                >
+                                  {a.template.name}
+                                  {a.template.client && (
+                                    <span className="text-sky-600/70 ml-1">· {a.template.client}</span>
+                                  )}
+                                </Chip>
                               ))}
                             </div>
                           )}
                           {unassignedTemplates.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                              {unassignedTemplates.map((t) => (
-                                <Button key={t.id} variant="secondary" size="sm" icon={Plus}
-                                  onClick={() => void handleGrantTemplate(user.id, t.id)}
-                                  className="border-dashed border-indigo-300 text-indigo-700 hover:bg-indigo-50">
-                                  {t.name}{t.client ? ` · ${t.client}` : ""}
-                                </Button>
-                              ))}
-                            </div>
+                            <details className="group">
+                              <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-700 transition-colors inline-flex items-center gap-1">
+                                <Plus size={11} />
+                                Ajouter un template ({unassignedTemplates.length} dispo)
+                              </summary>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {unassignedTemplates.map((t) => (
+                                  <button
+                                    key={t.id}
+                                    type="button"
+                                    onClick={() => void handleGrantTemplate(user.id, t.id)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-gray-600 bg-white/50 hover:bg-white/85 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.12)] transition-all"
+                                  >
+                                    <Plus size={10} />
+                                    {t.name}
+                                    {t.client && ` · ${t.client}`}
+                                  </button>
+                                ))}
+                              </div>
+                            </details>
                           )}
                         </div>
 
-                        {/* Caption presets section — only relevant when captions tool is enabled */}
+                        {/* Caption presets section */}
                         {userTools.includes(TOOLS.CAPTIONS) && (
-                        <div className="px-5 py-4 space-y-3">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Presets de sous-titres assignés</p>
-                          {user.captionPresetAccesses.length === 0 ? (
-                            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                              Aucun preset assigné — l&apos;utilisateur verra une galerie vide. Assignez au moins un preset ci-dessous.
+                          <div className="px-5 py-4 space-y-3">
+                            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                              Presets de sous-titres assignés
                             </p>
-                          ) : (
-                            <div className="flex flex-wrap gap-2">
-                              {user.captionPresetAccesses.map((presetId) => {
-                                const preset = presets.find((p) => p.id === presetId);
-                                if (!preset) return null;
-                                return (
-                                  <div key={presetId} className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
-                                    <span className="text-xs text-gray-700 font-medium">{preset.name}</span>
-                                    {preset.isBuiltin && <span className="text-[10px] text-violet-500">intégré</span>}
-                                    <button onClick={() => void handleRevokePreset(user.id, presetId)}
-                                      className="text-gray-300 hover:text-red-400 transition-colors ml-1"><X size={10} /></button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                          {unassignedPresets.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                              {unassignedPresets.map((p) => (
-                                <Button key={p.id} variant="secondary" size="sm" icon={Plus}
-                                  onClick={() => void handleGrantPreset(user.id, p.id)}
-                                  className="border-dashed border-violet-300 text-violet-600 hover:bg-violet-50">
-                                  {p.name}{p.isBuiltin ? " (intégré)" : ""}
-                                </Button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
+                            {user.captionPresetAccesses.length === 0 ? (
+                              <p className="text-[11px] text-peach-800 bg-peach-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.2)]">
+                                Aucun preset assigné — l&apos;utilisateur verra une galerie vide.
+                                Assignez au moins un preset ci-dessous.
+                              </p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5">
+                                {user.captionPresetAccesses.map((presetId) => {
+                                  const preset = presets.find((p) => p.id === presetId);
+                                  if (!preset) return null;
+                                  return (
+                                    <Chip
+                                      key={presetId}
+                                      variant="rose"
+                                      onRemove={() =>
+                                        void handleRevokePreset(user.id, presetId)
+                                      }
+                                    >
+                                      {preset.name}
+                                      {preset.isBuiltin && (
+                                        <span className="text-rose-600/70 ml-1">· intégré</span>
+                                      )}
+                                    </Chip>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {unassignedPresets.length > 0 && (
+                              <details className="group">
+                                <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-700 transition-colors inline-flex items-center gap-1">
+                                  <Plus size={11} />
+                                  Ajouter un preset ({unassignedPresets.length} dispo)
+                                </summary>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {unassignedPresets.map((p) => (
+                                    <button
+                                      key={p.id}
+                                      type="button"
+                                      onClick={() => void handleGrantPreset(user.id, p.id)}
+                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-gray-600 bg-white/50 hover:bg-white/85 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.12)] transition-all"
+                                    >
+                                      <Plus size={10} />
+                                      {p.name}
+                                      {p.isBuiltin && " (intégré)"}
+                                    </button>
+                                  ))}
+                                </div>
+                              </details>
+                            )}
+                          </div>
                         )}
                       </>
                     )}
@@ -618,6 +770,85 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
           })}
         </div>
       )}
+
+      {/* Modal création */}
+      <Modal open={creating} onClose={() => !saving && setCreating(false)} size="md">
+        <Modal.Header onClose={() => !saving && setCreating(false)}>
+          Nouvel utilisateur
+        </Modal.Header>
+        <form
+          onSubmit={(e) => {
+            void handleCreate(e);
+          }}
+          className="contents"
+        >
+          <Modal.Body>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Identifiant" required>
+                <Input
+                  type="text"
+                  required
+                  value={newUser.username}
+                  onChange={(v) => setNewUser({ ...newUser, username: v })}
+                  placeholder="marie.dupont"
+                />
+              </FormField>
+              <FormField label="Nom" required>
+                <Input
+                  type="text"
+                  required
+                  value={newUser.name}
+                  onChange={(v) => setNewUser({ ...newUser, name: v })}
+                  placeholder="Marie Dupont"
+                />
+              </FormField>
+              <FormField label="Email" help="Optionnel">
+                <Input
+                  type="email"
+                  value={newUser.email}
+                  onChange={(v) => setNewUser({ ...newUser, email: v })}
+                  placeholder="marie@agence.fr"
+                />
+              </FormField>
+              <FormField label="Mot de passe" required>
+                <Input
+                  type="password"
+                  required
+                  value={newUser.password}
+                  onChange={(v) => setNewUser({ ...newUser, password: v })}
+                  placeholder="••••••••"
+                />
+              </FormField>
+              <div className="col-span-2">
+                <FormField
+                  label="Rôle"
+                  help="Un Admin peut être assigné comme vidéaste, monteur ou CM sur n'importe quel slot (et basculer en vue dédiée via la navbar). Choisissez un rôle dédié pour un user qui assume une seule casquette."
+                >
+                  <Combobox
+                    value={newUser.role}
+                    onChange={(v) => setNewUser({ ...newUser, role: v })}
+                    options={ROLE_OPTIONS}
+                  />
+                </FormField>
+              </div>
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setCreating(false)}
+              disabled={saving}
+            >
+              Annuler
+            </Button>
+            <Button type="submit" variant="primary" loading={saving} icon={Plus}>
+              Créer
+            </Button>
+          </Modal.Footer>
+        </form>
+      </Modal>
+
     </div>
   );
 }

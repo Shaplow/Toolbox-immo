@@ -225,6 +225,8 @@ export async function triggerAutoTranscriptionLocal(
             srtFilename: `auto-${transcriptionJob.id}.json`,
             previewMode: false,
             presetId: captionAutoConfig.presetId,
+            // Fix 2026-05-30 : lier au slot du render parent (pipeline local).
+            slotId: render.publicationSlotId ?? null,
           },
         });
         notifyUser(userId, { jobType: "captions", jobId: emptyJob.id, status: "FAILED", errorMsg: warnMsg });
@@ -323,6 +325,8 @@ export async function triggerAutoTranscriptionLocal(
               srtFilename: `auto-${transcriptionJob.id}.json`,
               previewMode: false,
               presetId: captionAutoConfig.presetId,
+              // Fix 2026-05-30 : lier au slot du render parent (pipeline local).
+              slotId: render.publicationSlotId ?? null,
             },
           });
           notifyUser(userId, { jobType: "captions", jobId: failedJob.id, status: "FAILED", errorMsg: errMsg });
@@ -361,6 +365,10 @@ export async function triggerAutoTranscriptionLocal(
         srtFilename,
         previewMode: false,
         presetId: captionAutoConfig.presetId,
+        // Fix 2026-05-30 : lier au slot pour que la fiche publication voie le
+        // job dans slot.captionJobs[] et que la version sous-titrée puisse
+        // remplacer la brute via getSlotFinalVideoUrl.
+        slotId: render.publicationSlotId ?? null,
       },
     });
 

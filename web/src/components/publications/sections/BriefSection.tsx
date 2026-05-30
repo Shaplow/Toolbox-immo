@@ -14,6 +14,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import { FileText, Download, Edit3 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Section } from "@/components/ui/molecules/Section";
 import { Textarea } from "@/components/ui/Textarea";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DeleteButton } from "@/components/ui/DeleteButton";
@@ -45,6 +46,10 @@ interface BriefSectionProps {
   attachments: AttachmentItem[];
   canEditBrief: boolean;
   canManageAttachments: boolean;
+  sectionId?: string;
+  storageKey?: string;
+  defaultOpen?: boolean;
+  collapsible?: boolean;
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -68,6 +73,10 @@ export function BriefSection({
   attachments: initialAttachments,
   canEditBrief,
   canManageAttachments,
+  sectionId = "brief",
+  storageKey,
+  defaultOpen = true,
+  collapsible = false,
 }: BriefSectionProps) {
   const router = useRouter();
   const [brief, setBrief] = useState<BriefItem | null>(initialBrief);
@@ -165,29 +174,32 @@ export function BriefSection({
   const hasBody = brief?.body && brief.body.trim().length > 0;
   const charCount = editBody.length;
 
-  return (
-    <section id="brief" className="bg-white border border-gray-100 rounded-2xl p-8">
-      {/* En-tête */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <FileText size={16} className="text-gray-400" />
-          <h2 className="text-sm font-semibold text-gray-700">Brief</h2>
-        </div>
-        {canEditBrief && !isEditing && (
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={Edit3}
-            onClick={() => {
-              setEditBody(brief?.body ?? "");
-              setIsEditing(true);
-            }}
-          >
-            Modifier
-          </Button>
-        )}
-      </div>
+  const editAction = canEditBrief && !isEditing
+    ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={Edit3}
+          onClick={() => {
+            setEditBody(brief?.body ?? "");
+            setIsEditing(true);
+          }}
+        >
+          Modifier
+        </Button>
+      )
+    : null;
 
+  return (
+    <Section
+      title="Brief"
+      icon={FileText}
+      sectionId={sectionId}
+      storageKey={storageKey}
+      defaultOpen={defaultOpen}
+      collapsible={collapsible}
+      actions={editAction}
+    >
       {/* Corps du brief */}
       {isEditing ? (
         <div className="space-y-3">
@@ -311,6 +323,6 @@ export function BriefSection({
           </ul>
         )}
       </div>
-    </section>
+    </Section>
   );
 }

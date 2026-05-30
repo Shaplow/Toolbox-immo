@@ -1,11 +1,20 @@
 "use client";
 
+/**
+ * TemplatesGallery — grid des templates Studio (refonte MID Liquid Glass).
+ *
+ * Toolbar glass (search + sort chips) + grid cards glass franc (groupage par
+ * client ou récents). Card affichage : nom + client + formats chips + dates +
+ * actions Éditer/Générer.
+ */
+
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { LayoutTemplate } from "lucide-react";
+import { LayoutTemplate, Search, Edit, Wand2 } from "lucide-react";
 import { EditTemplateInfoButton } from "@/components/templates/EditTemplateInfoButton";
 import { TemplateAdminActions } from "@/components/templates/TemplateAdminActions";
 import { Input } from "@/components/ui/Input";
+import { Chip } from "@/components/ui/Chip";
 
 export interface TemplateGalleryItem {
   id: string;
@@ -22,9 +31,6 @@ interface Props {
 
 type SortMode = "client" | "recent";
 
-const SORT_BUTTON_BASE =
-  "text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors";
-
 export function TemplatesGallery({ templates, isAdmin }: Props) {
   const [search, setSearch] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("client");
@@ -39,7 +45,6 @@ export function TemplatesGallery({ templates, isAdmin }: Props) {
     );
   }, [templates, search]);
 
-  // Groupage : par client (par défaut) ou plat trié par updatedAt desc ("Récents").
   const groups = useMemo(() => {
     if (sortMode === "recent") {
       const sorted = [...filtered].sort(
@@ -69,136 +74,167 @@ export function TemplatesGallery({ templates, isAdmin }: Props) {
 
   if (templates.length === 0) {
     return (
-      <div className="text-center py-24 text-gray-400">
-        <LayoutTemplate size={40} className="mx-auto mb-4 opacity-30" />
-        <p className="font-medium">Aucun template pour l&apos;instant</p>
-        <p className="text-sm mt-1">Créez votre premier template pour commencer</p>
+      <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] py-16 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] text-center text-gray-500">
+        <LayoutTemplate size={36} className="mx-auto mb-4 opacity-30" />
+        <p className="text-[14px] font-semibold text-gray-700">
+          Aucun template pour l&apos;instant
+        </p>
+        <p className="text-[12.5px] text-gray-500 mt-1">
+          Créez votre premier template pour commencer
+        </p>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="max-w-sm flex-1 min-w-[220px]">
-          <Input
-            value={search}
-            onChange={setSearch}
-            placeholder="Rechercher par nom ou client…"
-          />
+      {/* Toolbar glass */}
+      <div className="p-3 rounded-2xl bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)]">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="w-[300px]">
+            <Input
+              value={search}
+              onChange={setSearch}
+              placeholder="Rechercher (nom, client)"
+              icon={Search}
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Chip
+              variant={sortMode === "client" ? "sky" : "default"}
+              selected={sortMode === "client"}
+              onClick={() => setSortMode("client")}
+            >
+              Par client
+            </Chip>
+            <Chip
+              variant={sortMode === "recent" ? "sky" : "default"}
+              selected={sortMode === "recent"}
+              onClick={() => setSortMode("recent")}
+            >
+              Récents
+            </Chip>
+          </div>
+          <span className="ml-auto text-[10.5px] text-gray-500 tabular-nums">
+            {filtered.length}/{templates.length} templates
+          </span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setSortMode("client")}
-            className={`${SORT_BUTTON_BASE} ${
-              sortMode === "client"
-                ? "border-indigo-300 bg-indigo-50 text-indigo-700"
-                : "border-gray-200 text-gray-600 hover:border-gray-300"
-            }`}
-          >
-            Par client
-          </button>
-          <button
-            type="button"
-            onClick={() => setSortMode("recent")}
-            className={`${SORT_BUTTON_BASE} ${
-              sortMode === "recent"
-                ? "border-indigo-300 bg-indigo-50 text-indigo-700"
-                : "border-gray-200 text-gray-600 hover:border-gray-300"
-            }`}
-          >
-            Récents
-          </button>
-        </div>
-        <span className="ml-auto text-xs text-gray-400">
-          {filtered.length} template{filtered.length !== 1 ? "s" : ""}
-          {search && filtered.length !== templates.length && ` sur ${templates.length}`}
-        </span>
       </div>
 
       {filtered.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
-          <p className="text-sm">Aucun template ne correspond à votre recherche.</p>
-        </div>
+        <p className="text-[12px] text-gray-500 italic text-center py-12">
+          Aucun template ne correspond à la recherche.
+        </p>
       ) : (
         <div className="space-y-10">
           {groups.map((group) => (
             <section key={group.key}>
               {showGroupHeaders && (
                 <div className="flex items-center gap-3 mb-4">
-                  <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                  <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
                     {group.label}
-                  </h2>
-                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                  </p>
+                  <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10.5px] font-medium tabular-nums bg-white/70 text-gray-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.08)]">
                     {group.items.length}
                   </span>
-                  <div className="flex-1 border-t border-gray-100" />
+                  <div className="flex-1 border-t border-white/40" />
                 </div>
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {group.items.map((template) => (
-                  <div
+                  <TemplateCard
                     key={template.id}
-                    className="bg-white border border-gray-100 rounded-xl transition-colors hover:border-gray-200 group"
-                  >
-                    <div className="p-4">
-                      <div className="flex items-center gap-1.5">
-                        <h3 className="font-medium text-gray-900 truncate">{template.name}</h3>
-                        {isAdmin && (
-                          <EditTemplateInfoButton
-                            id={template.id}
-                            initialName={template.name}
-                            initialClient={template.client ?? ""}
-                          />
-                        )}
-                      </div>
-                      {!showGroupHeaders && template.client && (
-                        <p className="text-xs text-indigo-700 mt-0.5">{template.client}</p>
-                      )}
-                      <div className="flex gap-1 mt-2 flex-wrap">
-                        {template.formats.map((format) => (
-                          <span
-                            key={format}
-                            className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full"
-                          >
-                            {format}
-                          </span>
-                        ))}
-                      </div>
-                      <p className="text-xs text-gray-400 mt-3">
-                        {new Date(template.updatedAt).toLocaleDateString("fr-FR")}
-                      </p>
-                    </div>
-
-                    <div className="px-4 pb-4">
-                      <div className="flex gap-2">
-                        {isAdmin && (
-                          <Link
-                            href={`/templates/${template.id}/edit`}
-                            className="flex-1 text-center text-xs border border-gray-200 text-gray-700 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
-                          >
-                            Éditer
-                          </Link>
-                        )}
-                        <Link
-                          href={`/generate/${template.id}`}
-                          className="flex-1 text-center text-xs bg-indigo-600 text-white py-1.5 rounded-lg hover:bg-indigo-700 transition-colors"
-                        >
-                          Générer
-                        </Link>
-                        {isAdmin && <TemplateAdminActions id={template.id} />}
-                      </div>
-                    </div>
-                  </div>
+                    template={template}
+                    isAdmin={isAdmin}
+                    showClient={!showGroupHeaders}
+                  />
                 ))}
               </div>
             </section>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── TemplateCard ────────────────────────────────────────────────────────
+
+function TemplateCard({
+  template,
+  isAdmin,
+  showClient,
+}: {
+  template: TemplateGalleryItem;
+  isAdmin: boolean;
+  showClient: boolean;
+}) {
+  return (
+    <div className="group relative flex flex-col gap-3 p-4 rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[14px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.06),inset_0_-1px_0_rgba(15,23,42,0.04),0_2px_8px_-2px_rgba(15,23,42,0.08)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.6),inset_0_0_0_1px_rgba(15,23,42,0.1),inset_0_-1px_0_rgba(15,23,42,0.06),0_4px_12px_rgba(15,23,42,0.08),0_16px_36px_-12px_rgba(15,23,42,0.18)] hover:-translate-y-0.5 transition-all">
+      {/* Header */}
+      <div className="flex items-start gap-1.5 min-w-0">
+        <div className="min-w-0 flex-1">
+          <p className="text-[14px] font-semibold text-gray-950 truncate leading-tight">
+            {template.name}
+          </p>
+          {showClient && template.client && (
+            <p className="text-[10.5px] uppercase tracking-widest font-medium text-gray-400 mt-1">
+              {template.client}
+            </p>
+          )}
+        </div>
+        {isAdmin && (
+          <EditTemplateInfoButton
+            id={template.id}
+            initialName={template.name}
+            initialClient={template.client ?? ""}
+          />
+        )}
+      </div>
+
+      {/* Formats */}
+      {template.formats.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {template.formats.map((format) => (
+            <Chip key={format} variant="default" size="sm">
+              {format}
+            </Chip>
+          ))}
+        </div>
+      )}
+
+      {/* Date — timeZone forcée pour éviter hydration mismatch (server UTC vs client locale). */}
+      <p className="text-[10.5px] text-gray-500 font-mono tabular-nums mt-auto">
+        Mis à jour{" "}
+        {new Date(template.updatedAt).toLocaleDateString("fr-FR", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          timeZone: "Europe/Paris",
+        })}
+      </p>
+
+      {/* Actions */}
+      <div className="flex items-center gap-1.5 pt-3 border-t border-white/40">
+        {isAdmin && (
+          <Link
+            href={`/templates/${template.id}/edit`}
+            className="inline-flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-md text-[11.5px] font-medium text-gray-700 hover:text-gray-950 bg-white/60 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.12),0_2px_4px_rgba(15,23,42,0.04)] transition-all"
+          >
+            <Edit size={11} />
+            Éditer
+          </Link>
+        )}
+        <Link
+          href={`/generate/${template.id}`}
+          className="inline-flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-md text-[11.5px] font-medium text-white bg-gradient-to-b from-gray-700 to-gray-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.12),0_4px_12px_-4px_rgba(15,23,42,0.22)] hover:from-gray-600 hover:to-gray-800 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.24),inset_0_-1px_0_rgba(0,0,0,0.2),0_2px_4px_rgba(15,23,42,0.16),0_8px_20px_-4px_rgba(15,23,42,0.28)] transition-all"
+        >
+          <Wand2 size={11} />
+          Générer
+        </Link>
+        {isAdmin && <TemplateAdminActions id={template.id} />}
+      </div>
     </div>
   );
 }

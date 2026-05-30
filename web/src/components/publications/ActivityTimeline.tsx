@@ -32,6 +32,8 @@ import {
 } from "lucide-react";
 import { STATUS_LABELS } from "@/lib/slots/statusLabels";
 import type { SlotStatus } from "@/types/calendar";
+import { Section } from "@/components/ui/molecules/Section";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,6 +51,10 @@ interface ActivityTimelineProps {
   slotId: string;
   initialActivities: ActivityItem[];
   initialHasMore: boolean;
+  sectionId?: string;
+  storageKey?: string;
+  defaultOpen?: boolean;
+  collapsible?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -273,6 +279,10 @@ export function ActivityTimeline({
   slotId,
   initialActivities,
   initialHasMore,
+  sectionId = "activity",
+  storageKey,
+  defaultOpen = false,
+  collapsible = true,
 }: ActivityTimelineProps) {
   const [activities, setActivities] = useState<ActivityItem[]>(initialActivities);
   const [hasMore, setHasMore] = useState(initialHasMore);
@@ -302,14 +312,25 @@ export function ActivityTimeline({
   }
 
   return (
-    <section
-      id="activity"
-      className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm"
+    <Section
+      title="Historique d'activité"
+      icon={Activity}
+      sectionId={sectionId}
+      storageKey={storageKey}
+      defaultOpen={defaultOpen}
+      collapsible={collapsible}
+      actions={
+        activities.length > 0 ? (
+          <span className="text-xs text-gray-400 tabular-nums">{activities.length}</span>
+        ) : null
+      }
     >
-      <h2 className="text-sm font-semibold text-gray-700 mb-3">Historique d&apos;activité</h2>
-
       {activities.length === 0 ? (
-        <p className="text-sm text-gray-400 italic">Aucune activité enregistrée.</p>
+        <EmptyState
+          icon={Activity}
+          title="Aucune activité"
+          description="Les actions sur ce slot apparaîtront ici."
+        />
       ) : (
         <ol className="space-y-3">
           {activities.map((item) => {
@@ -373,6 +394,6 @@ export function ActivityTimeline({
           </button>
         </div>
       )}
-    </section>
+    </Section>
   );
 }

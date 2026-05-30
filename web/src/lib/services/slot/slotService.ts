@@ -334,6 +334,11 @@ export async function patchSlot(
 ) {
   const role = toUserRole(ctx.effectiveUser.role);
   const userId = ctx.effectiveUser.id;
+  // Fix bug audit 2026-05-30 (H2) : pendant impersonation, effectiveUser =
+  // user impersonné, actualUser = admin réel. Les logs activity doivent
+  // tracer l'admin réel (audit trail), pas l'user impersonné.
+  // Cf. CLAUDE.md Phase 1.8 § "Décision par usage".
+  const actorId = ctx.actualUser.id;
 
   const slot = await prisma.publicationSlot.findUnique({
     where: { id },
@@ -705,7 +710,7 @@ export async function patchSlot(
   if (status !== undefined && typeof status === "string" && status !== slot.status) {
     await logActivity(prisma, {
       slotId: id,
-      actorId: userId,
+      actorId, // actualUser.id pour audit trail correct sous impersonation
       type: "STATUS_CHANGED",
       payload: { from: slot.status, to: status },
     });
@@ -741,7 +746,7 @@ export async function patchSlot(
   if (monteurChanged || cmChanged || videasteChanged) {
     await logActivity(prisma, {
       slotId: id,
-      actorId: userId,
+      actorId, // actualUser.id pour audit trail correct sous impersonation
       type: "ASSIGNEE_CHANGED",
       payload: {
         ...(monteurChanged

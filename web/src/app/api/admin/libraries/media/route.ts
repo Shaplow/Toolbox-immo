@@ -17,9 +17,26 @@ export async function GET(req: NextRequest) {
     const libraries = await prisma.mediaLibrary.findMany({
       where: typeFilter ? { type: typeFilter } : undefined,
       orderBy: { createdAt: "desc" },
-      include: { _count: { select: { assets: true } } },
+      include: {
+        _count: { select: { assets: true } },
+        // Phase 4 médiathèque — 4 assets les plus récents pour preview thumbs
+        // sur les LibraryCards (grille 2x2). Limité à 4 + champs minimaux pour
+        // garder la payload légère.
+        assets: {
+          where: { disabled: false },
+          orderBy: { createdAt: "desc" },
+          take: 4,
+          select: { id: true, url: true, mimeType: true },
+        },
+      },
     });
-    return NextResponse.json(libraries);
+    // Renomme `assets` en `previewAssets` côté client pour éviter la confusion
+    // avec la prop `assets` du MediaAssetsPanel (qui charge tous les assets).
+    const enriched = libraries.map(({ assets, ...lib }) => ({
+      ...lib,
+      previewAssets: assets,
+    }));
+    return NextResponse.json(enriched);
   } catch (err) {
     console.error("[admin/libraries/media] GET error:", err);
     return NextResponse.json({ error: "Erreur serveur lors du chargement des bibliothèques" }, { status: 500 });

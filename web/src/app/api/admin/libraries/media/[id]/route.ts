@@ -13,7 +13,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   const { id } = await params;
-  const body = await req.json() as { name?: string; description?: string; tags?: string[]; setSequence?: string[]; rotationScope?: string; metadataSchema?: { key: string; label: string; type: string }[] };
+  const body = await req.json() as { name?: string; description?: string; tags?: string[]; setSequence?: string[]; rotationScope?: string; rotationMode?: string | null; metadataSchema?: { key: string; label: string; type: string }[]; maxUsageCount?: number | null };
 
   const data: Record<string, unknown> = {};
   if (body.name?.trim()) data.name = body.name.trim();
@@ -22,6 +22,24 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (Array.isArray(body.setSequence)) data.setSequence = JSON.stringify(body.setSequence);
   if (body.rotationScope === "per_account" || body.rotationScope === "shared") {
     data.rotationScope = body.rotationScope;
+  }
+  // rotationMode : "auto" | "override" | "none" | null (back-compat).
+  if (body.rotationMode !== undefined) {
+    if (body.rotationMode === null || body.rotationMode === "auto" || body.rotationMode === "override" || body.rotationMode === "none") {
+      data.rotationMode = body.rotationMode;
+    } else {
+      return NextResponse.json({ error: "rotationMode doit être 'auto', 'override', 'none' ou null" }, { status: 400 });
+    }
+  }
+  // Burn-once : maxUsageCount nullable, >= 1 si défini. null = rotation infinie.
+  if (body.maxUsageCount !== undefined) {
+    if (body.maxUsageCount === null) {
+      data.maxUsageCount = null;
+    } else if (Number.isInteger(body.maxUsageCount) && body.maxUsageCount >= 1) {
+      data.maxUsageCount = body.maxUsageCount;
+    } else {
+      return NextResponse.json({ error: "maxUsageCount doit être null ou un entier ≥ 1" }, { status: 400 });
+    }
   }
   if (Array.isArray(body.metadataSchema)) {
     const metaKeys = body.metadataSchema.map((f) => (f.key ?? "").trim());

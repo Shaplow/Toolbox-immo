@@ -1,33 +1,29 @@
 "use client";
 
 /**
- * MediaAssetsToolbar — header + filters bar du MediaAssetsPanel.
+ * MediaAssetsToolbar — actions + filters bar du MediaAssetsPanel.
  *
- * Phase D9-step5 du split C1-v2 (plan F1). Extrait l'en-tête (titre +
- * count + boutons upload/atelier), la bannière reset-error, et la barre
- * de filtres (search + sort + view mode + select toggle + account filter
- * + tag filter) en composant standalone.
- *
- * La toolbar n'a aucun state local — tout est piloté par le panel parent
- * via props. C'est volontaire : la toolbar reste un composant "dumb",
- * facile à styliser et à intégrer ailleurs si besoin.
+ * Refonte MID Glass : header retiré (déjà porté par Control Center de la
+ * page wrapper). Actions Upload + Analyse auto à droite. FilterBar glass
+ * avec Input/Combobox/Chip primitives. Toolbar "dumb" — tout via props.
  */
 
 import {
-  ArrowUpDown,
   CheckSquare,
-  Clock,
   Columns3,
   LayoutGrid,
   RotateCcw,
   Search,
+  Settings2,
   Tag,
   Upload,
-  Users,
   Wand2,
-  X,
 } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Combobox } from "@/components/ui/Combobox";
+import { Chip } from "@/components/ui/Chip";
 import type { InstagramAccount, MediaLibrary, SortKey } from "./types";
 
 interface Props {
@@ -37,14 +33,10 @@ interface Props {
   assetsCount: number;
   accounts: InstagramAccount[];
   allTags: string[];
-  // Modals
   onOpenUpload: () => void;
   onOpenAtelier: () => void;
-  /** F2.3 — Nombre de jobs autocut en attente de review (badge sur "Analyse auto"). */
   autocutPendingCount?: number;
-  // Error banner
   resetError: string | null;
-  // Filters state
   search: string;
   setSearch: Dispatch<SetStateAction<string>>;
   sort: SortKey;
@@ -55,14 +47,24 @@ interface Props {
   setAccountFilter: Dispatch<SetStateAction<string | null>>;
   viewMode: "grid" | "grouped" | "rotation";
   setViewMode: Dispatch<SetStateAction<"grid" | "grouped" | "rotation">>;
-  // Select mode
   selectMode: boolean;
   setSelectMode: Dispatch<SetStateAction<boolean>>;
   exitSelectMode: () => void;
+  /** Phase 2 — mode avancé opt-in (default OFF = noob mode). */
+  isAdvanced: boolean;
+  onToggleAdvanced: () => void;
 }
 
+const SORT_OPTIONS = [
+  { value: "date_desc", label: "Plus récents" },
+  { value: "date_asc", label: "Plus anciens" },
+  { value: "usage_desc", label: "Plus utilisés" },
+  { value: "usage_asc", label: "Moins utilisés" },
+  { value: "name_asc", label: "Nom (A-Z)" },
+];
+
 export function MediaAssetsToolbar({
-  library,
+  library: _library,
   isVideo,
   loading,
   assetsCount,
@@ -85,171 +87,174 @@ export function MediaAssetsToolbar({
   selectMode,
   setSelectMode,
   exitSelectMode,
+  isAdvanced,
+  onToggleAdvanced,
 }: Props) {
+  void _library;
+
+  const accountOptions = [
+    { value: "", label: "Tous les comptes" },
+    ...accounts.map((a) => ({
+      value: a.id,
+      label: `@${a.handle} — ${a.name}`,
+      keywords: [a.handle, a.name],
+    })),
+  ];
+
   return (
-    <>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">{library.name}</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {assetsCount} fichier{assetsCount !== 1 ? "s" : ""} · {isVideo ? "Vidéos" : "Musiques"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {isVideo && (
-            <button
+    <div className="space-y-3">
+      {/* Actions principales — toggle Avancé à gauche, actions Upload à droite */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <Chip
+          variant={isAdvanced ? "sky" : "default"}
+          selected={isAdvanced}
+          onClick={onToggleAdvanced}
+          icon={Settings2}
+          size="sm"
+        >
+          {isAdvanced ? "Avancé activé" : "Avancé"}
+        </Chip>
+        <div className="flex items-center gap-2 flex-wrap">
+        {isVideo && isAdvanced && (
+          <div className="relative">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={Wand2}
               onClick={onOpenAtelier}
-              className="relative flex items-center gap-2 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700"
             >
-              <Wand2 size={14} /> Analyse auto
-              {/* F2.3 — Badge count des jobs en attente de review */}
-              {autocutPendingCount > 0 && (
-                <span
-                  className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-orange-500 text-white text-[10px] font-semibold leading-none ring-2 ring-white"
-                  title={`${autocutPendingCount} analyse${autocutPendingCount > 1 ? "s" : ""} à valider`}
-                >
-                  {autocutPendingCount > 99 ? "99+" : autocutPendingCount}
-                </span>
-              )}
-            </button>
-          )}
-          <button
-            onClick={onOpenUpload}
-            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
-          >
-            <Upload size={14} /> {isVideo ? "Ajouter des vidéos" : "Ajouter des musiques"}
-          </button>
+              Analyse auto
+            </Button>
+            {autocutPendingCount > 0 && (
+              <span
+                className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-gradient-to-b from-peach-500 to-peach-600 text-white text-[10px] font-semibold leading-none shadow-[0_0_0_2px_rgba(255,255,255,1),0_2px_4px_rgba(245,158,107,0.4)]"
+                title={`${autocutPendingCount} analyse${autocutPendingCount > 1 ? "s" : ""} à valider`}
+              >
+                {autocutPendingCount > 99 ? "99+" : autocutPendingCount}
+              </span>
+            )}
+          </div>
+        )}
+        <Button variant="primary" size="sm" icon={Upload} onClick={onOpenUpload}>
+          {isVideo ? "Ajouter des vidéos" : "Ajouter des musiques"}
+        </Button>
         </div>
       </div>
 
       {/* Reset error */}
       {resetError && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{resetError}</div>
+        <div className="rounded-2xl bg-gradient-to-b from-rose-50/85 via-rose-50/55 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(201,113,133,0.22),0_2px_8px_-4px_rgba(244,114,128,0.16)]">
+          <p className="text-[12.5px] text-rose-800">{resetError}</p>
+        </div>
       )}
 
-      {/* Filters bar */}
+      {/* Filter bar glass — 1 ligne ramassée + filtres actifs en dessous */}
       {!loading && assetsCount > 0 && (
-        <div className="flex flex-col gap-2 mb-4">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative flex-1">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
+        <div className="p-2.5 rounded-2xl bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)] space-y-2">
+          {/* Une seule ligne : search + sort + compte + view + select + (tags pop avancé) */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex-1 min-w-[200px] max-w-[280px]">
+              <Input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher un fichier…"
-                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                onChange={setSearch}
+                placeholder="Rechercher…"
+                icon={Search}
               />
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <ArrowUpDown size={12} />
-              <select
+            <div className="w-[140px]">
+              <Combobox
                 value={sort}
-                onChange={(e) => setSort(e.target.value as SortKey)}
-                className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              >
-                <option value="date_desc">Plus récents</option>
-                <option value="date_asc">Plus anciens</option>
-                <option value="usage_desc">Plus utilisés</option>
-                <option value="usage_asc">Moins utilisés</option>
-                <option value="name_asc">Nom (A-Z)</option>
-              </select>
+                onChange={(v) => setSort(v as SortKey)}
+                options={SORT_OPTIONS}
+              />
             </div>
-            {isVideo && (
-              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-                <button
+            {isVideo && accounts.length > 0 && (
+              <div className="w-[180px]">
+                <Combobox
+                  value={accountFilter ?? ""}
+                  onChange={(v) => setAccountFilter(v || null)}
+                  options={accountOptions}
+                  placeholder="Tous les comptes"
+                  emptyMessage="Aucun compte"
+                />
+              </div>
+            )}
+            {isVideo && isAdvanced && (
+              <div className="inline-flex items-center gap-1 ml-auto">
+                <Chip
+                  variant={viewMode === "grid" ? "sky" : "default"}
+                  selected={viewMode === "grid"}
                   onClick={() => setViewMode("grid")}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors ${viewMode === "grid" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-                  title="Vue grille"
+                  icon={LayoutGrid}
+                  size="sm"
                 >
-                  <LayoutGrid size={13} /> Grille
-                </button>
-                {/* B7 — Vue groupée (colonnes par setTag) : feature qui existait
-                     dans le code (viewMode="grouped") mais sans bouton pour y
-                     accéder. Maintenant exposée comme 3e option. */}
-                <button
+                  Grille
+                </Chip>
+                <Chip
+                  variant={viewMode === "grouped" ? "sky" : "default"}
+                  selected={viewMode === "grouped"}
                   onClick={() => setViewMode("grouped")}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs border-l border-gray-200 transition-colors ${viewMode === "grouped" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-                  title="Vue groupée — colonnes par set, drag-and-drop pour la séquence"
+                  icon={Columns3}
+                  size="sm"
                 >
-                  <Columns3 size={13} /> Groupé
-                </button>
-                <button
+                  Catégories
+                </Chip>
+                <Chip
+                  variant={viewMode === "rotation" ? "sky" : "default"}
+                  selected={viewMode === "rotation"}
                   onClick={() => setViewMode("rotation")}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs border-l border-gray-200 transition-colors ${viewMode === "rotation" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-                  title="Vue rotation — ordre de passage des sets"
+                  icon={RotateCcw}
+                  size="sm"
                 >
-                  <RotateCcw size={13} /> Rotation
-                </button>
+                  Rotation
+                </Chip>
               </div>
             )}
             {isVideo && (
-              <>
-                <div className="w-px h-5 bg-gray-200 self-center" />
-                <button
-                  onClick={() => { if (selectMode) { exitSelectMode(); } else { setSelectMode(true); } }}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors ${
-                    selectMode
-                      ? "bg-indigo-50 border-indigo-300 text-indigo-700"
-                      : "border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"
-                  }`}
-                >
-                  <CheckSquare size={13} />
-                  {selectMode ? "Sélection active" : "Sélectionner"}
-                </button>
-              </>
+              <Chip
+                variant={selectMode ? "sky" : "default"}
+                selected={selectMode}
+                onClick={() => {
+                  if (selectMode) exitSelectMode();
+                  else setSelectMode(true);
+                }}
+                icon={CheckSquare}
+                size="sm"
+              >
+                {selectMode ? `${selectMode ? "✓" : ""} Sélection` : "Sélectionner"}
+              </Chip>
             )}
           </div>
-          {isVideo && accounts.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-gray-400 flex items-center gap-1"><Users size={11} /> Compte :</span>
-              <select
-                value={accountFilter ?? ""}
-                onChange={(e) => setAccountFilter(e.target.value || null)}
-                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              >
-                <option value="">Tous (global)</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>@{a.handle} — {a.name}</option>
+
+          {/* Tags filter en mode avancé — collapsible discret */}
+          {allTags.length > 0 && isAdvanced && (
+            <details className="group">
+              <summary className="cursor-pointer flex items-center gap-1.5 text-[10.5px] text-gray-500 hover:text-gray-700 select-none w-fit pl-1 py-1">
+                <Tag size={10} />
+                <span>Filtrer par tag</span>
+                {tagFilter && (
+                  <Chip variant="sky" size="sm" onRemove={() => setTagFilter("")}>
+                    {tagFilter}
+                  </Chip>
+                )}
+              </summary>
+              <div className="flex items-center gap-1 flex-wrap pt-1.5 pl-1">
+                {allTags.map((t) => (
+                  <Chip
+                    key={t}
+                    variant={tagFilter === t ? "sky" : "default"}
+                    selected={tagFilter === t}
+                    onClick={() => setTagFilter(tagFilter === t ? "" : t)}
+                    size="sm"
+                  >
+                    {t}
+                  </Chip>
                 ))}
-              </select>
-              {accountFilter && (
-                <>
-                  <button onClick={() => setAccountFilter(null)} className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-0.5">
-                    <X size={10} /> Effacer
-                  </button>
-                  <span className="text-[10px] text-blue-500 flex items-center gap-0.5 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded">
-                    <Clock size={9} /> Stats par compte
-                  </span>
-                </>
-              )}
-            </div>
-          )}
-          {allTags.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-gray-400 flex items-center gap-1"><Tag size={11} /> Tags :</span>
-              {allTags.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTagFilter(tagFilter === t ? "" : t)}
-                  className={`px-2.5 py-0.5 rounded-full text-xs border transition-colors ${
-                    tagFilter === t
-                      ? "bg-indigo-600 text-white border-indigo-600"
-                      : "bg-gray-50 text-gray-600 border-gray-200 hover:border-indigo-300"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-              {tagFilter && (
-                <button onClick={() => setTagFilter("")} className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-0.5">
-                  <X size={10} /> Effacer
-                </button>
-              )}
-            </div>
+              </div>
+            </details>
           )}
         </div>
       )}
-    </>
+    </div>
   );
 }

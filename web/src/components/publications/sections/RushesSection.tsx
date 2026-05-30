@@ -12,6 +12,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Clapperboard, Download } from "lucide-react";
 import { MediaDropzone } from "@/components/ui/MediaDropzone";
+import { Section } from "@/components/ui/molecules/Section";
 import type { UploadResult } from "@/components/ui/MediaDropzone";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -43,6 +44,11 @@ interface RushesSectionProps {
   canUploadRushes: boolean;
   canManageRushes: boolean;
   currentUserId: string;
+  /** Section molecule wrapping props — passed by PublicationFiche. */
+  sectionId?: string;
+  storageKey?: string;
+  defaultOpen?: boolean;
+  collapsible?: boolean;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -86,6 +92,10 @@ export function RushesSection({
   canUploadRushes,
   canManageRushes,
   currentUserId,
+  sectionId = "rushes",
+  storageKey,
+  defaultOpen = true,
+  collapsible = false,
 }: RushesSectionProps) {
   const router = useRouter();
   const [rushes, setRushes] = useState<Rush[]>(initialRushes);
@@ -147,21 +157,19 @@ export function RushesSection({
   const isVideo = (mime: string) => mime.startsWith("video/");
 
   return (
-    <section id="rushes" className="bg-white border border-gray-100 rounded-2xl p-8">
-      {/* En-tête */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Clapperboard size={16} className="text-gray-400" />
-          <h2 className="text-sm font-semibold text-gray-700">
-            Rushes
-            {rushes.length > 0 && (
-              <span className="ml-1.5 text-xs font-normal text-gray-400">
-                ({rushes.length})
-              </span>
-            )}
-          </h2>
-        </div>
-      </div>
+    <Section
+      title="Rushes"
+      icon={Clapperboard}
+      sectionId={sectionId}
+      storageKey={storageKey}
+      defaultOpen={defaultOpen}
+      collapsible={collapsible}
+      actions={
+        rushes.length > 0 ? (
+          <span className="text-xs text-gray-400 tabular-nums">{rushes.length}</span>
+        ) : null
+      }
+    >
 
       {/* Zone upload (ADMIN / CM) */}
       {canUploadRushes && (
@@ -260,6 +268,6 @@ export function RushesSection({
           })}
         </ul>
       )}
-    </section>
+    </Section>
   );
 }

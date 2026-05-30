@@ -88,6 +88,18 @@ export async function POST(_req: NextRequest, { params }: Params) {
   // 5. Transaction : update slot + log activités + auto-transition (atomique)
   const previousVersionId = slot.currentVersionId;
 
+  // Fetch previousVersionNumber hors tx pour enrichir le payload activity log
+  // (ActivityTimeline lit previousVersionNumber + versionNumber pour afficher
+  // "V1 → V2" — sans ces champs, on a un permanent "V? → V?").
+  let previousVersionNumber: number | null = null;
+  if (previousVersionId) {
+    const prev = await prisma.publicationVersion.findUnique({
+      where: { id: previousVersionId },
+      select: { versionNumber: true },
+    });
+    previousVersionNumber = prev?.versionNumber ?? null;
+  }
+
   await prisma.$transaction(async (tx) => {
     // Update la version courante
     await tx.publicationSlot.update({
@@ -112,7 +124,12 @@ export async function POST(_req: NextRequest, { params }: Params) {
       slotId,
       actorId: userContext.actualUser.id,
       type: "CURRENT_VERSION_CHANGED",
-      payload: { from: previousVersionId ?? null, to: versionId },
+      payload: {
+        from: previousVersionId ?? null,
+        to: versionId,
+        previousVersionNumber,
+        versionNumber: version.versionNumber,
+      },
     });
 
     // Auto-transition dans la même tx — évite un statut figé sur EDIT_REVIEW

@@ -47,12 +47,10 @@ export async function triggerAutoTranscriptionForRender(
 
   if (!captionAutoConfig?.enabled) return;
 
-  // Éviter les doublons (webhook rejoué ou idempotence)
-  const existing = await prisma.transcriptionJob.findUnique({ where: { renderId } });
-  if (existing) {
-    console.info(`[autoTranscription] Job déjà existant (${existing.id}) pour render=${renderId} — skip`);
-    return;
-  }
+  // Idempotence : la contrainte unique sur renderId (schema Prisma) + le
+  // try/catch P2002 ci-dessous suffisent pour bloquer les doublons quand
+  // deux webhooks arrivent simultanément. Pas besoin d'un findUnique
+  // préalable (qui créait une fenêtre TOCTOU sans valeur ajoutée).
 
   const jobTimestamp = Date.now();
   const outputJsonKey = `transcription/${userId}/${jobTimestamp}/segments.json`;

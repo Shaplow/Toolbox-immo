@@ -31,8 +31,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Play,
-  Pause,
   Volume2,
   VolumeX,
   Maximize,
@@ -100,7 +98,10 @@ export function VideoPlayer({
   aspect = "9:16",
   variant = "minimal",
   loop = false,
-  muted = true,
+  // Default muted=false avec volume initial 50% — son léger audible dès la
+  // lecture. Si l'usage veut autoplay, passer explicitement muted=true
+  // (sinon les browsers blockent le start sans interaction).
+  muted = false,
   autoplay = false,
   startAt,
   trimStart,
@@ -116,12 +117,16 @@ export function VideoPlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const [playing, setPlaying] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(muted);
-  const [volume, setVolume] = useState(1);
+  // Volume initial 50% (au lieu de 1) — équilibre entre audible et non-intrusif.
+  const [volume, setVolume] = useState(0.5);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Slider volume : caché par défaut, apparaît au click sur l'icone volume.
+  const [volumeOpen, setVolumeOpen] = useState(false);
 
   // Trim state (controlled via props si fourni, sinon local).
   const [trimRange, setTrimRange] = useState<[number, number]>([
@@ -134,6 +139,7 @@ export function VideoPlayer({
   // Sync trim state when props change.
   useEffect(() => {
     if (variant !== "trim") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTrimRange([trimStart ?? 0, trimEnd ?? duration ?? 0]);
   }, [trimStart, trimEnd, duration, variant]);
 
@@ -194,9 +200,6 @@ export function VideoPlayer({
     }
   }, []);
 
-  const toggleMute = useCallback(() => {
-    setIsMuted((m) => !m);
-  }, []);
 
   const seek = useCallback((time: number) => {
     const v = videoRef.current;
@@ -253,6 +256,7 @@ export function VideoPlayer({
         controls={showNativeControls}
         poster={poster}
         className="h-full w-full object-cover"
+        onClick={showOverlayControls ? togglePlay : undefined}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onTimeUpdate={(e) => {
@@ -277,7 +281,7 @@ export function VideoPlayer({
 
       {/* Caption layer */}
       {variant === "captions" && currentCaption && (
-        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 max-w-[90%] pointer-events-none">
+        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 max-w-[90%] pointer-events-none">
           <p
             className={[
               "px-3 py-1.5 rounded-md text-[13px] font-medium text-white text-center leading-tight",
@@ -290,83 +294,66 @@ export function VideoPlayer({
         </div>
       )}
 
-      {/* Overlay play button center (visible quand pas en lecture, ou en hover) */}
-      {showOverlayControls && !playing && (
-        <button
-          type="button"
-          onClick={togglePlay}
-          aria-label="Lire"
-          className={[
-            "absolute inset-0 flex items-center justify-center transition-opacity",
-            "bg-black/20 backdrop-blur-[2px] hover:bg-black/30",
-          ].join(" ")}
-        >
-          <span
-            className={[
-              "inline-flex h-14 w-14 items-center justify-center rounded-full",
-              "bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[20px] backdrop-saturate-150",
-              "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-2px_0_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.08),0_16px_40px_-12px_rgba(15,23,42,0.32)]",
-              "text-gray-900",
-            ].join(" ")}
-          >
-            <Play size={22} strokeWidth={2.4} className="ml-0.5" fill="currentColor" />
-          </span>
-        </button>
-      )}
-
-      {/* Chrome bottom — overlay controls */}
+      {/* Chrome bottom — overlay controls ultra-discret 1-ligne.
+          progress flex-1 | time | volume (slider on-demand) */}
       {showOverlayControls && (
         <div
           className={[
-            "absolute left-0 right-0 bottom-0 px-3 py-2.5",
+            "absolute left-0 right-0 bottom-0 px-2.5 py-2",
             glassChrome
-              ? "bg-gradient-to-t from-black/55 to-transparent backdrop-blur-[6px]"
-              : "bg-gradient-to-t from-black/65 to-transparent",
+              ? "bg-gradient-to-t from-black/45 via-black/15 to-transparent"
+              : "bg-gradient-to-t from-black/55 to-transparent",
           ].join(" ")}
+          onClick={(e) => e.stopPropagation()}
         >
-          {/* Progress bar */}
-          <div className="flex items-center gap-3 mb-1.5">
-            <span className="text-[10px] font-mono text-white/80 tabular-nums shrink-0 min-w-[2.5rem]">
-              {formatTime(currentTime)}
-            </span>
-            <ProgressBar
-              value={duration > 0 ? (currentTime / duration) * 100 : 0}
-              onChange={seekToPercent}
-            />
-            <span className="text-[10px] font-mono text-white/80 tabular-nums shrink-0 min-w-[2.5rem] text-right">
-              {formatTime(duration)}
-            </span>
-          </div>
-
-          {/* Buttons row */}
-          <div className="flex items-center gap-1">
-            <ChromeButton onClick={togglePlay} label={playing ? "Pause" : "Lire"}>
-              {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
-            </ChromeButton>
-            <ChromeButton onClick={toggleMute} label={isMuted ? "Activer le son" : "Couper le son"}>
-              {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-            </ChromeButton>
-
-            {variant === "fullscreen" && (
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={volume}
-                onChange={(e) => setVolume(Number(e.target.value))}
-                className="w-20 h-1 ml-1 accent-white opacity-70 hover:opacity-100"
-                aria-label="Volume"
+          <div className="flex items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <ProgressBar
+                value={duration > 0 ? (currentTime / duration) * 100 : 0}
+                onChange={seekToPercent}
               />
-            )}
+            </div>
+            <span className="text-[10px] font-mono text-white/85 tabular-nums shrink-0 select-none">
+              {formatTime(currentTime)} / {formatTime(duration)}
+            </span>
 
-            <div className="flex-1" />
-
-            {variant === "fullscreen" && (
-              <ChromeButton onClick={toggleFullscreen} label={isFullscreen ? "Quitter" : "Plein écran"}>
-                {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+            {/* Volume — slider vertical glass popup au click sur l'icon */}
+            <div className="relative shrink-0">
+              {volumeOpen && (
+                <div
+                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-2.5 rounded-xl bg-gray-950/55 backdrop-blur-[16px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_0_0_1px_rgba(255,255,255,0.08),0_8px_24px_-4px_rgba(0,0,0,0.4)]"
+                  onMouseLeave={() => setVolumeOpen(false)}
+                >
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={isMuted ? 0 : volume}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setVolume(v);
+                      if (v > 0 && isMuted) setIsMuted(false);
+                      if (v === 0 && !isMuted) setIsMuted(true);
+                    }}
+                    className="h-20 w-1 accent-white cursor-pointer"
+                    style={{ writingMode: "vertical-lr", direction: "rtl" } as React.CSSProperties}
+                    aria-label="Volume"
+                  />
+                </div>
+              )}
+              <ChromeButton
+                onClick={() => setVolumeOpen((o) => !o)}
+                label="Régler le son"
+              >
+                {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
               </ChromeButton>
-            )}
+            </div>
+
+            {/* Fullscreen — disponible sur toutes les variants overlay */}
+            <ChromeButton onClick={toggleFullscreen} label={isFullscreen ? "Quitter le plein écran" : "Plein écran"}>
+              {isFullscreen ? <Minimize size={13} /> : <Maximize size={13} />}
+            </ChromeButton>
           </div>
         </div>
       )}

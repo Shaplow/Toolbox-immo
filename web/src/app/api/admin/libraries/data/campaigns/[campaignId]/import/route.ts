@@ -6,6 +6,53 @@ type Params = { params: Promise<{ campaignId: string }> };
 
 const MAX_CSV_SIZE = 5 * 1024 * 1024; // 5 MB
 
+/** Phase 1.x Vague 2 — parsing xlsx côté serveur via ExcelJS.
+ *  Le client envoie le fichier tel quel (csv ou xlsx) ; le serveur détecte
+ *  l'extension et convertit le xlsx en CSV avant le pipeline existant.
+ *  Import dynamique pour ne pas charger exceljs au cold-start des autres routes. */
+async function readFileAsCSVText(file: File): Promise<string> {
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+    const ExcelJS = (await import("exceljs")).default;
+    const buffer = await file.arrayBuffer();
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer);
+    const sheet = wb.worksheets[0];
+    if (!sheet) throw new Error("Aucune feuille trouvée dans le fichier Excel.");
+    const rows: string[][] = [];
+    sheet.eachRow({ includeEmpty: false }, (row) => {
+      const cells: string[] = [];
+      // ExcelJS index les cellules à partir de 1 et "skip" les vides ;
+      // on force la longueur pour matcher la colonne max de la ligne.
+      const maxCol = row.cellCount;
+      for (let c = 1; c <= maxCol; c++) {
+        const cell = row.getCell(c);
+        const v = cell.value;
+        let s = "";
+        if (v == null) s = "";
+        else if (typeof v === "object" && "text" in v) s = String((v as { text: string }).text ?? "");
+        else if (typeof v === "object" && "result" in v) s = String((v as { result: unknown }).result ?? "");
+        else if (v instanceof Date) s = v.toISOString();
+        else s = String(v);
+        cells.push(s);
+      }
+      rows.push(cells);
+    });
+    // CSV : on quote uniquement quand nécessaire (virgule, quote, newline).
+    return rows
+      .map((r) =>
+        r
+          .map((c) => {
+            if (/[",\n\r]/.test(c)) return `"${c.replace(/"/g, '""')}"`;
+            return c;
+          })
+          .join(","),
+      )
+      .join("\n");
+  }
+  return file.text();
+}
+
 /**
  * POST /api/admin/libraries/data/campaigns/[campaignId]/import
  *
@@ -54,8 +101,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Fichier trop volumineux (max 5 MB)" }, { status: 400 });
   }
 
-  if (!(file as File).name.toLowerCase().endsWith(".csv")) {
-    return NextResponse.json({ error: "Le fichier doit être au format CSV (.csv)" }, { status: 400 });
+  const fileName = (file as File).name.toLowerCase();
+  const isCSV = fileName.endsWith(".csv") || fileName.endsWith(".txt");
+  const isXLSX = fileName.endsWith(".xlsx") || fileName.endsWith(".xls");
+  if (!isCSV && !isXLSX) {
+    return NextResponse.json({ error: "Format non supporté. Utilise .csv ou .xlsx" }, { status: 400 });
   }
 
   // Garde contre la ré-importation accidentelle :
@@ -71,7 +121,12 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  const text = await file.text();
+  let text: string;
+  try {
+    text = await readFileAsCSVText(file as File);
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Erreur lecture fichier" }, { status: 400 });
+  }
   const rows = parseCSV(text);
 
   if (rows.length < 2) {

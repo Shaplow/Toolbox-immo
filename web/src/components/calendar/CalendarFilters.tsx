@@ -1,5 +1,18 @@
 "use client";
 
+/**
+ * CalendarFilters — barre de filtres glass du calendrier (Phase 2 refonte).
+ *
+ * Remplace les selects HTML natifs par les molécules Liquid Glass v2 :
+ * - Chip toggleable pour "À moi"
+ * - Combobox pour compte / statut / assignations (cmdk fuzzy search)
+ *
+ * Pas de FilterBar wrapper ici : le wrapper est porté par CalendarView pour
+ * pouvoir inclure aussi les badges contextuels (compte actif, filtre KPI).
+ */
+
+import { Chip } from "@/components/ui/Chip";
+import { Combobox } from "@/components/ui/Combobox";
 import { STATUS_LABELS, type SlotStatus } from "@/types/calendar";
 
 interface Account {
@@ -39,9 +52,6 @@ interface CalendarFiltersProps {
 
 const STATUSES = Object.entries(STATUS_LABELS) as [SlotStatus, string][];
 
-const SELECT_CLASS =
-  "text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300";
-
 export function CalendarFilters({
   accounts,
   filters,
@@ -55,96 +65,107 @@ export function CalendarFilters({
     onChange({ ...filters, [key]: value });
   }
 
+  const accountOptions = [
+    { value: "", label: "Tous les comptes" },
+    ...accounts.map((a) => ({
+      value: a.id,
+      label: `@${a.handle}`,
+      keywords: [a.name, a.handle],
+    })),
+  ];
+
+  const statusOptions = [
+    { value: "", label: "Tous les statuts" },
+    ...STATUSES.map(([key, label]) => ({ value: key, label })),
+  ];
+
+  const videasteOptions = videastes && videastes.length > 0
+    ? [
+        { value: "", label: "Tous les vidéastes" },
+        ...videastes.map((v) => ({ value: v.id, label: v.label })),
+      ]
+    : null;
+
+  const monteurOptions = monteurs && monteurs.length > 0
+    ? [
+        { value: "", label: "Tous les monteurs" },
+        ...monteurs.map((m) => ({ value: m.id, label: m.label })),
+      ]
+    : null;
+
+  const cmOptions = cms && cms.length > 0
+    ? [
+        { value: "", label: "Tous les CM" },
+        ...cms.map((c) => ({ value: c.id, label: c.label })),
+      ]
+    : null;
+
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      {/* Toggle "À moi" — pipeline roles uniquement */}
+    <div className="flex items-center gap-2 flex-wrap min-w-0">
       {hasMineToggle && (
-        <button
-          type="button"
+        <Chip
+          variant="sky"
+          selected={filters.onlyMine}
           onClick={() => set("onlyMine", !filters.onlyMine)}
-          className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${
-            filters.onlyMine
-              ? "bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700"
-              : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-          }`}
-          aria-pressed={filters.onlyMine}
-          title="N'afficher que les slots dont l'action attend moi"
         >
-          {filters.onlyMine ? "✓ À moi" : "À moi"}
-        </button>
+          À moi
+        </Chip>
       )}
 
-      {/* Account filter */}
-      <select
-        value={filters.accountId}
-        onChange={(e) => set("accountId", e.target.value)}
-        className={SELECT_CLASS}
-        aria-label="Filtrer par compte Instagram"
-      >
-        <option value="">Tous les comptes</option>
-        {accounts.map((a) => (
-          <option key={a.id} value={a.id}>
-            @{a.handle} — {a.name}
-          </option>
-        ))}
-      </select>
+      <div className="w-[180px]">
+        <Combobox
+          value={filters.accountId}
+          onChange={(v) => set("accountId", v)}
+          options={accountOptions}
+          placeholder="Tous les comptes"
+          emptyMessage="Aucun compte"
+        />
+      </div>
 
-      {/* Status filter */}
-      <select
-        value={filters.status}
-        onChange={(e) => set("status", e.target.value)}
-        className={SELECT_CLASS}
-        aria-label="Filtrer par statut"
-      >
-        <option value="">Tous les statuts</option>
-        {STATUSES.map(([key, label]) => (
-          <option key={key} value={key}>{label}</option>
-        ))}
-      </select>
+      <div className="w-[170px]">
+        <Combobox
+          value={filters.status}
+          onChange={(v) => set("status", v)}
+          options={statusOptions}
+          placeholder="Tous les statuts"
+          emptyMessage="Aucun statut"
+        />
+      </div>
 
-      {/* Videaste filter (ADMIN only) */}
-      {videastes && videastes.length > 0 && (
-        <select
-          value={filters.videasteId}
-          onChange={(e) => set("videasteId", e.target.value)}
-          className={SELECT_CLASS}
-          aria-label="Filtrer par vidéaste"
-        >
-          <option value="">Tous les vidéastes</option>
-          {videastes.map((v) => (
-            <option key={v.id} value={v.id}>{v.label}</option>
-          ))}
-        </select>
+      {videasteOptions && (
+        <div className="w-[160px]">
+          <Combobox
+            value={filters.videasteId}
+            onChange={(v) => set("videasteId", v)}
+            options={videasteOptions}
+            placeholder="Vidéastes"
+            emptyMessage="Aucun vidéaste"
+          />
+        </div>
       )}
 
-      {/* Monteur filter (ADMIN only) */}
-      {monteurs && monteurs.length > 0 && (
-        <select
-          value={filters.monteurId}
-          onChange={(e) => set("monteurId", e.target.value)}
-          className={SELECT_CLASS}
-          aria-label="Filtrer par monteur"
-        >
-          <option value="">Tous les monteurs</option>
-          {monteurs.map((m) => (
-            <option key={m.id} value={m.id}>{m.label}</option>
-          ))}
-        </select>
+      {monteurOptions && (
+        <div className="w-[160px]">
+          <Combobox
+            value={filters.monteurId}
+            onChange={(v) => set("monteurId", v)}
+            options={monteurOptions}
+            placeholder="Monteurs"
+            emptyMessage="Aucun monteur"
+          />
+        </div>
       )}
 
-      {/* CM filter (ADMIN only) */}
-      {cms && cms.length > 0 && (
-        <select
-          value={filters.cmId}
-          onChange={(e) => set("cmId", e.target.value)}
-          className={SELECT_CLASS}
-          aria-label="Filtrer par CM"
-        >
-          <option value="">Tous les CM</option>
-          {cms.map((c) => (
-            <option key={c.id} value={c.id}>{c.label}</option>
-          ))}
-        </select>
+      {cmOptions && (
+        <div className="w-[150px]">
+          <Combobox
+            value={filters.cmId}
+            onChange={(v) => set("cmId", v)}
+            options={cmOptions}
+            placeholder="CM"
+            emptyMessage="Aucun CM"
+          />
+        </div>
       )}
     </div>
   );

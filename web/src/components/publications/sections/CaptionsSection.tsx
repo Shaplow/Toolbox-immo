@@ -3,13 +3,22 @@
  *
  * Phase 1.3.5 : lien vers l'outil captions dédié.
  * Phase 1.9 A2 : affichage inline de l'état du dernier CaptionJob lié au slot.
+ * Phase 6.2 : polling SSE — refresh auto quand le webhook RunPod termine.
  *
  * La FK CaptionJob.slotId a été ajoutée en Phase 1.9 A2 (migration additive).
  */
 
+"use client";
+
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Subtitles, ExternalLink, Loader2, CheckCircle, AlertCircle, Play, Sparkles } from "lucide-react";
 import { canTriggerCaptions, type ActionVerdict } from "@/lib/publications/actions";
+import { useJobEvent, useAllJobEvents } from "@/lib/hooks/jobEventBus";
+import { Button } from "@/components/ui/Button";
+import { Alert } from "@/components/ui/Alert";
+import { Section } from "@/components/ui/molecules/Section";
 
 interface CaptionJobInfo {
   id: string;
@@ -22,6 +31,9 @@ interface CaptionJobInfo {
 interface Props {
   slot: { id: string };
   renderId: string | null;
+  /** Status du render principal — utilisé pour contextualiser le message
+   *  "auto" (rendu en cours / fini / en échec). */
+  renderStatus?: string | null;
   pattern: { needsCaptions: boolean; source?: string } | null;
   /** true pour CM, MONTEUR, et ADMIN */
   canEdit: boolean;
@@ -33,17 +45,45 @@ interface Props {
    *  lien "Avancé" pointe direct vers /captions/[presetId]/generate, sinon
    *  vers la gallery /captions où l'user doit choisir. */
   effectiveCaptionPresetId?: string | null;
+  sectionId?: string;
+  storageKey?: string;
+  defaultOpen?: boolean;
+  collapsible?: boolean;
 }
 
 export function CaptionsSection({
   slot,
   renderId,
+  renderStatus,
   pattern,
   canEdit,
   currentVersion,
   latestCaptionJob,
   effectiveCaptionPresetId,
+  sectionId = "captions",
+  storageKey,
+  defaultOpen = true,
+  collapsible = false,
 }: Props) {
+  const router = useRouter();
+  // Polling SSE — refresh auto quand le webhook RunPod marque le job
+  // captions COMPLETED/FAILED. Sans ça, l'utilisateur reste bloqué sur
+  // "Traitement en cours…" jusqu'à un F5 manuel.
+  const jobId = latestCaptionJob?.id ?? null;
+  const jobStatus = latestCaptionJob?.status ?? null;
+  const jobEvent = useJobEvent(jobId ?? "");
+  useEffect(() => {
+    if (!jobEvent || !jobStatus) return;
+    if (jobEvent.status !== jobStatus) router.refresh();
+  }, [jobEvent, jobStatus, router]);
+  // Si on n'a PAS encore de captionJob (pipeline auto pas encore déclenché)
+  // mais qu'un job captions arrive en SSE, on rafraîchit pour récupérer son
+  // état. Sinon l'user reste bloqué sur "Sous-titres en cours…" jusqu'à F5.
+  useAllJobEvents((evt) => {
+    if (evt.jobType !== "captions") return;
+    if (!jobId) router.refresh();
+  });
+
   // Si le pattern n'exige pas de captions, on masque la section
   if (pattern?.needsCaptions !== true) return null;
 
@@ -72,7 +112,10 @@ export function CaptionsSection({
         }
       : null,
     resolved: null,
-    render: renderId ? { status: "DONE" } : null,
+    // Fix 2026-05-30 : on passe le vrai status du render (au lieu de "DONE" en
+    // dur), pour que le verdict puisse afficher un message contextualisé selon
+    // l'étape : rendu en cours, fini, ou en échec.
+    render: renderId ? { status: renderStatus ?? "DONE" } : null,
     currentVersion: currentVersion ? { id: "v" } : null,
     coverPack: null,
     latestCaptionJob: latestCaptionJob ?? null,
@@ -82,20 +125,22 @@ export function CaptionsSection({
   // Regénérer reste possible après un job final (DONE ou FAILED).
   const canRegenerate = isDone || isError;
 
+  const linkedBadge = currentVersion ? (
+    <span className="text-[11px] text-gray-600 bg-white/60 backdrop-blur-[6px] border border-white/50 px-2 py-0.5 rounded-full font-medium shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+      Lié à V{currentVersion.versionNumber}
+    </span>
+  ) : null;
+
   return (
-    <section id="captions" className="bg-white border border-gray-100 rounded-2xl p-8">
-      {/* En-tête section */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Subtitles size={16} className="text-gray-400" />
-          <h2 className="text-sm font-semibold text-gray-700">Sous-titres</h2>
-        </div>
-        {currentVersion && (
-          <span className="text-xs text-gray-600 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full font-medium">
-            Lié à V{currentVersion.versionNumber} — {currentVersion.fileName}
-          </span>
-        )}
-      </div>
+    <Section
+      title="Sous-titres"
+      icon={Subtitles}
+      sectionId={sectionId}
+      storageKey={storageKey}
+      defaultOpen={defaultOpen}
+      collapsible={collapsible}
+      actions={linkedBadge}
+    >
 
       <div className="space-y-3">
         {/* État du dernier job (Phase 1.9 A2) */}
@@ -146,52 +191,43 @@ export function CaptionsSection({
         {/* Empty state — affiché tant qu'aucun job n'a été lancé et que le
             verdict en explique la raison (auto, waiting, etc.). */}
         {!latestCaptionJob && verdict.visible && verdict.enabled === false && (
-          <div className="flex items-start gap-2 text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
-            {verdict.intent === "auto" && (
-              <Sparkles size={14} className="text-gray-500 shrink-0 mt-0.5" />
-            )}
-            <span>{verdict.reason}</span>
-          </div>
+          <Alert
+            variant={verdict.intent === "auto" ? "glass" : "info"}
+            icon={verdict.intent === "auto" ? Sparkles : undefined}
+          >
+            {verdict.reason}
+          </Alert>
         )}
         {!latestCaptionJob && verdict.visible && verdict.enabled === true && (
-          <p className="text-sm text-gray-500">
+          <Alert variant="glass" icon={Subtitles}>
             Aucun job de sous-titres encore lancé pour cette publication.
-          </p>
+          </Alert>
         )}
 
         {/* CTA actif uniquement si le verdict l'autorise — ET on garde le
             cas "Regénérer" (DONE/FAILED) qui ne dépend pas du verdict
             (l'user veut explicitement re-tenter sur la même cible). */}
         {canEdit && ((verdict.visible && verdict.enabled) || canRegenerate) && (
-          <Link
-            href={captionsHref}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-          >
-            {canRegenerate ? (
-              <>
-                <Play size={14} />
-                Regénérer les sous-titres
-              </>
-            ) : (
-              <>
-                <ExternalLink size={14} />
-                {latestCaptionJob ? "Gérer les sous-titres" : "Lancer les sous-titres"}
-              </>
-            )}
+          <Link href={captionsHref}>
+            <Button variant="secondary" size="sm" icon={canRegenerate ? Play : ExternalLink}>
+              {canRegenerate
+                ? "Regénérer les sous-titres"
+                : latestCaptionJob
+                  ? "Gérer les sous-titres"
+                  : "Lancer les sous-titres"}
+            </Button>
           </Link>
         )}
 
         {/* Lecture seule (rôles non-éditeurs) : lien vers l'outil si un job existe. */}
         {!canEdit && latestCaptionJob && (
-          <Link
-            href={captionsHref}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors font-medium"
-          >
-            <ExternalLink size={14} />
-            Voir les sous-titres
+          <Link href={captionsHref}>
+            <Button variant="ghost" size="sm" icon={ExternalLink}>
+              Voir les sous-titres
+            </Button>
           </Link>
         )}
       </div>
-    </section>
+    </Section>
   );
 }

@@ -17,6 +17,7 @@ import { CommentItem, type CommentData } from "./CommentItem";
 import { CommentComposer } from "./CommentComposer";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Badge } from "@/components/ui/Badge";
+import { Section } from "@/components/ui/molecules/Section";
 import type { UserRole } from "@/types/roles";
 
 interface CommentsSectionProps {
@@ -26,6 +27,10 @@ interface CommentsSectionProps {
   initialHasMore?: boolean;
   currentUserId: string;
   currentUserRole: UserRole;
+  sectionId?: string;
+  storageKey?: string;
+  defaultOpen?: boolean;
+  collapsible?: boolean;
 }
 
 export function CommentsSection({
@@ -34,6 +39,10 @@ export function CommentsSection({
   initialHasMore = false,
   currentUserId,
   currentUserRole,
+  sectionId = "comments",
+  storageKey,
+  defaultOpen = true,
+  collapsible = false,
 }: CommentsSectionProps) {
   const [comments, setComments] = useState<CommentData[]>(initialComments);
 
@@ -54,16 +63,25 @@ export function CommentsSection({
   }
 
   return (
-    <section
-      id="comments"
-      className="bg-white border border-gray-200 rounded-lg p-5"
+    <Section
+      title="Conversation"
+      icon={MessageSquare}
+      sectionId={sectionId}
+      storageKey={storageKey}
+      defaultOpen={defaultOpen}
+      collapsible={collapsible}
+      actions={
+        comments.filter((c) => c.deletedAt === null).length > 0 ? (
+          <span className="text-xs text-gray-400 tabular-nums">
+            {comments.filter((c) => c.deletedAt === null).length}
+          </span>
+        ) : null
+      }
     >
-      <h2 className="text-[13px] font-semibold text-gray-950 mb-3">Conversation</h2>
-
       {initialHasMore && (
         <div className="mb-3">
           <Badge variant="info">
-            Affichage des 50 plus anciens commentaires
+            50 derniers · plus anciens masqués
           </Badge>
         </div>
       )}
@@ -72,7 +90,6 @@ export function CommentsSection({
         <EmptyState
           icon={MessageSquare}
           title="Aucun commentaire"
-          description="Lance la conversation pour partager du contexte à l'équipe."
         />
       ) : (
         <div className="divide-y divide-gray-100">
@@ -94,6 +111,6 @@ export function CommentsSection({
       )}
 
       <CommentComposer slotId={slotId} onCreated={handleCreated} />
-    </section>
+    </Section>
   );
 }

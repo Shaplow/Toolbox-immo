@@ -32,9 +32,12 @@ interface DropdownMenuProps {
   trigger: ReactNode;
   items: DropdownItem[];
   align?: "start" | "end";
+  /** "bottom" (default) ouvre vers le bas. "top" ouvre vers le haut — utile
+   *  pour les menus de footer/bottom nav qui déborderaient sinon. */
+  side?: "bottom" | "top";
 }
 
-export function DropdownMenu({ trigger, items, align = "start" }: DropdownMenuProps) {
+export function DropdownMenu({ trigger, items, align = "start", side = "bottom" }: DropdownMenuProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -60,9 +63,9 @@ export function DropdownMenu({ trigger, items, align = "start" }: DropdownMenuPr
       {open && (
         <div
           role="menu"
-          className={`absolute top-full mt-1.5 z-50 min-w-[180px] rounded-md bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150 shadow-[var(--shadow-glass-popover),var(--ring-glass-inset)] py-1 ${
-            align === "end" ? "right-0" : "left-0"
-          }`}
+          className={`absolute z-50 min-w-[180px] rounded-md bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150 shadow-[var(--shadow-glass-popover),var(--ring-glass-inset)] py-1 ${
+            side === "top" ? "bottom-full mb-1.5" : "top-full mt-1.5"
+          } ${align === "end" ? "right-0" : "left-0"}`}
         >
           {items.map((item, idx) => {
             if (item === "separator") {

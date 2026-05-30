@@ -68,14 +68,18 @@ export const STATUS_TRANSITIONS: Record<SlotStatus, SlotStatus[]> = {
  * Vérifie si la transition `from` → `to` est autorisée pour le rôle donné.
  *
  * - ADMIN : bypass total (toujours true).
- * - Statuts legacy en `from` : tolérés (true) jusqu'au backfill Phase 1.3.
- * - Autres rôles : vérifie la matrice STATUS_TRANSITIONS.
+ * - Statuts legacy en `from` : ADMIN-only (avant le backfill Phase 1.3, on tolérait
+ *   ces transitions pour tous les rôles — bug audit 2026-05-30 : un CM/MONTEUR pouvait
+ *   pousser un slot legacy vers PUBLISHED bypass complet de la matrice).
+ * - Autres rôles : vérifie strictement la matrice STATUS_TRANSITIONS.
  */
 export function canTransition(from: string, to: string, role: UserRole): boolean {
   if (role === "ADMIN") return true;
-  // USER n'a aucun accès à la pipeline éditoriale.
+  // USER / EXTERNAL_GENERATOR n'ont aucun accès à la pipeline éditoriale.
   if (role === "EXTERNAL_GENERATOR") return false;
-  if ((LEGACY_STATUSES as readonly string[]).includes(from)) return true;
+  // Statut legacy : seul l'ADMIN peut le faire bouger (sortie déjà gérée plus haut).
+  // Les autres rôles doivent attendre que le slot soit normalisé.
+  if ((LEGACY_STATUSES as readonly string[]).includes(from)) return false;
   const allowed = STATUS_TRANSITIONS[from as SlotStatus];
   return Array.isArray(allowed) && allowed.includes(to as SlotStatus);
 }
@@ -121,7 +125,14 @@ export function computeAutoTransition(
   if (trigger === "VERSION_UPLOADED_AGAIN" && currentStatus === "EDIT_APPROVED") {
     return "EDIT_REVIEW";
   }
-  if (trigger === "VERSION_PROMOTED") {
+  if (
+    trigger === "VERSION_PROMOTED" &&
+    // Fix bug audit 2026-05-30 : garde sur le status courant. Sans ça, promouvoir
+    // une version d'un slot déjà SCHEDULED / PUBLISHED / AWAITING_CLIENT régresse
+    // le slot vers EDIT_APPROVED et casse la progression aval (perte de date
+    // programmée côté CM, confusion UI).
+    ["DRAFT", "PLANNED", "RUSHES_RECEIVED", "IN_EDIT", "EDIT_REVIEW"].includes(currentStatus)
+  ) {
     return "EDIT_APPROVED";
   }
   return null;
@@ -212,7 +223,14 @@ const PIPELINE_DRIVEN_STATUSES = new Set<string>([
 
 interface SlotForAutoTransition {
   status: string;
-  pattern: { source: string; needsCaptions: boolean } | null;
+  pattern: {
+    source: string;
+    needsCaptions: boolean;
+    /** Phase 2026-05-30 : pris en compte pour cibler AWAITING_CLIENT après captions. */
+    needsClientValidation?: boolean;
+  } | null;
+  /** Override slot (prime sur pattern.needsClientValidation). */
+  needsClientValidationOverride?: boolean | null;
   render: { status: string } | null;
   latestCaptionJobStatus: string | null;
 }
@@ -246,19 +264,31 @@ export function computeAutoTransitionTargetPure(
   const renderStatus = slot.render?.status ?? null;
   if (renderStatus === null) return null; // pas de render encore → rien à automatiser
 
+  // Fix 2026-05-30 : la cible "post-pipeline" dépend désormais de
+  // needsClientValidation. Si validation client requise, on passe à
+  // AWAITING_CLIENT (le client doit valider la vidéo finale, sous-titrée
+  // si applicable), sinon READY_FOR_CM (le CM peut publier directement).
+  const needsValidation =
+    slot.needsClientValidationOverride ??
+    slot.pattern.needsClientValidation ??
+    false;
+  const postPipelineTarget: SlotStatus = needsValidation
+    ? ("AWAITING_CLIENT" as SlotStatus)
+    : ("READY_FOR_CM" as SlotStatus);
+
   let target: SlotStatus;
   if (renderStatus === "DONE") {
     const captionStatus = slot.latestCaptionJobStatus;
     if (!slot.pattern.needsCaptions) {
-      target = "READY_FOR_CM";
+      target = postPipelineTarget;
     } else if (captionStatus === "COMPLETED") {
-      target = "READY_FOR_CM";
+      target = postPipelineTarget;
     } else if (captionStatus === "QUEUED" || captionStatus === "PROCESSING") {
       // Attente active du job captions.
       target = "IN_PROGRESS" as SlotStatus;
     } else {
-      // FAILED ou null : pipeline captions inopérant. Ne pas bloquer le CM.
-      target = "READY_FOR_CM";
+      // FAILED ou null : pipeline captions inopérant. Ne pas bloquer.
+      target = postPipelineTarget;
     }
   } else {
     // PENDING / PROCESSING / ERROR — render pas finalisé.
@@ -284,7 +314,10 @@ export async function computeAutoTransitionTarget(
     where: { id: slotId },
     select: {
       status: true,
-      pattern: { select: { source: true, needsCaptions: true } },
+      needsClientValidationOverride: true,
+      pattern: {
+        select: { source: true, needsCaptions: true, needsClientValidation: true },
+      },
       render: { select: { status: true } },
       captionJobs: {
         orderBy: { createdAt: "desc" },
@@ -298,6 +331,7 @@ export async function computeAutoTransitionTarget(
   return computeAutoTransitionTargetPure({
     status: slot.status,
     pattern: slot.pattern,
+    needsClientValidationOverride: slot.needsClientValidationOverride,
     render: slot.render,
     latestCaptionJobStatus: slot.captionJobs[0]?.status ?? null,
   });
@@ -321,7 +355,12 @@ export async function syncSlotsPipelineStatuses(
   slots: Array<{
     id: string;
     status: string;
-    pattern: { source: string; needsCaptions: boolean } | null;
+    needsClientValidationOverride?: boolean | null;
+    pattern: {
+      source: string;
+      needsCaptions: boolean;
+      needsClientValidation?: boolean;
+    } | null;
     render: { status: string } | null;
     captionJobs?: Array<{ status: string }>;
   }>,
@@ -333,6 +372,7 @@ export async function syncSlotsPipelineStatuses(
       const target = computeAutoTransitionTargetPure({
         status: s.status,
         pattern: s.pattern,
+        needsClientValidationOverride: s.needsClientValidationOverride,
         render: s.render,
         latestCaptionJobStatus: s.captionJobs?.[0]?.status ?? null,
       });
@@ -395,26 +435,48 @@ export async function applyAutoTransitionFromPipeline(
   trigger: PipelineTrigger,
 ): Promise<SlotStatus | null> {
   try {
-    const target = await computeAutoTransitionTarget(prisma, slotId);
+    // Fix bug audit 2026-05-30 : 1 SEULE lecture du slot pour calculer la cible
+    // ET servir de garde dans l'updateMany. Anciennement, on faisait 2 lectures
+    // séparées — entre les 2, un ADMIN pouvait passer SCHEDULED, et l'update
+    // forçait quand même la régression vers la cible calculée.
+    const slot = await prisma.publicationSlot.findUnique({
+      where: { id: slotId },
+      select: {
+        status: true,
+        needsClientValidationOverride: true,
+        pattern: {
+          select: { source: true, needsCaptions: true, needsClientValidation: true },
+        },
+        render: { select: { status: true } },
+        captionJobs: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { status: true },
+        },
+      },
+    });
+    if (!slot) return null;
+
+    const target = computeAutoTransitionTargetPure({
+      status: slot.status,
+      pattern: slot.pattern,
+      needsClientValidationOverride: slot.needsClientValidationOverride,
+      render: slot.render,
+      latestCaptionJobStatus: slot.captionJobs[0]?.status ?? null,
+    });
     if (!target) return null;
 
-    // Re-lire le status courant pour le payload activity ET pour garder
-    // l'update conditionnel sur cette valeur (anti-TOCTOU : 2 webhooks
-    // concurrents peuvent calculer la même cible mais l'un doit perdre).
-    const current = await prisma.publicationSlot.findUnique({
-      where: { id: slotId },
-      select: { status: true },
-    });
-    if (!current) return null;
-
     const updated = await prisma.publicationSlot.updateMany({
-      where: { id: slotId, status: current.status },
+      // Conditionné sur le status LU (slot.status), pas sur une re-lecture
+      // ultérieure. Si un autre process a changé le statut entre la lecture
+      // et l'update, count=0 et on abandonne (sans régression).
+      where: { id: slotId, status: slot.status },
       data: { status: target },
     });
     if (updated.count === 0) {
       console.info(
         `[applyAutoTransitionFromPipeline] race détectée (slot=${slotId} trigger=${trigger}) : ` +
-          `status "${current.status}" déjà changé par un autre process — transition ignorée.`,
+          `status "${slot.status}" déjà changé par un autre process — transition ignorée.`,
       );
       return null;
     }
@@ -423,7 +485,7 @@ export async function applyAutoTransitionFromPipeline(
       slotId,
       actorId: null, // déclenché par un webhook serveur, pas un utilisateur
       type: "STATUS_CHANGED",
-      payload: { from: current.status, to: target, trigger },
+      payload: { from: slot.status, to: target, trigger },
     });
 
     return target;

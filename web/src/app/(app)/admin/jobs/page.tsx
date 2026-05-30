@@ -24,6 +24,7 @@ import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { RefreshButton } from "@/components/ui/RefreshButton";
 import { JobsActionButtons } from "./_components/JobsActionButtons";
 import { SweepButton } from "./_components/SweepButton";
+import { BackfillCaptionSlotIdsButton } from "./_components/BackfillCaptionSlotIdsButton";
 
 interface JobRow {
   type: "render" | "caption" | "transcription" | "description" | "cover-pack" | "autocut";
@@ -232,6 +233,7 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
         subtitle="Scanner les jobs RunPod en QUEUED/PROCESSING — relancer ou marquer FAILED si bloqués"
         actions={
           <div className="flex items-center gap-2">
+            <BackfillCaptionSlotIdsButton />
             <SweepButton />
             <RefreshButton title="Rescanner les jobs" />
           </div>

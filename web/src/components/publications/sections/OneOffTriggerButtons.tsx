@@ -109,7 +109,7 @@ export function OneOffTriggerButtons({
   }
 
   return (
-    <section className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+    <section id="oneoff" className="bg-gray-50 border border-gray-200 rounded-xl p-4">
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold text-gray-950">

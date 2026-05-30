@@ -20,10 +20,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { FileText, ExternalLink, Save, Check, Sparkles, Loader2 } from "lucide-react";
+import { FileText, ExternalLink, Save, Check, Sparkles, Loader2, Copy, Pencil, RefreshCw, AlertCircle, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Section } from "@/components/ui/molecules/Section";
 import { FormField } from "@/components/ui/FormField";
 import { Textarea } from "@/components/ui/Textarea";
+import { Alert } from "@/components/ui/Alert";
+import { toast } from "@/components/ui/Toast";
 import { canGenerateDescription } from "@/lib/publications/actions";
 
 interface Props {
@@ -39,6 +42,16 @@ interface Props {
    * Si null, on retombe sur le premier prompt actif disponible.
    */
   defaultPromptId?: string | null;
+  /** Status du dernier DescriptionJob auto lié au slot (QUEUED/PROCESSING/COMPLETED/FAILED). */
+  descriptionJobStatus?: string | null;
+  /** Status courant du slot (TO_DO, AWAITING_CLIENT, SCHEDULED…). */
+  slotStatus?: string | null;
+  /** Si true, la description auto attend la validation client avant lancement. */
+  needsClientValidation?: boolean;
+  sectionId?: string;
+  storageKey?: string;
+  defaultOpen?: boolean;
+  collapsible?: boolean;
 }
 
 interface PromptOption {
@@ -54,23 +67,10 @@ const DESCRIPTION_MODE_LABELS: Record<string, string> = {
   manualWrite: "manuelle",
 };
 
-export function DescriptionSection({
-  slot,
-  pattern,
-  initialDescription,
-  canEdit,
-  defaultPromptId,
-}: Props) {
+export function DescriptionSection(props: Props) {
   // Si pas de pattern ou que le pattern indique que la description n'est pas nécessaire, on masque
-  if (!pattern || pattern.needsDescription === "none") return null;
-
-  return <DescriptionSectionInner
-    slot={slot}
-    pattern={pattern}
-    initialDescription={initialDescription}
-    canEdit={canEdit}
-    defaultPromptId={defaultPromptId}
-  />;
+  if (!props.pattern || props.pattern.needsDescription === "none") return null;
+  return <DescriptionSectionInner {...props} />;
 }
 
 function DescriptionSectionInner({
@@ -79,7 +79,20 @@ function DescriptionSectionInner({
   initialDescription,
   canEdit,
   defaultPromptId,
+  descriptionJobStatus,
+  slotStatus,
+  needsClientValidation,
+  sectionId = "description",
+  storageKey,
+  defaultOpen = true,
+  collapsible = false,
 }: Props) {
+  const isAutoMode = pattern?.needsDescription === "autoGenerate";
+  const hasContent = initialDescription.trim().length > 0;
+  // En mode auto + contenu déjà généré : on ouvre en preview (non-éditable).
+  // Sinon (manuel / pas de contenu) : edit direct.
+  const [editing, setEditing] = useState(!isAutoMode || !hasContent);
+  const [copied, setCopied] = useState(false);
   const [value, setValue] = useState(initialDescription);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -112,6 +125,10 @@ function DescriptionSectionInner({
   // on l'omet pour ne pas laisser un param fantôme dans l'URL.
   const descriptionToolHref = `/descriptions?slotId=${slot.id}&returnTo=/publications/${slot.id}`;
 
+  // Fetch prompts seulement à l'ouverture du modal — ne PAS dépendre de
+  // selectedPromptId (sinon chaque sélection dans le dropdown re-déclenche
+  // un fetch + spinner flash). L'init du selectedPromptId se fait via
+  // setter fonctionnel pour éviter d'overrider un choix utilisateur en cours.
   useEffect(() => {
     if (!showAi) return;
     let cancelled = false;
@@ -124,11 +141,14 @@ function DescriptionSectionInner({
         const data = (await res.json()) as PromptOption[];
         if (cancelled) return;
         setPrompts(data);
-        if (data.length > 0 && !selectedPromptId) {
-          const matchDefault = defaultPromptId
-            ? data.find((p) => p.id === defaultPromptId)
-            : null;
-          setSelectedPromptId(matchDefault?.id ?? data[0].id);
+        if (data.length > 0) {
+          setSelectedPromptId((current) => {
+            if (current) return current;
+            const matchDefault = defaultPromptId
+              ? data.find((p) => p.id === defaultPromptId)
+              : null;
+            return matchDefault?.id ?? data[0].id;
+          });
         }
       } catch (err) {
         if (!cancelled) {
@@ -141,7 +161,7 @@ function DescriptionSectionInner({
     return () => {
       cancelled = true;
     };
-  }, [showAi, selectedPromptId, defaultPromptId]);
+  }, [showAi, defaultPromptId]);
 
   // ESC pour fermer
   useEffect(() => {
@@ -210,122 +230,222 @@ function DescriptionSectionInner({
 
   const isDirty = value !== initialDescription;
 
-  return (
-    <section id="description" className="bg-white border border-gray-100 rounded-2xl p-8">
-      {/* En-tête section */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <FileText size={16} className="text-gray-400" />
-          <h2 className="text-sm font-semibold text-gray-700">Légende Instagram</h2>
-          {pattern?.needsDescription && pattern.needsDescription !== "none" && (
-            <span className="text-xs text-gray-400 italic">
-              ({DESCRIPTION_MODE_LABELS[pattern.needsDescription] ?? pattern.needsDescription})
-            </span>
-          )}
-        </div>
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      toast.success("Légende copiée — prête à coller dans Instagram.");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Impossible de copier — copiez manuellement.");
+    }
+  }
 
-        <div className="flex items-center gap-3">
-          {/* Verdict centralisé : modal IA visible seulement pour manualWrite ;
-              badge "Auto" pour autoGenerate ; rien pour preFilled / none. */}
-          {(() => {
-            const verdict = canGenerateDescription({
-              pattern: pattern
-                ? {
-                    source: "auto_template",
-                    needsCaptions: false,
-                    needsDescription: pattern.needsDescription,
-                    coverMode: "none",
-                  }
-                : null,
-              resolved: null,
-              render: null,
-              currentVersion: null,
-              coverPack: null,
-              latestCaptionJob: null,
-              isAdmin: canEdit,
-              canEdit,
-            });
-            if (!verdict.visible) return null;
-            if (verdict.enabled) {
-              return (
+  // ─── États du mode auto sans contenu ──────────────────────────────────────
+  // Précédence : awaiting validation > job en cours > job échec > en attente lancement.
+  const jobInFlight =
+    descriptionJobStatus === "QUEUED" || descriptionJobStatus === "PROCESSING";
+  const jobFailed = descriptionJobStatus === "FAILED";
+  // SCHEDULED/PUBLISHED/CANCELLED/ARCHIVED/CLIENT_REVISION → post-validation côté machine
+  const POST_VALIDATION_STATUSES = new Set([
+    "SCHEDULED",
+    "PUBLISHED",
+    "CANCELLED",
+    "ARCHIVED",
+  ]);
+  const waitingForClient =
+    isAutoMode &&
+    needsClientValidation === true &&
+    !!slotStatus &&
+    !POST_VALIDATION_STATUSES.has(slotStatus);
+
+  const verdict = canGenerateDescription({
+    pattern: pattern
+      ? {
+          source: "auto_template",
+          needsCaptions: false,
+          needsDescription: pattern.needsDescription,
+          coverMode: "none",
+        }
+      : null,
+    resolved: null,
+    render: null,
+    currentVersion: null,
+    coverPack: null,
+    latestCaptionJob: null,
+    isAdmin: canEdit,
+    canEdit,
+  });
+
+  const headerActions = (
+    <>
+      {verdict.visible && verdict.enabled && (
+        <button
+          type="button"
+          onClick={() => setShowAi(true)}
+          className="inline-flex items-center gap-1.5 text-[11px] text-gray-700 hover:text-gray-950 font-medium transition-colors"
+        >
+          <Sparkles size={12} />
+          Générer avec IA
+        </button>
+      )}
+      {verdict.visible && !verdict.enabled && (
+        <span
+          className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-600 bg-white/60 backdrop-blur-[6px] border border-white/50 rounded-full px-2 py-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]"
+          title={verdict.reason}
+        >
+          <Sparkles size={10} />
+          Auto
+        </span>
+      )}
+      <Link
+        href={descriptionToolHref}
+        className="inline-flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+        title="Configuration avancée (transcription, image de référence, modèle)"
+      >
+        <ExternalLink size={12} />
+        Avancé
+      </Link>
+    </>
+  );
+
+  const modeDescription = pattern?.needsDescription && pattern.needsDescription !== "none"
+    ? `Mode : ${DESCRIPTION_MODE_LABELS[pattern.needsDescription] ?? pattern.needsDescription}`
+    : undefined;
+
+  return (
+    <Section
+      title="Légende Instagram"
+      icon={FileText}
+      description={modeDescription}
+      sectionId={sectionId}
+      storageKey={storageKey}
+      defaultOpen={defaultOpen}
+      collapsible={collapsible}
+      actions={headerActions}
+    >
+      <div className="space-y-3">
+        {/* ── Mode auto : pas encore de contenu ──────────────────────────── */}
+        {isAutoMode && !hasContent ? (
+          <>
+            {waitingForClient && (
+              <Alert variant="glass" icon={ShieldCheck}>
+                La légende sera générée automatiquement après la validation client.
+              </Alert>
+            )}
+            {!waitingForClient && jobInFlight && (
+              <Alert variant="glass" icon={Loader2}>
+                Génération en cours…
+              </Alert>
+            )}
+            {!waitingForClient && jobFailed && (
+              <Alert variant="info" icon={AlertCircle}>
+                Échec de la génération automatique — relancez via « Générer avec IA » ou « Avancé ».
+              </Alert>
+            )}
+            {!waitingForClient && !jobInFlight && !jobFailed && (
+              <Alert variant="glass" icon={Sparkles}>
+                Lancement de la génération automatique imminent…
+              </Alert>
+            )}
+          </>
+        ) : isAutoMode && hasContent && !editing ? (
+          /* ── Mode auto + contenu : preview + 2 icônes discrètes ──────────── */
+          <>
+            <div className="rounded-lg border border-white/40 bg-white/70 backdrop-blur-[6px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+              <p className="text-[12.5px] text-gray-800 whitespace-pre-wrap leading-relaxed font-mono">
+                {value}
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] text-gray-400">{value.length} / 2 200 caractères</p>
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setShowAi(true)}
-                  className="inline-flex items-center gap-1.5 text-xs text-gray-700 hover:text-gray-950 font-medium transition-colors"
+                  onClick={() => void handleCopy()}
+                  className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-800 px-2 py-1 rounded transition-colors"
+                  title="Copier la légende"
+                  aria-label="Copier la légende"
                 >
-                  <Sparkles size={12} />
-                  Générer avec IA
+                  {copied ? <Check size={12} className="text-success-700" /> : <Copy size={12} />}
+                  {copied ? "Copié" : "Copier"}
                 </button>
-              );
-            }
-            // verdict.enabled=false → badge intent (ex. "Auto")
-            return (
-              <span
-                className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-600 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5"
-                title={verdict.reason}
-              >
-                <Sparkles size={10} />
-                Auto
-              </span>
-            );
-          })()}
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(true)}
+                    className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-800 px-2 py-1 rounded transition-colors"
+                    title="Modifier la légende"
+                    aria-label="Modifier la légende"
+                  >
+                    <Pencil size={12} />
+                    Modifier
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          /* ── Mode manuel OU édition après preview ─────────────────────────── */
+          <>
+            <Textarea
+              value={value}
+              onChange={(v) => {
+                setValue(v);
+                setSaved(false);
+              }}
+              disabled={!canEdit || saving}
+              rows={6}
+              placeholder={
+                canEdit
+                  ? "Rédigez la légende Instagram de la publication…\n\n#immobilier #realestate"
+                  : "Aucune légende renseignée."
+              }
+              error={error ?? undefined}
+              className="font-mono leading-relaxed"
+            />
 
-          {/* Lien vers l'outil standalone (config avancée : transcription, image, modèle…) */}
-          <Link
-            href={descriptionToolHref}
-            className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors"
-            title="Configuration avancée (transcription, image de référence, modèle)"
-          >
-            <ExternalLink size={12} />
-            Avancé
-          </Link>
-        </div>
-      </div>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] text-gray-400">{value.length} / 2 200 caractères</p>
+              {isAutoMode && hasContent && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setValue(initialDescription);
+                    setEditing(false);
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-800 px-2 py-1 rounded transition-colors"
+                  title="Annuler l'édition"
+                >
+                  <RefreshCw size={12} />
+                  Annuler
+                </button>
+              )}
+            </div>
 
-      <div className="space-y-3">
-        <textarea
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            setSaved(false);
-          }}
-          disabled={!canEdit || saving}
-          rows={6}
-          placeholder={
-            canEdit
-              ? "Rédigez la légende Instagram de la publication…\n\n#immobilier #realestate"
-              : "Aucune légende renseignée."
-          }
-          className={`w-full border rounded-lg px-3 py-2 text-sm resize-y font-mono leading-relaxed transition-colors ${
-            canEdit
-              ? "border-gray-200 focus:border-gray-400 focus-ring text-gray-700"
-              : "border-gray-100 bg-gray-50 text-gray-600 cursor-default"
-          } disabled:opacity-70`}
-        />
+            {canEdit && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={saved ? Check : Save}
+                  loading={saving}
+                  disabled={!isDirty}
+                  onClick={async () => {
+                    await handleSave();
+                    // En mode auto + contenu : on retourne en preview après save
+                    if (isAutoMode && value.trim().length > 0) setEditing(false);
+                  }}
+                >
+                  {saved ? "Enregistré" : "Enregistrer"}
+                </Button>
 
-        {/* Compteur de caractères (limite IG ≈ 2200) */}
-        <p className="text-xs text-gray-400 text-right">{value.length} / 2 200 caractères</p>
-
-        {error && (
-          <p className="text-xs text-danger-700">{error}</p>
-        )}
-
-        {canEdit && (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || !isDirty}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-white bg-gray-950 rounded-md hover:bg-gray-800 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed focus-ring"
-            >
-              {saved ? <Check size={14} /> : <Save size={14} />}
-              {saving ? "Enregistrement…" : saved ? "Enregistré" : "Enregistrer"}
-            </button>
-
-            {saved && (
-              <span className="text-xs text-success-700">Légende sauvegardée.</span>
+                {saved && (
+                  <span className="text-xs text-success-700">Légende sauvegardée.</span>
+                )}
+              </div>
             )}
-          </div>
+          </>
         )}
       </div>
 
@@ -427,6 +547,6 @@ function DescriptionSectionInner({
           </div>
         </>
       )}
-    </section>
+    </Section>
   );
 }

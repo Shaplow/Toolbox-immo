@@ -10,7 +10,7 @@
  * - Thumbnail (LazyVideoThumb) + preview vidéo HTML5 sur click Play.
  * - Overlay select mode (CheckSquare / Square).
  * - Overlay pendingEditJob (replacement in progress) + disabled (EyeOff).
- * - Breadcrumb catégorie › set avec inline edit (handleSaveCategory + handleSaveSetTag).
+ * - Breadcrumb catégorie › pack avec inline edit (handleSaveCategory + handleSaveSetTag).
  * - Tags inline edit (handleSaveTags).
  * - Métadonnées du bien (schemaField.type = text/number/url/textarea).
  * - Accès accounts (ajouter/retirer via handleToggleAccess).
@@ -26,6 +26,7 @@
 import {
   BarChart2,
   CheckSquare,
+  ChevronRight,
   Clock,
   EyeOff,
   FolderOpen,
@@ -39,6 +40,7 @@ import {
   Square,
   Tag,
   Trash2,
+  Video,
   X,
 } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
@@ -60,6 +62,13 @@ interface Props {
   setPreviewId: Dispatch<SetStateAction<string | null>>;
   onEditAsset: (asset: MediaAsset) => void;
   inline: UseAssetInlineEditsResult;
+  /** Phase 3 — mode avancé : si false, l'inline edit block est remplacé
+      par un mini-footer (filename + chevron). Click → onOpenDetail. */
+  isAdvanced: boolean;
+  /** Mode manuel (rotation "none") : pas de chip Catégorie/Pack ni "à ranger",
+      afficher metadata principales à la place. */
+  isManualMode?: boolean;
+  onOpenDetail?: (asset: MediaAsset) => void;
 }
 
 export function MediaAssetsVideoCard({
@@ -75,6 +84,9 @@ export function MediaAssetsVideoCard({
   setPreviewId,
   onEditAsset,
   inline,
+  isAdvanced,
+  isManualMode = false,
+  onOpenDetail,
 }: Props) {
   const {
     editingFamilyKey, setEditingFamilyKey, familyInput, setFamilyInput,
@@ -104,15 +116,35 @@ export function MediaAssetsVideoCard({
   return (
     <div
       key={asset.id}
-      className={`group relative bg-gray-100 rounded-xl overflow-hidden border transition-colors ${
-        !isAssetAccessible ? "opacity-50" : ""
-      } ${
-        selectMode && isSelected
-          ? "border-indigo-500 ring-2 ring-indigo-200"
-          : "border-gray-200 hover:border-indigo-300"
-      }`}
-      onClick={() => { if (selectMode) toggleSelect(asset.id); }}
+      className={[
+        "group relative rounded-2xl overflow-hidden transition-all",
+        "bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] backdrop-saturate-150",
+        !isAssetAccessible ? "opacity-50" : "",
+        isSelected
+          ? "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_2px_rgba(125,180,210,0.6),0_0_0_3px_rgba(169,209,230,0.35),0_4px_12px_-4px_rgba(15,23,42,0.12)]"
+          : "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.55),inset_0_0_0_1px_rgba(15,23,42,0.1),0_4px_12px_-4px_rgba(15,23,42,0.12)] hover:-translate-y-0.5",
+        !isAdvanced && !selectMode ? "cursor-pointer" : "",
+      ].filter(Boolean).join(" ")}
+      onClick={() => {
+        if (selectMode) { toggleSelect(asset.id); return; }
+        if (!isAdvanced) onOpenDetail?.(asset);
+      }}
     >
+      {/* Phase C — mini-checkbox bulk-select visible au hover, sans entrer en select mode. */}
+      {!selectMode && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleSelect(asset.id);
+          }}
+          className="absolute top-2 left-2 z-30 h-5 w-5 rounded-md bg-white/85 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.12),0_2px_4px_rgba(15,23,42,0.12)] flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-white transition-opacity"
+          title="Sélectionner"
+          aria-label="Sélectionner cet asset"
+        >
+          <Square size={11} className="text-gray-400" />
+        </button>
+      )}
       {/* Thumbnail / preview */}
       <div className="relative aspect-[9/16] bg-gray-200">
         {previewId === asset.id ? (
@@ -139,9 +171,45 @@ export function MediaAssetsVideoCard({
           >✕</button>
         )}
         {asset.duration && (
-          <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1 rounded">
+          <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-gray-950/65 backdrop-blur-[4px] text-[10px] font-mono text-white tabular-nums">
             {formatDuration(asset.duration)}
           </span>
+        )}
+        {/* Badge "Restreint @compte" en bottom-left (mode noob) — visible si accessAccountIds non-vide */}
+        {!isAdvanced && asset.accessAccountIds.length > 0 && (() => {
+          const handles = asset.accessAccountIds
+            .map((id) => accounts.find((a) => a.id === id)?.handle)
+            .filter(Boolean) as string[];
+          const label = handles.length === 1 ? `@${handles[0]}` : `${handles.length} comptes`;
+          const title = handles.length > 0 ? `Restreint à : ${handles.map((h) => `@${h}`).join(", ")}` : "Restreint";
+          return (
+            <span
+              title={title}
+              className="absolute bottom-2 left-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-sky-50/90 backdrop-blur-[6px] text-sky-700 text-[9.5px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(77,150,191,0.22)] max-w-[60%] truncate"
+            >
+              <Lock size={9} className="shrink-0" />
+              <span className="truncate">{label}</span>
+            </span>
+          );
+        })()}
+        {/* Chips Catégorie + Pack en overlay top-right (mode noob, rotation auto/override).
+            Badge "à ranger" retiré — l'absence de chip catégorie est elle-même le signal.
+            En mode manuel (rotation "none") : pas de chip, on affiche metadata dans le footer à la place. */}
+        {!isAdvanced && !isManualMode && (asset.category || (asset.setTag && !asset.setTag.startsWith("pack_"))) && (
+          <div className="absolute top-2 right-2 flex flex-col items-end gap-1 max-w-[70%] z-10">
+            {asset.category && (
+              <span className="text-[9.5px] font-medium px-1.5 py-0.5 rounded-md bg-white/85 backdrop-blur-[6px] text-violet-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(139,92,246,0.18)] inline-flex items-center gap-0.5 truncate max-w-full">
+                <FolderOpen size={8} className="shrink-0" />
+                <span className="truncate">{asset.category}</span>
+              </span>
+            )}
+            {asset.setTag && !asset.setTag.startsWith("pack_") && (
+              <span className="text-[9.5px] font-medium px-1.5 py-0.5 rounded-md bg-white/85 backdrop-blur-[6px] text-pink-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(236,72,153,0.18)] inline-flex items-center gap-0.5 truncate max-w-full">
+                <Layers size={8} className="shrink-0" />
+                <span className="truncate">{asset.setTag}</span>
+              </span>
+            )}
+          </div>
         )}
         {asset.pendingEditJob && (
           <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 gap-1.5 pointer-events-none">
@@ -163,9 +231,46 @@ export function MediaAssetsVideoCard({
           </div>
         )}
       </div>
-      {/* Info */}
+      {/* Info — mode avancé : inline edits complets. Mode noob : footer minimaliste.
+          En manual mode (rotation "none") : on met en avant les 2 premières metadata
+          déclarées dans metadataSchema (au lieu du filename qui devient secondaire). */}
+      {!isAdvanced ? (
+        isManualMode && metadataSchema.length > 0 ? (
+          <div className="px-2.5 py-2 flex items-start gap-1.5">
+            <div className="flex-1 min-w-0">
+              {(() => {
+                const primary = metadataSchema[0];
+                const secondary = metadataSchema[1];
+                const primaryValue = primary ? asset.metadata?.[primary.key] : null;
+                const secondaryValue = secondary ? asset.metadata?.[secondary.key] : null;
+                return (
+                  <>
+                    <p className="text-[12px] font-semibold text-gray-950 truncate leading-tight" title={primary?.label}>
+                      {primaryValue != null && primaryValue !== "" ? String(primaryValue) : <span className="text-gray-400 italic font-normal">{primary?.label ?? asset.filename}</span>}
+                    </p>
+                    {secondary && (
+                      <p className="text-[10.5px] text-gray-500 truncate mt-0.5" title={secondary.label}>
+                        {secondaryValue != null && secondaryValue !== "" ? String(secondaryValue) : <span className="italic">{secondary.label}</span>}
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+            <ChevronRight size={13} className="text-gray-300 group-hover:text-gray-700 shrink-0 mt-0.5 transition-colors" />
+          </div>
+        ) : (
+          <div className="px-2.5 py-2 flex items-center gap-1.5">
+            <Video size={11} className="shrink-0 text-gray-400" />
+            <p className="flex-1 min-w-0 text-[11.5px] font-medium text-gray-700 truncate" title={asset.filename}>
+              {asset.filename}
+            </p>
+            <ChevronRight size={13} className="text-gray-300 group-hover:text-gray-700 shrink-0 transition-colors" />
+          </div>
+        )
+      ) : (
       <div className="p-2.5">
-        {/* Catégorie + Set */}
+        {/* Catégorie + Pack */}
         <div className="flex items-center gap-1 mb-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
           {editingFamilyKey === asset.id ? (
             <input
@@ -208,7 +313,7 @@ export function MediaAssetsVideoCard({
                 }}
                 onBlur={() => { void handleSaveSetTag(asset, setTagValue); }}
                 list="set-tags-list"
-                placeholder="set…"
+                placeholder="pack…"
                 className="w-20 text-[9px] border border-pink-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-pink-400"
               />
               {setTagValue.trim() && setTagValue.trim() !== asset.setTag && (() => {
@@ -231,10 +336,10 @@ export function MediaAssetsVideoCard({
                   ? "bg-pink-50 text-pink-600 border-pink-100 hover:bg-pink-100"
                   : "bg-gray-50 text-gray-400 border-dashed border-gray-200 hover:text-pink-500 hover:border-pink-200"
               }`}
-              title="Set — cliquer pour assigner"
+              title="Pack — cliquer pour assigner"
             >
               <Layers size={8} className="shrink-0" />
-              <span>{asset.setTag || "Set…"}</span>
+              <span>{asset.setTag || "Pack…"}</span>
             </button>
           )}
         </div>
@@ -437,6 +542,7 @@ export function MediaAssetsVideoCard({
           )}
         </div>
       </div>
+      )}
 
       {/* Action buttons */}
       {!selectMode && (

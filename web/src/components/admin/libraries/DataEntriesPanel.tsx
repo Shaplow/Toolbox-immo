@@ -1,8 +1,12 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { Upload, RotateCcw, Download } from "lucide-react";
-import { FlatTable, GroupedView } from "@/components/admin/libraries/dataEntries/DataEntriesViews";
+import { Upload, RotateCcw, Download, Plus, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Combobox } from "@/components/ui/Combobox";
+import { Chip } from "@/components/ui/Chip";
+import { toast } from "@/components/ui/Toast";
+import { DataEntriesSpreadsheet } from "@/components/admin/libraries/dataEntries/DataEntriesSpreadsheet";
 
 function downloadCSVFromColumns(columns: string[], campaignName: string) {
   const headers = ["set_tag", "category", ...columns];
@@ -44,25 +48,42 @@ export interface InstagramAccount {
   handle: string;
 }
 
+type FieldType = "text" | "number" | "url" | "textarea";
+
+export interface FieldDef {
+  key: string;
+  label: string;
+  type: FieldType;
+  required?: boolean;
+  /** Marque le champ pour affichage dans la vue table compacte (Phase 1.x design). */
+  primary?: boolean;
+}
+
 interface Props {
   campaignId: string;
   libraryId: string;
+  /** JSON FieldDef[] depuis DataLibrary.fieldsSchema (Phase 1.x). */
+  fieldsSchema?: string;
 }
 
-// formatDate déplacé dans DataEntriesViews.tsx (utilisé uniquement par les vues).
-
-export interface SetGroup {
-  setTag: string | null;
-  category: string | null;
-  entries: DataEntry[];
-  isAccessible: boolean;
-  accessibleCount: number;
-  lastUsedAt: string | null;
+function parseFieldsSchema(raw: string | null | undefined): FieldDef[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    if (!Array.isArray(v)) return [];
+    return v.filter((f): f is FieldDef =>
+      f && typeof f.key === "string" && typeof f.label === "string" && typeof f.type === "string",
+    );
+  } catch {
+    return [];
+  }
 }
 
 import { useConfirm } from "@/components/ui/useConfirm";
 
-export function DataEntriesPanel({ campaignId, libraryId }: Props) {
+export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props) {
+  // Phase 1.x — schéma de champs au niveau lib (source de vérité).
+  const declaredSchema = useMemo(() => parseFieldsSchema(fieldsSchema), [fieldsSchema]);
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [campaign, setCampaign] = useState<DataCampaign | null>(null);
   const [entries, setEntries] = useState<DataEntry[]>([]);
@@ -76,9 +97,32 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
   const [resetSuccess, setResetSuccess] = useState<string | null>(null);
   const [resetError, setResetError] = useState<string | null>(null);
   const [resettingAccount, setResettingAccount] = useState(false);
-  const [viewMode, setViewMode] = useState<"flat" | "grouped">("flat");
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Phase 1.x design (spreadsheet) — édition inline, plus de drawer.
+  // focusBottomSignal bump à chaque création vide pour que la spreadsheet
+  // scroll + focus la cellule Set de la dernière row.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [focusBottomSignal, setFocusBottomSignal] = useState(0);
+
+  // Phase 1.x — fallback rétrocompatible : si la lib n'a pas de schéma déclaré
+  // (libs legacy ou utilisateur qui n'a pas configuré les champs), on auto-déduit
+  // depuis les fields des entries existantes (toutes typées "text"). Permet à la
+  // spreadsheet de toujours afficher des colonnes pour les fiches importées.
+  const schemaFields = useMemo<FieldDef[]>(() => {
+    if (declaredSchema.length > 0) return declaredSchema;
+    const keys = new Set<string>();
+    for (const e of entries) {
+      try {
+        const parsed = JSON.parse(e.fields) as Record<string, unknown>;
+        Object.keys(parsed).forEach((k) => {
+          if (k !== "set_tag" && k !== "category") keys.add(k);
+        });
+      } catch {
+        // ignore
+      }
+    }
+    return Array.from(keys).map<FieldDef>((k) => ({ key: k, label: k, type: "text" }));
+  }, [declaredSchema, entries]);
 
   const isAccessible = useCallback((entry: DataEntry) => {
     return entry.accessAccountIds.length === 0 || (accountFilter ? entry.accessAccountIds.includes(accountFilter) : true);
@@ -118,59 +162,15 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
       .catch(() => {/* ignore */});
   }, []);
 
-  // Group entries by (category, setTag)
-  const groups = useMemo<SetGroup[]>(() => {
-    const hasAnySets = entries.some((e) => e.setTag !== null);
-    if (!hasAnySets) return [];
-
-    const map = new Map<string, DataEntry[]>();
-    for (const e of entries) {
-      const key = `${e.category ?? ""}§§${e.setTag ?? ""}`;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(e);
-    }
-
-    return Array.from(map.entries()).map(([, groupEntries]) => {
-      const pool = accountFilter
-        ? groupEntries.filter(isAccessible)
-        : groupEntries;
-      const lastUsedAt = pool.reduce<string | null>((max, e) => {
-        if (!e.lastUsedAt) return max;
-        if (!max) return e.lastUsedAt;
-        return e.lastUsedAt > max ? e.lastUsedAt : max;
-      }, null);
-      const isAcc = !accountFilter || groupEntries.some(isAccessible);
-      return {
-        setTag: groupEntries[0]!.setTag,
-        category: groupEntries[0]!.category,
-        entries: groupEntries,
-        isAccessible: isAcc,
-        accessibleCount: pool.length,
-        lastUsedAt,
-      };
-    }).sort((a, b) => {
-      // Accessible first, then by lastUsedAt ASC NULLS FIRST
-      if (a.isAccessible !== b.isAccessible) return a.isAccessible ? -1 : 1;
-      if (!a.lastUsedAt && !b.lastUsedAt) return 0;
-      if (!a.lastUsedAt) return -1;
-      if (!b.lastUsedAt) return 1;
-      return a.lastUsedAt < b.lastUsedAt ? -1 : 1;
-    });
-  }, [entries, accountFilter, isAccessible]);
-
-  const hasGroups = groups.length > 0;
-  const columns = entries.length > 0 ? Object.keys(JSON.parse(entries[0]!.fields) as Record<string, string>).filter(
-    (k) => !["set_tag", "category"].includes(k)
-  ) : [];
-
-  function toggleGroup(key: string) {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
+  // Phase 1.x — colonnes dérivées du schéma lib si défini, sinon fallback
+  // sur l'auto-déduction depuis la 1ère entry (rétrocompat libs legacy).
+  const columns: string[] = schemaFields.length > 0
+    ? schemaFields.map((f) => f.key)
+    : entries.length > 0
+      ? Object.keys(JSON.parse(entries[0]!.fields) as Record<string, string>).filter(
+          (k) => !["set_tag", "category"].includes(k),
+        )
+      : [];
 
   /** Import effectif d'un fichier CSV — extrait pour pouvoir être appelé
    *  depuis le drop-zone page-level en plus du <input type="file">. */
@@ -178,6 +178,7 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
     setImporting(true);
     setImportError(null);
     setImportSuccess(null);
+    // CSV ET xlsx passent tels quels — le serveur détecte et parse selon l'extension/MIME.
     const formData = new FormData();
     formData.append("file", file);
     const res = await fetch(`/api/admin/libraries/data/campaigns/${campaignId}/import`, {
@@ -232,11 +233,20 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
     e.preventDefault();
     dragDepthRef.current = 0;
     setPageDragOver(false);
-    const file = Array.from(e.dataTransfer.files ?? []).find(
-      (f) => f.name.toLowerCase().endsWith(".csv") || f.type === "text/csv" || f.type === "text/plain",
-    );
+    const file = Array.from(e.dataTransfer.files ?? []).find((f) => {
+      const n = f.name.toLowerCase();
+      return (
+        n.endsWith(".csv") ||
+        n.endsWith(".xlsx") ||
+        n.endsWith(".xls") ||
+        f.type === "text/csv" ||
+        f.type === "text/plain" ||
+        f.type.includes("spreadsheet") ||
+        f.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+    });
     if (!file) {
-      setImportError("Aucun fichier CSV détecté dans la sélection déposée.");
+      setImportError("Aucun fichier CSV ou Excel détecté dans la sélection déposée.");
       return;
     }
     void importCSVFile(file);
@@ -294,67 +304,78 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
       void load();
     }
   }
-  async function handleToggleAccess(entry: DataEntry, accountId: string, addAccess: boolean) {
-    const next = addAccess
-      ? [...entry.accessAccountIds, accountId]
-      : entry.accessAccountIds.filter((id) => id !== accountId);
-    const res = await fetch(`/api/admin/libraries/data/campaigns/${campaignId}/entries/${entry.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accessAccountIds: next }),
-    });
-    if (!res.ok) return;
-    setEntries((prev) => prev.map((e) => e.id === entry.id ? { ...e, accessAccountIds: next } : e));
-  }
 
-  async function handleSaveEntry(entryId: string, fields: Record<string, string>, setTag: string | null, category: string | null) {
-    const res = await fetch(`/api/admin/libraries/data/campaigns/${campaignId}/entries/${entryId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fields, setTag: setTag || null, category: category || null }),
-    });
-    if (!res.ok) throw new Error("Erreur lors de la sauvegarde");
-    setEntries((prev) =>
-      prev.map((e) => e.id === entryId ? { ...e, fields: JSON.stringify(fields), setTag: setTag || null, category: category || null } : e)
-    );
+  async function createBlankEntry() {
+    // Phase 1.x design (spreadsheet) — POST une fiche vide puis bump focusBottomSignal
+    // pour que la spreadsheet scroll + focus la cellule Set de la nouvelle row.
+    try {
+      const res = await fetch(`/api/admin/libraries/data/campaigns/${campaignId}/entries`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ setTag: null, category: null, fields: {} }),
+      });
+      if (!res.ok) {
+        const d = (await res.json()) as { error?: string };
+        toast.error(d.error ?? "Erreur lors de la création");
+        return;
+      }
+      await load();
+      setFocusBottomSignal((n) => n + 1);
+    } catch {
+      toast.error("Erreur réseau");
+    }
   }
 
   async function handleDeleteEntry(entryId: string) {
+    const ok = await confirm({
+      title: "Supprimer cette fiche ?",
+      description: "Cette action est irréversible.",
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
+    if (!ok) return;
     const res = await fetch(`/api/admin/libraries/data/campaigns/${campaignId}/entries/${entryId}`, {
       method: "DELETE",
     });
-    if (!res.ok) throw new Error("Erreur lors de la suppression");
+    if (!res.ok) {
+      toast.error("Erreur lors de la suppression");
+      return;
+    }
     setEntries((prev) => prev.filter((e) => e.id !== entryId));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(entryId);
+      return next;
+    });
+    toast.success("Fiche supprimée.");
   }
 
-  async function handleToggleAccessForGroup(groupEntries: DataEntry[], accountId: string, addAccess: boolean) {
-    const updates = groupEntries.map((entry) => ({
-      id: entry.id,
-      accessAccountIds: addAccess
-        ? entry.accessAccountIds.includes(accountId)
-          ? entry.accessAccountIds
-          : [...entry.accessAccountIds, accountId]
-        : entry.accessAccountIds.filter((id) => id !== accountId),
-    }));
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    const ok = await confirm({
+      title: `Supprimer ${ids.length} fiche${ids.length !== 1 ? "s" : ""} ?`,
+      description: "Cette action est irréversible.",
+      confirmLabel: "Supprimer",
+      variant: "danger",
+    });
+    if (!ok) return;
     await Promise.all(
-      updates.map(({ id, accessAccountIds }) =>
-        fetch(`/api/admin/libraries/data/campaigns/${campaignId}/entries/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accessAccountIds }),
-        })
-      )
+      ids.map((id) =>
+        fetch(`/api/admin/libraries/data/campaigns/${campaignId}/entries/${id}`, { method: "DELETE" }),
+      ),
     );
-    setEntries((prev) =>
-      prev.map((e) => {
-        const u = updates.find((x) => x.id === e.id);
-        return u ? { ...e, accessAccountIds: u.accessAccountIds } : e;
-      })
-    );
+    setEntries((prev) => prev.filter((e) => !selectedIds.has(e.id)));
+    setSelectedIds(new Set());
+    toast.success(`${ids.length} fiche${ids.length !== 1 ? "s" : ""} supprimée${ids.length !== 1 ? "s" : ""}.`);
   }
 
   const usedCount = entries.filter((e) => e.usedInCycle).length;
   const isPerAccountPolicy = campaign?.usagePolicy === "cycle_per_account" || campaign?.usagePolicy === "once_per_account";
+  // Phase 1.x — policy "unlimited" = pas de cycle ni de blocage : on cache
+  // le compteur "X ce cycle" (toujours 0) et les boutons "Reset cycle" qui
+  // n'ont aucun effet utile.
+  const isUnlimitedPolicy = campaign?.usagePolicy === "unlimited";
 
   return (
     <div
@@ -365,159 +386,223 @@ export function DataEntriesPanel({ campaignId, libraryId }: Props) {
       onDrop={handleDrop}
     >
       {pageDragOver && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-indigo-500/10 border-4 border-dashed border-indigo-400 pointer-events-none">
-          <div className="bg-white rounded-xl shadow-lg px-6 py-4 text-sm font-medium text-indigo-700">
-            Déposez le CSV pour importer dans <span className="font-semibold">{campaign?.name ?? "cette campagne"}</span>
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-sky-500/10 backdrop-blur-[6px] pointer-events-none">
+          <div className="rounded-xl bg-gradient-to-b from-white to-white/85 backdrop-blur-[20px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.45),0_8px_24px_-4px_rgba(125,180,210,0.25),0_24px_64px_-12px_rgba(15,23,42,0.22)] px-6 py-4 text-[13px] font-medium text-gray-800">
+            Déposez le CSV ou Excel pour importer dans{" "}
+            <span className="font-semibold">cette bibliothèque</span>
           </div>
         </div>
       )}
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">
-            {campaign?.name ?? "Campagne"}
-            {campaign?.isActive && <span className="ml-2 text-xs text-green-600 font-normal border border-green-200 rounded px-1.5 py-0.5">Active</span>}
-          </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {entries.length} entrée{entries.length !== 1 ? "s" : ""} · {usedCount} utilisée{usedCount !== 1 ? "s" : ""} ce cycle
-            {accountFilter && isPerAccountPolicy && (
-              <span className="ml-1 text-indigo-500">
-                · {entries.filter((e) => e.usageCount > 0).length} utilisée{entries.filter((e) => e.usageCount > 0).length !== 1 ? "s" : ""} par ce compte
-              </span>
-            )}
-          </p>
-        </div>
+
+      {/* Actions principales */}
+      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+        <p className="text-[12.5px] text-gray-600">
+          {entries.length} fiche{entries.length !== 1 ? "s" : ""} · {schemaFields.length} champ{schemaFields.length !== 1 ? "s" : ""} dans le schéma
+          {!isUnlimitedPolicy && (
+            <>
+              {" · "}
+              <span className="tabular-nums">{usedCount}</span> utilisée
+              {usedCount !== 1 ? "s" : ""} ce cycle
+            </>
+          )}
+          {accountFilter && isPerAccountPolicy && (
+            <span className="ml-1 text-sky-700">
+              ·{" "}
+              <span className="tabular-nums">
+                {entries.filter((e) => e.usageCount > 0).length}
+              </span>{" "}
+              par ce compte
+            </span>
+          )}
+        </p>
         <div className="flex items-center gap-2 flex-wrap justify-end">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
-            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 disabled:opacity-50"
-          >
-            <Upload size={14} /> Importer CSV
-          </button>
-          {/* B9 — Modèle CSV toujours disponible. Si la campagne n'a pas
-               encore d'entries (columns vide), on télécharge au minimum
-               les colonnes obligatoires `set_tag` + `category` ; l'admin
-               ajoutera ses propres colonnes dynamiques (elles seront
-               créées au premier import). */}
-          <button
-            onClick={() => downloadCSVFromColumns(columns, campaign?.name ?? "campagne")}
-            className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 text-gray-600 text-sm rounded-md hover:bg-gray-50"
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={Download}
+            onClick={() =>
+              downloadCSVFromColumns(columns, campaign?.name ?? "campagne")
+            }
             title={
               columns.length === 0
-                ? "Télécharge un modèle minimal (set_tag, category). Ajoute ensuite tes propres colonnes — elles seront créées au premier import."
+                ? "Télécharge un modèle minimal (set_tag, category)."
                 : "Télécharger le modèle CSV (en-têtes uniquement)"
             }
           >
-            <Download size={14} /> Modèle CSV
-          </button>
-          {accountFilter && isPerAccountPolicy ? (
-            <button
-              onClick={() => { void handleResetForAccount(); }}
+            Modèle CSV
+          </Button>
+          {!isUnlimitedPolicy && (accountFilter && isPerAccountPolicy ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={RotateCcw}
+              onClick={() => {
+                void handleResetForAccount();
+              }}
               disabled={resettingAccount || entries.length === 0}
-              className="flex items-center gap-2 px-3 py-1.5 border border-orange-200 text-orange-600 text-sm rounded-md hover:bg-orange-50 disabled:opacity-50"
+              loading={resettingAccount}
               title="Réinitialiser le cycle uniquement pour ce compte"
             >
-              <RotateCcw size={14} /> Reset ce compte
-            </button>
+              Reset ce compte
+            </Button>
           ) : (
-            <button
-              onClick={() => { void handleReset(); }}
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={RotateCcw}
+              onClick={() => {
+                void handleReset();
+              }}
               disabled={resetting || entries.length === 0}
-              className="flex items-center gap-2 px-3 py-1.5 border border-red-200 text-red-600 text-sm rounded-md hover:bg-red-50 disabled:opacity-50"
+              loading={resetting}
             >
-              <RotateCcw size={14} /> Reset cycle
-            </button>
-          )}
+              Reset cycle
+            </Button>
+          ))}
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={Upload}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            loading={importing}
+          >
+            Importer CSV/Excel
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={Plus}
+            onClick={() => void createBlankEntry()}
+            title="Ajouter une fiche vide en bas de la table (édition inline)"
+          >
+            Nouvelle fiche
+          </Button>
         </div>
-        <input ref={fileInputRef} type="file" accept=".csv,.txt" onChange={(e) => { void handleImport(e); }} className="hidden" />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,.txt,.xlsx,.xls"
+          onChange={(e) => {
+            void handleImport(e);
+          }}
+          className="hidden"
+        />
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
-        {/* Account filter */}
-        {accounts.length > 0 && (
-          <select
-            value={accountFilter ?? ""}
-            onChange={(e) => setAccountFilter(e.target.value || null)}
-            className="text-sm border border-gray-200 rounded px-2 py-1 text-gray-700"
-          >
-            <option value="">Tous les comptes</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>{a.name} (@{a.handle})</option>
-            ))}
-          </select>
-        )}
-        {/* View toggle */}
-        {hasGroups && (
-          <div className="flex items-center gap-1 border border-gray-200 rounded overflow-hidden text-xs">
-            <button
-              onClick={() => setViewMode("flat")}
-              className={`px-2.5 py-1 ${viewMode === "flat" ? "bg-gray-100 text-gray-800 font-medium" : "text-gray-500 hover:bg-gray-50"}`}
-            >
-              Liste
-            </button>
-            <button
-              onClick={() => setViewMode("grouped")}
-              className={`px-2.5 py-1 ${viewMode === "grouped" ? "bg-gray-100 text-gray-800 font-medium" : "text-gray-500 hover:bg-gray-50"}`}
-            >
-              Par set
-            </button>
+      {/* Filter bar : compte IG si plusieurs */}
+      {accounts.length > 0 && (
+        <div className="p-3 rounded-2xl bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)] mb-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="w-[260px]">
+              <Combobox
+                value={accountFilter ?? ""}
+                onChange={(v) => setAccountFilter(v || null)}
+                options={[
+                  { value: "", label: "Tous les comptes" },
+                  ...accounts.map((a) => ({
+                    value: a.id,
+                    label: `@${a.handle} — ${a.name}`,
+                    keywords: [a.handle, a.name],
+                  })),
+                ]}
+                placeholder="Tous les comptes"
+                emptyMessage="Aucun compte"
+              />
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Alerts */}
-      {importError && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">{importError}</div>}
-      {importSuccess && <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded text-sm text-green-700">{importSuccess}</div>}
-      {resetSuccess && <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded text-sm text-green-700">✓ {resetSuccess}</div>}
-      {resetError && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">{resetError}</div>}
+      {importError && (
+        <div className="mb-4 rounded-xl bg-rose-50/70 backdrop-blur-[8px] px-3 py-2.5 text-[12px] text-rose-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.22)]">
+          {importError}
+        </div>
+      )}
+      {importSuccess && (
+        <div className="mb-4 rounded-xl bg-sage-50/70 backdrop-blur-[8px] px-3 py-2.5 text-[12px] text-sage-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(111,162,128,0.22)]">
+          {importSuccess}
+        </div>
+      )}
+      {resetSuccess && (
+        <div className="mb-4 rounded-xl bg-sage-50/70 backdrop-blur-[8px] px-3 py-2.5 text-[12px] text-sage-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(111,162,128,0.22)]">
+          ✓ {resetSuccess}
+        </div>
+      )}
+      {resetError && (
+        <div className="mb-4 rounded-xl bg-rose-50/70 backdrop-blur-[8px] px-3 py-2.5 text-[12px] text-rose-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.22)]">
+          {resetError}
+        </div>
+      )}
 
       {loading ? (
-        <p className="text-sm text-gray-400">Chargement…</p>
+        <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] py-12 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] flex items-center justify-center text-gray-500 gap-3">
+          <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+          <span className="text-[12.5px]">Chargement…</span>
+        </div>
       ) : entries.length === 0 ? (
-        <div className="text-center py-12 text-sm text-gray-500">
-          <p className="mb-2 font-medium">Aucune entrée pour le moment.</p>
+        <div className="rounded-2xl bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-[8px] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.06)] text-center">
+          <p className="text-[14px] font-semibold text-gray-700 mb-2">Aucune entrée pour le moment.</p>
           <p className="mb-3">Glisse-dépose un CSV n&apos;importe où sur la page, ou utilise le bouton ci-dessous.</p>
-          <div className="flex items-center justify-center gap-2 mb-3 flex-wrap">
-            <button
+          <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
+            <Button
+              variant="primary"
+              size="md"
+              icon={Upload}
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+              loading={importing}
             >
-              <Upload size={14} /> Importer mon premier CSV
-            </button>
-            <button
+              Importer mon premier CSV
+            </Button>
+            <Button
+              variant="secondary"
+              size="md"
+              icon={Download}
               onClick={() => downloadCSVFromColumns(columns, campaign?.name ?? "campagne")}
-              className="inline-flex items-center gap-2 px-3 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50"
             >
-              <Download size={13} /> Modèle CSV
-            </button>
+              Modèle CSV
+            </Button>
           </div>
-          <p className="text-xs text-gray-400 mb-1">
-            Colonnes réservées (exclues des champs) : <code className="bg-gray-100 px-1 rounded">set_tag</code>, <code className="bg-gray-100 px-1 rounded">category</code>
+          <p className="text-[10.5px] text-gray-500 mb-1">
+            Colonnes réservées : <code className="bg-white/60 px-1.5 py-0.5 rounded shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)] font-mono">set_tag</code>, <code className="bg-white/60 px-1.5 py-0.5 rounded shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)] font-mono">category</code>
           </p>
-          <p className="text-xs text-gray-400">
+          <p className="text-[10.5px] text-gray-400">
             Astuce : générez le modèle CSV depuis le builder (onglet Paramètres) pour obtenir automatiquement
             les bons en-têtes depuis le schéma de la template.
           </p>
         </div>
-      ) : viewMode === "grouped" && hasGroups ? (
-        <GroupedView
-          groups={groups}
-          columns={columns}
-          accountFilter={accountFilter}
-          usagePolicy={campaign?.usagePolicy ?? "cycle"}
-          expandedGroups={expandedGroups}
-          onToggleGroup={toggleGroup}
-          isAccessible={isAccessible}
-          accounts={accounts}
-          onToggleAccess={handleToggleAccess}
-          onToggleAccessForGroup={handleToggleAccessForGroup}
-        />
       ) : (
-        <FlatTable entries={entries} columns={columns} accountFilter={accountFilter} usagePolicy={campaign?.usagePolicy ?? "cycle"} isAccessible={isAccessible} accounts={accounts} onToggleAccess={handleToggleAccess} onEditEntry={handleSaveEntry} onDeleteEntry={handleDeleteEntry} />
+        <>
+          {/* Bulk action bar (Phase 1.x design) — apparaît quand au moins 1 fiche sélectionnée. */}
+          {selectedIds.size > 0 && (
+            <div className="mb-3 rounded-xl px-3 py-2 bg-sky-50/60 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.32)] flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-[12.5px] font-medium text-sky-700">
+                {selectedIds.size} fiche{selectedIds.size > 1 ? "s" : ""} sélectionnée{selectedIds.size > 1 ? "s" : ""}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                  Désélectionner
+                </Button>
+                <Button variant="danger" size="sm" icon={Trash2} onClick={() => void handleBulkDelete()}>
+                  Supprimer
+                </Button>
+              </div>
+            </div>
+          )}
+          <DataEntriesSpreadsheet
+            campaignId={campaignId}
+            entries={entries.filter(isAccessible)}
+            onEntriesChange={setEntries}
+            schema={schemaFields}
+            selectedKeys={selectedIds}
+            onSelectionChange={setSelectedIds}
+            focusBottomSignal={focusBottomSignal}
+          />
+        </>
       )}
+
       {confirmDialog}
     </div>
   );

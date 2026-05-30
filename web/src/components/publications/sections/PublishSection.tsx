@@ -18,6 +18,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Send, ExternalLink, Edit2, CheckCircle, AlertTriangle, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Section } from "@/components/ui/molecules/Section";
 import { Input } from "@/components/ui/Input";
 import { FormField } from "@/components/ui/FormField";
 import { Badge } from "@/components/ui/Badge";
@@ -34,6 +35,10 @@ interface Props {
   canPublish: boolean;
   /** Steps "amont" pas encore terminées au moment du rendu. */
   incompleteSteps?: Array<{ key: string; label: string; status: "todo" | "failed" }>;
+  sectionId?: string;
+  storageKey?: string;
+  defaultOpen?: boolean;
+  collapsible?: boolean;
 }
 
 function formatDateTimeFR(date: Date): string {
@@ -47,7 +52,13 @@ function formatDateTimeFR(date: Date): string {
   });
 }
 
-export function PublishSection({ slot, canPublish, incompleteSteps = [] }: Props) {
+export function PublishSection({
+  slot, canPublish, incompleteSteps = [],
+  sectionId = "publish",
+  storageKey,
+  defaultOpen = true,
+  collapsible = false,
+}: Props) {
   const router = useRouter();
   const isPublished = slot.status === "PUBLISHED";
 
@@ -112,20 +123,19 @@ export function PublishSection({ slot, canPublish, incompleteSteps = [] }: Props
   }
 
   return (
-    <section
-      id="publish"
-      className="bg-white border border-gray-100 rounded-2xl p-8"
+    <Section
+      title="Publication"
+      icon={Send}
+      sectionId={sectionId}
+      storageKey={storageKey}
+      defaultOpen={defaultOpen}
+      collapsible={collapsible}
+      actions={
+        isPublished ? (
+          <Badge variant="success" icon={CheckCircle}>publié</Badge>
+        ) : null
+      }
     >
-      {/* En-tête section */}
-      <div className="flex items-center gap-2 mb-4">
-        <Send size={14} className="text-gray-500" />
-        <h2 className="text-[13px] font-semibold text-gray-950">Publication</h2>
-        {isPublished && (
-          <Badge variant="success" icon={CheckCircle}>
-            publié
-          </Badge>
-        )}
-      </div>
 
       {/* ── État publié ────────────────────────────────────────────── */}
       {isPublished && (
@@ -273,6 +283,6 @@ export function PublishSection({ slot, canPublish, incompleteSteps = [] }: Props
           </Button>
         </div>
       )}
-    </section>
+    </Section>
   );
 }

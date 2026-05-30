@@ -26,6 +26,8 @@ import {
 } from "@/lib/publications/clientValidation";
 import { resolveClientValidationConfig } from "@/lib/services/slot/config";
 import { logActivity } from "@/lib/services/slot/activity";
+import { triggerAutoDescriptionForTranscription } from "@/lib/triggerAutoDescriptionFromTranscription";
+import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
 
 type RouteContext = { params: Promise<{ token: string }> };
 
@@ -203,5 +205,79 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     },
   });
 
+  // Triggers post-approve (2026-05-30) : maintenant que le client a validé,
+  // on lance description auto + cover auto en parallèle. Les helpers
+  // `triggerAutoDescription*` et `triggerAutoCover*` ont une garde
+  // "post-validation" qui les fait skip si appelés avant SCHEDULED — ici
+  // on est juste après le status update vers SCHEDULED, donc ça passe.
+  // Fire-and-forget : ne bloque pas la réponse client.
+  if (effectiveAction === "approve") {
+    void triggerPostValidationJobs(slot.id).catch((err) => {
+      console.error(`[validate/${token}] post-validation triggers failed for slot=${slot.id}:`, err);
+    });
+  }
+
   return NextResponse.json({ status: targetStatus, roundNumber: nextRoundNumber });
+}
+
+/**
+ * Déclenche en parallèle (fire-and-forget) les jobs aval qu'on a différés
+ * jusqu'à la validation client : description IA et cover pack auto.
+ *
+ * On résout d'abord les jobs/render associés au slot, puis on appelle les
+ * helpers triggers existants — ils sont idempotents (skip si déjà existant
+ * ou déjà fait), donc safe en cas de double approve.
+ */
+async function triggerPostValidationJobs(slotId: string): Promise<void> {
+  const slot = await prisma.publicationSlot.findUnique({
+    where: { id: slotId },
+    select: {
+      currentVersion: {
+        select: {
+          id: true,
+          fileUrl: true,
+          transcriptionJob: { select: { id: true, status: true } },
+        },
+      },
+      // Render lié au slot (uniqueRelation via Render.publicationSlotId).
+      // On charge AUSSI la transcription liée au render (pipeline auto_template),
+      // car `slot.currentVersion` est null pour ces slots — sans ça, la
+      // description IA ne se déclenchait jamais après validation.
+      render: {
+        select: {
+          id: true,
+          status: true,
+          videoUrl: true,
+          templateId: true,
+          listing: { select: { userId: true } },
+          transcriptionJob: { select: { id: true, status: true } },
+        },
+      },
+    },
+  });
+  if (!slot) return;
+
+  // Description : prend la transcription côté version (manual_rushes/external)
+  // OU côté render (auto_template). Une seule des deux existe en pratique.
+  const transcription =
+    slot.currentVersion?.transcriptionJob ?? slot.render?.transcriptionJob ?? null;
+  if (transcription && transcription.status === "COMPLETED") {
+    void triggerAutoDescriptionForTranscription(transcription.id).catch((err) => {
+      console.error(`[validate post-approve] triggerAutoDescription échoué slot=${slotId}:`, err);
+    });
+  }
+
+  // Cover pack : si render DONE avec videoUrl, fire trigger.
+  const render = slot.render;
+  const sourceVideoUrl = render?.videoUrl ?? slot.currentVersion?.fileUrl ?? null;
+  if (render && render.status === "DONE" && sourceVideoUrl && render.listing?.userId) {
+    void triggerAutoCoverPackForRender(
+      render.id,
+      render.templateId,
+      sourceVideoUrl,
+      render.listing.userId,
+    ).catch((err) => {
+      console.error(`[validate post-approve] triggerAutoCover échoué slot=${slotId}:`, err);
+    });
+  }
 }

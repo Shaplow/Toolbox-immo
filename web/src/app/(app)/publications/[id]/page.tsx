@@ -85,10 +85,14 @@ export default async function PublicationPage({ params }: PageProps) {
           listing: { select: { id: true } },
         },
       },
-      // Phase 1.9 A2 — dernier job captions lié au slot
+      // Fix bug 2026-05-30 : take: 5 (au lieu de 1) pour distinguer le dernier
+      // captionJob (pour l'état UI CaptionsSection) du dernier COMPLETED (pour
+      // déterminer la version sous-titrée à utiliser comme rendu final).
+      // Sans ça, un retry échec/processing écrasait la version COMPLETED
+      // précédente comme source de finalVideoUrl → on retombait sur la brute.
       captionJobs: {
         orderBy: { createdAt: "desc" },
-        take: 1,
+        take: 5,
         select: {
           id: true,
           status: true,
@@ -134,19 +138,58 @@ export default async function PublicationPage({ params }: PageProps) {
   // Dériver le listing depuis le render si présent
   const listing = slot.render?.listing ?? null;
 
-  // F1.5 — Fetch les 50 commentaires les plus RÉCENTS (DESC), puis inversion
-  // pour affichage chronologique en UI. Avant on chargeait les 50 plus
-  // anciens et les récents (les plus utiles pour le suivi) étaient masqués
-  // sur les slots très commentés.
-  const rawComments = await prisma.publicationComment.findMany({
-    where: { slotId: id },
-    orderBy: { createdAt: "desc" },
-    take: 51,
-    include: {
-      author: { select: { id: true, name: true, email: true } },
-    },
-  });
+  // F1.5 — Fetch des 5 collections en parallèle (toutes indépendantes : pas
+  // de dépendance entre comments / activities / rushes / versions / brief).
+  // Avant : 5 round-trips DB séquentiels. Maintenant : 1 batch.
+  const isAdmin = role === "ADMIN";
+  const [rawComments, rawActivities, rawRushes, rawVersions, rawBrief] = await Promise.all([
+    prisma.publicationComment.findMany({
+      where: { slotId: id },
+      orderBy: { createdAt: "desc" },
+      take: 51,
+      include: {
+        author: { select: { id: true, name: true, email: true } },
+      },
+    }),
+    prisma.publicationActivity.findMany({
+      where: { slotId: id },
+      orderBy: { createdAt: "desc" },
+      take: 31, // +1 pour détecter hasMore
+      include: {
+        actor: { select: { id: true, name: true } },
+      },
+    }),
+    prisma.publicationRush.findMany({
+      where: { slotId: id, deletedAt: null },
+      orderBy: { uploadedAt: "desc" },
+      include: {
+        uploadedBy: { select: { id: true, name: true, email: true } },
+      },
+    }),
+    prisma.publicationVersion.findMany({
+      where: {
+        slotId: id,
+        ...(isAdmin ? {} : { deletedAt: null }),
+      },
+      orderBy: { versionNumber: "desc" },
+      include: {
+        uploadedBy: { select: { id: true, name: true, email: true } },
+      },
+    }),
+    prisma.publicationBrief.findUnique({
+      where: { slotId: id },
+      include: {
+        attachments: {
+          orderBy: { createdAt: "asc" },
+        },
+        updatedBy: { select: { id: true, name: true, email: true } },
+      },
+    }),
+  ]);
 
+  // Charge plus la chaîne récente puis affiche en ordre ASC (lecture naturelle).
+  // Les 50 plus récents = ce qu'on garde ; les anciens (>50) sont signalés par
+  // commentsHasMore et masqués jusqu'à pagination future.
   const commentsHasMore = rawComments.length > 50;
   const comments: CommentData[] = rawComments.slice(0, 50).reverse().map((c) => ({
     id: c.id,
@@ -162,16 +205,6 @@ export default async function PublicationPage({ params }: PageProps) {
     },
   }));
 
-  // Fetch activités (30 premières, newest first)
-  const rawActivities = await prisma.publicationActivity.findMany({
-    where: { slotId: id },
-    orderBy: { createdAt: "desc" },
-    take: 31, // +1 pour détecter hasMore
-    include: {
-      actor: { select: { id: true, name: true } },
-    },
-  });
-
   const activityHasMore = rawActivities.length > 30;
   const activities: ActivityItem[] = rawActivities.slice(0, 30).map((a) => ({
     id: a.id,
@@ -180,15 +213,6 @@ export default async function PublicationPage({ params }: PageProps) {
     createdAt: a.createdAt.toISOString(),
     actor: a.actor ? { id: a.actor.id, name: a.actor.name } : null,
   }));
-
-  // Fetch rushes (soft-delete exclu)
-  const rawRushes = await prisma.publicationRush.findMany({
-    where: { slotId: id, deletedAt: null },
-    orderBy: { uploadedAt: "desc" },
-    include: {
-      uploadedBy: { select: { id: true, name: true, email: true } },
-    },
-  });
 
   const rushes = rawRushes.map((r) => ({
     id: r.id,
@@ -200,19 +224,6 @@ export default async function PublicationPage({ params }: PageProps) {
     uploadedByUserId: r.uploadedByUserId,
     uploadedBy: r.uploadedBy,
   }));
-
-  // Fetch versions (ADMIN voit les soft-deleted)
-  const isAdmin = role === "ADMIN";
-  const rawVersions = await prisma.publicationVersion.findMany({
-    where: {
-      slotId: id,
-      ...(isAdmin ? {} : { deletedAt: null }),
-    },
-    orderBy: { versionNumber: "desc" },
-    include: {
-      uploadedBy: { select: { id: true, name: true, email: true } },
-    },
-  });
 
   const versions = rawVersions.map((v) => ({
     id: v.id,
@@ -227,17 +238,6 @@ export default async function PublicationPage({ params }: PageProps) {
     uploadedByUserId: v.uploadedByUserId,
     uploadedBy: v.uploadedBy,
   }));
-
-  // Fetch brief + attachments
-  const rawBrief = await prisma.publicationBrief.findUnique({
-    where: { slotId: id },
-    include: {
-      attachments: {
-        orderBy: { createdAt: "asc" },
-      },
-      updatedBy: { select: { id: true, name: true, email: true } },
-    },
-  });
 
   const brief = rawBrief
     ? {
@@ -257,8 +257,14 @@ export default async function PublicationPage({ params }: PageProps) {
     createdAt: a.createdAt.toISOString(),
   })) ?? [];
 
-  // Phase 1.9 A2 — dernier job captions lié
+  // Phase 1.9 A2 — dernier job captions lié (pour l'état UI CaptionsSection).
   const latestCaptionJob = slot.captionJobs[0] ?? null;
+  // Fix bug 2026-05-30 : dernier CaptionJob COMPLETED — source de vérité pour
+  // la "version sous-titrée" qui doit remplacer la brute dans la fiche +
+  // validation client. Distinct du latestCaptionJob qui peut être en
+  // PROCESSING / FAILED après un retry et masquait la version finale.
+  const latestCompletedCaptionJob =
+    slot.captionJobs.find((j) => j.status === "COMPLETED" && j.outputUrl) ?? null;
   // P0.2 — dernier job description IA lié (le step utilise aussi slot.description en fallback)
   const latestDescriptionJob = slot.descriptionJobs[0] ?? null;
 
@@ -465,6 +471,17 @@ export default async function PublicationPage({ params }: PageProps) {
               createdAt: latestCaptionJob.createdAt.toISOString(),
             }
           : null
+      }
+      latestCompletedCaptionJob={
+        latestCompletedCaptionJob
+          ? {
+              status: latestCompletedCaptionJob.status,
+              outputUrl: latestCompletedCaptionJob.outputUrl,
+            }
+          : null
+      }
+      latestDescriptionJob={
+        latestDescriptionJob ? { status: latestDescriptionJob.status } : null
       }
       clientValidation={{
         needsClientValidation: resolvedConfig.needsClientValidation,

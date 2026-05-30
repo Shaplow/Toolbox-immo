@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { Upload, Play, Music2 } from "lucide-react";
+import { Play, Music2 } from "lucide-react";
 import { useConfirm } from "@/components/ui/useConfirm";
 import { MediaAssetEditModal } from "./MediaAssetEditModal";
 import { MediaBatchAutocutPanel } from "./MediaBatchAutocutPanel";
@@ -19,7 +19,15 @@ import { MediaAssetsVideoCard } from "./mediaAssets/MediaAssetsVideoCard";
 import { MediaAssetsGroupColumn } from "./mediaAssets/MediaAssetsGroupColumn";
 import { MediaAssetsCompactCard } from "./mediaAssets/MediaAssetsCompactCard";
 import { MediaAssetsToolbar } from "./mediaAssets/MediaAssetsToolbar";
+// MediaAssetsOrphanRibbon supprimé du flow par défaut (trop bruyant). Filtre via sidebar maintenant.
+import { MediaAssetsBulkSortDrawer } from "./mediaAssets/MediaAssetsBulkSortDrawer";
+import { MediaAssetDetailDrawer } from "./mediaAssets/MediaAssetDetailDrawer";
+import { MediaAssetsNextGenPreview } from "./mediaAssets/MediaAssetsNextGenPreview";
+import { MediaAssetsKpiRow } from "./mediaAssets/MediaAssetsKpiRow";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { MediaAssetsCategoriesSidebar, type CategoryFilter } from "./mediaAssets/MediaAssetsCategoriesSidebar";
 import { useAssetSequence } from "./mediaAssets/useAssetSequence";
+import { useAdvancedMode } from "@/hooks/useAdvancedMode";
 
 interface Props {
   library: MediaLibrary;
@@ -52,6 +60,25 @@ export function MediaAssetsPanel({ library }: Props) {
   const [editingAsset, setEditingAsset] = useState<MediaAsset | null>(null);
   const [showAtelier, setShowAtelier] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "grouped" | "rotation">("grid");
+  // Phase 2 médiathèque — toggle "Réglages avancés" (default OFF = mode noob).
+  // Quand OFF : viewMode forcé en "grouped" (vue Catégories), filtre tag caché,
+  // édition inline rapide non-prioritaire. Le state viewMode local reste pour
+  // que l'user retrouve son dernier choix en réactivant le mode avancé.
+  const { isAdvanced, toggleAdvanced } = useAdvancedMode(library.id);
+  // Mode manuel (rotation = "none") : la lib n'utilise pas la rotation auto.
+  // Les assets sont sélectionnés par metadata côté générateur — pas de notion
+  // de catégorie/pack/orphelin/prochaine génération.
+  const isManualMode = library.rotationMode === "none";
+  // Force vue "grid" en manual (Catégories n'a pas de sens sans rotation).
+  const effectiveViewMode = isManualMode ? "grid" : isAdvanced ? viewMode : "grouped";
+  const [sortDrawerOpen, setSortDrawerOpen] = useState(false);
+  // Phase 3 — drawer détail asset (ouvert en mode noob via click sur card).
+  const [detailAsset, setDetailAsset] = useState<MediaAsset | null>(null);
+  // Si le drawer a été ouvert depuis une stack (set), on garde la liste des assets du set
+  // pour permettre de naviguer entre eux sans fermer/rouvrir le drawer.
+  const [detailSetAssets, setDetailSetAssets] = useState<MediaAsset[] | null>(null);
+  // Phase B — filtre catégorie depuis la sidebar (mode noob uniquement).
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   // F2.3 — Count des jobs autocut en attente de review (badge sur "Analyse auto").
   const [autocutPendingCount, setAutocutPendingCount] = useState(0);
   // D4 — bulk edit extrait dans useBulkEdit hook. La sticky bar D8
@@ -78,6 +105,34 @@ export function MediaAssetsPanel({ library }: Props) {
   const metadataSchema = useMemo<MetadataField[]>(() => {
     try { return JSON.parse(library.metadataSchema ?? "[]") as MetadataField[]; } catch { return []; }
   }, [library.metadataSchema]);
+
+  // Phase 2 — assets orphelins (sans catégorie) + catégories existantes pour
+  // le ribbon "X fichiers à ranger" et le drawer bulk-sort.
+  const orphanAssets = useMemo(
+    () => assets.filter((a) => !a.category),
+    [assets],
+  );
+  const existingCategories = useMemo(() => {
+    const set = new Set<string>();
+    assets.forEach((a) => {
+      if (a.category) set.add(a.category);
+    });
+    return Array.from(set).sort();
+  }, [assets]);
+  // Phase 3 — packs nommés explicitement (exclus les pack_<random> auto).
+  const existingPacks = useMemo(() => {
+    const set = new Set<string>();
+    assets.forEach((a) => {
+      if (a.setTag && !a.setTag.startsWith("pack_")) set.add(a.setTag);
+    });
+    return Array.from(set).sort();
+  }, [assets]);
+
+  // Re-sync detailAsset si l'asset a été mis à jour dans la liste (optimistic).
+  const liveDetailAsset = useMemo(
+    () => (detailAsset ? assets.find((a) => a.id === detailAsset.id) ?? null : null),
+    [detailAsset, assets],
+  );
 
   // D9 — inline edits (setTag, category, tags, usage, lastUsedAt, metadata,
   // access, disabled, delete) extraits dans useAssetInlineEdits hook.
@@ -200,14 +255,23 @@ export function MediaAssetsPanel({ library }: Props) {
 
   // ─ Liste des comptes Instagram chargée via useInstagramAccounts hook.
 
+  // Phase B — filtre catégorie depuis la sidebar (avant search/tagFilter).
+  // En mode avancé, categoryFilter reste "all" donc no-op.
+  const categoryFilteredAssets = useMemo(() => {
+    if (categoryFilter === "all") return assets;
+    if (categoryFilter === "orphans") return assets.filter((a) => !a.category);
+    if (categoryFilter === "disabled") return assets.filter((a) => a.disabled);
+    return assets.filter((a) => a.category === categoryFilter.category);
+  }, [assets, categoryFilter]);
+
   // filteredPreTag = recherche texte uniquement, sans le filtre tag.
   // Utilisé pour allTags/allSetTags afin que les chips de tags restent
   // visibles même quand un tag est actif.
   const filteredPreTag = useMemo(() => {
-    if (!search.trim()) return assets;
+    if (!search.trim()) return categoryFilteredAssets;
     const q = search.toLowerCase();
-    return assets.filter((a) => a.filename.toLowerCase().includes(q));
-  }, [assets, search]);
+    return categoryFilteredAssets.filter((a) => a.filename.toLowerCase().includes(q));
+  }, [categoryFilteredAssets, search]);
 
   const allTags = useMemo(() => {
     const set = new Set<string>();
@@ -523,6 +587,9 @@ export function MediaAssetsPanel({ library }: Props) {
         setPreviewId={setPreviewId}
         onEditAsset={setEditingAsset}
         inline={inline}
+        isAdvanced={isAdvanced}
+        isManualMode={isManualMode}
+        onOpenDetail={(a) => setDetailAsset(a)}
       />
     );
   }
@@ -600,12 +667,20 @@ export function MediaAssetsPanel({ library }: Props) {
       onDrop={handlePageDrop}
     >
       {pageDragOver && !showUploadModal && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-indigo-500/10 border-4 border-dashed border-indigo-400 pointer-events-none">
-          <div className="bg-white rounded-xl shadow-lg px-6 py-4 text-sm font-medium text-indigo-700">
-            Déposez les fichiers pour les ajouter à <span className="font-semibold">{library.name}</span>
+        <div className={`fixed inset-0 z-40 flex items-center justify-center pointer-events-none ${
+          isVideo ? "bg-sky-400/15" : "bg-sage-400/15"
+        } backdrop-blur-[2px]`}>
+          <div className={`rounded-2xl px-6 py-4 bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[12px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.08),0_8px_24px_-8px_rgba(15,23,42,0.18)] text-sm font-medium ${
+            isVideo ? "text-sky-700" : "text-sage-700"
+          }`}>
+            Déposer les fichiers dans <span className="font-semibold text-gray-950">{library.name}</span>
           </div>
         </div>
       )}
+
+      {/* Phase A — Row de KPI cards (vue d'ensemble lib) */}
+      {assets.length > 0 && <MediaAssetsKpiRow assets={assets} libType={library.type} />}
+
       <MediaAssetsToolbar
         library={library}
         isVideo={isVideo}
@@ -630,10 +705,34 @@ export function MediaAssetsPanel({ library }: Props) {
         selectMode={selectMode}
         setSelectMode={setSelectMode}
         exitSelectMode={exitSelectMode}
+        isAdvanced={isAdvanced}
+        onToggleAdvanced={toggleAdvanced}
       />
 
-      {/* D8 — bulk action bar extraite dans MediaAssetsBulkActionBar */}
-      {selectMode && <MediaAssetsBulkActionBar bulk={bulk} filtered={filtered} accounts={accounts} />}
+      {/* Phase α — espace toolbar ↔ contenu. */}
+      <div className="mt-5">
+        {/* Ribbon orphelins retiré (trop bruyant). Filtre "Sans catégorie" reste accessible via la sidebar. */}
+
+        {/* D8 — bulk action bar extraite dans MediaAssetsBulkActionBar */}
+        {selectMode && <MediaAssetsBulkActionBar bulk={bulk} filtered={filtered} accounts={accounts} />}
+      </div>
+
+      {/* Phase B — Layout 2-cols en mode noob : sidebar catégories + vue principale.
+          En mode avancé OU en audio, la sidebar est cachée et la vue prend toute la largeur. */}
+      {(() => {
+        // Sidebar catégories : caché en audio (pas de catégories typiques) ET en mode manuel
+        // (les catégories ne servent pas de filtre quand la sélection est par metadata).
+        const showSidebar = !isAdvanced && isVideo && !isManualMode;
+        return (
+      <div className={showSidebar ? "grid grid-cols-[220px_1fr] gap-4 items-start" : ""}>
+        {showSidebar && (
+          <MediaAssetsCategoriesSidebar
+            assets={assets}
+            selected={categoryFilter}
+            onSelect={setCategoryFilter}
+          />
+        )}
+        <div className={showSidebar ? "min-w-0" : ""}>
 
       {/* Error */}
       {loadError && (
@@ -650,17 +749,15 @@ export function MediaAssetsPanel({ library }: Props) {
           <div className="w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : assets.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          {isVideo ? <Play size={32} className="text-gray-300 mb-3" /> : <Music2 size={32} className="text-gray-300 mb-3" />}
-          <p className="text-sm font-medium text-gray-500">Aucun fichier dans cette bibliothèque</p>
-          <p className="text-xs text-gray-400 mt-2 mb-4">Uploadez votre premier fichier ou glissez-déposez directement sur cette page.</p>
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
-          >
-            <Upload size={14} /> {isVideo ? "Ajouter des vidéos" : "Ajouter des musiques"}
-          </button>
-        </div>
+        <EmptyState
+          icon={isVideo ? Play : Music2}
+          title={isVideo ? "Aucune vidéo encore" : "Aucune piste audio encore"}
+          description="Glisse tes fichiers directement sur cette page, ou clique ci-dessous pour ouvrir l'uploader."
+          cta={{
+            label: isVideo ? "Ajouter des vidéos" : "Ajouter des musiques",
+            onClick: () => setShowUploadModal(true),
+          }}
+        />
       ) : filtered.length === 0 ? (
         <p className="text-sm text-gray-400 py-8 text-center">
           {tagFilter ? `Aucun fichier avec le tag «\u00a0${tagFilter}\u00a0»${search ? ` correspondant à «\u00a0${search}\u00a0»` : ""}.` : `Aucun résultat pour «\u00a0${search}\u00a0».`}
@@ -674,7 +771,7 @@ export function MediaAssetsPanel({ library }: Props) {
           <datalist id="bulk-set-tags-list">
             {allSetTags.map((t) => <option key={t} value={t} />)}
           </datalist>
-          {viewMode === "rotation" ? (
+          {effectiveViewMode === "rotation" ? (
             <MediaAssetsRotationView
               groupedBySetTag={groupedBySetTag}
               seqState={seqState}
@@ -687,7 +784,13 @@ export function MediaAssetsPanel({ library }: Props) {
               removeFromSequence={removeFromSequence}
               renderCompactCard={renderCompactCard}
             />
-          ) : viewMode === "grouped" ? (
+          ) : effectiveViewMode === "grouped" ? (
+            <>
+              <MediaAssetsNextGenPreview
+                groupedBySetTag={groupedBySetTag}
+                rotationScope={library.rotationScope ?? undefined}
+                accountFilter={accountFilter}
+              />
             <MediaAssetsGroupedView
               groupedBySetTag={groupedBySetTag}
               sectionsByGroup={sectionsByGroup}
@@ -697,7 +800,19 @@ export function MediaAssetsPanel({ library }: Props) {
               saveSequence={saveSequence}
               renderColumn={renderColumn}
               renderCompactCard={renderCompactCard}
+              isAdvanced={isAdvanced}
+              onOpenSet={(g) => {
+                // Ouvre le drawer détail sur le 1er asset du set + passe la liste
+                // pour permettre de naviguer entre les assets via le set navigator.
+                const sorted = [...g.groupAssets].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+                const first = sorted[0];
+                if (first) {
+                  setDetailSetAssets(sorted);
+                  setDetailAsset(first);
+                }
+              }}
             />
+            </>
           ) : (
             <>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
@@ -725,6 +840,10 @@ export function MediaAssetsPanel({ library }: Props) {
           handleDelete={handleDelete}
         />
       )}
+        </div>
+      </div>
+        );
+      })()}
       {editingAsset && (
         <MediaAssetEditModal
           asset={editingAsset}
@@ -752,6 +871,30 @@ export function MediaAssetsPanel({ library }: Props) {
         onUploaded={() => void load()}
         initialFiles={pendingFiles}
         onInitialFilesConsumed={() => setPendingFiles(null)}
+      />
+      {/* Phase 2 — bulk-sort drawer pour ranger les assets orphelins en 1 décision. */}
+      <MediaAssetsBulkSortDrawer
+        open={sortDrawerOpen}
+        onClose={() => setSortDrawerOpen(false)}
+        libraryId={library.id}
+        orphanAssets={orphanAssets}
+        existingCategories={existingCategories}
+        onApplied={() => void load()}
+      />
+      {/* Phase 3 — drawer détail asset (édition complète en mode noob).
+          setAssets : si ouvert via une stack, la liste des autres vidéos du set pour navigation. */}
+      <MediaAssetDetailDrawer
+        open={liveDetailAsset !== null}
+        onClose={() => { setDetailAsset(null); setDetailSetAssets(null); }}
+        asset={liveDetailAsset}
+        metadataSchema={metadataSchema}
+        existingCategories={existingCategories}
+        existingPacks={existingPacks}
+        accounts={accounts}
+        inline={inline}
+        onOpenTrim={(a) => setEditingAsset(a)}
+        setAssets={detailSetAssets ?? undefined}
+        onSwitchAsset={(a) => setDetailAsset(a)}
       />
       {confirmDialog}
     </div>

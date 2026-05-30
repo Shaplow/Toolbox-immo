@@ -23,6 +23,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     category?: unknown;
     accessAction?: unknown;
     accountId?: unknown;
+    accountIds?: unknown; // Phase γ — multi-select comptes pour add
+    metadata?: unknown; // Phase rotation=none — bulk set metadata (remplace le JSON existant)
   };
 
   if (!Array.isArray(body.assetIds) || body.assetIds.length === 0) {
@@ -45,9 +47,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (Array.isArray(body.tags)) data.tags = JSON.stringify(body.tags);
   if ("setTag" in body) data.setTag = (body.setTag as string | null | undefined) ?? null;
   if ("category" in body) data.category = (body.category as string | null | undefined) ?? null;
+  if (body.metadata !== undefined && body.metadata !== null && typeof body.metadata === "object") {
+    data.metadata = JSON.stringify(body.metadata);
+  }
 
   const accessAction = typeof body.accessAction === "string" ? body.accessAction : null;
-  const accessAccountId = typeof body.accountId === "string" ? body.accountId : null;
+  // Phase γ — supporte soit accountId (legacy, 1 compte) soit accountIds (multi).
+  const accessAccountIds: string[] = (() => {
+    if (Array.isArray(body.accountIds)) {
+      return body.accountIds.filter((s): s is string => typeof s === "string");
+    }
+    if (typeof body.accountId === "string") return [body.accountId];
+    return [];
+  })();
 
   const hasFieldUpdate = Object.keys(data).length > 0;
   const hasAccessUpdate = accessAction === "add" || accessAction === "remove_all";
@@ -56,8 +68,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Aucun champ à mettre à jour" }, { status: 400 });
   }
 
-  if (accessAction === "add" && !accessAccountId) {
-    return NextResponse.json({ error: "accountId requis pour l'action add" }, { status: 400 });
+  if (accessAction === "add" && accessAccountIds.length === 0) {
+    return NextResponse.json({ error: "accountId (ou accountIds[]) requis pour l'action add" }, { status: 400 });
   }
 
   try {
@@ -68,9 +80,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           data,
         });
       }
-      if (accessAction === "add" && accessAccountId) {
+      if (accessAction === "add" && accessAccountIds.length > 0) {
+        // Cross-product : 1 row par (asset, account) sélectionné.
+        const rows = assetIds.flatMap((assetId) =>
+          accessAccountIds.map((accountId) => ({ assetId, accountId })),
+        );
         await tx.mediaAssetAccess.createMany({
-          data: assetIds.map((assetId) => ({ assetId, accountId: accessAccountId })),
+          data: rows,
           skipDuplicates: true,
         });
       } else if (accessAction === "remove_all") {

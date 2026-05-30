@@ -3,14 +3,14 @@
  *
  * Lance manuellement la génération de captions pour un slot one-off
  * (pas de render auto, donc pas de triggerAutoTranscriptionForRender qui se déclenche).
- * Crée un CaptionJob marker (status QUEUED) avec inputUrl pointant sur la
- * PublicationVersion courante + presetId résolu via override slot ou pattern.
  *
- * NOTE : ce endpoint crée le job mais ne lance PAS le pipeline RunPod aval
- * (transcription → caption burn). C'est un marker pour signaler l'intention
- * et permettre à l'admin de suivre l'état dans la fiche. Le câblage complet
- * du pipeline (transcription auto sur version uploadée + lancement caption
- * burn) est une itération à venir.
+ * Fix bug audit 2026-05-30 (C5) : auparavant cet endpoint créait juste un
+ * CaptionJob marker en QUEUED sans soumettre à RunPod → job bloqué indéfini.
+ * Désormais on chaîne le vrai pipeline auto :
+ *  - Si la PublicationVersion a déjà une transcription COMPLETED →
+ *    on appelle directement triggerAutoCaptionForTranscription (skip transcription).
+ *  - Sinon → on appelle triggerAutoTranscriptionForVersion (qui chaînera vers
+ *    captions via le webhook RunPod transcription COMPLETED → triggerAutoCaption).
  *
  * ADMIN uniquement. Idempotent : skip si un CaptionJob QUEUED/PROCESSING
  * existe déjà pour ce slot.
@@ -20,7 +20,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { resolveSlotConfig } from "@/lib/services/slot/config";
-import { logActivity } from "@/lib/services/slot/activity";
+import { triggerAutoTranscriptionForVersion } from "@/lib/triggerAutoTranscriptionForVersion";
+import { triggerAutoCaptionForTranscription } from "@/lib/triggerAutoCaptionFromTranscription";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -37,7 +38,14 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
       id: true,
       currentVersionId: true,
       currentVersion: {
-        select: { id: true, fileUrl: true, r2Key: true },
+        select: {
+          id: true,
+          fileUrl: true,
+          r2Key: true,
+          // Pour décider si on chaîne sur la transcription existante ou si
+          // on en lance une nouvelle (cf. fix C5).
+          transcriptionJob: { select: { id: true, status: true } },
+        },
       },
       needsClientValidationOverride: true,
       allowsClientRevisionOverride: true,
@@ -120,38 +128,38 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
     );
   }
 
-  const actorId = userContext.actualUser.id;
+  // Fix C5 : on chaîne le vrai pipeline auto au lieu de créer un job orphelin.
+  const transcription = slot.currentVersion.transcriptionJob;
+  const versionId = slot.currentVersion.id;
 
-  const job = await prisma.captionJob.create({
-    data: {
-      userId: actorId,
-      slotId,
-      status: "QUEUED",
-      inputUrl: slot.currentVersion.fileUrl,
-      inputKey: slot.currentVersion.r2Key,
-      presetId: preset.id,
-      config: typeof preset.config === "string" ? preset.config : JSON.stringify(preset.config),
-    },
-    select: { id: true },
-  });
-
-  await logActivity(prisma, {
-    slotId,
-    actorId,
-    type: "CAPTIONS_COMPLETED",
-    payload: {
-      captionJobId: job.id,
-      presetId: preset.id,
+  if (transcription && transcription.status === "COMPLETED") {
+    // Cas 1 : la version a déjà une transcription COMPLETED → on skip la
+    // transcription et on déclenche directement le caption (correction + RunPod).
+    void triggerAutoCaptionForTranscription(transcription.id).catch((err) => {
+      console.error(`[trigger-captions] triggerAutoCaptionForTranscription échoué pour slot=${slotId}:`, err);
+    });
+    return NextResponse.json({
+      ok: true,
+      kind: "caption_from_existing_transcription",
+      transcriptionJobId: transcription.id,
       presetName: preset.name,
-      trigger: "MANUAL_FROM_VERSION",
-      note: "Job créé en QUEUED — le pipeline RunPod aval n'est pas encore branché pour les slots one-off (itération à venir).",
-    },
+      message: "Pipeline captions lancé (transcription existante réutilisée).",
+    });
+  }
+
+  // Cas 2 : pas de transcription COMPLETED → on lance la transcription pour
+  // cette PublicationVersion. Le webhook RunPod COMPLETED chaînera ensuite
+  // automatiquement vers triggerAutoCaptionForTranscription.
+  void triggerAutoTranscriptionForVersion(versionId).catch((err) => {
+    console.error(`[trigger-captions] triggerAutoTranscriptionForVersion échoué pour slot=${slotId}:`, err);
   });
 
   return NextResponse.json({
     ok: true,
-    captionJobId: job.id,
+    kind: "transcription_then_caption",
+    versionId,
     presetName: preset.name,
-    note: "Job créé. Si le pipeline RunPod n'avance pas automatiquement, utiliser /tools/captions pour finaliser.",
+    message:
+      "Pipeline lancé : transcription RunPod en cours, captions seront générées automatiquement à sa complétion.",
   });
 }

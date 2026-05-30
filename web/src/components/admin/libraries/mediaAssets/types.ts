@@ -45,6 +45,10 @@ export interface MediaLibrary {
   setSequence: string;
   /** JSON MetadataField[] */
   metadataSchema?: string;
+  /** "auto" | "override" | "none" | null. "none" = sélection manuelle via metadata. */
+  rotationMode?: string | null;
+  /** "per_account" (defaut) | "shared". Détermine si le cursor est par compte ou global. */
+  rotationScope?: string | null;
 }
 
 export type SortKey =

@@ -11,7 +11,7 @@
  * Différence avec MediaAssetsVideoCard : layout horizontal compact
  * (8×12 thumbnail + 1 ligne metadata + stats + delete), pas de preview
  * vidéo, métadonnées en lecture seule (read-only badges au lieu d'inline
- * edits). Reste éditable : catégorie et set (les autres champs passent
+ * edits). Reste éditable : catégorie et pack (les autres champs passent
  * par MediaAssetEditModal en cliquant sur le filename).
  *
  * Reçoit l'objet `inline` (UseAssetInlineEditsResult) pour les states +
@@ -140,7 +140,7 @@ export function MediaAssetsCompactCard({
               }}
               onBlur={() => { void handleSaveSetTag(asset, setTagValue); }}
               list="set-tags-list"
-              placeholder="set…"
+              placeholder="pack…"
               className="w-16 text-[9px] border border-pink-300 rounded px-1 py-0.5 focus:outline-none"
             />
           ) : (

@@ -2,19 +2,29 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LayoutList, Edit, Copy, Trash2, Plus, AlertTriangle } from "lucide-react";
+import {
+  Edit,
+  Copy,
+  Trash2,
+  Plus,
+  AlertTriangle,
+  Clock,
+  Sparkles,
+  Image as ImageIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { FormField } from "@/components/ui/FormField";
-import { Input } from "@/components/ui/Input";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DeleteButton } from "@/components/ui/DeleteButton";
+import { Chip } from "@/components/ui/Chip";
+import { Avatar, AvatarGroup } from "@/components/ui/Avatar";
 import { toast } from "@/components/ui/Toast";
 import { AccountPatternForm, type AccountPatternRow } from "./AccountPatternForm";
+import { CloneDialog } from "./CloneDialog";
 import { detectOrphanedPatternConfig } from "@/lib/publications/patternValidation";
 
 // ─── Labels FR ────────────────────────────────────────────────────────────────
 
-const DAY_LABELS = ["", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+const DAY_LABELS = ["", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
 const SOURCE_LABELS: Record<string, string> = {
   auto_template: "Auto template",
@@ -24,12 +34,10 @@ const SOURCE_LABELS: Record<string, string> = {
 
 const COVER_MODE_LABELS: Record<string, string> = {
   none: "Pas de cover",
-  manualSelect: "Sélection libre (CM)",
-  autoPack: "Pack auto → sélection (CM)",
-  monteurUpload: "Upload par le monteur",
-  // Compat back : si un pattern n'a pas encore été migré (devrait pas arriver
-  // après la migration data Phase 2.5, mais ceinture+bretelles).
-  auto: "Pack auto → sélection (CM)",
+  manualSelect: "Sélection libre",
+  autoPack: "Pack auto",
+  monteurUpload: "Upload monteur",
+  auto: "Pack auto",
 };
 
 const NEEDS_DESCRIPTION_LABELS: Record<string, string> = {
@@ -48,9 +56,13 @@ type Pattern = AccountPatternRow & {
   _count: { publicationSlots: number };
 };
 
+type LastRender = { pngUrl: string | null; videoUrl: string | null; createdAt: string };
+
 type Props = {
   account: { id: string; handle: string };
   patterns: Pattern[];
+  /** Dernier render DONE par templateId (compte courant). Null si aucun. */
+  lastRendersByTemplateId?: Record<string, LastRender | null>;
 };
 
 // ─── PatternCard ──────────────────────────────────────────────────────────────
@@ -58,20 +70,19 @@ type Props = {
 function PatternCard({
   pattern,
   accountId,
+  lastRender,
   onEdit,
   onDeleted,
 }: {
   pattern: Pattern;
   accountId: string;
+  lastRender: LastRender | null;
   onEdit: (pattern: Pattern) => void;
   onDeleted: () => void;
 }) {
   const [deleting, setDeleting] = useState(false);
   const hasSlots = pattern._count.publicationSlots > 0;
 
-  // Détection config orpheline (preset cover supprimé, preset/prompt manquant…)
-  // template=null car on n'a pas la liste des coverPresetNames côté liste :
-  // on signale uniquement les erreurs détectables sans template (C1, C3, C4, C5, C10).
   const orphanedConfig = detectOrphanedPatternConfig(
     {
       source: pattern.source,
@@ -88,12 +99,39 @@ function PatternCard({
     null,
   );
 
-  const flags: { label: string; value: boolean | string }[] = [
-    { label: "Captions", value: pattern.needsCaptions },
-    { label: "Rushes", value: pattern.needsRushes },
-    { label: "Brief", value: pattern.needsBrief },
-    { label: "Validation client", value: pattern.needsClientValidation },
-  ];
+  const days = Array.isArray(pattern.dayOfWeek)
+    ? pattern.dayOfWeek
+    : [pattern.dayOfWeek as unknown as number];
+  const scheduleLabel =
+    days.length === 0
+      ? "Pattern manuel · sans planning auto"
+      : `${days.map((d) => DAY_LABELS[d] ?? `J${d}`).join(" · ")} à ${pattern.publishTime}`;
+
+  // Flags actifs uniquement — chips compacts en bas de card.
+  const activeFlags = [
+    pattern.needsRushes && { label: "Rushes", variant: "peach" as const },
+    pattern.needsCaptions && { label: "Captions", variant: "sky" as const },
+    pattern.needsBrief && { label: "Brief", variant: "sage" as const },
+    pattern.needsClientValidation && {
+      label: pattern.allowsClientRevision ? "Validation client (ping-pong)" : "Validation client",
+      variant: "rose" as const,
+    },
+    pattern.needsAdminValidation && { label: "Validation admin", variant: "rose" as const },
+  ].filter(Boolean) as Array<{ label: string; variant: "peach" | "sky" | "sage" | "rose" }>;
+
+  const avatars: Array<{ id: string; name: string }> = [];
+  if (pattern.defaultAssigneeMonteur) {
+    avatars.push({
+      id: `m-${pattern.defaultAssigneeMonteur.id}`,
+      name: pattern.defaultAssigneeMonteur.name ?? "Monteur",
+    });
+  }
+  if (pattern.defaultAssigneeCm) {
+    avatars.push({
+      id: `c-${pattern.defaultAssigneeCm.id}`,
+      name: pattern.defaultAssigneeCm.name ?? "CM",
+    });
+  }
 
   async function handleDelete() {
     setDeleting(true);
@@ -106,7 +144,7 @@ function PatternCard({
         onDeleted();
         return;
       }
-      const data = await res.json() as { error?: string };
+      const data = (await res.json()) as { error?: string };
       toast.error(data.error ?? "Erreur lors de la suppression");
     } catch {
       toast.error("Erreur réseau");
@@ -118,99 +156,107 @@ function PatternCard({
   return (
     <div
       id={`pattern-${pattern.id}`}
-      className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-4 transition-all"
+      className={[
+        "group relative grid grid-cols-[96px_1fr] gap-4 p-4 sm:p-5 rounded-2xl transition-all",
+        "bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[14px] backdrop-saturate-150",
+        "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.06),inset_0_-1px_0_rgba(15,23,42,0.04),0_2px_8px_-2px_rgba(15,23,42,0.08)]",
+        "hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.6),inset_0_0_0_1px_rgba(15,23,42,0.1),inset_0_-1px_0_rgba(15,23,42,0.06),0_4px_12px_rgba(15,23,42,0.08),0_16px_36px_-12px_rgba(15,23,42,0.18)]",
+        !pattern.isActive ? "opacity-65" : "",
+      ].filter(Boolean).join(" ")}
     >
-      {/* Header de la card */}
+      {/* Col gauche — thumbnail dernière génération de ce compte pour ce template (9:16).
+          Si pas de render encore, placeholder glass discret. */}
+      <PatternCover lastRender={lastRender} />
+
+      {/* Col droite — contenu (flex-col pour ne pas dépendre de la hauteur de la cover) */}
+      <div className="flex flex-col gap-4 min-w-0">
+      {/* Header — label + status pills + count slots */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-sm font-semibold text-gray-900 truncate">{pattern.label}</h3>
+            <h3 className="text-[15px] font-semibold text-gray-950 leading-tight truncate">
+              {pattern.label}
+            </h3>
             {!pattern.isActive && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500 shrink-0">
+              <Chip variant="default" size="sm">
                 Inactif
-              </span>
+              </Chip>
             )}
             {orphanedConfig && (
-              <span
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 border border-amber-200 shrink-0"
-                title={`${orphanedConfig.count} conflit${orphanedConfig.count > 1 ? "s" : ""} de configuration — éditer pour corriger`}
-              >
-                <AlertTriangle size={10} />
+              <Chip variant="peach" size="sm" icon={AlertTriangle}>
                 Config invalide
-              </span>
+              </Chip>
             )}
           </div>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {(() => {
-              const days = Array.isArray(pattern.dayOfWeek) ? pattern.dayOfWeek : [pattern.dayOfWeek as unknown as number];
-              if (days.length === 0) return "Pattern manuel · pas de planning auto";
-              const labels = days.map((d) => DAY_LABELS[d] ?? `J${d}`).join(", ");
-              return `${labels} · ${pattern.publishTime}`;
-            })()}
+          <p className="mt-1.5 text-[11px] text-gray-500 font-mono tabular-nums inline-flex items-center gap-1.5">
+            <Clock size={11} className="text-gray-400" />
+            {scheduleLabel}
           </p>
         </div>
-        <span className="text-[10px] font-medium text-gray-400 bg-gray-50 border border-gray-100 rounded px-2 py-1 shrink-0">
-          {pattern._count.publicationSlots} slot{pattern._count.publicationSlots !== 1 ? "s" : ""}
+        <span
+          className="inline-flex items-center gap-1 text-[10px] text-gray-500 bg-white/55 backdrop-blur-[6px] rounded-full px-2 py-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] shrink-0 tabular-nums"
+          title={`${pattern._count.publicationSlots} slot${pattern._count.publicationSlots !== 1 ? "s" : ""} associé${pattern._count.publicationSlots !== 1 ? "s" : ""}`}
+        >
+          {pattern._count.publicationSlots} slot
+          {pattern._count.publicationSlots !== 1 ? "s" : ""}
         </span>
       </div>
 
-      {/* Corps */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
-        <Row label="Source" value={SOURCE_LABELS[pattern.source] ?? pattern.source} />
-        <Row label="Template" value={pattern.template?.name ?? "—"} />
-        <Row label="Cover" value={COVER_MODE_LABELS[pattern.coverMode] ?? pattern.coverMode} />
-        <Row
+      {/* Meta grid — source / template / cover / description */}
+      <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 text-[11.5px]">
+        <Meta label="Source" value={SOURCE_LABELS[pattern.source] ?? pattern.source} />
+        <Meta label="Template" value={pattern.template?.name ?? "—"} />
+        <Meta label="Cover" value={COVER_MODE_LABELS[pattern.coverMode] ?? pattern.coverMode} />
+        <Meta
           label="Description"
           value={NEEDS_DESCRIPTION_LABELS[pattern.needsDescription] ?? pattern.needsDescription}
         />
       </div>
 
-      {/* Flags booléens */}
-      <div className="flex flex-wrap gap-2">
-        {flags.map(({ label, value }) => (
-          <span
-            key={label}
-            className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border ${
-              value
-                ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                : "bg-gray-50 border-gray-100 text-gray-400"
-            }`}
-          >
-            <span className={value ? "text-indigo-500" : "text-gray-300"}>
-              {value ? "✓" : "·"}
+      {/* Flags actifs en chips */}
+      {activeFlags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {activeFlags.map((flag) => (
+            <Chip key={flag.label} variant={flag.variant} size="sm">
+              {flag.label}
+            </Chip>
+          ))}
+        </div>
+      )}
+
+      {/* Footer — assignées + actions */}
+      <div className="flex items-center justify-between gap-2 pt-3 border-t border-white/40 mt-auto">
+        <div className="flex items-center gap-2 min-w-0">
+          {avatars.length > 0 ? (
+            <>
+              <AvatarGroup avatars={avatars} max={3} size="sm" />
+              <span className="text-[10.5px] text-gray-500 truncate">
+                {pattern.defaultAssigneeMonteur?.name}
+                {pattern.defaultAssigneeMonteur && pattern.defaultAssigneeCm && " · "}
+                {pattern.defaultAssigneeCm?.name}
+              </span>
+            </>
+          ) : (
+            <span className="text-[10.5px] uppercase tracking-widest font-medium text-gray-400 italic">
+              Aucune assignation
             </span>
-            {label}
-          </span>
-        ))}
-      </div>
+          )}
+        </div>
 
-      {/* Assignations */}
-      <div className="flex flex-wrap gap-4 text-xs text-gray-500">
-        <span>
-          <span className="font-medium text-gray-700">Monteur :</span>{" "}
-          {pattern.defaultAssigneeMonteur?.name ?? <span className="italic text-gray-300">—</span>}
-        </span>
-        <span>
-          <span className="font-medium text-gray-700">CM :</span>{" "}
-          {pattern.defaultAssigneeCm?.name ?? <span className="italic text-gray-300">—</span>}
-        </span>
-      </div>
-
-      {/* Actions */}
-      <div className="flex items-center gap-2 pt-1 border-t border-gray-50">
-        <Button variant="secondary" size="sm" icon={Edit} onClick={() => onEdit(pattern)}>
-          Éditer
-        </Button>
-        <div className="ml-auto" title={hasSlots ? `Ce pattern a ${pattern._count.publicationSlots} slot(s) associé(s). Suppression impossible.` : undefined}>
+        <div className="flex items-center gap-1 shrink-0">
+          <Button variant="ghost" size="sm" icon={Edit} onClick={() => onEdit(pattern)}>
+            Éditer
+          </Button>
           {hasSlots ? (
             <Button
               variant="ghost"
               size="sm"
               icon={Trash2}
               disabled
+              title={`${pattern._count.publicationSlots} slot(s) associé(s) — suppression impossible`}
               className="text-gray-300 cursor-not-allowed"
             >
-              Supprimer
+              <span className="sr-only">Supprimer</span>
             </Button>
           ) : (
             <DeleteButton
@@ -222,213 +268,91 @@ function PatternCard({
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline gap-1">
-      <span className="font-medium text-gray-600 shrink-0">{label} :</span>
-      <span className="text-gray-700 truncate">{value}</span>
-    </div>
-  );
-}
-
-// ─── CloneDialog ──────────────────────────────────────────────────────────────
-
-type AccountOption = { id: string; handle: string; name: string; clientName: string | null };
-
-function CloneDialog({
-  open,
-  accountId,
-  onClose,
-  onCloned,
-}: {
-  open: boolean;
-  accountId: string;
-  onClose: () => void;
-  onCloned: () => void;
-}) {
-  const [sourceAccountId, setSourceAccountId] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [accounts, setAccounts] = useState<AccountOption[]>([]);
-  const [loadingAccounts, setLoadingAccounts] = useState(false);
-  /** Filtre texte côté client — Phase 1.9 B3 */
-  const [filterQuery, setFilterQuery] = useState("");
-
-  // Load accounts list when the dialog opens
-  useEffect(() => {
-    if (!open) return;
-    setLoadingAccounts(true);
-    fetch("/api/admin/accounts")
-      .then((r) => r.json())
-      .then((data: unknown) => {
-        const raw = Array.isArray(data) ? data : [];
-        const options: AccountOption[] = (raw as Array<{
-          id: string;
-          handle: string;
-          name: string;
-          client?: { name: string } | null;
-        }>)
-          .filter((a) => a.id !== accountId)
-          .map((a) => ({
-            id: a.id,
-            handle: a.handle,
-            name: a.name,
-            clientName: a.client?.name ?? null,
-          }));
-        setAccounts(options);
-      })
-      .catch(() => {
-        toast.error("Impossible de charger la liste des comptes");
-      })
-      .finally(() => setLoadingAccounts(false));
-  }, [open, accountId]);
-
-  // ESC to close
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose]);
-
-  async function handleClone() {
-    if (!sourceAccountId) {
-      toast.error("Sélectionnez un compte source");
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/admin/accounts/${accountId}/patterns/clone-from`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceAccountId }),
-      });
-      const data = await res.json() as { cloned?: number; error?: string };
-      if (!res.ok) {
-        toast.error(data.error ?? "Erreur lors du clonage");
-        return;
-      }
-      toast.success(`${data.cloned ?? 0} pattern(s) cloné(s)`);
-      setSourceAccountId("");
-      onCloned();
-      onClose();
-    } catch {
-      toast.error("Erreur réseau");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  if (!open) return null;
-
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" onClick={onClose} aria-hidden="true" />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="clone-dialog-title"
-        className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none"
-      >
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md pointer-events-auto overflow-hidden">
-          <div className="px-6 pt-6 pb-4">
-            <h2 id="clone-dialog-title" className="text-base font-semibold text-gray-900 mb-1">
-              Cloner des patterns depuis un autre compte
-            </h2>
-            <p className="text-sm text-gray-500 mb-4">
-              Tous les patterns du compte source seront copiés vers ce compte.
-            </p>
-            <FormField label="Compte source" required>
-              {loadingAccounts ? (
-                <p className="text-sm text-gray-400">Chargement des comptes…</p>
-              ) : accounts.length === 0 ? (
-                <p className="text-sm text-gray-400">Aucun autre compte disponible.</p>
-              ) : (
-                <div className="space-y-2">
-                  {/* Filtre texte — Phase 1.9 B3 */}
-                  <Input
-                    value={filterQuery}
-                    onChange={setFilterQuery}
-                    placeholder="Filtrer par @handle ou nom de client…"
-                  />
-                  <select
-                    value={sourceAccountId}
-                    onChange={(e) => setSourceAccountId(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-                  >
-                    <option value="">— Sélectionner un compte —</option>
-                    {accounts
-                      .filter((a) => {
-                        const q = filterQuery.toLowerCase().trim();
-                        if (!q) return true;
-                        return (
-                          a.handle.toLowerCase().includes(q) ||
-                          (a.clientName ?? "").toLowerCase().includes(q) ||
-                          a.name.toLowerCase().includes(q)
-                        );
-                      })
-                      .map((a) => (
-                        <option key={a.id} value={a.id}>
-                          @{a.handle}{a.clientName ? ` (${a.clientName})` : ""}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              )}
-            </FormField>
-          </div>
-          <div className="flex items-center justify-end gap-2 px-6 py-4 bg-gray-50 border-t border-gray-100">
-            <Button variant="ghost" size="md" onClick={onClose} disabled={loading}>
-              Annuler
-            </Button>
-            <Button
-              variant="primary"
-              size="md"
-              loading={loading}
-              onClick={() => void handleClone()}
-            >
-              Cloner
-            </Button>
-          </div>
-        </div>
       </div>
-    </>
+    </div>
   );
 }
+
+function PatternCover({ lastRender }: { lastRender: LastRender | null }) {
+  // Thumbnail 9:16 (largeur 96px depuis grid-cols → hauteur ~170px).
+  // Priorité : pngUrl (preview rapide) > videoUrl (poster auto via attribut).
+  // Placeholder glass discret si aucun render encore généré pour ce pattern.
+  const hasMedia = !!(lastRender?.pngUrl || lastRender?.videoUrl);
+
+  return (
+    <div className="shrink-0">
+      <div className="aspect-[9/16] rounded-xl overflow-hidden bg-gradient-to-br from-white/60 to-white/35 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] flex items-center justify-center relative">
+        {hasMedia ? (
+          lastRender?.pngUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={lastRender.pngUrl}
+              alt="Dernière génération"
+              className="w-full h-full object-cover"
+              loading="lazy"
+            />
+          ) : lastRender?.videoUrl ? (
+            <video
+              src={lastRender.videoUrl}
+              className="w-full h-full object-cover"
+              preload="metadata"
+              muted
+              playsInline
+            />
+          ) : null
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-1 text-gray-300">
+            <ImageIcon size={18} className="opacity-70" />
+            <span className="text-[9px] uppercase tracking-widest text-center leading-tight px-1">
+              Aucun rendu
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Meta({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] uppercase tracking-widest font-medium text-gray-400 leading-tight">
+        {label}
+      </p>
+      <p className="text-[12px] text-gray-700 truncate mt-0.5">{value}</p>
+    </div>
+  );
+}
+
+// Stale référence supprimée — voir CloneDialog.tsx
+void Avatar;
 
 // ─── AccountPatternsList ──────────────────────────────────────────────────────
 
-export function AccountPatternsList({ account, patterns }: Props) {
+export function AccountPatternsList({ account, patterns, lastRendersByTemplateId = {} }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Deep-link `?pattern=xxx` (depuis le badge pattern sur SlotCard). Scroll +
-  // highlight la card cible au mount pour ne pas obliger l'admin à scanner.
+  // Deep-link `?pattern=xxx` (depuis le badge pattern sur SlotCard).
   const targetPatternId = searchParams?.get("pattern") ?? null;
   useEffect(() => {
     if (!targetPatternId) return;
     const el = document.getElementById(`pattern-${targetPatternId}`);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.classList.add("ring-2", "ring-violet-400");
+      el.classList.add("ring-2", "ring-sky-400/50", "ring-offset-2");
       const timer = setTimeout(() => {
-        el.classList.remove("ring-2", "ring-violet-400");
-      }, 2000);
+        el.classList.remove("ring-2", "ring-sky-400/50", "ring-offset-2");
+      }, 2400);
       return () => clearTimeout(timer);
     }
   }, [targetPatternId]);
 
-  // Edit / Create modal
   const [formOpen, setFormOpen] = useState(false);
   const [editingPattern, setEditingPattern] = useState<Pattern | null>(null);
-
-  // Clone dialog
   const [cloneOpen, setCloneOpen] = useState(false);
+  // Search + showInactive temporairement retirés (cf. polish 2026-05-30).
+  // À réintégrer dans une toolbar dédiée si le besoin revient.
 
   function openCreate() {
     setEditingPattern(null);
@@ -441,8 +365,6 @@ export function AccountPatternsList({ account, patterns }: Props) {
   }
 
   function openClone() {
-    // For simplicity (as per spec), "Clone" opens a global clone-from dialog
-    // (all patterns from source account). A per-pattern clone UI is Wave+.
     setCloneOpen(true);
   }
 
@@ -459,46 +381,51 @@ export function AccountPatternsList({ account, patterns }: Props) {
   }
 
   return (
-    <div>
+    <section>
       {/* Section header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <LayoutList size={16} className="text-gray-500" />
-          <h2 className="text-sm font-semibold text-gray-700">Patterns de publication</h2>
-          {patterns.length > 0 && (
-            <span className="text-[10px] bg-indigo-100 text-indigo-700 rounded-full px-1.5 py-0.5 font-semibold">
-              {patterns.length}
-            </span>
-          )}
+      <div className="flex items-end justify-between gap-3 mb-4 flex-wrap">
+        <div>
+          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+            Workspace
+          </p>
+          <p className="text-[18px] font-semibold tracking-tight text-gray-950 mt-1">
+            Patterns de publication
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-2 flex-wrap">
           <Button variant="ghost" size="sm" icon={Copy} onClick={openClone}>
-            Importer depuis un autre compte
+            Importer
           </Button>
           <Button variant="primary" size="sm" icon={Plus} onClick={openCreate}>
-            Ajouter pattern
+            Nouveau pattern
           </Button>
         </div>
       </div>
 
       {/* Contenu */}
       {patterns.length === 0 ? (
-        <EmptyState
-          icon={LayoutList}
-          title="Aucun pattern de publication pour ce compte"
-          description="Crée un pattern pour automatiser la création de slots dans le calendrier."
-          cta={{
-            label: "Ajouter un pattern",
-            onClick: openCreate,
-          }}
-        />
+        <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+          <EmptyState
+            icon={Sparkles}
+            title="Aucun pattern de publication"
+            description="Crée un pattern pour automatiser la création de slots dans le calendrier."
+            cta={{
+              label: "Ajouter un pattern",
+              onClick: openCreate,
+            }}
+          />
+        </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {patterns.map((pattern) => (
             <PatternCard
               key={pattern.id}
               pattern={pattern}
               accountId={account.id}
+              lastRender={
+                pattern.template?.id ? lastRendersByTemplateId[pattern.template.id] ?? null : null
+              }
               onEdit={openEdit}
               onDeleted={handleDeleted}
             />
@@ -522,6 +449,6 @@ export function AccountPatternsList({ account, patterns }: Props) {
         onClose={() => setCloneOpen(false)}
         onCloned={handleCloned}
       />
-    </div>
+    </section>
   );
 }

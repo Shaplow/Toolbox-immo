@@ -21,21 +21,26 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Film,
-  Play,
   RefreshCw,
   AlertCircle,
   RotateCcw,
   AlertTriangle,
+  Loader2,
+  Upload,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Section } from "@/components/ui/molecules/Section";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { VideoPlayer } from "@/components/ui/molecules/VideoPlayer";
 import { toast } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
+import { useJobEvent } from "@/lib/hooks/jobEventBus";
 
 interface Props {
   slot: { id: string };
@@ -50,6 +55,10 @@ interface Props {
   isCaptioned?: boolean;
   listingId: string | null;
   canEdit: boolean;
+  sectionId?: string;
+  storageKey?: string;
+  defaultOpen?: boolean;
+  collapsible?: boolean;
 }
 
 const RENDER_STATUS_LABELS: Record<string, string> = {
@@ -77,6 +86,10 @@ export function RenderSection({
   isCaptioned,
   listingId,
   canEdit,
+  sectionId = "render",
+  storageKey,
+  defaultOpen = true,
+  collapsible = false,
 }: Props) {
   const router = useRouter();
   const [confirmRevert, setConfirmRevert] = useState(false);
@@ -84,14 +97,29 @@ export function RenderSection({
   const [confirmForceFail, setConfirmForceFail] = useState(false);
   const [forceFailing, setForceFailing] = useState(false);
 
+  // Polling SSE — quand le webhook RunPod termine le render, on rafraîchit
+  // la fiche pour récupérer videoUrl + status. Sans ça, l'utilisateur reste
+  // bloqué sur "Rendu en cours de traitement…" jusqu'à un F5 manuel.
+  const renderId = render?.id ?? null;
+  const renderStatus = render?.status ?? null;
+  const renderEvent = useJobEvent(renderId ?? "");
+  useEffect(() => {
+    if (!renderEvent || !renderStatus) return;
+    if (renderEvent.status !== renderStatus) router.refresh();
+  }, [renderEvent, renderStatus, router]);
+
   const displayVideoUrl = finalVideoUrl ?? render?.videoUrl ?? null;
 
   if (!pattern) return null;
   if (pattern.source !== "auto_template" && !render) return null;
 
   const templateId = pattern?.templateId ?? null;
+  // Fix bug 2026-05-30 : pointait sur /builder (éditeur template), mais le user
+  // veut LANCER une génération → /generate (formulaire de gen, comme le drawer
+  // "Ouvrir le formulaire de génération"). GeneratePage résout accountId côté
+  // serveur depuis slotId, donc pas besoin de passer accountId en URL.
   const builderHref = templateId
-    ? `/builder/${templateId}${listingId ? `?listingId=${listingId}&slotId=${slot.id}` : `?slotId=${slot.id}`}`
+    ? `/generate/${templateId}${listingId ? `?listingId=${listingId}&slotId=${slot.id}` : `?slotId=${slot.id}`}`
     : null;
 
   async function handleForceFail() {
@@ -151,47 +179,57 @@ export function RenderSection({
   const statusBadge = render ? getRenderStatusBadge(render.status) : null;
 
   return (
-    <section id="render" className="bg-white border border-gray-100 rounded-2xl p-8">
-      {/* En-tête section */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Film size={14} className="text-gray-500" />
-          <h2 className="text-[13px] font-semibold text-gray-950">Rendu vidéo</h2>
-        </div>
-        {statusBadge && (
+    <Section
+      title="Rendu vidéo"
+      icon={Film}
+      sectionId={sectionId}
+      storageKey={storageKey}
+      defaultOpen={defaultOpen}
+      collapsible={collapsible}
+      actions={
+        statusBadge ? (
           <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
-        )}
-      </div>
+        ) : null
+      }
+    >
 
-      {/* Cas : pattern manuel sans render auto */}
+      {/* Cas : pattern manuel sans render auto — info glass tinted neutre */}
       {pattern?.source !== "auto_template" && (
-        <div className="flex items-start gap-2 text-[13px] text-gray-600 bg-gray-50 rounded-md p-3">
-          <AlertCircle size={14} className="text-gray-400 mt-0.5 flex-shrink-0" />
+        <div className="flex items-start gap-2 text-[12px] text-gray-700 bg-white/60 backdrop-blur-[8px] rounded-lg p-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+          <Upload size={14} className="text-gray-500 mt-0.5 flex-shrink-0" />
           <span className="leading-relaxed">
-            Ce slot utilise une vidéo livrée manuellement par le monteur (pas de
-            rendu auto depuis un template).
+            Vidéo livrée manuellement par le monteur — pas de rendu auto depuis un template.
           </span>
         </div>
       )}
 
       {/* Cas : source auto_template sans render lancé */}
       {pattern?.source === "auto_template" && !render && (
-        <div className="space-y-3">
-          <p className="text-[13px] text-gray-600">Aucun rendu lancé pour ce slot.</p>
-          {canEdit && builderHref && (
-            <Link href={builderHref} className="focus-ring rounded-md inline-block">
-              <Button icon={Play}>Lancer le rendu</Button>
-            </Link>
-          )}
-          {canEdit && !builderHref && (
-            <p className="text-[12px] text-gray-500">
-              Aucun template associé à ce pattern — configurez un template d&apos;abord.
-            </p>
-          )}
-        </div>
+        canEdit && builderHref ? (
+          <EmptyState
+            icon={Film}
+            title="Aucun rendu"
+            cta={{
+              label: "Lancer le rendu",
+              onClick: () => window.open(builderHref, "_blank", "noopener,noreferrer"),
+            }}
+          />
+        ) : canEdit && !builderHref ? (
+          <EmptyState
+            icon={AlertCircle}
+            title="Template manquant"
+            description="Aucun template associé à ce pattern — configurez un template d'abord."
+          />
+        ) : (
+          <EmptyState
+            icon={Film}
+            title="Aucun rendu"
+            description="Le rendu n'a pas encore été lancé."
+          />
+        )
       )}
 
-      {/* Cas : render présent avec vidéo */}
+      {/* Cas : render présent avec vidéo — VideoPlayer molecule glass */}
       {displayVideoUrl && (
         <div className="space-y-4">
           {isCaptioned && (
@@ -199,20 +237,26 @@ export function RenderSection({
               Version avec sous-titres incrustés
             </Badge>
           )}
-          <video
-            key={displayVideoUrl}
-            controls
-            className="w-full max-w-xl rounded-md border border-gray-200"
-            style={{ maxHeight: 360 }}
-          >
-            <source src={displayVideoUrl} />
-            Votre navigateur ne supporte pas la lecture vidéo.
-          </video>
+          <div className="max-w-[280px] mx-auto">
+            <VideoPlayer
+              key={displayVideoUrl}
+              src={displayVideoUrl}
+              variant="minimal"
+              aspect="9:16"
+              glassChrome
+              loop
+            />
+          </div>
 
           {canEdit && (
             <div className="flex flex-wrap items-center gap-2">
               {builderHref && (
-                <Link href={builderHref} className="focus-ring rounded-md inline-block">
+                <Link
+                  href={builderHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Ouvre le builder dans un nouvel onglet"
+                >
                   <Button variant="secondary" size="sm" icon={RefreshCw}>
                     Re-render
                   </Button>
@@ -238,15 +282,21 @@ export function RenderSection({
       {/* Cas : render présent avec image uniquement */}
       {render && !render.videoUrl && render.pngUrl && (
         <div className="space-y-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={render.pngUrl}
-            alt="Rendu image"
-            className="w-full max-w-xl rounded-md border border-gray-200 object-contain"
-            style={{ maxHeight: 360 }}
-          />
+          <div className="max-w-[280px] rounded-2xl overflow-hidden bg-gradient-to-b from-white to-white/80 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.08)]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={render.pngUrl}
+              alt="Rendu image"
+              className="w-full object-contain"
+            />
+          </div>
           {canEdit && builderHref && (
-            <Link href={builderHref} className="focus-ring rounded-md inline-block">
+            <Link
+              href={builderHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Ouvre le builder dans un nouvel onglet"
+            >
               <Button variant="secondary" size="sm" icon={RefreshCw}>
                 Re-render
               </Button>
@@ -255,37 +305,48 @@ export function RenderSection({
         </div>
       )}
 
-      {/* Cas : render en cours / erreur sans media */}
-      {render && !render.videoUrl && !render.pngUrl && (
+      {/* Cas : render en cours — état loader glass */}
+      {render && !render.videoUrl && !render.pngUrl && render.status !== "ERROR" && (
         <div className="space-y-3">
-          <p className="text-[13px] text-gray-600">
-            {render.status === "ERROR"
-              ? "Le rendu a échoué."
-              : "Rendu en cours de traitement…"}
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            {render.status === "ERROR" && canEdit && builderHref && (
-              <Link href={builderHref} className="focus-ring rounded-md inline-block">
-                <Button icon={RefreshCw}>Relancer le rendu</Button>
-              </Link>
-            )}
-            {canEdit &&
-              (render.status === "PROCESSING" ||
-                render.status === "PENDING" ||
-                render.status === "QUEUED") && (
-                <Button
-                  variant="danger"
-                  size="sm"
-                  icon={AlertTriangle}
-                  onClick={() => setConfirmForceFail(true)}
-                  disabled={forceFailing}
-                  title="Bloquer le render et libérer la rotation pour pouvoir relancer"
-                >
-                  Force fail
-                </Button>
-              )}
+          <div className="flex items-center gap-2.5 text-[13px] text-sky-900 bg-sky-100/60 backdrop-blur-[8px] rounded-lg p-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.22)]">
+            <Loader2 size={14} className="text-sky-700 animate-spin shrink-0" />
+            <span className="leading-relaxed font-medium">
+              Rendu en cours de traitement…
+            </span>
           </div>
+          {canEdit && (
+            <Button
+              variant="danger"
+              size="sm"
+              icon={AlertTriangle}
+              onClick={() => setConfirmForceFail(true)}
+              disabled={forceFailing}
+              title="Bloquer le render et libérer la rotation pour pouvoir relancer"
+            >
+              Force fail
+            </Button>
+          )}
         </div>
+      )}
+
+      {/* Cas : render en erreur — EmptyState rose + relance */}
+      {render && !render.videoUrl && !render.pngUrl && render.status === "ERROR" && (
+        canEdit && builderHref ? (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Rendu en échec"
+            cta={{
+              label: "Relancer le rendu",
+              onClick: () => window.open(builderHref, "_blank", "noopener,noreferrer"),
+            }}
+          />
+        ) : (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Rendu en échec"
+            description="Le rendu a échoué."
+          />
+        )
       )}
 
       <ConfirmDialog
@@ -312,6 +373,6 @@ export function RenderSection({
         }}
         onCancel={() => setConfirmForceFail(false)}
       />
-    </section>
+    </Section>
   );
 }

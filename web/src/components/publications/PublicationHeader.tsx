@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { toast } from "@/components/ui/Toast";
+import { SlotQuickEditButton } from "@/components/publications/SlotQuickEditButton";
 
 export interface PublicationHeaderProps {
   slot: {
@@ -78,6 +79,7 @@ export function PublicationHeader({
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
+
 
   const scheduledAt = new Date(slot.scheduledAt);
   const title = slot.title ?? pattern?.label ?? "Publication sans titre";
@@ -131,43 +133,63 @@ export function PublicationHeader({
         }}
         onCancel={() => setConfirmDeleteOpen(false)}
       />
-      <div className="sticky top-0 z-20 bg-white border-b border-gray-200">
-        <div className="max-w-5xl mx-auto px-4 sm:px-8 py-4">
-          {/* Breadcrumb minimal */}
-          <nav className="flex items-center gap-1.5 text-[11px] text-gray-400 mb-3 flex-wrap">
+      {/* Header transparent — laisse passer le pastel du wrapper.
+          Style Control Center playground : eyebrow + h2 BIG + live pill. */}
+      <div className="rounded-t-3xl">
+        <div className="max-w-6xl mx-auto px-6 sm:px-8 pt-6 pb-8">
+          {/* Breadcrumb très discret (text-[10px] gray-400) */}
+          <nav className="flex items-center gap-1.5 text-[10px] text-gray-400 mb-3 flex-wrap">
             <Link
               href={currentUserRole === "ADMIN" ? "/calendar" : "/home"}
-              className="inline-flex items-center gap-1 hover:text-gray-950 transition-colors"
+              className="inline-flex items-center gap-1 hover:text-gray-700 transition-colors"
             >
-              <ArrowLeft size={11} className="flex-shrink-0" />
+              <ArrowLeft size={10} className="flex-shrink-0" />
               {currentUserRole === "ADMIN" ? "Calendrier" : "Ma liste"}
             </Link>
-            <ChevronRight size={11} className="flex-shrink-0 text-gray-300" />
+            <ChevronRight size={10} className="flex-shrink-0 text-gray-300" />
             {currentUserRole === "ADMIN" ? (
               <Link
                 href={`/admin/accounts/${account.id}`}
-                className="text-gray-500 hover:text-gray-950 transition-colors"
+                className="hover:text-gray-700 transition-colors"
                 title="Voir la fiche compte"
               >
                 @{account.handle}
               </Link>
             ) : (
-              <span className="text-gray-500">@{account.handle}</span>
+              <span>@{account.handle}</span>
             )}
           </nav>
 
-          {/* Titre + date + actions sur une seule rangée */}
-          <div className="flex items-start gap-4">
-            <div className="flex-1 min-w-0">
-              <h1 className="text-[20px] font-semibold tracking-tight text-gray-950 leading-tight truncate">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="min-w-0 flex-1">
+              {/* Eyebrow Control Center style */}
+              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                Fiche publication
+              </p>
+              {/* Title BIG style Control Center "Production en temps réel" */}
+              <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
                 {title}
               </h1>
-              <p className="mt-1 text-[12px] text-gray-500">
+              <p className="mt-2 text-[13px] text-gray-500">
                 {formatDateFR(scheduledAt)} · {formatTimeFR(scheduledAt)}
               </p>
             </div>
 
-            <div className="flex items-center gap-1.5 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Live status pill glass signature ControlCenter */}
+              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+                <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
+                <span className="text-[11px] font-mono text-gray-700 tabular-nums">
+                  {formatTimeFR(scheduledAt)}
+                </span>
+              </div>
+
+              {/* Édition rapide (drawer) — admin only. Ouvre le SlotDetailPanel
+                  qui pilote statut, assignations, overrides en surface unique. */}
+              {currentUserRole === "ADMIN" && (
+                <SlotQuickEditButton slotId={slot.id} />
+              )}
+
               {canMarkPublished && slot.status !== "PUBLISHED" && (
                 <Button
                   size="sm"

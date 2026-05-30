@@ -44,15 +44,12 @@ export function Input({
     "group/input flex items-center gap-2 w-full h-8 rounded-md transition-colors";
 
   // Background + état focus selon variant.
-  // Default = semi-verre : gradient blanc + backdrop-blur léger + ring inset
-  // signature. Glass = transparent + halo pastel sky au focus.
-  // Default = glass tinté sky : background sky-50 à 40% opacity + ring inset
-  // signature (top + edge subtle). Distinction par teinte naturelle plutôt
-  // que par border classique. Cohérent palette Coastal Studio.
+  // Default = glass blanc neutre (pas teinté). Le focus utilise un ring sky
+  // pour signaler l'activité sans saturer la teinte au repos.
   const wrapperVariantBase =
     variant === "glass"
       ? "bg-[var(--surface-glass-medium)] backdrop-blur-[8px] backdrop-saturate-150 border border-white/40"
-      : "bg-sky-50/40 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.08)]";
+      : "bg-white/65 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.08)]";
 
   const wrapperState = error
     ? variant === "glass"
@@ -60,7 +57,7 @@ export function Input({
       : "shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(220,38,38,0.55),0_1px_2px_rgba(220,38,38,0.1)] focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(220,38,38,0.7),0_0_0_3px_rgba(220,38,38,0.2)]"
     : variant === "glass"
       ? "hover:border-sky-200 focus-within:border-sky-300 focus-within:shadow-[0_0_0_3px_rgba(169,209,230,0.32)]"
-      : "hover:bg-sky-50/55 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.12)] focus-within:bg-sky-50/65 focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.45),0_0_0_3px_rgba(169,209,230,0.4)]";
+      : "hover:bg-white/80 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_0_0_1px_rgba(15,23,42,0.12)] focus-within:bg-white/95 focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.45),0_0_0_3px_rgba(169,209,230,0.4)]";
 
   const wrapperDisabled = disabled ? "opacity-60 cursor-not-allowed" : "";
 

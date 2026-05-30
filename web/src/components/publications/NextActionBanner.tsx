@@ -1,20 +1,19 @@
 "use client";
 
 /**
- * NextActionBanner — bandeau "À ton tour" affiché sous le header.
+ * NextActionBanner — mini pill flottant "Ta prochaine action".
  *
- * UX décisions Phase 3 (migration ui-boost) :
- * - Bandeau bg-gray-950 text-white Linear-style (au lieu de bg-indigo-50)
- *   — c'est un signal "c'est à toi", doit ressortir avec contraste max.
- * - Badge owner sans couleur, simple pill bordered white/15
- *   (OWNER_BADGE_CLS coloré ne marche pas sur fond dark, on neutralise).
- * - Action en font medium gray-100.
- * - Lien "Aller à la section" → button qui dispatch `pub:open-section`
- *   AU LIEU d'un <a href="#..."> natif. Fix audit : sans dispatch, le
- *   scroll landait sur une CollapsibleSection repliée.
+ * Refonte 2026-05-30 — feedback Mathis : auparavant un gros bandeau peach
+ * full-width sous le header (lourd visuellement, dominant alors qu'il s'agit
+ * d'une info contextuelle). Désormais un mini pill discret aligné à droite,
+ * juste sous le header, avec :
+ *  - Icon Sparkles (signature "next-action") + libellé court
+ *  - Click → ouvre + scroll vers la section concernée
+ *  - Glass v2 sage léger (positif, "à toi" = action positive à faire)
+ *  - Padding minimal, ne prend qu'un row
  */
 
-import { ArrowRight } from "lucide-react";
+import { Sparkles, ArrowRight } from "lucide-react";
 import {
   NEXT_ACTION,
   OWNER_LABEL,
@@ -30,6 +29,13 @@ interface Props {
   assigneeMonteurId: string | null;
   assigneeCmId: string | null;
   assigneeVideasteId?: string | null;
+  /**
+   * Set des sectionIds réellement rendus dans la fiche. Si le statut mappe
+   * vers une section absente (ex. CM en READY_FOR_CM mais needsDescription=
+   * "none"), le bouton "Aller à la section" est masqué pour éviter un scroll
+   * mort.
+   */
+  visibleSectionIds?: Set<string>;
 }
 
 function isCurrentUserOwner(args: {
@@ -89,6 +95,7 @@ export function NextActionBanner({
   assigneeMonteurId,
   assigneeCmId,
   assigneeVideasteId,
+  visibleSectionIds,
 }: Props) {
   const owner = resolveSlotOwner({
     status: slotStatus,
@@ -108,30 +115,52 @@ export function NextActionBanner({
   if (!isMine) return null;
 
   const sectionId = STATUS_TO_SECTION[slotStatus];
+  // Section absente dans le DOM → on masque le lien plutôt que de scroller
+  // dans le vide (ex. CM en READY_FOR_CM mais needsDescription="none").
+  const sectionInDom = sectionId
+    ? visibleSectionIds
+      ? visibleSectionIds.has(sectionId)
+      : true
+    : false;
+
+  const isClickable = Boolean(sectionId && sectionInDom);
+
+  const content = (
+    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-b from-sage-50/85 to-sage-50/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(111,162,128,0.32)]">
+      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-sage-100/70 text-sage-700">
+        <Sparkles size={9} />
+      </span>
+      <span className="text-[10.5px] uppercase tracking-widest font-semibold text-sage-700">
+        À toi
+      </span>
+      <span className="text-[12px] text-sage-900 max-w-[260px] truncate" title={action}>
+        {action}
+      </span>
+      {isClickable && (
+        <ArrowRight
+          size={11}
+          className="text-sage-700/70 group-hover:translate-x-0.5 transition-transform"
+          aria-hidden="true"
+        />
+      )}
+      <span className="sr-only"> · {OWNER_LABEL[owner]}</span>
+    </span>
+  );
 
   return (
-    <div className="bg-gray-950 text-white">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-2 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2.5">
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-widest border border-white/20 text-white/90">
-            À toi · {OWNER_LABEL[owner]}
-          </span>
-          <span className="text-[13px] font-medium text-gray-100">{action}</span>
-        </div>
-        {sectionId && (
-          <button
-            type="button"
-            onClick={() => goToSection(sectionId)}
-            className="group inline-flex items-center gap-1.5 text-[12px] font-medium text-gray-300 hover:text-white transition-colors focus-ring rounded px-1 py-0.5"
-          >
-            Aller à la section
-            <ArrowRight
-              size={13}
-              className="transition-transform group-hover:translate-x-0.5"
-            />
-          </button>
-        )}
-      </div>
+    <div className="px-6 sm:px-8 -mt-1 mb-1 flex justify-end">
+      {isClickable && sectionId ? (
+        <button
+          type="button"
+          onClick={() => goToSection(sectionId)}
+          className="group focus-ring rounded-full"
+          title={`Aller à la section "${sectionId}"`}
+        >
+          {content}
+        </button>
+      ) : (
+        content
+      )}
     </div>
   );
 }

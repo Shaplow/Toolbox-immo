@@ -5,6 +5,10 @@ const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
+  // Phase 1.x Vague 2 — exceljs (parsing xlsx) est consommé UNIQUEMENT par l'API
+  // route d'import data côté serveur. On le sort du bundle Turbopack pour éviter
+  // les soucis de résolution Node-only.
+  serverExternalPackages: ["exceljs"],
   experimental: {
     // Augmente le plafond de body pour les uploads vidéo via /api/upload
     proxyClientMaxBodySize: 2 * 1024 * 1024 * 1024, // 2 GB

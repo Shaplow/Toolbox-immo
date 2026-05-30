@@ -1,11 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+/**
+ * AccountsListAdmin — vue grid des comptes Instagram (refonte MID Liquid Glass).
+ *
+ * Cards style "profil IG" : aspect square, avatar circulaire au centre, handle,
+ * nom client, stats compactes, et CTA central "Voir les patterns" pour accès
+ * direct au workspace pattern (action principale).
+ */
+
 import Link from "next/link";
-import { Instagram, Settings2 } from "lucide-react";
-import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { Instagram, Layers, Calendar } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Input } from "@/components/ui/Input";
+import { Chip } from "@/components/ui/Chip";
 
 interface AccountItem {
   id: string;
@@ -16,195 +22,205 @@ interface AccountItem {
   client: { id: string; name: string } | null;
 }
 
-type PatternState = "all" | "active" | "none";
 
 interface Props {
   accounts: AccountItem[];
 }
 
-const SELECT_CLASS =
-  "text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300";
-
 function formatLastPublished(iso: string | null): string {
-  if (!iso) return "—";
+  if (!iso) return "Jamais publié";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+  return date.toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/** Initiales du handle pour l'avatar (max 2 caractères). */
+function handleInitials(handle: string): string {
+  const cleaned = handle.replace(/^@/, "");
+  return cleaned.slice(0, 2).toUpperCase();
+}
+
+/** Gradient pastel déterministe par handle pour l'avatar. */
+function avatarGradient(handle: string): string {
+  const gradients = [
+    "from-peach-200 to-rose-200",
+    "from-sage-200 to-sky-200",
+    "from-sky-200 to-peach-200",
+    "from-rose-200 to-peach-200",
+    "from-sage-200 to-peach-200",
+    "from-sky-200 to-rose-200",
+  ];
+  let h = 0;
+  for (let i = 0; i < handle.length; i++) {
+    h = (h * 31 + handle.charCodeAt(i)) >>> 0;
+  }
+  return gradients[h % gradients.length];
 }
 
 export function AccountsListAdmin({ accounts }: Props) {
-  const [search, setSearch] = useState("");
-  const [clientFilter, setClientFilter] = useState<string>("");
-  const [patternState, setPatternState] = useState<PatternState>("all");
-
-  // Listes uniques pour les dropdowns
-  const clientOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const a of accounts) {
-      if (a.client) map.set(a.client.id, a.client.name);
-    }
-    return Array.from(map.entries())
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name, "fr"));
-  }, [accounts]);
-
-  // Filtrage combiné
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return accounts.filter((a) => {
-      if (q) {
-        const hay = `${a.handle} ${a.name} ${a.client?.name ?? ""}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      if (clientFilter && a.client?.id !== clientFilter) return false;
-      if (patternState === "active" && a.activePatternCount === 0) return false;
-      if (patternState === "none" && a.activePatternCount > 0) return false;
-      return true;
-    });
-  }, [accounts, search, clientFilter, patternState]);
-
-  const hasAnyFilter =
-    Boolean(search.trim()) || Boolean(clientFilter) || patternState !== "all";
-
-  function clearFilters() {
-    setSearch("");
-    setClientFilter("");
-    setPatternState("all");
-  }
+  // Phase polish 2026-05-30 — filtre/recherche retiré temporairement (à
+  // réintégrer si besoin de recherche transverse multi-clients). On affiche
+  // la liste brute des comptes triés par leur ordre serveur.
+  const filtered = accounts;
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <ToolPageHeader
-        icon={Instagram}
-        iconColor="rose"
-        title="Comptes Instagram"
-        subtitle={`${accounts.length} compte${accounts.length !== 1 ? "s" : ""} — vue de recherche transverse multi-clients`}
-      />
-
-      {/* Filtres */}
-      <div className="mb-6 flex flex-wrap items-center gap-2">
-        <div className="max-w-xs flex-1 min-w-[220px]">
-          <Input
-            value={search}
-            onChange={setSearch}
-            placeholder="Rechercher par @handle, nom ou client…"
-          />
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
+        style={{
+          background: "var(--gradient-page-shell)",
+        }}
+      >
+        {/* Header Control Center */}
+        <div className="rounded-t-3xl overflow-hidden">
+          <div className="max-w-6xl mx-auto px-6 sm:px-8 pt-6 pb-2">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                  Planification
+                </p>
+                <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
+                  Comptes Instagram
+                </h1>
+                <p className="mt-2 text-[13px] text-gray-500">
+                  {accounts.length} compte{accounts.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+                <span className="text-[11px] font-mono text-gray-700 tabular-nums">
+                  {filtered.length} affiché{filtered.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <select
-          value={clientFilter}
-          onChange={(e) => setClientFilter(e.target.value)}
-          className={SELECT_CLASS}
-        >
-          <option value="">Tous les clients</option>
-          {clientOptions.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
+        {/* Inner content */}
+        <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
+          <div className="max-w-6xl mx-auto space-y-6">
+            {/* Filter bar (search + clients + patterns) temporairement retirée.
+                À réintégrer quand le besoin de recherche transverse multi-clients
+                redevient pertinent. */}
 
-        <select
-          value={patternState}
-          onChange={(e) => setPatternState(e.target.value as PatternState)}
-          className={SELECT_CLASS}
-        >
-          <option value="all">Tous patterns</option>
-          <option value="active">Avec patterns actifs</option>
-          <option value="none">Sans pattern</option>
-        </select>
+            {/* Grid de cards */}
+            {filtered.length === 0 ? (
+              <EmptyState
+                icon={Instagram}
+                title="Aucun compte configuré"
+                description="Aucun compte Instagram configuré pour le moment."
+              />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                {filtered.map((a) => (
+                  <AccountCard key={a.id} account={a} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-        {hasAnyFilter && (
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors px-2 py-1"
-          >
-            Réinitialiser
-          </button>
-        )}
+// ─── AccountCard ────────────────────────────────────────────────────────────
 
-        <span className="ml-auto text-xs text-gray-400">
-          {filtered.length} résultat{filtered.length !== 1 ? "s" : ""}
+interface AccountCardProps {
+  account: AccountItem;
+}
+
+function AccountCard({ account }: AccountCardProps) {
+  const isInactive = account.activePatternCount === 0;
+  const lastPublished = formatLastPublished(account.lastPublishedAt);
+  const gradient = avatarGradient(account.handle);
+
+  return (
+    <div
+      className={[
+        "group relative flex flex-col items-center text-center gap-4 p-6 rounded-3xl transition-all aspect-square",
+        // Glass franc — gradient blanc translucent + ring inset spéculaire.
+        "bg-gradient-to-b from-white/90 to-white/60 backdrop-blur-[14px] backdrop-saturate-150",
+        "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.06),inset_0_-1px_0_rgba(15,23,42,0.04),0_2px_8px_-2px_rgba(15,23,42,0.08)]",
+        "hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.6),inset_0_0_0_1px_rgba(15,23,42,0.1),inset_0_-1px_0_rgba(15,23,42,0.06),0_4px_12px_rgba(15,23,42,0.08),0_16px_36px_-12px_rgba(15,23,42,0.18)]",
+        "hover:-translate-y-0.5",
+      ].join(" ")}
+    >
+      {/* Avatar profil — gradient pastel + initiales */}
+      <div
+        className={[
+          "relative h-20 w-20 rounded-full inline-flex items-center justify-center shrink-0",
+          "bg-gradient-to-br",
+          gradient,
+          "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),0_2px_4px_rgba(15,23,42,0.06),0_8px_24px_-8px_rgba(15,23,42,0.16)]",
+          "group-hover:scale-105 transition-transform",
+        ].join(" ")}
+      >
+        <span className="text-[24px] font-semibold text-gray-800 tracking-tight">
+          {handleInitials(account.handle)}
+        </span>
+        {/* Icône Instagram en pastille bottom-right */}
+        <span className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-white inline-flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_1px_2px_rgba(15,23,42,0.08)]">
+          <Instagram size={12} className="text-rose-500" />
         </span>
       </div>
 
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon={Instagram}
-          title="Aucun compte trouvé"
-          description={
-            hasAnyFilter
-              ? "Modifiez les filtres pour voir d'autres comptes."
-              : "Aucun compte Instagram configuré pour le moment."
-          }
-        />
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
-              <tr>
-                <th className="px-4 py-2.5 text-left font-medium">Compte</th>
-                <th className="px-4 py-2.5 text-left font-medium">Client</th>
-                <th className="px-4 py-2.5 text-right font-medium">Patterns actifs</th>
-                <th className="px-4 py-2.5 text-right font-medium">Dernière publi</th>
-                <th className="px-4 py-2.5 text-right font-medium"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filtered.map((a) => (
-                <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <Instagram className="h-4 w-4 shrink-0 text-pink-500" />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{a.name}</p>
-                        <p className="text-xs text-gray-500">@{a.handle}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    {a.client ? (
-                      <Link
-                        href={`/admin/clients/${a.client.id}?tab=accounts`}
-                        className="text-sm text-indigo-700 hover:text-indigo-900 hover:underline"
-                      >
-                        {a.client.name}
-                      </Link>
-                    ) : (
-                      <span className="text-sm italic text-gray-400">Sans client</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {a.activePatternCount > 0 ? (
-                      <span className="text-sm font-semibold text-gray-800">
-                        {a.activePatternCount}
-                      </span>
-                    ) : (
-                      <span
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200"
-                        title="Aucun pattern actif — ce compte ne génère pas de slots"
-                      >
-                        Sans pattern
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right text-xs text-gray-500">
-                    {formatLastPublished(a.lastPublishedAt)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/admin/accounts/${a.id}`}
-                      className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
-                    >
-                      <Settings2 className="h-3.5 w-3.5" />
-                      Configurer
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* Identité */}
+      <div className="min-w-0 w-full">
+        <p className="text-[15px] font-semibold text-gray-950 truncate leading-tight">
+          @{account.handle}
+        </p>
+        <p className="text-[12px] text-gray-500 mt-0.5 truncate">{account.name}</p>
+        {account.client ? (
+          <Link
+            href={`/admin/clients/${account.client.id}?tab=accounts`}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center text-[10.5px] uppercase tracking-widest font-medium text-gray-400 hover:text-gray-700 mt-2 transition-colors"
+          >
+            {account.client.name}
+          </Link>
+        ) : (
+          <p className="text-[10.5px] uppercase tracking-widest font-medium text-gray-400 mt-2 italic">
+            Sans client
+          </p>
+        )}
+      </div>
+
+      {/* Stats — stack vertical pour éviter wrap dans les cards étroites (xl:grid-cols-4) */}
+      <div className="flex flex-col gap-1.5 mt-auto items-start">
+        {isInactive ? (
+          <Chip variant="peach" icon={Layers} className="whitespace-nowrap">
+            Sans pattern
+          </Chip>
+        ) : (
+          <Chip variant="sage" icon={Layers} className="whitespace-nowrap">
+            {account.activePatternCount} pattern
+            {account.activePatternCount > 1 ? "s" : ""}
+          </Chip>
+        )}
+        <span className="inline-flex items-center gap-1 text-[10.5px] text-gray-500 font-mono tabular-nums whitespace-nowrap">
+          <Calendar size={10} />
+          {lastPublished}
+        </span>
+      </div>
+
+      {/* CTA principal — accès direct aux patterns */}
+      <Link
+        href={`/admin/accounts/${account.id}`}
+        className={[
+          "w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-medium transition-all",
+          "bg-gradient-to-b from-gray-700 to-gray-900 text-white",
+          "shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_0_0_1px_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.12),0_4px_12px_-4px_rgba(15,23,42,0.22)]",
+          "hover:from-gray-600 hover:to-gray-800 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.24),inset_0_0_0_1px_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(0,0,0,0.2),0_2px_4px_rgba(15,23,42,0.16),0_8px_20px_-4px_rgba(15,23,42,0.28)]",
+          "focus-ring",
+        ].join(" ")}
+      >
+        <Layers size={13} />
+        Voir les patterns
+      </Link>
     </div>
   );
 }

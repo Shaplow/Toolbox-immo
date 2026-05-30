@@ -38,7 +38,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
-type Variant = "default" | "glass" | "tinted";
+type Variant = "default" | "glass" | "frosted" | "tinted";
 type Tint = "peach" | "sage" | "sky" | "rose";
 
 interface SectionProps {
@@ -74,6 +74,12 @@ const VARIANT_CONTAINER: Record<Variant, string> = {
     "bg-gradient-to-b from-white to-white/85 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1),inset_0_-1px_0_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.08)]",
   glass:
     "bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150 shadow-[var(--ring-glass-inset),inset_0_0_0_1px_rgba(255,255,255,0.45),0_2px_8px_-2px_rgba(15,23,42,0.08)]",
+  // Frosted = matière "Glass + Frosted" — gradient blanc translucide.
+  // Blur réduit à [8px] (était [18px]) pour perf : LCP 12s → quelques 100ms.
+  // Le ring inset spéculaire + gradient suffisent à donner la matière sans
+  // le compositing GPU coûteux du blur fort.
+  frosted:
+    "bg-gradient-to-b from-white/80 to-white/60 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.08)]",
   tinted: "", // résolu par tint ci-dessous
 };
 
@@ -89,7 +95,10 @@ export function Section({
   icon: Icon,
   description,
   actions,
-  variant = "default",
+  // Default frosted : matière glass + frosted laissant passer subtilement
+  // les couleurs du fond (wrapper ControlCenter pastel sur la fiche). Plus
+  // doux à l'œil que white pur.
+  variant = "frosted",
   tint,
   collapsible = false,
   defaultOpen = true,

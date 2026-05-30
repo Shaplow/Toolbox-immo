@@ -91,13 +91,13 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               {bulkCategoryInput.trim() ? "Cat." : <X size={10} />}
             </button>
           </div>
-          {/* Bulk set tag */}
+          {/* Bulk pack */}
           <div className="flex items-center gap-1">
             <input
               value={bulkSetTagInput}
               onChange={(e) => setBulkSetTagInput(e.target.value)}
               list="bulk-set-tags-list"
-              placeholder="Set…"
+              placeholder="Pack…"
               className="w-28 text-xs border border-pink-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-pink-400"
               onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplySetTag(); } }}
             />
@@ -107,9 +107,9 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               className={`px-2.5 py-1 text-white text-xs rounded disabled:opacity-50 ${
                 bulkSetTagInput.trim() ? "bg-pink-600 hover:bg-pink-700" : "bg-gray-400 hover:bg-gray-500"
               }`}
-              title={bulkSetTagInput.trim() ? "Appliquer le set" : "Retirer le set"}
+              title={bulkSetTagInput.trim() ? "Appliquer le pack" : "Retirer le pack"}
             >
-              {bulkSetTagInput.trim() ? "Set" : <X size={10} />}
+              {bulkSetTagInput.trim() ? "Pack" : <X size={10} />}
             </button>
           </div>
           {/* Bulk tags */}

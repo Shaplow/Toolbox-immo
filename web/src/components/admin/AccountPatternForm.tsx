@@ -1,11 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+/**
+ * AccountPatternForm — édition / création d'un AccountPattern.
+ *
+ * Refonte MID Liquid Glass : Drawer right size xl + 4 Tabs structurés
+ * (Identité / Production / Workflow / Équipe). Sticky banner xfield errors,
+ * Combobox au lieu de selects HTML, AssigneePicker pour les défauts d'équipe.
+ */
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, IdCard, Sparkles, Users, Workflow, Save } from "lucide-react";
+import { Drawer } from "@/components/ui/Drawer";
+import { Tabs } from "@/components/ui/Tabs";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
+import { Combobox } from "@/components/ui/Combobox";
+import { Switch } from "@/components/ui/Switch";
+import { TimePicker } from "@/components/ui/TimePicker";
+import { AssigneePicker } from "@/components/ui/molecules/AssigneePicker";
+import { toast } from "@/components/ui/Toast";
+import { CoverConfigEditor } from "./CoverConfigEditor";
 import {
   validatePatternConfig,
   type PatternValidationError,
@@ -19,8 +35,6 @@ function parseCoverConfig(json: string): object | null {
     return null;
   }
 }
-import { toast } from "@/components/ui/Toast";
-import { CoverConfigEditor } from "./CoverConfigEditor";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,7 +47,6 @@ export type AccountPatternRow = {
   coverConfig: unknown;
   needsDescription: string;
   needsCaptions: boolean;
-  /** Phase 2.3 — validation admin du montage avant promote. */
   needsAdminValidation: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
@@ -50,7 +63,7 @@ export type AccountPatternRow = {
   notes?: string | null;
 };
 
-type UserOption = { id: string; name: string | null; role: string };
+type UserOption = { id: string; name: string | null; email?: string | null; role: string };
 type TemplateOption = { id: string; name: string };
 
 type Props = {
@@ -60,8 +73,6 @@ type Props = {
   onClose: () => void;
   onSaved: () => void;
 };
-
-// ─── Form state ───────────────────────────────────────────────────────────────
 
 type FormValues = {
   label: string;
@@ -151,6 +162,36 @@ const DAYS_OF_WEEK = [
   { value: 7, label: "Dim" },
 ];
 
+const SOURCE_OPTIONS = [
+  { value: "auto_template", label: "Auto template" },
+  { value: "manual_rushes", label: "Rushes externes (montage)" },
+  { value: "external_upload", label: "Upload externe" },
+];
+
+const COVER_MODE_OPTIONS = [
+  { value: "none", label: "Pas de cover" },
+  { value: "manualSelect", label: "Sélection libre (CM)" },
+  { value: "autoPack", label: "Pack auto → sélection (CM)" },
+  { value: "monteurUpload", label: "Upload par le monteur" },
+];
+
+const DESCRIPTION_OPTIONS = [
+  { value: "none", label: "Aucune" },
+  { value: "preFilled", label: "Pré-remplie" },
+  { value: "autoGenerate", label: "Auto-générée" },
+  { value: "manualWrite", label: "Manuelle" },
+];
+
+const COVER_MODE_HELP: Record<string, string> = {
+  none: "Aucune cover. La section ne s'affiche pas sur la fiche.",
+  manualSelect:
+    "La CM choisit librement une frame depuis la vidéo finale, sans config préalable.",
+  autoPack:
+    "Le système extrait des frames via le preset configuré + place les groupes de texte. La CM valide la frame finale et ajuste.",
+  monteurUpload:
+    "Le monteur uploade la cover en même temps que sa version. Pas de génération automatique. Nécessite une source « manual_rushes ».",
+};
+
 // ─── Validation ───────────────────────────────────────────────────────────────
 
 const PUBLISH_TIME_RE = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
@@ -158,17 +199,12 @@ const PUBLISH_TIME_RE = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
 function validate(values: FormValues): Partial<Record<keyof FormValues, string>> {
   const errors: Partial<Record<keyof FormValues, string>> = {};
   if (!values.label.trim()) errors.label = "Le label est requis";
-  // daysOfWeek peut être vide → pattern manuel (template pour AddSlotModal, pas d'auto-gen).
   if (values.daysOfWeek.length > 0 && !PUBLISH_TIME_RE.test(values.publishTime)) {
     errors.publishTime = "Format HH:MM requis";
   }
   return errors;
 }
 
-/**
- * Mapping code d'erreur cross-field (helper centralisé) → clé FormValues
- * pour pouvoir afficher l'erreur sous le bon champ.
- */
 function mapXfieldCodeToFormKey(code: string): keyof FormValues | null {
   switch (code) {
     case "MISSING_TEMPLATE":
@@ -187,88 +223,75 @@ function mapXfieldCodeToFormKey(code: string): keyof FormValues | null {
   }
 }
 
+type TabKey = "identity" | "production" | "workflow" | "team";
+
 // ─── AccountPatternForm ───────────────────────────────────────────────────────
 
-export function AccountPatternForm({ accountId, initialValues, open, onClose, onSaved }: Props) {
+export function AccountPatternForm({
+  accountId,
+  initialValues,
+  open,
+  onClose,
+  onSaved,
+}: Props) {
   const isEdit = !!initialValues;
   const [values, setValues] = useState<FormValues>(() => defaultValues(initialValues));
   const [errors, setErrors] = useState<Partial<Record<keyof FormValues, string>>>({});
   const [loading, setLoading] = useState(false);
+  const [tab, setTab] = useState<TabKey>("identity");
 
   // Options fetched client-side
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
-  const [monteurs, setMonteurs] = useState<UserOption[]>([]);
-  const [cms, setCms] = useState<UserOption[]>([]);
-  const [videastes, setVideastes] = useState<UserOption[]>([]);
+  const [users, setUsers] = useState<UserOption[]>([]);
   const [captionPresets, setCaptionPresets] = useState<{ id: string; name: string }[]>([]);
   const [descriptionPrompts, setDescriptionPrompts] = useState<{ id: string; name: string }[]>([]);
 
-  const overlayRef = useRef<HTMLDivElement>(null);
-
-  // Re-init when initialValues change (open new form)
   useEffect(() => {
     setValues(defaultValues(initialValues));
     setErrors({});
+    setTab("identity");
   }, [initialValues, open]);
 
-  // Fetch options on open
   useEffect(() => {
     if (!open) return;
-    void fetchOptions();
+    void (async () => {
+      try {
+        const [tplRes, usersRes, presetsRes, promptsRes] = await Promise.all([
+          fetch("/api/templates"),
+          fetch("/api/admin/users"),
+          fetch("/api/caption-presets"),
+          fetch("/api/description/prompts"),
+        ]);
+        if (tplRes.ok) {
+          const tpls = (await tplRes.json()) as TemplateOption[];
+          setTemplates(tpls.map((t) => ({ id: t.id, name: t.name })));
+        }
+        if (usersRes.ok) {
+          setUsers((await usersRes.json()) as UserOption[]);
+        }
+        if (presetsRes.ok) {
+          setCaptionPresets((await presetsRes.json()) as { id: string; name: string }[]);
+        }
+        if (promptsRes.ok) {
+          const prompts = (await promptsRes.json()) as {
+            id: string;
+            name: string;
+            isActive: boolean;
+          }[];
+          setDescriptionPrompts(prompts.filter((p) => p.isActive));
+        }
+      } catch {
+        // Non-fatal
+      }
+    })();
   }, [open]);
 
-  async function fetchOptions() {
-    try {
-      const [tplRes, usersRes, presetsRes, promptsRes] = await Promise.all([
-        fetch("/api/templates"),
-        fetch("/api/admin/users"),
-        fetch("/api/caption-presets"),
-        fetch("/api/description/prompts"),
-      ]);
-      if (tplRes.ok) {
-        const tpls = await tplRes.json() as TemplateOption[];
-        setTemplates(tpls.map((t) => ({ id: t.id, name: t.name })));
-      }
-      if (usersRes.ok) {
-        const users = await usersRes.json() as UserOption[];
-        setMonteurs(users.filter((u) => u.role === "MONTEUR" || u.role === "ADMIN"));
-        setCms(users.filter((u) => u.role === "CM" || u.role === "ADMIN"));
-        // VIDÉASTE : seuls les rôles dédiés (un ADMIN peut filmer mais on n'élargit
-        // pas pour éviter d'avoir 5 admins dans la liste de pickers terrain).
-        setVideastes(users.filter((u) => u.role === "VIDEASTE" || u.role === "ADMIN"));
-      }
-      if (presetsRes.ok) {
-        setCaptionPresets(await presetsRes.json() as { id: string; name: string }[]);
-      }
-      if (promptsRes.ok) {
-        const prompts = await promptsRes.json() as { id: string; name: string; isActive: boolean }[];
-        setDescriptionPrompts(prompts.filter((p) => p.isActive));
-      }
-    } catch {
-      // Non-fatal — selects will be empty
-    }
-  }
-
-  // ESC to close
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose]);
-
-  function set<K extends keyof FormValues>(key: K, value: FormValues[K]) {
+  const set = useCallback(<K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     setValues((prev) => ({ ...prev, [key]: value }));
-    if (errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }));
-  }
+    setErrors((prev) => ({ ...prev, [key]: undefined }));
+  }, []);
 
-  // ── Validation cross-field (recalcul à chaque changement) ────────────────
-  // C2 (preset cover orphelin) ne peut pas être vérifié côté client sans charger
-  // les TemplateCoverPreset du template sélectionné — on le délègue au backend
-  // qui retournera 422 si le preset référencé n'existe pas. Les 5 autres règles
-  // sont vérifiées ici en temps réel pour feedback immédiat.
+  // ── Xfield validation ────────────────────────────────────────────────────
   const xfieldErrors = useMemo<PatternValidationError[]>(() => {
     const parsedCoverConfig = values.coverConfigJson.trim()
       ? (parseCoverConfig(values.coverConfigJson) as unknown)
@@ -287,11 +310,10 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
         captionPresetId: values.captionPresetId || null,
         descriptionPromptId: values.descriptionPromptId || null,
       },
-      null, // template context : skip C2 côté client, le backend tranche
+      null,
     );
   }, [values]);
 
-  /** Erreurs xfield projetées sur les champs du formulaire (pour affichage inline). */
   const xfieldErrorsByField = useMemo<Partial<Record<keyof FormValues, string>>>(() => {
     const map: Partial<Record<keyof FormValues, string>> = {};
     for (const err of xfieldErrors) {
@@ -301,15 +323,67 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
     return map;
   }, [xfieldErrors]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  // ── Filtered users per role ────────────────────────────────────────────
+  const monteurUsers = useMemo(
+    () => users.filter((u) => u.role === "MONTEUR" || u.role === "ADMIN"),
+    [users],
+  );
+  const cmUsers = useMemo(
+    () => users.filter((u) => u.role === "CM" || u.role === "ADMIN"),
+    [users],
+  );
+  const videasteUsers = useMemo(
+    () => users.filter((u) => u.role === "VIDEASTE" || u.role === "ADMIN"),
+    [users],
+  );
+
+  const templateOptions = useMemo(
+    () => [
+      { value: "", label: "— Choisir un template —" },
+      ...templates.map((t) => ({ value: t.id, label: t.name })),
+    ],
+    [templates],
+  );
+
+  const captionPresetOptions = useMemo(
+    () => [
+      {
+        value: "",
+        label:
+          captionPresets.length === 0
+            ? "Aucun preset disponible — créez-en un dans /captions"
+            : "— Choisir un preset —",
+      },
+      ...captionPresets.map((p) => ({ value: p.id, label: p.name })),
+    ],
+    [captionPresets],
+  );
+
+  const descriptionPromptOptions = useMemo(
+    () => [
+      {
+        value: "",
+        label:
+          descriptionPrompts.length === 0
+            ? "Aucun prompt disponible — créez-en un dans /admin/prompts"
+            : "— Choisir un prompt —",
+      },
+      ...descriptionPrompts.map((p) => ({ value: p.id, label: p.name })),
+    ],
+    [descriptionPrompts],
+  );
+
+  // ── Submit ───────────────────────────────────────────────────────────────
+  async function handleSubmit() {
     const newErrors = validate(values);
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
+      // Jump à l'onglet où vit l'erreur.
+      if (newErrors.label) setTab("identity");
+      else if (newErrors.publishTime) setTab("identity");
       return;
     }
 
-    // Bloquer si erreurs cross-field détectées côté client
     if (xfieldErrors.length > 0) {
       toast.error("Corrigez les conflits de configuration avant de sauvegarder.");
       return;
@@ -358,18 +432,19 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
       });
 
       if (!res.ok) {
-        const data = await res.json() as {
+        const data = (await res.json()) as {
           error?: string;
           validationErrors?: PatternValidationError[];
         };
-        // 422 = erreurs xfield backend (C2 — preset cover orphelin), reporter inline
         if (res.status === 422 && Array.isArray(data.validationErrors)) {
           const fieldErrors: Partial<Record<keyof FormValues, string>> = {};
           for (const err of data.validationErrors) {
             const field = mapXfieldCodeToFormKey(err.code);
             if (field && !fieldErrors[field]) fieldErrors[field] = err.message;
           }
-          if (Object.keys(fieldErrors).length > 0) setErrors((prev) => ({ ...prev, ...fieldErrors }));
+          if (Object.keys(fieldErrors).length > 0) {
+            setErrors((prev) => ({ ...prev, ...fieldErrors }));
+          }
         }
         toast.error(data.error ?? "Erreur lors de l'enregistrement");
         return;
@@ -385,457 +460,441 @@ export function AccountPatternForm({ accountId, initialValues, open, onClose, on
     }
   }
 
-  if (!open) return null;
+  // ── Tabs config ──────────────────────────────────────────────────────────
+  const tabItems = [
+    { id: "identity", label: "Identité", icon: IdCard },
+    { id: "production", label: "Production", icon: Sparkles },
+    { id: "workflow", label: "Workflow", icon: Workflow },
+    { id: "team", label: "Équipe", icon: Users },
+  ];
+
+  // Counters d'erreurs par tab pour badge sur tab
+  const tabErrorCounts: Record<TabKey, number> = {
+    identity: (errors.label ? 1 : 0) + (errors.publishTime ? 1 : 0),
+    production:
+      (xfieldErrorsByField.templateId ? 1 : 0) +
+      (xfieldErrorsByField.coverConfigJson ? 1 : 0) +
+      (xfieldErrorsByField.captionPresetId ? 1 : 0) +
+      (xfieldErrorsByField.descriptionPromptId ? 1 : 0),
+    workflow: xfieldErrorsByField.allowsClientRevision ? 1 : 0,
+    team: 0,
+  };
 
   return (
-    <>
-      {/* Overlay */}
-      <div
-        ref={overlayRef}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      {/* Modal */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="pattern-form-title"
-        className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none"
-      >
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl pointer-events-auto overflow-hidden flex flex-col max-h-[90vh]">
-          {/* Header */}
-          <div className="px-6 pt-6 pb-4 border-b border-gray-100 shrink-0">
-            <h2 id="pattern-form-title" className="text-base font-semibold text-gray-900">
-              {isEdit ? "Éditer le pattern" : "Nouveau pattern"}
+    <Drawer open={open} onClose={onClose} side="right" size="xl">
+      {/* Header */}
+      <header className="shrink-0 px-5 pt-5 pb-3 border-b border-white/30">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+              {isEdit ? "Édition pattern" : "Nouveau pattern"}
+            </p>
+            <h2 className="mt-1 text-[18px] font-semibold tracking-tight text-gray-950 truncate leading-tight">
+              {values.label || (isEdit ? "Sans titre" : "Pattern de publication")}
             </h2>
+            <div className="mt-2 inline-flex items-center gap-2">
+              <Switch
+                checked={values.isActive}
+                onChange={(v) => set("isActive", v)}
+                size="sm"
+                accent="default"
+              />
+              <span className="text-[11px] text-gray-600">
+                {values.isActive ? "Actif" : "Inactif"}
+              </span>
+            </div>
           </div>
+        </div>
 
-          {/* Scrollable body */}
-          <form onSubmit={(e) => void handleSubmit(e)} className="overflow-y-auto flex-1">
-            <div className="px-6 py-5 flex flex-col gap-6">
+        {/* Tabs */}
+        <div className="mt-4">
+          <Tabs
+            items={tabItems.map((t) => ({
+              ...t,
+              badge:
+                tabErrorCounts[t.id as TabKey] > 0 ? (
+                  <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-rose-50 text-rose-700 text-[10px] font-semibold tabular-nums shadow-[inset_0_0_0_1px_rgba(201,113,133,0.22)]">
+                    {tabErrorCounts[t.id as TabKey]}
+                  </span>
+                ) : undefined,
+            }))}
+            value={tab}
+            onChange={(v) => setTab(v as TabKey)}
+            variant="line"
+            size="sm"
+          />
+        </div>
+      </header>
 
-              {/* Bandeau warning xfield (cohérence config) */}
-              {xfieldErrors.length > 0 && (
-                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  <AlertTriangle size={16} className="text-amber-500 mt-0.5 flex-shrink-0" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-amber-900">
-                      Configuration incohérente ({xfieldErrors.length} problème{xfieldErrors.length > 1 ? "s" : ""})
-                    </p>
-                    <ul className="mt-1 space-y-0.5 text-xs text-amber-800 list-disc list-inside">
-                      {xfieldErrors.map((err) => (
-                        <li key={err.code}>{err.message}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              )}
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+        {/* Banner xfield errors */}
+        {xfieldErrors.length > 0 && (
+          <div className="flex items-start gap-2 rounded-xl bg-peach-50/70 backdrop-blur-[8px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(245,158,107,0.25)]">
+            <AlertTriangle size={16} className="text-peach-700 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] font-semibold text-peach-900">
+                Configuration incohérente ({xfieldErrors.length} problème
+                {xfieldErrors.length > 1 ? "s" : ""})
+              </p>
+              <ul className="mt-1 space-y-0.5 text-[11px] text-peach-800 list-disc list-inside">
+                {xfieldErrors.map((err) => (
+                  <li key={err.code}>{err.message}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
 
-              {/* ── Section 1 : Identité ── */}
-              <Section title="Identité">
-                <FormField label="Label" required error={errors.label}>
-                  <Input
-                    value={values.label}
-                    onChange={(v) => set("label", v)}
-                    maxLength={100}
-                    placeholder="Ex : Post Lundi 9h"
-                    error={errors.label}
-                  />
-                </FormField>
-                <ToggleField
-                  label="Actif"
-                  checked={values.isActive}
-                  onChange={(v) => set("isActive", v)}
+        {/* Tab Identité */}
+        {tab === "identity" && (
+          <div className="space-y-4">
+            <FormField label="Label" required error={errors.label}>
+              <Input
+                value={values.label}
+                onChange={(v) => set("label", v)}
+                maxLength={100}
+                placeholder="Ex : Post Lundi 9h"
+                error={errors.label}
+              />
+            </FormField>
+
+            <FormField label="Source du contenu">
+              <Combobox
+                value={values.source}
+                onChange={(v) => set("source", v)}
+                options={SOURCE_OPTIONS}
+              />
+            </FormField>
+
+            {values.source === "auto_template" && (
+              <FormField
+                label="Template"
+                required
+                error={errors.templateId ?? xfieldErrorsByField.templateId}
+              >
+                <Combobox
+                  value={values.templateId}
+                  onChange={(v) => set("templateId", v)}
+                  options={templateOptions}
+                  placeholder="— Choisir un template —"
+                  emptyMessage="Aucun template trouvé"
                 />
-              </Section>
+              </FormField>
+            )}
 
-              {/* ── Section 2 : Source ── */}
-              <Section title="Source">
-                <RadioGroup
-                  name="source"
-                  value={values.source}
-                  onChange={(v) => set("source", v)}
-                  options={[
-                    { value: "auto_template", label: "Auto template" },
-                    { value: "manual_rushes", label: "Rushes externes (montage)" },
-                    { value: "external_upload", label: "Upload externe" },
-                  ]}
-                />
-                {values.source === "auto_template" && (
-                  <FormField label="Template" error={xfieldErrorsByField.templateId}>
-                    <SelectField
-                      value={values.templateId}
-                      onChange={(v) => set("templateId", v)}
-                      options={templates}
-                      placeholder="— Choisir un template —"
-                    />
-                  </FormField>
-                )}
-              </Section>
+            <div>
+              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-2">
+                Jours de publication
+              </p>
+              <p className="text-[11px] text-gray-500 mb-2 leading-relaxed">
+                Laisser vide pour un pattern manuel (template disponible dans le calendrier
+                « Ajouter un slot »).
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {DAYS_OF_WEEK.map((day) => {
+                  const checked = values.daysOfWeek.includes(day.value);
+                  return (
+                    <button
+                      key={day.value}
+                      type="button"
+                      onClick={() => {
+                        if (checked) {
+                          set(
+                            "daysOfWeek",
+                            values.daysOfWeek.filter((d) => d !== day.value),
+                          );
+                        } else {
+                          set(
+                            "daysOfWeek",
+                            [...values.daysOfWeek, day.value].sort((a, b) => a - b),
+                          );
+                        }
+                      }}
+                      className={[
+                        "inline-flex items-center justify-center w-10 h-10 rounded-lg text-[11px] font-medium transition-all focus-ring",
+                        checked
+                          ? "bg-gradient-to-b from-gray-700 to-gray-900 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.12)]"
+                          : "bg-white/55 backdrop-blur-[8px] text-gray-600 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)] hover:bg-white/85",
+                      ].join(" ")}
+                    >
+                      {day.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
-              {/* ── Section 3 : Cover ── */}
-              <Section title="Cover">
-                <RadioGroup
-                  name="coverMode"
-                  value={values.coverMode}
-                  onChange={(v) => set("coverMode", v)}
-                  options={[
-                    { value: "none", label: "Pas de cover" },
-                    { value: "manualSelect", label: "Sélection libre (CM)" },
-                    { value: "autoPack", label: "Pack auto → sélection (CM)" },
-                    { value: "monteurUpload", label: "Upload par le monteur" },
-                  ]}
+            <FormField
+              label={
+                values.daysOfWeek.length === 0
+                  ? "Heure (ignorée — pattern manuel)"
+                  : "Heure de publication"
+              }
+              required={values.daysOfWeek.length > 0}
+              error={errors.publishTime}
+            >
+              <TimePicker
+                value={values.publishTime}
+                onChange={(v) => set("publishTime", v)}
+                disabled={values.daysOfWeek.length === 0}
+              />
+            </FormField>
+
+            <FormField label="Notes internes (optionnel)">
+              <Textarea
+                value={values.notes}
+                onChange={(v) => set("notes", v)}
+                placeholder="Notes internes sur ce pattern…"
+                rows={3}
+                maxLength={1000}
+              />
+            </FormField>
+          </div>
+        )}
+
+        {/* Tab Production */}
+        {tab === "production" && (
+          <div className="space-y-4">
+            <FormField label="Mode cover">
+              <Combobox
+                value={values.coverMode}
+                onChange={(v) => set("coverMode", v)}
+                options={COVER_MODE_OPTIONS}
+              />
+            </FormField>
+            <p className="text-[11px] text-gray-500 -mt-2 leading-relaxed">
+              {COVER_MODE_HELP[values.coverMode]}
+            </p>
+
+            {values.coverMode === "autoPack" && (
+              <FormField label="Configuration cover" error={xfieldErrorsByField.coverConfigJson}>
+                <CoverConfigEditor
+                  templateId={values.templateId || null}
+                  value={parseCoverConfig(values.coverConfigJson)}
+                  onChange={(cfg) => set("coverConfigJson", JSON.stringify(cfg, null, 2))}
                 />
-                {/* Help text par mode pour clarifier qui fait quoi */}
-                <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                  {values.coverMode === "none" &&
-                    "Aucune cover. La section ne s'affiche pas sur la fiche."}
-                  {values.coverMode === "manualSelect" &&
-                    "La CM choisit librement une frame depuis la vidéo finale, sans config préalable."}
-                  {values.coverMode === "autoPack" &&
-                    "Le système extrait des frames via le preset configuré + place les groupes de texte. La CM valide la frame finale et ajuste."}
-                  {values.coverMode === "monteurUpload" &&
-                    "Le monteur uploade la cover en même temps que sa version. Pas de génération automatique. Nécessite une source « manual_rushes »."}
-                </p>
-                {/* Preset config visible seulement pour autoPack */}
-                {values.coverMode === "autoPack" && (
-                  <FormField label="" error={xfieldErrorsByField.coverConfigJson}>
-                    <CoverConfigEditor
-                      templateId={values.templateId || null}
-                      value={parseCoverConfig(values.coverConfigJson)}
-                      onChange={(cfg) => set("coverConfigJson", JSON.stringify(cfg, null, 2))}
-                    />
-                  </FormField>
-                )}
-                {/* Warning si monteurUpload + source pas manual_rushes */}
-                {values.coverMode === "monteurUpload" && values.source !== "manual_rushes" && (
-                  <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    ⚠ Ce mode nécessite une source « manual_rushes » (la source actuelle est « {values.source} »).
+              </FormField>
+            )}
+
+            {values.coverMode === "monteurUpload" && values.source !== "manual_rushes" && (
+              <p className="text-[11px] text-peach-800 bg-peach-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.2)]">
+                ⚠ Ce mode nécessite une source « manual_rushes » (la source actuelle est «{" "}
+                {values.source} »).
+              </p>
+            )}
+
+            <div className="pt-2 border-t border-white/40">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold text-gray-950">Sous-titres auto</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    Génère et brûle des sous-titres sur la vidéo finale.
                   </p>
-                )}
-              </Section>
-
-              {/* ── Section 4 : Génération ── */}
-              <Section title="Génération">
-                <ToggleField
-                  label="Sous-titres auto"
-                  hint="Génère et brûle des sous-titres sur la vidéo finale. Sinon, aucune étape captions n'apparaît dans la fiche."
+                </div>
+                <Switch
                   checked={values.needsCaptions}
                   onChange={(v) => set("needsCaptions", v)}
+                  accent="default"
+                  size="sm"
                 />
-                {values.needsCaptions && (
-                  <FormField
-                    label="Preset captions par défaut"
-                    required
-                    error={xfieldErrorsByField.captionPresetId}
-                  >
-                    <SelectField
-                      value={values.captionPresetId}
-                      onChange={(v) => set("captionPresetId", v)}
-                      options={captionPresets}
-                      placeholder={
-                        captionPresets.length === 0
-                          ? "Aucun preset disponible — créez-en un dans /captions"
-                          : "— Choisir un preset —"
-                      }
-                    />
-                  </FormField>
-                )}
-                <FormField label="Description">
-                  <select
-                    value={values.needsDescription}
-                    onChange={(e) => set("needsDescription", e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                  >
-                    <option value="none">Aucune</option>
-                    <option value="preFilled">Pré-remplie</option>
-                    <option value="autoGenerate">Auto-générée</option>
-                    <option value="manualWrite">Manuelle</option>
-                  </select>
-                </FormField>
-                {values.needsDescription !== "none" && (
-                  <FormField
-                    label="Prompt description par défaut"
-                    required={values.needsDescription === "autoGenerate"}
-                    error={xfieldErrorsByField.descriptionPromptId}
-                  >
-                    <SelectField
-                      value={values.descriptionPromptId}
-                      onChange={(v) => set("descriptionPromptId", v)}
-                      options={descriptionPrompts}
-                      placeholder={
-                        descriptionPrompts.length === 0
-                          ? "Aucun prompt disponible — créez-en un dans /admin/libraries/prompts"
-                          : "— Choisir un prompt —"
-                      }
-                    />
-                  </FormField>
-                )}
-                <ToggleField
-                  label="Validation admin du montage"
-                  hint="Si activé : le montage uploadé passe par l'admin (« À valider ») avant de continuer. Si désactivé : la version uploadée devient automatiquement courante et le CM prend la main."
-                  checked={values.needsAdminValidation}
-                  onChange={(v) => set("needsAdminValidation", v)}
-                />
-                <ToggleField
-                  label="Validation client (magic link)"
-                  hint="Envoie un lien sans login au client pour valider la vidéo avant publication."
-                  checked={values.needsClientValidation}
-                  onChange={(v) => set("needsClientValidation", v)}
-                />
-                {values.needsClientValidation && (
-                  <div className="ml-4 pl-3 border-l-2 border-fuchsia-100">
-                    <ToggleField
-                      label="Autoriser révisions client"
-                      hint="Si désactivé : le client peut uniquement valider ou annuler complètement. Si activé : le client peut refuser avec un commentaire (ping-pong jusqu'à validation)."
-                      checked={values.allowsClientRevision}
-                      onChange={(v) => set("allowsClientRevision", v)}
-                    />
-                  </div>
-                )}
-                <ToggleField
-                  label="Rushes vidéaste attendus"
-                  hint="Active l'étape « Montage » dans la fiche (le vidéaste livre des rushes, le monteur publie une version)."
-                  checked={values.needsRushes}
-                  onChange={(v) => set("needsRushes", v)}
-                />
-                <ToggleField
-                  label="Brief éditorial"
-                  hint="Ajoute un champ Brief à remplir avant de lancer la production (utile pour les patterns externes)."
-                  checked={values.needsBrief}
-                  onChange={(v) => set("needsBrief", v)}
-                />
-              </Section>
-
-              {/* ── Section 5 : Planning ── */}
-              <Section title="Planning">
-                <p className="text-xs text-gray-500 -mt-1 mb-1 leading-relaxed">
-                  Sans jour coché, le pattern n&apos;est pas auto-généré et reste disponible
-                  comme template manuel dans le calendrier (« Ajouter un slot »).
-                </p>
-                <FormField label="Jours de publication (laisser vide pour un pattern manuel)" error={errors.daysOfWeek}>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {DAYS_OF_WEEK.map((day) => {
-                      const checked = values.daysOfWeek.includes(day.value);
-                      return (
-                        <label
-                          key={day.value}
-                          className={`inline-flex items-center justify-center w-10 h-10 rounded-lg border text-xs font-medium cursor-pointer select-none transition-colors ${
-                            checked
-                              ? "bg-indigo-600 border-indigo-600 text-white"
-                              : "bg-white border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600"
-                          } ${errors.daysOfWeek ? "border-red-300" : ""}`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                set("daysOfWeek", [...values.daysOfWeek, day.value].sort((a, b) => a - b));
-                              } else {
-                                set("daysOfWeek", values.daysOfWeek.filter((d) => d !== day.value));
-                              }
-                            }}
-                            className="sr-only"
-                          />
-                          {day.label}
-                        </label>
-                      );
-                    })}
-                  </div>
-                  {errors.daysOfWeek && (
-                    <p className="mt-1 text-xs text-red-600">{errors.daysOfWeek}</p>
-                  )}
-                </FormField>
-                <FormField
-                  label={values.daysOfWeek.length === 0 ? "Heure de publication (ignorée — pattern manuel)" : "Heure de publication"}
-                  required={values.daysOfWeek.length > 0}
-                  error={errors.publishTime}
-                >
-                  <input
-                    type="time"
-                    value={values.publishTime}
-                    onChange={(e) => set("publishTime", e.target.value)}
-                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 ${errors.publishTime ? "border-red-300" : "border-gray-200"}`}
-                  />
-                </FormField>
-              </Section>
-
-              {/* ── Section 6 : Assignations ── */}
-              <Section title="Assignations (optionnel)">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <FormField label="Vidéaste par défaut">
-                    <SelectField
-                      value={values.defaultAssigneeVideasteId}
-                      onChange={(v) => set("defaultAssigneeVideasteId", v)}
-                      options={videastes.map((u) => ({ id: u.id, name: u.name ?? u.id }))}
-                      placeholder="— Aucun —"
-                    />
-                  </FormField>
-                  <FormField label="Monteur par défaut">
-                    <SelectField
-                      value={values.defaultAssigneeMonteurId}
-                      onChange={(v) => set("defaultAssigneeMonteurId", v)}
-                      options={monteurs.map((u) => ({ id: u.id, name: u.name ?? u.id }))}
-                      placeholder="— Aucun —"
-                    />
-                  </FormField>
-                  <FormField label="CM par défaut">
-                    <SelectField
-                      value={values.defaultAssigneeCmId}
-                      onChange={(v) => set("defaultAssigneeCmId", v)}
-                      options={cms.map((u) => ({ id: u.id, name: u.name ?? u.id }))}
-                      placeholder="— Aucun —"
-                    />
-                  </FormField>
-                </div>
-              </Section>
-
-              {/* ── Section 7 : Notes ── */}
-              <Section title="Notes">
-                <FormField label="Notes internes (optionnel)">
-                  <Textarea
-                    value={values.notes}
-                    onChange={(v) => set("notes", v)}
-                    placeholder="Notes internes sur ce pattern…"
-                    rows={3}
-                    maxLength={1000}
-                  />
-                </FormField>
-              </Section>
-
+              </div>
             </div>
-          </form>
 
-          {/* Footer */}
-          <div className="flex items-center justify-end gap-2 px-6 py-4 bg-gray-50 border-t border-gray-100 shrink-0">
-            <Button variant="ghost" size="md" onClick={onClose} disabled={loading}>
-              Annuler
-            </Button>
-            <Button
-              variant="primary"
-              size="md"
-              loading={loading}
-              disabled={xfieldErrors.length > 0}
-              onClick={(e) => void handleSubmit(e as unknown as React.FormEvent)}
-            >
-              Enregistrer
-            </Button>
+            {values.needsCaptions && (
+              <FormField
+                label="Preset captions par défaut"
+                required
+                error={xfieldErrorsByField.captionPresetId}
+              >
+                <Combobox
+                  value={values.captionPresetId}
+                  onChange={(v) => set("captionPresetId", v)}
+                  options={captionPresetOptions}
+                  placeholder="— Choisir un preset —"
+                  emptyMessage="Aucun preset"
+                />
+              </FormField>
+            )}
+
+            <div className="pt-2 border-t border-white/40">
+              <FormField label="Description">
+                <Combobox
+                  value={values.needsDescription}
+                  onChange={(v) => set("needsDescription", v)}
+                  options={DESCRIPTION_OPTIONS}
+                />
+              </FormField>
+            </div>
+
+            {values.needsDescription !== "none" && (
+              <FormField
+                label="Prompt description"
+                required={values.needsDescription === "autoGenerate"}
+                error={xfieldErrorsByField.descriptionPromptId}
+              >
+                <Combobox
+                  value={values.descriptionPromptId}
+                  onChange={(v) => set("descriptionPromptId", v)}
+                  options={descriptionPromptOptions}
+                  placeholder="— Choisir un prompt —"
+                  emptyMessage="Aucun prompt"
+                />
+              </FormField>
+            )}
           </div>
-        </div>
+        )}
+
+        {/* Tab Workflow */}
+        {tab === "workflow" && (
+          <div className="space-y-2">
+            <WorkflowToggle
+              label="Rushes vidéaste attendus"
+              description="Active l'étape « Montage » dans la fiche (le vidéaste livre des rushes, le monteur publie une version)."
+              checked={values.needsRushes}
+              onChange={(v) => set("needsRushes", v)}
+            />
+            <WorkflowToggle
+              label="Brief éditorial"
+              description="Ajoute un champ Brief à remplir avant de lancer la production."
+              checked={values.needsBrief}
+              onChange={(v) => set("needsBrief", v)}
+            />
+            <WorkflowToggle
+              label="Validation admin du montage"
+              description="Le montage uploadé passe par l'admin (« À valider ») avant de continuer. Désactivé : la version uploadée devient automatiquement courante."
+              checked={values.needsAdminValidation}
+              onChange={(v) => set("needsAdminValidation", v)}
+            />
+            <WorkflowToggle
+              label="Validation client (magic link)"
+              description="Envoie un lien sans login au client pour valider la vidéo avant publication."
+              checked={values.needsClientValidation}
+              onChange={(v) => set("needsClientValidation", v)}
+            />
+            {values.needsClientValidation && (
+              <div className="ml-3 pl-3 border-l-2 border-rose-200/60">
+                <WorkflowToggle
+                  label="Autoriser révisions client"
+                  description="Si activé : le client peut refuser avec un commentaire (ping-pong jusqu'à validation). Sinon : valider ou annuler uniquement."
+                  checked={values.allowsClientRevision}
+                  onChange={(v) => set("allowsClientRevision", v)}
+                  error={xfieldErrorsByField.allowsClientRevision}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab Équipe */}
+        {tab === "team" && (
+          <div className="space-y-4">
+            <p className="text-[12px] text-gray-500 leading-relaxed">
+              Assignations par défaut pour les slots créés via ce pattern. Modifiables par
+              slot dans le calendrier.
+            </p>
+            <FormField label="Vidéaste par défaut">
+              <AssigneePicker
+                value={values.defaultAssigneeVideasteId || null}
+                onChange={(id) => set("defaultAssigneeVideasteId", id ?? "")}
+                users={videasteUsers.map((u) => ({
+                  id: u.id,
+                  name: u.name ?? u.id,
+                  email: u.email ?? undefined,
+                  role: u.role,
+                }))}
+                allowedRoles={["VIDEASTE", "ADMIN"]}
+                placeholder="Aucun vidéaste"
+                groupByRole={false}
+              />
+            </FormField>
+            <FormField label="Monteur par défaut">
+              <AssigneePicker
+                value={values.defaultAssigneeMonteurId || null}
+                onChange={(id) => set("defaultAssigneeMonteurId", id ?? "")}
+                users={monteurUsers.map((u) => ({
+                  id: u.id,
+                  name: u.name ?? u.id,
+                  email: u.email ?? undefined,
+                  role: u.role,
+                }))}
+                allowedRoles={["MONTEUR", "ADMIN"]}
+                placeholder="Aucun monteur"
+                groupByRole={false}
+              />
+            </FormField>
+            <FormField label="Community manager par défaut">
+              <AssigneePicker
+                value={values.defaultAssigneeCmId || null}
+                onChange={(id) => set("defaultAssigneeCmId", id ?? "")}
+                users={cmUsers.map((u) => ({
+                  id: u.id,
+                  name: u.name ?? u.id,
+                  email: u.email ?? undefined,
+                  role: u.role,
+                }))}
+                allowedRoles={["CM", "ADMIN"]}
+                placeholder="Aucun CM"
+                groupByRole={false}
+              />
+            </FormField>
+          </div>
+        )}
       </div>
-    </>
-  );
-}
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{title}</h3>
-      <div className="flex flex-col gap-3">{children}</div>
-    </div>
-  );
-}
-
-function RadioGroup({
-  name,
-  value,
-  onChange,
-  options,
-}: {
-  name: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  return (
-    <div className="flex flex-wrap gap-3">
-      {options.map((opt) => (
-        <label
-          key={opt.value}
-          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
-            value === opt.value
-              ? "bg-indigo-50 border-indigo-300 text-indigo-700 font-medium"
-              : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
-          }`}
+      {/* Footer */}
+      <footer className="shrink-0 flex items-center justify-end gap-2 px-5 py-3 bg-white/30 border-t border-white/30">
+        <Button variant="ghost" size="sm" onClick={onClose} disabled={loading}>
+          Annuler
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          icon={Save}
+          loading={loading}
+          disabled={xfieldErrors.length > 0}
+          onClick={() => void handleSubmit()}
         >
-          <input
-            type="radio"
-            name={name}
-            value={opt.value}
-            checked={value === opt.value}
-            onChange={() => onChange(opt.value)}
-            className="sr-only"
-          />
-          {opt.label}
-        </label>
-      ))}
-    </div>
+          {isEdit ? "Enregistrer" : "Créer le pattern"}
+        </Button>
+      </footer>
+    </Drawer>
   );
 }
 
-function ToggleField({
+// ─── WorkflowToggle ────────────────────────────────────────────────────────
+
+function WorkflowToggle({
   label,
-  hint,
+  description,
   checked,
   onChange,
+  error,
 }: {
   label: string;
-  hint?: string;
+  description: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  error?: string;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="inline-flex items-center gap-3 cursor-pointer">
-        <div className="relative">
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={(e) => onChange(e.target.checked)}
-            className="sr-only"
-          />
-          <div
-            className={`w-9 h-5 rounded-full transition-colors ${checked ? "bg-indigo-600" : "bg-gray-200"}`}
-          />
-          <div
-            className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0"}`}
-          />
-        </div>
-        <span className="text-sm text-gray-700">{label}</span>
-      </label>
-      {hint && <p className="text-xs text-gray-500 ml-12">{hint}</p>}
-    </div>
-  );
-}
-
-function SelectField({
-  value,
-  onChange,
-  options,
-  placeholder,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { id: string; name: string }[];
-  placeholder: string;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+    <div
+      className={[
+        "rounded-xl p-3.5 transition-all",
+        "bg-white/40 backdrop-blur-[8px]",
+        error
+          ? "shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.4)]"
+          : "shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
+      ].join(" ")}
     >
-      <option value="">{placeholder}</option>
-      {options.map((opt) => (
-        <option key={opt.id} value={opt.id}>
-          {opt.name}
-        </option>
-      ))}
-    </select>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[13px] font-semibold text-gray-950 leading-tight">{label}</p>
+          <p className="text-[11px] text-gray-600 mt-1 leading-relaxed">{description}</p>
+          {error && <p className="text-[11px] text-rose-700 mt-1.5">{error}</p>}
+        </div>
+        <Switch checked={checked} onChange={onChange} size="sm" accent="default" />
+      </div>
+    </div>
   );
 }

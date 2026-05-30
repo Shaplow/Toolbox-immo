@@ -6,7 +6,7 @@
  */
 
 export type JobEventPayload = {
-  jobType: "captions" | "transcription" | "render" | "media-edit" | "media-autocut";
+  jobType: "captions" | "transcription" | "render" | "media-edit" | "media-autocut" | "cover" | "description";
   jobId: string;
   status: string;
   [key: string]: unknown;
@@ -54,4 +54,24 @@ export function notifyUser(userId: string, event: JobEventPayload): void {
   }
 
   if (controllers.size === 0) store.delete(userId);
+}
+
+/**
+ * Broadcast un event SSE à toutes les connexions actives, tous users confondus.
+ * Utilisé pour les jobs sans userId trackable (ex. MediaAutocutBatch admin-tool).
+ * À utiliser avec parcimonie — préférer notifyUser quand l'userId est connu.
+ */
+export function notifyAll(event: JobEventPayload): void {
+  const frame = encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
+
+  for (const [userId, controllers] of store.entries()) {
+    for (const controller of controllers) {
+      try {
+        controller.enqueue(frame);
+      } catch {
+        controllers.delete(controller);
+      }
+    }
+    if (controllers.size === 0) store.delete(userId);
+  }
 }

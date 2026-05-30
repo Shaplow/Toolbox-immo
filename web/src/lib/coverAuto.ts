@@ -7,6 +7,7 @@ import { renderPNG } from "@/lib/renderer/renderPNG";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import { resolveSlotExcludeZones, resolveZone } from "@/lib/triggerAutoCaptionFromTranscription";
 import { logActivity, type ActivityType } from "@/lib/services/slot/activity";
+import { notifyUser } from "@/lib/sseStore";
 import type { ListingData } from "@/types/listing";
 import type { AnyBlock, CoverAutoConfig, ImageBlock, SchemaField, TemplateJSON, TextBlock, VideoBlock, VideoSequenceSlot } from "@/types/template";
 
@@ -387,7 +388,27 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
       },
     },
   });
-  if (!pack?.template || !pack.sourceVideoUrl) return;
+  // Fix bug audit 2026-05-30 (H4) : si pack/template/sourceVideoUrl manquant,
+  // anciennement on faisait `return` sans update → pack restait en QUEUED
+  // indéfiniment. Désormais on bascule en FAILED avec errorMsg explicite.
+  if (!pack) {
+    console.warn(`[coverAuto] Pack introuvable: ${packId}`);
+    return;
+  }
+  if (!pack.template || !pack.sourceVideoUrl) {
+    const errorMsg = !pack.template
+      ? "Template introuvable pour ce pack."
+      : "Vidéo source manquante pour l'extraction des frames.";
+    await prisma.coverFramePack.update({
+      where: { id: packId },
+      data: { status: "FAILED", errorMsg },
+    }).catch((err) => {
+      console.error(`[coverAuto] Échec update FAILED pour pack=${packId}:`, err);
+    });
+    // Fix bug audit 2026-05-30 (M1) : SSE notify pour rafraîchir UI temps réel.
+    notifyUser(pack.userId, { jobType: "cover", jobId: packId, status: "FAILED", errorMsg });
+    return;
+  }
   // slotId : priorité render → fallback publicationVersion (slot one-off)
   const slotId =
     pack.render?.publicationSlot?.id ??
@@ -409,11 +430,23 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
     where: { id: packId },
     data: { status: "PROCESSING", errorMsg: null },
   });
+  notifyUser(pack.userId, { jobType: "cover", jobId: packId, status: "PROCESSING" });
 
   try {
     const templateJson = normalizeTemplateJSON(JSON.parse(pack.template.jsonData) as TemplateJSON);
     const config = safeJson<CoverAutoConfig>(pack.config, { enabled: false, excludeZones: [] });
-    if (!config.enabled) return;
+    // Fix bug audit 2026-05-30 (H4 bis) : si config désactivé, on était passé en
+    // PROCESSING (l. 408 plus haut) sans revenir → pack bloqué en PROCESSING.
+    // Désormais on bascule en FAILED pour rendre l'état visible.
+    if (!config.enabled) {
+      const errorMsg = "Configuration cover désactivée sur ce template.";
+      await prisma.coverFramePack.update({
+        where: { id: packId },
+        data: { status: "FAILED", errorMsg },
+      });
+      notifyUser(pack.userId, { jobType: "cover", jobId: packId, status: "FAILED", errorMsg });
+      return;
+    }
 
     const frameCount = normalizeFrameCount(config.frameCount ?? pack.frameCount);
     const seen = normalizeSeenFrames(safeJson<CoverSeenFrame[]>(pack.usedTimestamps, []));
@@ -497,6 +530,12 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
         errorMsg: null,
       },
     });
+    notifyUser(pack.userId, {
+      jobType: "cover",
+      jobId: pack.id,
+      status: "READY",
+      frameCount: persisted.length,
+    });
     await logCoverActivity(slotId, "COVER_READY", {
       coverFramePackId: pack.id,
       frameCount: persisted.length,
@@ -507,6 +546,7 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
       where: { id: packId },
       data: { status: "FAILED", errorMsg },
     });
+    notifyUser(pack.userId, { jobType: "cover", jobId: packId, status: "FAILED", errorMsg });
     await logCoverActivity(slotId, "COVER_FAILED", {
       coverFramePackId: packId,
       errorMsg,
@@ -544,18 +584,30 @@ export async function triggerAutoCoverPackForRender(
 
   // Lire Pattern.coverConfig — source de vérité Phase 1.8 (template.coverAutoConfig supprimé)
   // + slot.id pour pouvoir logger les activities cover sur la fiche.
+  // + slot.status + needsClientValidation pour la garde "post-validation" (2026-05-30).
   const renderSlot = await prisma.render.findUnique({
     where: { id: renderId },
     select: {
       publicationSlot: {
         select: {
           id: true,
-          pattern: { select: { id: true, coverMode: true, coverConfig: true, templateId: true } },
+          status: true,
+          needsClientValidationOverride: true,
+          pattern: {
+            select: {
+              id: true,
+              coverMode: true,
+              coverConfig: true,
+              templateId: true,
+              needsClientValidation: true,
+            },
+          },
         },
       },
     },
   });
   const slotId = renderSlot?.publicationSlot?.id ?? null;
+  const slotStatus = renderSlot?.publicationSlot?.status ?? null;
   const slotPattern = renderSlot?.publicationSlot?.pattern;
 
   if (slotPattern?.coverMode !== "autoPack") {
@@ -564,6 +616,22 @@ export async function triggerAutoCoverPackForRender(
   }
   if (!slotPattern.coverConfig) {
     console.info(`[autoCover] skip render=${renderId} slot=${slotId ?? "?"} reason=coverConfig_null`);
+    return;
+  }
+
+  // Garde "post-validation client" (2026-05-30) : si le slot a une validation
+  // client requise et n'est PAS encore validé (SCHEDULED ou aval), on skip le
+  // déclenchement auto. Le job cover sera lancé manuellement quand le client
+  // approuve via /api/validate/[token] (POST handler → triggerAutoCoverPackForRender).
+  const needsValidation =
+    renderSlot?.publicationSlot?.needsClientValidationOverride ??
+    slotPattern.needsClientValidation ??
+    false;
+  const POST_VALIDATION_STATUSES = new Set(["SCHEDULED", "PUBLISHED", "DONE"]);
+  if (needsValidation && slotStatus && !POST_VALIDATION_STATUSES.has(slotStatus)) {
+    console.info(
+      `[autoCover] skip render=${renderId} slot=${slotId} reason=awaiting_client_validation status=${slotStatus}`,
+    );
     return;
   }
 

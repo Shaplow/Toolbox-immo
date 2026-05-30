@@ -272,6 +272,15 @@ export function computePublicationSteps(input: {
   }
 
   // ── Construction de la liste brute ────────────────────────────────────────
+  // Ordre cible (2026-05-30) :
+  //   rushes (vidéaste, hors scope) → render/edit (génération ou rush final)
+  //   → captions (sous-titrage auto, sur la version) → validation client
+  //   (le client reçoit la vidéo AVEC sous-titres) → description → cover → publier.
+  //
+  // Le sous-titrage doit précéder la validation car le client doit voir le
+  // rendu final sous-titré qu'il validera. La cover passe APRÈS la validation
+  // car elle est cosmétique (thumbnail Instagram) — elle peut être préparée en
+  // parallèle ou retravaillée même après validation.
   const rawSteps: Omit<PublicationStep, "nextAction">[] = [
     {
       key: "rushes",
@@ -295,18 +304,34 @@ export function computePublicationSteps(input: {
       roles: STEP_ROLES.edit,
     },
     {
-      key: "cover",
-      label: "Cover",
-      visible: coverVisible,
-      status: coverVisible ? coverPackStatus(coverPack) : "todo",
-      roles: STEP_ROLES.cover,
-    },
-    {
       key: "captions",
       label: "Sous-titres",
       visible: captionsVisible,
       status: captionsVisible ? captionJobStatus(captionJob) : "todo",
       roles: STEP_ROLES.captions,
+    },
+    {
+      key: "validation",
+      label: "Validation client",
+      visible: validationVisible,
+      // Fix bug audit 2026-05-30 (M4) + 2026-05-30 (chaîne) : la validation ne
+      // peut pas démarrer tant que les sous-titres ne sont pas terminés —
+      // sinon le CM enverrait au client une vidéo sans sous-titres alors que
+      // c'est censé être la version validable. On bascule alors en "blocked".
+      status: (() => {
+        if (slot.status === "PUBLISHED" || slot.status === "DONE") return "done";
+        // Si captions requises et pas encore terminées → blocked.
+        // captionJobStatus retourne "done" UNIQUEMENT si COMPLETED, donc on
+        // peut s'en servir comme indicateur de "captions prêtes".
+        const captionsReady =
+          !captionsVisible || captionJobStatus(captionJob) === "done";
+        if (!captionsReady) return "blocked";
+        if (slot.status === "AWAITING_CLIENT") return "todo";
+        if (slot.status === "EDIT_APPROVED" || slot.status === "READY_FOR_CM") return "todo";
+        if (BLOCKED_SLOT_STATUSES.has(slot.status)) return "blocked";
+        return "todo";
+      })(),
+      roles: STEP_ROLES.validation,
     },
     {
       key: "description",
@@ -318,16 +343,19 @@ export function computePublicationSteps(input: {
       roles: STEP_ROLES.description,
     },
     {
-      key: "validation",
-      label: "Validation client",
-      visible: validationVisible,
-      // F1.11 — Step en placeholder Phase 2 : statut "blocked" (violet, tooltip
-      // "À venir") au lieu de "todo" pour ne pas être le nextAction de la
-      // ProductionChain en permanence. Quand la feature sera implémentée,
-      // remplacer par le statut réel calculé depuis le validationJob/validation
-      // table.
-      status: "blocked",
-      roles: STEP_ROLES.validation,
+      key: "cover",
+      label: "Cover",
+      visible: coverVisible,
+      status: coverVisible ? coverPackStatus(coverPack) : "todo",
+      // Fix bug 2026-05-30 : cover est par défaut CM-only, MAIS quand
+      // coverMode === "monteurUpload" c'est le MONTEUR qui upload la cover
+      // (cf. CoverSection + PRIMARY_SECTIONS_BY_ROLE.MONTEUR). Sans cet ajout,
+      // le step était masqué de la chaîne pour le monteur alors que le bloc
+      // d'upload apparaissait quand même dans la fiche → incohérence.
+      roles:
+        pattern?.coverMode === "monteurUpload"
+          ? ["MONTEUR", "CM"]
+          : STEP_ROLES.cover,
     },
     {
       key: "publish",

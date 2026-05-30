@@ -428,8 +428,11 @@ async function handleBriefAttachmentComplete(args: {
 }): Promise<NextResponse> {
   const { slotId, userId, actorId, r2Key, fileName, mimeType, sizeBytes } = args;
 
+  // Fix bug audit 2026-05-30 (M5) : logActivity déplacé DANS la transaction.
+  // Anciennement après le commit → crash entre commit et log = attachment créé
+  // sans entrée dans le fil d'activité. Cohérent avec les autres handlers
+  // (rush / version) qui logguent intra-tx.
   const attachment = await args.prisma.$transaction(async (tx) => {
-    // Upsert le brief s'il n'existe pas encore
     const brief = await tx.publicationBrief.upsert({
       where: { slotId },
       update: { updatedByUserId: userId },
@@ -437,7 +440,6 @@ async function handleBriefAttachmentComplete(args: {
       select: { id: true },
     });
 
-    // Insérer la pièce jointe
     const att = await tx.publicationBriefAttachment.create({
       data: {
         briefId: brief.id,
@@ -449,14 +451,14 @@ async function handleBriefAttachmentComplete(args: {
       select: { id: true },
     });
 
-    return att;
-  });
+    await logActivity(tx, {
+      slotId,
+      actorId,
+      type: "BRIEF_UPDATED",
+      payload: { attachmentId: att.id, fileName, mimeType },
+    });
 
-  await logActivity(args.prisma, {
-    slotId,
-    actorId,
-    type: "BRIEF_UPDATED",
-    payload: { attachmentId: attachment.id, fileName, mimeType },
+    return att;
   });
 
   return NextResponse.json({ ok: true, id: attachment.id });

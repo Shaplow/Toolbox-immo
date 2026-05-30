@@ -61,8 +61,13 @@ export interface LogActivityInput {
  *
  * @returns L'objet créé `{ id }` ou `null` si l'insert a échoué.
  */
+// Accepte PrismaClient OU TransactionClient pour permettre l'usage intra-tx
+// (cf. fix audit 2026-05-30 M5 : logActivity dans la même transaction que
+// l'insert métier, garantit l'atomicité audit + action).
+type DbClient = PrismaClient | Prisma.TransactionClient;
+
 export async function logActivity(
-  prisma: PrismaClient,
+  prisma: DbClient,
   input: LogActivityInput
 ): Promise<{ id: string } | null> {
   try {

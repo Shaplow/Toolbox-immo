@@ -1,78 +1,55 @@
 "use client";
 
-import Link from "next/link";
-import { PipelineDots } from "./PipelineDots";
-import {
-  OWNER_LABEL,
-  OWNER_BADGE_CLS,
-  type PublicationSlot,
-} from "@/types/calendar";
+/**
+ * SlotCard — carte slot compacte (refonte Phase 5 Liquid Glass MID).
+ *
+ * Densité acceptée : 7 colonnes étroites en grid 7-cols, donc on ne montre
+ * QUE l'essentiel pour identifier la publication d'un coup d'œil :
+ * - Heure + dot couleur (phase, label au hover)
+ * - Titre
+ * - Handle compte + AvatarGroup (assignés)
+ *
+ * Tout le reste (status verbeux, pipeline dots, pattern link, owner) est
+ * porté par le Drawer édition ou la fiche complète.
+ */
+
+import { Settings2 } from "lucide-react";
+import { AvatarGroup } from "@/components/ui/Avatar";
+import { type PublicationSlot } from "@/types/calendar";
 import { resolveSlotOwner } from "@/lib/slots/statusLabels";
-import { getPublicationPhase, PHASE_LABELS, PHASE_COLORS, PHASE_DOT } from "@/lib/slots/phase";
+import { getPublicationPhase, PHASE_LABELS } from "@/lib/slots/phase";
 import type { UserRole } from "@/types/roles";
 
 interface SlotCardProps {
   slot: PublicationSlot;
   onClick: () => void;
-  /**
-   * Rôle de l'utilisateur courant — utilisé pour mettre en avant les slots
-   * dont l'utilisateur est responsable (bordure colorée + chip "Tu joues").
-   */
+  /** Optional : click sur la mini roue → ouvre le drawer d'édition rapide. */
+  onOpenDrawer?: () => void;
   currentUserRole?: UserRole;
-  /** ID de l'utilisateur courant — pour matcher avec les assignés. */
   currentUserId?: string;
 }
 
-/** Initiales courtes pour un avatar de rôle (max 2 caractères). */
-function initials(name: string | null | undefined): string {
-  if (!name) return "?";
-  const parts = name.trim().split(/\s+/).slice(0, 2);
-  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
-}
-
-const ROLE_AVATAR_CLS: Record<"V" | "M" | "C", { bg: string; text: string; label: string }> = {
-  V: { bg: "bg-amber-100", text: "text-amber-800", label: "Vidéaste" },
-  M: { bg: "bg-orange-100", text: "text-orange-800", label: "Monteur" },
-  C: { bg: "bg-indigo-100", text: "text-indigo-800", label: "CM" },
+// Couleur du dot leading par phase — cohérent avec PHASE_DOT existant.
+const PHASE_DOT_COLOR: Record<ReturnType<typeof getPublicationPhase>, string> = {
+  planned: "bg-gray-400",
+  shooting: "bg-peach-500",
+  production: "bg-stone-500",
+  admin_review: "bg-peach-500",
+  cm_review: "bg-sky-500",
+  publishing: "bg-info-500",
+  published: "bg-success-500",
+  terminated: "bg-gray-300",
 };
 
-function RoleAvatar({
-  role,
-  name,
-  highlight,
-}: {
-  role: "V" | "M" | "C";
-  name: string | null | undefined;
-  highlight?: boolean;
-}) {
-  const cls = ROLE_AVATAR_CLS[role];
-  return (
-    <span
-      title={`${cls.label} : ${name ?? "non assigné"}`}
-      className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[9px] font-semibold ${cls.bg} ${cls.text} ${highlight ? "ring-2 ring-offset-1 ring-current" : ""}`}
-    >
-      {initials(name) || role}
-    </span>
-  );
-}
-
-export function SlotCard({ slot, onClick, currentUserRole, currentUserId }: SlotCardProps) {
+export function SlotCard({ slot, onClick, onOpenDrawer, currentUserRole, currentUserId }: SlotCardProps) {
   const time = new Date(slot.scheduledAt).toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
   });
-  // Phase 2.2 : on n'affiche plus le statut DB (17 valeurs verbeuses) mais une
-  // phase humaine (5 valeurs). La granularité technique (render, cover,
-  // captions, description, publish) est portée par PipelineDots avec les
-  // vraies données des jobs — pas par le badge.
   const phase = getPublicationPhase(slot.status);
-  const phaseColor = PHASE_COLORS[phase];
-  const phaseDot = PHASE_DOT[phase];
-  // Owner contextualisé : PLANNED/TO_DO avec vidéaste assigné devient
-  // VIDEASTE (sinon STATUS_OWNER renvoie ADMIN, faussant le badge).
+  const phaseDotColor = PHASE_DOT_COLOR[phase];
   const ownerRole = resolveSlotOwner(slot);
 
-  // Détermine si le slot attend une action de l'utilisateur courant
   const isMine =
     currentUserId !== undefined &&
     ((ownerRole === "VIDEASTE" && slot.assigneeVideasteId === currentUserId) ||
@@ -80,9 +57,20 @@ export function SlotCard({ slot, onClick, currentUserRole, currentUserId }: Slot
       (ownerRole === "CM" && slot.assigneeCmId === currentUserId) ||
       (ownerRole === "ADMIN" && currentUserRole === "ADMIN"));
 
-  // Wrapper en <div role="button"> au lieu de <button> : la card peut
-  // contenir un <Link> (badge pattern) qui était HTML invalide imbriqué
-  // dans un <button>, produisant un targeting erratique au clic.
+  // Composition des avatars assignés pour AvatarGroup.
+  const avatars: Array<{ id: string; name: string }> = [];
+  if (slot.assigneeVideaste) {
+    avatars.push({ id: `v-${slot.assigneeVideaste.id}`, name: slot.assigneeVideaste.name ?? "Vidéaste" });
+  }
+  if (slot.assigneeMonteur) {
+    avatars.push({ id: `m-${slot.assigneeMonteur.id}`, name: slot.assigneeMonteur.name ?? "Monteur" });
+  }
+  if (slot.assigneeCm) {
+    avatars.push({ id: `c-${slot.assigneeCm.id}`, name: slot.assigneeCm.name ?? "CM" });
+  }
+
+  const title = slot.pattern?.label ?? slot.title ?? "Publication";
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -96,93 +84,70 @@ export function SlotCard({ slot, onClick, currentUserRole, currentUserId }: Slot
       tabIndex={0}
       onClick={onClick}
       onKeyDown={handleKeyDown}
-      className={`group w-full text-left rounded-xl border bg-white p-3 cursor-pointer hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 transition-all ${
+      title={`${PHASE_LABELS[phase]} · ${title}`}
+      className={[
+        "group relative w-full text-left rounded-xl px-3.5 py-3 cursor-pointer transition-all",
+        // Matière forte — la colonne ne porte plus rien, c'est la card qui doit
+        // ressortir comme objet posé.
+        "bg-white shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.04),0_8px_20px_-12px_rgba(15,23,42,0.14)]",
+        "hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.14),0_4px_8px_rgba(15,23,42,0.06),0_12px_28px_-12px_rgba(15,23,42,0.22)]",
+        "hover:-translate-y-px",
+        "focus:outline-none focus-visible:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_2px_rgba(77,150,191,0.45),0_0_0_3px_rgba(169,209,230,0.4)]",
         isMine
-          ? "border-l-4 border-l-indigo-500 border-y border-r border-indigo-200 hover:border-indigo-400"
-          : "border-gray-200 hover:border-indigo-300"
-      }`}
+          ? "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_2px_rgba(125,180,210,0.5),0_2px_4px_rgba(15,23,42,0.04),0_10px_24px_-12px_rgba(125,180,210,0.3)]"
+          : "",
+      ].filter(Boolean).join(" ")}
     >
-      {/* Ligne 1 — heure + titre + flag auto */}
-      <div className="flex items-baseline gap-2 mb-2">
-        <span className="text-xs text-gray-500 font-medium tabular-nums shrink-0">{time}</span>
-        <span className="text-sm font-semibold text-gray-900 truncate flex-1">
-          {slot.pattern?.label ?? slot.title ?? "Publication"}
+      {/* Ligne 1 : dot phase + heure + status discret + (hover) roue édition rapide */}
+      <div className="flex items-center gap-2">
+        <span
+          className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${phaseDotColor}`}
+          aria-hidden
+          title={PHASE_LABELS[phase]}
+        />
+        <span className="text-[11px] font-mono text-gray-600 tabular-nums font-medium">
+          {time}
         </span>
-        {slot.isAuto && (
-          <span className="shrink-0 text-[10px] uppercase tracking-wide text-gray-400">auto</span>
+        {/* Status en cours — hyper discret, tronqué si trop long. */}
+        <span
+          className="text-[9.5px] uppercase tracking-widest text-gray-300 truncate min-w-0"
+          title={PHASE_LABELS[phase]}
+        >
+          · {PHASE_LABELS[phase]}
+        </span>
+        {/* Mini roue : visible au hover seulement. Click → open drawer (édition
+            rapide / suppression). e.stopPropagation pour ne pas trigger onClick
+            principal qui ouvre la fiche complète. */}
+        {onOpenDrawer && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenDrawer();
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="ml-auto p-0.5 text-gray-300 hover:text-gray-700 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity rounded"
+            aria-label="Édition rapide"
+            title="Édition rapide (statut, assignés, supprimer)"
+          >
+            <Settings2 size={11} />
+          </button>
         )}
       </div>
 
-      {/* Sous-titre — visible uniquement si distinct du label */}
-      {slot.title && slot.pattern?.label && slot.title !== slot.pattern.label && (
-        <p className="text-xs text-gray-500 truncate mb-2">{slot.title}</p>
-      )}
+      {/* Ligne 2 : titre — plus marqué */}
+      <p className="mt-2 text-[13px] font-semibold text-gray-950 truncate leading-tight">
+        {title}
+      </p>
 
-      {/* Ligne 2 — owner badge + handle compte */}
-      <div className="flex items-center gap-2 mb-2 flex-wrap">
-        {ownerRole && (
-          <span
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${OWNER_BADGE_CLS[ownerRole]}`}
-            title={`Action attendue : ${OWNER_LABEL[ownerRole]}`}
-          >
-            {isMine ? "À toi" : OWNER_LABEL[ownerRole]}
-          </span>
-        )}
+      {/* Ligne 3 : handle + avatars */}
+      <div className="mt-2.5 flex items-center justify-between gap-1.5 min-h-[16px]">
         <span className="text-[11px] text-gray-500 truncate">
           @{slot.account.handle}
         </span>
-      </div>
-
-      {/* Ligne 3 — avatars assignés (si au moins un défini) */}
-      {(slot.assigneeVideaste || slot.assigneeMonteur || slot.assigneeCm) && (
-        <div className="flex items-center gap-1.5 mb-2">
-          {slot.assigneeVideaste && (
-            <RoleAvatar
-              role="V"
-              name={slot.assigneeVideaste.name}
-              highlight={ownerRole === "VIDEASTE"}
-            />
-          )}
-          {slot.assigneeMonteur && (
-            <RoleAvatar
-              role="M"
-              name={slot.assigneeMonteur.name}
-              highlight={ownerRole === "MONTEUR"}
-            />
-          )}
-          {slot.assigneeCm && (
-            <RoleAvatar
-              role="C"
-              name={slot.assigneeCm.name}
-              highlight={ownerRole === "CM"}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Footer — phase + pattern + pipeline dots */}
-      <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-gray-100">
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${phaseColor}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${phaseDot}`} />
-          {PHASE_LABELS[phase]}
-        </span>
-        {slot.pattern?.label && (
-          <Link
-            href={
-              slot.patternId
-                ? `/admin/accounts/${slot.accountId}?pattern=${slot.patternId}`
-                : `/admin/accounts/${slot.accountId}`
-            }
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 transition-colors"
-            title={`Pattern : ${slot.pattern.label} — voir le détail`}
-          >
-            {slot.pattern.label}
-          </Link>
+        {avatars.length > 0 && (
+          <AvatarGroup avatars={avatars} max={3} size="xs" />
         )}
-        <span className="ml-auto">
-          <PipelineDots slot={slot} />
-        </span>
       </div>
     </div>
   );

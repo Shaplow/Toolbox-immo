@@ -1,7 +1,7 @@
 ﻿import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
-import { LayoutTemplate, Info, RotateCcw } from "lucide-react";
+import { Clapperboard, Info, RotateCcw } from "lucide-react";
 import { ListingForm } from "@/components/form/ListingForm";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { collectTemplateConditionValues, normalizeTemplateJSON } from "@/lib/templateNormalization";
@@ -233,46 +233,60 @@ export default async function GeneratePage({ params, searchParams }: Props) {
   const hasPrefill = prefillSources.length > 0;
 
   return (
-    <div>
-      {hasPrefill && (
-        <div className="bg-indigo-50 border-b border-indigo-100 px-4 py-3">
-          <div className="max-w-[1680px] mx-auto flex items-center justify-between gap-3 flex-wrap px-4 xl:px-8">
-            <div className="flex items-center gap-2 min-w-0 text-sm">
-              <Info size={14} className="text-indigo-500 shrink-0" />
-              <span className="text-indigo-900">
-                Formulaire pré-rempli depuis{" "}
-                <span className="font-semibold">{prefillSources.join(" + ")}</span>
-              </span>
-            </div>
-            <Link
-              href={`/generate/${templateId}`}
-              className="inline-flex items-center gap-1 text-xs font-medium text-indigo-700 hover:text-indigo-900 transition-colors shrink-0"
-              title="Charger le formulaire sans pré-remplissage"
-            >
-              <RotateCcw size={12} />
-              Repartir vierge
-            </Link>
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
+        style={{ background: "var(--gradient-page-shell)" }}
+      >
+        {/* Header (icon + titre + subtitle) */}
+        <div className="rounded-t-3xl overflow-hidden">
+          <div className="px-6 sm:px-8 pt-6 pb-2">
+            <ToolPageHeader
+              icon={Clapperboard}
+              iconColor="peach"
+              title={initialValues ? "Nouvelle variante" : "Générer un visuel"}
+              subtitle={subtitleParts.join(" · ")}
+            />
           </div>
         </div>
-      )}
-      <div className="px-4 py-8 xl:px-8 max-w-[1680px] mx-auto">
-      <ToolPageHeader
-        icon={LayoutTemplate}
-        iconColor="indigo"
-        title={initialValues ? "Nouvelle variante" : "Générer un visuel"}
-        subtitle={subtitleParts.join(" · ")}
-      />
-      <ListingForm
-        key={accountId ?? ""}
-        templateId={templateId}
-        currentUserId={userId}
-        schema={finalSchema}
-        formSections={json.formSections ?? []}
-        mediaFieldAspectRatios={mediaFieldAspectRatios}
-        initialValues={initialValues}
-        libraryPrefillContext={libraryPrefillContext}
-        autoSubmit={autoMode}
-      />
+
+        {/* Banner prérempli glass v2 — apparaît juste sous le header si applicable */}
+        {hasPrefill && (
+          <div className="px-6 sm:px-8 pb-3">
+            <div className="rounded-2xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.32)] px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0 text-[12.5px]">
+                <Info size={13} className="text-sky-600 shrink-0" />
+                <span className="text-sky-900">
+                  Formulaire pré-rempli depuis{" "}
+                  <span className="font-semibold">{prefillSources.join(" + ")}</span>
+                </span>
+              </div>
+              <Link
+                href={`/generate/${templateId}`}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 hover:text-sky-900 transition-colors shrink-0"
+                title="Charger le formulaire sans pré-remplissage"
+              >
+                <RotateCcw size={11} />
+                Repartir vierge
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Body : form */}
+        <div className="px-4 sm:px-6 md:px-8 pt-2 pb-12">
+          <ListingForm
+            key={accountId ?? ""}
+            templateId={templateId}
+            currentUserId={userId}
+            schema={finalSchema}
+            formSections={json.formSections ?? []}
+            mediaFieldAspectRatios={mediaFieldAspectRatios}
+            initialValues={initialValues}
+            libraryPrefillContext={libraryPrefillContext}
+            autoSubmit={autoMode}
+          />
+        </div>
       </div>
     </div>
   );
