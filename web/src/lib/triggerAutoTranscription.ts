@@ -74,36 +74,73 @@ export async function triggerAutoTranscriptionForRender(
 
   if (!captionAutoConfig?.enabled && !needsDescriptionAuto) return;
 
-  // Idempotence : la contrainte unique sur renderId (schema Prisma) + le
-  // try/catch P2002 ci-dessous suffisent pour bloquer les doublons quand
-  // deux webhooks arrivent simultanément. Pas besoin d'un findUnique
-  // préalable (qui créait une fenêtre TOCTOU sans valeur ajoutée).
+  // Fix 2026-05-30 : avant le create, on regarde s'il existe déjà une
+  // transcription pour ce render (contrainte unique sur renderId). Cas :
+  //  - COMPLETED → no-op (la chaîne aval doit se déclencher depuis le
+  //    webhook précédent ou être réveillée par un autre trigger).
+  //  - QUEUED/PROCESSING → no-op (un appel concurrent est déjà en route).
+  //  - FAILED → on RESET le job en QUEUED + clear errorMsg, puis on
+  //    resubmit RunPod en gardant son ID. Sans ce reset, l'ancien check
+  //    "P2002 silencieux" empêchait toute relance et la chaîne restait
+  //    cassée sans message d'erreur.
+  const existing = await prisma.transcriptionJob.findUnique({
+    where: { renderId },
+    select: { id: true, status: true, outputJsonKey: true },
+  });
 
   const jobTimestamp = Date.now();
-  const outputJsonKey = `transcription/${userId}/${jobTimestamp}/segments.json`;
-
   const audioUrl   = getR2PublicUrl(renderOutputKey);
   const webhookUrl = getRunpodWebhookUrl("/api/webhooks/runpod/transcription");
 
   let job: { id: string };
-  try {
-    job = await prisma.transcriptionJob.create({
-      data: {
-        userId,
-        status: "QUEUED",
-        inputKey: renderOutputKey,
-        inputFilename: `render-${renderId}.mp4`,
-        model: "turbo",
-        language: "fr",
-        enableDiarization: false,
-        outputJsonKey,
-        renderId,
-      },
-    });
-  } catch (err) {
-    // P2002 = contrainte unique violée (webhook rejoué en simultané) — non bloquant
-    console.warn(`[autoTranscription] Création job ignorée pour render=${renderId} : ${String(err)}`);
-    return;
+  let outputJsonKey: string;
+
+  if (existing) {
+    if (existing.status === "COMPLETED" || existing.status === "QUEUED" || existing.status === "PROCESSING") {
+      console.info(`[autoTranscription] Job déjà ${existing.status} pour render=${renderId} (id=${existing.id}) — skip`);
+      return;
+    }
+    // FAILED → reset
+    outputJsonKey = existing.outputJsonKey ?? `transcription/${userId}/${jobTimestamp}/segments.json`;
+    try {
+      job = await prisma.transcriptionJob.update({
+        where: { id: existing.id },
+        data: {
+          status: "QUEUED",
+          errorMsg: null,
+          inputKey: renderOutputKey,
+          inputFilename: `render-${renderId}.mp4`,
+          outputJsonKey,
+          runpodJobId: null,
+        },
+        select: { id: true },
+      });
+      console.info(`[autoTranscription] Job FAILED ${existing.id} reset → QUEUED pour render=${renderId}`);
+    } catch (err) {
+      console.error(`[autoTranscription] Reset FAILED job ${existing.id} échoué : ${String(err)}`);
+      return;
+    }
+  } else {
+    outputJsonKey = `transcription/${userId}/${jobTimestamp}/segments.json`;
+    try {
+      job = await prisma.transcriptionJob.create({
+        data: {
+          userId,
+          status: "QUEUED",
+          inputKey: renderOutputKey,
+          inputFilename: `render-${renderId}.mp4`,
+          model: "turbo",
+          language: "fr",
+          enableDiarization: false,
+          outputJsonKey,
+          renderId,
+        },
+      });
+    } catch (err) {
+      // P2002 = course concurrente entre deux appels — l'autre a gagné, on s'écrase.
+      console.warn(`[autoTranscription] Création job ignorée pour render=${renderId} (race) : ${String(err)}`);
+      return;
+    }
   }
 
   const payload = {
