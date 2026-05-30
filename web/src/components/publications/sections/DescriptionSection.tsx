@@ -20,6 +20,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FileText, ExternalLink, Save, Check, Sparkles, Loader2, Copy, Pencil, RefreshCw, AlertCircle, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Section } from "@/components/ui/molecules/Section";
@@ -98,12 +99,14 @@ function DescriptionSectionInner({
   defaultOpen = true,
   collapsible = false,
 }: Props) {
+  const router = useRouter();
   const isAutoMode = pattern?.needsDescription === "autoGenerate";
   const hasContent = initialDescription.trim().length > 0;
   // En mode auto + contenu déjà généré : on ouvre en preview (non-éditable).
   // Sinon (manuel / pas de contenu) : edit direct.
   const [editing, setEditing] = useState(!isAutoMode || !hasContent);
   const [copied, setCopied] = useState(false);
+  const [retryingChain, setRetryingChain] = useState(false);
   const [value, setValue] = useState(initialDescription);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -282,6 +285,35 @@ function DescriptionSectionInner({
       ? descriptionJobResult
       : null;
 
+  async function handleRetryChain() {
+    setRetryingChain(true);
+    try {
+      const res = await fetch(`/api/publications/${slot.id}/trigger-description`, {
+        method: "POST",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        path?: string;
+      };
+      if (!res.ok) {
+        toast.error(data.error ?? `Erreur ${res.status}`);
+        return;
+      }
+      const label =
+        data.path === "description_only"
+          ? "Description relancée."
+          : data.path === "transcription_started"
+            ? "Transcription lancée — la description se déclenchera automatiquement à la fin."
+            : "Transcription déjà en cours.";
+      toast.success(label);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur réseau");
+    } finally {
+      setRetryingChain(false);
+    }
+  }
+
   async function handleApplyGeneratedResult() {
     if (!pendingJobResult) return;
     setValue(pendingJobResult);
@@ -425,17 +457,38 @@ function DescriptionSectionInner({
               </Alert>
             )}
             {!waitingForClient && !pendingJobResult && jobFailed && (
-              <Alert variant="info" icon={AlertCircle}>
-                <div className="space-y-1">
-                  <p className="font-medium">Échec de la génération automatique.</p>
-                  {descriptionJobErrorMsg && (
-                    <p className="text-[12px] opacity-90">{descriptionJobErrorMsg}</p>
-                  )}
-                  <p className="text-[12px] opacity-80">
-                    Relance via « Générer avec IA » ou « Avancé », ou corrige la cause (prompt, transcription).
-                  </p>
-                </div>
-              </Alert>
+              <>
+                <Alert variant="info" icon={AlertCircle}>
+                  <div className="space-y-1">
+                    <p className="font-medium">Échec de la génération automatique.</p>
+                    {descriptionJobErrorMsg && (
+                      <p className="text-[12px] opacity-90">{descriptionJobErrorMsg}</p>
+                    )}
+                  </div>
+                </Alert>
+                {canEdit && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={RefreshCw}
+                      loading={retryingChain}
+                      onClick={() => void handleRetryChain()}
+                      title="Lance la transcription si absente, puis enchaîne la description"
+                    >
+                      Relancer la chaîne
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={Sparkles}
+                      onClick={() => setShowAi(true)}
+                    >
+                      Générer manuellement
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
             {!waitingForClient && !pendingJobResult && !jobInFlight && !jobFailed && (
               <Alert variant="glass" icon={Sparkles}>

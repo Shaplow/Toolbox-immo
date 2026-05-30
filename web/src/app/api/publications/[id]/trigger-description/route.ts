@@ -1,0 +1,107 @@
+/**
+ * POST /api/publications/[id]/trigger-description
+ *
+ * Lance manuellement la chaîne de génération description IA pour un slot.
+ *
+ * Cas d'usage typique : un slot a needsDescription=autoGenerate mais pas de
+ * captions (needsCaptions=false), donc le pipeline render ne déclenche pas
+ * de transcription → la description reste bloquée sur "Aucune transcription
+ * disponible". Cet endpoint permet de débloquer la chaîne sans avoir à
+ * relancer un render complet.
+ *
+ * Logique :
+ *  - Si une transcription COMPLETED existe → triggerAutoDescription direct.
+ *  - Si une transcription QUEUED/PROCESSING existe → no-op (déjà en route).
+ *  - Sinon → triggerAutoTranscriptionForRender (qui chaînera vers description
+ *    via webhook transcription COMPLETED).
+ *
+ * ADMIN uniquement. Idempotent.
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import { getUserContext } from "@/lib/userContext";
+import { prisma } from "@/lib/prisma";
+import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
+import { triggerAutoDescriptionForTranscription } from "@/lib/triggerAutoDescriptionFromTranscription";
+
+type RouteContext = { params: Promise<{ id: string }> };
+
+export async function POST(_req: NextRequest, { params }: RouteContext) {
+  const userContext = await getUserContext();
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
+    return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
+  }
+
+  const { id: slotId } = await params;
+  const slot = await prisma.publicationSlot.findUnique({
+    where: { id: slotId },
+    select: {
+      id: true,
+      render: {
+        select: {
+          id: true,
+          status: true,
+          templateId: true,
+          listing: { select: { userId: true } },
+          transcriptionJob: { select: { id: true, status: true } },
+        },
+      },
+      currentVersion: {
+        select: {
+          transcriptionJob: { select: { id: true, status: true } },
+        },
+      },
+    },
+  });
+  if (!slot) {
+    return NextResponse.json({ error: "Slot introuvable" }, { status: 404 });
+  }
+
+  // Préfère la transcription côté render (auto_template), fallback version.
+  const existingTranscription =
+    slot.render?.transcriptionJob ?? slot.currentVersion?.transcriptionJob ?? null;
+
+  // Cas 1 : transcription déjà COMPLETED → trigger description direct.
+  if (existingTranscription?.status === "COMPLETED") {
+    void triggerAutoDescriptionForTranscription(existingTranscription.id).catch((err) => {
+      console.error(`[trigger-description] triggerAutoDescription failed slot=${slotId}:`, err);
+    });
+    return NextResponse.json({ ok: true, path: "description_only", transcriptionId: existingTranscription.id });
+  }
+
+  // Cas 2 : transcription en cours → no-op (le webhook trigger description).
+  if (existingTranscription?.status === "QUEUED" || existingTranscription?.status === "PROCESSING") {
+    return NextResponse.json({ ok: true, path: "transcription_in_flight", transcriptionId: existingTranscription.id });
+  }
+
+  // Cas 3 : pas de transcription (ou FAILED) — on doit la lancer.
+  // Requiert un render DONE pour avoir un input audio.
+  const render = slot.render;
+  if (!render || render.status !== "DONE") {
+    return NextResponse.json(
+      { error: "Render non disponible — relancer le render avant la description." },
+      { status: 400 },
+    );
+  }
+  if (!render.listing?.userId) {
+    return NextResponse.json(
+      { error: "Render orphelin (sans listing.userId) — impossible de tracer le job." },
+      { status: 400 },
+    );
+  }
+
+  // Clé R2 de l'output du render (convention `renders/{renderId}.mp4` —
+  // alignée avec triggerAutoTranscriptionLocal et upload-complete).
+  const renderOutputKey = `renders/${render.id}.mp4`;
+
+  void triggerAutoTranscriptionForRender(
+    render.id,
+    render.templateId,
+    renderOutputKey,
+    render.listing.userId,
+  ).catch((err) => {
+    console.error(`[trigger-description] triggerAutoTranscription failed slot=${slotId}:`, err);
+  });
+
+  return NextResponse.json({ ok: true, path: "transcription_started", renderId: render.id });
+}

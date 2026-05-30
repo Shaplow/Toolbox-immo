@@ -45,7 +45,34 @@ export async function triggerAutoTranscriptionForRender(
     return;
   }
 
-  if (!captionAutoConfig?.enabled) return;
+  // Fix 2026-05-30 : la transcription doit aussi tourner si le slot lié au
+  // render attend une description IA (qui consomme la transcription comme
+  // input), même si captions désactivées sur le template. Avant ce fix,
+  // pattern.needsCaptions=false + needsDescription=autoGenerate → pas de
+  // transcription → description bloquée éternellement après validation client.
+  let needsDescriptionAuto = false;
+  try {
+    const render = await prisma.render.findUnique({
+      where: { id: renderId },
+      select: {
+        publicationSlot: {
+          select: {
+            needsDescriptionOverride: true,
+            pattern: { select: { needsDescription: true } },
+          },
+        },
+      },
+    });
+    const effectiveNeedsDescription =
+      render?.publicationSlot?.needsDescriptionOverride ??
+      render?.publicationSlot?.pattern?.needsDescription ??
+      "none";
+    needsDescriptionAuto = effectiveNeedsDescription === "autoGenerate";
+  } catch (err) {
+    console.warn(`[autoTranscription] Lecture slot pattern échouée pour render=${renderId} : ${String(err)}`);
+  }
+
+  if (!captionAutoConfig?.enabled && !needsDescriptionAuto) return;
 
   // Idempotence : la contrainte unique sur renderId (schema Prisma) + le
   // try/catch P2002 ci-dessous suffisent pour bloquer les doublons quand
