@@ -127,6 +127,7 @@ export async function triggerAutoDescriptionForTranscription(
       renderId: true,
       publicationVersionId: true,
       outputJsonKey: true,
+      segmentsJson: true,
       render: {
         select: {
           id: true,
@@ -255,39 +256,54 @@ export async function triggerAutoDescriptionForTranscription(
     return;
   }
 
-  // Si l'appelant fournit le transcript (cas dev local sans R2), on l'utilise.
-  // Sinon on tente la lecture R2 (cas prod RunPod où le transcript est stocké).
+  // Résolution du transcript en cascade :
+  //  1. providedTranscriptText (appelant fournit, ex dev local synchrone)
+  //  2. job.segmentsJson (segments persistés en DB par transcribeRenderLocal)
+  //  3. R2 via outputJsonKey (mode RunPod prod)
+  // Si les trois échouent → DescriptionJob FAILED avec message clair.
   let transcriptText: string | null = null;
+  let transcriptSource: "provided" | "db" | "r2" | null = null;
+
   if (providedTranscriptText && providedTranscriptText.trim().length > 0) {
     transcriptText = providedTranscriptText.slice(0, MAX_TRANSCRIPT_CHARS);
-    console.info(`[autoDescription] transcript fourni (${transcriptText.length} chars) — skip lecture R2`);
-  } else {
-    if (!job.outputJsonKey) {
-      logSkip(transcriptionJobId, "no_transcription_output", { slotId });
-      await createFailedJob({
-        userId: job.userId,
-        slotId,
-        transcriptionId: job.id,
-        promptId,
-        promptSnapshot: prompt.prompt,
-        errorMsg: "Transcription sans output JSON (clé R2 manquante) — relancer la transcription.",
-      });
-      return;
-    }
-    transcriptText = await readTranscriptionTextFromR2(job.outputJsonKey);
-    if (!transcriptText) {
-      logSkip(transcriptionJobId, "r2_not_configured", { slotId });
-      await createFailedJob({
-        userId: job.userId,
-        slotId,
-        transcriptionId: job.id,
-        promptId,
-        promptSnapshot: prompt.prompt,
-        errorMsg: "Lecture R2 du transcript impossible. En dev local, le transcript doit être passé en mémoire depuis transcribeRenderLocal (cf. providedTranscriptText).",
-      });
-      return;
+    transcriptSource = "provided";
+  } else if (job.segmentsJson) {
+    try {
+      const parsed = JSON.parse(job.segmentsJson) as Array<{ text?: string }>;
+      const text = parsed
+        .map((s) => (s.text ?? "").trim())
+        .filter(Boolean)
+        .join("\n")
+        .slice(0, MAX_TRANSCRIPT_CHARS);
+      if (text.length > 0) {
+        transcriptText = text;
+        transcriptSource = "db";
+      }
+    } catch (err) {
+      console.warn(`[autoDescription] segmentsJson invalide pour ${transcriptionJobId}:`, err);
     }
   }
+  if (!transcriptText && job.outputJsonKey) {
+    transcriptText = await readTranscriptionTextFromR2(job.outputJsonKey);
+    if (transcriptText) transcriptSource = "r2";
+  }
+
+  if (!transcriptText) {
+    logSkip(transcriptionJobId, "no_transcription_output", { slotId });
+    await createFailedJob({
+      userId: job.userId,
+      slotId,
+      transcriptionId: job.id,
+      promptId,
+      promptSnapshot: prompt.prompt,
+      errorMsg: !job.outputJsonKey && !job.segmentsJson
+        ? "Transcription vide (aucun segment détecté). Vérifier l'audio de la vidéo ou relancer la transcription."
+        : "Lecture du transcript impossible (R2 indisponible et pas de segments persistés en DB). Relancer la transcription.",
+    });
+    return;
+  }
+
+  console.info(`[autoDescription] transcript résolu via ${transcriptSource} (${transcriptText.length} chars) pour ${transcriptionJobId}`);
 
   // ── 4. Lifecycle visible : QUEUED → PROCESSING → COMPLETED/FAILED ────────
   const lifecycleJob = await prisma.descriptionJob.create({

@@ -248,6 +248,10 @@ model TranscriptionJob {
   hasDiarization       Boolean             @default(false) // résultat effectif (false si pas de HF_TOKEN)
   runpodJobId          String?             @unique // ID job RunPod pour polling
   outputJsonKey        String? // clé R2 du JSON segments brut (persistant)
+  /// Segments transcription en JSON inline (fallback quand R2 non utilisé, ex
+  /// dev local). Format : `[{start, end, text, speaker?}, ...]`. Permet de
+  /// rejouer description / autres jobs aval sans dépendre de R2.
+  segmentsJson         String?             @db.Text
   segmentCount         Int?
   duration             Float? // durée audio en secondes
   errorMsg             String?

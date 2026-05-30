@@ -85,13 +85,19 @@ export async function transcribeRenderLocal(renderId: string): Promise<void> {
   // Lookup ou reset du TranscriptionJob existant.
   const existing = await prisma.transcriptionJob.findUnique({
     where: { renderId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, segmentsJson: true, segmentCount: true },
   });
 
   let jobId: string;
   if (existing) {
-    if (existing.status === "COMPLETED") {
-      console.info(`[transcribeRenderLocal] transcription ${existing.id} déjà COMPLETED — trigger description direct`);
+    // COMPLETED MAIS sans segments utilisables → on retraite comme FAILED.
+    // (cas typique : transcription ancienne créée AVANT que segmentsJson
+    // existe en DB — relancer pour qu'on persiste les segments cette fois.)
+    const hasUsableSegments =
+      (existing.segmentCount ?? 0) > 0 && !!existing.segmentsJson && existing.segmentsJson.length > 2;
+
+    if (existing.status === "COMPLETED" && hasUsableSegments) {
+      console.info(`[transcribeRenderLocal] transcription ${existing.id} déjà COMPLETED avec segments — trigger description direct`);
       void triggerAutoDescriptionForTranscription(existing.id).catch((err) =>
         console.error(`[transcribeRenderLocal] triggerAutoDescription failed: ${String(err)}`),
       );
@@ -101,7 +107,8 @@ export async function transcribeRenderLocal(renderId: string): Promise<void> {
       console.info(`[transcribeRenderLocal] transcription ${existing.id} déjà ${existing.status} — skip`);
       return;
     }
-    // FAILED → reset
+    // FAILED OU COMPLETED-mais-vide → reset
+    console.info(`[transcribeRenderLocal] reset job ${existing.id} (status=${existing.status} segments=${existing.segmentCount ?? 0}) → re-transcribe`);
     await prisma.transcriptionJob.update({
       where: { id: existing.id },
       data: { status: "PROCESSING", errorMsg: null, runpodJobId: null },
@@ -159,12 +166,16 @@ export async function transcribeRenderLocal(renderId: string): Promise<void> {
     }
     const data = (await res.json()) as { segments: Segment[]; duration?: number };
 
+    // Persist les segments en DB (champ segmentsJson) pour qu'un caller
+    // ultérieur (sweep, retry, trigger-description sur job existant) puisse
+    // reconstruire le transcript sans dépendre de R2.
     await prisma.transcriptionJob.update({
       where: { id: jobId },
       data: {
         status: "COMPLETED",
         segmentCount: data.segments?.length ?? 0,
         duration: data.duration ?? null,
+        segmentsJson: JSON.stringify(data.segments ?? []),
       },
     });
     notifyUser(userId, { jobType: "transcription", jobId, status: "COMPLETED" });
