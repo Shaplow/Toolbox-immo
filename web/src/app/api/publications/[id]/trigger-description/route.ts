@@ -36,6 +36,7 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
   }
 
   const { id: slotId } = await params;
+  console.info(`[trigger-description] === START slot=${slotId} actor=${userContext.actualUser.id} runpod=${runpodConfigured()} r2=${r2Configured()}`);
   const slot = await prisma.publicationSlot.findUnique({
     where: { id: slotId },
     select: {

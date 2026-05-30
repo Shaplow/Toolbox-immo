@@ -32,7 +32,30 @@ type Segment = { start: number; end: number; text: string; speaker?: string };
 
 const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
 
+/**
+ * Résout une videoUrl stockée en URL absolue téléchargeable côté serveur.
+ *
+ * En dev, render.videoUrl peut être :
+ *  - "http(s)://..." → URL absolue (R2 public, ou render-engine direct)
+ *  - "/api/captions/outputs/..." → URL Next qui proxy vers le render-engine
+ *    → on shortcut vers CAPTIONS_API/outputs/... pour éviter le détour
+ *  - "/outputs/..." → path relatif render-engine, on préfixe avec CAPTIONS_API
+ *  - autre "/..." → on préfixe avec NEXTAUTH_URL ou localhost
+ */
+function resolveVideoUrl(videoUrl: string): string {
+  if (/^https?:\/\//i.test(videoUrl)) return videoUrl;
+  if (videoUrl.startsWith("/api/captions/")) {
+    return `${CAPTIONS_API}${videoUrl.replace("/api/captions", "")}`;
+  }
+  if (videoUrl.startsWith("/outputs/") || videoUrl.startsWith("/api/")) {
+    return `${CAPTIONS_API}${videoUrl}`;
+  }
+  const base = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+  return `${base}${videoUrl.startsWith("/") ? videoUrl : `/${videoUrl}`}`;
+}
+
 export async function transcribeRenderLocal(renderId: string): Promise<void> {
+  console.info(`[transcribeRenderLocal] === START render=${renderId} CAPTIONS_API=${CAPTIONS_API}`);
   const render = await prisma.render.findUnique({
     where: { id: renderId },
     select: {
@@ -47,6 +70,7 @@ export async function transcribeRenderLocal(renderId: string): Promise<void> {
     console.warn(`[transcribeRenderLocal] render=${renderId} introuvable`);
     return;
   }
+  console.info(`[transcribeRenderLocal] render loaded status=${render.status} videoUrl=${render.videoUrl?.slice(0, 80)} userId=${render.listing?.userId} slotId=${render.publicationSlotId}`);
   if (!render.listing?.userId) {
     console.warn(`[transcribeRenderLocal] render=${renderId} orphelin (sans listing.userId)`);
     return;
@@ -109,10 +133,11 @@ export async function transcribeRenderLocal(renderId: string): Promise<void> {
 
   // Téléchargement + transcription locale.
   try {
-    console.info(`[transcribeRenderLocal] download ${render.videoUrl}`);
-    const videoRes = await fetch(render.videoUrl, { signal: AbortSignal.timeout(60_000) });
+    const downloadUrl = resolveVideoUrl(render.videoUrl);
+    console.info(`[transcribeRenderLocal] download ${downloadUrl} (raw=${render.videoUrl})`);
+    const videoRes = await fetch(downloadUrl, { signal: AbortSignal.timeout(60_000) });
     if (!videoRes.ok) {
-      throw new Error(`Téléchargement vidéo échoué (${videoRes.status}): ${render.videoUrl}`);
+      throw new Error(`Téléchargement vidéo échoué (${videoRes.status}): ${downloadUrl}`);
     }
     const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
     const videoBlob = new Blob([videoBuffer], { type: "video/mp4" });
