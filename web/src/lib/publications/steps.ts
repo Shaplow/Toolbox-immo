@@ -355,12 +355,9 @@ export function computePublicationSteps(input: {
       status: (() => {
         if (!descriptionVisible) return "todo";
         const baseStatus = descriptionJobStatus(descriptionJob, slot.description);
-        // Fix 2026-05-30 (chaîne) : si la validation est requise mais pas
-        // faite, la description ne peut pas être à "todo" (bouton trompeur)
-        // — on bloque visuellement.
-        if (validationVisible && !POST_VALIDATION_STATUSES.has(slot.status)) {
-          return baseStatus === "done" ? "done" : "blocked";
-        }
+        // "blocked" est réservé aux vrais blocages durables (erreur config,
+        // pattern manquant). L'attente d'une étape amont (validation client)
+        // reste "todo" — visuellement neutre dans la chaîne.
         // Post-validation + pas encore de job + pattern autoGenerate :
         // le pipeline est censé déclencher le job dans la foulée → on affiche
         // "processing" pour ne pas montrer "À faire" trompeur pendant le délai
@@ -384,16 +381,8 @@ export function computePublicationSteps(input: {
       status: (() => {
         if (!coverVisible) return "todo";
         const baseStatus = coverPackStatus(coverPack);
-        // Fix 2026-05-30 (chaîne) : avant validation client, le step cover est
-        // bloqué visuellement (cohérent avec CoverSection qui masque "Choisir
-        // une cover"). monteurUpload non concerné — le monteur uploade avant.
-        if (
-          validationVisible &&
-          pattern?.coverMode !== "monteurUpload" &&
-          !POST_VALIDATION_STATUSES.has(slot.status)
-        ) {
-          return baseStatus === "done" ? "done" : "blocked";
-        }
+        // Idem description : pre-validation reste "todo" (pas "blocked")
+        // pour ne pas alarmer visuellement sur une étape simplement en attente.
         // Post-validation + pas encore de pack + mode autoPack : le pipeline
         // déclenche le pack dans la foulée → "processing" pour éviter "À faire".
         if (
