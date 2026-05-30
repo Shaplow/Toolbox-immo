@@ -90,6 +90,17 @@ export interface PublicationStep {
 
 const BLOCKED_SLOT_STATUSES = new Set(["CANCELLED", "REJECTED", "ARCHIVED"]);
 
+// Slot status après validation client (magic link OU bypass admin) : la
+// description et la cover peuvent enfin se lancer. SCHEDULED = passe-droit
+// post-approve. PUBLISHED/CANCELLED/ARCHIVED = terminé. Utilisé par les step
+// description/cover pour ne pas afficher "À faire" trompeur pre-validation.
+const POST_VALIDATION_STATUSES = new Set([
+  "SCHEDULED",
+  "PUBLISHED",
+  "CANCELLED",
+  "ARCHIVED",
+]);
+
 // ---------------------------------------------------------------------------
 // Mappers de statut job → StepStatus
 // ---------------------------------------------------------------------------
@@ -318,8 +329,12 @@ export function computePublicationSteps(input: {
       // peut pas démarrer tant que les sous-titres ne sont pas terminés —
       // sinon le CM enverrait au client une vidéo sans sous-titres alors que
       // c'est censé être la version validable. On bascule alors en "blocked".
+      //
+      // Fix 2026-05-30 (chaîne) : SCHEDULED = validation déjà faite (magic
+      // link approve OU bypass admin) → done. Sans ça, le step restait "todo"
+      // alors que le slot avait passé la validation.
       status: (() => {
-        if (slot.status === "PUBLISHED" || slot.status === "DONE") return "done";
+        if (slot.status === "PUBLISHED" || slot.status === "DONE" || slot.status === "SCHEDULED") return "done";
         // Si captions requises et pas encore terminées → blocked.
         // captionJobStatus retourne "done" UNIQUEMENT si COMPLETED, donc on
         // peut s'en servir comme indicateur de "captions prêtes".
@@ -337,16 +352,60 @@ export function computePublicationSteps(input: {
       key: "description",
       label: "Description",
       visible: descriptionVisible,
-      status: descriptionVisible
-        ? descriptionJobStatus(descriptionJob, slot.description)
-        : "todo",
+      status: (() => {
+        if (!descriptionVisible) return "todo";
+        const baseStatus = descriptionJobStatus(descriptionJob, slot.description);
+        // Fix 2026-05-30 (chaîne) : si la validation est requise mais pas
+        // faite, la description ne peut pas être à "todo" (bouton trompeur)
+        // — on bloque visuellement.
+        if (validationVisible && !POST_VALIDATION_STATUSES.has(slot.status)) {
+          return baseStatus === "done" ? "done" : "blocked";
+        }
+        // Post-validation + pas encore de job + pattern autoGenerate :
+        // le pipeline est censé déclencher le job dans la foulée → on affiche
+        // "processing" pour ne pas montrer "À faire" trompeur pendant le délai
+        // de mise en place.
+        if (
+          POST_VALIDATION_STATUSES.has(slot.status) &&
+          pattern?.needsDescription === "autoGenerate" &&
+          baseStatus === "todo" &&
+          !descriptionJob
+        ) {
+          return "processing";
+        }
+        return baseStatus;
+      })(),
       roles: STEP_ROLES.description,
     },
     {
       key: "cover",
       label: "Cover",
       visible: coverVisible,
-      status: coverVisible ? coverPackStatus(coverPack) : "todo",
+      status: (() => {
+        if (!coverVisible) return "todo";
+        const baseStatus = coverPackStatus(coverPack);
+        // Fix 2026-05-30 (chaîne) : avant validation client, le step cover est
+        // bloqué visuellement (cohérent avec CoverSection qui masque "Choisir
+        // une cover"). monteurUpload non concerné — le monteur uploade avant.
+        if (
+          validationVisible &&
+          pattern?.coverMode !== "monteurUpload" &&
+          !POST_VALIDATION_STATUSES.has(slot.status)
+        ) {
+          return baseStatus === "done" ? "done" : "blocked";
+        }
+        // Post-validation + pas encore de pack + mode autoPack : le pipeline
+        // déclenche le pack dans la foulée → "processing" pour éviter "À faire".
+        if (
+          POST_VALIDATION_STATUSES.has(slot.status) &&
+          pattern?.coverMode === "autoPack" &&
+          baseStatus === "todo" &&
+          !coverPack
+        ) {
+          return "processing";
+        }
+        return baseStatus;
+      })(),
       // Fix bug 2026-05-30 : cover est par défaut CM-only, MAIS quand
       // coverMode === "monteurUpload" c'est le MONTEUR qui upload la cover
       // (cf. CoverSection + PRIMARY_SECTIONS_BY_ROLE.MONTEUR). Sans cet ajout,
