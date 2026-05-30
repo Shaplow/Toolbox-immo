@@ -171,8 +171,15 @@ export async function transcribeRenderLocal(renderId: string): Promise<void> {
 
     console.info(`[transcribeRenderLocal] transcription ${jobId} COMPLETED (${data.segments?.length ?? 0} segments)`);
 
-    // Chaîne vers description.
-    void triggerAutoDescriptionForTranscription(jobId).catch((err) =>
+    // Reconstitue le texte transcript depuis les segments (équivalent du
+    // R2-read côté prod) — on le passe directement au helper description
+    // pour éviter la lecture R2 qui n'a pas de fichier en local.
+    const transcriptText = (data.segments ?? [])
+      .map((s) => (s.text ?? "").trim())
+      .filter(Boolean)
+      .join("\n");
+
+    void triggerAutoDescriptionForTranscription(jobId, transcriptText).catch((err) =>
       console.error(`[transcribeRenderLocal] triggerAutoDescription failed: ${String(err)}`),
     );
   } catch (err) {
