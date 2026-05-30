@@ -1,15 +1,20 @@
 /**
- * POST /api/admin/publications/[id]/manual-validate — escape hatch ADMIN
+ * POST /api/admin/publications/[id]/manual-validate — bypass ADMIN
  *
- * Marque un slot comme validé manuellement par l'ADMIN (sans passer par
- * le magic link). Utile si le client a validé par téléphone/whatsapp et
- * qu'on veut juste avancer le slot. Révoque le token actif au passage.
+ * ⚠️ Ce n'est PAS une validation client. C'est un bypass admin qui change
+ * le statut du slot sans déclencher la chaîne post-validation (description
+ * IA + cover auto). Utiliser uniquement quand le client a validé hors-flux
+ * (téléphone, WhatsApp, mail) et qu'on veut juste avancer le statut.
+ *
+ * Pour une vraie validation client → magic link via POST /api/validate/[token]
+ * (déclenche triggerPostValidationJobs).
  *
  * Body : { action: "approve" | "cancel", comment?: string }
- *  - approve → SCHEDULED (équivalent à client.approve)
- *  - cancel  → CANCELLED (équivalent à client.cancel ou rejet final)
+ *  - approve → SCHEDULED (sans triggers post-validation)
+ *  - cancel  → CANCELLED
  *
  * Slot doit être en AWAITING_CLIENT, CLIENT_REVISION ou READY_FOR_CM.
+ * Révoque le token magic link actif (le client ne peut plus l'utiliser).
  */
 
 import { NextRequest, NextResponse } from "next/server";

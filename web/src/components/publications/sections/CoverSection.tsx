@@ -48,6 +48,10 @@ interface Props {
   viewerRole?: string;
   /** Version courante promue par l'ADMIN (si needsRushes=true). */
   currentVersion?: { versionNumber: number; fileName: string } | null;
+  /** Si true, la cover auto attend la validation client avant lancement. */
+  needsClientValidation?: boolean;
+  /** Status courant du slot (TO_DO, AWAITING_CLIENT, SCHEDULED…). */
+  slotStatus?: string | null;
   sectionId?: string;
   storageKey?: string;
   defaultOpen?: boolean;
@@ -72,6 +76,8 @@ const COVER_STATUS_COLORS: Record<string, string> = {
 
 export function CoverSection({
   slot, pattern, coverPack, coverConfigError, canEdit, canMonteurUpload = false, viewerRole, currentVersion,
+  needsClientValidation,
+  slotStatus,
   sectionId = "cover",
   storageKey,
   defaultOpen = true,
@@ -96,6 +102,23 @@ export function CoverSection({
   // retour" qui faisait que /tools/cover ignorait slotId/returnTo. Le path
   // est désormais hiérarchisé et le breadcrumb retour fonctionne.
   const coverToolHref = `/publications/${slot.id}/cover`;
+
+  // Fix 2026-05-30 : la cover (autoPack + manualSelect) est bloquée tant que
+  // le client n'a pas validé — le bouton "Choisir une cover" ne doit pas
+  // apparaître avant. Bypass admin via /validate manuel OK (slot passe
+  // SCHEDULED). monteurUpload n'est pas concerné (le monteur uploade pendant
+  // sa phase, avant validation).
+  const POST_VALIDATION_STATUSES = new Set([
+    "SCHEDULED",
+    "PUBLISHED",
+    "CANCELLED",
+    "ARCHIVED",
+  ]);
+  const waitingForClient =
+    needsClientValidation === true &&
+    mode !== "monteurUpload" &&
+    !!slotStatus &&
+    !POST_VALIDATION_STATUSES.has(slotStatus);
 
   async function handleUpload(file: File) {
     if (!file.type.startsWith("image/")) {
@@ -264,7 +287,13 @@ export function CoverSection({
       )}
 
       {!coverPack && !coverConfigError && (
-        canEdit ? (
+        waitingForClient ? (
+          <Alert variant="glass" icon={ImageIcon}>
+            {mode === "autoPack"
+              ? "Les frames cover seront générées automatiquement après la validation client."
+              : "La cover pourra être choisie après la validation client."}
+          </Alert>
+        ) : canEdit ? (
           <EmptyState
             icon={ImageIcon}
             title="Aucune cover"

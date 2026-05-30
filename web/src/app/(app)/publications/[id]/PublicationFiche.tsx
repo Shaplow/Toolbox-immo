@@ -718,6 +718,8 @@ export function PublicationFiche({
                     assigneeMonteur?.id === currentUserId)
                 }
                 currentVersion={currentVersion}
+                needsClientValidation={clientValidation.needsClientValidation}
+                slotStatus={slot.status}
               />
             )}
             {pattern != null && pattern.coverMode !== "none" && shouldRenderForRole("cover", currentUserRole) &&

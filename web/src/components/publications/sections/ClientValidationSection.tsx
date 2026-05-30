@@ -339,16 +339,18 @@ export function ClientValidationSection({
                 size="sm"
                 icon={Check}
                 onClick={() => setShowManualConfirm("approve")}
+                title="Bypass admin — ne déclenche PAS la chaîne post-validation (description / cover auto)"
               >
-                Marquer validé (manuel)
+                Bypass admin (validé)
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 icon={X}
                 onClick={() => setShowManualConfirm("cancel")}
+                title="Bypass admin — annule la publication"
               >
-                Marquer annulé (manuel)
+                Bypass admin (annulé)
               </Button>
             </>
           )}
@@ -417,15 +419,15 @@ export function ClientValidationSection({
         open={showManualConfirm !== null}
         title={
           showManualConfirm === "approve"
-            ? "Marquer comme validé manuellement ?"
-            : "Marquer comme annulé manuellement ?"
+            ? "Bypass admin — marquer comme validé ?"
+            : "Bypass admin — marquer comme annulé ?"
         }
         description={
           showManualConfirm === "approve"
-            ? "Le slot passera directement en « Programmé ». Cette action contourne le magic link."
-            : "Le slot passera en « Annulé ». Cette action contourne le magic link."
+            ? "⚠️ Ce n'est PAS une validation client. Le slot passe en « Programmé » sans déclencher la chaîne post-validation (description IA / cover auto). À utiliser uniquement si le client a validé par téléphone/WhatsApp et que tu veux juste avancer le statut."
+            : "⚠️ Bypass admin — le slot passe en « Annulé ». Pas de validation client effectuée."
         }
-        confirmLabel={showManualConfirm === "approve" ? "Valider" : "Annuler la publi"}
+        confirmLabel={showManualConfirm === "approve" ? "Bypass : valider" : "Bypass : annuler"}
         variant={showManualConfirm === "approve" ? "default" : "danger"}
         loading={submitting?.startsWith("manual-")}
         onConfirm={() => {
