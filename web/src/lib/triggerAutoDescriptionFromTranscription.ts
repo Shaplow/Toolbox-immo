@@ -30,6 +30,59 @@ import { logActivity } from "@/lib/services/slot/activity";
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
 const MAX_TRANSCRIPT_CHARS = 50_000;
+const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
+
+/**
+ * Extrait 1 frame de fallback depuis une vidéo via le render-engine.
+ * Utilisé quand le transcript est vide (vidéo silencieuse) — on bascule
+ * sur une description "image-based" pour ne pas bloquer la chaîne.
+ */
+async function extractFallbackFrame(
+  videoUrl: string,
+  timestampSec = 1.5,
+): Promise<{ base64: string; mediaType: "image/png" | "image/jpeg" } | null> {
+  try {
+    // Résoudre videoUrl relative → absolue côté render-engine
+    let resolvedUrl = videoUrl;
+    if (videoUrl.startsWith("/api/captions/")) {
+      resolvedUrl = `${CAPTIONS_API}${videoUrl.replace("/api/captions", "")}`;
+    } else if (videoUrl.startsWith("/")) {
+      resolvedUrl = `${CAPTIONS_API}${videoUrl}`;
+    }
+
+    const form = new FormData();
+    form.append("video_url", resolvedUrl);
+    form.append("timestamps_json", JSON.stringify([timestampSec]));
+    const res = await fetch(`${CAPTIONS_API}/api/extract-covers`, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      console.warn(`[autoDescription] extractFallbackFrame failed (${res.status}): ${(await res.text()).slice(0, 200)}`);
+      return null;
+    }
+    const frames = (await res.json()) as Array<{ url: string }>;
+    if (!frames.length) return null;
+
+    const frameUrl = frames[0].url.startsWith("http")
+      ? frames[0].url
+      : `${CAPTIONS_API}${frames[0].url.startsWith("/") ? frames[0].url : `/${frames[0].url}`}`;
+    const frameRes = await fetch(frameUrl, { signal: AbortSignal.timeout(30_000) });
+    if (!frameRes.ok) {
+      console.warn(`[autoDescription] frame download failed (${frameRes.status}): ${frameUrl}`);
+      return null;
+    }
+    const buf = Buffer.from(await frameRes.arrayBuffer());
+    const mediaType: "image/png" | "image/jpeg" = frameUrl.toLowerCase().endsWith(".jpg") || frameUrl.toLowerCase().endsWith(".jpeg")
+      ? "image/jpeg"
+      : "image/png";
+    return { base64: buf.toString("base64"), mediaType };
+  } catch (err) {
+    console.warn(`[autoDescription] extractFallbackFrame threw:`, err);
+    return null;
+  }
+}
 
 type SkipReason =
   | "no_render"
@@ -132,6 +185,7 @@ export async function triggerAutoDescriptionForTranscription(
         select: {
           id: true,
           publicationSlotId: true,
+          videoUrl: true,
         },
       },
       publicationVersion: {
@@ -288,7 +342,20 @@ export async function triggerAutoDescriptionForTranscription(
     if (transcriptText) transcriptSource = "r2";
   }
 
-  if (!transcriptText) {
+  // Fallback "frame-only" : si on n'a aucun transcript (vidéo silencieuse),
+  // on extrait 1 frame de la vidéo + on demande à Claude de décrire
+  // l'image au lieu d'abandonner. Couvre les cas immobilier où la vidéo
+  // montre un bien sans voix-off.
+  let fallbackFrame: { base64: string; mediaType: "image/png" | "image/jpeg" } | null = null;
+  if (!transcriptText && job.render?.videoUrl) {
+    console.info(`[autoDescription] transcript vide pour ${transcriptionJobId} → tentative fallback frame depuis ${job.render.videoUrl.slice(0, 80)}`);
+    fallbackFrame = await extractFallbackFrame(job.render.videoUrl);
+    if (fallbackFrame) {
+      console.info(`[autoDescription] frame extraite (${fallbackFrame.base64.length} chars base64) — bascule en mode image-only`);
+    }
+  }
+
+  if (!transcriptText && !fallbackFrame) {
     logSkip(transcriptionJobId, "no_transcription_output", { slotId });
     await createFailedJob({
       userId: job.userId,
@@ -296,14 +363,16 @@ export async function triggerAutoDescriptionForTranscription(
       transcriptionId: job.id,
       promptId,
       promptSnapshot: prompt.prompt,
-      errorMsg: !job.outputJsonKey && !job.segmentsJson
-        ? "Transcription vide (aucun segment détecté). Vérifier l'audio de la vidéo ou relancer la transcription."
-        : "Lecture du transcript impossible (R2 indisponible et pas de segments persistés en DB). Relancer la transcription.",
+      errorMsg: !job.render?.videoUrl
+        ? "Transcription vide et aucune vidéo source — impossible de générer la description."
+        : "Transcription vide et extraction d'une frame fallback échouée. Vérifier que le render-engine répond sur /api/extract-covers.",
     });
     return;
   }
 
-  console.info(`[autoDescription] transcript résolu via ${transcriptSource} (${transcriptText.length} chars) pour ${transcriptionJobId}`);
+  if (transcriptText) {
+    console.info(`[autoDescription] transcript résolu via ${transcriptSource} (${transcriptText.length} chars) pour ${transcriptionJobId}`);
+  }
 
   // ── 4. Lifecycle visible : QUEUED → PROCESSING → COMPLETED/FAILED ────────
   const lifecycleJob = await prisma.descriptionJob.create({
@@ -325,9 +394,29 @@ export async function triggerAutoDescriptionForTranscription(
     slotId,
   });
 
-  // Construit le user message comme /api/description/generate — version minimale
-  // recipe = transcript_only (auto-trigger : on n'a pas d'image, juste le transcript)
-  const userMessage = `${prompt.prompt}\n\nTranscription :\n${transcriptText}`;
+  // Construit le user message — 2 modes :
+  //  - transcript présent : recipe = transcript_only
+  //  - transcript vide + fallbackFrame : recipe = frame_only (image décrit la
+  //    publication, ex. vidéo immobilier silencieuse)
+  const userMessage = transcriptText
+    ? `${prompt.prompt}\n\nTranscription :\n${transcriptText}`
+    : `${prompt.prompt}\n\nLa vidéo ne contient pas de parole. Base-toi UNIQUEMENT sur l'image jointe (une frame extraite de la vidéo). Décris ce que tu vois — n'invente rien qui n'est pas visible.`;
+
+  const messageContent: Array<
+    | { type: "text"; text: string }
+    | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
+  > = [];
+  if (fallbackFrame) {
+    messageContent.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: fallbackFrame.mediaType,
+        data: fallbackFrame.base64,
+      },
+    });
+  }
+  messageContent.push({ type: "text", text: userMessage });
 
   let result: string;
   try {
@@ -343,7 +432,7 @@ export async function triggerAutoDescriptionForTranscription(
         max_tokens: 4096,
         system:
           "Tu es un expert en rédaction. Génère uniquement le texte demandé, sans commentaire, introduction ni balise markdown.",
-        messages: [{ role: "user", content: [{ type: "text", text: userMessage }] }],
+        messages: [{ role: "user", content: messageContent }],
       }),
       signal: AbortSignal.timeout(60_000),
     });
