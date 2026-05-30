@@ -29,6 +29,9 @@ import { logActivity } from "@/lib/services/slot/activity";
 import { triggerAutoDescriptionForTranscription } from "@/lib/triggerAutoDescriptionFromTranscription";
 import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
 import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
+import { transcribeRenderLocal } from "@/lib/transcribeRenderLocal";
+import { runpodConfigured } from "@/lib/runpod";
+import { r2Configured } from "@/lib/r2";
 
 type RouteContext = { params: Promise<{ token: string }> };
 
@@ -301,16 +304,27 @@ async function triggerPostValidationJobs(slotId: string): Promise<void> {
     if (transcriptionInFlight) {
       console.info(`[validate post-approve] transcription ${transcription?.id} déjà en cours slot=${slotId} — webhook prendra le relais`);
     } else if (render?.status === "DONE" && render.templateId && render.listing?.userId) {
-      const renderOutputKey = `renders/${render.id}.mp4`;
-      void triggerAutoTranscriptionForRender(
-        render.id,
-        render.templateId,
-        renderOutputKey,
-        render.listing.userId,
-      ).catch((err) => {
-        console.error(`[validate post-approve] triggerAutoTranscription échoué slot=${slotId}:`, err);
-      });
-      console.info(`[validate post-approve] transcription lancée pour description auto slot=${slotId} render=${render.id}`);
+      // Choix prod vs dev :
+      //  - RunPod + R2 configurés → triggerAutoTranscriptionForRender (asynchrone webhook)
+      //  - Sinon → transcribeRenderLocal (synchrone via CAPTIONS_API_URL),
+      //    qui chaîne lui-même vers description
+      if (runpodConfigured() && r2Configured()) {
+        const renderOutputKey = `renders/${render.id}.mp4`;
+        void triggerAutoTranscriptionForRender(
+          render.id,
+          render.templateId,
+          renderOutputKey,
+          render.listing.userId,
+        ).catch((err) => {
+          console.error(`[validate post-approve] triggerAutoTranscription échoué slot=${slotId}:`, err);
+        });
+        console.info(`[validate post-approve] transcription RunPod lancée slot=${slotId} render=${render.id}`);
+      } else {
+        void transcribeRenderLocal(render.id).catch((err) => {
+          console.error(`[validate post-approve] transcribeRenderLocal échoué slot=${slotId}:`, err);
+        });
+        console.info(`[validate post-approve] transcription LOCAL lancée slot=${slotId} render=${render.id}`);
+      }
     } else {
       // Render pas dispo — on trace en FAILED pour que l'user voie le blocage.
       const userId =

@@ -1,0 +1,162 @@
+/**
+ * transcribeRenderLocal.ts
+ *
+ * Helper "transcription seule" qui appelle directement le render-engine local
+ * (CAPTIONS_API_URL → /api/transcribe) sans dépendre de RunPod ni du pipeline
+ * captions complet.
+ *
+ * Cas d'usage principal : un slot a needsDescription=autoGenerate mais pas
+ * de captions (needsCaptions=false). On a besoin d'une transcription pour
+ * servir la description, mais on ne veut pas burn-in des captions sur la
+ * vidéo. triggerAutoTranscriptionLocal (existant) ne sait faire que les
+ * deux ensemble.
+ *
+ * Fonctionnement :
+ *  1. Charge le Render (avec videoUrl R2) + check existing TranscriptionJob
+ *     - COMPLETED → no-op + trigger description direct
+ *     - QUEUED/PROCESSING → no-op (un autre appel s'en charge)
+ *     - FAILED → reset en QUEUED (clear errorMsg)
+ *     - null → create
+ *  2. Télécharge la vidéo (R2 public URL) → POST /api/transcribe (render-engine)
+ *  3. UPDATE le TranscriptionJob en COMPLETED + segments
+ *  4. Appelle triggerAutoDescriptionForTranscription (qui crée le DescriptionJob)
+ *
+ * Non bloquant : tout throw est logué et finalisé en TranscriptionJob FAILED.
+ */
+
+import { prisma } from "@/lib/prisma";
+import { triggerAutoDescriptionForTranscription } from "@/lib/triggerAutoDescriptionFromTranscription";
+import { notifyUser } from "@/lib/sseStore";
+
+type Segment = { start: number; end: number; text: string; speaker?: string };
+
+const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
+
+export async function transcribeRenderLocal(renderId: string): Promise<void> {
+  const render = await prisma.render.findUnique({
+    where: { id: renderId },
+    select: {
+      id: true,
+      videoUrl: true,
+      status: true,
+      listing: { select: { userId: true } },
+      publicationSlotId: true,
+    },
+  });
+  if (!render) {
+    console.warn(`[transcribeRenderLocal] render=${renderId} introuvable`);
+    return;
+  }
+  if (!render.listing?.userId) {
+    console.warn(`[transcribeRenderLocal] render=${renderId} orphelin (sans listing.userId)`);
+    return;
+  }
+  if (render.status !== "DONE" || !render.videoUrl) {
+    console.warn(`[transcribeRenderLocal] render=${renderId} pas DONE ou sans videoUrl — skip`);
+    return;
+  }
+
+  const userId = render.listing.userId;
+
+  // Lookup ou reset du TranscriptionJob existant.
+  const existing = await prisma.transcriptionJob.findUnique({
+    where: { renderId },
+    select: { id: true, status: true },
+  });
+
+  let jobId: string;
+  if (existing) {
+    if (existing.status === "COMPLETED") {
+      console.info(`[transcribeRenderLocal] transcription ${existing.id} déjà COMPLETED — trigger description direct`);
+      void triggerAutoDescriptionForTranscription(existing.id).catch((err) =>
+        console.error(`[transcribeRenderLocal] triggerAutoDescription failed: ${String(err)}`),
+      );
+      return;
+    }
+    if (existing.status === "QUEUED" || existing.status === "PROCESSING") {
+      console.info(`[transcribeRenderLocal] transcription ${existing.id} déjà ${existing.status} — skip`);
+      return;
+    }
+    // FAILED → reset
+    await prisma.transcriptionJob.update({
+      where: { id: existing.id },
+      data: { status: "PROCESSING", errorMsg: null, runpodJobId: null },
+    });
+    jobId = existing.id;
+  } else {
+    const jobTimestamp = Date.now();
+    const created = await prisma.transcriptionJob.create({
+      data: {
+        userId,
+        status: "PROCESSING",
+        inputKey: `renders/${renderId}.mp4`,
+        inputFilename: `render-${renderId}.mp4`,
+        model: "turbo",
+        language: "fr",
+        enableDiarization: false,
+        outputJsonKey: `transcription/${userId}/${jobTimestamp}/segments.json`,
+        renderId,
+      },
+    }).catch((err) => {
+      console.warn(`[transcribeRenderLocal] Création TranscriptionJob race pour render=${renderId}: ${String(err)}`);
+      return null;
+    });
+    if (!created) return;
+    jobId = created.id;
+  }
+
+  notifyUser(userId, { jobType: "transcription", jobId, status: "PROCESSING" });
+
+  // Téléchargement + transcription locale.
+  try {
+    console.info(`[transcribeRenderLocal] download ${render.videoUrl}`);
+    const videoRes = await fetch(render.videoUrl, { signal: AbortSignal.timeout(60_000) });
+    if (!videoRes.ok) {
+      throw new Error(`Téléchargement vidéo échoué (${videoRes.status}): ${render.videoUrl}`);
+    }
+    const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
+    const videoBlob = new Blob([videoBuffer], { type: "video/mp4" });
+
+    const form = new FormData();
+    form.append("audio", videoBlob, `render-${renderId}.mp4`);
+    form.append("model_size", "turbo");
+    form.append("language", "fr");
+    form.append("enable_diarization", "false");
+
+    console.info(`[transcribeRenderLocal] POST ${CAPTIONS_API}/api/transcribe (size=${videoBuffer.byteLength})`);
+    const res = await fetch(`${CAPTIONS_API}/api/transcribe`, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(10 * 60_000),
+    });
+    if (!res.ok) {
+      throw new Error(`Transcribe ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    }
+    const data = (await res.json()) as { segments: Segment[]; duration?: number };
+
+    await prisma.transcriptionJob.update({
+      where: { id: jobId },
+      data: {
+        status: "COMPLETED",
+        segmentCount: data.segments?.length ?? 0,
+        duration: data.duration ?? null,
+      },
+    });
+    notifyUser(userId, { jobType: "transcription", jobId, status: "COMPLETED" });
+
+    console.info(`[transcribeRenderLocal] transcription ${jobId} COMPLETED (${data.segments?.length ?? 0} segments)`);
+
+    // Chaîne vers description.
+    void triggerAutoDescriptionForTranscription(jobId).catch((err) =>
+      console.error(`[transcribeRenderLocal] triggerAutoDescription failed: ${String(err)}`),
+    );
+  } catch (err) {
+    const errorMsg = (err instanceof Error ? err.message : String(err)).slice(0, 500);
+    console.error(`[transcribeRenderLocal] échec transcription ${jobId}: ${errorMsg}`);
+    await prisma.transcriptionJob.update({
+      where: { id: jobId },
+      data: { status: "FAILED", errorMsg },
+    });
+    notifyUser(userId, { jobType: "transcription", jobId, status: "FAILED", errorMsg });
+  }
+}

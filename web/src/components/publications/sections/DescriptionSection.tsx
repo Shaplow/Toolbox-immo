@@ -294,16 +294,18 @@ function DescriptionSectionInner({
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         path?: string;
+        mode?: "local" | "runpod";
       };
       if (!res.ok) {
         toast.error(data.error ?? `Erreur ${res.status}`);
         return;
       }
+      const modeSuffix = data.mode === "local" ? " (mode local)" : data.mode === "runpod" ? " (mode RunPod)" : "";
       const label =
         data.path === "description_only"
           ? "Description relancée."
           : data.path === "transcription_started"
-            ? "Transcription lancée — la description se déclenchera automatiquement à la fin."
+            ? `Transcription lancée${modeSuffix} — la description se déclenchera automatiquement à la fin.`
             : "Transcription déjà en cours.";
       toast.success(label);
       router.refresh();
@@ -491,9 +493,35 @@ function DescriptionSectionInner({
               </>
             )}
             {!waitingForClient && !pendingJobResult && !jobInFlight && !jobFailed && (
-              <Alert variant="glass" icon={Sparkles}>
-                Lancement de la génération automatique imminent…
-              </Alert>
+              <>
+                <Alert variant="glass" icon={Sparkles}>
+                  La chaîne ne semble pas avoir démarré (transcription absente
+                  ou pipeline interrompu). Clique sur « Lancer la chaîne »
+                  pour déclencher transcription + description.
+                </Alert>
+                {canEdit && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={RefreshCw}
+                      loading={retryingChain}
+                      onClick={() => void handleRetryChain()}
+                      title="Lance la transcription si absente, puis enchaîne la description"
+                    >
+                      Lancer la chaîne
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={Sparkles}
+                      onClick={() => setShowAi(true)}
+                    >
+                      Générer manuellement
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </>
         ) : isAutoMode && hasContent && !editing ? (

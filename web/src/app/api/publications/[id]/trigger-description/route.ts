@@ -23,6 +23,9 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
 import { triggerAutoDescriptionForTranscription } from "@/lib/triggerAutoDescriptionFromTranscription";
+import { transcribeRenderLocal } from "@/lib/transcribeRenderLocal";
+import { runpodConfigured } from "@/lib/runpod";
+import { r2Configured } from "@/lib/r2";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -89,19 +92,24 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
       { status: 400 },
     );
   }
+  // Choix prod vs dev :
+  //  - RunPod + R2 configurés → triggerAutoTranscriptionForRender (asynchrone)
+  //  - Sinon → transcribeRenderLocal (synchrone via CAPTIONS_API_URL)
+  if (runpodConfigured() && r2Configured()) {
+    const renderOutputKey = `renders/${render.id}.mp4`;
+    void triggerAutoTranscriptionForRender(
+      render.id,
+      render.templateId,
+      renderOutputKey,
+      render.listing.userId,
+    ).catch((err) => {
+      console.error(`[trigger-description] triggerAutoTranscription failed slot=${slotId}:`, err);
+    });
+    return NextResponse.json({ ok: true, path: "transcription_started", mode: "runpod", renderId: render.id });
+  }
 
-  // Clé R2 de l'output du render (convention `renders/{renderId}.mp4` —
-  // alignée avec triggerAutoTranscriptionLocal et upload-complete).
-  const renderOutputKey = `renders/${render.id}.mp4`;
-
-  void triggerAutoTranscriptionForRender(
-    render.id,
-    render.templateId,
-    renderOutputKey,
-    render.listing.userId,
-  ).catch((err) => {
-    console.error(`[trigger-description] triggerAutoTranscription failed slot=${slotId}:`, err);
+  void transcribeRenderLocal(render.id).catch((err) => {
+    console.error(`[trigger-description] transcribeRenderLocal failed slot=${slotId}:`, err);
   });
-
-  return NextResponse.json({ ok: true, path: "transcription_started", renderId: render.id });
+  return NextResponse.json({ ok: true, path: "transcription_started", mode: "local", renderId: render.id });
 }
