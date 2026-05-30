@@ -28,6 +28,7 @@ import { resolveClientValidationConfig } from "@/lib/services/slot/config";
 import { logActivity } from "@/lib/services/slot/activity";
 import { triggerAutoDescriptionForTranscription } from "@/lib/triggerAutoDescriptionFromTranscription";
 import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
+import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
 
 type RouteContext = { params: Promise<{ token: string }> };
 
@@ -281,36 +282,57 @@ async function triggerPostValidationJobs(slotId: string): Promise<void> {
       console.error(`[validate post-approve] triggerAutoDescription échoué slot=${slotId}:`, err);
     });
   } else if (needsAutoDescription) {
-    // Fix 2026-05-30 : si la description auto est attendue mais qu'aucune
-    // transcription n'existe (transcription jamais lancée OU pas COMPLETED),
-    // on matérialise un DescriptionJob FAILED pour que l'user voie pourquoi
-    // la chaîne est cassée. Sans ça, la fiche restait sur "Lancement
-    // imminent…" sans aucune trace dans /admin/jobs.
-    const userId =
-      slot.assigneeCmId ??
-      slot.render?.listing?.userId ??
-      slot.assigneeMonteurId ??
-      slot.assigneeVideasteId ??
-      null;
-    if (userId) {
-      const errorMsg = !transcription
-        ? "Aucune transcription disponible — la description auto requiert une transcription préalable. Relancer la transcription manuellement."
-        : `Transcription en statut "${transcription.status}" — attendre qu'elle soit COMPLETED ou la relancer.`;
-      await prisma.descriptionJob.create({
-        data: {
-          userId,
-          status: "FAILED",
-          inputType: "transcription",
-          slotId,
-          transcriptionId: transcription?.id ?? null,
-          promptSnapshot: "",
-          model: "claude",
-          errorMsg,
-        },
+    // Fix 2026-05-30 : description auto attendue mais transcription absente.
+    // Au lieu d'afficher une erreur "transcription manquante", on lance
+    // directement la transcription depuis le render — le webhook RunPod
+    // transcription COMPLETED chainera vers triggerAutoDescription
+    // automatiquement (la garde "awaiting validation" sera levée puisque
+    // slot.status est déjà SCHEDULED ici).
+    //
+    // Cas exclus :
+    //  - Pas de render DONE → on ne peut rien transcrire, on trace en FAILED.
+    //  - Transcription déjà en cours (QUEUED/PROCESSING) → no-op, le webhook
+    //    s'en chargera.
+    //  - Transcription FAILED → on RELANCE (l'user a peut-être déjà debug).
+    const render = slot.render;
+    const transcriptionInFlight =
+      transcription?.status === "QUEUED" || transcription?.status === "PROCESSING";
+
+    if (transcriptionInFlight) {
+      console.info(`[validate post-approve] transcription ${transcription?.id} déjà en cours slot=${slotId} — webhook prendra le relais`);
+    } else if (render?.status === "DONE" && render.templateId && render.listing?.userId) {
+      const renderOutputKey = `renders/${render.id}.mp4`;
+      void triggerAutoTranscriptionForRender(
+        render.id,
+        render.templateId,
+        renderOutputKey,
+        render.listing.userId,
+      ).catch((err) => {
+        console.error(`[validate post-approve] triggerAutoTranscription échoué slot=${slotId}:`, err);
       });
-      console.warn(`[validate post-approve] descriptionJob skipped slot=${slotId}: ${errorMsg}`);
+      console.info(`[validate post-approve] transcription lancée pour description auto slot=${slotId} render=${render.id}`);
     } else {
-      console.warn(`[validate post-approve] descriptionJob skip slot=${slotId} et aucun userId résolvable pour tracer l'échec`);
+      // Render pas dispo — on trace en FAILED pour que l'user voie le blocage.
+      const userId =
+        slot.assigneeCmId ??
+        slot.render?.listing?.userId ??
+        slot.assigneeMonteurId ??
+        slot.assigneeVideasteId ??
+        null;
+      if (userId) {
+        await prisma.descriptionJob.create({
+          data: {
+            userId,
+            status: "FAILED",
+            inputType: "transcription",
+            slotId,
+            transcriptionId: transcription?.id ?? null,
+            promptSnapshot: "",
+            model: "claude",
+            errorMsg: "Render non disponible (statut non DONE) — la description ne peut pas démarrer sans render finalisé.",
+          },
+        });
+      }
     }
   }
 
