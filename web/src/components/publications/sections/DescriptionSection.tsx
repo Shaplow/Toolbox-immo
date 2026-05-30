@@ -44,6 +44,11 @@ interface Props {
   defaultPromptId?: string | null;
   /** Status du dernier DescriptionJob auto lié au slot (QUEUED/PROCESSING/COMPLETED/FAILED). */
   descriptionJobStatus?: string | null;
+  /** Texte généré par le dernier DescriptionJob auto. Utilisé pour fallback :
+   *  si slot.description est vide mais qu'un job COMPLETED a un result, on
+   *  propose à l'user d'appliquer ce texte. Couvre le cas où l'update DB du
+   *  slot a été skippé (race avec saisie manuelle, write contention, etc.). */
+  descriptionJobResult?: string | null;
   /** Status courant du slot (TO_DO, AWAITING_CLIENT, SCHEDULED…). */
   slotStatus?: string | null;
   /** Si true, la description auto attend la validation client avant lancement. */
@@ -80,6 +85,7 @@ function DescriptionSectionInner({
   canEdit,
   defaultPromptId,
   descriptionJobStatus,
+  descriptionJobResult,
   slotStatus,
   needsClientValidation,
   sectionId = "description",
@@ -259,6 +265,41 @@ function DescriptionSectionInner({
     !!slotStatus &&
     !POST_VALIDATION_STATUSES.has(slotStatus);
 
+  // Cas particulier : descriptionJob COMPLETED avec result, mais slot vide
+  // (race condition, update skip, ou édition manuelle entre-temps réinitialisée).
+  // On affiche le texte généré avec un bouton "Appliquer" pour le récupérer.
+  const pendingJobResult =
+    isAutoMode &&
+    !hasContent &&
+    descriptionJobStatus === "COMPLETED" &&
+    descriptionJobResult != null &&
+    descriptionJobResult.trim().length > 0
+      ? descriptionJobResult
+      : null;
+
+  async function handleApplyGeneratedResult() {
+    if (!pendingJobResult) return;
+    setValue(pendingJobResult);
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/calendar/slots/${slot.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: pendingJobResult }),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        throw new Error(data.error ?? "Erreur lors de l'application");
+      }
+      toast.success("Légende appliquée.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const verdict = canGenerateDescription({
     pattern: pattern
       ? {
@@ -333,17 +374,57 @@ function DescriptionSectionInner({
                 La légende sera générée automatiquement après la validation client.
               </Alert>
             )}
-            {!waitingForClient && jobInFlight && (
+            {!waitingForClient && pendingJobResult && (
+              <>
+                <Alert variant="glass" icon={Sparkles}>
+                  Une légende a été générée automatiquement mais n&apos;a pas été appliquée
+                  (édition manuelle simultanée ou conflit). Tu peux l&apos;appliquer maintenant.
+                </Alert>
+                <div className="rounded-lg border border-white/40 bg-white/70 backdrop-blur-[6px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+                  <p className="text-[12.5px] text-gray-800 whitespace-pre-wrap leading-relaxed font-mono">
+                    {pendingJobResult}
+                  </p>
+                </div>
+                {canEdit && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon={Check}
+                      loading={saving}
+                      onClick={() => void handleApplyGeneratedResult()}
+                    >
+                      Appliquer cette légende
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={Pencil}
+                      onClick={() => {
+                        setValue(pendingJobResult);
+                        setEditing(true);
+                      }}
+                    >
+                      Éditer avant
+                    </Button>
+                  </div>
+                )}
+                {error && (
+                  <p className="text-xs text-danger-700">{error}</p>
+                )}
+              </>
+            )}
+            {!waitingForClient && !pendingJobResult && jobInFlight && (
               <Alert variant="glass" icon={Loader2}>
                 Génération en cours…
               </Alert>
             )}
-            {!waitingForClient && jobFailed && (
+            {!waitingForClient && !pendingJobResult && jobFailed && (
               <Alert variant="info" icon={AlertCircle}>
                 Échec de la génération automatique — relancez via « Générer avec IA » ou « Avancé ».
               </Alert>
             )}
-            {!waitingForClient && !jobInFlight && !jobFailed && (
+            {!waitingForClient && !pendingJobResult && !jobInFlight && !jobFailed && (
               <Alert variant="glass" icon={Sparkles}>
                 Lancement de la génération automatique imminent…
               </Alert>

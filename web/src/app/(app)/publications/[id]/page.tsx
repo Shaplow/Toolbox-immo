@@ -481,7 +481,12 @@ export default async function PublicationPage({ params }: PageProps) {
           : null
       }
       latestDescriptionJob={
-        latestDescriptionJob ? { status: latestDescriptionJob.status } : null
+        latestDescriptionJob
+          ? {
+              status: latestDescriptionJob.status,
+              result: latestDescriptionJob.result,
+            }
+          : null
       }
       clientValidation={{
         needsClientValidation: resolvedConfig.needsClientValidation,
