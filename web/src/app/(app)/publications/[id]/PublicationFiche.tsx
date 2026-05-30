@@ -260,8 +260,8 @@ export interface PublicationFicheProps {
     status: string;
     outputUrl: string | null;
   } | null;
-  /** Dernier DescriptionJob auto pour ce slot (status + result pour la section). */
-  latestDescriptionJob: { status: string; result: string | null } | null;
+  /** Dernier DescriptionJob auto pour ce slot (status + result + errorMsg pour la section). */
+  latestDescriptionJob: { status: string; result: string | null; errorMsg: string | null } | null;
   // W2 — Validation client (résolu pattern + override)
   clientValidation: {
     needsClientValidation: boolean;
@@ -697,6 +697,7 @@ export function PublicationFiche({
                 }
                 descriptionJobStatus={latestDescriptionJob?.status ?? null}
                 descriptionJobResult={latestDescriptionJob?.result ?? null}
+                descriptionJobErrorMsg={latestDescriptionJob?.errorMsg ?? null}
                 slotStatus={slot.status}
                 needsClientValidation={clientValidation.needsClientValidation}
               />

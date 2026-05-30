@@ -232,6 +232,17 @@ async function triggerPostValidationJobs(slotId: string): Promise<void> {
   const slot = await prisma.publicationSlot.findUnique({
     where: { id: slotId },
     select: {
+      // userId pour matérialiser un DescriptionJob FAILED si pas de transcription
+      // (sinon le user ne saurait jamais que la chaîne est cassée).
+      assigneeCmId: true,
+      assigneeMonteurId: true,
+      assigneeVideasteId: true,
+      needsDescriptionOverride: true,
+      pattern: {
+        select: {
+          needsDescription: true,
+        },
+      },
       currentVersion: {
         select: {
           id: true,
@@ -261,10 +272,46 @@ async function triggerPostValidationJobs(slotId: string): Promise<void> {
   // OU côté render (auto_template). Une seule des deux existe en pratique.
   const transcription =
     slot.currentVersion?.transcriptionJob ?? slot.render?.transcriptionJob ?? null;
+  const effectiveNeedsDescription =
+    slot.needsDescriptionOverride ?? slot.pattern?.needsDescription ?? "none";
+  const needsAutoDescription = effectiveNeedsDescription === "autoGenerate";
+
   if (transcription && transcription.status === "COMPLETED") {
     void triggerAutoDescriptionForTranscription(transcription.id).catch((err) => {
       console.error(`[validate post-approve] triggerAutoDescription échoué slot=${slotId}:`, err);
     });
+  } else if (needsAutoDescription) {
+    // Fix 2026-05-30 : si la description auto est attendue mais qu'aucune
+    // transcription n'existe (transcription jamais lancée OU pas COMPLETED),
+    // on matérialise un DescriptionJob FAILED pour que l'user voie pourquoi
+    // la chaîne est cassée. Sans ça, la fiche restait sur "Lancement
+    // imminent…" sans aucune trace dans /admin/jobs.
+    const userId =
+      slot.assigneeCmId ??
+      slot.render?.listing?.userId ??
+      slot.assigneeMonteurId ??
+      slot.assigneeVideasteId ??
+      null;
+    if (userId) {
+      const errorMsg = !transcription
+        ? "Aucune transcription disponible — la description auto requiert une transcription préalable. Relancer la transcription manuellement."
+        : `Transcription en statut "${transcription.status}" — attendre qu'elle soit COMPLETED ou la relancer.`;
+      await prisma.descriptionJob.create({
+        data: {
+          userId,
+          status: "FAILED",
+          inputType: "transcription",
+          slotId,
+          transcriptionId: transcription?.id ?? null,
+          promptSnapshot: "",
+          model: "claude",
+          errorMsg,
+        },
+      });
+      console.warn(`[validate post-approve] descriptionJob skipped slot=${slotId}: ${errorMsg}`);
+    } else {
+      console.warn(`[validate post-approve] descriptionJob skip slot=${slotId} et aucun userId résolvable pour tracer l'échec`);
+    }
   }
 
   // Cover pack : si render DONE avec videoUrl, fire trigger.

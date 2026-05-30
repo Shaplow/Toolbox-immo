@@ -109,6 +109,7 @@ export default async function PublicationPage({ params }: PageProps) {
           id: true,
           status: true,
           result: true,
+          errorMsg: true,
         },
       },
     },
@@ -485,6 +486,7 @@ export default async function PublicationPage({ params }: PageProps) {
           ? {
               status: latestDescriptionJob.status,
               result: latestDescriptionJob.result,
+              errorMsg: latestDescriptionJob.errorMsg,
             }
           : null
       }

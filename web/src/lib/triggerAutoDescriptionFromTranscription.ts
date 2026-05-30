@@ -74,14 +74,46 @@ async function readTranscriptionTextFromR2(outputJsonKey: string): Promise<strin
   }
 }
 
+/**
+ * Helper : crée un DescriptionJob FAILED avec errorMsg + notify SSE.
+ * Utilisé pour matérialiser les échecs de config/infra qui empêcheraient le
+ * trigger de démarrer — sans ça, le job restait invisible et la fiche
+ * affichait "Lancement imminent…" éternellement.
+ */
+async function createFailedJob(params: {
+  userId: string;
+  slotId: string;
+  transcriptionId: string | null;
+  promptId: string | null;
+  promptSnapshot: string | null;
+  errorMsg: string;
+}): Promise<void> {
+  const job = await prisma.descriptionJob.create({
+    data: {
+      userId: params.userId,
+      status: "FAILED",
+      inputType: "transcription",
+      transcriptionId: params.transcriptionId,
+      slotId: params.slotId,
+      promptId: params.promptId,
+      promptSnapshot: params.promptSnapshot ?? "",
+      model: "claude",
+      errorMsg: params.errorMsg.slice(0, 500),
+    },
+  });
+  notifyUser(params.userId, {
+    jobType: "description",
+    jobId: job.id,
+    status: "FAILED",
+    slotId: params.slotId,
+    errorMsg: params.errorMsg,
+  });
+}
+
 export async function triggerAutoDescriptionForTranscription(
   transcriptionJobId: string,
 ): Promise<void> {
-  if (!ANTHROPIC_API_KEY) {
-    logSkip(transcriptionJobId, "no_anthropic_key");
-    return;
-  }
-
+  // ── 1. Récupération transcription + slot ────────────────────────────────
   const job = await prisma.transcriptionJob.findUnique({
     where: { id: transcriptionJobId },
     select: {
@@ -135,6 +167,8 @@ export async function triggerAutoDescriptionForTranscription(
     return;
   }
 
+  // ── 2. Skips légitimes (silencieux, AUCUN job créé) ──────────────────────
+  // Ces cas ne sont pas des erreurs — le slot n'attend pas de description IA.
   const effectiveNeedsDescription =
     slot.needsDescriptionOverride ?? slot.pattern?.needsDescription ?? "none";
   if (effectiveNeedsDescription !== "autoGenerate") {
@@ -145,9 +179,8 @@ export async function triggerAutoDescriptionForTranscription(
     return;
   }
 
-  // Garde "post-validation client" (2026-05-30) : si validation client requise
-  // et pas encore approuvée (SCHEDULED / PUBLISHED / DONE), on diffère le job
-  // description — il sera lancé par /api/validate/[token] après approve.
+  // Garde "post-validation client" : si validation requise et pas encore
+  // approuvée, on diffère sans créer de job (il sera retentré après approve).
   const needsValidation =
     slot.needsClientValidationOverride ??
     slot.pattern?.needsClientValidation ??
@@ -167,10 +200,37 @@ export async function triggerAutoDescriptionForTranscription(
     return;
   }
 
+  // ── 3. À partir d'ici, un DescriptionJob DOIT exister (succès ou échec) ─
+  // Fix 2026-05-30 : avant ce refactor, tous les skips ci-dessous ne créaient
+  // AUCUN job → la fiche restait sur "Lancement imminent…" éternellement et
+  // /admin/jobs n'avait aucune trace. Maintenant chaque échec de config /
+  // d'infra matérialise un DescriptionJob FAILED visible avec sa raison.
+
+  if (!ANTHROPIC_API_KEY) {
+    logSkip(transcriptionJobId, "no_anthropic_key");
+    await createFailedJob({
+      userId: job.userId,
+      slotId,
+      transcriptionId: job.id,
+      promptId: null,
+      promptSnapshot: null,
+      errorMsg: "Clé ANTHROPIC_API_KEY manquante côté serveur — contacter l'admin.",
+    });
+    return;
+  }
+
   const promptId =
     slot.descriptionPromptIdOverride ?? slot.pattern?.descriptionPromptId ?? null;
   if (!promptId) {
     logSkip(transcriptionJobId, "no_prompt_resolved", { slotId });
+    await createFailedJob({
+      userId: job.userId,
+      slotId,
+      transcriptionId: job.id,
+      promptId: null,
+      promptSnapshot: null,
+      errorMsg: "Aucun prompt configuré sur le pattern (ni override slot). Configurer un prompt par défaut depuis l'admin du pattern.",
+    });
     return;
   }
 
@@ -179,19 +239,63 @@ export async function triggerAutoDescriptionForTranscription(
   });
   if (!prompt) {
     logSkip(transcriptionJobId, "prompt_inactive", { slotId, promptId });
+    await createFailedJob({
+      userId: job.userId,
+      slotId,
+      transcriptionId: job.id,
+      promptId,
+      promptSnapshot: null,
+      errorMsg: "Prompt référencé inactif ou supprimé — réactiver ou changer le prompt par défaut du pattern.",
+    });
     return;
   }
 
   if (!job.outputJsonKey) {
     logSkip(transcriptionJobId, "no_transcription_output", { slotId });
+    await createFailedJob({
+      userId: job.userId,
+      slotId,
+      transcriptionId: job.id,
+      promptId,
+      promptSnapshot: prompt.prompt,
+      errorMsg: "Transcription sans output JSON (clé R2 manquante) — relancer la transcription.",
+    });
     return;
   }
 
   const transcriptText = await readTranscriptionTextFromR2(job.outputJsonKey);
   if (!transcriptText) {
     logSkip(transcriptionJobId, "r2_not_configured", { slotId });
+    await createFailedJob({
+      userId: job.userId,
+      slotId,
+      transcriptionId: job.id,
+      promptId,
+      promptSnapshot: prompt.prompt,
+      errorMsg: "Lecture R2 du transcript impossible (config R2 manquante ou clé invalide).",
+    });
     return;
   }
+
+  // ── 4. Lifecycle visible : QUEUED → PROCESSING → COMPLETED/FAILED ────────
+  const lifecycleJob = await prisma.descriptionJob.create({
+    data: {
+      userId: job.userId,
+      status: "PROCESSING",
+      inputType: "transcription",
+      transcriptionId: job.id,
+      slotId,
+      promptId,
+      promptSnapshot: prompt.prompt,
+      model: "claude",
+    },
+  });
+  notifyUser(job.userId, {
+    jobType: "description",
+    jobId: lifecycleJob.id,
+    status: "PROCESSING",
+    slotId,
+  });
 
   // Construit le user message comme /api/description/generate — version minimale
   // recipe = transcript_only (auto-trigger : on n'a pas d'image, juste le transcript)
@@ -225,24 +329,35 @@ export async function triggerAutoDescriptionForTranscription(
     result = data.content.find((c) => c.type === "text")?.text?.trim() ?? "";
   } catch (err) {
     console.error(`[autoDescription] Claude call failed for slot=${slotId}:`, err);
-    await prisma.descriptionJob.create({
-      data: {
-        userId: job.userId,
-        status: "FAILED",
-        inputType: "transcription",
-        transcriptionId: job.id,
-        slotId,
-        promptId,
-        promptSnapshot: prompt.prompt,
-        model: "claude",
-        errorMsg: (err instanceof Error ? err.message : String(err)).slice(0, 200),
-      },
+    const errorMsg = (err instanceof Error ? err.message : String(err)).slice(0, 500);
+    await prisma.descriptionJob.update({
+      where: { id: lifecycleJob.id },
+      data: { status: "FAILED", errorMsg },
+    });
+    notifyUser(job.userId, {
+      jobType: "description",
+      jobId: lifecycleJob.id,
+      status: "FAILED",
+      slotId,
+      errorMsg,
     });
     return;
   }
 
   if (!result) {
     logSkip(transcriptionJobId, "no_transcription_output", { slotId, reason: "empty_llm_response" });
+    const errorMsg = "Réponse Claude vide — relancer ou vérifier le prompt.";
+    await prisma.descriptionJob.update({
+      where: { id: lifecycleJob.id },
+      data: { status: "FAILED", errorMsg },
+    });
+    notifyUser(job.userId, {
+      jobType: "description",
+      jobId: lifecycleJob.id,
+      status: "FAILED",
+      slotId,
+      errorMsg,
+    });
     return;
   }
 
@@ -260,16 +375,10 @@ export async function triggerAutoDescriptionForTranscription(
   // errorMsg explicite signalant que le résultat n'a pas été appliqué au slot,
   // pour distinguer dans l'UI / les logs.
   const wasApplied = update.count > 0;
-  const job_ = await prisma.descriptionJob.create({
+  await prisma.descriptionJob.update({
+    where: { id: lifecycleJob.id },
     data: {
-      userId: job.userId,
       status: "COMPLETED",
-      inputType: "transcription",
-      transcriptionId: job.id,
-      slotId,
-      promptId,
-      promptSnapshot: prompt.prompt,
-      model: "claude",
       result,
       errorMsg: wasApplied
         ? null
@@ -280,7 +389,7 @@ export async function triggerAutoDescriptionForTranscription(
   // SSE — la fiche publication écoute jobType=description pour refresh auto.
   notifyUser(job.userId, {
     jobType: "description",
-    jobId: job_.id,
+    jobId: lifecycleJob.id,
     status: "COMPLETED",
     slotId,
   });
@@ -291,7 +400,7 @@ export async function triggerAutoDescriptionForTranscription(
       actorId: null, // auto-trigger système
       type: "DESCRIPTION_COMPLETED",
       payload: {
-        descriptionJobId: job_.id,
+        descriptionJobId: lifecycleJob.id,
         model: "claude",
         promptId,
         autoTriggered: true,
@@ -300,7 +409,7 @@ export async function triggerAutoDescriptionForTranscription(
     console.info(`[autoDescription] slot=${slotId} description filled via auto-trigger`);
   } else {
     console.info(
-      `[autoDescription] slot=${slotId} description was filled manually mid-generation — kept user input, IA result logged in DescriptionJob ${job_.id} (errorMsg set)`,
+      `[autoDescription] slot=${slotId} description was filled manually mid-generation — kept user input, IA result logged in DescriptionJob ${lifecycleJob.id} (errorMsg set)`,
     );
   }
 }

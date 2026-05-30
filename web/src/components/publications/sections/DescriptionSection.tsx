@@ -49,6 +49,10 @@ interface Props {
    *  propose à l'user d'appliquer ce texte. Couvre le cas où l'update DB du
    *  slot a été skippé (race avec saisie manuelle, write contention, etc.). */
   descriptionJobResult?: string | null;
+  /** Message d'erreur du dernier DescriptionJob FAILED. Affiché tel quel à
+   *  l'user pour qu'il comprenne pourquoi la chaîne est cassée
+   *  (prompt manquant, transcription absente, clé API, etc.). */
+  descriptionJobErrorMsg?: string | null;
   /** Status courant du slot (TO_DO, AWAITING_CLIENT, SCHEDULED…). */
   slotStatus?: string | null;
   /** Si true, la description auto attend la validation client avant lancement. */
@@ -86,6 +90,7 @@ function DescriptionSectionInner({
   defaultPromptId,
   descriptionJobStatus,
   descriptionJobResult,
+  descriptionJobErrorMsg,
   slotStatus,
   needsClientValidation,
   sectionId = "description",
@@ -421,7 +426,15 @@ function DescriptionSectionInner({
             )}
             {!waitingForClient && !pendingJobResult && jobFailed && (
               <Alert variant="info" icon={AlertCircle}>
-                Échec de la génération automatique — relancez via « Générer avec IA » ou « Avancé ».
+                <div className="space-y-1">
+                  <p className="font-medium">Échec de la génération automatique.</p>
+                  {descriptionJobErrorMsg && (
+                    <p className="text-[12px] opacity-90">{descriptionJobErrorMsg}</p>
+                  )}
+                  <p className="text-[12px] opacity-80">
+                    Relance via « Générer avec IA » ou « Avancé », ou corrige la cause (prompt, transcription).
+                  </p>
+                </div>
               </Alert>
             )}
             {!waitingForClient && !pendingJobResult && !jobInFlight && !jobFailed && (
