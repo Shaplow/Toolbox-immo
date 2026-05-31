@@ -240,6 +240,19 @@ export async function triggerAutoDescriptionForTranscription(
     return;
   }
 
+  // Garde "client en train de revoir" : si l'admin a manuellement envoyé le
+  // slot au client (AWAITING_CLIENT ou CLIENT_REVISION), on diffère quoi qu'il
+  // arrive — même si needsValidation=false. Sans cette garde, la description IA
+  // pouvait s'écrire pendant que le client validait, créant une divergence
+  // entre la version vue par le client et celle vue côté back-office.
+  if (slot.status === "AWAITING_CLIENT" || slot.status === "CLIENT_REVISION") {
+    logSkip(transcriptionJobId, "client_review_in_flight", {
+      slotId,
+      status: slot.status,
+    });
+    return;
+  }
+
   // Garde "post-validation client" : si validation requise et pas encore
   // approuvée, on diffère sans créer de job (il sera retentré après approve).
   const needsValidation =

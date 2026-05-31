@@ -620,6 +620,17 @@ export async function triggerAutoCoverPackForRender(
     return;
   }
 
+  // Garde "client en train de revoir" : si l'admin a manuellement envoyé le
+  // slot au client (AWAITING_CLIENT ou CLIENT_REVISION), on diffère quoi qu'il
+  // arrive — même si needsValidation=false. Cohérent avec la garde équivalente
+  // dans triggerAutoDescriptionFromTranscription.
+  if (slotStatus === "AWAITING_CLIENT" || slotStatus === "CLIENT_REVISION") {
+    console.info(
+      `[autoCover] skip render=${renderId} slot=${slotId} reason=client_review_in_flight status=${slotStatus}`,
+    );
+    return;
+  }
+
   // Garde "post-validation client" (2026-05-30) : si le slot a une validation
   // client requise et n'est PAS encore validé (SCHEDULED ou aval), on skip le
   // déclenchement auto. Le job cover sera lancé manuellement quand le client
