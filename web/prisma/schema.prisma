@@ -263,9 +263,19 @@ model TranscriptionJob {
   /// Mutuellement exclusif avec renderId en pratique.
   publicationVersionId String?             @unique
   publicationVersion   PublicationVersion? @relation("VersionTranscriptionJob", fields: [publicationVersionId], references: [id], onDelete: SetNull)
+  /// Slot manuellement rattaché à ce job (Phase V2 — friction MED-2 audit
+  /// 2026-05-31). Utilisé quand on déclenche /transcriptions?slotId= depuis
+  /// la fiche : la transcription apparaît alors dans la ProductionChain du
+  /// slot même sans render/version liés. Non-unique : un slot peut accumuler
+  /// plusieurs transcriptions (relances). onDelete: SetNull pour ne pas
+  /// casser l'historique si le slot est archivé.
+  slotId               String?
+  slot                 PublicationSlot?    @relation(fields: [slotId], references: [id], onDelete: SetNull)
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
   descriptionJobs      DescriptionJob[]
+
+  @@index([slotId, createdAt])
 }
 
 model CoverFramePack {
@@ -529,38 +539,38 @@ model MediaAutocutJob {
 
 /// Bibliothèque de données texte, rattachée à un type de template (RPI, RTIPS…).
 model DataLibrary {
-  id             String         @id @default(cuid())
-  name           String
+  id              String         @id @default(cuid())
+  name            String
   /// Identifiant métier du type : "RPI" | "RTIPS" | "RPOD" | etc.
-  templateType   String
-  description    String?
+  templateType    String
+  description     String?
   /// Mode de rotation explicite (mirror MediaLibrary) :
   /// - "auto"     : least-used round-robin (défaut).
   /// - "override" : ordre fixe (TODO V2 : nécessitera DataEntry.position).
   /// - "none"     : pas de rotation auto, sélection manuelle uniquement.
-  rotationMode   String         @default("auto")
+  rotationMode    String         @default("auto")
   /// Portée de la rotation (mirror MediaLibrary) :
   /// - "shared" (défaut)  : pool partagé entre tous les comptes (compteur global DataEntry.usageCount).
   /// - "per_account"      : chaque compte tourne indépendamment (DataEntryUsage par compte).
-  rotationScope  String         @default("shared")
+  rotationScope   String         @default("shared")
   /// Burn-once / consommation max par fiche.
   /// - `null` (défaut) : rotation infinie, fiches recyclées (least-used).
   /// - `N > 0` : chaque fiche peut être utilisée max N fois (filtrée au-delà).
   /// Sémantique dépend de rotationScope (shared → global / per_account → per-account).
-  maxUsageCount  Int?
+  maxUsageCount   Int?
   /// JSON `{ key, label, type, required? }[]` — schéma des champs d'une fiche.
   /// Sert à : générer le modèle CSV (même lib vide), construire le form de
   /// création/édition d'une fiche, valider l'import.
   /// types supportés : "text" | "number" | "url" | "textarea".
   /// Si vide → fallback rétrocompatible (déduction depuis la première entry).
-  fieldsSchema   String         @default("[]")
+  fieldsSchema    String         @default("[]")
   /// Token de remplissage public (Phase 1.x Vague 3). Si non-null, la lib
   /// expose une page sans auth à `/data-fill/<token>` où un externe peut
   /// soumettre des fiches. Le token est révocable / régénérable depuis l'admin.
-  publicFillToken String?       @unique
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  campaigns      DataCampaign[]
+  publicFillToken String?        @unique
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  campaigns       DataCampaign[]
 }
 
 /// Cycle de données (ex: "RPI Q1 2026"). Une fiche active à la fois par library.
@@ -791,6 +801,11 @@ model PublicationSlot {
   captionJobs                   CaptionJob[]
   /// Jobs description IA liés à ce slot (alimente la ProductionChain)
   descriptionJobs               DescriptionJob[]
+  /// Jobs transcription liés à ce slot (Phase V2 — friction MED-2). Lien
+  /// direct utile pour les transcriptions créées manuellement via le tool
+  /// standalone avec ?slotId= : sans cette FK, elles n'apparaissaient pas
+  /// dans la ProductionChain du slot.
+  transcriptionJobs             TranscriptionJob[]
   createdAt                     DateTime                @default(now())
   updatedAt                     DateTime                @updatedAt
 

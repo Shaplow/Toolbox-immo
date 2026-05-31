@@ -25,6 +25,8 @@ import { prisma } from "@/lib/prisma";
 import { uploadToR2, deleteFromR2, r2Configured, createPresignedUploadUrl } from "@/lib/r2";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
+import { canUserAccessSlot } from "@/lib/permissions/slotScope";
+import { toUserRole } from "@/lib/permissions/role";
 
 const RUNPOD_API_KEY    = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -76,7 +78,7 @@ export async function POST(req: NextRequest) {
   // ─── Mode RunPod via JSON (presigned URL — pas de fichier dans Next.js) ──
   const contentType = req.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
-    let body: { filename?: unknown; ext?: unknown; model?: unknown; language?: unknown; enable_diarization?: unknown };
+    let body: { filename?: unknown; ext?: unknown; model?: unknown; language?: unknown; enable_diarization?: unknown; slotId?: unknown };
     try {
       body = await req.json();
     } catch {
@@ -95,6 +97,25 @@ export async function POST(req: NextRequest) {
     const model            = sanitizeModel(body.model);
     const language         = sanitizeLanguage(body.language);
     const enableDiarization = String(body.enable_diarization ?? "false").toLowerCase() === "true";
+
+    // V2 friction MED-2 du audit 2026-05-31 : si un slotId est fourni, on
+    // valide l'accès et on rattache le job au slot pour qu'il apparaisse
+    // dans la ProductionChain. Sans cette FK, la transcription standalone
+    // restait "orpheline" côté UI fiche pour les slots manual_rushes /
+    // external_upload sans render auto.
+    let resolvedSlotId: string | null = null;
+    if (body.slotId != null && body.slotId !== "") {
+      const slotId = String(body.slotId);
+      const slot = await prisma.publicationSlot.findUnique({
+        where: { id: slotId },
+        select: { id: true, assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
+      });
+      const role = toUserRole(userContext.effectiveUser.role);
+      if (!slot || !canUserAccessSlot(slot, role, userContext.effectiveUser.id)) {
+        return NextResponse.json({ error: "Publication introuvable" }, { status: 404 });
+      }
+      resolvedSlotId = slot.id;
+    }
     if (enableDiarization && !HF_TOKEN) {
       return NextResponse.json(
         { error: "La diarisation n'est pas disponible sur ce serveur (HF_TOKEN non configuré)." },
@@ -118,6 +139,7 @@ export async function POST(req: NextRequest) {
           language,
           enableDiarization,
           outputJsonKey,
+          slotId: resolvedSlotId,
         },
       });
       return NextResponse.json(
@@ -161,6 +183,7 @@ export async function POST(req: NextRequest) {
         language,
         enableDiarization,
         outputJsonKey,
+        slotId: resolvedSlotId,
       },
     });
 
