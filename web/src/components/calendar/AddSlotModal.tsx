@@ -23,6 +23,8 @@ import { Tabs } from "@/components/ui/Tabs";
 import { Combobox } from "@/components/ui/Combobox";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { TimePicker } from "@/components/ui/TimePicker";
+import { toast } from "@/components/ui/Toast";
+import { formatNextActionLine } from "@/lib/publications/nextActionLabel";
 
 interface Account {
   id: string;
@@ -317,6 +319,23 @@ export function AddSlotModal({
         throw new Error(err.error ?? "Erreur lors de la création");
       }
       const slot = (await res.json()) as PublicationSlot;
+
+      // Phase 3 — Friction HIGH #4 du audit UX : avant on fermait la modal
+      // sans aucun signal. L'admin ne savait pas si un job auto allait se
+      // déclencher, ni à qui l'attribuer ensuite. Désormais toast contextuel
+      // basé sur l'état initial du slot (issu de mapSourceToInitialStatus).
+      const nextActionLine = formatNextActionLine(slot.status, {
+        assigneeMonteurId: slot.assigneeMonteurId ?? null,
+        assigneeCmId: slot.assigneeCmId ?? null,
+        assigneeVideasteId: slot.assigneeVideasteId ?? null,
+        assigneeMonteurName: slot.assigneeMonteur?.name ?? null,
+        assigneeCmName: slot.assigneeCm?.name ?? null,
+        assigneeVideasteName: slot.assigneeVideaste?.name ?? null,
+      });
+      toast.success(
+        nextActionLine ? `Slot créé — ${nextActionLine}` : "Slot créé",
+      );
+
       onCreated(slot);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inconnue");
