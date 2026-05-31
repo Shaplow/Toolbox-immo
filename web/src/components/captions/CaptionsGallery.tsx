@@ -205,6 +205,23 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
 
+      {/* V5.A.1 — Banner contextuel quand on vient d'une fiche (pattern aligné
+          sur TranscriptionList V2.5). Sans ça, l'admin ouvrait la gallery preset
+          sans savoir s'il était toujours dans le contexte d'un slot. */}
+      {slotContext && (
+        <div className="mb-4 rounded-xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.32)]">
+          <p className="text-[10px] uppercase tracking-widest font-semibold text-sky-700">
+            Sous-titres pour une publication
+          </p>
+          <p className="mt-1 text-[13px] text-sky-900">
+            {slotContext.title ?? "Publication"} · @{slotContext.handle}
+          </p>
+          <p className="mt-0.5 text-[11px] text-sky-700/80">
+            Choisis un preset pour générer les sous-titres de cette publication.
+          </p>
+        </div>
+      )}
+
       <ToolPageHeader
           icon={AlignLeft}
           iconTint="rose"
