@@ -459,6 +459,44 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
     }
   };
 
+  /**
+   * V8.1.2 — Promeut une frame extraite manuellement comme cover finale du
+   * slot. Avant : l'admin pouvait juste télécharger en PNG, pas de moyen de
+   * "valider" la frame comme cover. Désormais : appel POST manual-select +
+   * redirect fiche.
+   */
+  const [applyingFrameUrl, setApplyingFrameUrl] = useState<string | null>(null);
+  const handleApplyFrameAsCover = useCallback(
+    async (frameUrl: string, timestamp: number) => {
+      if (!slotId || applyingFrameUrl) return;
+      const ok = await confirm({
+        title: "Définir cette frame comme cover ?",
+        description:
+          "Cette frame deviendra la cover finale de la publication. Tu pourras la remplacer plus tard.",
+        confirmLabel: "Valider la cover",
+      });
+      if (!ok) return;
+      setApplyingFrameUrl(frameUrl);
+      try {
+        const res = await fetch(`/api/publications/${slotId}/cover/manual-select`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ frameUrl, timestamp }),
+        });
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(data.error ?? `Erreur ${res.status}`);
+        }
+        toast.success("Cover appliquée à la publication.");
+        router.push(`/publications/${slotId}`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Erreur application cover");
+        setApplyingFrameUrl(null);
+      }
+    },
+    [slotId, applyingFrameUrl, confirm, router],
+  );
+
   const clearVideo = () => {
     setVideoUrl(null);
     setVideoName("");
@@ -930,32 +968,60 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {frames.map((frame, i) => (
-                    <button
-                      key={frame.url}
-                      type="button"
-                      onClick={() => toggleSelect(i)}
-                      className={`relative block w-full rounded-xl overflow-hidden border-2 transition-all ${
-                        selected.has(i)
-                          ? "border-sky-500 shadow-md scale-[1.02]"
-                          : "border-transparent hover:border-gray-300"
-                      }`}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={frame.url}
-                        alt={`${fmt(frame.timestamp)}`}
-                        className="w-full h-auto block"
-                        loading="lazy"
-                      />
-                      {selected.has(i) && (
-                        <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-sky-600 rounded-full flex items-center justify-center shadow">
-                          <Check size={11} className="text-white" strokeWidth={3} />
+                    <div key={frame.url} className="relative group">
+                      <button
+                        type="button"
+                        onClick={() => toggleSelect(i)}
+                        className={`relative block w-full rounded-xl overflow-hidden border-2 transition-all ${
+                          selected.has(i)
+                            ? "border-sky-500 shadow-md scale-[1.02]"
+                            : "border-transparent hover:border-gray-300"
+                        }`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={frame.url}
+                          alt={`${fmt(frame.timestamp)}`}
+                          className="w-full h-auto block"
+                          loading="lazy"
+                        />
+                        {selected.has(i) && (
+                          <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-sky-600 rounded-full flex items-center justify-center shadow">
+                            <Check size={11} className="text-white" strokeWidth={3} />
+                          </div>
+                        )}
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-2 py-1">
+                          <span className="text-[10px] font-medium text-white">{fmt(frame.timestamp)}</span>
                         </div>
+                      </button>
+                      {/* V8.1.2 — Bouton "Cover finale" overlay si on est dans
+                          le contexte d'un slot. Stop propagation pour ne pas
+                          déclencher toggleSelect du bouton parent. */}
+                      {slotId && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleApplyFrameAsCover(frame.url, frame.timestamp);
+                          }}
+                          disabled={applyingFrameUrl !== null}
+                          className="absolute top-1.5 left-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-900/90 text-white text-[10px] font-medium opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity disabled:opacity-50 hover:bg-gray-900 shadow-lg"
+                          title="Définir cette frame comme cover finale de la publication"
+                        >
+                          {applyingFrameUrl === frame.url ? (
+                            <>
+                              <RefreshCw size={10} className="animate-spin" />
+                              Application…
+                            </>
+                          ) : (
+                            <>
+                              <Check size={10} />
+                              Cover finale
+                            </>
+                          )}
+                        </button>
                       )}
-                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-2 py-1">
-                        <span className="text-[10px] font-medium text-white">{fmt(frame.timestamp)}</span>
-                      </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}
