@@ -144,9 +144,15 @@ export async function POST(_req: NextRequest, { params }: Params) {
   // désormais ces jobs avec un badge "Obsolète" (vague V6.5).
   // Exécuté hors transaction (best-effort) pour ne pas bloquer la promotion
   // si une stale-mark échoue.
+  let staleCounts = {
+    captionJobsMarkedCount: 0,
+    descriptionJobsMarkedCount: 0,
+    coverPacksMarkedCount: 0,
+    transcriptionJobsMarkedCount: 0,
+  };
   if (previousVersionId) {
     try {
-      const staleCounts = await markJobsStaleForSlot(prisma, slotId, "version_promoted");
+      staleCounts = await markJobsStaleForSlot(prisma, slotId, "version_promoted");
       console.info(
         `[promote] slot=${slotId} jobs marked stale: captions=${staleCounts.captionJobsMarkedCount} desc=${staleCounts.descriptionJobsMarkedCount} cover=${staleCounts.coverPacksMarkedCount} trans=${staleCounts.transcriptionJobsMarkedCount}`,
       );
@@ -181,5 +187,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     ok: true,
     currentVersionId: versionId,
     autoCover: coverResult,
+    // V6.5.2 — counts de jobs marqués stale pour toast UI côté VersionsSection.
+    staleCounts,
   });
 }
