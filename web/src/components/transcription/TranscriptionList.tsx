@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import {
   Mic,
@@ -14,6 +15,7 @@ import {
   Play,
   RefreshCw,
   X,
+  ArrowLeft,
 } from "lucide-react";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { RefreshButton } from "@/components/ui/RefreshButton";
@@ -100,8 +102,16 @@ async function readJson<T>(response: Response): Promise<T | null> {
 
 export function TranscriptionList({
   initialJobs,
+  slotContext = null,
+  returnTo = null,
 }: {
   initialJobs: Job[];
+  /** V2 friction MED-6 : si le tool est ouvert depuis une fiche publication
+   *  (?slotId=X), on affiche un banner contextuel et on rattache la
+   *  transcription au slot (sent dans le POST body). */
+  slotContext?: { id: string; title: string | null; accountHandle: string } | null;
+  /** Path de retour validé (ou null). Affiché en breadcrumb si présent. */
+  returnTo?: string | null;
 }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -268,6 +278,10 @@ export function TranscriptionList({
             model: "turbo",
             language: defaultConfig.language,
             enable_diarization: defaultConfig.enableDiarization,
+            // V2 friction MED-2/MED-6 : si on est dans le contexte d'un slot,
+            // on rattache la transcription au slot pour qu'elle apparaisse
+            // dans la ProductionChain de la fiche.
+            ...(slotContext ? { slotId: slotContext.id } : {}),
           }),
         });
         const preparePayload = await readJson<{ jobId?: string; uploadUrl?: string; error?: string }>(prepareResponse);
@@ -543,6 +557,33 @@ export function TranscriptionList({
 
   return (
     <div className="p-8 max-w-5xl mx-auto space-y-8">
+      {/* V2 friction MED-6 : breadcrumb retour si on vient d'une fiche. */}
+      {returnTo && (
+        <Link
+          href={returnTo}
+          className="inline-flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-gray-900 transition-colors"
+        >
+          <ArrowLeft size={12} />
+          Retour à la publication
+        </Link>
+      )}
+
+      {/* V2 friction MED-6 : banner contextuel quand on est ouvert depuis un slot. */}
+      {slotContext && (
+        <div className="rounded-xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.32)]">
+          <p className="text-[10px] uppercase tracking-widest font-semibold text-sky-700">
+            Transcription pour une publication
+          </p>
+          <p className="mt-1 text-[13px] text-sky-900">
+            {slotContext.title ?? "Publication"} · @{slotContext.accountHandle}
+          </p>
+          <p className="mt-0.5 text-[11px] text-sky-700/80">
+            La transcription sera rattachée à cette publication et apparaîtra dans sa
+            chaîne de production.
+          </p>
+        </div>
+      )}
+
       <div>
         <ToolPageHeader
           icon={Mic}
