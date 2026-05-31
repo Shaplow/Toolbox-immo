@@ -786,8 +786,11 @@ model PublicationSlot {
   needsClientValidationOverride Boolean?
   /// Override per-slot de allowsClientRevision du pattern. null = hérite du pattern.
   allowsClientRevisionOverride  Boolean?
-  /// Override per-slot de needsCaptions du pattern. null = hérite.
+  /// @deprecated V8 — utiliser needsCaptionsModeOverride.
   needsCaptionsOverride         Boolean?
+  /// V8 — Override per-slot du mode captions enum. null = hérite du pattern.
+  /// Valeurs : "none" | "auto" | "manual".
+  needsCaptionsModeOverride     String?
   /// Override per-slot de needsDescription du pattern (enum String). null = hérite.
   /// Valeurs : "preFilled" | "autoGenerate" | "manualWrite" | "none".
   needsDescriptionOverride      String?
@@ -917,7 +920,13 @@ model AccountPattern {
 
   // Flags besoins
   needsDescription      String  @default("none") // "preFilled" | "autoGenerate" | "manualWrite" | "none"
+  /// @deprecated V8 — utiliser needsCaptionsMode. Conservé pour rollback ;
+  /// suppression définitive après vérification logs (~1 mois).
   needsCaptions         Boolean @default(false)
+  /// V8 — Mode captions enum : "none" | "auto" (preset + IA Whisper/RunPod)
+  /// | "manual" (écrit à la main via CaptionEditor depuis la fiche pub).
+  /// Backfill : true → "auto", false → "none".
+  needsCaptionsMode     String  @default("none") // "none" | "auto" | "manual"
   /// Phase 2.3 — Si true, le montage uploadé passe par EDIT_REVIEW (validation
   /// admin) avant d'être promu et de continuer. Si false, la version uploadée
   /// devient automatiquement currentVersion et le slot saute en EDIT_APPROVED.
