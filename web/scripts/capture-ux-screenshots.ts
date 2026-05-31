@@ -339,6 +339,162 @@ const SCENARIOS: Scenario[] = [
       },
     ],
   },
+  // ── V8.13 — Scenarios admin critiques ────────────────────────────────────
+  {
+    name: "medialib-admin-tour",
+    description:
+      "Admin parcourt la médiathèque : hub Ressources → liste libraries → détail vidéo → toggle vues grid / grouped / rotation (simulation). Vérifier que chaque vue est lisible, que les usages s'affichent, et que la rotation simule correctement.",
+    steps: [
+      {
+        label: "01-hub-ressources",
+        action: { type: "goto", path: "/admin/libraries" },
+        settleMs: 600,
+      },
+      {
+        label: "02-liste-libraries-video",
+        action: { type: "goto", path: "/admin/libraries/media" },
+        settleMs: 600,
+      },
+      {
+        label: "03-detail-library-vue-grouped-default",
+        action: { type: "goto", path: "/admin/libraries/media/test-media-lib-video" },
+        settleMs: 800,
+      },
+      {
+        label: "04-toggle-avance",
+        action: {
+          type: "click",
+          selector: 'button:has-text("Avancé")',
+        },
+        settleMs: 500,
+      },
+      {
+        label: "05-vue-grid",
+        action: {
+          type: "click",
+          selector: 'button[aria-label*="Grille"], button[title*="Grille"], button:has-text("Grille")',
+        },
+        settleMs: 500,
+      },
+      {
+        label: "06-vue-rotation",
+        action: {
+          type: "click",
+          selector: 'button[aria-label*="Rotation"], button[title*="Rotation"], button:has-text("Rotation")',
+        },
+        settleMs: 800,
+      },
+    ],
+  },
+  {
+    name: "account-pattern-edit-all",
+    description:
+      "Admin édite tous les settings d'un pattern : ouverture drawer + parcours des onglets Identité / Production / Workflow / Équipe. Vérifier que chaque onglet est rendu, validation cross-field affichée, save fonctionne.",
+    steps: [
+      {
+        label: "01-liste-comptes-instagram",
+        action: { type: "goto", path: "/admin/accounts" },
+        settleMs: 600,
+      },
+      {
+        label: "02-fiche-compte",
+        // Note : l'id du compte est dynamique (cuid). On goto via fiche
+        // compte directement depuis le slug seedé (handle test_account).
+        // Si la liste expose un lien, on suit ; sinon on goto direct.
+        action: {
+          type: "click",
+          selector: 'a[href*="/admin/accounts/"]:not([href$="/admin/accounts"])',
+        },
+        settleMs: 800,
+      },
+      {
+        label: "03-onglet-patterns",
+        action: {
+          type: "click",
+          selector: 'button:has-text("Patterns"), [data-tab="patterns"]',
+        },
+        settleMs: 500,
+      },
+      {
+        label: "04-ouvrir-pattern-edit",
+        action: {
+          type: "click",
+          selector: 'button:has-text("Modifier"), button:has-text("Éditer"), button[aria-label*="Modifier"]',
+        },
+        settleMs: 700,
+      },
+      {
+        label: "05-drawer-onglet-identite",
+        action: { type: "wait", ms: 300 },
+      },
+      {
+        label: "06-drawer-onglet-production",
+        action: {
+          type: "click",
+          selector: 'button:has-text("Production")',
+        },
+        settleMs: 400,
+      },
+      {
+        label: "07-drawer-onglet-workflow",
+        action: {
+          type: "click",
+          selector: 'button:has-text("Workflow")',
+        },
+        settleMs: 400,
+      },
+      {
+        label: "08-drawer-onglet-equipe",
+        action: {
+          type: "click",
+          selector: 'button:has-text("Équipe"), button:has-text("Equipe")',
+        },
+        settleMs: 400,
+      },
+    ],
+  },
+  {
+    name: "data-library-admin",
+    description:
+      "Admin parcourt et gère une DataLibrary : hub → liste data libraries → détail spreadsheet inline → ajout d'une entry. Vérifier que les champs s'affichent, l'édition fonctionne, persistance OK.",
+    steps: [
+      {
+        label: "01-hub-ressources",
+        action: { type: "goto", path: "/admin/libraries" },
+        settleMs: 500,
+      },
+      {
+        label: "02-liste-data-libraries",
+        action: { type: "goto", path: "/admin/libraries/data" },
+        settleMs: 600,
+      },
+      {
+        label: "03-detail-data-library",
+        action: { type: "goto", path: "/admin/libraries/data/test-data-lib" },
+        settleMs: 800,
+      },
+    ],
+  },
+  {
+    name: "rotation-simulation",
+    description:
+      "Admin ouvre la vue rotation d'une library avec usages pré-chargés (asset-0 = 2 usages, asset-1 = 1 usage, asset-2 = 0 usage). Vérifier que la simulation pick le least-used en premier (asset-2 puis asset-1 puis asset-0).",
+    steps: [
+      {
+        label: "01-library-detail",
+        action: { type: "goto", path: "/admin/libraries/media/test-media-lib-video" },
+        settleMs: 700,
+      },
+      {
+        label: "02-vue-rotation",
+        action: {
+          type: "click",
+          selector: 'button:has-text("Rotation")',
+        },
+        settleMs: 900,
+      },
+    ],
+  },
 ];
 
 // ─── Login helper ────────────────────────────────────────────────────────────
@@ -753,6 +909,123 @@ const PATTERN_FIXTURES: PatternFixture[] = [
 ];
 
 /**
+ * Seed des fixtures pour les scenarios admin (médiathèque, rotation, etc.).
+ * Idempotent. Appelé après resetSlotState.
+ */
+async function seedAdminFixtures(): Promise<void> {
+  const prisma = new PrismaClient({
+    datasources: { db: { url: TEST_DB_URL } },
+  });
+  try {
+    // Récupère les fixtures du seed de base.
+    const [admin, account, secondAccount] = await Promise.all([
+      prisma.user.findUnique({ where: { email: "admin@test.local" } }),
+      prisma.instagramAccount.findFirst({ where: { handle: "test_account" } }),
+      // 2e compte pour montrer l'isolation rotation per_account.
+      prisma.instagramAccount.upsert({
+        where: { handle: "test_account_2" },
+        update: {},
+        create: {
+          name: "Test Account 2 (rotation isolation)",
+          handle: "test_account_2",
+          client: { connect: { id: "test-client-1" } },
+        },
+      }),
+    ]);
+    if (!admin || !account) {
+      throw new Error("Fixtures de base manquantes — npm run test:db:seed d'abord.");
+    }
+
+    // ── Library vidéo enrichie : ajouter quelques MediaAssetUsage pour
+    //    montrer la simulation de rotation (per_account isolation).
+    // Le seed standard crée déjà test-media-asset-video-0/1/2.
+    // On simule des usages sur le compte principal pour 2 assets sur 3.
+    await prisma.mediaAssetUsage.upsert({
+      where: {
+        assetId_accountId: {
+          assetId: "test-media-asset-video-0",
+          accountId: account.id,
+        },
+      },
+      update: { usageCount: 2, lastUsedAt: new Date() },
+      create: {
+        assetId: "test-media-asset-video-0",
+        accountId: account.id,
+        usageCount: 2,
+        lastUsedAt: new Date(),
+      },
+    });
+    await prisma.mediaAssetUsage.upsert({
+      where: {
+        assetId_accountId: {
+          assetId: "test-media-asset-video-1",
+          accountId: account.id,
+        },
+      },
+      update: { usageCount: 1, lastUsedAt: new Date(Date.now() - 86400000) },
+      create: {
+        assetId: "test-media-asset-video-1",
+        accountId: account.id,
+        usageCount: 1,
+        lastUsedAt: new Date(Date.now() - 86400000),
+      },
+    });
+    // 2e compte n'a aucun usage → isolation visible
+
+    // ── DataLibrary fixture pour scenario data-library-admin
+    await prisma.dataLibrary.upsert({
+      where: { id: "test-data-lib" },
+      update: {},
+      create: {
+        id: "test-data-lib",
+        name: "Test Data Library (E2E)",
+        templateType: "RPI",
+        description: "Quartiers parisiens — prix au m²",
+        rotationMode: "auto",
+        rotationScope: "shared",
+        fieldsSchema: JSON.stringify([
+          { key: "quartier", label: "Quartier", type: "text" },
+          { key: "prix_m2", label: "Prix/m²", type: "text" },
+        ]),
+      },
+    });
+    // 1 campagne active + 3 DataEntry liés
+    const campaign = await prisma.dataCampaign.upsert({
+      where: { id: "test-data-campaign" },
+      update: {},
+      create: {
+        id: "test-data-campaign",
+        libraryId: "test-data-lib",
+        name: "RPI 2026 (E2E)",
+        isActive: true,
+      },
+    });
+    for (const [i, spec] of [
+      { quartier: "Marais", prix: "12 500 €" },
+      { quartier: "Belleville", prix: "8 900 €" },
+      { quartier: "Montparnasse", prix: "11 200 €" },
+    ].entries()) {
+      await prisma.dataEntry.upsert({
+        where: { id: `test-data-entry-${i}` },
+        update: {},
+        create: {
+          id: `test-data-entry-${i}`,
+          campaignId: campaign.id,
+          fields: JSON.stringify({
+            quartier: spec.quartier,
+            prix_m2: spec.prix,
+          }),
+          usageCount: i, // varier pour visuel rotation
+        },
+      });
+    }
+    console.log(`  ↳ Admin fixtures : medialib usages + data lib seedés (+ 2e compte ${secondAccount.id.slice(0, 8)}…)`);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+/**
  * Seed les 10 patterns canoniques + leurs slots. Idempotent (upsert).
  * Appelé après resetSlotState pour avoir les fixtures fraîches.
  */
@@ -982,6 +1255,8 @@ async function main() {
   // Seed des 10 patterns canoniques pour l'audit visuel — couvre les configs
   // alignées sur pattern-coherence.test.ts.
   await seedPatternFixtures();
+  // Seed fixtures admin (médiathèque usages, data library, 2e compte).
+  await seedAdminFixtures();
 
   let ownsServer: ChildProcess | null = null;
   if (!(await isServerUp())) {
