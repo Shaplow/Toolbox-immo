@@ -47,6 +47,14 @@ const TEST_DB_URL =
 const ADMIN_USERNAME = "test_admin";
 const ADMIN_PASSWORD = "testpass";
 
+// Flags CLI :
+//   --headed   → lance Chromium visible (utile pour observer ce que le script fait)
+//   --slow     → ralentit chaque action (~500ms) pour suivre à l'œil
+//   --only=<X> → ne capture que les surfaces ou scenarios dont le nom matche
+const HEADLESS = !process.argv.includes("--headed");
+const SLOW_MO = process.argv.includes("--slow") ? 500 : 0;
+const ONLY_FILTER = process.argv.find((a) => a.startsWith("--only="))?.slice(7);
+
 const ts = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 16);
 const OUTPUT_DIR = resolve(repoRoot, ".claude", "ux-audit", ts);
 
@@ -106,7 +114,11 @@ type StepAction =
   | { type: "goto"; path: string }
   | { type: "click"; selector: string }
   | { type: "fill"; selector: string; value: string }
-  | { type: "wait"; ms: number };
+  | { type: "wait"; ms: number }
+  /** Upload un fichier dans l'input[type=file] désigné (la dropzone l'a en hidden). */
+  | { type: "upload"; selector: string; filePath: string }
+  /** POST direct sur une route API (avec session cookie courante). */
+  | { type: "api"; method: "POST" | "PATCH"; path: string; body?: unknown };
 
 interface Step {
   /** Préfixe du fichier output (numéroté pour l'ordre). */
@@ -124,7 +136,130 @@ interface Scenario {
   steps: Step[];
 }
 
+// Chemin vers les fixtures vidéo réutilisées par le workflow complet.
+const FIXTURE_RUSH = resolve(webDir, "e2e/fixtures/test-rush.mp4");
+const FIXTURE_VERSION = resolve(webDir, "e2e/fixtures/test-version.mp4");
+
 const SCENARIOS: Scenario[] = [
+  {
+    name: "full-manual-workflow",
+    description:
+      "Workflow user complet sur un slot manual_rushes (status reset à PLANNED par resetSlotState) : upload rush → upload version → promote → captions manuel → description manuelle → cover → marquer publié. Tente chaque étape réellement. Si une étape pète, l'audit révèle le vrai point de blocage du workflow.",
+    steps: [
+      {
+        label: "01-fiche-initial-vide",
+        action: { type: "goto", path: "/publications/test-slot-v8-manual" },
+        settleMs: 800,
+      },
+      // ── Étape 1 : Upload du rush ─────────────────────────────────────────
+      {
+        label: "02-upload-rush",
+        action: {
+          type: "upload",
+          selector: 'input[type="file"]',
+          filePath: FIXTURE_RUSH,
+        },
+        settleMs: 4000,
+      },
+      {
+        label: "03-apres-upload-rush",
+        action: { type: "wait", ms: 800 },
+      },
+      // ── Étape 2 : Captions manuel ────────────────────────────────────────
+      // Note : l'upload de version est skip — le reset recrée déjà la version
+      // par défaut + promote (équivalent au seed). Ajouter un vrai scenario
+      // "upload-version" demandera de cibler le bon input file dans la
+      // VersionsSection (pas trivial vu que la dropzone rushes vole le 1er
+      // input). À traiter dans un scenario séparé si besoin.
+      {
+        label: "04-fiche-apres-rush",
+        action: { type: "goto", path: "/publications/test-slot-v8-manual" },
+        settleMs: 800,
+      },
+      {
+        label: "05-click-ecrire-sous-titres",
+        action: {
+          type: "click",
+          selector: 'a:has-text("Écrire les sous-titres")',
+        },
+        settleMs: 800,
+      },
+      {
+        label: "06-fill-caption-block",
+        action: {
+          type: "fill",
+          selector: 'textarea[placeholder*="texte affiché"]',
+          value: "Bienvenue dans cet appartement",
+        },
+        settleMs: 200,
+      },
+      {
+        label: "07-save-captions",
+        action: { type: "click", selector: 'button:has-text("Enregistrer")' },
+        settleMs: 1500,
+      },
+      // ── Étape 3 : Description manuelle ───────────────────────────────────
+      {
+        label: "08-fiche-apres-captions",
+        action: { type: "goto", path: "/publications/test-slot-v8-manual" },
+        settleMs: 800,
+      },
+      {
+        label: "09-fill-description",
+        action: {
+          type: "fill",
+          selector: 'textarea[placeholder*="légende"], textarea[placeholder*="Rédigez"]',
+          value: "Magnifique appartement parisien, 50m² rénové, lumineux, proche métro.",
+        },
+        settleMs: 300,
+      },
+      {
+        label: "10-save-description",
+        action: {
+          type: "click",
+          selector: 'button:has-text("Enregistrer la légende"), button:has-text("Enregistrer")',
+        },
+        settleMs: 1000,
+      },
+      // ── Étape 4 : Cover (via API pour skip l'extraction RunPod) ──────────
+      {
+        label: "11-api-cover-select",
+        action: {
+          type: "api",
+          method: "POST",
+          path: "/api/publications/test-slot-v8-manual/cover/manual-select",
+          body: {
+            frameUrl: "https://example.com/cover-test-full-workflow.png",
+            timestamp: 2.5,
+          },
+        },
+        settleMs: 500,
+      },
+      {
+        label: "12-fiche-avant-publication",
+        action: { type: "goto", path: "/publications/test-slot-v8-manual" },
+        settleMs: 800,
+      },
+      // ── Étape 5 : Coller URL Instagram + Marquer publié ──────────────────
+      {
+        label: "13-fill-instagram-url",
+        action: {
+          type: "fill",
+          selector: 'input[placeholder*="instagram.com"], input[name="publishedUrl"]',
+          value: "https://www.instagram.com/p/test-e2e-full-workflow/",
+        },
+        settleMs: 300,
+      },
+      {
+        label: "14-click-marquer-publie",
+        action: {
+          type: "click",
+          selector: 'button:has-text("Marquer publié"):not(:disabled)',
+        },
+        settleMs: 2000,
+      },
+    ],
+  },
   {
     name: "captions-manual-workflow",
     description:
@@ -250,6 +385,21 @@ async function runStep(page: Page, step: Step): Promise<void> {
     case "wait":
       await page.waitForTimeout(action.ms);
       break;
+    case "upload":
+      await page.locator(action.selector).first().setInputFiles(action.filePath);
+      break;
+    case "api": {
+      const res = await page.request.fetch(`${BASE_URL}${action.path}`, {
+        method: action.method,
+        data: action.body as object | undefined,
+      });
+      if (!res.ok()) {
+        throw new Error(
+          `API ${action.method} ${action.path} → ${res.status()} ${await res.text().catch(() => "")}`,
+        );
+      }
+      break;
+    }
   }
   await page.waitForTimeout(step.settleMs ?? 400);
 }
@@ -330,36 +480,91 @@ async function startServer(): Promise<ChildProcess> {
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function resetSlotState(): Promise<void> {
-  // Purge les artefacts laissés par les runs précédents (E2E ou audits) sur
-  // les slots de fixture. Sans ça, la ProductionChain affiche "Cover : Fait"
-  // ou "Sous-titres : Fait" sur la base de jobs résiduels, faussant
-  // l'analyse visuelle d'un état "fresh".
+  // Reset complet des slots de fixture pour qu'un audit visuel parte d'un
+  // état initial reproductible. Sans ça, les jobs résiduels (E2E précédents,
+  // audits précédents, version déjà promue par le seed, etc.) faussent la
+  // ProductionChain et empêchent de simuler un workflow user "from scratch".
   const TEST_SLOTS = ["test-slot-v8-manual", "test-slot-1"];
   const prisma = new PrismaClient({
     datasources: { db: { url: TEST_DB_URL } },
   });
   try {
     for (const slotId of TEST_SLOTS) {
+      // 1. Détache tous les pointeurs "active*" + revient à PLANNED + dé-promote
+      //    la version. Conserve `description` à `null` pour repartir vide.
+      //    Pas de .catch() — on veut savoir si l'update échoue (un field mort
+      //    silencerait tout le reset, masquant les bugs des audits).
       await prisma.publicationSlot.update({
         where: { id: slotId },
-        data: { activeCaptionJobId: null, activeCoverPackId: null },
-      }).catch(() => {});
+        data: {
+          activeCaptionJobId: null,
+          activeCoverPackId: null,
+          activeTranscriptionJobId: null,
+          currentVersionId: null,
+          status: "PLANNED",
+          description: null,
+          publishedAt: null,
+          publishedUrl: null,
+        },
+      });
+
+      // 2. Delete les jobs liés au slot.
       await prisma.captionJob.deleteMany({ where: { slotId } });
-      // CoverFramePacks : rattachés au render OU à la version courante.
+      await prisma.transcriptionJob.deleteMany({ where: { slotId } });
+      await prisma.descriptionJob.deleteMany({ where: { slotId } });
+
+      // 3. Delete les cover packs liés (via render ou version).
       const slot = await prisma.publicationSlot.findUnique({
         where: { id: slotId },
-        select: { currentVersionId: true, render: { select: { id: true } } },
+        select: { render: { select: { id: true } } },
       });
       if (slot?.render?.id) {
         await prisma.coverFramePack.deleteMany({ where: { renderId: slot.render.id } });
       }
-      if (slot?.currentVersionId) {
-        await prisma.coverFramePack.deleteMany({
-          where: { publicationVersionId: slot.currentVersionId },
+      // Toutes les versions du slot (cleanup propre)
+      const versions = await prisma.publicationVersion.findMany({
+        where: { slotId },
+        select: { id: true },
+      });
+      for (const v of versions) {
+        await prisma.coverFramePack.deleteMany({ where: { publicationVersionId: v.id } });
+      }
+
+      // 4. Delete les rushs + versions uploadées (pour repartir vraiment vide).
+      await prisma.publicationRush.deleteMany({ where: { slotId } });
+      await prisma.publicationVersion.deleteMany({ where: { slotId } });
+
+      // 5. Pour le slot V8 manual : recrée la version par défaut + promote.
+      //    Permet aux scenarios qui vont jusqu'à cover/publier de fonctionner
+      //    sans devoir uploader une version (l'upload via setInputFiles cible
+      //    mal entre la dropzone rushes et la section versions). Si tu veux
+      //    tester l'upload de version dans un futur scenario, ne pas appeler
+      //    cette branche.
+      if (slotId === "test-slot-v8-manual") {
+        const monteur = await prisma.user.findUnique({
+          where: { email: "monteur@test.local" },
+          select: { id: true },
         });
+        if (monteur) {
+          const version = await prisma.publicationVersion.create({
+            data: {
+              slotId,
+              versionNumber: 1,
+              r2Key: `publications/${slotId}/versions/1.mp4`,
+              fileUrl: "https://example.com/test-version.mp4",
+              fileName: "test-version.mp4",
+              mimeType: "video/mp4",
+              uploadedByUserId: monteur.id,
+            },
+          });
+          await prisma.publicationSlot.update({
+            where: { id: slotId },
+            data: { currentVersionId: version.id, status: "EDIT_APPROVED" },
+          });
+        }
       }
     }
-    console.log(`  ↳ DB reset : caption + cover purgés pour ${TEST_SLOTS.length} slots`);
+    console.log(`  ↳ DB reset : ${TEST_SLOTS.length} slots — état initial restauré`);
   } finally {
     await prisma.$disconnect();
   }
@@ -383,16 +588,20 @@ async function main() {
 
   let browser: Browser | null = null;
   try {
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ headless: HEADLESS, slowMo: SLOW_MO });
     const context = await browser.newContext({
       viewport: { width: 1280, height: 800 },
     });
     await login(context);
 
+    const matchesFilter = (name: string) =>
+      !ONLY_FILTER || name.includes(ONLY_FILTER);
+
     // SURFACES
-    console.log(`\n▶ Surfaces isolées (${SURFACES.length})`);
+    const surfacesToRun = SURFACES.filter((s) => matchesFilter(s.name));
+    console.log(`\n▶ Surfaces isolées (${surfacesToRun.length}/${SURFACES.length})`);
     let surfaceOk = 0;
-    for (const surface of SURFACES) {
+    for (const surface of surfacesToRun) {
       try {
         await captureSurface(context, surface);
         console.log(`  ✓ ${surface.name}`);
@@ -403,10 +612,11 @@ async function main() {
     }
 
     // SCENARIOS
-    console.log(`\n▶ Scenarios (${SCENARIOS.length})`);
+    const scenariosToRun = SCENARIOS.filter((s) => matchesFilter(s.name));
+    console.log(`\n▶ Scenarios (${scenariosToRun.length}/${SCENARIOS.length})`);
     let totalSteps = 0;
     let totalOk = 0;
-    for (const scenario of SCENARIOS) {
+    for (const scenario of scenariosToRun) {
       console.log(`  ▸ ${scenario.name} — ${scenario.steps.length} étapes`);
       const { ok, failed } = await captureScenario(context, scenario);
       totalSteps += ok + failed;
@@ -414,7 +624,7 @@ async function main() {
       console.log(`    ${ok}/${ok + failed} captures`);
     }
 
-    console.log(`\n✅ Surfaces : ${surfaceOk}/${SURFACES.length}`);
+    console.log(`\n✅ Surfaces : ${surfaceOk}/${surfacesToRun.length}`);
     console.log(`✅ Scenarios : ${totalOk}/${totalSteps} étapes capturées`);
     console.log(`\n📁 ${OUTPUT_DIR}`);
     console.log(`\n   Demande à Claude :`);
