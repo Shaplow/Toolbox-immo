@@ -289,20 +289,19 @@ export function CoverSection({
         )
       )}
 
-      {/* Cover pack FAILED — bandeau d'erreur d'extraction */}
+      {/* Cover pack FAILED — Alert uniforme (pattern P4 audit V1) */}
       {coverPack?.status === "FAILED" && (
-        <div className="flex items-start gap-2 text-sm text-danger-700 bg-danger-50 border border-danger-200 rounded-lg p-3 mb-3">
-          <AlertTriangle size={15} className="text-danger-600 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="font-medium">Extraction des frames échouée</p>
-            {coverPack.errorMsg && (
-              <p className="text-danger-700 mt-0.5">{coverPack.errorMsg}</p>
-            )}
-            <p className="text-xs text-danger-700/80 mt-1">
-              Relancez la sélection ou choisissez une cover manuellement.
-            </p>
-          </div>
-        </div>
+        <Alert
+          variant="danger"
+          icon={AlertTriangle}
+          title="Extraction des frames échouée"
+          className="mb-3"
+        >
+          {coverPack.errorMsg && <p>{coverPack.errorMsg}</p>}
+          <p className="text-xs opacity-80 mt-1">
+            Relancez la sélection ou choisissez une cover manuellement.
+          </p>
+        </Alert>
       )}
 
       {/* Cover sélectionnée avec image finale */}
@@ -347,12 +346,9 @@ export function CoverSection({
               )}
             </>
           ) : (
-            <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
-              <Loader2 size={14} className="animate-spin shrink-0 text-gray-400" />
-              <span>
-                Extraction des frames en cours… La cover sera sélectionnable dès que le pack sera prêt.
-              </span>
-            </div>
+            <Alert variant="glass" icon={Loader2}>
+              Extraction des frames en cours… La cover sera sélectionnable dès que le pack sera prêt.
+            </Alert>
           )}
         </div>
       )}

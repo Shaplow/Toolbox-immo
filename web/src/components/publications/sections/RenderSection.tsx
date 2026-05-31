@@ -36,6 +36,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Section } from "@/components/ui/molecules/Section";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Alert } from "@/components/ui/Alert";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { VideoPlayer } from "@/components/ui/molecules/VideoPlayer";
 import { toast } from "@/components/ui/Toast";
@@ -322,15 +323,12 @@ export function RenderSection({
         </div>
       )}
 
-      {/* Cas : render en cours — état loader glass */}
+      {/* Cas : render en cours — Alert glass uniforme (pattern P4 audit V1) */}
       {render && !render.videoUrl && !render.pngUrl && render.status !== "ERROR" && (
         <div className="space-y-3">
-          <div className="flex items-center gap-2.5 text-[13px] text-sky-900 bg-sky-100/60 backdrop-blur-[8px] rounded-lg p-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.22)]">
-            <Loader2 size={14} className="text-sky-700 animate-spin shrink-0" />
-            <span className="leading-relaxed font-medium">
-              Rendu en cours de traitement…
-            </span>
-          </div>
+          <Alert variant="glass" icon={Loader2}>
+            Rendu en cours de traitement…
+          </Alert>
           {canEdit && (
             <Button
               variant="danger"

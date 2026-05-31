@@ -143,49 +143,38 @@ export function CaptionsSection({
     >
 
       <div className="space-y-3">
-        {/* État du dernier job (Phase 1.9 A2) */}
-        {latestCaptionJob && (
-          <div className="rounded-lg border p-3 text-sm">
-            {isInProgress && (
-              <div className="flex items-center gap-2 text-gray-700 bg-gray-50 border-gray-200 -m-3 p-3 rounded-lg">
-                <Loader2 size={15} className="animate-spin shrink-0" />
-                <span>
-                  {latestCaptionJob.status === "QUEUED"
-                    ? "Job en file d'attente…"
-                    : "Traitement en cours…"}
-                </span>
-              </div>
-            )}
-            {isDone && (
-              <div className="flex items-center justify-between gap-3 text-success-700 bg-success-50 border-success-200 -m-3 p-3 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <CheckCircle size={15} className="shrink-0" />
-                  <span>Sous-titres générés</span>
-                </div>
-                {latestCaptionJob.outputUrl && (
-                  <a
-                    href={latestCaptionJob.outputUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-success-700 underline hover:no-underline"
-                  >
-                    Télécharger
-                  </a>
-                )}
-              </div>
-            )}
-            {isError && (
-              <div className="text-danger-700 bg-danger-50 border-danger-200 -m-3 p-3 rounded-lg">
-                <div className="flex items-center gap-2 mb-1">
-                  <AlertCircle size={15} className="shrink-0" />
-                  <span className="font-medium">Échec du traitement</span>
-                </div>
-                {latestCaptionJob.errorMsg && (
-                  <p className="text-xs text-danger-700/80 ml-5">{latestCaptionJob.errorMsg}</p>
-                )}
-              </div>
-            )}
-          </div>
+        {/* État du dernier job — Alert molecule (uniformisé pattern P4 audit V1) */}
+        {latestCaptionJob && isInProgress && (
+          <Alert variant="glass" icon={Loader2}>
+            {latestCaptionJob.status === "QUEUED"
+              ? "Job en file d'attente…"
+              : "Traitement en cours…"}
+          </Alert>
+        )}
+        {latestCaptionJob && isDone && (
+          <Alert
+            variant="success"
+            icon={CheckCircle}
+            actions={
+              latestCaptionJob.outputUrl ? (
+                <a
+                  href={latestCaptionJob.outputUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-success-700 underline hover:no-underline font-medium"
+                >
+                  Télécharger
+                </a>
+              ) : undefined
+            }
+          >
+            Sous-titres générés
+          </Alert>
+        )}
+        {latestCaptionJob && isError && (
+          <Alert variant="danger" icon={AlertCircle} title="Échec du traitement">
+            {latestCaptionJob.errorMsg ?? null}
+          </Alert>
         )}
 
         {/* Empty state — affiché tant qu'aucun job n'a été lancé et que le
