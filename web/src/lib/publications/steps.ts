@@ -189,6 +189,10 @@ function descriptionJobStatus(
   if (descriptionJob && !descriptionJob.staleSince) {
     if (descriptionJob.status === "COMPLETED" && descriptionJob.result) return "done";
     if (descriptionJob.status === "FAILED") return "failed";
+    // V8.7 — Trou comblé : avant, PROCESSING/QUEUED retombait sur "todo"
+    // → la chaîne montrait "Action attendue" alors qu'un job IA était en cours.
+    if (descriptionJob.status === "QUEUED") return "queued";
+    if (descriptionJob.status === "PROCESSING") return "processing";
   }
   if (fallbackText && fallbackText.trim().length > 0) return "done";
   return "todo";
@@ -345,7 +349,11 @@ export function computePublicationSteps(input: {
     },
     {
       key: "edit",
-      label: "Montage",
+      // V8.7 — Le label "Montage" trompe pour external_upload (le client
+      // uploade la vidéo finie, pas de monteur interne). On bascule sur
+      // "Vidéo" qui décrit l'arrivée du fichier sans suggérer une étape
+      // de montage humain.
+      label: pattern?.source === "external_upload" ? "Vidéo" : "Montage",
       visible: editVisible,
       status: editVisible ? editStatus : "todo",
       roles: STEP_ROLES.edit,
@@ -371,6 +379,11 @@ export function computePublicationSteps(input: {
       // alors que le slot avait passé la validation.
       status: (() => {
         if (slot.status === "PUBLISHED" || slot.status === "DONE" || slot.status === "SCHEDULED") return "done";
+        // V8.7 — CLIENT_REVISION = le client a refusé la validation, le CM
+        // doit retravailler puis renvoyer. Avant : "todo" générique qui
+        // se confondait avec un envoi initial. Désormais "failed" pour
+        // signaler visuellement qu'il y a une action correctrice à faire.
+        if (slot.status === "CLIENT_REVISION") return "failed";
         // Si captions requises et pas encore terminées → blocked.
         // captionJobStatus retourne "done" UNIQUEMENT si COMPLETED, donc on
         // peut s'en servir comme indicateur de "captions prêtes".

@@ -25,12 +25,10 @@ import {
   ChevronRight,
   MoreHorizontal,
   Trash2,
-  CheckCircle,
   List,
 } from "lucide-react";
 import type { UserRole } from "@/types/roles";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { toast } from "@/components/ui/Toast";
@@ -72,7 +70,6 @@ export function PublicationHeader({
   slot,
   account,
   pattern,
-  canMarkPublished,
   canDelete,
   currentUserRole,
 }: PublicationHeaderProps) {
@@ -99,24 +96,6 @@ export function PublicationHeader({
       setDeleting(false);
       setConfirmDeleteOpen(false);
     }
-  }
-
-  function handleMarkPublished() {
-    // L'action "Marquer publié" du header scrolle vers la section publish
-    // (et la déplie si elle est repliée par préférence localStorage).
-    // C'est intentionnel : le user fait la transition réelle dans la
-    // section dédiée, pas depuis un mini bouton header.
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("pub:open-section", { detail: { sectionId: "publish" } }),
-      );
-    }
-    setTimeout(() => {
-      const section = document.getElementById("publish");
-      if (section) {
-        section.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    }, 50);
   }
 
   return (
@@ -188,17 +167,6 @@ export function PublicationHeader({
                   qui pilote statut, assignations, overrides en surface unique. */}
               {currentUserRole === "ADMIN" && (
                 <SlotQuickEditButton slotId={slot.id} />
-              )}
-
-              {canMarkPublished && slot.status !== "PUBLISHED" && (
-                <Button
-                  size="sm"
-                  icon={CheckCircle}
-                  onClick={handleMarkPublished}
-                  title="Aller à la section Publier"
-                >
-                  <span className="hidden sm:inline">Marquer publié</span>
-                </Button>
               )}
 
               {canDelete && (

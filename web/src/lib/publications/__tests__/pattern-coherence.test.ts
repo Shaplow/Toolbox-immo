@@ -28,8 +28,19 @@ type Pattern = Parameters<typeof computePublicationSteps>[0]["pattern"];
 type Slot = Parameters<typeof computePublicationSteps>[0]["slot"];
 type Input = Parameters<typeof computePublicationSteps>[0];
 
-/** Génère un Pattern avec defaults sains, surchargeable. */
-function pattern(overrides: Partial<NonNullable<Pattern>> = {}): NonNullable<Pattern> {
+/** Génère un Pattern avec defaults sains, surchargeable. allowsClientRevision et
+ *  needsAdminValidation ne sont pas (encore) dans le Pick consommé par
+ *  computePublicationSteps mais on les accepte ici pour documenter la config
+ *  du pattern testée — ils seront utilisés quand la chaîne intégrera ces flags. */
+function pattern(
+  overrides: Partial<NonNullable<Pattern>> & {
+    allowsClientRevision?: boolean;
+    needsAdminValidation?: boolean;
+  } = {},
+): NonNullable<Pattern> {
+  const { allowsClientRevision: _acr, needsAdminValidation: _nav, ...patternOverrides } = overrides;
+  void _acr;
+  void _nav;
   return {
     source: "manual_rushes",
     coverMode: "none",
@@ -39,7 +50,7 @@ function pattern(overrides: Partial<NonNullable<Pattern>> = {}): NonNullable<Pat
     needsClientValidation: false,
     needsRushes: false,
     needsBrief: false,
-    ...overrides,
+    ...patternOverrides,
   };
 }
 
@@ -475,11 +486,10 @@ describe("Pattern 7 — validation admin avant validation client", () => {
 });
 
 describe("Pattern 8 — ping-pong validation client", () => {
-  it("status CLIENT_REVISION : validation reste 'todo' (CM doit renvoyer corrigé)", () => {
-    // Note métier : CLIENT_REVISION n'est PAS dans BLOCKED_SLOT_STATUSES
-    // (CANCELLED/REJECTED/ARCHIVED). Le slot est en "ping" — le CM corrige
-    // puis re-déclenche la validation. Statut "todo" sur validation est
-    // sémantiquement correct (action attendue côté CM).
+  it("status CLIENT_REVISION : validation = 'failed' (client a refusé, action correctrice attendue)", () => {
+    // V8.7 — Avant : "todo" générique, confondu avec un envoi initial.
+    // Maintenant : "failed" → la chaîne signale visuellement que la
+    // validation a été refusée et qu'il faut corriger + renvoyer.
     const input: Input = {
       slot: { status: "CLIENT_REVISION", description: "Texte" },
       pattern: P_MANUAL_PING_PONG,
@@ -492,7 +502,10 @@ describe("Pattern 8 — ping-pong validation client", () => {
     const steps = computePublicationSteps(input);
     const validation = steps.find((s) => s.key === "validation");
     expect(validation?.visible).toBe(true);
-    expect(validation?.status).toBe("todo");
+    expect(validation?.status).toBe("failed");
+    // failed re-déclenche nextAction (avec todo) — c'est l'étape correctrice
+    // qui attend l'action du CM.
+    expect(validation?.nextAction).toBe(true);
   });
 });
 
@@ -540,6 +553,56 @@ describe("Pattern 10 — external_upload (le client uploade la vidéo finie)", (
     });
     expect(nextActionKey(input)).toBe("description");
     expect(waitingForOf(input, "cover")).toBe("Description");
+  });
+});
+
+// ── V8.7 — Trous comblés ──────────────────────────────────────────────────────
+
+describe("V8.7 — descriptionJobStatus reflète PROCESSING / QUEUED", () => {
+  it("descriptionJob PROCESSING → step description = 'processing' (pas 'todo')", () => {
+    const input: Input = {
+      slot: { status: "READY_FOR_CM", description: null },
+      pattern: P_AUTO_FLUIDE,
+      renderJob: { status: "DONE" },
+      captionJob: { status: "COMPLETED" },
+      descriptionJob: { status: "PROCESSING", result: null },
+    };
+    const steps = computePublicationSteps(input);
+    expect(steps.find((s) => s.key === "description")?.status).toBe("processing");
+  });
+
+  it("descriptionJob QUEUED → step description = 'queued'", () => {
+    const input: Input = {
+      slot: { status: "READY_FOR_CM", description: null },
+      pattern: P_AUTO_FLUIDE,
+      renderJob: { status: "DONE" },
+      captionJob: { status: "COMPLETED" },
+      descriptionJob: { status: "QUEUED", result: null },
+    };
+    const steps = computePublicationSteps(input);
+    expect(steps.find((s) => s.key === "description")?.status).toBe("queued");
+  });
+});
+
+describe("V8.7 — external_upload : step 'edit' renommé 'Vidéo'", () => {
+  it("source=external_upload → label edit = 'Vidéo'", () => {
+    const steps = computePublicationSteps({
+      slot: { status: "PLANNED", description: null },
+      pattern: P_EXTERNAL,
+      versionsCount: 1,
+      currentVersionId: "v1",
+    });
+    const edit = steps.find((s) => s.key === "edit");
+    expect(edit?.label).toBe("Vidéo");
+  });
+
+  it("source=manual_rushes → label edit = 'Montage'", () => {
+    const steps = computePublicationSteps({
+      slot: { status: "PLANNED", description: null },
+      pattern: P_MANUAL_CLASSIQUE,
+    });
+    const edit = steps.find((s) => s.key === "edit");
+    expect(edit?.label).toBe("Montage");
   });
 });
 
