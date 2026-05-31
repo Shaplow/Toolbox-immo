@@ -249,9 +249,10 @@ export function computePublicationSteps(input: {
   let rushesStatus: StepStatus;
   if (rushesCount > 0) {
     rushesStatus = "done";
-  } else if (slot.status === "RUSHES_EXPECTED") {
-    rushesStatus = "processing";
   } else {
+    // RUSHES_EXPECTED = on attend le vidéaste (humain), pas un job machine.
+    // Avant : on mappait en "processing" → spinner trompeur "En cours" qui
+    // laissait penser qu'un upload était en route.
     rushesStatus = "todo";
   }
 
