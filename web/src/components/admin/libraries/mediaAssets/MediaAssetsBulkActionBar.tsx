@@ -77,7 +77,7 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               onChange={(e) => setBulkCategoryInput(e.target.value)}
               list="group-list"
               placeholder="Catégorie…"
-              className="w-28 text-xs border border-rose-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-violet-400"
+              className="w-28 text-xs border border-rose-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-rose-400"
               onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplyCategory(); } }}
             />
             <button
@@ -105,7 +105,7 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               onClick={() => { void handleBulkApplySetTag(); }}
               disabled={bulkApplying}
               className={`px-2.5 py-1 text-white text-xs rounded disabled:opacity-50 ${
-                bulkSetTagInput.trim() ? "bg-pink-600 hover:bg-pink-700" : "bg-gray-400 hover:bg-gray-500"
+                bulkSetTagInput.trim() ? "bg-rose-600 hover:bg-rose-700" : "bg-gray-400 hover:bg-gray-500"
               }`}
               title={bulkSetTagInput.trim() ? "Appliquer le pack" : "Retirer le pack"}
             >
@@ -118,7 +118,7 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               value={bulkTagsInput}
               onChange={(e) => setBulkTagsInput(e.target.value)}
               placeholder="Tags (virgule)…"
-              className="w-36 text-xs border border-sky-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              className="w-36 text-xs border border-sky-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sky-400"
               onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplyTags(); } }}
             />
             <button

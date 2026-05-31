@@ -66,7 +66,7 @@ export function InstagramAccountRow({ account, onUpdated }: InstagramAccountRowP
     <>
       <div>
         <div className="flex items-center gap-3 px-4 py-3">
-          <Instagram className="h-4 w-4 shrink-0 text-pink-500" />
+          <Instagram className="h-4 w-4 shrink-0 text-rose-500" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">{account.name}</p>
             <p className="text-xs text-gray-500">
@@ -75,7 +75,7 @@ export function InstagramAccountRow({ account, onUpdated }: InstagramAccountRowP
           </div>
           <Link
             href={`/admin/accounts/${account.id}`}
-            className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+            className="inline-flex items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 hover:bg-sky-100 transition-colors"
             title="Configurer les patterns de publication"
           >
             <Settings2 className="h-3.5 w-3.5" />

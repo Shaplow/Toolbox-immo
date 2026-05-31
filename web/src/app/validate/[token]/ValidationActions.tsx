@@ -65,7 +65,7 @@ export function ValidationActions({ token, allowsRevision }: Props) {
         type="button"
         onClick={() => submit("approve")}
         disabled={submitting !== null}
-        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-sage-600 text-white font-medium hover:bg-sage-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         <Check size={16} />
         {submitting === "approve" ? "Validation en cours…" : "Valider la publication"}
@@ -79,7 +79,7 @@ export function ValidationActions({ token, allowsRevision }: Props) {
               type="button"
               onClick={() => setShowRejectForm(true)}
               disabled={submitting !== null}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-amber-300 bg-peach-50 text-peach-800 font-medium hover:bg-peach-100 disabled:opacity-50 transition-colors"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-peach-300 bg-peach-50 text-peach-800 font-medium hover:bg-peach-100 disabled:opacity-50 transition-colors"
             >
               <MessageSquare size={16} />
               Demander des modifications
@@ -115,7 +115,7 @@ export function ValidationActions({ token, allowsRevision }: Props) {
                   type="button"
                   onClick={() => submit("reject", { comment: comment.trim() })}
                   disabled={submitting !== null || !comment.trim()}
-                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-peach-600 text-white text-sm font-medium hover:bg-peach-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting === "reject" ? "Envoi…" : "Envoyer la demande"}
                 </button>

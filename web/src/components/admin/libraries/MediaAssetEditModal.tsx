@@ -373,7 +373,7 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
                         onChange={(e) => setStartInput(e.target.value)}
                         onBlur={(e) => commitStart(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && commitStart((e.target as HTMLInputElement).value)}
-                        className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-violet-300"
+                        className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-rose-300"
                       />
                       <button type="button" title="+1 frame (≈0.04 s)" onClick={() => nudgeStart(1)}
                         className="flex-none p-1 rounded border border-gray-200 text-gray-500 hover:bg-gray-100 transition-colors">
@@ -398,7 +398,7 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
                         onChange={(e) => setEndInput(e.target.value)}
                         onBlur={(e) => commitEnd(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && commitEnd((e.target as HTMLInputElement).value)}
-                        className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-violet-300"
+                        className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-rose-300"
                       />
                       <button type="button" title="+1 frame (≈0.04 s)" onClick={() => nudgeEnd(1)}
                         className="flex-none p-1 rounded border border-gray-200 text-gray-500 hover:bg-gray-100 transition-colors">
@@ -470,7 +470,7 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
                     className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
                       gainDb === v
                         ? "bg-gray-900 text-white border-gray-900"
-                        : "bg-white text-gray-500 border-gray-200 hover:border-violet-300 hover:bg-rose-50"
+                        : "bg-white text-gray-500 border-gray-200 hover:border-rose-300 hover:bg-rose-50"
                     }`}
                   >
                     {v > 0 ? `+${v}` : v}&nbsp;dB
@@ -486,7 +486,7 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
                   type="checkbox"
                   checked={mixToMono}
                   onChange={(e) => setMixToMono(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-rose-700 focus:ring-violet-400"
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-rose-700 focus:ring-rose-400"
                 />
                 <div>
                   <p className="text-sm font-medium text-gray-800 leading-tight">Mix mono</p>
@@ -498,7 +498,7 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
                   type="checkbox"
                   checked={normalize}
                   onChange={(e) => setNormalize(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-rose-700 focus:ring-violet-400"
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-rose-700 focus:ring-rose-400"
                 />
                 <div>
                   <p className="text-sm font-medium text-gray-800 leading-tight">Normaliser</p>

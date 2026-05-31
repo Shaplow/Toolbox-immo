@@ -150,7 +150,7 @@ export function UserCaptionsMode({
           <select
             value={exportProfile}
             onChange={(e) => onExportProfileChange(e.target.value as ConfigState["export_profile"])}
-            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
           >
             <option value="draft">Rapide (8 Mb/s)</option>
             <option value="balanced">Équilibré (12 Mb/s, recommandé)</option>

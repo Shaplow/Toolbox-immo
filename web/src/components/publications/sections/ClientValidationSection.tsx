@@ -205,7 +205,7 @@ export function ClientValidationSection({
       {/* ── État courant ───────────────────────────────────────────────────── */}
       {isAwaiting && (
         <div className="bg-peach-50 border border-peach-200 rounded-lg p-3 mb-4">
-          <p className="text-sm text-amber-800">
+          <p className="text-sm text-peach-800">
             En attente de la réponse du client.
           </p>
           {activeToken && (
@@ -224,7 +224,7 @@ export function ClientValidationSection({
 
       {slotStatus === "CLIENT_REVISION" && (
         <div className="bg-peach-50 border border-peach-200 rounded-lg p-3 mb-4">
-          <p className="text-sm text-amber-800">
+          <p className="text-sm text-peach-800">
             Le client a demandé des modifications. Corrigez puis renvoyez pour validation.
           </p>
         </div>

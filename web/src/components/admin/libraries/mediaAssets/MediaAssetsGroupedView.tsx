@@ -93,7 +93,7 @@ export function MediaAssetsGroupedView({
           {sectionsByGroup.hasGroups ? (
             <div className="space-y-8">
               {sectionsByGroup.sections.map(({ name, groups }) => (
-                <div key={name} className="rounded-2xl border border-violet-100 bg-rose-50/30 p-4">
+                <div key={name} className="rounded-2xl border border-rose-100 bg-rose-50/30 p-4">
                   <div className="flex items-center gap-2 mb-4">
                     <FolderOpen size={14} className="text-rose-500 shrink-0" />
                     <span className="text-sm font-semibold text-rose-800">{name}</span>
@@ -111,7 +111,7 @@ export function MediaAssetsGroupedView({
                             className={`mb-2 px-2.5 py-2 rounded-xl border flex flex-col gap-1 ${
                               !g.isAccessible && accountFilter
                                 ? "bg-gray-50 border-dashed border-gray-300"
-                                : "bg-white border-pink-100"
+                                : "bg-white border-rose-100"
                             }`}
                           >
                             <div className="flex items-center gap-1.5">

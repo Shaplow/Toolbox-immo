@@ -106,7 +106,7 @@ export function DescriptionPromptsManager({
       {!creating && (
         <button
           onClick={openCreate}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-medium hover:bg-sky-700 transition-colors"
         >
           <Plus size={13} /> Nouveau prompt
         </button>
@@ -192,7 +192,7 @@ function PromptInlineForm({
   onSave: () => void; onCancel: () => void; label: string;
 }) {
   return (
-    <div className="bg-sky-50/60 border border-indigo-100 rounded-xl p-4 space-y-3">
+    <div className="bg-sky-50/60 border border-sky-100 rounded-xl p-4 space-y-3">
       <div>
         <label className="text-xs font-medium text-gray-700 block mb-1">Nom</label>
         <input
@@ -200,7 +200,7 @@ function PromptInlineForm({
           value={name}
           onChange={(e) => onName(e.target.value)}
           placeholder="Ex: Annonce immobilière courte"
-          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
+          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-sky-300 focus:border-transparent"
         />
       </div>
       <div>
@@ -210,7 +210,7 @@ function PromptInlineForm({
           onChange={(e) => onPrompt(e.target.value)}
           placeholder="Tu es un expert en immobilier. À partir de la transcription, rédige une annonce professionnelle…"
           rows={5}
-          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-y focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
+          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-y focus:outline-none focus:ring-2 focus:ring-sky-300 focus:border-transparent"
         />
       </div>
       {error && <p className="text-xs text-red-500">{error}</p>}
@@ -218,7 +218,7 @@ function PromptInlineForm({
         <button
           onClick={onSave}
           disabled={saving}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-medium hover:bg-sky-700 disabled:opacity-50 transition-colors"
         >
           {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
           {label}

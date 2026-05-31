@@ -25,7 +25,7 @@ export function CaptionsVideoUploadBar({ videoFile, setVideoFile }: Props) {
     <label
       className={`flex items-center gap-3 p-4 border rounded-2xl cursor-pointer transition-all mb-3 ${
         videoFile
-          ? "border-violet-200 bg-rose-50"
+          ? "border-rose-200 bg-rose-50"
           : "border-gray-100 bg-white hover:border-gray-200"
       }`}
     >

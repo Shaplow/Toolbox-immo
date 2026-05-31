@@ -104,7 +104,7 @@ export function CaptionsSourcePicker({
             ) : transcriptions.length === 0 ? (
               <div className="text-sm text-gray-400 text-center py-4">
                 Aucune transcription terminée.<br />
-                <Link href="/transcriptions" className="text-teal-600 hover:underline">
+                <Link href="/transcriptions" className="text-sky-600 hover:underline">
                   Lancer une transcription →
                 </Link>
               </div>
@@ -116,10 +116,10 @@ export function CaptionsSourcePicker({
                     type="button"
                     onClick={() => setSelectedTranscriptionId(t.id)}
                     disabled={loadingSource}
-                    className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors text-sm border-gray-100 hover:border-violet-200 hover:bg-violet-50/60 text-gray-700 disabled:opacity-50"
+                    className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors text-sm border-gray-100 hover:border-rose-200 hover:bg-rose-50/60 text-gray-700 disabled:opacity-50"
                   >
                     {loadingSource && selectedTranscriptionId === t.id ? (
-                      <Loader2 size={14} className="text-violet-400 animate-spin shrink-0" />
+                      <Loader2 size={14} className="text-rose-400 animate-spin shrink-0" />
                     ) : (
                       <Mic size={14} className="text-gray-300 shrink-0" />
                     )}

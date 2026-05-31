@@ -69,14 +69,14 @@ export default async function TranscriptionJobPage({
 
       {/* Bandeau source : render parent + publication si liée */}
       {sourceRender && (
-        <div className="mb-6 flex items-center gap-3 bg-sky-50 border border-teal-200 rounded-xl px-5 py-3 text-sm">
-          <Video size={16} className="text-teal-600 shrink-0" />
+        <div className="mb-6 flex items-center gap-3 bg-sky-50 border border-sky-200 rounded-xl px-5 py-3 text-sm">
+          <Video size={16} className="text-sky-600 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-teal-900">
+            <p className="text-sky-900">
               Issue du{" "}
               <Link
                 href={`/renders/${sourceRender.id}`}
-                className="font-semibold text-teal-700 hover:text-teal-900 hover:underline"
+                className="font-semibold text-sky-700 hover:text-sky-900 hover:underline"
               >
                 render
               </Link>
@@ -85,7 +85,7 @@ export default async function TranscriptionJobPage({
                   {" "}de la publication{" "}
                   <Link
                     href={`/publications/${sourceSlot.id}`}
-                    className="font-semibold text-teal-700 hover:text-teal-900 hover:underline inline-flex items-center gap-1"
+                    className="font-semibold text-sky-700 hover:text-sky-900 hover:underline inline-flex items-center gap-1"
                   >
                     <FileText size={12} />
                     {sourceSlot.title ?? `@${sourceSlot.account.handle}`}
@@ -129,7 +129,7 @@ export default async function TranscriptionJobPage({
                   ? `/captions?slotId=${sourceSlot.id}&transcriptionId=${job.id}&returnTo=/publications/${sourceSlot.id}`
                   : `/captions?transcriptionId=${job.id}`
               }
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-pink-50 text-rose-700 border border-pink-200 hover:bg-pink-100 transition-colors text-sm font-medium"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-colors text-sm font-medium"
             >
               <Scissors size={14} />
               Dans Sous-titres

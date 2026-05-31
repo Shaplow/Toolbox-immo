@@ -286,7 +286,7 @@ function CaptionPromptForm({
   const [showAhSection, setShowAhSection] = useState(ahEnabled);
 
   return (
-    <div className="bg-rose-50/50 border border-violet-100 rounded-xl p-5 space-y-4">
+    <div className="bg-rose-50/50 border border-rose-100 rounded-xl p-5 space-y-4">
       {/* Name */}
       <FormField label="Nom du prompt" required>
         <Input
@@ -309,7 +309,7 @@ function CaptionPromptForm({
       </FormField>
 
       {/* Auto-highlight section */}
-      <div className="border border-violet-200 rounded-xl overflow-hidden">
+      <div className="border border-rose-200 rounded-xl overflow-hidden">
         <button
           type="button"
           onClick={() => {
@@ -330,7 +330,7 @@ function CaptionPromptForm({
                 type="checkbox"
                 checked={ahEnabled}
                 onChange={(e) => onAhEnabled(e.target.checked)}
-                className="h-4 w-4 rounded border-rose-300 text-rose-600 focus:ring-violet-300"
+                className="h-4 w-4 rounded border-rose-300 text-rose-600 focus:ring-rose-300"
               />
               Activer l&apos;auto-highlight pendant la correction IA
             </label>
@@ -345,7 +345,7 @@ function CaptionPromptForm({
                     <select
                       value={ahMode}
                       onChange={(e) => onAhMode(e.target.value as AutoHighlightMode)}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
                     >
                       <option value="highlight1">Highlight 1</option>
                       <option value="highlight2">Highlight 2</option>
@@ -359,7 +359,7 @@ function CaptionPromptForm({
                     <select
                       value={ahPlacement}
                       onChange={(e) => onAhPlacement(e.target.value as AutoHighlightPlacement)}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
                     >
                       <option value="before">Avant le prompt</option>
                       <option value="after">Après le prompt</option>

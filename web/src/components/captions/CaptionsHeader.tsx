@@ -31,8 +31,8 @@ export function CaptionsHeader({ presetName, isRegen }: Props) {
         Captions
       </Link>
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-violet-100 rounded-xl flex items-center justify-center shrink-0">
-          <Film size={18} className="text-violet-600" />
+        <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
+          <Film size={18} className="text-rose-600" />
         </div>
         <div>
           <h1 className="text-xl font-semibold text-gray-900">{presetName}</h1>

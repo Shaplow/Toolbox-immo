@@ -395,7 +395,7 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
               {sequence.map((s, idx) => (
                 <div key={s} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/60 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
                   <span className="text-[10px] text-gray-400 w-5 tabular-nums">{idx + 1}.</span>
-                  <Layers size={10} className="text-pink-400 shrink-0" />
+                  <Layers size={10} className="text-rose-400 shrink-0" />
                   <span className="flex-1 text-[12px] text-gray-800 truncate">{s}</span>
                   <button
                     type="button"

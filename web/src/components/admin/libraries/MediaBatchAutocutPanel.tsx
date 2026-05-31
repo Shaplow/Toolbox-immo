@@ -583,7 +583,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
               type="checkbox"
               checked={mixToMono}
               onChange={(e) => setMixToMono(e.target.checked)}
-              className="rounded border-gray-300 text-sky-700 focus:ring-indigo-400"
+              className="rounded border-gray-300 text-sky-700 focus:ring-sky-400"
             />
             Mix mono
           </label>
@@ -592,7 +592,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
               type="checkbox"
               checked={normalize}
               onChange={(e) => setNormalize(e.target.checked)}
-              className="rounded border-gray-300 text-sky-700 focus:ring-indigo-400"
+              className="rounded border-gray-300 text-sky-700 focus:ring-sky-400"
             />
             Normaliser
           </label>

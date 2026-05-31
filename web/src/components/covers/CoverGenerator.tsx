@@ -688,14 +688,14 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                                     type="button"
                                     onClick={() => setSelectedCandidateByPack((prev) => ({ ...prev, [pack.id]: candidate.id }))}
                                     className={`relative rounded-lg overflow-hidden border-2 transition ${
-                                      selectedId === candidate.id ? "border-indigo-500 shadow-sm" : "border-transparent hover:border-gray-300"
+                                      selectedId === candidate.id ? "border-sky-500 shadow-sm" : "border-transparent hover:border-gray-300"
                                     }`}
                                     title={titleLabel}
                                   >
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img src={candidate.imageUrl} alt={fmt(candidate.timestamp)} className="w-full aspect-[9/16] object-cover" loading="lazy" />
                                     {selectedId === candidate.id && (
-                                      <span className="absolute top-1 right-1 w-4 h-4 bg-indigo-600 rounded-full flex items-center justify-center">
+                                      <span className="absolute top-1 right-1 w-4 h-4 bg-sky-600 rounded-full flex items-center justify-center">
                                         <Check size={9} className="text-white" strokeWidth={3} />
                                       </span>
                                     )}
@@ -936,7 +936,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                       onClick={() => toggleSelect(i)}
                       className={`relative block w-full rounded-xl overflow-hidden border-2 transition-all ${
                         selected.has(i)
-                          ? "border-indigo-500 shadow-md scale-[1.02]"
+                          ? "border-sky-500 shadow-md scale-[1.02]"
                           : "border-transparent hover:border-gray-300"
                       }`}
                     >
@@ -948,7 +948,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                         loading="lazy"
                       />
                       {selected.has(i) && (
-                        <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-indigo-600 rounded-full flex items-center justify-center shadow">
+                        <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-sky-600 rounded-full flex items-center justify-center shadow">
                           <Check size={11} className="text-white" strokeWidth={3} />
                         </div>
                       )}
@@ -978,7 +978,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                     min="0"
                     value={startMin}
                     onChange={(e) => setStartMin(e.target.value)}
-                    className="w-14 text-center rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="w-14 text-center rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                     placeholder="0"
                   />
                   <span className="text-xs text-gray-400">min</span>
@@ -988,7 +988,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                     max="59"
                     value={startSec}
                     onChange={(e) => setStartSec(e.target.value)}
-                    className="w-14 text-center rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="w-14 text-center rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                     placeholder="0"
                   />
                   <span className="text-xs text-gray-400">sec</span>
@@ -1004,7 +1004,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                     min="0"
                     value={endMin}
                     onChange={(e) => setEndMin(e.target.value)}
-                    className="w-14 text-center rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="w-14 text-center rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                     placeholder="0"
                   />
                   <span className="text-xs text-gray-400">min</span>
@@ -1014,7 +1014,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                     max="59"
                     value={endSec}
                     onChange={(e) => setEndSec(e.target.value)}
-                    className="w-14 text-center rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="w-14 text-center rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
                     placeholder="30"
                   />
                   <span className="text-xs text-gray-400">sec</span>
@@ -1058,7 +1058,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
               type="button"
               onClick={handleExtract}
               disabled={!videoUrl || !rangeValid || loading || uploading}
-              className="w-full py-2.5 px-4 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 active:bg-indigo-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-2.5 px-4 bg-sky-600 text-white text-sm font-medium rounded-xl hover:bg-sky-700 active:bg-sky-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>

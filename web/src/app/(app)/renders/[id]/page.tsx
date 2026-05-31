@@ -117,7 +117,7 @@ export default async function RenderPage({ params }: Props) {
               <span key={item.href} className="flex items-center gap-1">
                 <Link
                   href={item.href}
-                  className="hover:text-indigo-600 transition-colors truncate max-w-[200px]"
+                  className="hover:text-sky-600 transition-colors truncate max-w-[200px]"
                 >
                   {item.label}
                 </Link>

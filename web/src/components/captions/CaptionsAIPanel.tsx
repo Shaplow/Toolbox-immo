@@ -83,7 +83,7 @@ export function CaptionsAIPanel({
 
       {/* Expanded panel */}
       {showAI && (
-        <div className="mb-4 bg-rose-50 border border-violet-100 rounded-xl p-4">
+        <div className="mb-4 bg-rose-50 border border-rose-100 rounded-xl p-4">
           <p className="text-xs font-semibold text-rose-800 mb-3">Correction IA</p>
 
           {/* Model selector */}
@@ -148,7 +148,7 @@ export function CaptionsAIPanel({
               ))}
             </div>
           ) : (
-            <div className="mb-3 rounded-xl border border-violet-100 bg-white px-3 py-2.5">
+            <div className="mb-3 rounded-xl border border-rose-100 bg-white px-3 py-2.5">
               <p className="text-[11px] text-rose-500">
                 Aucun prompt disponible pour le moment. Contactez votre administrateur.
               </p>

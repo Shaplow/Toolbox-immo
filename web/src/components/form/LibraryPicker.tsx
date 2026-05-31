@@ -123,9 +123,9 @@ export function LibraryPickerModal({
                     onSelect({ id: asset.id, url: asset.url, filename: asset.filename });
                     onClose();
                   }}
-                  className={`group relative rounded-xl overflow-hidden border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
+                  className={`group relative rounded-xl overflow-hidden border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-sky-400 ${
                     currentAssetId === asset.id
-                      ? "border-indigo-500 shadow-md shadow-indigo-200/60"
+                      ? "border-sky-500 shadow-md shadow-indigo-200/60"
                       : "border-transparent hover:border-sky-300"
                   }`}
                   onMouseEnter={() => setHoverPlayId(asset.id)}
@@ -188,9 +188,9 @@ export function LibraryPickerModal({
                     onSelect({ id: asset.id, url: asset.url, filename: asset.filename });
                     onClose();
                   }}
-                  className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-sky-400 ${
                     currentAssetId === asset.id
-                      ? "border-indigo-500 bg-sky-50"
+                      ? "border-sky-500 bg-sky-50"
                       : "border-gray-100 bg-gray-50 hover:border-sky-300 hover:bg-sky-50/50"
                   }`}
                 >
@@ -311,7 +311,7 @@ export function LibraryFieldInput({
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
-          className="w-full flex flex-col items-center justify-center h-28 border-2 border-dashed border-gray-200 rounded-xl hover:border-sky-400 hover:bg-sky-50 transition-colors group focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className="w-full flex flex-col items-center justify-center h-28 border-2 border-dashed border-gray-200 rounded-xl hover:border-sky-400 hover:bg-sky-50 transition-colors group focus:outline-none focus:ring-2 focus:ring-sky-400"
         >
           <span className="text-2xl text-gray-300 group-hover:text-sky-500 transition-colors">
             {libraryMeta.type === "video" ? "🎬" : "♪"}

@@ -72,7 +72,7 @@ export function MediaAssetsCompactCard({
       className={`group flex items-center gap-2 bg-white rounded-lg border px-2 py-1.5 transition-colors ${
         !isAssetAccessible ? "opacity-50" : ""
       } ${
-        selectMode && isSelected ? "border-sky-400 ring-1 ring-indigo-200" : "border-gray-200 hover:border-sky-300"
+        selectMode && isSelected ? "border-sky-400 ring-1 ring-sky-200" : "border-gray-200 hover:border-sky-300"
       }`}
       onClick={() => { if (selectMode) toggleSelect(asset.id); }}
     >

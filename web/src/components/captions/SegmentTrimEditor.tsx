@@ -240,7 +240,7 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
                 style={{ left: `${left}%`, width: `${width}%` }}
                 className={`absolute h-full transition-colors ${
                   states[i].included
-                    ? isActive ? "bg-sky-500" : "bg-teal-300 hover:bg-teal-400"
+                    ? isActive ? "bg-sky-500" : "bg-sky-300 hover:bg-sky-400"
                     : "bg-gray-300 hover:bg-gray-400"
                 }`}
               />
@@ -261,7 +261,7 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
               key={i}
               className={`rounded-xl border transition-all ${
                 isActive
-                  ? "border-teal-300 bg-sky-50"
+                  ? "border-sky-300 bg-sky-50"
                   : state.included
                   ? "border-gray-100 bg-gray-50"
                   : "border-gray-100 bg-gray-50 opacity-50"
@@ -272,7 +272,7 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
                 <button
                   type="button"
                   onClick={() => seekTo(seg.start)}
-                  className="text-xs text-gray-400 hover:text-teal-600 transition-colors font-mono shrink-0 flex items-center gap-1"
+                  className="text-xs text-gray-400 hover:text-sky-600 transition-colors font-mono shrink-0 flex items-center gap-1"
                   title="Aller à ce segment"
                 >
                   <Play size={9} />
@@ -296,7 +296,7 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
                             onClick={() => handleWordClick(i, wi)}
                             className={`text-xs px-1 py-0.5 rounded transition-all ${
                               isInRange
-                                ? "bg-sky-100 text-teal-800 hover:bg-teal-200"
+                                ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
                                 : "bg-white text-gray-300 hover:text-gray-500"
                             }`}
                           >
@@ -315,7 +315,7 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
                   type="button"
                   onClick={() => toggleSegment(i)}
                   className={`shrink-0 transition-colors ${
-                    state.included ? "text-teal-600 hover:text-teal-700" : "text-gray-300 hover:text-gray-500"
+                    state.included ? "text-sky-600 hover:text-sky-700" : "text-gray-300 hover:text-gray-500"
                   }`}
                   title={state.included ? "Désactiver" : "Activer"}
                 >

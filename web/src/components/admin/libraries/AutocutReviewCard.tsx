@@ -379,7 +379,7 @@ function TrimPlayer({ trimStart, trimEnd, videoRef, lastWordEnd, fullRush = fals
         )}
           {/* Curseur */}
           <div
-            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white border-2 border-indigo-500 rounded-full shadow-sm"
+            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white border-2 border-sky-500 rounded-full shadow-sm"
             style={{ left: `calc(${progress * 100}% - 7px)` }}
           />
         </div>
@@ -599,7 +599,7 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
                   const scoreColor = take.score >= 70
                     ? (isSelected ? "text-green-200" : "text-green-600")
                     : take.score >= 45
-                    ? (isSelected ? "text-yellow-200" : "text-peach-700")
+                    ? (isSelected ? "text-peach-200" : "text-peach-700")
                     : (isSelected ? "text-red-200" : "text-red-500");
                   return (
                     <button
@@ -612,7 +612,7 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
                       }`}
                     >
                       <span>Prise {take.index}</span>
-                      {isBest && <span className={isSelected ? "text-yellow-300" : "text-yellow-500"}>★</span>}
+                      {isBest && <span className={isSelected ? "text-peach-300" : "text-peach-500"}>★</span>}
                       <span className={scoreColor}>{take.score}%</span>
                     </button>
                   );

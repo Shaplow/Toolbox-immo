@@ -78,7 +78,7 @@ export function MediaAssetsAudioList({
                     }
                   }}
                   onBlur={() => void handleSaveUsage(asset, usageInput)}
-                  className="w-16 text-[10px] border border-sky-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="w-16 text-[10px] border border-sky-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-sky-400"
                 />
               ) : (
                 <button
@@ -111,7 +111,7 @@ export function MediaAssetsAudioList({
                 }}
                 onBlur={() => void handleSaveTags(asset, tagInput.split(",").map((t) => t.trim()).filter(Boolean))}
                 placeholder="tag1, tag2"
-                className="mt-1 w-full text-[10px] border border-sky-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="mt-1 w-full text-[10px] border border-sky-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-sky-400"
               />
             ) : (
               <div

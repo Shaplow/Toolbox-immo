@@ -220,8 +220,8 @@ export default async function ValidatePage({ params }: PageProps) {
           )}
 
           {isRevision && (
-            <section className="bg-amber-50 border border-amber-200 rounded-xl p-5">
-              <p className="text-sm text-amber-800">
+            <section className="bg-peach-50 border border-peach-200 rounded-xl p-5">
+              <p className="text-sm text-peach-800">
                 Vous avez demandé des modifications. Le studio les traite et vous
                 renverra un nouveau lien lorsque la nouvelle version sera prête.
               </p>

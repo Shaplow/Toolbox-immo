@@ -181,7 +181,7 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
       </div>
 
       {prompts.length > 0 && activeCount === 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className="rounded-lg border border-peach-200 bg-peach-50 px-3 py-2 text-xs text-peach-800">
           Aucun prompt n&apos;est actif — ils n&apos;apparaîtront pas dans la modal IA des fiches publication.
           Active au moins un prompt avec l&apos;icône <Eye size={11} className="inline -mt-0.5" />.
         </div>
@@ -245,7 +245,7 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
                       </span>
                     )}
                     {p.recipeKind && p.recipeKind !== "transcript_only" && (
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200">
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
                         {RECIPE_LABELS[p.recipeKind]}
                       </span>
                     )}
@@ -319,7 +319,7 @@ function PromptForm({
   label: string;
 }) {
   return (
-    <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-4 space-y-3">
+    <div className="bg-sky-50/60 border border-sky-100 rounded-xl p-4 space-y-3">
       <FormField label="Nom" required>
         <Input
           value={name}
@@ -340,7 +340,7 @@ function PromptForm({
         <select
           value={recipeKind}
           onChange={(e) => onRecipeKind(e.target.value as RecipeKind)}
-          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white"
         >
           {(Object.keys(RECIPE_LABELS) as RecipeKind[]).map((k) => (
             <option key={k} value={k}>{RECIPE_LABELS[k]}</option>

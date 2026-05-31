@@ -487,7 +487,7 @@ export default function CaptionsApp({
                 className={`flex items-center gap-1.5 px-4 py-1.5 text-xs rounded-lg disabled:opacity-60 transition-colors font-medium ${
                   saveStatus === 'ok' ? 'bg-green-600 text-white' :
                   saveStatus === 'err' ? 'bg-red-500 text-white' :
-                  'border border-violet-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                  'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
                 }`}
                 disabled={saving}
                 onClick={() => void updatePreset()}

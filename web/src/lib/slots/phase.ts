@@ -102,10 +102,10 @@ export const PHASE_LABELS: Record<PublicationPhase, string> = {
  */
 export const PHASE_COLORS: Record<PublicationPhase, string> = {
   planned: "bg-gray-100 text-gray-700 border-gray-200",
-  shooting: "bg-peach-100 text-yellow-800 border-peach-200",
+  shooting: "bg-peach-100 text-peach-800 border-peach-200",
   production: "bg-stone-100 text-stone-700 border-stone-200",
   // amber = orange/jaune "attention requise" admin
-  admin_review: "bg-peach-100 text-amber-800 border-peach-300",
+  admin_review: "bg-peach-100 text-peach-800 border-peach-300",
   cm_review: "bg-sky-100 text-sky-800 border-sky-200",
   publishing: "bg-sky-100 text-sky-800 border-sky-200",
   published: "bg-green-100 text-green-700 border-green-200",

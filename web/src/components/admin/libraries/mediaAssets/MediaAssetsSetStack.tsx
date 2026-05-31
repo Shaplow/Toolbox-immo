@@ -76,9 +76,9 @@ export function MediaAssetsSetStack({ group, onClick, accountFilter }: Props) {
         )}
         {/* État disabled (tous les assets désactivés). */}
         {allDisabled && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-amber-900/40 gap-1 pointer-events-none z-10">
-            <EyeOff size={18} className="text-amber-100" />
-            <span className="text-[10px] text-amber-50 font-medium">Désactivé</span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-peach-900/40 gap-1 pointer-events-none z-10">
+            <EyeOff size={18} className="text-peach-100" />
+            <span className="text-[10px] text-peach-50 font-medium">Désactivé</span>
           </div>
         )}
         {/* Hors accès pour le compte filtré. */}

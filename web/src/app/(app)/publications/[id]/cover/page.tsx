@@ -90,7 +90,7 @@ export default async function PublicationCoverPage({ params }: Props) {
           <nav className="flex items-center gap-1 text-xs text-gray-400 flex-wrap">
             <Link
               href={backHref}
-              className="hover:text-indigo-600 transition-colors truncate max-w-[240px]"
+              className="hover:text-sky-600 transition-colors truncate max-w-[240px]"
             >
               {slotLabel}
             </Link>

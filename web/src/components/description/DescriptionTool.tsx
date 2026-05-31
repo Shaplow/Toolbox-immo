@@ -504,7 +504,7 @@ export function DescriptionTool({
                       onClick={() => setTranscriptionId(t.id)}
                       className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors text-sm ${
                         transcriptionId === t.id
-                          ? "border-teal-300 bg-sky-50 text-sky-900"
+                          ? "border-sky-300 bg-sky-50 text-sky-900"
                           : "border-gray-100 hover:border-gray-200 hover:bg-gray-50 text-gray-700"
                       }`}
                     >

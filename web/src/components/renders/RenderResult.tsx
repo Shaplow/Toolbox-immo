@@ -193,7 +193,7 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
                 type="button"
                 onClick={() => void generateCover()}
                 disabled={coverBusy}
-                className="block w-full text-center py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                className="block w-full text-center py-2.5 bg-sky-600 text-white rounded-lg text-sm font-medium hover:bg-sky-700 transition-colors disabled:opacity-50"
               >
                 {coverBusy ? "Préparation…" : "Générer une cover"}
               </button>

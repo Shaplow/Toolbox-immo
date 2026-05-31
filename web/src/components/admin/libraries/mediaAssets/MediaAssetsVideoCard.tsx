@@ -284,14 +284,14 @@ export function MediaAssetsVideoCard({
               onBlur={() => { void handleSaveCategory(asset, familyInput); setEditingFamilyKey(null); }}
               list="group-list"
               placeholder="Catégorie…"
-              className="w-24 text-[9px] border border-rose-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400"
+              className="w-24 text-[9px] border border-rose-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-rose-400"
             />
           ) : (
             <button
               onClick={() => { setEditingFamilyKey(asset.id); setFamilyInput(asset.category ?? ""); }}
               className={`flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
                 asset.category
-                  ? "bg-rose-50 text-rose-700 border-violet-100 hover:bg-rose-100"
+                  ? "bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100"
                   : "bg-gray-50 text-gray-400 border-dashed border-gray-200 hover:text-rose-500 hover:border-rose-200"
               }`}
               title="Catégorie — cliquer pour modifier"
@@ -314,7 +314,7 @@ export function MediaAssetsVideoCard({
                 onBlur={() => { void handleSaveSetTag(asset, setTagValue); }}
                 list="set-tags-list"
                 placeholder="pack…"
-                className="w-20 text-[9px] border border-pink-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-pink-400"
+                className="w-20 text-[9px] border border-rose-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-pink-400"
               />
               {setTagValue.trim() && setTagValue.trim() !== asset.setTag && (() => {
                 const existingCategories = Array.from(new Set(
@@ -333,7 +333,7 @@ export function MediaAssetsVideoCard({
               onClick={() => { setEditingSetTagId(asset.id); setSetTagValue(asset.setTag ?? ""); }}
               className={`flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
                 asset.setTag
-                  ? "bg-rose-50 text-rose-700 border-pink-100 hover:bg-rose-100"
+                  ? "bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100"
                   : "bg-gray-50 text-gray-400 border-dashed border-gray-200 hover:text-rose-500 hover:border-rose-200"
               }`}
               title="Pack — cliquer pour assigner"
@@ -358,7 +358,7 @@ export function MediaAssetsVideoCard({
               }}
               onBlur={() => { void handleSaveTags(asset, tagInput.split(",").map((t) => t.trim()).filter(Boolean)); }}
               placeholder="intro, outro, plan1…"
-              className="w-full text-xs border border-sky-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              className="w-full text-xs border border-sky-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sky-200"
             />
           </div>
         ) : (
@@ -400,7 +400,7 @@ export function MediaAssetsVideoCard({
                           if (e.key === "Escape") void handleSaveMetadata(asset, field.key, metaInput);
                         }}
                         onBlur={() => void handleSaveMetadata(asset, field.key, metaInput)}
-                        className="w-full min-w-0 text-[10px] border border-sky-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white resize-y"
+                        className="w-full min-w-0 text-[10px] border border-sky-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-sky-400 bg-white resize-y"
                       />
                     ) : (
                       <input
@@ -413,7 +413,7 @@ export function MediaAssetsVideoCard({
                           if (e.key === "Escape") setEditingMetaKey(null);
                         }}
                         onBlur={() => void handleSaveMetadata(asset, field.key, metaInput)}
-                        className="flex-1 min-w-0 text-[10px] border border-sky-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+                        className="flex-1 min-w-0 text-[10px] border border-sky-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-sky-400 bg-white"
                       />
                     )
                   ) : (
@@ -491,7 +491,7 @@ export function MediaAssetsVideoCard({
                 if (e.key === "Escape") { setEditingUsageId(null); setUsageInput(""); }
               }}
               onBlur={() => { void handleSaveUsage(asset, usageInput); }}
-              className="w-14 text-[10px] border border-sky-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              className="w-14 text-[10px] border border-sky-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-sky-400"
               onClick={(e) => e.stopPropagation()}
             />
           ) : accountFilter ? (
@@ -521,7 +521,7 @@ export function MediaAssetsVideoCard({
                 if (e.key === "Escape") { setEditingLastUsedId(null); setLastUsedInput(""); }
               }}
               onBlur={() => { void handleSaveLastUsed(asset, lastUsedInput); }}
-              className="w-full text-[10px] border border-orange-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
+              className="w-full text-[10px] border border-peach-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
               onClick={(e) => e.stopPropagation()}
             />
           ) : accountFilter ? (

@@ -388,7 +388,7 @@ export function ActivityTimeline({
           <button
             onClick={() => void loadMore()}
             disabled={loading}
-            className="text-xs text-sky-600 hover:text-indigo-800 disabled:opacity-50 transition-colors"
+            className="text-xs text-sky-600 hover:text-sky-800 disabled:opacity-50 transition-colors"
           >
             {loading ? "Chargement…" : "Charger plus"}
           </button>

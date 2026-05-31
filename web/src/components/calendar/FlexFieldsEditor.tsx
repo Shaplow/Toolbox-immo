@@ -38,7 +38,7 @@ function KeyEditor({ originalKey, onCommit }: { originalKey: string; onCommit: (
           (e.target as HTMLInputElement).blur();
         }
       }}
-      className="w-32 shrink-0 text-xs border border-gray-200 rounded px-2 py-1 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-300 bg-gray-50"
+      className="w-32 shrink-0 text-xs border border-gray-200 rounded px-2 py-1 text-gray-700 focus:outline-none focus:ring-1 focus:ring-sky-300 bg-gray-50"
     />
   );
 }
@@ -111,7 +111,7 @@ export function FlexFieldsEditor({ schema, values, onChange, readOnly = false }:
             onChange={(e) => updateValue(key, e.target.value)}
             readOnly={readOnly}
             placeholder={`Valeur pour « ${key} »`}
-            className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:bg-gray-50"
+            className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 text-gray-800 focus:outline-none focus:ring-1 focus:ring-sky-300 disabled:bg-gray-50"
           />
 
           {!readOnly && (
@@ -135,13 +135,13 @@ export function FlexFieldsEditor({ schema, values, onChange, readOnly = false }:
             onChange={(e) => setNewKey(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addField(); } }}
             placeholder="Nom du champ…"
-            className="flex-1 text-xs border border-dashed border-gray-300 rounded px-2 py-1 text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+            className="flex-1 text-xs border border-dashed border-gray-300 rounded px-2 py-1 text-gray-700 focus:outline-none focus:ring-1 focus:ring-sky-300"
           />
           <button
             type="button"
             onClick={addField}
             disabled={!newKey.trim()}
-            className="shrink-0 px-2.5 py-1 text-xs text-indigo-600 border border-indigo-200 rounded hover:bg-indigo-50 disabled:opacity-40 flex items-center gap-1"
+            className="shrink-0 px-2.5 py-1 text-xs text-sky-600 border border-sky-200 rounded hover:bg-sky-50 disabled:opacity-40 flex items-center gap-1"
           >
             <Plus size={12} /> Ajouter
           </button>

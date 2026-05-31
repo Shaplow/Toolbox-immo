@@ -233,7 +233,7 @@ export function MediaAssetsRotationView({
                 {g.setTag ? (
                   <>
                     <span className="text-[10px] text-gray-300">›</span>
-                    <span className="flex items-center gap-0.5 text-[10px] font-semibold bg-rose-50 text-rose-800 border border-pink-100 px-1.5 py-0.5 rounded">
+                    <span className="flex items-center gap-0.5 text-[10px] font-semibold bg-rose-50 text-rose-800 border border-rose-100 px-1.5 py-0.5 rounded">
                       <Layers size={9} />{g.setTag}
                     </span>
                   </>

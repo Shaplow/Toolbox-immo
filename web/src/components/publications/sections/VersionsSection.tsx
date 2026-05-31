@@ -290,7 +290,7 @@ function VersionCard({
                 <button
                   type="button"
                   onClick={() => setEditingNotes(true)}
-                  className="text-xs text-indigo-500 hover:text-indigo-700 underline underline-offset-2 shrink-0"
+                  className="text-xs text-sky-500 hover:text-sky-700 underline underline-offset-2 shrink-0"
                 >
                   {version.notes ? "Éditer" : "Ajouter des notes"}
                 </button>

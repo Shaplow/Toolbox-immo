@@ -90,14 +90,14 @@ export function MediaAssetsNextGenPreview({ groupedBySetTag, rotationScope, acco
                 {g.autoRank}
               </span>
               {g.category && (
-                <span className="inline-flex items-center gap-0.5 text-[10.5px] font-medium px-1.5 py-0.5 rounded-md bg-violet-50/80 text-violet-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(139,92,246,0.14)] shrink-0">
+                <span className="inline-flex items-center gap-0.5 text-[10.5px] font-medium px-1.5 py-0.5 rounded-md bg-rose-50/80 text-rose-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(139,92,246,0.14)] shrink-0">
                   <FolderOpen size={9} />
                   {g.category}
                 </span>
               )}
               <span className="text-gray-300 text-[10px]">›</span>
               {g.setTag ? (
-                <span className="inline-flex items-center gap-0.5 text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md bg-pink-50/80 text-pink-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(236,72,153,0.14)] truncate">
+                <span className="inline-flex items-center gap-0.5 text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md bg-rose-50/80 text-rose-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(236,72,153,0.14)] truncate">
                   <Layers size={9} />
                   {g.setTag.startsWith("pack_") ? "pack auto" : g.setTag}
                 </span>

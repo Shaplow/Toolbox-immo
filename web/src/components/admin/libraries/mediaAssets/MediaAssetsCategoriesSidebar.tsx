@@ -113,7 +113,7 @@ const TINT_CFG: Record<Tint, { iconActive: string; bgActive: string; textActive:
   sage:   { iconActive: "text-sage-700",   bgActive: "bg-sage-50/80",   textActive: "text-sage-900",   iconRest: "text-gray-400" },
   peach:  { iconActive: "text-peach-700",  bgActive: "bg-peach-50/80",  textActive: "text-peach-900",  iconRest: "text-peach-600" },
   gray:   { iconActive: "text-gray-700",   bgActive: "bg-gray-100/80",  textActive: "text-gray-900",   iconRest: "text-gray-400" },
-  violet: { iconActive: "text-violet-700", bgActive: "bg-violet-50/80", textActive: "text-violet-900", iconRest: "text-gray-400" },
+  violet: { iconActive: "text-rose-700", bgActive: "bg-rose-50/80", textActive: "text-rose-900", iconRest: "text-gray-400" },
 };
 
 function SidebarItem({

@@ -399,7 +399,7 @@ export function MediaAssetsUploadModal({
           {/* Drop zone */}
           <div
             className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center gap-3 transition-colors ${
-              modalDragOver ? "border-indigo-400 bg-sky-50" : "border-gray-200 bg-gray-50"
+              modalDragOver ? "border-sky-400 bg-sky-50" : "border-gray-200 bg-gray-50"
             }`}
           >
             <Upload size={28} className={modalDragOver ? "text-sky-400" : "text-gray-300"} />
@@ -486,7 +486,7 @@ export function MediaAssetsUploadModal({
                           value={uploadMetadata[f.key] ?? ""}
                           onChange={(e) => setUploadMetadata((prev) => ({ ...prev, [f.key]: e.target.value }))}
                           placeholder={f.type === "number" ? "0" : "…"}
-                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-400"
                         />
                       </div>
                     ))}
@@ -599,9 +599,9 @@ export function MediaAssetsUploadModal({
                 <span>Upload en cours…</span>
                 <span>{modalProgress ?? 0}%</span>
               </div>
-              <div className="h-1.5 bg-indigo-100 rounded-full overflow-hidden">
+              <div className="h-1.5 bg-sky-100 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-indigo-600 transition-all duration-200"
+                  className="h-full bg-sky-600 transition-all duration-200"
                   style={{ width: `${modalProgress ?? 0}%` }}
                 />
               </div>

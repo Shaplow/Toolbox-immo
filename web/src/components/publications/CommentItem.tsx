@@ -4,7 +4,7 @@
  * CommentItem — affiche un commentaire individuel.
  *
  * UX décisions Phase 3 :
- * - Avatar bg-indigo-100 text-indigo-700 → bg-gray-100 text-gray-700
+ * - Avatar bg-sky-100 text-sky-700 → bg-gray-100 text-gray-700
  *   (mono, cohérent avec UserAvatar de AppNav).
  * - Textarea natif d'édition → <Textarea> primitive.
  * - 2 boutons indigo + gray → <Button size="sm" /> primary/secondary.

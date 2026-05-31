@@ -677,7 +677,7 @@ function DescriptionSectionInner({
                 {/* F1.1 — Avertissement si une description existe déjà : la
                      génération va écraser le texte courant. */}
                 {value.trim().length > 0 && (
-                  <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  <p className="mt-2 text-xs text-peach-700 bg-peach-50 border border-peach-200 rounded-lg px-3 py-2">
                     Une légende existe déjà — la génération va l&apos;écraser.
                     Tu pourras toujours annuler en fermant la modale.
                   </p>

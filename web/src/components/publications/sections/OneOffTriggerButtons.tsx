@@ -150,8 +150,8 @@ export function OneOffTriggerButtons({
         )}
       </div>
       {(coverDisabled && showCoverButton) || (captionsDisabled && showCaptionsButton) ? (
-        <p className="text-[10px] text-amber-700 mt-2 inline-flex items-center gap-1">
-          <AlertTriangle size={10} className="text-amber-600 shrink-0" />
+        <p className="text-[10px] text-peach-700 mt-2 inline-flex items-center gap-1">
+          <AlertTriangle size={10} className="text-peach-600 shrink-0" />
           Configurez le preset manquant dans le SlotDetailPanel ou le pattern parent
           pour activer le bouton.
         </p>

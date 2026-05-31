@@ -675,7 +675,7 @@ export function ListingsClient({
           qu'il y a probablement d'autres items plus anciens. Vraie pagination
           déferrée (chantier dédié — modif page.tsx server + URL params). */}
       {!isEmpty && activeEntries.length >= 50 && (
-        <p className="mt-6 text-center text-[11px] text-amber-600">
+        <p className="mt-6 text-center text-[11px] text-peach-600">
           Affichage des 50 plus récents — les éléments plus anciens ne sont pas
           listés ici. Ouvrez la page détail d&apos;un élément pour la traçabilité complète.
         </p>
