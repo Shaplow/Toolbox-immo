@@ -522,6 +522,10 @@ export default async function PublicationPage({ params }: PageProps) {
       activityHasMore={activityHasMore}
       currentUserId={userId}
       currentUserRole={role}
+      aiConfig={{
+        hasClaude: !!process.env.ANTHROPIC_API_KEY,
+        hasGPT: !!process.env.OPENAI_API_KEY,
+      }}
     />
   );
 }

@@ -68,6 +68,11 @@ interface Props {
   slotStatus?: string | null;
   /** Si true, la description auto attend la validation client avant lancement. */
   needsClientValidation?: boolean;
+  /** V2 friction HIGH-3 : avant on hardcodait model="claude". Si Claude n'est pas
+   *  configuré (uniquement GPT), la modal échoue silencieusement. Désormais on
+   *  expose un picker — si une seule API est dispo on passe directement sans
+   *  picker mais la valeur est respectée. */
+  aiConfig?: { hasClaude: boolean; hasGPT: boolean };
   sectionId?: string;
   storageKey?: string;
   defaultOpen?: boolean;
@@ -104,6 +109,7 @@ function DescriptionSectionInner({
   descriptionJobErrorMsg,
   slotStatus,
   needsClientValidation,
+  aiConfig,
   sectionId = "description",
   storageKey,
   defaultOpen = true,
@@ -142,6 +148,15 @@ function DescriptionSectionInner({
   const [promptsError, setPromptsError] = useState<string | null>(null);
   const [selectedPromptId, setSelectedPromptId] = useState("");
   const [aiPersonalization, setAiPersonalization] = useState("");
+  // Default modèle = celui qui est configuré (claude prioritaire, sinon gpt).
+  // Si aucun des deux n'est dispo, on garde claude par défaut pour préserver
+  // le contrat actuel — la route renvoie l'erreur correctement.
+  const defaultModel: "claude" | "gpt" = aiConfig?.hasClaude
+    ? "claude"
+    : aiConfig?.hasGPT
+    ? "gpt"
+    : "claude";
+  const [aiModel, setAiModel] = useState<"claude" | "gpt">(defaultModel);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
 
@@ -234,7 +249,7 @@ function DescriptionSectionInner({
         body: JSON.stringify({
           promptId: selectedPromptId,
           personalization: aiPersonalization.trim() || undefined,
-          model: "claude",
+          model: aiModel,
           slotId: slot.id,
         }),
       });
@@ -245,6 +260,11 @@ function DescriptionSectionInner({
       setValue(data.result);
       setSaved(false);
       setShowAi(false);
+      // V2 friction HIGH-5 : avant on ne refresh pas la fiche, donc le badge
+      // de section et descriptionJobStatus restaient sur l'ancien état tant
+      // qu'on ne re-navigue pas. Désormais on refresh pour récupérer le job
+      // fraîchement créé côté serveur (Pattern récurrent #3 audit V2).
+      router.refresh();
     } catch (err) {
       setGenError(err instanceof Error ? err.message : "Erreur inconnue.");
     } finally {
@@ -643,8 +663,8 @@ function DescriptionSectionInner({
                   Générer avec IA
                 </h2>
                 <p className="text-sm text-gray-600">
-                  Génération rapide via Claude. Pour utiliser une transcription
-                  ou une image de référence, ouvrez la configuration avancée.
+                  Génération rapide. Pour utiliser une image de référence ou un
+                  contexte de transcription externe, ouvrez la configuration avancée.
                 </p>
                 {/* F1.1 — Avertissement si une description existe déjà : la
                      génération va écraser le texte courant. */}
@@ -656,6 +676,39 @@ function DescriptionSectionInner({
                 )}
               </div>
               <div className="px-6 pb-4 space-y-3">
+                {/* V2 friction HIGH-3 : picker modèle si les 2 sont configurés.
+                    Si seul l'un est dispo, on garde aiModel sur celui-là (state
+                    initial) et on n'affiche rien — pas la peine d'un picker à
+                    1 option. */}
+                {aiConfig?.hasClaude && aiConfig?.hasGPT && (
+                  <FormField label="Modèle">
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAiModel("claude")}
+                        className={`flex-1 px-3 py-2 text-sm rounded-md border transition-colors ${
+                          aiModel === "claude"
+                            ? "border-gray-900 bg-gray-900 text-white"
+                            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        Claude
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAiModel("gpt")}
+                        className={`flex-1 px-3 py-2 text-sm rounded-md border transition-colors ${
+                          aiModel === "gpt"
+                            ? "border-gray-900 bg-gray-900 text-white"
+                            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        GPT
+                      </button>
+                    </div>
+                  </FormField>
+                )}
+
                 <FormField label="Prompt" required>
                   {promptsLoading ? (
                     <div className="flex items-center gap-2 text-sm text-gray-400 py-2">

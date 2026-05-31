@@ -296,6 +296,10 @@ export interface PublicationFicheProps {
   activityHasMore: boolean;
   currentUserId: string;
   currentUserRole: UserRole;
+  /** V2 friction HIGH-3 : indique au DescriptionSection inline modal quels
+   *  modèles IA sont configurés (Claude/GPT). Sans ça, la modal hardcoderait
+   *  "claude" et échouerait silencieusement si seul GPT était configuré. */
+  aiConfig?: { hasClaude: boolean; hasGPT: boolean };
 }
 
 export function PublicationFiche({
@@ -327,6 +331,7 @@ export function PublicationFiche({
   activityHasMore,
   currentUserId,
   currentUserRole,
+  aiConfig,
 }: PublicationFicheProps) {
   // F4 — Destructure local des permissions pour garder les call sites
   // historiques inchangés (`{canEditRender}` etc.). Le grouping est dans
@@ -702,6 +707,7 @@ export function PublicationFiche({
                 descriptionJobResult={latestDescriptionJob?.result ?? null}
                 descriptionJobErrorMsg={latestDescriptionJob?.errorMsg ?? null}
                 slotStatus={slot.status}
+                aiConfig={aiConfig}
                 needsClientValidation={clientValidation.needsClientValidation}
               />
             )}
