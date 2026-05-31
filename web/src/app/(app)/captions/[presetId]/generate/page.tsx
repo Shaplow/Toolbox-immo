@@ -128,26 +128,37 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
     returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : undefined;
 
   return (
-    <CaptionsGenerateForm
-      preset={{
-        id: preset.id,
-        name: preset.name,
-        isBuiltin: preset.isBuiltin,
-        config: JSON.parse(preset.config) as Record<string, unknown>,
-      }}
-      initialSrt={initialSrt}
-      initialSubsJson={initialSubsJson}
-      initialSegments={initialSegments}
-      initialPrompts={prompts}
-      promptStorageAvailable={promptStorageAvailable}
-      promptStorageMessage={promptStorageMessage}
-      aiConfig={{
-        hasClaude: !!process.env.ANTHROPIC_API_KEY,
-        hasGpt: !!process.env.OPENAI_API_KEY,
-      }}
-      slotId={slotId ?? null}
-      returnTo={safeReturnTo ?? null}
-    />
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
+        style={{ background: "var(--gradient-page-shell)" }}
+      >
+        <div className="px-6 sm:px-8 pt-6 pb-12">
+          <div className="max-w-4xl mx-auto">
+            <CaptionsGenerateForm
+              preset={{
+                id: preset.id,
+                name: preset.name,
+                isBuiltin: preset.isBuiltin,
+                config: JSON.parse(preset.config) as Record<string, unknown>,
+              }}
+              initialSrt={initialSrt}
+              initialSubsJson={initialSubsJson}
+              initialSegments={initialSegments}
+              initialPrompts={prompts}
+              promptStorageAvailable={promptStorageAvailable}
+              promptStorageMessage={promptStorageMessage}
+              aiConfig={{
+                hasClaude: !!process.env.ANTHROPIC_API_KEY,
+                hasGpt: !!process.env.OPENAI_API_KEY,
+              }}
+              slotId={slotId ?? null}
+              returnTo={safeReturnTo ?? null}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
