@@ -509,11 +509,12 @@ export function PublicationFiche({
 
         <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
         <div className="max-w-6xl mx-auto">
-          {/* Card chaîne de production — twist : pas de titre verbeux mais
-              une petite étiquette "Pipeline" en eyebrow + dot live animé en
-              coin. Card glass légère pour ancrer visuellement la chaîne. */}
-          <div className="relative p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-white/80 to-white/60 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.05)]">
-            <div className="absolute top-3 right-4 flex items-center gap-1.5">
+          {/* Card chaîne de production — twist : mini "Live" pulse en
+              eyebrow au-dessus de la chaîne, plus de titre verbeux. Le
+              eyebrow est positionné dans le flow (pas absolute) pour ne
+              pas être recouvert par la dernière step card. */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-white/80 to-white/60 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.05)]">
+            <div className="flex items-center justify-end gap-1.5 mb-2.5">
               <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
               <span className="text-[9.5px] uppercase tracking-widest font-medium text-gray-400">
                 Live

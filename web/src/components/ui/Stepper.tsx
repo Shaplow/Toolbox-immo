@@ -98,11 +98,12 @@ export function Stepper({
     return steps.findIndex((s) => s.id === active);
   })();
 
-  const resolveStatus = (step: Step, idx: number): StepStatus => {
-    if (idx === activeIdx) return "in_progress";
-    if (activeIdx >= 0 && idx < activeIdx) return "done";
-    return step.status ?? "todo";
-  };
+  // Fix 2026-05-31 : on ne force PLUS "done" pour les steps avant l'actif
+  // ni "in_progress" sur l'actif lui-même. Le status réel passé en prop
+  // décide de l'icône + couleur ; le step actif est juste matérialisé
+  // par un ring/halo séparé (cf. `isActive` plus bas).
+  const resolveStatus = (step: Step): StepStatus => step.status ?? "todo";
+  const isActiveAt = (idx: number) => idx === activeIdx;
 
   if (orientation === "vertical") {
     return (
@@ -110,6 +111,7 @@ export function Stepper({
         steps={steps}
         variant={variant}
         resolveStatus={resolveStatus}
+        isActiveAt={isActiveAt}
         onClickStep={onClickStep}
         className={className}
       />
@@ -120,6 +122,7 @@ export function Stepper({
       steps={steps}
       variant={variant}
       resolveStatus={resolveStatus}
+      isActiveAt={isActiveAt}
       onClickStep={onClickStep}
       className={className}
     />
@@ -152,12 +155,14 @@ function HorizontalStepper({
   steps,
   variant,
   resolveStatus,
+  isActiveAt,
   onClickStep,
   className,
 }: {
   steps: Step[];
   variant: Variant;
-  resolveStatus: (step: Step, idx: number) => StepStatus;
+  resolveStatus: (step: Step) => StepStatus;
+  isActiveAt: (idx: number) => boolean;
   onClickStep?: (step: Step) => void;
   className?: string;
 }) {
@@ -167,6 +172,7 @@ function HorizontalStepper({
       <CompactDots
         steps={steps}
         resolveStatus={resolveStatus}
+        isActiveAt={isActiveAt}
         onClickStep={onClickStep}
         className={className}
       />
@@ -184,7 +190,8 @@ function HorizontalStepper({
     <div className={[wrapperCls, className ?? ""].filter(Boolean).join(" ")}>
       <ol className="flex items-stretch">
         {steps.map((step, i) => {
-          const status = resolveStatus(step, i);
+          const status = resolveStatus(step);
+          const active = isActiveAt(i);
           const isLast = i === steps.length - 1;
           return (
             <li key={step.id} className="flex-1 min-w-0 flex items-stretch">
@@ -192,13 +199,15 @@ function HorizontalStepper({
                 type="button"
                 disabled={!interactive}
                 onClick={() => onClickStep?.(step)}
-                aria-current={status === "in_progress" ? "step" : undefined}
+                aria-current={active ? "step" : undefined}
                 className={[
                   "flex-1 flex flex-col items-start gap-2 p-3 rounded-lg text-left transition-all",
                   "backdrop-blur-[12px] backdrop-saturate-150",
                   STATUS_CARD_CLS[status],
                   interactive ? `cursor-pointer ${STATUS_CARD_HOVER[status]} focus-ring` : "cursor-default",
-                ].join(" ")}
+                  // Active step : ring sky + halo glow, indépendant du status réel
+                  active && "ring-2 ring-sky-300/60 ring-offset-2 ring-offset-transparent shadow-[0_4px_20px_-4px_rgba(77,150,191,0.32)]",
+                ].filter(Boolean).join(" ")}
               >
                 <div className="flex items-center gap-2 w-full">
                   <span
@@ -210,7 +219,7 @@ function HorizontalStepper({
                   >
                     <StatusIcon status={status} fallback={step.icon} size={12} />
                   </span>
-                  {status === "in_progress" && (
+                  {active && (
                     <span
                       className="shrink-0 h-1.5 w-1.5 rounded-full bg-sky-500 animate-pulse shadow-[0_0_0_3px_rgba(169,209,230,0.4)]"
                       aria-hidden
@@ -258,11 +267,13 @@ function CardConnector({ status }: { status: StepStatus }) {
 function CompactDots({
   steps,
   resolveStatus,
+  isActiveAt,
   onClickStep,
   className,
 }: {
   steps: Step[];
-  resolveStatus: (step: Step, idx: number) => StepStatus;
+  resolveStatus: (step: Step) => StepStatus;
+  isActiveAt: (idx: number) => boolean;
   onClickStep?: (step: Step) => void;
   className?: string;
 }) {
@@ -270,7 +281,8 @@ function CompactDots({
   return (
     <ol className={["flex items-center gap-2", className ?? ""].filter(Boolean).join(" ")}>
       {steps.map((step, i) => {
-        const status = resolveStatus(step, i);
+        const status = resolveStatus(step);
+        const active = isActiveAt(i);
         const isLast = i === steps.length - 1;
         return (
           <li key={step.id} className="flex items-center gap-2">
@@ -279,7 +291,7 @@ function CompactDots({
               disabled={!interactive}
               onClick={() => onClickStep?.(step)}
               aria-label={typeof step.label === "string" ? step.label : undefined}
-              aria-current={status === "in_progress" ? "step" : undefined}
+              aria-current={active ? "step" : undefined}
               className={[
                 "shrink-0 inline-flex h-5 w-5 items-center justify-center rounded-full backdrop-blur-[8px] transition-all",
                 STATUS_DOT[status],
@@ -308,12 +320,14 @@ function VerticalStepper({
   steps,
   variant,
   resolveStatus,
+  isActiveAt,
   onClickStep,
   className,
 }: {
   steps: Step[];
   variant: Variant;
-  resolveStatus: (step: Step, idx: number) => StepStatus;
+  resolveStatus: (step: Step) => StepStatus;
+  isActiveAt: (idx: number) => boolean;
   onClickStep?: (step: Step) => void;
   className?: string;
 }) {
@@ -329,7 +343,8 @@ function VerticalStepper({
     <div className={[containerCls, className ?? ""].filter(Boolean).join(" ")}>
       <ol className="space-y-1">
         {steps.map((step, i) => {
-          const status = resolveStatus(step, i);
+          const status = resolveStatus(step);
+          const active = isActiveAt(i);
           const isLast = i === steps.length - 1;
           const interactive = !!onClickStep;
           return (
@@ -350,8 +365,9 @@ function VerticalStepper({
                   STATUS_DOT[status],
                   STATUS_DOT_RING[status],
                   interactive ? "cursor-pointer hover:scale-105 focus-ring" : "cursor-default",
-                ].join(" ")}
-                aria-current={status === "in_progress" ? "step" : undefined}
+                  active && "ring-2 ring-sky-300/60 ring-offset-1 ring-offset-white",
+                ].filter(Boolean).join(" ")}
+                aria-current={active ? "step" : undefined}
               >
                 <StatusIcon status={status} fallback={step.icon} size={dotIconSize} />
               </button>
