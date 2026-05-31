@@ -14,13 +14,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ImageIcon, ExternalLink, AlertTriangle, Loader2, Upload } from "lucide-react";
+import { ImageIcon, ExternalLink, AlertTriangle, Loader2, Upload, RefreshCw } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 import { Section } from "@/components/ui/molecules/Section";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Alert } from "@/components/ui/Alert";
 import { StatusBadge } from "@/components/ui/molecules/StatusBadge";
+import { useConfirm } from "@/components/ui/useConfirm";
 import { POST_VALIDATION_STATUSES } from "@/lib/publications/constants";
 
 interface Props {
@@ -74,7 +75,45 @@ export function CoverSection({
   collapsible = false,
 }: Props) {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [uploading, setUploading] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+
+  /**
+   * V6.4.2 — Refaire un tirage : permet à l'admin de relancer une extraction
+   * de frames depuis la fiche même quand le pack est READY/SELECTED. Avant,
+   * canTriggerCover renvoyait toujours `enabled: false` dans ces états — pas
+   * de recovery path depuis la fiche. POST /api/cover-packs/[id]/regenerate
+   * réutilise le pack existant (préserve la FK render/version) et relance
+   * l'extraction.
+   */
+  async function handleRegeneratePack() {
+    if (!coverPack || regenerating) return;
+    const ok = await confirm({
+      title: "Refaire un tirage de cover ?",
+      description:
+        "Les frames actuelles seront supprimées et un nouveau tirage sera lancé. La cover sélectionnée sera perdue.",
+      confirmLabel: "Refaire le tirage",
+      cancelLabel: "Annuler",
+    });
+    if (!ok) return;
+    setRegenerating(true);
+    try {
+      const res = await fetch(`/api/cover-packs/${coverPack.id}/regenerate`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? `Erreur ${res.status}`);
+      }
+      toast.success("Nouveau tirage lancé — les frames apparaîtront dans quelques secondes.");
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur regen");
+    } finally {
+      setRegenerating(false);
+    }
+  }
 
   // Si pas de pattern ou que le pattern indique que la cover n'est pas nécessaire, on masque la section
   if (!pattern || pattern.coverMode === "none") return null;
@@ -315,13 +354,27 @@ export function CoverSection({
           />
 
           {canEdit && (
-            <Link
-              href={coverToolHref}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors font-medium"
-            >
-              <ExternalLink size={14} />
-              Modifier la cover
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href={coverToolHref}
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+              >
+                <ExternalLink size={14} />
+                Modifier la cover
+              </Link>
+              {/* V6.4.2 — recovery path depuis la fiche : régénérer le pack
+                  sans avoir à passer par admin/jobs pour delete manuel. */}
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={RefreshCw}
+                onClick={() => void handleRegeneratePack()}
+                loading={regenerating}
+                title="Supprimer les frames actuelles et relancer une extraction"
+              >
+                Refaire un tirage
+              </Button>
+            </div>
           )}
         </div>
       )}
@@ -330,6 +383,7 @@ export function CoverSection({
           du pack on distingue : pas encore prêt (QUEUED/PROCESSING) vs prêt
           à choisir (READY). Le bouton "Continuer" n'a de sens qu'en READY,
           sinon il mène sur un tool sans frames extraites. */}
+      {confirmDialog}
       {coverPack && !coverPack.finalCoverUrl && coverPack.status !== "FAILED" && (
         <div className="space-y-3">
           {coverPack.status === "READY" ? (
@@ -338,11 +392,25 @@ export function CoverSection({
                 Les frames sont prêtes — choisis la meilleure cover dans l&apos;outil dédié.
               </p>
               {canEdit && (
-                <Link href={coverToolHref}>
-                  <Button variant="primary" size="sm" icon={ExternalLink}>
-                    Continuer la sélection
+                <div className="flex items-center gap-2">
+                  <Link href={coverToolHref}>
+                    <Button variant="primary" size="sm" icon={ExternalLink}>
+                      Continuer la sélection
+                    </Button>
+                  </Link>
+                  {/* V6.4.2 — possibilité de re-tirer si les frames ne plaisent
+                      pas, sans avoir à passer par /tools/cover externe. */}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={RefreshCw}
+                    onClick={() => void handleRegeneratePack()}
+                    loading={regenerating}
+                    title="Refaire un tirage avec de nouvelles frames"
+                  >
+                    Refaire un tirage
                   </Button>
-                </Link>
+                </div>
               )}
             </>
           ) : (
