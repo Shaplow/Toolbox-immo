@@ -73,6 +73,12 @@ interface Props {
    *  expose un picker — si une seule API est dispo on passe directement sans
    *  picker mais la valeur est respectée. */
   aiConfig?: { hasClaude: boolean; hasGPT: boolean };
+  /** V3 friction MED-3 : status du render et présence d'une version courante.
+   *  Avant on passait null en dur à canGenerateDescription — pas de bug visible
+   *  aujourd'hui (la fonction ne lit pas ces champs), mais piège latent dès
+   *  qu'on enrichira la logique. */
+  renderStatus?: string | null;
+  hasCurrentVersion?: boolean;
   sectionId?: string;
   storageKey?: string;
   defaultOpen?: boolean;
@@ -110,6 +116,8 @@ function DescriptionSectionInner({
   slotStatus,
   needsClientValidation,
   aiConfig,
+  renderStatus,
+  hasCurrentVersion,
   sectionId = "description",
   storageKey,
   defaultOpen = true,
@@ -367,8 +375,8 @@ function DescriptionSectionInner({
   const verdict = canGenerateDescription({
     pattern,
     resolved: null,
-    render: null,
-    currentVersion: null,
+    render: renderStatus ? { status: renderStatus } : null,
+    currentVersion: hasCurrentVersion ? { id: slot.id } : null,
     coverPack: null,
     latestCaptionJob: null,
     isAdmin: canEdit,

@@ -708,6 +708,8 @@ export function PublicationFiche({
                 descriptionJobErrorMsg={latestDescriptionJob?.errorMsg ?? null}
                 slotStatus={slot.status}
                 aiConfig={aiConfig}
+                renderStatus={render?.status ?? null}
+                hasCurrentVersion={!!currentVersionId}
                 needsClientValidation={clientValidation.needsClientValidation}
               />
             )}
