@@ -19,6 +19,7 @@ import { type PublicationSlot } from "@/types/calendar";
 import { resolveSlotOwner } from "@/lib/slots/statusLabels";
 import { getPublicationPhase, PHASE_LABELS } from "@/lib/slots/phase";
 import type { UserRole } from "@/types/roles";
+import { SOURCE_LABELS_FR } from "@/lib/ui/domainLabels";
 
 interface SlotCardProps {
   slot: PublicationSlot;
@@ -140,7 +141,14 @@ export function SlotCard({ slot, onClick, onOpenDrawer, currentUserRole, current
         {title}
       </p>
 
-      {/* Ligne 3 : handle + avatars */}
+      {/* Ligne 3 : mode du pattern (FR, discret) — visible que si pattern lié */}
+      {slot.pattern?.source && SOURCE_LABELS_FR[slot.pattern.source] && (
+        <p className="mt-0.5 text-[9.5px] uppercase tracking-widest text-gray-400 truncate">
+          {SOURCE_LABELS_FR[slot.pattern.source]}
+        </p>
+      )}
+
+      {/* Ligne 4 : handle + avatars */}
       <div className="mt-2.5 flex items-center justify-between gap-1.5 min-h-[16px]">
         <span className="text-[11px] text-gray-500 truncate">
           @{slot.account.handle}

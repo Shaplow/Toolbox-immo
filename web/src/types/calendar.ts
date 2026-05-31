@@ -68,6 +68,8 @@ export interface PublicationSlot {
   currentVersionId?: string | null;
   pattern?: {
     label: string;
+    /** Phase 2.x — source du pattern (auto_template | manual_rushes | external_upload) */
+    source?: string;
     // W2 — config validation client héritée du pattern (peut être null si pas chargé)
     needsClientValidation?: boolean;
     allowsClientRevision?: boolean;
