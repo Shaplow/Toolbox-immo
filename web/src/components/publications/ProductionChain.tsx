@@ -95,10 +95,15 @@ export function ProductionChain({ steps, viewerRole }: ProductionChainProps) {
   );
 }
 
+// Friction MED #14 du audit UX : avant, `waiting` (étape future, upstream
+// pas fini) et `todo` (action attendue MAINTENANT) étaient rendus à
+// l'identique avec le label "En attente". Désormais les labels disent
+// clairement la différence — le Stepper mappe les 2 sur le même état
+// visuel "todo" mais la description précise le contexte.
 const STEP_STATUS_LABELS: Record<StepStatus, string> = {
-  todo: "À faire",
-  waiting: "En attente",
-  queued: "En attente",
+  todo: "Action attendue",
+  waiting: "En attente de l'étape précédente",
+  queued: "En file d'attente",
   processing: "En cours",
   done: "Fait",
   failed: "Échec",
