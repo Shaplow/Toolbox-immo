@@ -109,19 +109,29 @@ export function DescriptionTool({
   initialJobs,
   isAdmin,
   aiConfig,
+  slotId: slotIdProp = null,
+  returnTo: returnToProp = null,
 }: {
   initialPrompts: DescriptionPromptRow[];
   initialJobs: DescriptionJobRow[];
   isAdmin: boolean;
   aiConfig: { hasClaude: boolean; hasGPT: boolean };
+  /** V3 friction MED-4 : slotId reçu en prop explicite depuis la page
+   *  server (au lieu de useSearchParams). Évite la dépendance implicite à
+   *  l'URL et permet de tester / réutiliser le composant hors contexte. */
+  slotId?: string | null;
+  /** V3 friction MED-4 : returnTo déjà validé côté server. */
+  returnTo?: string | null;
 }) {
   const searchParams = useSearchParams();
-  const slotIdFromUrl = searchParams?.get("slotId") ?? null;
+  // V3 MED-4 : prop prioritaire, fallback URL pour rétrocompatibilité.
+  const slotIdFromUrl = slotIdProp ?? searchParams?.get("slotId") ?? null;
   // returnTo : URL relative à laquelle le bouton "← Retour" doit
   // ramener l'utilisateur. Construit par DescriptionSection quand
   // on entre depuis la fiche publication, sinon absent.
   // V3 friction MED-1 : helper isSafeRelativePath centralisé dans lib/safeUrl.
-  const returnToRaw = searchParams?.get("returnTo") ?? null;
+  // V3 MED-4 : prop prioritaire (déjà validée côté server), fallback URL.
+  const returnToRaw = returnToProp ?? searchParams?.get("returnTo") ?? null;
   const returnTo = returnToRaw && isSafeRelativePath(returnToRaw) ? returnToRaw : null;
 
   // Input

@@ -5,13 +5,17 @@ import { hasTool } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
+import { isSafeRelativePath } from "@/lib/safeUrl";
 import { DescriptionTool, type DescriptionPromptRow, type DescriptionJobRow } from "@/components/description/DescriptionTool";
 import { FileText, Info, ChevronLeft } from "lucide-react";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { RefreshButton } from "@/components/ui/RefreshButton";
 
 interface PageProps {
-  searchParams: Promise<{ slotId?: string }>;
+  // V3 friction MED-4 : on lit slotId + returnTo côté server pour valider
+  // l'accès et le format avant de passer au client (au lieu que le client
+  // re-lise les searchParams sans validation).
+  searchParams: Promise<{ slotId?: string; returnTo?: string }>;
 }
 
 export default async function DescriptionPage({ searchParams }: PageProps) {
@@ -29,7 +33,7 @@ export default async function DescriptionPage({ searchParams }: PageProps) {
   // Phase nav 2026-05-28 : si on arrive avec ?slotId=, on charge le contexte
   // pour afficher un banner explicite "Vous générez une description pour..."
   // — pattern symétrique à /publications/[id]/cover et /captions/[id]/generate.
-  const { slotId } = await searchParams;
+  const { slotId, returnTo: rawReturnTo } = await searchParams;
   const role = toUserRole(userContext.effectiveUser.role);
   const slotContext = slotId
     ? await prisma.publicationSlot.findUnique({
@@ -46,9 +50,16 @@ export default async function DescriptionPage({ searchParams }: PageProps) {
     : null;
   // Garde access : on n'expose le contexte que si l'user a vraiment accès au
   // slot (anti-énumération via /descriptions?slotId=X).
-  const slotForBanner =
-    slotContext && canUserAccessSlot(slotContext, role, userId)
-      ? { title: slotContext.title, handle: slotContext.account.handle }
+  const slotIsAccessible = !!(slotContext && canUserAccessSlot(slotContext, role, userId));
+  const slotForBanner = slotIsAccessible && slotContext
+    ? { title: slotContext.title, handle: slotContext.account.handle }
+    : null;
+  // returnTo validé côté server (anti open-redirect) ; fallback fiche.
+  const safeReturnTo =
+    rawReturnTo && isSafeRelativePath(rawReturnTo)
+      ? rawReturnTo
+      : slotIsAccessible
+      ? `/publications/${slotId}`
       : null;
 
   const aiConfig = {
@@ -95,11 +106,12 @@ export default async function DescriptionPage({ searchParams }: PageProps) {
   return (
     <div>
       {slotForBanner && slotId && (
-        <div className="bg-indigo-50 border-b border-indigo-100 px-4 py-3">
+        // V3 LOW-1 : palette Coastal Studio (peach) au lieu de indigo legacy.
+        <div className="bg-peach-50 border-b border-peach-100 px-4 py-3">
           <div className="max-w-3xl mx-auto flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 min-w-0 text-sm">
-              <Info size={14} className="text-indigo-500 shrink-0" />
-              <span className="text-indigo-900">
+              <Info size={14} className="text-peach-700 shrink-0" />
+              <span className="text-peach-900">
                 Vous générez une légende pour{" "}
                 <span className="font-semibold">
                   {slotForBanner.title ?? `@${slotForBanner.handle}`}
@@ -107,8 +119,8 @@ export default async function DescriptionPage({ searchParams }: PageProps) {
               </span>
             </div>
             <Link
-              href={`/publications/${slotId}`}
-              className="inline-flex items-center gap-1 text-xs font-medium text-indigo-700 hover:text-indigo-900 transition-colors shrink-0"
+              href={safeReturnTo ?? `/publications/${slotId}`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-peach-700 hover:text-peach-900 transition-colors shrink-0"
             >
               <ChevronLeft size={12} />
               Retour à la publication
@@ -119,7 +131,7 @@ export default async function DescriptionPage({ searchParams }: PageProps) {
       <div className="p-8">
         <ToolPageHeader
           icon={FileText}
-          iconColor="amber"
+          iconTint="peach"
           title="Générateur de descriptions"
           subtitle={
             slotForBanner
@@ -134,6 +146,8 @@ export default async function DescriptionPage({ searchParams }: PageProps) {
           initialJobs={initialJobs}
           isAdmin={isAdmin}
           aiConfig={aiConfig}
+          slotId={slotIsAccessible ? slotId : null}
+          returnTo={safeReturnTo}
         />
       </div>
     </div>
