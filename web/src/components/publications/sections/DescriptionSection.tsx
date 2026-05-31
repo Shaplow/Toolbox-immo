@@ -407,10 +407,10 @@ function DescriptionSectionInner({
       <Link
         href={descriptionToolHref}
         className="inline-flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
-        title="Configuration avancée (transcription, image de référence, modèle)"
+        title="Mode avancé : transcription externe, image de référence, choix de modèle"
       >
         <ExternalLink size={12} />
-        Avancé
+        Mode avancé
       </Link>
     </>
   );
@@ -756,6 +756,20 @@ function DescriptionSectionInner({
                 </FormField>
 
                 {genError && <p className="text-xs text-danger-700">{genError}</p>}
+
+                {/* V5.C.1 — Lien actionnable vers le mode avancé. Avant la
+                    distinction modal/Avancé n'était mentionnée que dans le
+                    sous-titre. Maintenant l'user peut basculer en 1 clic vers
+                    /descriptions pour utiliser une image de référence ou une
+                    transcription externe. */}
+                <Link
+                  href={descriptionToolHref}
+                  className="inline-flex items-center gap-1.5 text-[11px] text-gray-500 hover:text-gray-900 transition-colors"
+                >
+                  <ExternalLink size={11} />
+                  Besoin d&apos;image de référence ou transcription externe ?
+                  Passer en mode avancé
+                </Link>
               </div>
               <div className="flex items-center justify-end gap-2 px-6 py-4 bg-gray-50 border-t border-gray-100">
                 <Button
