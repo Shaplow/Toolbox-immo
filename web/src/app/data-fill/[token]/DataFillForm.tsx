@@ -124,10 +124,10 @@ export function DataFillForm({ token, fieldsSchema }: Props) {
           {success.count} fiche{success.count !== 1 ? "s" : ""} envoyée{success.count !== 1 ? "s" : ""}
         </h2>
         <p className="mt-2 text-[13px] text-sage-800/80">
-          Merci ! L'équipe va les retrouver dans son admin.
+          Merci&nbsp;! L&apos;équipe va les retrouver dans son admin.
         </p>
         <Button variant="ghost" onClick={() => setSuccess(null)} className="mt-4">
-          Ajouter d'autres fiches
+          Ajouter d&apos;autres fiches
         </Button>
       </div>
     );
@@ -137,9 +137,9 @@ export function DataFillForm({ token, fieldsSchema }: Props) {
     return (
       <div className="rounded-2xl bg-white/55 backdrop-blur-[8px] p-6 text-center shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
         <p className="text-[13px] text-gray-600">
-          Cette bibliothèque n'a pas encore de schéma de champs défini.
+          Cette bibliothèque n&apos;a pas encore de schéma de champs défini.
           <br />
-          Demande à l'équipe qu'elle configure les champs avant de remplir.
+          Demande à l&apos;équipe qu&apos;elle configure les champs avant de remplir.
         </p>
       </div>
     );

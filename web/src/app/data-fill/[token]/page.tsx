@@ -46,7 +46,7 @@ export default async function DataFillPage({ params }: PageProps) {
             <p className="mt-2 text-[13px] text-gray-500 max-w-md mx-auto">{lib.description}</p>
           )}
           <p className="mt-4 text-[13px] text-gray-600">
-            Ajoute ci-dessous les fiches à intégrer dans cette bibliothèque. Tu peux en saisir plusieurs d'un coup.
+            Ajoute ci-dessous les fiches à intégrer dans cette bibliothèque. Tu peux en saisir plusieurs d&apos;un coup.
           </p>
         </div>
 

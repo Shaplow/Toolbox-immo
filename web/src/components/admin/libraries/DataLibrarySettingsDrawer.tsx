@@ -413,10 +413,10 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
             </h3>
           </div>
           <p className="text-[11px] text-gray-500 leading-relaxed">
-            Génère un lien que tu peux partager (mail, Slack…) à quelqu'un d'externe.
-            Cette personne pourra ajouter des fiches sans avoir besoin d'un compte. Les fiches
+            Génère un lien que tu peux partager (mail, Slack…) à quelqu&apos;un d&apos;externe.
+            Cette personne pourra ajouter des fiches sans avoir besoin d&apos;un compte. Les fiches
             arrivent direct dans la bibliothèque — tu peux les supprimer si besoin.
-            <br />Ne diffuse le lien qu'aux personnes de confiance. Tu peux le révoquer à tout moment.
+            <br />Ne diffuse le lien qu&apos;aux personnes de confiance. Tu peux le révoquer à tout moment.
           </p>
 
           {publicToken ? (
