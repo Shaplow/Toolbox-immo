@@ -306,6 +306,30 @@ function DescriptionSectionInner({
   const jobInFlight =
     descriptionJobStatus === "QUEUED" || descriptionJobStatus === "PROCESSING";
   const jobFailed = descriptionJobStatus === "FAILED";
+
+  // V8.11 — Si une transcription tourne en parallèle, on est dans un retry
+  // de la chaîne (la description sera re-déclenchée à la fin). Plutôt que
+  // d'afficher un FAILED trompeur avec un errorMsg technique ("R2 non
+  // configuré"), on bascule sur "Génération en cours" pour ne pas alarmer.
+  const transcriptionStillRunning =
+    transcriptionJobStatus === "QUEUED" ||
+    transcriptionJobStatus === "PROCESSING";
+  const showJobFailed = jobFailed && !transcriptionStillRunning;
+  const showJobInFlight = jobInFlight || (jobFailed && transcriptionStillRunning);
+
+  // V8.11 — Wording user-friendly pour les errorMsg jargon technique.
+  // L'admin peut toujours voir le détail brut via le titre "Détails techniques".
+  function friendlyErrorMessage(raw: string | null | undefined): string {
+    if (!raw) return "Une erreur est survenue pendant la génération.";
+    const technicalPatterns = [
+      /R2/i, /RunPod/i, /configur[aé]/i, /environment variable/i,
+      /CAPTIONS_API_URL/i, /port/i, /5xx/i, /fetch failed/i, /ECONNREFUSED/i,
+    ];
+    if (technicalPatterns.some((re) => re.test(raw))) {
+      return "Le service de génération est temporairement indisponible. Tu peux relancer ou écrire la légende manuellement.";
+    }
+    return raw;
+  }
   // POST_VALIDATION_STATUSES (lib/publications/constants) couvre :
   // SCHEDULED / PUBLISHED / CANCELLED / ARCHIVED / DONE
   const waitingForClient =
@@ -487,18 +511,23 @@ function DescriptionSectionInner({
                 )}
               </>
             )}
-            {!waitingForClient && !pendingJobResult && jobInFlight && (
+            {!waitingForClient && !pendingJobResult && showJobInFlight && (
               <Alert variant="glass" icon={Loader2}>
                 Génération en cours…
               </Alert>
             )}
-            {!waitingForClient && !pendingJobResult && jobFailed && (
+            {!waitingForClient && !pendingJobResult && showJobFailed && (
               <>
                 <Alert variant="info" icon={AlertCircle}>
                   <div className="space-y-1">
                     <p className="font-medium">Échec de la génération automatique.</p>
                     {descriptionJobErrorMsg && (
-                      <p className="text-[12px] opacity-90">{descriptionJobErrorMsg}</p>
+                      <p
+                        className="text-[12px] opacity-90"
+                        title={descriptionJobErrorMsg}
+                      >
+                        {friendlyErrorMessage(descriptionJobErrorMsg)}
+                      </p>
                     )}
                   </div>
                 </Alert>
