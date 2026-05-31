@@ -15,6 +15,7 @@ import type {
   DescriptionJob,
 } from "@prisma/client";
 import type { UserRole } from "@/types/roles";
+import { POST_VALIDATION_STATUSES } from "./constants";
 
 // ---------------------------------------------------------------------------
 // Types publics
@@ -92,17 +93,6 @@ export interface PublicationStep {
 // ---------------------------------------------------------------------------
 
 const BLOCKED_SLOT_STATUSES = new Set(["CANCELLED", "REJECTED", "ARCHIVED"]);
-
-// Slot status après validation client (magic link OU bypass admin) : la
-// description et la cover peuvent enfin se lancer. SCHEDULED = passe-droit
-// post-approve. PUBLISHED/CANCELLED/ARCHIVED = terminé. Utilisé par les step
-// description/cover pour ne pas afficher "À faire" trompeur pre-validation.
-const POST_VALIDATION_STATUSES = new Set([
-  "SCHEDULED",
-  "PUBLISHED",
-  "CANCELLED",
-  "ARCHIVED",
-]);
 
 // ---------------------------------------------------------------------------
 // Mappers de statut job → StepStatus

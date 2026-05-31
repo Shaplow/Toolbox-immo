@@ -28,6 +28,7 @@ import { FormField } from "@/components/ui/FormField";
 import { Textarea } from "@/components/ui/Textarea";
 import { Alert } from "@/components/ui/Alert";
 import { toast } from "@/components/ui/Toast";
+import { POST_VALIDATION_STATUSES } from "@/lib/publications/constants";
 import { canGenerateDescription } from "@/lib/publications/actions";
 
 interface Props {
@@ -260,13 +261,8 @@ function DescriptionSectionInner({
   const jobInFlight =
     descriptionJobStatus === "QUEUED" || descriptionJobStatus === "PROCESSING";
   const jobFailed = descriptionJobStatus === "FAILED";
-  // SCHEDULED/PUBLISHED/CANCELLED/ARCHIVED/CLIENT_REVISION → post-validation côté machine
-  const POST_VALIDATION_STATUSES = new Set([
-    "SCHEDULED",
-    "PUBLISHED",
-    "CANCELLED",
-    "ARCHIVED",
-  ]);
+  // POST_VALIDATION_STATUSES (lib/publications/constants) couvre :
+  // SCHEDULED / PUBLISHED / CANCELLED / ARCHIVED / DONE
   const waitingForClient =
     isAutoMode &&
     needsClientValidation === true &&

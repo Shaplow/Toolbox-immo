@@ -26,6 +26,7 @@ import { prisma } from "@/lib/prisma";
 import { notifyUser } from "@/lib/sseStore";
 import { getFromR2, r2Configured } from "@/lib/r2";
 import { logActivity } from "@/lib/services/slot/activity";
+import { POST_VALIDATION_STATUSES } from "@/lib/publications/constants";
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
@@ -245,7 +246,6 @@ export async function triggerAutoDescriptionForTranscription(
     slot.needsClientValidationOverride ??
     slot.pattern?.needsClientValidation ??
     false;
-  const POST_VALIDATION_STATUSES = new Set(["SCHEDULED", "PUBLISHED", "DONE"]);
   if (needsValidation && !POST_VALIDATION_STATUSES.has(slot.status)) {
     logSkip(transcriptionJobId, "awaiting_client_validation", {
       slotId,

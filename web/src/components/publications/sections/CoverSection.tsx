@@ -20,6 +20,7 @@ import { Section } from "@/components/ui/molecules/Section";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Alert } from "@/components/ui/Alert";
+import { POST_VALIDATION_STATUSES } from "@/lib/publications/constants";
 
 interface Props {
   slot: { id: string };
@@ -108,12 +109,6 @@ export function CoverSection({
   // apparaître avant. Bypass admin via /validate manuel OK (slot passe
   // SCHEDULED). monteurUpload n'est pas concerné (le monteur uploade pendant
   // sa phase, avant validation).
-  const POST_VALIDATION_STATUSES = new Set([
-    "SCHEDULED",
-    "PUBLISHED",
-    "CANCELLED",
-    "ARCHIVED",
-  ]);
   const waitingForClient =
     needsClientValidation === true &&
     mode !== "monteurUpload" &&

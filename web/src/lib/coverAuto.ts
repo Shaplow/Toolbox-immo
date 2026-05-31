@@ -8,6 +8,7 @@ import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import { resolveSlotExcludeZones, resolveZone } from "@/lib/triggerAutoCaptionFromTranscription";
 import { logActivity, type ActivityType } from "@/lib/services/slot/activity";
 import { notifyUser } from "@/lib/sseStore";
+import { POST_VALIDATION_STATUSES } from "@/lib/publications/constants";
 import type { ListingData } from "@/types/listing";
 import type { AnyBlock, CoverAutoConfig, ImageBlock, SchemaField, TemplateJSON, TextBlock, VideoBlock, VideoSequenceSlot } from "@/types/template";
 
@@ -627,7 +628,6 @@ export async function triggerAutoCoverPackForRender(
     renderSlot?.publicationSlot?.needsClientValidationOverride ??
     slotPattern.needsClientValidation ??
     false;
-  const POST_VALIDATION_STATUSES = new Set(["SCHEDULED", "PUBLISHED", "DONE"]);
   if (needsValidation && slotStatus && !POST_VALIDATION_STATUSES.has(slotStatus)) {
     console.info(
       `[autoCover] skip render=${renderId} slot=${slotId} reason=awaiting_client_validation status=${slotStatus}`,
