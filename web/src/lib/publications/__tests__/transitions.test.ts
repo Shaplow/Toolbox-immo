@@ -259,7 +259,10 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
     ).toBe("READY_FOR_CM");
   });
 
-  it("retourne READY_FOR_CM si captions FAILED (pipeline KO, le CM gère manuellement)", () => {
+  it("retourne IN_PROGRESS si captions FAILED (admin doit relancer ou débloquer)", () => {
+    // Avant 2026-05-31 : on transitionnait en READY_FOR_CM, le CM pouvait
+    // publier sans sous-titres alors qu'ils étaient exigés. Désormais on
+    // reste en IN_PROGRESS jusqu'à action explicite admin.
     expect(
       computeAutoTransitionTargetPure({
         status: "TO_DO",
@@ -267,7 +270,7 @@ describe("computeAutoTransitionTargetPure — règles auto_template", () => {
         render: { status: "DONE" },
         latestCaptionJobStatus: "FAILED",
       }),
-    ).toBe("READY_FOR_CM");
+    ).toBe("IN_PROGRESS");
   });
 });
 

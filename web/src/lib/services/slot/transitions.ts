@@ -286,8 +286,16 @@ export function computeAutoTransitionTargetPure(
     } else if (captionStatus === "QUEUED" || captionStatus === "PROCESSING") {
       // Attente active du job captions.
       target = "IN_PROGRESS" as SlotStatus;
+    } else if (captionStatus === "FAILED") {
+      // Fix 2026-05-31 : avant on transitionnait quand même en READY_FOR_CM,
+      // ce qui laissait le CM publier sans sous-titres alors qu'ils étaient
+      // exigés. Désormais on reste en IN_PROGRESS — l'admin doit relancer le
+      // job captions ou désactiver needsCaptions explicitement pour débloquer.
+      target = "IN_PROGRESS" as SlotStatus;
     } else {
-      // FAILED ou null : pipeline captions inopérant. Ne pas bloquer.
+      // captionStatus === null : aucun job lancé (pipeline jamais déclenché
+      // ou needsCaptions activé après création du pattern) — on avance, le
+      // CM peut décider de lancer ou non un job manuel.
       target = postPipelineTarget;
     }
   } else {
