@@ -166,25 +166,37 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
 
   if (loading) {
     return (
-      <div className="p-8">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gray-200 rounded-xl animate-pulse" />
-            <div>
-              <div className="h-6 w-32 bg-gray-200 rounded-lg animate-pulse" />
-              <div className="h-4 w-16 bg-gray-100 rounded mt-1.5 animate-pulse" />
-            </div>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-              <div className="p-4 space-y-2">
-                <div className="h-5 w-3/4 bg-gray-200 rounded animate-pulse" />
-                <div className="h-4 w-16 bg-gray-100 rounded animate-pulse" />
+      <div className="min-h-screen">
+        <div
+          className="my-11 ml-[100px] mr-[100px] rounded-3xl"
+          style={{ background: "var(--gradient-page-shell)" }}
+        >
+          <div className="px-6 sm:px-8 pt-6 pb-12">
+            <div className="max-w-5xl mx-auto">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white/55 rounded-xl animate-pulse" />
+                  <div>
+                    <div className="h-6 w-32 bg-white/55 rounded-lg animate-pulse" />
+                    <div className="h-4 w-16 bg-white/40 rounded mt-1.5 animate-pulse" />
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="bg-white/55 rounded-xl overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.06)]"
+                  >
+                    <div className="p-4 space-y-2">
+                      <div className="h-5 w-3/4 bg-white/40 rounded animate-pulse" />
+                      <div className="h-4 w-16 bg-white/40 rounded animate-pulse" />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          ))}
+          </div>
         </div>
       </div>
     );
