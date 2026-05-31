@@ -242,10 +242,26 @@ export async function POST(req: NextRequest) {
             data: { publicationSlotId: null },
           });
           validatedSlotId = slot.id;
+        } else if (
+          slot.render.status === "PENDING" ||
+          slot.render.status === "PROCESSING"
+        ) {
+          // Fix 2026-05-31 : avant, on créait silencieusement un Render orphelin
+          // (sans publicationSlotId) qui tournait quand même sur RunPod et
+          // consommait la rotation, invisible depuis la fiche. Désormais on
+          // refuse explicitement avec un 409 pour que le client gère le double-clic
+          // ou la double-soumission.
+          return NextResponse.json(
+            {
+              error: "Un rendu est déjà en cours pour ce slot.",
+              renderId: slot.render.id,
+              status: slot.render.status,
+            },
+            { status: 409 },
+          );
         }
-        // Si slot.render est en PENDING/PROCESSING/DONE, on ne touche pas
-        // (un render actif ne doit pas être détaché silencieusement, et un
-        // render DONE est la version courante du slot).
+        // Si slot.render est en DONE, on ne touche pas (le nouveau render sera
+        // créé sans publicationSlotId — comportement legacy à revisiter).
       }
     }
 
