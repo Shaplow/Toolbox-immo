@@ -40,6 +40,9 @@ Thumbs.db
 # ─── Claude Code worktrees (parallel sessions, ephemeral) ─
 .claude/worktrees/
 
+# ─── Audit UX screenshots (éphémères, regénérés à chaque /audit-ux) ─
+.claude/ux-audit/
+
 # ─── Tests artifacts (Playwright + Vitest coverage) ────────
 web/test-results/
 web/playwright-report/
