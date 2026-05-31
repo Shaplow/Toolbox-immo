@@ -193,6 +193,9 @@ interface CoverPackInfo {
   status: string;
   finalCoverUrl: string | null;
   errorMsg?: string | null;
+  /** V6 — Pack obsolète (version promute ou render replacé). Affiché en badge UI. */
+  staleSince?: Date | string | null;
+  staleReason?: string | null;
 }
 
 interface CoverConfigError {
@@ -731,7 +734,22 @@ export function PublicationFiche({
               <CoverSection
                 slot={{ id: slot.id }}
                 pattern={pattern ? { coverMode: pattern.coverMode } : null}
-                coverPack={coverPack}
+                coverPack={
+                  coverPack
+                    ? {
+                        id: coverPack.id,
+                        status: coverPack.status,
+                        finalCoverUrl: coverPack.finalCoverUrl,
+                        errorMsg: coverPack.errorMsg ?? null,
+                        // V6.5.1 — sérialisation Date → string ISO côté boundary client.
+                        staleSince:
+                          coverPack.staleSince instanceof Date
+                            ? coverPack.staleSince.toISOString()
+                            : coverPack.staleSince ?? null,
+                        staleReason: coverPack.staleReason ?? null,
+                      }
+                    : null
+                }
                 coverConfigError={coverConfigError}
                 canEdit={canEditCover}
                 viewerRole={currentUserRole}

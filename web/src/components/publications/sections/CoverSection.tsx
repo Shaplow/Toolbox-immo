@@ -32,6 +32,9 @@ interface Props {
     status: string;
     finalCoverUrl: string | null;
     errorMsg?: string | null;
+    /** V6 — Si non-null, le pack est obsolète (input upstream changé) → badge UI. */
+    staleSince?: string | null;
+    staleReason?: string | null;
   } | null;
   /**
    * Warning de configuration cover : aucun pack créé alors qu'attendu
@@ -326,6 +329,21 @@ export function CoverSection({
             description="Aucune cover n'a encore été sélectionnée."
           />
         )
+      )}
+
+      {/* V6.5.1 — Badge "Obsolète" si le pack est rattaché à une vidéo qui
+          n'est plus la version active (promote/render replaced). */}
+      {coverPack?.staleSince && (
+        <Alert
+          variant="warning"
+          icon={AlertTriangle}
+          title="Cover obsolète"
+          className="mb-3"
+        >
+          Cette cover a été générée sur une version précédente de la vidéo.
+          Cliquez sur &laquo; Refaire un tirage &raquo; pour générer un nouveau
+          pack à partir de la version courante.
+        </Alert>
       )}
 
       {/* Cover pack FAILED — Alert uniforme (pattern P4 audit V1) */}

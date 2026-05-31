@@ -84,7 +84,15 @@ export default async function PublicationPage({ params }: PageProps) {
           pngUrl: true,
           createdAt: true,
           coverFramePack: {
-            select: { id: true, status: true, finalCoverUrl: true, errorMsg: true },
+            select: {
+              id: true,
+              status: true,
+              finalCoverUrl: true,
+              errorMsg: true,
+              // V6.5.1 — staleSince pour badge UI "Obsolète"
+              staleSince: true,
+              staleReason: true,
+            },
           },
           listing: { select: { id: true } },
         },
@@ -371,7 +379,15 @@ export default async function PublicationPage({ params }: PageProps) {
   const versionCoverPack = slot.currentVersionId
     ? await prisma.coverFramePack.findUnique({
         where: { publicationVersionId: slot.currentVersionId },
-        select: { id: true, status: true, finalCoverUrl: true, errorMsg: true },
+        select: {
+          id: true,
+          status: true,
+          finalCoverUrl: true,
+          errorMsg: true,
+          // V6.5.1 — ajouter staleSince/staleReason pour badge UI "Obsolète"
+          staleSince: true,
+          staleReason: true,
+        },
       })
     : null;
   const effectiveCoverPack = versionCoverPack ?? slot.render?.coverFramePack ?? null;

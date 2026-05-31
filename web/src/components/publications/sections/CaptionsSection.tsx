@@ -26,6 +26,9 @@ interface CaptionJobInfo {
   outputUrl: string | null;
   errorMsg: string | null;
   createdAt: string;
+  /** V6 — Si non-null, le job est obsolète (input upstream changé) → badge UI. */
+  staleSince?: string | null;
+  staleReason?: string | null;
 }
 
 interface Props {
@@ -143,6 +146,17 @@ export function CaptionsSection({
     >
 
       <div className="space-y-3">
+        {/* V6.5.1 — Badge "Obsolète" si le job est rattaché à une vidéo qui
+            n'est plus la version active (promote/render replaced). L'admin doit
+            relancer un caption pour avoir une version à jour. */}
+        {latestCaptionJob?.staleSince && (
+          <Alert variant="warning" icon={AlertCircle} title="Sous-titres obsolètes">
+            Ces sous-titres ont été générés sur une version précédente de la
+            vidéo. Régénère-les pour qu&apos;ils correspondent à la version
+            courante.
+          </Alert>
+        )}
+
         {/* État du dernier job — Alert molecule (uniformisé pattern P4 audit V1) */}
         {latestCaptionJob && isInProgress && (
           <Alert variant="glass" icon={Loader2}>
