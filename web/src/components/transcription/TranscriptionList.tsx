@@ -336,7 +336,7 @@ export function TranscriptionList({
       type: "error",
       message: errors[0] ?? "Impossible de préparer les rushs pour la transcription.",
     });
-  }, [defaultConfig, refreshJobs, uploadToPresignedUrl]);
+  }, [defaultConfig, refreshJobs, uploadToPresignedUrl, slotContext]);
 
   const handleFiles = useCallback(async (fileList: FileList | null) => {
     const files = Array.from(fileList ?? []).filter((file) => file.size > 0);
