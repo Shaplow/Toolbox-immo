@@ -1151,14 +1151,55 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
               </button>
             )}
 
+            {/* V8.12 — Quand on est dans le contexte d'une fiche (slotId) avec
+                exactement 1 frame sélectionnée, le CTA principal est "Utiliser
+                cette cover" qui POST sur /cover/manual-select + redirect fiche.
+                Le download reste accessible mais n'est plus l'action par défaut
+                — l'admin venait d'une fiche pour CHOISIR une cover, pas pour
+                télécharger un PNG isolé. */}
+            {slotId && selected.size === 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const idx = Array.from(selected)[0];
+                  const frame = frames[idx];
+                  if (frame) {
+                    void handleApplyFrameAsCover(frame.url, frame.timestamp);
+                  }
+                }}
+                disabled={applyingFrameUrl !== null}
+                className="w-full py-2.5 px-4 bg-gray-900 text-white text-sm font-medium rounded-xl hover:bg-gray-700 active:bg-gray-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <Check size={14} />
+                {applyingFrameUrl ? "Application…" : "Utiliser comme cover"}
+              </button>
+            )}
+
+            {slotId && selected.size > 1 && (
+              <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
+                <p className="text-[12px] font-medium text-sky-900">
+                  Sélectionne <strong>une seule frame</strong> pour la définir
+                  comme cover de la publication.
+                </p>
+                <p className="text-[11px] text-sky-700/80 mt-0.5">
+                  ({selected.size} actuellement — clique sur l&apos;une pour
+                  garder celle-là.)
+                </p>
+              </div>
+            )}
+
             {selected.size > 0 && (
               <button
                 type="button"
                 onClick={() => void handleDownload()}
-                className="w-full py-2.5 px-4 bg-green-600 text-white text-sm font-medium rounded-xl hover:bg-green-700 active:bg-green-800 transition-colors flex items-center justify-center gap-2"
+                className={
+                  slotId
+                    ? "w-full py-2 px-4 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:border-gray-300 transition-colors flex items-center justify-center gap-2"
+                    : "w-full py-2.5 px-4 bg-green-600 text-white text-sm font-medium rounded-xl hover:bg-green-700 active:bg-green-800 transition-colors flex items-center justify-center gap-2"
+                }
               >
                 <Download size={14} />
-                Télécharger ({selected.size})
+                Télécharger {slotId ? "en PNG" : `(${selected.size})`}
               </button>
             )}
 
