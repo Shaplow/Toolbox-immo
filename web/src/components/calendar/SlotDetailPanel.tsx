@@ -29,6 +29,7 @@ import {
   SlidersHorizontal,
   CalendarClock,
   Clapperboard,
+  MoreHorizontal,
 } from "lucide-react";
 import {
   STATUS_LABELS,
@@ -48,6 +49,7 @@ import { TimePicker } from "@/components/ui/TimePicker";
 import { AssigneePicker } from "@/components/ui/molecules/AssigneePicker";
 import { OverrideControl } from "@/components/ui/molecules/OverrideControl";
 import { toast } from "@/components/ui/Toast";
+import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { resolveNextActionInfo } from "@/lib/publications/nextActionLabel";
 
 export type SlotDetailPanelMode = "admin" | "monteur" | "cm";
@@ -476,6 +478,45 @@ export function SlotDetailPanel({
               >
                 <span className="hidden sm:inline">Fiche complète</span>
               </Button>
+              {/* Phase 3 — actions destructives déplacées du footer vers
+                  ce menu pour ne plus risquer de cliquer "Annuler la mission"
+                  alors qu'on voulait juste fermer le drawer. */}
+              {!isRestricted && (
+                <DropdownMenu
+                  align="end"
+                  trigger={
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={MoreHorizontal}
+                      title="Plus d'actions"
+                    >
+                      <span className="sr-only">Plus d'actions</span>
+                    </Button>
+                  }
+                  items={[
+                    ...(slot.status !== "CANCELLED" &&
+                    slot.status !== "ARCHIVED" &&
+                    slot.status !== "PUBLISHED"
+                      ? ([
+                          {
+                            label: "Annuler la mission",
+                            icon: Ban,
+                            onClick: () => setConfirmCancel(true),
+                            destructive: true,
+                          },
+                          "separator",
+                        ] as const)
+                      : []),
+                    {
+                      label: "Supprimer le slot",
+                      icon: Trash2,
+                      onClick: () => setConfirmDeleteOpen(true),
+                      destructive: true,
+                    },
+                  ]}
+                />
+              )}
             </div>
           </div>
 
@@ -818,38 +859,10 @@ export function SlotDetailPanel({
           )}
         </div>
 
-        {/* Footer */}
-        <footer className="shrink-0 flex items-center gap-2 px-5 py-3 bg-white/30 border-t border-white/30">
-          {!isRestricted &&
-            slot.status !== "CANCELLED" &&
-            slot.status !== "ARCHIVED" &&
-            slot.status !== "PUBLISHED" && (
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={Ban}
-                onClick={() => setConfirmCancel(true)}
-                disabled={saving}
-                title="Marquer comme annulé"
-              >
-                <span className="hidden sm:inline">Annuler</span>
-              </Button>
-            )}
-          {!isRestricted && (
-            <Button
-              variant="danger"
-              size="sm"
-              icon={Trash2}
-              onClick={() => setConfirmDeleteOpen(true)}
-              disabled={deleting}
-              title="Supprimer définitivement"
-            >
-              <span className="sr-only">Supprimer</span>
-            </Button>
-          )}
-
-          <div className="flex-1" />
-
+        {/* Footer — navigation pure : pas d'actions destructives ici. Annuler
+            mission + Supprimer ont migré dans le DropdownMenu du header pour
+            éviter la confusion "Annuler la mission" ≠ "Annuler la modal". */}
+        <footer className="shrink-0 flex items-center justify-end gap-2 px-5 py-3 bg-white/30 border-t border-white/30">
           <Button variant="ghost" size="sm" onClick={onClose}>
             Fermer
           </Button>
