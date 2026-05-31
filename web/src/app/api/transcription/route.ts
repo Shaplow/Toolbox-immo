@@ -221,6 +221,29 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // V6.7 — Le path form-data ignorait slotId (seul le JSON path le résolvait).
+  // Désormais : si le form contient slotId, on valide l'accès et on rattache
+  // le job au slot (cohérent avec le JSON path V2.4).
+  const rawFormSlotId = formData.get("slotId");
+  let formResolvedSlotId: string | null = null;
+  if (rawFormSlotId && typeof rawFormSlotId === "string" && rawFormSlotId.length > 0) {
+    const candidate = rawFormSlotId;
+    const slot = await prisma.publicationSlot.findUnique({
+      where: { id: candidate },
+      select: {
+        id: true,
+        assigneeMonteurId: true,
+        assigneeCmId: true,
+        assigneeVideasteId: true,
+      },
+    });
+    const role = toUserRole(userContext.effectiveUser.role);
+    if (!slot || !canUserAccessSlot(slot, role, userContext.effectiveUser.id)) {
+      return NextResponse.json({ error: "Publication introuvable" }, { status: 404 });
+    }
+    formResolvedSlotId = slot.id;
+  }
+
   const jobTimestamp = Date.now();
   const userId = userContext.effectiveUser.id;
 
@@ -234,6 +257,7 @@ export async function POST(req: NextRequest) {
         model,
         language,
         enableDiarization,
+        slotId: formResolvedSlotId,
       },
     });
 
@@ -325,6 +349,7 @@ export async function POST(req: NextRequest) {
   const outputJsonKey = `transcription/${userId}/${jobTimestamp}/segments.json`;
 
   // ─── Créer TranscriptionJob en DB ────────────────────────────────────────
+  // V6.7 — slotId résolu plus haut depuis form-data pour rattacher au slot.
   const job = await prisma.transcriptionJob.create({
     data: {
       userId,
@@ -335,6 +360,7 @@ export async function POST(req: NextRequest) {
       language,
       enableDiarization,
       outputJsonKey,
+      slotId: formResolvedSlotId,
     },
   });
 
