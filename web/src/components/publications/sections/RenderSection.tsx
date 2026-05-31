@@ -193,12 +193,29 @@ export function RenderSection({
       }
     >
 
-      {/* Cas : pattern manuel sans render auto — info glass tinted neutre */}
-      {pattern?.source !== "auto_template" && (
+      {/* Cas : pattern manuel sans render auto — info glass tinted neutre.
+          Le wording dépend de la source pour clarifier qui fait quoi. */}
+      {pattern?.source === "manual_rushes" && (
         <div className="flex items-start gap-2 text-[12px] text-gray-700 bg-white/60 backdrop-blur-[8px] rounded-lg p-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
           <Upload size={14} className="text-gray-500 mt-0.5 flex-shrink-0" />
           <span className="leading-relaxed">
-            Vidéo livrée manuellement par le monteur — pas de rendu auto depuis un template.
+            Vidéo livrée par le monteur depuis ses rushes —
+            {" "}
+            <a
+              href="#versions"
+              className="font-medium text-gray-900 underline decoration-gray-300 underline-offset-2 hover:decoration-gray-500"
+            >
+              voir les versions déposées
+            </a>
+            .
+          </span>
+        </div>
+      )}
+      {pattern?.source === "external_upload" && (
+        <div className="flex items-start gap-2 text-[12px] text-gray-700 bg-white/60 backdrop-blur-[8px] rounded-lg p-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+          <Upload size={14} className="text-gray-500 mt-0.5 flex-shrink-0" />
+          <span className="leading-relaxed">
+            Vidéo uploadée directement par le client — pas de rushes, pas de montage interne.
           </span>
         </div>
       )}
