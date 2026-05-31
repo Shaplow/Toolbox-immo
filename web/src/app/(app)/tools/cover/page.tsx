@@ -36,7 +36,7 @@ export default async function CoverPage({ searchParams }: PageProps) {
     <div className="p-8 max-w-6xl mx-auto">
       <ToolPageHeader
         icon={ImageIcon}
-        iconColor="emerald"
+        iconTint="sage"
         title="Extraction de cover"
         subtitle="Génère des frames depuis une vidéo pour choisir la cover idéale. Mode standalone — pas rattaché à une publication."
       />

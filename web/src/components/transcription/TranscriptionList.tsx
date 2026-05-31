@@ -587,7 +587,7 @@ export function TranscriptionList({
       <div>
         <ToolPageHeader
           icon={Mic}
-          iconColor="teal"
+          iconTint="sky"
           title="Transcription"
           subtitle="Uploadez vos rushs, laissez-les en attente, ajustez la config puis lancez une ou plusieurs transcriptions quand vous êtes prêt."
           actions={<RefreshButton title="Rafraîchir les jobs" />}
