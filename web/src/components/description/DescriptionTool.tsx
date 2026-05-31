@@ -23,6 +23,8 @@ import {
 import { parseSRT } from "@/lib/srt";
 import type { Segment } from "@/lib/transcriptionProcess";
 import { isSafeRelativePath } from "@/lib/safeUrl";
+import { Button } from "@/components/ui/Button";
+import { Textarea } from "@/components/ui/Textarea";
 import { DescriptionPromptsManager } from "@/components/description/DescriptionPromptsManager";
 import { DescriptionHistoryItem } from "@/components/description/DescriptionHistoryItem";
 
@@ -389,7 +391,7 @@ export function DescriptionTool({
       {returnTo && (
         <Link
           href={returnTo}
-          className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+          className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-950 font-medium"
         >
           <ArrowLeft size={14} />
           Retour à la fiche publication
@@ -432,7 +434,7 @@ export function DescriptionTool({
               <div
                 className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
                   isDragging
-                    ? "border-indigo-400 bg-indigo-50"
+                    ? "border-peach-300 bg-peach-50"
                     : transcriptText
                     ? "border-green-300 bg-green-50/50"
                     : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
@@ -624,7 +626,7 @@ export function DescriptionTool({
           {isAdmin && (
             <button
               onClick={() => setPromptModalOpen(true)}
-              className="flex items-center gap-1.5 text-xs text-indigo-500 hover:text-indigo-700 font-medium transition-colors"
+              className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-900 font-medium transition-colors"
             >
               <Settings size={12} /> Gérer les prompts
             </button>
@@ -639,7 +641,7 @@ export function DescriptionTool({
                   {" "}
                   <button
                     onClick={() => setPromptModalOpen(true)}
-                    className="text-indigo-500 hover:underline"
+                    className="text-gray-700 hover:underline"
                   >
                     En créer un →
                   </button>
@@ -654,7 +656,7 @@ export function DescriptionTool({
                   onClick={() => setSelectedPromptId(p.id)}
                   className={`text-left px-4 py-3 rounded-xl border transition-colors ${
                     selectedPromptId === p.id
-                      ? "border-indigo-300 bg-indigo-50 text-indigo-900"
+                      ? "border-peach-300 bg-peach-50 text-peach-900"
                       : "border-gray-100 hover:border-gray-200 hover:bg-gray-50 text-gray-700"
                   }`}
                 >
@@ -675,15 +677,14 @@ export function DescriptionTool({
             <span className="text-xs font-normal text-gray-400">(optionnel)</span>
           </h2>
         </div>
-        <div className="px-5 py-4">
-          <textarea
+        <div className="px-5 py-4 space-y-1">
+          <Textarea
             value={personalization}
-            onChange={(e) => setPersonalization(e.target.value)}
+            onChange={setPersonalization}
             placeholder={"Ex: Contactez Bonjour Oscar au 06 12 34 56 78\nAgence Premier Immo — Paris 16e"}
             rows={3}
-            className="w-full text-sm text-gray-800 placeholder-gray-300 border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
           />
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-gray-400">
             Ces informations seront injectées dans le prompt avant l&apos;analyse de la source.
           </p>
         </div>
@@ -719,22 +720,16 @@ export function DescriptionTool({
           </button>
         </div>
 
-        {/* Generate button */}
-        <button
+        {/* Generate button — V3 LOW-3 : Button primitive (plus de raw indigo) */}
+        <Button
+          variant="primary"
           onClick={() => void handleGenerate()}
           disabled={!canGenerate}
-          className="flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          loading={generating}
+          icon={Wand2}
         >
-          {generating ? (
-            <>
-              <Loader2 size={14} className="animate-spin" /> Génération…
-            </>
-          ) : (
-            <>
-              <Wand2 size={14} /> Générer la description
-            </>
-          )}
-        </button>
+          {generating ? "Génération…" : "Générer la description"}
+        </Button>
       </div>
 
       {/* ── Erreur génération ─────────────────────────────────────────── */}
@@ -795,11 +790,11 @@ export function DescriptionTool({
             </div>
           </div>
           <div className="px-5 py-4">
-            <textarea
-              value={result}
-              onChange={(e) => setResult(e.target.value)}
+            <Textarea
+              value={result ?? ""}
+              onChange={(v) => setResult(v)}
               rows={10}
-              className="w-full text-sm text-gray-800 border border-gray-200 rounded-lg px-3 py-2.5 resize-y focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent font-sans leading-relaxed"
+              className="font-sans leading-relaxed"
             />
           </div>
         </div>
