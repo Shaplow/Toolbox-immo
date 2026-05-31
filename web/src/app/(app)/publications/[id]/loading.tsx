@@ -9,8 +9,7 @@ export default function PublicationLoading() {
       <div
         className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
         style={{
-          background:
-            "radial-gradient(ellipse 90% 65% at 50% 0%, rgba(82, 82, 91, 0.38) 0%, rgba(161, 161, 170, 0.22) 40%, rgba(244, 244, 245, 1) 85%)",
+          background: "rgb(212, 212, 216)",
         }}
       >
         {/* Header */}

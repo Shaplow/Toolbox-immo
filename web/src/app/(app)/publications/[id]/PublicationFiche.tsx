@@ -481,8 +481,7 @@ export function PublicationFiche({
         style={{
           // Fond gris foncé diffus (radial soft → gris pâle en bas). Plus
           // de gradient peach/sage, ambiance neutre studio.
-          background:
-            "radial-gradient(ellipse 90% 65% at 50% 0%, rgba(82, 82, 91, 0.38) 0%, rgba(161, 161, 170, 0.22) 40%, rgba(244, 244, 245, 1) 85%)",
+          background: "rgb(212, 212, 216)",
         }}
       >
         {/* Header shell — non sticky (Mathis 2026-05-29). Le header
