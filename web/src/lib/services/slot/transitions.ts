@@ -327,21 +327,33 @@ export async function computeAutoTransitionTarget(
         select: { source: true, needsCaptions: true, needsClientValidation: true },
       },
       render: { select: { status: true } },
+      // V6.6.1 — On charge 5 jobs au lieu de 1 pour distinguer le PROCESSING
+      // (qui ne doit PAS faire regresser la transition) d'un COMPLETED
+      // précédent non-stale (qui valide la transition).
       captionJobs: {
         orderBy: { createdAt: "desc" },
-        take: 1,
-        select: { status: true },
+        take: 5,
+        select: { status: true, staleSince: true },
       },
     },
   });
   if (!slot) return null;
+
+  // V6.6.1 — Priorité au COMPLETED non-stale (si présent), sinon latest
+  // tout court. Évite la régression IN_PROGRESS quand un retry PROCESSING
+  // arrive après un COMPLETED valide.
+  const latestCompletedFresh = slot.captionJobs.find(
+    (j) => j.status === "COMPLETED" && !j.staleSince,
+  );
+  const effectiveCaptionStatus =
+    latestCompletedFresh?.status ?? slot.captionJobs[0]?.status ?? null;
 
   return computeAutoTransitionTargetPure({
     status: slot.status,
     pattern: slot.pattern,
     needsClientValidationOverride: slot.needsClientValidationOverride,
     render: slot.render,
-    latestCaptionJobStatus: slot.captionJobs[0]?.status ?? null,
+    latestCaptionJobStatus: effectiveCaptionStatus,
   });
 }
 
