@@ -21,31 +21,15 @@ import { toast } from "@/components/ui/Toast";
 import { AccountPatternForm, type AccountPatternRow } from "./AccountPatternForm";
 import { CloneDialog } from "./CloneDialog";
 import { detectOrphanedPatternConfig } from "@/lib/publications/patternValidation";
+import {
+  SOURCE_LABELS_FR as SOURCE_LABELS,
+  COVER_MODE_LABELS_FR as COVER_MODE_LABELS,
+  NEEDS_DESCRIPTION_LABELS_FR as NEEDS_DESCRIPTION_LABELS,
+} from "@/lib/ui/domainLabels";
 
 // ─── Labels FR ────────────────────────────────────────────────────────────────
 
 const DAY_LABELS = ["", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-
-const SOURCE_LABELS: Record<string, string> = {
-  auto_template: "Auto template",
-  manual_rushes: "Rushes externes",
-  external_upload: "Upload externe",
-};
-
-const COVER_MODE_LABELS: Record<string, string> = {
-  none: "Pas de cover",
-  manualSelect: "Sélection libre",
-  autoPack: "Pack auto",
-  monteurUpload: "Upload monteur",
-  auto: "Pack auto",
-};
-
-const NEEDS_DESCRIPTION_LABELS: Record<string, string> = {
-  preFilled: "Pré-remplie",
-  autoGenerate: "Auto-générée",
-  manualWrite: "Manuelle",
-  none: "Aucune",
-};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

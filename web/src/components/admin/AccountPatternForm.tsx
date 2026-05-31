@@ -26,6 +26,13 @@ import {
   validatePatternConfig,
   type PatternValidationError,
 } from "@/lib/publications/patternValidation";
+import {
+  SOURCE_LABELS_FR,
+  SOURCE_HELP,
+  COVER_MODE_LABELS_FR,
+  COVER_MODE_HELP,
+  NEEDS_DESCRIPTION_LABELS_FR,
+} from "@/lib/ui/domainLabels";
 
 function parseCoverConfig(json: string): object | null {
   if (!json.trim()) return null;
@@ -162,35 +169,17 @@ const DAYS_OF_WEEK = [
   { value: 7, label: "Dim" },
 ];
 
-const SOURCE_OPTIONS = [
-  { value: "auto_template", label: "Auto template" },
-  { value: "manual_rushes", label: "Rushes externes (montage)" },
-  { value: "external_upload", label: "Upload externe" },
-];
+const SOURCE_OPTIONS = (
+  ["auto_template", "manual_rushes", "external_upload"] as const
+).map((value) => ({ value, label: SOURCE_LABELS_FR[value] }));
 
-const COVER_MODE_OPTIONS = [
-  { value: "none", label: "Pas de cover" },
-  { value: "manualSelect", label: "Sélection libre (CM)" },
-  { value: "autoPack", label: "Pack auto → sélection (CM)" },
-  { value: "monteurUpload", label: "Upload par le monteur" },
-];
+const COVER_MODE_OPTIONS = (
+  ["none", "manualSelect", "autoPack", "monteurUpload"] as const
+).map((value) => ({ value, label: COVER_MODE_LABELS_FR[value] }));
 
-const DESCRIPTION_OPTIONS = [
-  { value: "none", label: "Aucune" },
-  { value: "preFilled", label: "Pré-remplie" },
-  { value: "autoGenerate", label: "Auto-générée" },
-  { value: "manualWrite", label: "Manuelle" },
-];
-
-const COVER_MODE_HELP: Record<string, string> = {
-  none: "Aucune cover. La section ne s'affiche pas sur la fiche.",
-  manualSelect:
-    "La CM choisit librement une frame depuis la vidéo finale, sans config préalable.",
-  autoPack:
-    "Le système extrait des frames via le preset configuré + place les groupes de texte. La CM valide la frame finale et ajuste.",
-  monteurUpload:
-    "Le monteur uploade la cover en même temps que sa version. Pas de génération automatique. Nécessite une source « manual_rushes ».",
-};
+const DESCRIPTION_OPTIONS = (
+  ["none", "preFilled", "autoGenerate", "manualWrite"] as const
+).map((value) => ({ value, label: NEEDS_DESCRIPTION_LABELS_FR[value] }));
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
