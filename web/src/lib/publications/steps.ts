@@ -62,6 +62,7 @@ export function getStepRoles(key: StepKey): UserRole[] {
 
 export type StepStatus =
   | "todo"
+  | "waiting" // étape future, en attente d'une étape amont non terminée (visuel todo, label "En attente")
   | "queued"
   | "processing"
   | "done"
@@ -414,10 +415,32 @@ export function computePublicationSteps(input: {
     },
   ];
 
+  // ── Post-process : todo → waiting si étape amont non terminée ─────────────
+  // Si une étape précédente visible n'est pas dans un état "terminal acceptable"
+  // (done) et n'est pas elle-même en waiting, alors l'étape courante ne peut
+  // pas être réellement actionnable → on lui colle "waiting" (visuel todo,
+  // label "En attente"). Évite "À faire" trompeur quand on dépend d'un amont.
+  const TERMINAL_FOR_NEXT = new Set<StepStatus>(["done"]);
+  const visibleSteps = rawSteps.filter((s) => s.visible);
+  const adjustedSteps = rawSteps.map((step) => {
+    if (step.status !== "todo") return step;
+    const idx = visibleSteps.findIndex((s) => s.key === step.key);
+    if (idx <= 0) return step;
+    const hasPendingUpstream = visibleSteps
+      .slice(0, idx)
+      .some((s) => !TERMINAL_FOR_NEXT.has(s.status));
+    if (hasPendingUpstream) {
+      return { ...step, status: "waiting" as StepStatus };
+    }
+    return step;
+  });
+
   // ── Résolution de nextAction ───────────────────────────────────────────────
+  // Le step actif est la première étape réellement actionnable maintenant
+  // (todo ou failed). Les étapes en "waiting" sont futures, pas actives.
   let nextActionSet = false;
 
-  const steps: PublicationStep[] = rawSteps.map((step) => {
+  const steps: PublicationStep[] = adjustedSteps.map((step) => {
     const isActionable =
       step.visible &&
       (step.status === "todo" || step.status === "failed") &&

@@ -205,8 +205,9 @@ function HorizontalStepper({
                   "backdrop-blur-[12px] backdrop-saturate-150",
                   STATUS_CARD_CLS[status],
                   interactive ? `cursor-pointer ${STATUS_CARD_HOVER[status]} focus-ring` : "cursor-default",
-                  // Active step : ring sky + halo glow, indépendant du status réel
-                  active && "ring-2 ring-sky-300/60 ring-offset-2 ring-offset-transparent shadow-[0_4px_20px_-4px_rgba(77,150,191,0.32)]",
+                  // Active step : ring sky inset + halo glow doux, indépendant
+                  // du status réel. Pas de ring-offset (casse le rendu glass).
+                  active && "!shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_2px_rgba(77,150,191,0.55),0_4px_16px_-4px_rgba(77,150,191,0.32),0_12px_28px_-12px_rgba(77,150,191,0.28)]",
                 ].filter(Boolean).join(" ")}
               >
                 <div className="flex items-center gap-2 w-full">

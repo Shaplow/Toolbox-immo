@@ -31,6 +31,7 @@ function mapStatus(status: StepStatus): StepperStatus {
     case "failed":
     case "blocked":
       return "blocked";
+    case "waiting":
     case "todo":
     default:
       return "todo";
@@ -96,6 +97,7 @@ export function ProductionChain({ steps, viewerRole }: ProductionChainProps) {
 
 const STEP_STATUS_LABELS: Record<StepStatus, string> = {
   todo: "À faire",
+  waiting: "En attente",
   queued: "En attente",
   processing: "En cours",
   done: "Fait",

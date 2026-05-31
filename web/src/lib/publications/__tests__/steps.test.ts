@@ -79,7 +79,7 @@ describe("computePublicationSteps — step 'edit' visibility", () => {
 // ── step "edit" status ────────────────────────────────────────────────────────
 
 describe("computePublicationSteps — step 'edit' status", () => {
-  it("'todo' si aucune version et pas de currentVersionId", () => {
+  it("'waiting' si aucune version et amont (rushes) pas encore terminé", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
       pattern: recipeWithRushes,
@@ -87,7 +87,9 @@ describe("computePublicationSteps — step 'edit' status", () => {
       currentVersionId: null,
     });
     const edit = steps.find((s) => s.key === "edit");
-    expect(edit?.status).toBe("todo");
+    // Avant : "todo". Depuis 2026-05-31 : si rushes n'est pas done, edit
+    // bascule en "waiting" pour signaler qu'on dépend d'un amont.
+    expect(edit?.status).toBe("waiting");
   });
 
   it("'processing' si au moins une version mais pas encore promue", () => {
@@ -178,7 +180,7 @@ describe("computePublicationSteps — pattern auto_template sans rushes", () => 
 // ── step "captions" status (Phase 1.9 — bug fix passage du job) ───────────────
 
 describe("computePublicationSteps — step 'captions' status", () => {
-  it("'todo' si needsCaptions et aucun job", () => {
+  it("'waiting' si needsCaptions, aucun job et render amont pas DONE", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
       pattern: recipeAutoTemplate,
@@ -186,7 +188,8 @@ describe("computePublicationSteps — step 'captions' status", () => {
     });
     const captions = steps.find((s) => s.key === "captions");
     expect(captions?.visible).toBe(true);
-    expect(captions?.status).toBe("todo");
+    // Render n'est pas done → captions bascule "waiting" (avant : "todo").
+    expect(captions?.status).toBe("waiting");
   });
 
   it("'queued' si job QUEUED", () => {
@@ -243,7 +246,7 @@ describe("computePublicationSteps — step 'captions' status", () => {
 // ── step "description" status (P0.2 — FK + fallback slot.description) ─────────
 
 describe("computePublicationSteps — step 'description' status", () => {
-  it("'todo' si aucun job et description vide", () => {
+  it("'waiting' si aucun job, description vide et amont (render) pas DONE", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
       pattern: recipeAutoTemplate,
@@ -251,7 +254,7 @@ describe("computePublicationSteps — step 'description' status", () => {
     });
     const desc = steps.find((s) => s.key === "description");
     expect(desc?.visible).toBe(true);
-    expect(desc?.status).toBe("todo");
+    expect(desc?.status).toBe("waiting");
   });
 
   it("'done' si job COMPLETED avec result", () => {
@@ -264,14 +267,15 @@ describe("computePublicationSteps — step 'description' status", () => {
     expect(desc?.status).toBe("done");
   });
 
-  it("'todo' si job COMPLETED mais result vide", () => {
+  it("'waiting' si job COMPLETED mais result vide et amont pas DONE", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
       pattern: recipeAutoTemplate,
       descriptionJob: { status: "COMPLETED", result: null },
     });
     const desc = steps.find((s) => s.key === "description");
-    expect(desc?.status).toBe("todo");
+    // result vide → status sous-jacent "todo" → bascule "waiting" car render amont pas DONE.
+    expect(desc?.status).toBe("waiting");
   });
 
   it("'failed' si job FAILED", () => {
@@ -294,14 +298,15 @@ describe("computePublicationSteps — step 'description' status", () => {
     expect(desc?.status).toBe("done");
   });
 
-  it("'todo' si slot.description = whitespace seulement", () => {
+  it("'waiting' si slot.description = whitespace seulement et amont pas DONE", () => {
     const steps = computePublicationSteps({
       slot: baseSlot({ description: "   \n  " }),
       pattern: recipeAutoTemplate,
       descriptionJob: null,
     });
     const desc = steps.find((s) => s.key === "description");
-    expect(desc?.status).toBe("todo");
+    // whitespace → status sous-jacent "todo" → bascule "waiting".
+    expect(desc?.status).toBe("waiting");
   });
 
   it("job FAILED prime sur fallback (le fallback n'écrase pas un échec)", () => {
