@@ -25,6 +25,7 @@ import { logActivity } from "@/lib/services/slot/activity";
 import { applyAutoTransition } from "@/lib/services/slot/transitions";
 import { tryAutoTriggerCover } from "@/lib/services/slot/autoCoverTrigger";
 import { triggerAutoTranscriptionForVersion } from "@/lib/triggerAutoTranscriptionForVersion";
+import { markJobsStaleForSlot } from "@/lib/publications/jobLifecycle";
 
 type Params = { params: Promise<{ id: string; versionId: string }> };
 
@@ -136,6 +137,23 @@ export async function POST(_req: NextRequest, { params }: Params) {
     // si le process crash entre le commit de la tx et l'appel hors-tx.
     await applyAutoTransition(tx as typeof prisma, slotId, slot.status, "VERSION_PROMOTED", userContext.actualUser.id);
   });
+
+  // V6.3 — Cascade d'invalidation : marquer comme stale tous les jobs aval
+  // liés à l'ancienne version (CaptionJob, DescriptionJob, CoverFramePack,
+  // TranscriptionJob). Reset slot.active*Id à null. La fiche affichera
+  // désormais ces jobs avec un badge "Obsolète" (vague V6.5).
+  // Exécuté hors transaction (best-effort) pour ne pas bloquer la promotion
+  // si une stale-mark échoue.
+  if (previousVersionId) {
+    try {
+      const staleCounts = await markJobsStaleForSlot(prisma, slotId, "version_promoted");
+      console.info(
+        `[promote] slot=${slotId} jobs marked stale: captions=${staleCounts.captionJobsMarkedCount} desc=${staleCounts.descriptionJobsMarkedCount} cover=${staleCounts.coverPacksMarkedCount} trans=${staleCounts.transcriptionJobsMarkedCount}`,
+      );
+    } catch (err) {
+      console.error(`[promote] markJobsStaleForSlot failed slot=${slotId}:`, err);
+    }
+  }
 
   // Auto-trigger cover si pattern.coverMode = "auto" et preset configuré.
   // Best-effort (jamais throw) — log uniquement en cas de skip/erreur.
