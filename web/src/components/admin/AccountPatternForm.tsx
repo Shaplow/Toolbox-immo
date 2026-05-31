@@ -408,7 +408,11 @@ export function AccountPatternForm({
         needsAdminValidation: values.needsAdminValidation,
         needsClientValidation: values.needsClientValidation,
         allowsClientRevision: values.allowsClientRevision,
-        needsRushes: values.needsRushes,
+        // needsRushes est dérivé automatiquement de la source — pas de toggle UI.
+        // manual_rushes ⇒ true (le vidéaste livre des rushes par définition).
+        // auto_template / external_upload ⇒ false (génération auto OU upload direct
+        // de la version finale, pas d'étape "rushes intermédiaires").
+        needsRushes: values.source === "manual_rushes",
         needsBrief: values.needsBrief,
         dayOfWeek: values.daysOfWeek,
         publishTime: values.publishTime,
@@ -748,12 +752,9 @@ export function AccountPatternForm({
         {/* Tab Workflow */}
         {tab === "workflow" && (
           <div className="space-y-2">
-            <WorkflowToggle
-              label="Rushes vidéaste attendus"
-              description="Active l'étape « Montage » dans la fiche (le vidéaste livre des rushes, le monteur publie une version)."
-              checked={values.needsRushes}
-              onChange={(v) => set("needsRushes", v)}
-            />
+            {/* Toggle "Rushes vidéaste attendus" retiré (2026-05-31) : redondant
+                avec la source — manual_rushes implique des rushes, auto_template
+                et external_upload n'en ont pas. Dérivé auto à la sauvegarde. */}
             <WorkflowToggle
               label="Brief éditorial"
               description="Ajoute un champ Brief à remplir avant de lancer la production."
