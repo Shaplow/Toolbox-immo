@@ -73,11 +73,16 @@ export function ProductionChain({ steps, viewerRole }: ProductionChainProps) {
   if (visibleSteps.length === 0) return null;
 
   // Map PublicationStep → Stepper Step. On garde le key d'origine dans `id`
-  // pour pouvoir router vers la section au click.
+  // pour pouvoir router vers la section au click. V8.5 — quand le step est
+  // en `waiting` avec un `waitingFor`, on personnalise la description pour
+  // dire de quelle étape précisément il attend.
   const stepperSteps: StepperStep[] = visibleSteps.map((s) => ({
     id: String(s.key),
     label: s.label,
-    description: STEP_STATUS_LABELS[s.status],
+    description:
+      s.status === "waiting" && s.waitingFor
+        ? `En attente de ${s.waitingFor.toLowerCase()}`
+        : STEP_STATUS_LABELS[s.status],
     status: mapStatus(s.status),
   }));
 

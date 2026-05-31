@@ -28,6 +28,7 @@ import { execSync, spawn, type ChildProcess } from "child_process";
 import { mkdirSync, existsSync } from "fs";
 import { dirname, resolve } from "path";
 import { config as loadEnv } from "dotenv";
+import { PrismaClient } from "@prisma/client";
 
 const scriptDir = dirname(new URL(import.meta.url).pathname);
 const webDir = resolve(scriptDir, "..");
@@ -328,10 +329,50 @@ async function startServer(): Promise<ChildProcess> {
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
+async function resetSlotState(): Promise<void> {
+  // Purge les artefacts laissés par les runs précédents (E2E ou audits) sur
+  // les slots de fixture. Sans ça, la ProductionChain affiche "Cover : Fait"
+  // ou "Sous-titres : Fait" sur la base de jobs résiduels, faussant
+  // l'analyse visuelle d'un état "fresh".
+  const TEST_SLOTS = ["test-slot-v8-manual", "test-slot-1"];
+  const prisma = new PrismaClient({
+    datasources: { db: { url: TEST_DB_URL } },
+  });
+  try {
+    for (const slotId of TEST_SLOTS) {
+      await prisma.publicationSlot.update({
+        where: { id: slotId },
+        data: { activeCaptionJobId: null, activeCoverPackId: null },
+      }).catch(() => {});
+      await prisma.captionJob.deleteMany({ where: { slotId } });
+      // CoverFramePacks : rattachés au render OU à la version courante.
+      const slot = await prisma.publicationSlot.findUnique({
+        where: { id: slotId },
+        select: { currentVersionId: true, render: { select: { id: true } } },
+      });
+      if (slot?.render?.id) {
+        await prisma.coverFramePack.deleteMany({ where: { renderId: slot.render.id } });
+      }
+      if (slot?.currentVersionId) {
+        await prisma.coverFramePack.deleteMany({
+          where: { publicationVersionId: slot.currentVersionId },
+        });
+      }
+    }
+    console.log(`  ↳ DB reset : caption + cover purgés pour ${TEST_SLOTS.length} slots`);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 async function main() {
   console.log(`▶ Audit UX — capture surfaces + scenarios`);
   console.log(`  Output : ${OUTPUT_DIR}`);
   mkdirSync(OUTPUT_DIR, { recursive: true });
+
+  // Reset des artefacts résiduels sur les slots de test pour avoir une
+  // capture reproductible (sinon les E2E précédents biaisent la chaîne).
+  await resetSlotState();
 
   let ownsServer: ChildProcess | null = null;
   if (!(await isServerUp())) {

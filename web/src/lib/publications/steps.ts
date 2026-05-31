@@ -86,6 +86,12 @@ export interface PublicationStep {
   nextAction: boolean;
   /** Rôles intéressés par ce step (utilisé par ProductionChain pour filtrer). */
   roles: UserRole[];
+  /**
+   * V8.5 — Quand `status === "waiting"`, label du premier step amont visible
+   * non terminé. Permet à ProductionChain d'afficher "En attente de : Montage"
+   * au lieu de "En attente de l'étape précédente" (générique trompeur).
+   */
+  waitingFor?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -117,9 +123,18 @@ function renderJobStatus(
 }
 
 function coverPackStatus(
-  coverPack: Pick<CoverFramePack, "status" | "finalCoverUrl"> | null | undefined
+  coverPack:
+    | (Pick<CoverFramePack, "status" | "finalCoverUrl"> & {
+        staleSince?: Date | null;
+      })
+    | null
+    | undefined
 ): StepStatus {
   if (!coverPack) return "todo";
+  // V8.5 — Un pack stale (invalide après promote/render replaced) ne compte
+  // plus comme "fait". Sans cela, la chaîne affichait "Cover : Fait" alors
+  // que la cover de la version précédente était orpheline.
+  if (coverPack.staleSince) return "todo";
   switch (coverPack.status) {
     case "QUEUED":
       return "queued";
@@ -138,9 +153,15 @@ function coverPackStatus(
 }
 
 function captionJobStatus(
-  captionJob: Pick<CaptionJob, "status"> | null | undefined
+  captionJob:
+    | (Pick<CaptionJob, "status"> & { staleSince?: Date | null })
+    | null
+    | undefined
 ): StepStatus {
   if (!captionJob) return "todo";
+  // V8.5 — Idem cover : un job captions stale ne compte plus comme fait
+  // (typique après promote d'une nouvelle version sans relancer les captions).
+  if (captionJob.staleSince) return "todo";
   switch (captionJob.status) {
     case "QUEUED":
       return "queued";
@@ -157,13 +178,15 @@ function captionJobStatus(
 
 function descriptionJobStatus(
   descriptionJob:
-    | Pick<DescriptionJob, "status" | "result">
+    | (Pick<DescriptionJob, "status" | "result"> & {
+        staleSince?: Date | null;
+      })
     | null
     | undefined,
   /** Fallback : description rédigée à la main (sans passer par un job IA). */
   fallbackText?: string | null
 ): StepStatus {
-  if (descriptionJob) {
+  if (descriptionJob && !descriptionJob.staleSince) {
     if (descriptionJob.status === "COMPLETED" && descriptionJob.result) return "done";
     if (descriptionJob.status === "FAILED") return "failed";
   }
@@ -195,9 +218,19 @@ export function computePublicationSteps(input: {
     | "needsBrief"
   > | null;
   renderJob?: Pick<Render, "status"> | null;
-  coverPack?: Pick<CoverFramePack, "status" | "finalCoverUrl"> | null;
-  captionJob?: Pick<CaptionJob, "status"> | null;
-  descriptionJob?: Pick<DescriptionJob, "status" | "result"> | null;
+  coverPack?:
+    | (Pick<CoverFramePack, "status" | "finalCoverUrl"> & {
+        staleSince?: Date | null;
+      })
+    | null;
+  captionJob?:
+    | (Pick<CaptionJob, "status"> & { staleSince?: Date | null })
+    | null;
+  descriptionJob?:
+    | (Pick<DescriptionJob, "status" | "result"> & {
+        staleSince?: Date | null;
+      })
+    | null;
   /** Nombre de versions non supprimées (pour calculer le statut du step "edit"). */
   versionsCount?: number;
   /** Nombre de rushs uploadés (pour calculer le statut du step "rushes"). */
@@ -418,21 +451,24 @@ export function computePublicationSteps(input: {
   ];
 
   // ── Post-process : todo → waiting si étape amont non terminée ─────────────
-  // Si une étape précédente visible n'est pas dans un état "terminal acceptable"
-  // (done) et n'est pas elle-même en waiting, alors l'étape courante ne peut
-  // pas être réellement actionnable → on lui colle "waiting" (visuel todo,
-  // label "En attente"). Évite "À faire" trompeur quand on dépend d'un amont.
+  // Si une étape précédente visible n'est pas "done", l'étape courante ne peut
+  // pas être réellement actionnable → on lui colle "waiting" et on cite le
+  // premier step amont qui bloque (V8.5 — `waitingFor` precise au lieu du
+  // générique "En attente de l'étape précédente").
   const TERMINAL_FOR_NEXT = new Set<StepStatus>(["done"]);
   const visibleSteps = rawSteps.filter((s) => s.visible);
   const adjustedSteps = rawSteps.map((step) => {
     if (step.status !== "todo") return step;
     const idx = visibleSteps.findIndex((s) => s.key === step.key);
     if (idx <= 0) return step;
-    const hasPendingUpstream = visibleSteps
-      .slice(0, idx)
-      .some((s) => !TERMINAL_FOR_NEXT.has(s.status));
-    if (hasPendingUpstream) {
-      return { ...step, status: "waiting" as StepStatus };
+    const upstream = visibleSteps.slice(0, idx);
+    const blocker = upstream.find((s) => !TERMINAL_FOR_NEXT.has(s.status));
+    if (blocker) {
+      return {
+        ...step,
+        status: "waiting" as StepStatus,
+        waitingFor: blocker.label,
+      };
     }
     return step;
   });
