@@ -197,7 +197,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
         <div className="mb-4">
           <Link
             href={returnTo}
-            className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800 hover:underline transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-950 hover:underline transition-colors"
           >
             <ChevronLeft size={15} />
             {getReturnLabel(returnTo)}
@@ -207,7 +207,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
 
       <ToolPageHeader
           icon={AlignLeft}
-          iconColor="violet"
+          iconTint="rose"
           title="Captions"
           subtitle={`${presets.length} preset${presets.length !== 1 ? "s" : ""}`}
           actions={isAdmin ? (
@@ -219,7 +219,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                   setShowCreateForm((current) => !current);
                   setCreateError("");
                 }}
-                className="flex items-center gap-1.5 text-sm bg-violet-600 text-white px-4 py-2 rounded-lg hover:bg-violet-700 transition-colors"
+                className="flex items-center gap-1.5 text-sm bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
               >
                 <Plus size={14} />
                 {showCreateForm ? "Fermer" : "Créer un preset"}
@@ -268,7 +268,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                   value={createName}
                   onChange={(event) => setCreateName(event.target.value)}
                   placeholder="Ex. Premium doré"
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-500"
                 />
               </label>
               {createError && (
@@ -289,7 +289,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                 <button
                   type="submit"
                   disabled={creating}
-                  className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60 transition-colors"
+                  className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-60 transition-colors"
                 >
                   {creating ? "Création…" : "Créer et éditer"}
                 </button>
@@ -301,16 +301,16 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
 
       {/* Slot context banner — affiché quand on arrive depuis une fiche publication */}
       {slotContext && (
-        <div className="mb-6 flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-5 py-4">
-          <FileText size={18} className="text-indigo-600 shrink-0" />
+        <div className="mb-6 flex items-center gap-3 bg-peach-50 border border-peach-200 rounded-xl px-5 py-4">
+          <FileText size={18} className="text-peach-700 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-indigo-800">
+            <p className="text-sm font-semibold text-peach-900">
               Sélectionnez un preset pour la publication{" "}
               <span className="font-bold">
                 {slotContext.title ?? `@${slotContext.handle}`}
               </span>
             </p>
-            <p className="text-xs text-indigo-600 mt-0.5">
+            <p className="text-xs text-peach-700 mt-0.5">
               Le preset choisi sera utilisé pour générer les sous-titres de ce slot.
             </p>
           </div>
@@ -319,16 +319,16 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
 
       {/* Transcription pending banner */}
       {transcriptionPendingId && (
-        <div className="mb-6 flex items-center gap-3 bg-teal-50 border border-teal-200 rounded-xl px-5 py-4">
-          <Scissors size={18} className="text-teal-600 shrink-0" />
+        <div className="mb-6 flex items-center gap-3 bg-sky-50 border border-sky-200 rounded-xl px-5 py-4">
+          <Scissors size={18} className="text-sky-700 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-teal-800">Transcription prête</p>
-            <p className="text-xs text-teal-600 mt-0.5">Choisissez un preset ci-dessous pour découper et générer vos captions</p>
+            <p className="text-sm font-semibold text-sky-900">Transcription prête</p>
+            <p className="text-xs text-sky-700 mt-0.5">Choisissez un preset ci-dessous pour découper et générer vos captions</p>
           </div>
           <button
             type="button"
             onClick={dismissTranscription}
-            className="shrink-0 text-teal-400 hover:text-teal-600 transition-colors"
+            className="shrink-0 text-sky-500 hover:text-sky-800 transition-colors"
             title="Ignorer"
           >
             <X size={16} />
@@ -362,12 +362,12 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                       autoFocus
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
-                      className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 min-w-0"
+                      className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-500 min-w-0"
                     />
                     <button
                       type="submit"
                       disabled={savingId === preset.id}
-                      className="text-xs px-2 py-1 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-60 shrink-0"
+                      className="text-xs px-2 py-1 bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-60 shrink-0"
                     >
                       {savingId === preset.id ? "…" : "Renommer"}
                     </button>
@@ -413,8 +413,8 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                     onClick={() => handleGenerateClick(preset.id)}
                     className={`flex-1 text-center text-xs py-1.5 rounded-lg transition-colors ${
                       transcriptionPendingId
-                        ? "bg-teal-600 hover:bg-teal-700 text-white"
-                        : "bg-violet-600 hover:bg-violet-700 text-white"
+                        ? "bg-gray-900 hover:bg-gray-700 text-white"
+                        : "bg-gray-800 hover:bg-gray-600 text-white"
                     }`}
                   >
                     {transcriptionPendingId ? "Utiliser" : "Générer"}

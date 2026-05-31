@@ -67,8 +67,8 @@ const LANGUAGE_OPTIONS = [
 ];
 
 const STATUS_ICON: Record<Job["status"], React.ReactNode> = {
-  QUEUED: <Clock className="h-4 w-4 text-amber-500" />,
-  PROCESSING: <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />,
+  QUEUED: <Clock className="h-4 w-4 text-peach-700" />,
+  PROCESSING: <Loader2 className="h-4 w-4 animate-spin text-sky-700" />,
   COMPLETED: <CheckCircle className="h-4 w-4 text-green-500" />,
   FAILED: <XCircle className="h-4 w-4 text-red-500" />,
 };
@@ -81,8 +81,8 @@ const STATUS_LABEL: Record<Job["status"], string> = {
 };
 
 const STATUS_TONE: Record<Job["status"], string> = {
-  QUEUED: "bg-amber-50 text-amber-700",
-  PROCESSING: "bg-indigo-50 text-indigo-700",
+  QUEUED: "bg-peach-50 text-peach-800",
+  PROCESSING: "bg-sky-50 text-sky-800",
   COMPLETED: "bg-green-50 text-green-700",
   FAILED: "bg-red-50 text-red-700",
 };
@@ -593,10 +593,10 @@ export function TranscriptionList({
           actions={<RefreshButton title="Rafraîchir les jobs" />}
         />
         <div className="-mt-4 mb-2 flex flex-wrap gap-2 text-xs font-medium">
-          <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
+          <span className="rounded-full bg-peach-50 px-3 py-1 text-peach-800">
             {queuedJobs.length} en attente
           </span>
-          <span className="rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">
+          <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-800">
             {processingJobs.length} en cours
           </span>
           <span className="rounded-full bg-gray-100 px-3 py-1 text-gray-600">
@@ -609,7 +609,7 @@ export function TranscriptionList({
         role="button"
         tabIndex={0}
         className={`relative rounded-2xl border-2 border-dashed p-10 text-center transition-colors ${
-          dragging ? "border-teal-400 bg-teal-50" : "border-gray-200 bg-white hover:border-teal-300 hover:bg-gray-50"
+          dragging ? "border-sky-400 bg-sky-50" : "border-gray-200 bg-white hover:border-sky-300 hover:bg-gray-50"
         } ${uploadState ? "pointer-events-none opacity-80" : "cursor-pointer"}`}
         onDragEnter={(event) => {
           event.preventDefault();
@@ -641,22 +641,22 @@ export function TranscriptionList({
         />
 
         {uploadState ? (
-          <div className="mx-auto flex max-w-md flex-col items-center gap-4 text-teal-700">
+          <div className="mx-auto flex max-w-md flex-col items-center gap-4 text-sky-800">
             <Loader2 className="h-8 w-8 animate-spin" />
             <div className="space-y-1">
               <p className="text-sm font-semibold">
                 Préparation {uploadState.currentIndex}/{uploadState.total}
               </p>
-              <p className="text-sm text-teal-600">{uploadState.currentName}</p>
+              <p className="text-sm text-sky-700">{uploadState.currentName}</p>
             </div>
             <div className="w-full space-y-2">
-              <div className="h-2 overflow-hidden rounded-full bg-teal-100">
+              <div className="h-2 overflow-hidden rounded-full bg-sky-100">
                 <div
-                  className="h-full bg-teal-500 transition-all duration-150"
+                  className="h-full bg-sky-500 transition-all duration-150"
                   style={{ width: `${uploadState.progress ?? 0}%` }}
                 />
               </div>
-              <div className="flex items-center justify-between text-xs text-teal-600">
+              <div className="flex items-center justify-between text-xs text-sky-700">
                 <span>{uploadState.progress ?? 0}%</span>
                 <span>{uploadState.completed} rush prêt{uploadState.completed > 1 ? "s" : ""}</span>
               </div>
@@ -694,7 +694,7 @@ export function TranscriptionList({
               type="button"
               onClick={() => void refreshJobs()}
               disabled={refreshing}
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-sky-300 hover:text-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Actualiser
@@ -704,7 +704,7 @@ export function TranscriptionList({
                 type="button"
                 onClick={() => void startQueuedBatch()}
                 disabled={startingBatch}
-                className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {startingBatch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                 Lancer les {queuedJobs.length} en attente
@@ -767,7 +767,7 @@ export function TranscriptionList({
                           <select
                             value={draft.language}
                             onChange={(event) => updateQueuedDraft(job, { language: event.target.value })}
-                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
                           >
                             {LANGUAGE_OPTIONS.map((option) => (
                               <option key={option.value} value={option.value}>{option.label}</option>
@@ -780,7 +780,7 @@ export function TranscriptionList({
                             type="checkbox"
                             checked={draft.enableDiarization}
                             onChange={(event) => updateQueuedDraft(job, { enableDiarization: event.target.checked })}
-                            className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                            className="h-4 w-4 rounded border-gray-300 text-sky-700 focus:ring-sky-500"
                           />
                           <span className="text-sm text-gray-700">Identifier les intervenants</span>
                         </label>
@@ -825,7 +825,7 @@ export function TranscriptionList({
                                 });
                             }}
                             disabled={isSaving || isStarting}
-                            className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {isStarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                             Lancer
@@ -838,7 +838,7 @@ export function TranscriptionList({
                       <div className="flex flex-wrap gap-2 text-xs font-medium text-gray-500">
                         <span className="rounded-full bg-gray-100 px-3 py-1">{job.language.toUpperCase()}</span>
                         {job.enableDiarization && (
-                          <span className="rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">Intervenants identifiés</span>
+                          <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-800">Intervenants identifiés</span>
                         )}
                         {job.duration != null && (
                           <span className="rounded-full bg-gray-100 px-3 py-1">{fmtDuration(job.duration)}</span>
@@ -848,7 +848,7 @@ export function TranscriptionList({
                       <button
                         type="button"
                         onClick={() => router.push(`/transcriptions/${job.id}`)}
-                        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700"
+                        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-sky-300 hover:text-sky-800"
                       >
                         Ouvrir le détail
                       </button>
@@ -899,7 +899,7 @@ export function TranscriptionList({
                     <button
                       type="button"
                       onClick={() => router.push(`/transcriptions/${job.id}`)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-indigo-300 hover:text-indigo-700"
+                      className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-sky-300 hover:text-sky-800"
                     >
                       Ouvrir
                     </button>
@@ -913,7 +913,7 @@ export function TranscriptionList({
               on atteint cette limite (heuristique : on inclut aussi les jobs
               en cours dans le compteur côté serveur, donc à 50 c'est plein). */}
           {jobs.length >= 50 && (
-            <p className="text-center text-[11px] text-amber-600 pt-2">
+            <p className="text-center text-[11px] text-peach-700 pt-2">
               Affichage des 50 plus récents — d&apos;anciennes transcriptions
               ne sont pas listées ici.
             </p>

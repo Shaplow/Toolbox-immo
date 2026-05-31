@@ -48,13 +48,16 @@ const TYPE_LABELS: Record<JobRow["type"], string> = {
   autocut: "Autocut",
 };
 
+// V4 sweep : arc-en-ciel hard-codé (indigo/pink/orange/emerald/blue/purple)
+// → palette Coastal Studio (peach/sage/sky/rose) + neutre pour les domaines
+// pipeline éditorial. Cohérent avec /calendar et /listings.
 const TYPE_COLORS: Record<JobRow["type"], string> = {
-  render: "bg-indigo-50 text-indigo-700 border-indigo-200",
-  caption: "bg-pink-50 text-pink-700 border-pink-200",
-  transcription: "bg-orange-50 text-orange-700 border-orange-200",
-  description: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  "cover-pack": "bg-blue-50 text-blue-700 border-blue-200",
-  autocut: "bg-purple-50 text-purple-700 border-purple-200",
+  render:        "bg-peach-50 text-peach-800 border-peach-200",
+  caption:       "bg-sky-50 text-sky-800 border-sky-200",
+  transcription: "bg-sage-50 text-sage-800 border-sage-200",
+  description:   "bg-rose-50 text-rose-800 border-rose-200",
+  "cover-pack":  "bg-peach-50 text-peach-800 border-peach-200",
+  autocut:       "bg-sky-50 text-sky-800 border-sky-200",
 };
 
 function ageMs(date: Date): number {
@@ -72,8 +75,9 @@ function formatAge(ms: number): string {
 }
 
 function ageBadgeClass(ms: number): string {
-  if (ms >= 2 * 60 * 60 * 1000) return "bg-red-100 text-red-700 border-red-300";
-  if (ms >= 30 * 60 * 1000) return "bg-amber-100 text-amber-700 border-amber-300";
+  // V4 sweep : red/amber → rose/peach (palette Coastal Studio).
+  if (ms >= 2 * 60 * 60 * 1000) return "bg-rose-100 text-rose-800 border-rose-300";
+  if (ms >= 30 * 60 * 1000) return "bg-peach-100 text-peach-800 border-peach-300";
   return "bg-gray-100 text-gray-600 border-gray-200";
 }
 
@@ -246,19 +250,19 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
           <p className="text-xs text-gray-500 mb-1">Total actifs</p>
           <p className="text-2xl font-semibold text-gray-900">{stats.total}</p>
         </div>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <p className="text-xs text-amber-700 mb-1 flex items-center gap-1">
+        <div className="rounded-xl border border-peach-200 bg-peach-50 p-4">
+          <p className="text-xs text-peach-800 mb-1 flex items-center gap-1">
             <Clock size={11} /> {">"}30 min
           </p>
-          <p className="text-2xl font-semibold text-amber-700">{stats.over30min}</p>
+          <p className="text-2xl font-semibold text-peach-800">{stats.over30min}</p>
         </div>
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-          <p className="text-xs text-red-700 mb-1 flex items-center gap-1">
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+          <p className="text-xs text-rose-800 mb-1 flex items-center gap-1">
             <AlertTriangle size={11} /> {">"}2 h
           </p>
-          <p className="text-2xl font-semibold text-red-700">{stats.over2h}</p>
+          <p className="text-2xl font-semibold text-rose-800">{stats.over2h}</p>
         </div>
-        <div className="rounded-xl border border-red-300 bg-red-100 p-4">
+        <div className="rounded-xl border border-rose-300 bg-rose-100 p-4">
           <p className="text-xs text-red-800 mb-1 flex items-center gap-1">
             <AlertTriangle size={11} /> {">"}24 h (zombies)
           </p>
@@ -275,8 +279,8 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
             href={`/admin/jobs?${new URLSearchParams({ ...(t ? { type: t } : {}), ...(minAgeMinutes ? { minAge: String(minAgeMinutes) } : {}) }).toString()}`}
             className={`text-xs px-2 py-1 rounded border transition-colors ${
               typeFilter === t
-                ? "bg-indigo-600 text-white border-indigo-600"
-                : "bg-white text-gray-700 border-gray-200 hover:border-indigo-300"
+                ? "bg-gray-900 text-white border-gray-900"
+                : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
             }`}
           >
             {t === "" ? "Tous" : TYPE_LABELS[t]}
@@ -290,8 +294,8 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
             href={`/admin/jobs?${new URLSearchParams({ ...(typeFilter ? { type: typeFilter } : {}), ...(m ? { minAge: String(m) } : {}) }).toString()}`}
             className={`text-xs px-2 py-1 rounded border transition-colors ${
               minAgeMinutes === m
-                ? "bg-indigo-600 text-white border-indigo-600"
-                : "bg-white text-gray-700 border-gray-200 hover:border-indigo-300"
+                ? "bg-gray-900 text-white border-gray-900"
+                : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
             }`}
           >
             {m === 0 ? "Tous" : m === 30 ? "30 min" : m === 120 ? "2 h" : "24 h"}
@@ -341,7 +345,7 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
                       {row.href ? (
                         <Link
                           href={row.href}
-                          className="text-indigo-600 hover:text-indigo-700 hover:underline"
+                          className="text-gray-700 hover:text-gray-950 hover:underline"
                           title="Ouvrir la source"
                         >
                           {row.label}
