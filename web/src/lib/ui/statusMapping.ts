@@ -91,10 +91,16 @@ const DESCRIPTION_MAP: Record<string, StatusVisual> = {
 // ─── Cover jobs ─────────────────────────────────────────────────────────────
 
 const COVER_MAP: Record<string, StatusVisual> = {
-  PENDING:    { variant: "default", label: "En attente", icon: Clock },
-  GENERATING: { variant: "peach",   label: "Génération", icon: Loader2, spin: true },
-  READY:      { variant: "success", label: "Prête",      icon: Sparkles },
-  FAILED:     { variant: "danger",  label: "Échec",      icon: XCircle },
+  // Statuts canoniques du modèle CoverFramePack (prisma/schema.prisma) :
+  // QUEUED → PROCESSING → READY → SELECTED, ou FAILED en cas de crash.
+  QUEUED:     { variant: "default", label: "En file",        icon: Clock },
+  PROCESSING: { variant: "peach",   label: "Génération",     icon: Loader2, spin: true },
+  READY:      { variant: "sky",     label: "Frames prêtes",  icon: Sparkles },
+  SELECTED:   { variant: "success", label: "Sélectionnée",   icon: Sparkles },
+  FAILED:     { variant: "danger",  label: "Échec",          icon: XCircle },
+  // Alias playground / legacy (avant Phase V3).
+  PENDING:    { variant: "default", label: "En attente",     icon: Clock },
+  GENERATING: { variant: "peach",   label: "Génération",     icon: Loader2, spin: true },
 };
 
 // ─── Transcription jobs ────────────────────────────────────────────────────

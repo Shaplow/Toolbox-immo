@@ -20,6 +20,7 @@ import { Section } from "@/components/ui/molecules/Section";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Alert } from "@/components/ui/Alert";
+import { StatusBadge } from "@/components/ui/molecules/StatusBadge";
 import { POST_VALIDATION_STATUSES } from "@/lib/publications/constants";
 
 interface Props {
@@ -59,21 +60,9 @@ interface Props {
   collapsible?: boolean;
 }
 
-const COVER_STATUS_LABELS: Record<string, string> = {
-  QUEUED: "En file",
-  PROCESSING: "En cours",
-  READY: "Frames prêtes",
-  SELECTED: "Sélectionnée",
-  FAILED: "Échec",
-};
-
-const COVER_STATUS_COLORS: Record<string, string> = {
-  QUEUED:     "bg-gray-100 text-gray-700 border-gray-200",
-  PROCESSING: "bg-gray-100 text-gray-700 border-gray-200",
-  READY:      "bg-gray-100 text-gray-700 border-gray-200",
-  SELECTED:   "bg-success-50 text-success-700 border-success-200",
-  FAILED:     "bg-danger-50 text-danger-700 border-danger-200",
-};
+// V3 friction MED-5 : COVER_STATUS_LABELS / COVER_STATUS_COLORS locaux
+// supprimés au profit de StatusBadge molecule (domain="cover"). Source de
+// vérité unique dans lib/ui/statusMapping.ts.
 
 export function CoverSection({
   slot, pattern, coverPack, coverConfigError, canEdit, canMonteurUpload = false, viewerRole, currentVersion,
@@ -241,13 +230,7 @@ export function CoverSection({
     </span>
   ) : null;
   const statusBadge = coverPack ? (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] border font-medium ${
-        COVER_STATUS_COLORS[coverPack.status] ?? "bg-gray-50 text-gray-600 border-gray-200"
-      }`}
-    >
-      {COVER_STATUS_LABELS[coverPack.status] ?? coverPack.status}
-    </span>
+    <StatusBadge domain="cover" status={coverPack.status} size="sm" />
   ) : null;
 
   return (
