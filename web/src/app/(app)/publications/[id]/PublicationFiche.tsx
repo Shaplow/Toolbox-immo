@@ -662,6 +662,15 @@ export function PublicationFiche({
                   render,
                   latestCaptionJob: latestCompletedCaptionJob,
                 })}
+                /* V8.10 — Indique si on attend l'incrustation des sous-titres
+                   alors que la vidéo brute est dispo. Évite l'écran noir
+                   pendant que les captions burn-in tournent. */
+                pendingCaptionsBurnIn={
+                  captionsActive &&
+                  latestCaptionJob?.status !== "COMPLETED" &&
+                  latestCaptionJob?.status !== "FAILED" &&
+                  Boolean(render?.videoUrl)
+                }
                 listingId={listing?.id ?? null}
                 canEdit={canEditRender}
               />
@@ -698,19 +707,33 @@ export function PublicationFiche({
             {captionsActive && shouldRenderForRole("captions", currentUserRole) &&
               renderNextStepHint("captions")}
 
-            {/* 3. Validation client externe — masquée si needsClientValidation false */}
-            {wrap(
-              "clientValidation",
-              <ClientValidationSection
-                slotId={slot.id}
-                slotStatus={slot.status}
-                needsClientValidation={clientValidation.needsClientValidation}
-                allowsClientRevision={clientValidation.allowsClientRevision}
-                initialActiveToken={clientValidation.activeToken}
-                rounds={clientValidation.rounds}
-                currentUserRole={currentUserRole}
-              />
-            )}
+            {/* 3. Validation client externe — masquée si needsClientValidation false.
+                V8.10 — On bloque l'envoi tant que les sous-titres ne sont pas
+                COMPLETED (le client doit voir la version finale avec captions). */}
+            {(() => {
+              const captionsRequired = captionsActive;
+              const captionsReady =
+                !captionsRequired ||
+                latestCaptionJob?.status === "COMPLETED";
+              const canSendValidation = captionsReady;
+              const cannotSendReason = !captionsReady
+                ? "Les sous-titres ne sont pas encore générés. Le client doit voir la vidéo finale avec sous-titres avant validation."
+                : null;
+              return wrap(
+                "clientValidation",
+                <ClientValidationSection
+                  slotId={slot.id}
+                  slotStatus={slot.status}
+                  needsClientValidation={clientValidation.needsClientValidation}
+                  allowsClientRevision={clientValidation.allowsClientRevision}
+                  initialActiveToken={clientValidation.activeToken}
+                  rounds={clientValidation.rounds}
+                  currentUserRole={currentUserRole}
+                  canSendValidation={canSendValidation}
+                  cannotSendReason={cannotSendReason}
+                />
+              );
+            })()}
             {clientValidation.needsClientValidation && shouldRenderForRole("clientValidation", currentUserRole) &&
               renderNextStepHint("clientValidation")}
 

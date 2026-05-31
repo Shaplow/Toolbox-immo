@@ -54,6 +54,13 @@ interface Props {
   } | null;
   finalVideoUrl?: string | null;
   isCaptioned?: boolean;
+  /**
+   * V8.10 — true quand le pipeline captions est en cours (QUEUED/PROCESSING)
+   * ET qu'une vidéo brute existe déjà. Affiche un badge "Sous-titres en cours
+   * d'incrustation" au-dessus du player pour expliquer que la version visible
+   * n'est PAS encore finale (pas pour montrer un écran noir).
+   */
+  pendingCaptionsBurnIn?: boolean;
   listingId: string | null;
   canEdit: boolean;
   sectionId?: string;
@@ -85,6 +92,7 @@ export function RenderSection({
   render,
   finalVideoUrl,
   isCaptioned,
+  pendingCaptionsBurnIn = false,
   listingId,
   canEdit,
   sectionId = "render",
@@ -258,6 +266,21 @@ export function RenderSection({
             <Badge variant="info" dot>
               Version avec sous-titres incrustés
             </Badge>
+          )}
+          {/* V8.10 — Avant on affichait juste un VideoPlayer src=null
+              quand finalVideoUrl était null ET captions en cours, ce qui
+              donnait un écran noir. Maintenant : on rend la vidéo brute
+              du render + un badge explicite "version finale en cours de
+              préparation" pour éviter l'écran muet. */}
+          {pendingCaptionsBurnIn && !isCaptioned && (
+            <div className="rounded-xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(96,165,250,0.30)]">
+              <p className="text-[12px] text-sky-900 flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-sky-500 animate-pulse" />
+                <strong>Aperçu sans sous-titres</strong> — la version finale
+                avec sous-titres incrustés sera disponible une fois les
+                captions terminées.
+              </p>
+            </div>
           )}
           <div className="max-w-[280px] mx-auto">
             <VideoPlayer

@@ -50,6 +50,15 @@ interface Props {
   /** Historique des rounds de validation client (du plus récent au plus ancien). */
   rounds: ClientValidationRound[];
   currentUserRole: UserRole;
+  /**
+   * V8.10 — Verrou métier : si false, le bouton "Envoyer pour validation"
+   * est désactivé avec un message explicatif. Sert à empêcher l'envoi
+   * tant que les sous-titres ne sont pas COMPLETED (le client doit voir
+   * la vidéo finale, pas la brute).
+   */
+  canSendValidation?: boolean;
+  /** Raison pour laquelle l'envoi est bloqué (affichée si !canSendValidation). */
+  cannotSendReason?: string | null;
   sectionId?: string;
   storageKey?: string;
   defaultOpen?: boolean;
@@ -66,6 +75,8 @@ export function ClientValidationSection({
   initialActiveToken,
   rounds,
   currentUserRole,
+  canSendValidation = true,
+  cannotSendReason = null,
   sectionId = "client-validation",
   storageKey,
   defaultOpen = true,
@@ -306,6 +317,21 @@ export function ClientValidationSection({
         </div>
       )}
 
+      {/* V8.10 — Verrou métier : on ne peut pas envoyer pour validation si
+          les amont (captions notamment) ne sont pas prêts. Le client doit
+          voir la vidéo finale, pas la brute. */}
+      {isAdmin && !canSendValidation && !isResolved && (
+        <div className="mb-4 rounded-xl bg-gradient-to-b from-peach-50/85 to-peach-50/55 backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(245,158,107,0.30)]">
+          <p className="text-[13px] font-semibold text-peach-900 flex items-center gap-2">
+            <AlertTriangle size={14} className="flex-shrink-0" />
+            Envoi bloqué
+          </p>
+          <p className="text-[11px] text-peach-700/80 mt-0.5">
+            {cannotSendReason ?? "Une étape amont n'est pas encore terminée. Vérifie la chaîne de production."}
+          </p>
+        </div>
+      )}
+
       {/* ── Actions admin ──────────────────────────────────────────────────── */}
       {isAdmin && (
         <div className="flex flex-wrap gap-2 mb-4">
@@ -315,7 +341,9 @@ export function ClientValidationSection({
               size="sm"
               icon={activeToken ? RefreshCw : ExternalLink}
               loading={submitting === "generate"}
+              disabled={!canSendValidation && !activeToken}
               onClick={handleGenerate}
+              title={!canSendValidation && !activeToken ? (cannotSendReason ?? "Envoi bloqué") : undefined}
             >
               {activeToken ? "Régénérer le lien" : "Envoyer pour validation"}
             </Button>
