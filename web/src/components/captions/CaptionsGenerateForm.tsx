@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
+import { toast } from "@/components/ui/Toast";
 import { X } from "lucide-react";
 import {
   Caption,
@@ -224,16 +226,32 @@ export default function CaptionsGenerateForm({
     }
   }, [initialSubsJson]);
 
+  const router = useRouter();
+
   // SSE fast path — caption jobs updated immediately when webhook fires
   useAllJobEvents((event) => {
     if (event.jobType !== "captions") return;
-    setJobs((prev) =>
-      prev.map((j) => {
+    setJobs((prev) => {
+      const existing = prev.find((j) => j.id === event.jobId);
+      // V5.A.3 — Si un job soumis pendant cette session termine et qu'on
+      // a un slotId + returnTo (= vient d'une fiche), rebond auto fiche.
+      // Pattern cohérent avec TranscriptionList V5.A.2, CoverGenerator V2.1,
+      // DescriptionTool V2.2.
+      if (
+        existing &&
+        (event.status === "COMPLETED" || event.status === "DONE") &&
+        slotId &&
+        returnTo
+      ) {
+        toast.success("Sous-titres générés — retour à la publication.");
+        setTimeout(() => router.push(returnTo), 1500);
+      }
+      return prev.map((j) => {
         if (j.id !== event.jobId) return j;
         const mapped = event.status === "COMPLETED" || event.status === "DONE" ? "DONE" : event.status;
         return { ...j, status: mapped, videoUrl: typeof event.videoUrl === "string" ? event.videoUrl : j.videoUrl };
-      })
-    );
+      });
+    });
   });
 
   // Polling fallback — 10 s, only active when SSE is unavailable (dev, no tunnel)
