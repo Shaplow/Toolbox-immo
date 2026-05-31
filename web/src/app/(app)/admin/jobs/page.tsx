@@ -230,7 +230,13 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
   };
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
+        style={{ background: "var(--gradient-page-shell)" }}
+      >
+        <div className="px-6 sm:px-8 pt-6 pb-12">
+          <div className="max-w-6xl mx-auto">
       <ToolPageHeader
         icon={RotateCw}
         title="Jobs actifs & bloqués"
@@ -370,6 +376,9 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
           </table>
         </div>
       )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
