@@ -500,20 +500,19 @@ export async function triggerAutoCaptionForTranscription(transcriptionJobId: str
   };
 
   try {
-    await prisma.captionJob.update({
-      where: { id: captionJob.id },
-      data: { status: "PROCESSING" },
-    });
-
     const data = await submitRunpodJob<{ id: string }>(
       RUNPOD_ENDPOINT_ID,
       RUNPOD_API_KEY,
       payload,
     );
 
+    // Fix 2026-05-31 : un seul update PROCESSING + runpodJobId APRÈS submit OK
+    // (aligné sur triggerAutoTranscription). Avant on passait PROCESSING avant
+    // submit → en cas de crash/timeout réseau entre les deux updates, le job
+    // restait PROCESSING fantôme sans webhook pour le résoudre.
     await prisma.captionJob.update({
       where: { id: captionJob.id },
-      data: { runpodJobId: data.id },
+      data: { status: "PROCESSING", runpodJobId: data.id },
     });
 
     console.info(
