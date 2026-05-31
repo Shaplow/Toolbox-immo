@@ -46,6 +46,9 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
           id: true,
           status: true,
           templateId: true,
+          // V4 bug #6 : videoUrl utilisé pour détecter les renders image-only
+          // (pas de mp4 sur R2 → la transcription échouerait en silence).
+          videoUrl: true,
           listing: { select: { userId: true } },
           transcriptionJob: { select: { id: true, status: true } },
         },
@@ -90,6 +93,19 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
   if (!render.listing?.userId) {
     return NextResponse.json(
       { error: "Render orphelin (sans listing.userId) — impossible de tracer le job." },
+      { status: 400 },
+    );
+  }
+  // V4 bug #6 : un render image-only (template PNG, pas de VideoBlock) n'a
+  // pas de mp4 sur R2. Avant on construisait `renders/${id}.mp4` en dur et
+  // la transcription échouait silencieusement côté RunPod (audio_url 404).
+  // Désormais on rejette tôt avec un message clair.
+  if (!render.videoUrl) {
+    return NextResponse.json(
+      {
+        error:
+          "Ce render est image-only (PNG). La transcription nécessite une vidéo — utilisez un template avec un VideoBlock pour activer la description IA.",
+      },
       { status: 400 },
     );
   }
