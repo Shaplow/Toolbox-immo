@@ -568,85 +568,87 @@ export function AddSlotModal({
             )}
           </div>
 
-          {/* Options de production (manuel only) */}
+          {/* Options de production (manuel only) — remplacé details/summary
+              natif (anti-pattern) par un bloc inline. La section est courte
+              et toujours utile en mode manuel, pas la peine de la masquer. */}
           {!isPatternMode && (
-            <details className="rounded-xl bg-rose-50/40 backdrop-blur-[8px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.18)]" open>
-              <summary className="cursor-pointer text-[12px] font-semibold text-rose-700 select-none">
-                Options de production
-                <span className="ml-1 text-rose-700/70 font-normal text-[11px]">
-                  · pré-régler cover, captions, description…
-                </span>
-              </summary>
-              <div className="mt-3 space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <FormField label="Cover automatique">
-                    <Combobox
-                      value={oneOffCoverMode}
-                      onChange={setOneOffCoverMode}
-                      options={COVER_MODE_OPTIONS}
-                      placeholder="Hérite du pattern"
-                    />
-                  </FormField>
-                  <OneOffToggle
-                    label="Sous-titres auto"
-                    value={oneOffNeedsCaptions}
-                    onChange={setOneOffNeedsCaptions}
+            <section className="rounded-xl bg-rose-50/40 backdrop-blur-[8px] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.18)] space-y-3">
+              <div>
+                <h3 className="text-[12px] font-semibold text-rose-700">
+                  Options de production
+                </h3>
+                <p className="mt-0.5 text-[11px] text-rose-700/70">
+                  Pré-régler cover, sous-titres, description (laisser vide = héritera du pattern par défaut).
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <FormField label="Cover automatique">
+                  <Combobox
+                    value={oneOffCoverMode}
+                    onChange={setOneOffCoverMode}
+                    options={COVER_MODE_OPTIONS}
+                    placeholder="Hérite du pattern"
                   />
-                  <OneOffToggle
-                    label="Rushes attendus"
-                    value={oneOffNeedsRushes}
-                    onChange={setOneOffNeedsRushes}
-                  />
-                  <OneOffToggle
-                    label="Brief éditorial"
-                    value={oneOffNeedsBrief}
-                    onChange={setOneOffNeedsBrief}
-                  />
-                </div>
+                </FormField>
+                <OneOffToggle
+                  label="Sous-titres auto"
+                  value={oneOffNeedsCaptions}
+                  onChange={setOneOffNeedsCaptions}
+                />
+                <OneOffToggle
+                  label="Rushes attendus"
+                  value={oneOffNeedsRushes}
+                  onChange={setOneOffNeedsRushes}
+                />
+                <OneOffToggle
+                  label="Brief éditorial"
+                  value={oneOffNeedsBrief}
+                  onChange={setOneOffNeedsBrief}
+                />
+              </div>
 
-                {oneOffCoverMode === "autoPack" && coverPresets.length === 0 && (
-                  <p className="text-[11px] text-peach-700 bg-peach-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.2)]">
-                    Aucune config cover sur ce template. Active-la dans le builder
-                    (onglet « Cover auto ») avant de créer ce slot.
-                  </p>
-                )}
+              {oneOffCoverMode === "autoPack" && coverPresets.length === 0 && (
+                <p className="text-[11px] text-peach-700 bg-peach-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.2)]">
+                  Aucune config cover sur ce template. Active-la dans le builder
+                  (onglet « Cover auto ») avant de créer ce slot.
+                </p>
+              )}
 
-                {oneOffNeedsCaptions === true && (
-                  <FormField label="Preset captions" required>
+              {oneOffNeedsCaptions === true && (
+                <FormField label="Preset captions" required>
+                  <Combobox
+                    value={oneOffCaptionPresetId}
+                    onChange={setOneOffCaptionPresetId}
+                    options={[
+                      { value: "", label: "— Choisir un preset —" },
+                      ...captionPresets.map((p) => ({ value: p.id, label: p.name })),
+                    ]}
+                  />
+                </FormField>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <FormField label="Mode description">
+                  <Combobox
+                    value={oneOffNeedsDescription}
+                    onChange={setOneOffNeedsDescription}
+                    options={DESCRIPTION_OPTIONS}
+                  />
+                </FormField>
+                {oneOffNeedsDescription === "autoGenerate" && (
+                  <FormField label="Prompt IA" required>
                     <Combobox
-                      value={oneOffCaptionPresetId}
-                      onChange={setOneOffCaptionPresetId}
+                      value={oneOffDescriptionPromptId}
+                      onChange={setOneOffDescriptionPromptId}
                       options={[
-                        { value: "", label: "— Choisir un preset —" },
-                        ...captionPresets.map((p) => ({ value: p.id, label: p.name })),
+                        { value: "", label: "— Choisir un prompt —" },
+                        ...descriptionPrompts.map((p) => ({ value: p.id, label: p.name })),
                       ]}
                     />
                   </FormField>
                 )}
-
-                <div className="grid grid-cols-2 gap-2">
-                  <FormField label="Mode description">
-                    <Combobox
-                      value={oneOffNeedsDescription}
-                      onChange={setOneOffNeedsDescription}
-                      options={DESCRIPTION_OPTIONS}
-                    />
-                  </FormField>
-                  {oneOffNeedsDescription === "autoGenerate" && (
-                    <FormField label="Prompt IA" required>
-                      <Combobox
-                        value={oneOffDescriptionPromptId}
-                        onChange={setOneOffDescriptionPromptId}
-                        options={[
-                          { value: "", label: "— Choisir un prompt —" },
-                          ...descriptionPrompts.map((p) => ({ value: p.id, label: p.name })),
-                        ]}
-                      />
-                    </FormField>
-                  )}
-                </div>
               </div>
-            </details>
+            </section>
           )}
 
           {error && (
