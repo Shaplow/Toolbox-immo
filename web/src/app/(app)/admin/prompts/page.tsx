@@ -46,37 +46,46 @@ export default async function AdminPromptsPage() {
   }));
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-12">
-      <ToolPageHeader
-        icon={Sparkles}
-        iconColor="amber"
-        title="Prompts IA"
-        subtitle="Gérez les prompts disponibles pour vos utilisateurs."
-      />
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
+        style={{ background: "var(--gradient-page-shell)" }}
+      >
+        <div className="px-6 sm:px-8 pt-6 pb-12">
+          <div className="max-w-5xl mx-auto space-y-12">
+            <ToolPageHeader
+              icon={Sparkles}
+              iconTint="peach"
+              title="Prompts IA"
+              subtitle="Gérez les prompts disponibles pour vos utilisateurs."
+            />
 
-      {/* Caption prompts */}
-      <section>
-        <div className="mb-5">
-          <h2 className="text-base font-semibold text-gray-900">Sous-titres</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Prompts de correction IA disponibles dans l&apos;outil sous-titres.
-          </p>
+            {/* Caption prompts */}
+            <section>
+              <div className="mb-5">
+                <h2 className="text-base font-semibold text-gray-900">Sous-titres</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Prompts de correction IA disponibles dans l&apos;outil sous-titres.
+                </p>
+              </div>
+              <CaptionPromptsPanel initialPrompts={captionPrompts} />
+            </section>
+
+            <div className="border-t border-white/40" />
+
+            {/* Description prompts */}
+            <section>
+              <div className="mb-5">
+                <h2 className="text-base font-semibold text-gray-900">Descriptions</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Prompts de génération disponibles dans l&apos;outil de descriptions.
+                </p>
+              </div>
+              <DescriptionPromptsPanel initialPrompts={descriptionPrompts} />
+            </section>
+          </div>
         </div>
-        <CaptionPromptsPanel initialPrompts={captionPrompts} />
-      </section>
-
-      <div className="border-t border-gray-100" />
-
-      {/* Description prompts */}
-      <section>
-        <div className="mb-5">
-          <h2 className="text-base font-semibold text-gray-900">Descriptions</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Prompts de génération disponibles dans l&apos;outil de descriptions.
-          </p>
-        </div>
-        <DescriptionPromptsPanel initialPrompts={descriptionPrompts} />
-      </section>
+      </div>
     </div>
   );
 }
