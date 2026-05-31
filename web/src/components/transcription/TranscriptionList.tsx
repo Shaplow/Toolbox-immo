@@ -570,7 +570,13 @@ export function TranscriptionList({
   }, []);
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-8">
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
+        style={{ background: "var(--gradient-page-shell)" }}
+      >
+        <div className="px-6 sm:px-8 pt-6 pb-12">
+          <div className="max-w-5xl mx-auto space-y-6">
       {/* V2 friction MED-6 : breadcrumb retour si on vient d'une fiche. */}
       {returnTo && (
         <Link
@@ -934,6 +940,9 @@ export function TranscriptionList({
           )}
         </section>
       )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
