@@ -32,6 +32,7 @@ import {
   COVER_MODE_LABELS_FR,
   COVER_MODE_HELP,
   NEEDS_DESCRIPTION_LABELS_FR,
+  NEEDS_DESCRIPTION_HELP,
 } from "@/lib/ui/domainLabels";
 
 function parseCoverConfig(json: string): object | null {
@@ -558,6 +559,11 @@ export function AccountPatternForm({
                 onChange={(v) => set("source", v)}
                 options={SOURCE_OPTIONS}
               />
+              {SOURCE_HELP[values.source] && (
+                <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500">
+                  {SOURCE_HELP[values.source]}
+                </p>
+              )}
             </FormField>
 
             {values.source === "auto_template" && (
@@ -717,6 +723,11 @@ export function AccountPatternForm({
                   onChange={(v) => set("needsDescription", v)}
                   options={DESCRIPTION_OPTIONS}
                 />
+                {NEEDS_DESCRIPTION_HELP[values.needsDescription] && (
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500">
+                    {NEEDS_DESCRIPTION_HELP[values.needsDescription]}
+                  </p>
+                )}
               </FormField>
             </div>
 
