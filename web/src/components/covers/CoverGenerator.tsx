@@ -540,8 +540,14 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
           </div>
         ) : packs.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center">
-            <p className="text-sm font-medium text-gray-700">Aucun pack cover à traiter.</p>
-            <p className="text-xs text-gray-400 mt-1">Les prochains renders vidéo avec cover activée apparaîtront ici.</p>
+            <p className="text-sm font-medium text-gray-700">
+              {slotId ? "Pas encore de pack cover pour cette publication." : "Aucun pack cover à traiter."}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              {slotId
+                ? "Le rendu vidéo doit avoir terminé pour qu'un pack soit généré. Tu peux aussi extraire des frames librement via l'onglet « Extraction libre »."
+                : "Les prochains renders vidéo avec cover activée apparaîtront ici."}
+            </p>
           </div>
         ) : (
           <div className="space-y-5">
