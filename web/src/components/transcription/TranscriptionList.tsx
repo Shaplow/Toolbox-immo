@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { RefreshButton } from "@/components/ui/RefreshButton";
+import { toast } from "@/components/ui/Toast";
 import { fmtDate, fmtDuration } from "@/lib/jobUtils";
 
 const AUDIO_ACCEPT = ".mp3,.wav,.m4a,.flac,.ogg,.aac,.mp4,.mov,.mkv,.webm";
@@ -191,8 +192,21 @@ export function TranscriptionList({
   // SSE fast path — transcription jobs updated immediately when webhook fires
   useAllJobEvents((event) => {
     if (event.jobType !== "transcription") return;
-    setJobs((currentJobs) =>
-      currentJobs.map((job) =>
+    setJobs((currentJobs) => {
+      const existing = currentJobs.find((j) => j.id === event.jobId);
+      // V5.A.2 — Si on vient d'une fiche (slotContext) et qu'un job de cette
+      // session termine, rebond auto fiche (cohérent avec CoverGenerator V2.1
+      // et DescriptionTool V2.2). Délai 1.5s pour laisser voir le toast.
+      if (
+        existing &&
+        event.status === "COMPLETED" &&
+        slotContext &&
+        returnTo
+      ) {
+        toast.success("Transcription terminée — retour à la publication.");
+        setTimeout(() => router.push(returnTo), 1500);
+      }
+      return currentJobs.map((job) =>
         job.id === event.jobId
           ? {
               ...job,
@@ -202,8 +216,8 @@ export function TranscriptionList({
               ...(typeof event.hasDiarization === "boolean" ? { hasDiarization: event.hasDiarization } : {}),
             }
           : job
-      )
-    );
+      );
+    });
   });
 
   // Polling fallback — 10 s, backup when SSE unavailable (dev, no tunnel)
