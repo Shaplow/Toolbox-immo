@@ -1,69 +1,80 @@
+/**
+ * Skeleton aligné sur PublicationFiche réelle : même wrapper (shell radial
+ * gris diffu + margins/rounded), mêmes proportions header et sections.
+ * Évite le flash de layout pendant la navigation.
+ */
 export default function PublicationLoading() {
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header skeleton */}
-      <div className="sticky top-0 z-20 bg-white border-b border-gray-100 shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-2 mb-2">
-            <div className="h-3 w-16 bg-gray-100 rounded animate-pulse" />
-            <div className="h-3 w-2 bg-gray-100 rounded animate-pulse" />
-            <div className="h-3 w-32 bg-gray-100 rounded animate-pulse" />
-            <div className="h-3 w-2 bg-gray-100 rounded animate-pulse" />
-            <div className="h-3 w-20 bg-gray-100 rounded animate-pulse" />
-          </div>
-
-          {/* Titre + bouton */}
-          <div className="flex items-start gap-3">
-            <div className="flex-1 space-y-1.5">
-              <div className="h-6 w-64 bg-gray-200 rounded-lg animate-pulse" />
-              <div className="flex items-center gap-2">
-                <div className="h-4 w-24 bg-gray-100 rounded animate-pulse" />
-                <div className="h-5 w-20 bg-gray-100 rounded-full animate-pulse" />
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
+        style={{
+          background:
+            "radial-gradient(ellipse 90% 65% at 50% 0%, rgba(82, 82, 91, 0.38) 0%, rgba(161, 161, 170, 0.22) 40%, rgba(244, 244, 245, 1) 85%)",
+        }}
+      >
+        {/* Header */}
+        <div className="rounded-t-3xl">
+          <div className="max-w-6xl mx-auto px-6 sm:px-8 pt-6 pb-8">
+            {/* Breadcrumb */}
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="h-2.5 w-16 bg-gray-200/60 rounded animate-pulse" />
+              <div className="h-2.5 w-1 bg-gray-200/40 rounded animate-pulse" />
+              <div className="h-2.5 w-20 bg-gray-200/60 rounded animate-pulse" />
+            </div>
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-2.5 w-28 bg-gray-200/50 rounded animate-pulse" />
+                <div className="h-10 sm:h-12 w-3/4 max-w-[420px] bg-gray-200/70 rounded-xl animate-pulse" />
+                <div className="h-3.5 w-48 bg-gray-200/50 rounded animate-pulse" />
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="h-8 w-20 bg-white/60 backdrop-blur-[12px] rounded-full animate-pulse" />
+                <div className="h-8 w-8 bg-white/60 rounded-lg animate-pulse" />
               </div>
             </div>
-            <div className="h-8 w-32 bg-gray-200 rounded-lg animate-pulse" />
-          </div>
-
-          {/* Badges + assignations */}
-          <div className="flex flex-wrap items-center gap-3 mt-3">
-            <div className="h-5 w-16 bg-gray-100 rounded-full animate-pulse" />
-            <div className="h-5 w-24 bg-gray-100 rounded-full animate-pulse" />
-            <div className="hidden sm:block h-3 w-px bg-gray-200" />
-            <div className="h-4 w-36 bg-gray-100 rounded animate-pulse" />
-            <div className="h-4 w-28 bg-gray-100 rounded animate-pulse" />
-          </div>
-        </div>
-      </div>
-
-      {/* Corps */}
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {/* Production chain skeleton */}
-        <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
-          <div className="h-3 w-32 bg-gray-100 rounded animate-pulse mb-3" />
-          <div className="flex gap-2 overflow-hidden">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex-shrink-0 h-16 w-36 bg-gray-100 rounded-lg animate-pulse"
-              />
-            ))}
           </div>
         </div>
 
-        {/* Section skeletons */}
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm"
-          >
-            <div className="h-4 w-28 bg-gray-200 rounded animate-pulse mb-3" />
-            <div className="space-y-2">
-              <div className="h-3 w-full bg-gray-100 rounded animate-pulse" />
-              <div className="h-3 w-3/4 bg-gray-100 rounded animate-pulse" />
+        <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
+          <div className="max-w-6xl mx-auto">
+            {/* ProductionChain card placeholder */}
+            <div className="p-4 rounded-2xl bg-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+              <div className="flex gap-2 overflow-hidden">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="flex-1 min-w-0 h-[88px] bg-gray-100/70 rounded-xl animate-pulse"
+                    style={{ animationDelay: `${i * 60}ms` }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-8 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-8">
+              {/* Colonne workflow */}
+              <div className="space-y-10 min-w-0">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="space-y-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-8 w-8 rounded-lg bg-gray-200/60 animate-pulse" />
+                      <div className="h-4 w-32 bg-gray-200/60 rounded animate-pulse" />
+                    </div>
+                    <div className="space-y-2 pl-10">
+                      <div className="h-3 w-full max-w-md bg-gray-100/80 rounded animate-pulse" />
+                      <div className="h-3 w-3/4 max-w-sm bg-gray-100/80 rounded animate-pulse" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Sidebar (xl+) */}
+              <div className="hidden xl:block space-y-4">
+                <div className="h-32 rounded-2xl bg-white/55 backdrop-blur-[8px] animate-pulse" />
+                <div className="h-40 rounded-2xl bg-white/55 backdrop-blur-[8px] animate-pulse" />
+              </div>
             </div>
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );

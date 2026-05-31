@@ -433,29 +433,31 @@ export function PublicationFiche({
     return null;
   }
 
-  // Helper inline (pas un composant React) — évite l'erreur lint
-  // react-hooks/static-components qui interdit de déclarer un composant
-  // pendant le render du parent.
+  // Lien visuel entre 2 sections — référence directe à la chaîne de
+  // production (trait + dot central qui matérialise l'étape). Cliquable
+  // → scroll vers la section suivante. Tooltip = nom de l'étape.
   function renderNextStepHint(currentKey: SectionKey) {
     const next = getNextProcessStep(currentKey);
     if (!next) return null;
     return (
-      <div className="mt-1.5 mb-3 flex justify-end pr-2">
-        <button
-          type="button"
-          onClick={() => {
-            const el = document.getElementById(next.key);
-            window.dispatchEvent(new CustomEvent("pub:open-section", { detail: { sectionId: next.key } }));
-            requestAnimationFrame(() => {
-              el?.scrollIntoView({ behavior: "smooth", block: "start" });
-            });
-          }}
-          className="inline-flex items-center gap-1 text-[10.5px] text-gray-400 hover:text-sky-700 transition-colors"
-        >
-          Étape suivante : <span className="font-medium">{next.label}</span>
-          <span aria-hidden="true">↓</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => {
+          const el = document.getElementById(next.key);
+          window.dispatchEvent(new CustomEvent("pub:open-section", { detail: { sectionId: next.key } }));
+          requestAnimationFrame(() => {
+            el?.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
+        }}
+        aria-label={`Aller à : ${next.label}`}
+        title={`Étape suivante : ${next.label}`}
+        className="group relative flex flex-col items-center justify-center w-full h-8 my-1"
+      >
+        {/* Trait fin vertical traversant */}
+        <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-gray-300 to-transparent group-hover:via-sky-400 transition-colors" />
+        {/* Dot central — matérialise l'étape, mêmes codes que ProductionChain */}
+        <span className="relative h-2 w-2 rounded-full bg-white border border-gray-300 group-hover:border-sky-500 group-hover:scale-125 transition-all shadow-sm" />
+      </button>
     );
   }
 
@@ -477,8 +479,10 @@ export function PublicationFiche({
       <div
         className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
         style={{
+          // Fond gris foncé diffus (radial soft → gris pâle en bas). Plus
+          // de gradient peach/sage, ambiance neutre studio.
           background:
-            "var(--gradient-page-shell)",
+            "radial-gradient(ellipse 90% 65% at 50% 0%, rgba(82, 82, 91, 0.38) 0%, rgba(161, 161, 170, 0.22) 40%, rgba(244, 244, 245, 1) 85%)",
         }}
       >
         {/* Header shell — non sticky (Mathis 2026-05-29). Le header
@@ -505,18 +509,15 @@ export function PublicationFiche({
 
         <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
         <div className="max-w-6xl mx-auto">
-          {/* ProductionChain dans une card glass — référence playground
-              vibes#control-center "Pipeline Story" : eyebrow + title + Stepper. */}
-          <div className="p-5 rounded-2xl bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)]">
-            <div className="flex items-baseline justify-between mb-4 gap-3">
-              <div>
-                <p className="text-[13px] font-semibold tracking-tight text-gray-950">
-                  Chaîne de production
-                </p>
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mt-0.5">
-                  Suivi temps réel
-                </p>
-              </div>
+          {/* Card chaîne de production — twist : pas de titre verbeux mais
+              une petite étiquette "Pipeline" en eyebrow + dot live animé en
+              coin. Card glass légère pour ancrer visuellement la chaîne. */}
+          <div className="relative p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-white/80 to-white/60 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.05)]">
+            <div className="absolute top-3 right-4 flex items-center gap-1.5">
+              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
+              <span className="text-[9.5px] uppercase tracking-widest font-medium text-gray-400">
+                Live
+              </span>
             </div>
             <ProductionChain steps={steps} viewerRole={currentUserRole} />
           </div>

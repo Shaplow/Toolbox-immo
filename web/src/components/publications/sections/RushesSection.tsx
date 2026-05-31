@@ -10,13 +10,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Clapperboard, Download } from "lucide-react";
+import { Clapperboard, Download, Archive } from "lucide-react";
 import { MediaDropzone } from "@/components/ui/MediaDropzone";
 import { Section } from "@/components/ui/molecules/Section";
 import type { UploadResult } from "@/components/ui/MediaDropzone";
 import { DeleteButton } from "@/components/ui/DeleteButton";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { Button } from "@/components/ui/Button";
 import { toast } from "@/components/ui/Toast";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -100,6 +98,34 @@ export function RushesSection({
   const router = useRouter();
   const [rushes, setRushes] = useState<Rush[]>(initialRushes);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadingZip, setDownloadingZip] = useState(false);
+
+  async function downloadAllZip() {
+    setDownloadingZip(true);
+    try {
+      const res = await fetch(`/api/publications/${slotId}/rushes/zip`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? `Erreur ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      // Extract filename from Content-Disposition
+      const disposition = res.headers.get("content-disposition") ?? "";
+      const match = disposition.match(/filename="([^"]+)"/);
+      a.download = match?.[1] ?? `rushes-${slotId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur téléchargement zip");
+    } finally {
+      setDownloadingZip(false);
+    }
+  }
 
   // ─── Upload réussi ─────────────────────────────────────────────────────────
 
@@ -156,6 +182,8 @@ export function RushesSection({
 
   const isVideo = (mime: string) => mime.startsWith("video/");
 
+  const hasRushes = rushes.length > 0;
+
   return (
     <Section
       title="Rushes"
@@ -165,109 +193,102 @@ export function RushesSection({
       defaultOpen={defaultOpen}
       collapsible={collapsible}
       actions={
-        rushes.length > 0 ? (
-          <span className="text-xs text-gray-400 tabular-nums">{rushes.length}</span>
-        ) : null
+        <div className="flex items-center gap-2">
+          {hasRushes && (
+            <span className="text-[11px] text-gray-400 tabular-nums">{rushes.length}</span>
+          )}
+          {hasRushes && (
+            <button
+              type="button"
+              onClick={() => void downloadAllZip()}
+              disabled={downloadingZip}
+              className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-900 disabled:opacity-40 transition-colors"
+              title="Télécharger tous les rushes en .zip"
+              aria-label="Télécharger tous les rushes en .zip"
+            >
+              <Archive size={12} />
+              {downloadingZip ? "Préparation…" : ".zip"}
+            </button>
+          )}
+        </div>
       }
     >
-
-      {/* Zone upload (ADMIN / CM) */}
-      {canUploadRushes && (
-        <div className="mb-4">
-          <MediaDropzone
-            slotId={slotId}
-            kind="rush"
-            accept={[
-              "video/mp4",
-              "video/quicktime",
-              "video/x-m4v",
-              "video/webm",
-              "image/jpeg",
-              "image/png",
-              "image/webp",
-            ]}
-            maxSizeBytes={10 * 1024 * 1024 * 1024} // 10 GB
-            multiple
-            label="Déposer les rushes (vidéos et images)"
-            onUploaded={handleUploaded}
-            onError={handleUploadError}
-          />
-        </div>
-      )}
-
-      {/* Liste des rushes */}
-      {rushes.length === 0 ? (
-        <EmptyState
-          icon={Clapperboard}
-          title="Pas de rushes pour l'instant"
-          description={
-            canUploadRushes
-              ? "Déposez vos fichiers via la zone ci-dessus."
-              : "Les rushes apparaîtront ici une fois uploadés."
-          }
-        />
-      ) : (
-        <ul className="divide-y divide-gray-50">
-          {rushes.map((rush) => {
-            const canDelete =
-              canManageRushes || rush.uploadedByUserId === currentUserId;
-
-            return (
-              <li
-                key={rush.id}
-                className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
-              >
-                {/* Icône type */}
-                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-                  <Clapperboard size={14} className="text-gray-600" />
-                </div>
-
-                {/* Infos */}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-gray-800">
-                    {rush.fileName}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-0.5 flex flex-wrap gap-x-2">
-                    {rush.sizeBytes !== null && (
-                      <span>{formatBytes(rush.sizeBytes)}</span>
+      <div className="space-y-2">
+        {/* Liste compacte des rushes */}
+        {hasRushes && (
+          <ul className="divide-y divide-gray-100">
+            {rushes.map((rush) => {
+              const canDelete = canManageRushes || rush.uploadedByUserId === currentUserId;
+              return (
+                <li key={rush.id} className="flex items-center gap-2 py-1.5 first:pt-0 last:pb-0 group">
+                  <Clapperboard size={12} className="text-gray-400 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] text-gray-800 leading-tight">{rush.fileName}</p>
+                    <p className="text-[10.5px] text-gray-400 mt-0.5 truncate">
+                      {rush.sizeBytes !== null && formatBytes(rush.sizeBytes)}
+                      {isVideo(rush.mimeType) && rush.durationSec !== null && ` · ${formatDuration(rush.durationSec)}`}
+                      {" · "}
+                      {rush.uploadedBy?.name ?? rush.uploadedBy?.email ?? "?"}
+                      {" · "}
+                      {formatRelativeDate(rush.uploadedAt)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      onClick={() => void downloadRush(rush)}
+                      disabled={downloadingId === rush.id}
+                      className="p-1 text-gray-400 hover:text-gray-900 transition-colors"
+                      title="Télécharger"
+                      aria-label="Télécharger"
+                    >
+                      <Download size={12} />
+                    </button>
+                    {canDelete && (
+                      <DeleteButton
+                        itemLabel={rush.fileName}
+                        description="Cette action est irréversible. Le fichier sera supprimé définitivement."
+                        onConfirm={() => deleteRush(rush)}
+                      />
                     )}
-                    {isVideo(rush.mimeType) && rush.durationSec !== null && (
-                      <span>{formatDuration(rush.durationSec)}</span>
-                    )}
-                    <span>·</span>
-                    <span>
-                      {rush.uploadedBy?.name ?? rush.uploadedBy?.email ?? "Inconnu"}
-                    </span>
-                    <span>·</span>
-                    <span>{formatRelativeDate(rush.uploadedAt)}</span>
-                  </p>
-                </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
 
-                {/* Actions */}
-                <div className="flex shrink-0 items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    icon={Download}
-                    loading={downloadingId === rush.id}
-                    onClick={() => downloadRush(rush)}
-                  >
-                    Télécharger
-                  </Button>
+        {/* Zone upload — compacte si déjà des rushes, full si vide.
+            Réceptrice de drag dans les deux cas. */}
+        {canUploadRushes && (
+          <div className={hasRushes ? "[&_label]:!min-h-[64px] [&_label]:!p-3" : ""}>
+            <MediaDropzone
+              slotId={slotId}
+              kind="rush"
+              accept={[
+                "video/mp4",
+                "video/quicktime",
+                "video/x-m4v",
+                "video/webm",
+                "image/jpeg",
+                "image/png",
+                "image/webp",
+              ]}
+              maxSizeBytes={10 * 1024 * 1024 * 1024}
+              multiple
+              label={hasRushes ? "+ Ajouter" : "Déposer les rushes"}
+              onUploaded={handleUploaded}
+              onError={handleUploadError}
+            />
+          </div>
+        )}
 
-                  {canDelete && (
-                    <DeleteButton
-                      itemLabel={rush.fileName}
-                      description="Cette action est irréversible. Le fichier sera supprimé définitivement."
-                      onConfirm={() => deleteRush(rush)}
-                    />
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+        {!hasRushes && !canUploadRushes && (
+          <p className="text-[12px] text-gray-400 italic py-2">
+            Aucun rush pour l&apos;instant.
+          </p>
+        )}
+      </div>
     </Section>
   );
 }

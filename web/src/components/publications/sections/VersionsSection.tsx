@@ -18,7 +18,6 @@ import { Section } from "@/components/ui/molecules/Section";
 import type { UploadResult } from "@/components/ui/MediaDropzone";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Textarea";
 import { toast } from "@/components/ui/Toast";
@@ -444,6 +443,8 @@ export function VersionsSection({
     ? versions
     : versions.filter((v) => v.deletedAt === null);
 
+  const hasVersions = activeVersions.length > 0;
+
   return (
     <Section
       title="Versions livrées"
@@ -453,52 +454,53 @@ export function VersionsSection({
       defaultOpen={defaultOpen}
       collapsible={collapsible}
       actions={
-        activeVersions.length > 0 ? (
-          <span className="text-xs text-gray-400 tabular-nums">{activeVersions.length}</span>
+        hasVersions ? (
+          <span className="text-[11px] text-gray-400 tabular-nums">{activeVersions.length}</span>
         ) : null
       }
     >
+      <div className="space-y-2">
+        {/* Liste compactée — pattern aligné avec RushesSection. */}
+        {hasVersions && (
+          <ul className="divide-y divide-gray-100">
+            {activeVersions.map((version) => (
+              <VersionCard
+                key={version.id}
+                version={version}
+                slotId={slotId}
+                currentVersionId={currentVersionId}
+                canPromoteVersion={canPromoteVersion}
+                isAdmin={isAdmin}
+                currentUserId={currentUserId}
+                onRefresh={handleRefresh}
+                promoteCoherenceWarning={promoteCoherenceWarning}
+              />
+            ))}
+          </ul>
+        )}
 
-      {/* Zone upload (MONTEUR assigné ou ADMIN) */}
-      {canUploadVersion && (
-        <div className="mb-4">
-          <MediaDropzone
-            slotId={slotId}
-            kind="version"
-            accept={["video/mp4", "video/quicktime", "video/x-m4v"]}
-            maxSizeBytes={10 * 1024 * 1024 * 1024} // 10 GB
-            multiple={false}
-            label="Déposer la version montée (MP4, MOV, M4V — 10 GB max)"
-            onUploaded={handleUploaded}
-            onError={handleUploadError}
-          />
-        </div>
-      )}
-
-      {/* Liste des versions */}
-      {activeVersions.length === 0 ? (
-        <EmptyState
-          icon={Film}
-          title="Aucune version livrée pour l'instant"
-          description="Le monteur uploadera sa V1 ici une fois le montage terminé."
-        />
-      ) : (
-        <ul className="divide-y divide-gray-50">
-          {activeVersions.map((version) => (
-            <VersionCard
-              key={version.id}
-              version={version}
+        {/* Dropzone — full si pas de version, compacte sinon. */}
+        {canUploadVersion && (
+          <div className={hasVersions ? "[&_label]:!min-h-[64px] [&_label]:!p-3" : ""}>
+            <MediaDropzone
               slotId={slotId}
-              currentVersionId={currentVersionId}
-              canPromoteVersion={canPromoteVersion}
-              isAdmin={isAdmin}
-              currentUserId={currentUserId}
-              onRefresh={handleRefresh}
-              promoteCoherenceWarning={promoteCoherenceWarning}
+              kind="version"
+              accept={["video/mp4", "video/quicktime", "video/x-m4v"]}
+              maxSizeBytes={10 * 1024 * 1024 * 1024}
+              multiple={false}
+              label={hasVersions ? "+ Nouvelle version" : "Déposer la version montée"}
+              onUploaded={handleUploaded}
+              onError={handleUploadError}
             />
-          ))}
-        </ul>
-      )}
+          </div>
+        )}
+
+        {!hasVersions && !canUploadVersion && (
+          <p className="text-[12px] text-gray-400 italic py-2">
+            Le monteur uploadera sa V1 ici une fois le montage terminé.
+          </p>
+        )}
+      </div>
     </Section>
   );
 }

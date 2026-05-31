@@ -19,7 +19,9 @@ import {
 const MONTEUR_STATUSES: SlotStatus[] = [
   "DRAFT",
   "PLANNED",
-  "RUSHES_EXPECTED",
+  // Fix 2026-05-31 : RUSHES_EXPECTED retiré — le monteur ne doit pas être
+  // notifié tant que les rushs ne sont pas livrés (étape vidéaste). Aligné
+  // avec MONTEUR_SECTION_MAP côté worklist.ts.
   "RUSHES_RECEIVED",
   "IN_EDIT",
   "EDIT_REVIEW",

@@ -68,12 +68,10 @@ const MONTEUR_SECTION_MAP: Partial<Record<SlotStatus, MonteurSection>> = {
   // À monter — démarre quand les rushs sont livrés. PLANNED reste en "todo"
   // pour les slots sans pattern (legacy ou one-off) où le monteur peut anticiper.
   PLANNED: "todo",
-  // Note Phase VIDÉASTE : RUSHES_EXPECTED appartient désormais au vidéaste.
-  // Mais on garde un fallback informatif "todo" pour les slots sans vidéaste assigné
-  // (slots historiques avant le rôle, ou one-off où aucun vidéaste n'est défini).
-  // Le fallback ne crée pas de doublon — getMonteurSection sera appelé uniquement
-  // si le slot est dans la worklist Monteur (assignéeMonteurId), donc déjà filtré.
-  RUSHES_EXPECTED: "todo",
+  // Fix 2026-05-31 : RUSHES_EXPECTED retiré — le monteur ne peut RIEN faire
+  // tant que les rushs ne sont pas livrés (vidéaste pas encore passé).
+  // Affichage prématuré = notification "À monter" trompeuse. Le slot
+  // ré-apparaît au statut RUSHES_RECEIVED (rushs effectivement uploadés).
   RUSHES_RECEIVED: "todo",
   // En cours
   IN_EDIT: "in_progress",
