@@ -7,6 +7,7 @@ import { AlignLeft, ChevronLeft, FileText, Film, Pencil, Plus, Scissors, X } fro
 import { CaptionPresetActions } from "@/components/captions/CaptionPresetActions";
 import { ImportCaptionPresetButton } from "@/components/captions/ImportCaptionPresetButton";
 import { DEFAULT_CAPTION_CONFIG } from "@/lib/captionPresetConfig";
+import { isSafeRelativePath } from "@/lib/safeUrl";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { toast } from "@/components/ui/Toast";
 
@@ -23,13 +24,13 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
 
   /**
    * Paramètre `returnTo` passé depuis CaptionsSection des fiches publication.
-   * Validé : URL relative interne uniquement (commence par "/") — anti open-redirect.
+   * V3 friction MED-1 : validation centralisée via lib/safeUrl. Avant on
+   * faisait juste startsWith("/") && !startsWith("//") localement — plus
+   * faible que la version isSafeRelativePath qui couvre traversées encodées,
+   * espaces, caractères non-ASCII, etc.
    */
   const rawReturnTo = searchParams?.get("returnTo") ?? null;
-  const returnTo =
-    rawReturnTo && rawReturnTo.startsWith("/") && !rawReturnTo.startsWith("//")
-      ? rawReturnTo
-      : null;
+  const returnTo = rawReturnTo && isSafeRelativePath(rawReturnTo) ? rawReturnTo : null;
 
   /** Label contextuel pour le breadcrumb retour. */
   function getReturnLabel(path: string): string {

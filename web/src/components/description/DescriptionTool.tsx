@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { parseSRT } from "@/lib/srt";
 import type { Segment } from "@/lib/transcriptionProcess";
+import { isSafeRelativePath } from "@/lib/safeUrl";
 import { DescriptionPromptsManager } from "@/components/description/DescriptionPromptsManager";
 import { DescriptionHistoryItem } from "@/components/description/DescriptionHistoryItem";
 
@@ -119,27 +120,8 @@ export function DescriptionTool({
   // returnTo : URL relative à laquelle le bouton "← Retour" doit
   // ramener l'utilisateur. Construit par DescriptionSection quand
   // on entre depuis la fiche publication, sinon absent.
+  // V3 friction MED-1 : helper isSafeRelativePath centralisé dans lib/safeUrl.
   const returnToRaw = searchParams?.get("returnTo") ?? null;
-  // Garde-fou contre open-redirect : on accepte uniquement les chemins
-  // simples /a/b/c (lettres, chiffres, tirets, slashes, query/hash sûrs).
-  // Refuse explicitement : "//foo", "/\\foo", " /foo", caractères
-  // encodés non-ASCII, séquences ".." même URL-encodées.
-  function isSafeRelativePath(raw: string): boolean {
-    if (!raw.startsWith("/")) return false;
-    if (raw.startsWith("//") || raw.startsWith("/\\")) return false;
-    if (/\s/.test(raw)) return false;
-    // Décode pour détecter les traversées encodées (%2e%2e, etc.).
-    let decoded: string;
-    try {
-      decoded = decodeURIComponent(raw);
-    } catch {
-      return false;
-    }
-    if (decoded.includes("..")) return false;
-    if (decoded.startsWith("//") || decoded.startsWith("/\\")) return false;
-    // Seuls les caractères path/query/hash sûrs.
-    return /^\/[A-Za-z0-9\-._~!$&'()*+,;=:@/?#%]*$/.test(raw);
-  }
   const returnTo = returnToRaw && isSafeRelativePath(returnToRaw) ? returnToRaw : null;
 
   // Input
