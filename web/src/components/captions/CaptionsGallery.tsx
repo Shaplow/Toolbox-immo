@@ -191,7 +191,13 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
   }
 
   return (
-    <div className="p-8">
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
+        style={{ background: "var(--gradient-page-shell)" }}
+      >
+        <div className="px-6 sm:px-8 pt-6 pb-12">
+          <div className="max-w-5xl mx-auto space-y-6">
       {/* Breadcrumb retour vers la fiche source (ex. /publications/<id>) */}
       {returnTo && (
         <div className="mb-4">
@@ -448,6 +454,9 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
           ))}
         </div>
       )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
