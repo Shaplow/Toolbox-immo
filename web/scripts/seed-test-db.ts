@@ -289,6 +289,99 @@ async function main() {
 
   console.log(`  ✓ MediaLibraries : video=${videoLib.id}, audio=${audioLib.id}`);
 
+  // ─── V8 fixtures : pattern captions manuel + cover manualSelect ──────────
+  // Sépare des fixtures de base (qui sont en mode auto par défaut) pour ne
+  // pas casser les autres tests qui dépendent de needsCaptions=true (auto).
+
+  const patternManual = await prisma.accountPattern.upsert({
+    where: { id: "test-pattern-v8-manual" },
+    update: {
+      defaultAssigneeMonteurId: monteur.id,
+      defaultAssigneeCmId: cm.id,
+    },
+    create: {
+      id: "test-pattern-v8-manual",
+      accountId: account.id,
+      label: "V8 — Captions manuel + Cover manualSelect",
+      source: "manual_rushes",
+      coverMode: "manualSelect",
+      needsDescription: "manualWrite",
+      needsCaptions: false,
+      needsCaptionsMode: "manual",
+      needsClientValidation: false,
+      needsRushes: true,
+      needsBrief: false,
+      dayOfWeek: [2],
+      publishTime: "09:00",
+      defaultAssigneeMonteurId: monteur.id,
+      defaultAssigneeCmId: cm.id,
+    },
+  });
+
+  const scheduledManual = new Date();
+  scheduledManual.setDate(scheduledManual.getDate() + 4);
+  const slotManual = await prisma.publicationSlot.upsert({
+    where: { id: "test-slot-v8-manual" },
+    update: {
+      patternId: patternManual.id,
+      assigneeMonteurId: monteur.id,
+      assigneeCmId: cm.id,
+    },
+    create: {
+      id: "test-slot-v8-manual",
+      accountId: account.id,
+      patternId: patternManual.id,
+      scheduledAt: scheduledManual,
+      status: "EDIT_APPROVED",
+      title: "Test slot V8 manuel (E2E)",
+      assigneeMonteurId: monteur.id,
+      assigneeCmId: cm.id,
+      isAuto: false,
+    },
+  });
+
+  // Version promue fake — pour que l'API cover/manual-select trouve une
+  // cible où rattacher le pack (sinon 400 "slot sans render ni version").
+  const versionManual = await prisma.publicationVersion.upsert({
+    where: { r2Key: "publications/test-slot-v8-manual/versions/1.mp4" },
+    update: {},
+    create: {
+      id: "test-version-v8-manual",
+      slotId: slotManual.id,
+      versionNumber: 1,
+      r2Key: "publications/test-slot-v8-manual/versions/1.mp4",
+      fileUrl: "https://example.com/test-version.mp4",
+      fileName: "test-version.mp4",
+      mimeType: "video/mp4",
+      uploadedByUserId: monteur.id,
+    },
+  });
+  await prisma.publicationSlot.update({
+    where: { id: slotManual.id },
+    data: { currentVersionId: versionManual.id },
+  });
+
+  console.log(`  ✓ V8 fixtures : pattern=${patternManual.id}, slot=${slotManual.id}, version=${versionManual.id}`);
+
+  // ─── Caption preset minimal (pour tests captions/[presetId]/generate) ────
+  await prisma.captionPreset.upsert({
+    where: { id: "test-caption-preset-1" },
+    update: {},
+    create: {
+      id: "test-caption-preset-1",
+      name: "Test Preset (E2E)",
+      userId: admin.id,
+      isBuiltin: false,
+      config: JSON.stringify({
+        font_size: 48,
+        font_family: "Arial",
+        position: "bottom",
+      }),
+    },
+  });
+
+  console.log(`  ✓ CaptionPreset : test-caption-preset-1`);
+
   console.log("\n✅ Seed test DB terminé.");
   console.log("\n   Credentials (tous : password=testpass) :");
   console.log("   - admin@test.local      (ADMIN)");
