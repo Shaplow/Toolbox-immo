@@ -491,7 +491,7 @@ export function SlotDetailPanel({
                       icon={MoreHorizontal}
                       title="Plus d'actions"
                     >
-                      <span className="sr-only">Plus d'actions</span>
+                      <span className="sr-only">Plus d&apos;actions</span>
                     </Button>
                   }
                   items={[
@@ -682,7 +682,7 @@ export function SlotDetailPanel({
               <div className="rounded-lg bg-white/40 backdrop-blur-[8px] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
                 <p className="text-[11px] text-gray-700 leading-relaxed">
                   Ajuste pour ce slot uniquement les valeurs héritées du
-                  pattern. Tant qu'un champ reste « hérité », il suivra le
+                  pattern. Tant qu&apos;un champ reste « hérité », il suivra le
                   pattern à chaque modification. La validation client se gère
                   dans la fiche publication.
                 </p>
