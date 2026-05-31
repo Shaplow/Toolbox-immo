@@ -90,6 +90,7 @@ type SkipReason =
   | "no_slot"
   | "needs_description_not_auto"
   | "description_already_set"
+  | "description_already_in_flight"
   | "no_prompt_resolved"
   | "prompt_inactive"
   | "no_transcription_output"
@@ -271,6 +272,26 @@ export async function triggerAutoDescriptionForTranscription(
   // Anti-écrasement de la rédaction CM : si déjà du contenu, on s'arrête.
   if (slot.description && slot.description.trim().length > 0) {
     logSkip(transcriptionJobId, "description_already_set", { slotId });
+    return;
+  }
+
+  // V4 bug bug-hunter #7 : anti-double-trigger. Pour les slots manual_rushes,
+  // l'admin pouvait cliquer "Relancer la chaîne" pendant que le webhook
+  // RunPod transcription créait déjà un DescriptionJob → 2 jobs concurrents
+  // pour le même slot, le second écrasait potentiellement le premier dans
+  // slot.description et l'historique avait des doublons COMPLETED.
+  // Garde : skip si un DescriptionJob actif (PROCESSING) existe déjà.
+  // COMPLETED couvert par "description_already_set" ci-dessus.
+  // FAILED n'est pas skip : on veut retenter.
+  const inFlightDescriptionJob = await prisma.descriptionJob.findFirst({
+    where: { slotId, status: "PROCESSING" },
+    select: { id: true },
+  });
+  if (inFlightDescriptionJob) {
+    logSkip(transcriptionJobId, "description_already_in_flight", {
+      slotId,
+      existingJobId: inFlightDescriptionJob.id,
+    });
     return;
   }
 
