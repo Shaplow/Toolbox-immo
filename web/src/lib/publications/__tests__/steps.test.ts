@@ -98,6 +98,7 @@ describe("computePublicationSteps — step 'edit' status", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
       pattern: recipeWithRushes,
+      rushesCount: 1, // V8.9 — amont done requis pour ne pas tomber en waiting
       versionsCount: 1,
       currentVersionId: null,
     });
@@ -109,6 +110,7 @@ describe("computePublicationSteps — step 'edit' status", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
       pattern: recipeWithRushes,
+      rushesCount: 1,
       versionsCount: 3,
       currentVersionId: undefined,
     });
@@ -120,6 +122,7 @@ describe("computePublicationSteps — step 'edit' status", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
       pattern: recipeWithRushes,
+      rushesCount: 1,
       versionsCount: 2,
       currentVersionId: "version-abc-123",
     });
@@ -131,6 +134,7 @@ describe("computePublicationSteps — step 'edit' status", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
       pattern: recipeWithRushes,
+      rushesCount: 1,
       // versionsCount omis → default 0
       currentVersionId: "version-abc-123",
     });
@@ -199,6 +203,9 @@ describe("computePublicationSteps — step 'captions' status", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
       pattern: recipeAutoTemplate,
+      // V8.9 — l'amont (render) doit être done pour que captions soit considéré
+      // selon son propre statut (sinon propagation amont → waiting).
+      renderJob: { status: "DONE" },
       captionJob: { status: "QUEUED" },
     });
     const captions = steps.find((s) => s.key === "captions");
@@ -209,6 +216,7 @@ describe("computePublicationSteps — step 'captions' status", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
       pattern: recipeAutoTemplate,
+      renderJob: { status: "DONE" },
       captionJob: { status: "PROCESSING" },
     });
     const captions = steps.find((s) => s.key === "captions");
@@ -219,6 +227,7 @@ describe("computePublicationSteps — step 'captions' status", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
       pattern: recipeAutoTemplate,
+      renderJob: { status: "DONE" },
       captionJob: { status: "COMPLETED" },
     });
     const captions = steps.find((s) => s.key === "captions");
@@ -264,6 +273,9 @@ describe("computePublicationSteps — step 'description' status", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
       pattern: recipeAutoTemplate,
+      // V8.9 — amont (render + captions) doivent être done.
+      renderJob: { status: "DONE" },
+      captionJob: { status: "COMPLETED" },
       descriptionJob: { status: "COMPLETED", result: "Texte généré" },
     });
     const desc = steps.find((s) => s.key === "description");
@@ -295,6 +307,9 @@ describe("computePublicationSteps — step 'description' status", () => {
     const steps = computePublicationSteps({
       slot: baseSlot({ description: "Description rédigée à la main." }),
       pattern: recipeAutoTemplate,
+      // V8.9 — amont done requis.
+      renderJob: { status: "DONE" },
+      captionJob: { status: "COMPLETED" },
       descriptionJob: null,
     });
     const desc = steps.find((s) => s.key === "description");

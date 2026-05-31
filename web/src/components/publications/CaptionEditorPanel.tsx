@@ -16,7 +16,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Save, ArrowLeft } from "lucide-react";
+import { Plus, Trash2, Save } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
@@ -174,29 +174,21 @@ export function CaptionEditorPanel({ slotId, initialSrt, returnHref }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={ArrowLeft}
-          onClick={() => router.push(returnHref)}
-        >
-          Retour fiche
+      {/* V8.9 — Le breadcrumb du wrapper page suffit pour le retour. On retire
+          le bouton "Retour fiche" pour éviter le doublon de navigation. */}
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="secondary" size="sm" icon={Plus} onClick={addBlock}>
+          Ajouter un bloc
         </Button>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" icon={Plus} onClick={addBlock}>
-            Ajouter un bloc
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            icon={Save}
-            loading={saving}
-            onClick={handleSave}
-          >
-            Enregistrer
-          </Button>
-        </div>
+        <Button
+          variant="primary"
+          size="sm"
+          icon={Save}
+          loading={saving}
+          onClick={handleSave}
+        >
+          Enregistrer
+        </Button>
       </div>
 
       <div className="space-y-3">

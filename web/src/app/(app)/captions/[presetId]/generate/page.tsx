@@ -135,8 +135,11 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
           if (justCreated) {
             pendingTranscription = { jobId: justCreated.id, status: justCreated.status };
           } else {
+            // Le helper a skippé silencieusement. En mode RunPod : R2/RunPod off
+            // ou pattern n'exige pas la transcription. En mode local : service
+            // render-engine indisponible sur CAPTIONS_API_URL.
             transcriptionBlocker =
-              "Impossible de lancer la transcription automatiquement (configuration RunPod/R2 manquante ou pattern qui ne consomme pas la transcription).";
+              "La transcription n'a pas pu démarrer. Vérifie que le pattern demande bien des sous-titres ou une description auto, et que le service de transcription est joignable.";
           }
         } catch (err) {
           console.error(`[captions/generate] auto-trigger transcription échoué pour slot=${slotId}:`, err);
@@ -167,7 +170,7 @@ export default async function CaptionsGeneratePage({ params, searchParams }: Pro
               pendingTranscription = { jobId: justCreated.id, status: justCreated.status };
             } else {
               transcriptionBlocker =
-                "Le pipeline auto a refusé la transcription pour ce render (template sans captionAutoConfig.enabled, RunPod off, ou autre garde). Vérifie la config du template.";
+                "Le pipeline n'a pas lancé la transcription pour ce render. Vérifie que le template a l'option captions activée et que le service de transcription est joignable.";
             }
           } catch (err) {
             console.error(`[captions/generate] auto-trigger render transcription échoué pour slot=${slotId}:`, err);

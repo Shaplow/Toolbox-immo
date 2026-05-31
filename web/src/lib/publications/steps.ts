@@ -425,7 +425,12 @@ export function computePublicationSteps(input: {
     },
     {
       key: "cover",
-      label: "Cover",
+      // V8.9 — Label dynamique : "Cover (monteur)" quand le monteur uploade
+      // la cover lui-même (mode monteurUpload). Avant : label "Cover"
+      // identique au mode autoPack/manualSelect → l'admin scannant la chaîne
+      // ne voyait aucune indication du responsable.
+      label:
+        pattern?.coverMode === "monteurUpload" ? "Cover (monteur)" : "Cover",
       visible: coverVisible,
       status: (() => {
         if (!coverVisible) return "todo";
@@ -463,15 +468,47 @@ export function computePublicationSteps(input: {
     },
   ];
 
-  // ── Post-process : todo → waiting si étape amont non terminée ─────────────
-  // Si une étape précédente visible n'est pas "done", l'étape courante ne peut
-  // pas être réellement actionnable → on lui colle "waiting" et on cite le
-  // premier step amont qui bloque (V8.5 — `waitingFor` precise au lieu du
-  // générique "En attente de l'étape précédente").
+  // ── Post-process : propage la cohérence amont (V8.5 + V8.9) ─────────────
+  //
+  // Règle stricte : un step ne peut pas être plus "avancé" que ses upstream
+  // visibles. Cela couvre 2 cas :
+  //
+  //   a) `todo` → `waiting` si un upstream est non-done (V8.5)
+  //   b) `done` → `waiting` si un upstream est non-done (V8.9)
+  //      Cas typique : un captionJob COMPLETED orphelin (créé sans render
+  //      ou avec une version qui a été dépromue). Avant V8.9 la chaîne
+  //      affichait "Sous-titres : Fait" tout en montrant "Montage : Action
+  //      attendue" en amont — sémantique cassée. Maintenant le step "done
+  //      orphelin" est ramené à `waiting` avec waitingFor sur le blocker —
+  //      l'utilisateur voit clairement quelle étape débloquer pour réellement
+  //      considérer ce step comme fait.
+  //
+  // Si un jour on veut signaler explicitement "done orphelin" (badge "Pré-livré"
+  // ou similaire), il suffit d'introduire un nouveau status. Pour l'instant,
+  // on privilégie la lisibilité de la chaîne linéaire.
   const TERMINAL_FOR_NEXT = new Set<StepStatus>(["done"]);
+  // Steps dont le statut est piloté par `slot.status` directement (et non
+  // par un job aval). Ces steps reflètent un état terminal global de la
+  // publication — on ne les déclasse JAMAIS via la règle d'amont :
+  //   - publish : "done" quand slot.status = PUBLISHED, peu importe le reste
+  //   - validation : peut être "failed" en CLIENT_REVISION sans rapport aux jobs
+  const STATUS_DRIVEN_STEPS = new Set<StepKey>(["publish", "validation"]);
   const visibleSteps = rawSteps.filter((s) => s.visible);
   const adjustedSteps = rawSteps.map((step) => {
-    if (step.status !== "todo") return step;
+    if (STATUS_DRIVEN_STEPS.has(step.key)) {
+      // Ces steps dépendent du status slot, pas de leurs upstream — sauf
+      // pour le cas "todo → waiting" classique que la règle V8.5 couvre.
+      if (step.status !== "todo") return step;
+    }
+    // Statuts "neutres" qui n'ont pas besoin d'arbitrage upstream.
+    if (
+      step.status !== "todo" &&
+      step.status !== "done" &&
+      step.status !== "processing" &&
+      step.status !== "queued"
+    ) {
+      return step;
+    }
     const idx = visibleSteps.findIndex((s) => s.key === step.key);
     if (idx <= 0) return step;
     const upstream = visibleSteps.slice(0, idx);
