@@ -576,14 +576,412 @@ async function resetSlotState(): Promise<void> {
   }
 }
 
+// ─── Patterns canoniques (fixtures pour audit visuel) ───────────────────────
+// Alignés sur `pattern-coherence.test.ts`. Pour chaque pattern, on seed un
+// slot dans un état "représentatif" qui montre la spécificité du pattern.
+
+interface PatternFixture {
+  /** Slug pour l'URL slot + nom du PNG output. */
+  slug: string;
+  /** Texte court qui sert de titre slot + description du PNG. */
+  label: string;
+  /** Config du pattern à seeder. */
+  patternData: {
+    source: "auto_template" | "manual_rushes" | "external_upload";
+    coverMode: "none" | "manualSelect" | "autoPack" | "monteurUpload";
+    needsCaptions?: boolean;
+    needsCaptionsMode?: "none" | "auto" | "manual";
+    needsDescription: "none" | "preFilled" | "autoGenerate" | "manualWrite";
+    needsClientValidation?: boolean;
+    allowsClientRevision?: boolean;
+    needsAdminValidation?: boolean;
+    needsRushes?: boolean;
+    needsBrief?: boolean;
+  };
+  /** État slot à reproduire. */
+  slot: {
+    status: string;
+    description?: string | null;
+    /** Crée + promote une PublicationVersion (équivalent V1 livrée). */
+    withVersion?: boolean;
+    /** Nombre de PublicationRush uploadés. */
+    rushesCount?: number;
+    /** Si défini : crée un CaptionJob du statut donné, promu si COMPLETED. */
+    captionJobStatus?: "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED";
+    /** Si défini : crée un CoverFramePack du statut donné, promu si SELECTED. */
+    coverPackStatus?: "QUEUED" | "PROCESSING" | "READY" | "SELECTED" | "FAILED";
+  };
+}
+
+const PATTERN_FIXTURES: PatternFixture[] = [
+  {
+    slug: "p01-auto-fluide",
+    label: "P1 — auto_template fluide (captions+desc+cover auto)",
+    patternData: {
+      source: "auto_template",
+      coverMode: "autoPack",
+      needsCaptionsMode: "auto",
+      needsCaptions: true,
+      needsDescription: "autoGenerate",
+    },
+    slot: { status: "PLANNED" },
+  },
+  {
+    slug: "p02-auto-validation-pingpong",
+    label: "P2 — auto + validation client + ping-pong",
+    patternData: {
+      source: "auto_template",
+      coverMode: "autoPack",
+      needsCaptionsMode: "auto",
+      needsCaptions: true,
+      needsDescription: "autoGenerate",
+      needsClientValidation: true,
+      allowsClientRevision: true,
+    },
+    slot: { status: "AWAITING_CLIENT", withVersion: true, captionJobStatus: "COMPLETED", coverPackStatus: "SELECTED" },
+  },
+  {
+    slug: "p03-auto-minimal",
+    label: "P3 — auto minimal (juste le render)",
+    patternData: {
+      source: "auto_template",
+      coverMode: "none",
+      needsCaptionsMode: "none",
+      needsDescription: "none",
+    },
+    slot: { status: "PLANNED" },
+  },
+  {
+    slug: "p04-manual-classique",
+    label: "P4 — manual_rushes classique (full pipeline)",
+    patternData: {
+      source: "manual_rushes",
+      coverMode: "autoPack",
+      needsCaptionsMode: "auto",
+      needsCaptions: true,
+      needsDescription: "autoGenerate",
+      needsRushes: true,
+      needsBrief: true,
+    },
+    slot: { status: "RUSHES_RECEIVED", rushesCount: 2 },
+  },
+  {
+    slug: "p05-manual-tout-manuel",
+    label: "P5 — manual tout-manuel (captions+desc+cover à la main)",
+    patternData: {
+      source: "manual_rushes",
+      coverMode: "manualSelect",
+      needsCaptionsMode: "manual",
+      needsDescription: "manualWrite",
+      needsRushes: true,
+    },
+    slot: { status: "EDIT_APPROVED", withVersion: true, rushesCount: 1 },
+  },
+  {
+    slug: "p06-cover-monteur",
+    label: "P6 — manual_rushes + cover monteur upload",
+    patternData: {
+      source: "manual_rushes",
+      coverMode: "monteurUpload",
+      needsCaptionsMode: "auto",
+      needsCaptions: true,
+      needsDescription: "manualWrite",
+      needsRushes: true,
+    },
+    slot: { status: "RUSHES_RECEIVED", rushesCount: 1 },
+  },
+  {
+    slug: "p07-validation-admin",
+    label: "P7 — manual + validation admin avant client",
+    patternData: {
+      source: "manual_rushes",
+      coverMode: "autoPack",
+      needsCaptionsMode: "auto",
+      needsCaptions: true,
+      needsDescription: "autoGenerate",
+      needsAdminValidation: true,
+      needsClientValidation: true,
+      needsRushes: true,
+    },
+    slot: { status: "EDIT_REVIEW", rushesCount: 1, captionJobStatus: "COMPLETED" },
+  },
+  {
+    slug: "p08-pingpong-revision",
+    label: "P8 — ping-pong validation client (CLIENT_REVISION)",
+    patternData: {
+      source: "manual_rushes",
+      coverMode: "autoPack",
+      needsCaptionsMode: "auto",
+      needsCaptions: true,
+      needsDescription: "autoGenerate",
+      needsClientValidation: true,
+      allowsClientRevision: true,
+      needsRushes: true,
+    },
+    slot: {
+      status: "CLIENT_REVISION",
+      description: "Texte légende validé V1",
+      withVersion: true,
+      rushesCount: 1,
+      captionJobStatus: "COMPLETED",
+      coverPackStatus: "SELECTED",
+    },
+  },
+  {
+    slug: "p09-manual-sans-rushes",
+    label: "P9 — manual_rushes sans phase shoot (livraison directe)",
+    patternData: {
+      source: "manual_rushes",
+      coverMode: "manualSelect",
+      needsCaptionsMode: "manual",
+      needsDescription: "manualWrite",
+      needsRushes: false,
+    },
+    slot: { status: "EDIT_APPROVED", withVersion: true },
+  },
+  {
+    slug: "p10-external-upload",
+    label: "P10 — external_upload (le client uploade)",
+    patternData: {
+      source: "external_upload",
+      coverMode: "manualSelect",
+      needsCaptionsMode: "none",
+      needsDescription: "manualWrite",
+    },
+    slot: { status: "PLANNED", withVersion: true },
+  },
+];
+
+/**
+ * Seed les 10 patterns canoniques + leurs slots. Idempotent (upsert).
+ * Appelé après resetSlotState pour avoir les fixtures fraîches.
+ */
+async function seedPatternFixtures(): Promise<void> {
+  const prisma = new PrismaClient({
+    datasources: { db: { url: TEST_DB_URL } },
+  });
+  try {
+    // Trouve les users de test (réutilisés comme actors).
+    const [admin, monteur, videaste] = await Promise.all([
+      prisma.user.findUnique({ where: { email: "admin@test.local" } }),
+      prisma.user.findUnique({ where: { email: "monteur@test.local" } }),
+      prisma.user.findUnique({ where: { email: "videaste@test.local" } }),
+    ]);
+    if (!admin || !monteur || !videaste) {
+      throw new Error("Seed users manquants (admin/monteur/videaste). Lance npm run test:db:seed d'abord.");
+    }
+
+    // Utilise le compte IG seed (test_account) pour rattacher les patterns.
+    const account = await prisma.instagramAccount.findFirst({
+      where: { handle: "test_account" },
+      select: { id: true },
+    });
+    if (!account) throw new Error("Compte IG test_account manquant (seed).");
+
+    for (const fx of PATTERN_FIXTURES) {
+      const patternId = `fixture-${fx.slug}-pattern`;
+      const slotId = `fixture-${fx.slug}-slot`;
+
+      // 1. Purge artefacts d'un run précédent pour ce slot.
+      await prisma.publicationSlot.update({
+        where: { id: slotId },
+        data: {
+          activeCaptionJobId: null,
+          activeCoverPackId: null,
+          activeTranscriptionJobId: null,
+          currentVersionId: null,
+        },
+      }).catch(() => {});
+      await prisma.captionJob.deleteMany({ where: { slotId } });
+      await prisma.transcriptionJob.deleteMany({ where: { slotId } });
+      await prisma.descriptionJob.deleteMany({ where: { slotId } });
+      const oldVersions = await prisma.publicationVersion.findMany({
+        where: { slotId },
+        select: { id: true },
+      });
+      for (const v of oldVersions) {
+        await prisma.coverFramePack.deleteMany({ where: { publicationVersionId: v.id } });
+      }
+      await prisma.publicationRush.deleteMany({ where: { slotId } }).catch(() => {});
+      await prisma.publicationVersion.deleteMany({ where: { slotId } });
+
+      // 2. Upsert AccountPattern.
+      const p = fx.patternData;
+      await prisma.accountPattern.upsert({
+        where: { id: patternId },
+        update: {
+          label: fx.label,
+          source: p.source,
+          coverMode: p.coverMode,
+          needsDescription: p.needsDescription,
+          needsCaptions: p.needsCaptions ?? false,
+          needsCaptionsMode: p.needsCaptionsMode ?? "none",
+          needsAdminValidation: p.needsAdminValidation ?? false,
+          needsClientValidation: p.needsClientValidation ?? false,
+          allowsClientRevision: p.allowsClientRevision ?? false,
+          needsRushes: p.needsRushes ?? false,
+          needsBrief: p.needsBrief ?? false,
+        },
+        create: {
+          id: patternId,
+          accountId: account.id,
+          label: fx.label,
+          source: p.source,
+          coverMode: p.coverMode,
+          needsDescription: p.needsDescription,
+          needsCaptions: p.needsCaptions ?? false,
+          needsCaptionsMode: p.needsCaptionsMode ?? "none",
+          needsAdminValidation: p.needsAdminValidation ?? false,
+          needsClientValidation: p.needsClientValidation ?? false,
+          allowsClientRevision: p.allowsClientRevision ?? false,
+          needsRushes: p.needsRushes ?? false,
+          needsBrief: p.needsBrief ?? false,
+          dayOfWeek: [1],
+          publishTime: "09:00",
+          defaultAssigneeMonteurId: monteur.id,
+          defaultAssigneeCmId: admin.id,
+          defaultAssigneeVideasteId: videaste.id,
+        },
+      });
+
+      // 3. Upsert PublicationSlot.
+      const scheduledAt = new Date();
+      scheduledAt.setDate(scheduledAt.getDate() + 7);
+      await prisma.publicationSlot.upsert({
+        where: { id: slotId },
+        update: {
+          patternId,
+          status: fx.slot.status,
+          description: fx.slot.description ?? null,
+          assigneeMonteurId: monteur.id,
+          assigneeCmId: admin.id,
+          assigneeVideasteId: videaste.id,
+        },
+        create: {
+          id: slotId,
+          accountId: account.id,
+          patternId,
+          scheduledAt,
+          status: fx.slot.status,
+          title: fx.label,
+          description: fx.slot.description ?? null,
+          assigneeMonteurId: monteur.id,
+          assigneeCmId: admin.id,
+          assigneeVideasteId: videaste.id,
+          isAuto: false,
+        },
+      });
+
+      // 4. Seed rushes si demandé.
+      for (let i = 0; i < (fx.slot.rushesCount ?? 0); i++) {
+        await prisma.publicationRush.create({
+          data: {
+            slotId,
+            uploadedByUserId: videaste.id,
+            r2Key: `fixtures/${slotId}/rushes/${i}.mp4`,
+            fileName: `rush-${i}.mp4`,
+            mimeType: "video/mp4",
+            sizeBytes: 30000,
+          },
+        });
+      }
+
+      // 5. Seed version + promote si demandé.
+      let versionId: string | null = null;
+      if (fx.slot.withVersion) {
+        const v = await prisma.publicationVersion.create({
+          data: {
+            slotId,
+            versionNumber: 1,
+            r2Key: `fixtures/${slotId}/versions/1.mp4`,
+            fileUrl: "https://example.com/test-version.mp4",
+            fileName: "version-1.mp4",
+            mimeType: "video/mp4",
+            uploadedByUserId: monteur.id,
+          },
+        });
+        versionId = v.id;
+        await prisma.publicationSlot.update({
+          where: { id: slotId },
+          data: { currentVersionId: versionId },
+        });
+      }
+
+      // 6. Seed CaptionJob si demandé.
+      if (fx.slot.captionJobStatus) {
+        const job = await prisma.captionJob.create({
+          data: {
+            userId: admin.id,
+            slotId,
+            status: fx.slot.captionJobStatus,
+            srtContent: fx.slot.captionJobStatus === "COMPLETED" ? "1\n00:00:00,000 --> 00:00:03,000\nFixture caption\n" : null,
+            config: JSON.stringify({ fixture: true }),
+          },
+        });
+        if (fx.slot.captionJobStatus === "COMPLETED") {
+          await prisma.publicationSlot.update({
+            where: { id: slotId },
+            data: { activeCaptionJobId: job.id },
+          });
+        }
+      }
+
+      // 7. Seed CoverFramePack si demandé (rattaché à la version ou render).
+      if (fx.slot.coverPackStatus && versionId) {
+        const pack = await prisma.coverFramePack.create({
+          data: {
+            userId: admin.id,
+            publicationVersionId: versionId,
+            status: fx.slot.coverPackStatus,
+            finalCoverUrl:
+              fx.slot.coverPackStatus === "SELECTED"
+                ? "https://example.com/test-cover.png"
+                : null,
+            config: JSON.stringify({ fixture: true }),
+            overlayGroupIds: JSON.stringify([]),
+            frameCount: fx.slot.coverPackStatus === "READY" || fx.slot.coverPackStatus === "SELECTED" ? 4 : 0,
+          },
+        });
+        if (fx.slot.coverPackStatus === "SELECTED") {
+          await prisma.publicationSlot.update({
+            where: { id: slotId },
+            data: { activeCoverPackId: pack.id },
+          });
+        }
+      }
+    }
+    console.log(`  ↳ Pattern fixtures : ${PATTERN_FIXTURES.length} slots seedés`);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+async function capturePatternFixture(
+  context: BrowserContext,
+  fx: PatternFixture,
+): Promise<string> {
+  const page = await context.newPage();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${BASE_URL}/publications/fixture-${fx.slug}-slot`);
+  await page.waitForTimeout(900);
+  const outPath = resolve(OUTPUT_DIR, "surfaces", "patterns", `${fx.slug}.png`);
+  mkdirSync(dirname(outPath), { recursive: true });
+  await page.screenshot({ path: outPath, fullPage: true, animations: "disabled" });
+  await page.close();
+  return outPath;
+}
+
 async function main() {
-  console.log(`▶ Audit UX — capture surfaces + scenarios`);
+  console.log(`▶ Audit UX — capture surfaces + scenarios + 10 patterns canoniques`);
   console.log(`  Output : ${OUTPUT_DIR}`);
   mkdirSync(OUTPUT_DIR, { recursive: true });
 
   // Reset des artefacts résiduels sur les slots de test pour avoir une
   // capture reproductible (sinon les E2E précédents biaisent la chaîne).
   await resetSlotState();
+  // Seed des 10 patterns canoniques pour l'audit visuel — couvre les configs
+  // alignées sur pattern-coherence.test.ts.
+  await seedPatternFixtures();
 
   let ownsServer: ChildProcess | null = null;
   if (!(await isServerUp())) {
@@ -617,6 +1015,20 @@ async function main() {
       }
     }
 
+    // PATTERN FIXTURES (fiche par pattern canonique)
+    const patternsToRun = PATTERN_FIXTURES.filter((p) => matchesFilter(p.slug));
+    console.log(`\n▶ Patterns canoniques (${patternsToRun.length}/${PATTERN_FIXTURES.length})`);
+    let patternOk = 0;
+    for (const fx of patternsToRun) {
+      try {
+        await capturePatternFixture(context, fx);
+        console.log(`  ✓ ${fx.slug} — ${fx.label}`);
+        patternOk++;
+      } catch (err) {
+        console.error(`  ✗ ${fx.slug} : ${String(err).split("\n")[0]}`);
+      }
+    }
+
     // SCENARIOS
     const scenariosToRun = SCENARIOS.filter((s) => matchesFilter(s.name));
     console.log(`\n▶ Scenarios (${scenariosToRun.length}/${SCENARIOS.length})`);
@@ -631,6 +1043,7 @@ async function main() {
     }
 
     console.log(`\n✅ Surfaces : ${surfaceOk}/${surfacesToRun.length}`);
+    console.log(`✅ Patterns : ${patternOk}/${patternsToRun.length}`);
     console.log(`✅ Scenarios : ${totalOk}/${totalSteps} étapes capturées`);
     console.log(`\n📁 ${OUTPUT_DIR}`);
     console.log(`\n   Demande à Claude :`);
