@@ -8,6 +8,10 @@ import { computePublicationSteps } from "@/lib/publications/steps";
 import { toUserRole } from "@/lib/permissions/role";
 import { syncSlotsPipelineStatuses } from "@/lib/services/slot/transitions";
 import { resolveSlotConfig } from "@/lib/services/slot/config";
+import {
+  resolveActiveCaptionJob,
+  resolveActiveDescriptionJob,
+} from "@/lib/publications/jobLifecycle";
 import { PublicationFiche } from "./PublicationFiche";
 import type { CommentData } from "@/components/publications/CommentItem";
 import type { ActivityItem } from "@/components/publications/ActivityTimeline";
@@ -90,6 +94,7 @@ export default async function PublicationPage({ params }: PageProps) {
       // déterminer la version sous-titrée à utiliser comme rendu final).
       // Sans ça, un retry échec/processing écrasait la version COMPLETED
       // précédente comme source de finalVideoUrl → on retombait sur la brute.
+      // V6 : ajout staleSince/staleReason pour badge UI "Obsolète".
       captionJobs: {
         orderBy: { createdAt: "desc" },
         take: 5,
@@ -99,9 +104,25 @@ export default async function PublicationPage({ params }: PageProps) {
           outputUrl: true,
           errorMsg: true,
           createdAt: true,
+          staleSince: true,
+          staleReason: true,
+        },
+      },
+      // V6.4.1 — job actif explicit (= celui affiché dans la fiche). Helper
+      // resolveActiveCaptionJob fait fallback sur captionJobs[] si null.
+      activeCaptionJob: {
+        select: {
+          id: true,
+          status: true,
+          outputUrl: true,
+          errorMsg: true,
+          createdAt: true,
+          staleSince: true,
+          staleReason: true,
         },
       },
       // Dernier job description IA lié au slot (P0.2 — alimente la ProductionChain)
+      // V6 : ajout staleSince pour badge UI.
       descriptionJobs: {
         orderBy: { createdAt: "desc" },
         take: 1,
@@ -110,6 +131,8 @@ export default async function PublicationPage({ params }: PageProps) {
           status: true,
           result: true,
           errorMsg: true,
+          staleSince: true,
+          staleReason: true,
         },
       },
     },
@@ -259,7 +282,21 @@ export default async function PublicationPage({ params }: PageProps) {
   })) ?? [];
 
   // Phase 1.9 A2 — dernier job captions lié (pour l'état UI CaptionsSection).
-  const latestCaptionJob = slot.captionJobs[0] ?? null;
+  // V6.4.1 — résolution via helper jobLifecycle. Avant : "latest by createdAt"
+  // masquait un COMPLETED précédent dès qu'un retry PROCESSING arrivait.
+  // Désormais : slot.activeCaptionJob si défini, sinon latest COMPLETED
+  // non-stale, sinon latest tout court.
+  const latestCaptionJob = resolveActiveCaptionJob({
+    activeCaptionJob: slot.activeCaptionJob ? { id: slot.activeCaptionJob.id, status: slot.activeCaptionJob.status, staleSince: slot.activeCaptionJob.staleSince } : null,
+    captionJobs: slot.captionJobs.map((c) => ({ id: c.id, status: c.status, staleSince: c.staleSince })),
+  });
+  // On garde l'objet enrichi (outputUrl, errorMsg, createdAt) — recherche
+  // l'objet original dans les sources pour avoir tous les champs.
+  const latestCaptionJobFull = latestCaptionJob
+    ? (slot.activeCaptionJob?.id === latestCaptionJob.id
+        ? slot.activeCaptionJob
+        : slot.captionJobs.find((c) => c.id === latestCaptionJob.id) ?? null)
+    : null;
   // Fix bug 2026-05-30 : dernier CaptionJob COMPLETED — source de vérité pour
   // la "version sous-titrée" qui doit remplacer la brute dans la fiche +
   // validation client. Distinct du latestCaptionJob qui peut être en
@@ -267,7 +304,17 @@ export default async function PublicationPage({ params }: PageProps) {
   const latestCompletedCaptionJob =
     slot.captionJobs.find((j) => j.status === "COMPLETED" && j.outputUrl) ?? null;
   // P0.2 — dernier job description IA lié (le step utilise aussi slot.description en fallback)
-  const latestDescriptionJob = slot.descriptionJobs[0] ?? null;
+  // V6.4.1 — fallback latest COMPLETED non-stale (DescriptionJob).
+  const latestDescriptionJob = resolveActiveDescriptionJob({
+    descriptionJobs: slot.descriptionJobs.map((d) => ({
+      id: d.id,
+      status: d.status,
+      staleSince: d.staleSince,
+    })),
+  });
+  const latestDescriptionJobFull = latestDescriptionJob
+    ? slot.descriptionJobs.find((d) => d.id === latestDescriptionJob.id) ?? null
+    : null;
 
   // Cohérence Workflows Phase 4 — Résolution exhaustive (pattern + overrides slot)
   // Couvre validation client + needsCaptions/Description/Rushes/Brief en un seul appel.
@@ -335,8 +382,8 @@ export default async function PublicationPage({ params }: PageProps) {
     pattern: effectivePattern,
     renderJob: slot.render ?? null,
     coverPack: effectiveCoverPack,
-    captionJob: latestCaptionJob,
-    descriptionJob: latestDescriptionJob,
+    captionJob: latestCaptionJobFull,
+    descriptionJob: latestDescriptionJobFull,
     versionsCount: rawVersions.filter((v) => v.deletedAt === null).length,
     rushesCount: rushes.length,
     currentVersionId: slot.currentVersionId ?? null,
@@ -463,13 +510,15 @@ export default async function PublicationPage({ params }: PageProps) {
       versions={versions}
       currentVersionId={slot.currentVersionId ?? null}
       latestCaptionJob={
-        latestCaptionJob
+        latestCaptionJobFull
           ? {
-              id: latestCaptionJob.id,
-              status: latestCaptionJob.status,
-              outputUrl: latestCaptionJob.outputUrl,
-              errorMsg: latestCaptionJob.errorMsg,
-              createdAt: latestCaptionJob.createdAt.toISOString(),
+              id: latestCaptionJobFull.id,
+              status: latestCaptionJobFull.status,
+              outputUrl: latestCaptionJobFull.outputUrl,
+              errorMsg: latestCaptionJobFull.errorMsg,
+              createdAt: latestCaptionJobFull.createdAt.toISOString(),
+              staleSince: latestCaptionJobFull.staleSince?.toISOString() ?? null,
+              staleReason: latestCaptionJobFull.staleReason ?? null,
             }
           : null
       }
@@ -482,11 +531,13 @@ export default async function PublicationPage({ params }: PageProps) {
           : null
       }
       latestDescriptionJob={
-        latestDescriptionJob
+        latestDescriptionJobFull
           ? {
-              status: latestDescriptionJob.status,
-              result: latestDescriptionJob.result,
-              errorMsg: latestDescriptionJob.errorMsg,
+              status: latestDescriptionJobFull.status,
+              result: latestDescriptionJobFull.result,
+              errorMsg: latestDescriptionJobFull.errorMsg,
+              staleSince: latestDescriptionJobFull.staleSince?.toISOString() ?? null,
+              staleReason: latestDescriptionJobFull.staleReason ?? null,
             }
           : null
       }

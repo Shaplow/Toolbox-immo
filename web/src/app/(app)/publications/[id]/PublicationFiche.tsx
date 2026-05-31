@@ -246,12 +246,16 @@ export interface PublicationFicheProps {
   versions: VersionItem[];
   currentVersionId: string | null;
   // Phase 1.9 A2 — Dernier job captions lié (peut être PROCESSING/FAILED après retry).
+  // V6.4.1 — ajout staleSince/staleReason pour badge UI "Obsolète" si l'input
+  // upstream a changé (promote nouvelle version, render replaced).
   latestCaptionJob: {
     id: string;
     status: string;
     outputUrl: string | null;
     errorMsg: string | null;
     createdAt: string;
+    staleSince: string | null;
+    staleReason: string | null;
   } | null;
   // Fix bug 2026-05-30 — dernier CaptionJob COMPLETED avec outputUrl.
   // Source de vérité pour getSlotFinalVideoUrl (le bon outputUrl à utiliser
@@ -261,7 +265,13 @@ export interface PublicationFicheProps {
     outputUrl: string | null;
   } | null;
   /** Dernier DescriptionJob auto pour ce slot (status + result + errorMsg pour la section). */
-  latestDescriptionJob: { status: string; result: string | null; errorMsg: string | null } | null;
+  latestDescriptionJob: {
+    status: string;
+    result: string | null;
+    errorMsg: string | null;
+    staleSince: string | null;
+    staleReason: string | null;
+  } | null;
   // W2 — Validation client (résolu pattern + override)
   clientValidation: {
     needsClientValidation: boolean;
