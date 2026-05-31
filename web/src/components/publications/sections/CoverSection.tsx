@@ -286,6 +286,16 @@ export function CoverSection({
       actions={<>{linkedBadge}{statusBadge}</>}
     >
 
+      {/* V8.1.3 — Badge "Mode manuel" pour clarifier le flow attendu quand
+          coverMode = "manualSelect" (extraction libre + choix d'une frame
+          comme cover finale via le bouton "Cover finale" sur l'outil). */}
+      {mode === "manualSelect" && (
+        <p className="text-[10.5px] uppercase tracking-widest font-medium text-gray-500 mb-3 inline-flex items-center gap-1.5">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-500" />
+          Mode manuel · extraction libre
+        </p>
+      )}
+
       {/* Pas de cover pack — soit non démarré (config OK), soit config error */}
       {!coverPack && coverConfigError && (
         <div className="space-y-3">
@@ -317,8 +327,13 @@ export function CoverSection({
           <EmptyState
             icon={ImageIcon}
             title="Aucune cover"
+            description={
+              mode === "manualSelect"
+                ? "Extraie des frames depuis la vidéo et valide-en une comme cover finale."
+                : undefined
+            }
             cta={{
-              label: "Choisir une cover",
+              label: mode === "manualSelect" ? "Extraire et choisir une frame" : "Choisir une cover",
               onClick: () => router.push(coverToolHref),
             }}
           />
