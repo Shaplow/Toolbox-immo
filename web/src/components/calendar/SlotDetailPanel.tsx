@@ -406,7 +406,7 @@ export function SlotDetailPanel({
     : [
         { id: "status", label: "Statut", icon: ListChecks },
         { id: "assignees", label: "Équipe", icon: Users },
-        { id: "overrides", label: "Overrides", icon: SlidersHorizontal },
+        { id: "overrides", label: "Ajustements", icon: SlidersHorizontal },
         { id: "planning", label: "Planning", icon: CalendarClock },
       ];
 
@@ -635,13 +635,17 @@ export function SlotDetailPanel({
             </>
           )}
 
-          {/* Tab Overrides */}
+          {/* Tab Ajustements (ex-Overrides) */}
           {tab === "overrides" && !isRestricted && (
             <>
-              <p className="text-[11px] text-gray-500 mb-1">
-                Override la config héritée du pattern pour ce slot uniquement.
-                La validation client est gérée dans la fiche publication.
-              </p>
+              <div className="rounded-lg bg-white/40 backdrop-blur-[8px] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+                <p className="text-[11px] text-gray-700 leading-relaxed">
+                  Ajuste pour ce slot uniquement les valeurs héritées du
+                  pattern. Tant qu'un champ reste « hérité », il suivra le
+                  pattern à chaque modification. La validation client se gère
+                  dans la fiche publication.
+                </p>
+              </div>
 
               <OverrideControl
                 label="Validation admin du montage"
