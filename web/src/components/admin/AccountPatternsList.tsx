@@ -233,7 +233,13 @@ function PatternCard({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          <Button variant="ghost" size="sm" icon={Edit} onClick={() => onEdit(pattern)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={Edit}
+            onClick={() => onEdit(pattern)}
+            data-testid="pattern-edit-button"
+          >
             Éditer
           </Button>
           {hasSlots ? (

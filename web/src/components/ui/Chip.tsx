@@ -35,6 +35,9 @@ interface ChipProps {
   /** Chip sélectionné (état "actif" si interactive). */
   selected?: boolean;
   className?: string;
+  /** Identifiant stable pour les tests E2E / audits Playwright. Rendu en
+   *  `data-testid` sur le <span> racine. */
+  testId?: string;
 }
 
 const VARIANT_CLS: Record<Variant, { base: string; selected: string; remove: string }> = {
@@ -74,6 +77,7 @@ export function Chip({
   onClick,
   selected = false,
   className,
+  testId,
 }: ChipProps) {
   const styles = VARIANT_CLS[variant];
   const sizeCls = size === "sm" ? "h-5 text-[11px]" : "h-6 text-[12px]";
@@ -97,6 +101,7 @@ export function Chip({
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}
       onKeyDown={interactive ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick?.(); } } : undefined}
+      data-testid={testId}
     >
       {Icon && <Icon size={iconSize} className="shrink-0" />}
       <span className="font-medium">{children}</span>

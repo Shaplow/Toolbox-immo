@@ -364,7 +364,7 @@ const SCENARIOS: Scenario[] = [
         label: "04-toggle-avance",
         action: {
           type: "click",
-          selector: 'button:has-text("Avancé")',
+          selector: '[data-testid="medialib-advanced-toggle"]',
         },
         settleMs: 500,
       },
@@ -372,7 +372,7 @@ const SCENARIOS: Scenario[] = [
         label: "05-vue-grid",
         action: {
           type: "click",
-          selector: 'button[aria-label*="Grille"], button[title*="Grille"], button:has-text("Grille")',
+          selector: '[data-testid="medialib-view-grid"]',
         },
         settleMs: 500,
       },
@@ -380,7 +380,7 @@ const SCENARIOS: Scenario[] = [
         label: "06-vue-rotation",
         action: {
           type: "click",
-          selector: 'button[aria-label*="Rotation"], button[title*="Rotation"], button:has-text("Rotation")',
+          selector: '[data-testid="medialib-view-rotation"]',
         },
         settleMs: 800,
       },
@@ -398,56 +398,47 @@ const SCENARIOS: Scenario[] = [
       },
       {
         label: "02-fiche-compte",
-        // Note : l'id du compte est dynamique (cuid). On goto via fiche
-        // compte directement depuis le slug seedé (handle test_account).
-        // Si la liste expose un lien, on suit ; sinon on goto direct.
         action: {
           type: "click",
+          // Lien "Voir les patterns" sur la card du compte (1er lien
+          // /admin/accounts/<id> qui n'est pas la racine).
           selector: 'a[href*="/admin/accounts/"]:not([href$="/admin/accounts"])',
         },
         settleMs: 800,
       },
       {
-        label: "03-onglet-patterns",
+        label: "03-ouvrir-pattern-edit",
         action: {
           type: "click",
-          selector: 'button:has-text("Patterns"), [data-tab="patterns"]',
-        },
-        settleMs: 500,
-      },
-      {
-        label: "04-ouvrir-pattern-edit",
-        action: {
-          type: "click",
-          selector: 'button:has-text("Modifier"), button:has-text("Éditer"), button[aria-label*="Modifier"]',
+          selector: '[data-testid="pattern-edit-button"]',
         },
         settleMs: 700,
       },
       {
-        label: "05-drawer-onglet-identite",
+        label: "04-drawer-onglet-identite",
         action: { type: "wait", ms: 300 },
       },
       {
-        label: "06-drawer-onglet-production",
+        label: "05-drawer-onglet-production",
         action: {
           type: "click",
-          selector: 'button:has-text("Production")',
+          selector: '[role="tab"]:has-text("Production")',
         },
         settleMs: 400,
       },
       {
-        label: "07-drawer-onglet-workflow",
+        label: "06-drawer-onglet-workflow",
         action: {
           type: "click",
-          selector: 'button:has-text("Workflow")',
+          selector: '[role="tab"]:has-text("Workflow")',
         },
         settleMs: 400,
       },
       {
-        label: "08-drawer-onglet-equipe",
+        label: "07-drawer-onglet-equipe",
         action: {
           type: "click",
-          selector: 'button:has-text("Équipe"), button:has-text("Equipe")',
+          selector: '[role="tab"]:has-text("Équipe")',
         },
         settleMs: 400,
       },
@@ -475,26 +466,10 @@ const SCENARIOS: Scenario[] = [
       },
     ],
   },
-  {
-    name: "rotation-simulation",
-    description:
-      "Admin ouvre la vue rotation d'une library avec usages pré-chargés (asset-0 = 2 usages, asset-1 = 1 usage, asset-2 = 0 usage). Vérifier que la simulation pick le least-used en premier (asset-2 puis asset-1 puis asset-0).",
-    steps: [
-      {
-        label: "01-library-detail",
-        action: { type: "goto", path: "/admin/libraries/media/test-media-lib-video" },
-        settleMs: 700,
-      },
-      {
-        label: "02-vue-rotation",
-        action: {
-          type: "click",
-          selector: 'button:has-text("Rotation")',
-        },
-        settleMs: 900,
-      },
-    ],
-  },
+  // Scenario rotation-simulation retiré (V8.14) : la vue Rotation est déjà
+  // capturée par medialib-admin-tour step 06, et useAdvancedMode persiste
+  // dans localStorage entre scenarios — relancer le toggle ici inversait
+  // l'état au lieu de le garantir activé.
 ];
 
 // ─── Login helper ────────────────────────────────────────────────────────────

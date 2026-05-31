@@ -111,6 +111,7 @@ export function MediaAssetsToolbar({
           onClick={onToggleAdvanced}
           icon={Settings2}
           size="sm"
+          testId="medialib-advanced-toggle"
         >
           {isAdvanced ? "Avancé activé" : "Avancé"}
         </Chip>
@@ -187,6 +188,7 @@ export function MediaAssetsToolbar({
                   onClick={() => setViewMode("grid")}
                   icon={LayoutGrid}
                   size="sm"
+                  testId="medialib-view-grid"
                 >
                   Grille
                 </Chip>
@@ -196,6 +198,7 @@ export function MediaAssetsToolbar({
                   onClick={() => setViewMode("grouped")}
                   icon={Columns3}
                   size="sm"
+                  testId="medialib-view-grouped"
                 >
                   Catégories
                 </Chip>
@@ -205,6 +208,7 @@ export function MediaAssetsToolbar({
                   onClick={() => setViewMode("rotation")}
                   icon={RotateCcw}
                   size="sm"
+                  testId="medialib-view-rotation"
                 >
                   Rotation
                 </Chip>
