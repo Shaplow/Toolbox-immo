@@ -76,6 +76,8 @@ export default function CaptionsGenerateForm({
   aiConfig = { hasClaude: true, hasGpt: true },
   slotId = null,
   returnTo = null,
+  pendingTranscription = null,
+  transcriptionBlocker = null,
 }: {
   preset: PresetData;
   initialSrt?: string | null;
@@ -90,6 +92,13 @@ export default function CaptionsGenerateForm({
   slotId?: string | null;
   /** URL de retour anti-open-redirect (Phase 1.9 A2) */
   returnTo?: string | null;
+  /** V8.3 — Job transcription auto-lancé/déjà en cours pour le slot. Le form
+   *  affiche un banner d'attente + SSE listener qui refresh la page quand
+   *  le job passe COMPLETED (segments arrivent côté server). */
+  pendingTranscription?: { jobId: string; status: string } | null;
+  /** V8.3 — Raison pour laquelle l'auto-launch a échoué (pas de version
+   *  source, RunPod off, etc.) — affiché en banner danger. */
+  transcriptionBlocker?: string | null;
 }) {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [subsFile, setSubsFile] = useState<File | null>(null);
@@ -227,6 +236,20 @@ export default function CaptionsGenerateForm({
   }, [initialSubsJson]);
 
   const router = useRouter();
+
+  // V8.3 — SSE listener pour la transcription en cours (auto-lancée depuis
+  // la page server). Quand le job termine, on refresh pour récupérer le JSON
+  // des segments côté server et re-render le form pre-rempli.
+  useAllJobEvents((event) => {
+    if (event.jobType !== "transcription") return;
+    if (!pendingTranscription || event.jobId !== pendingTranscription.jobId) return;
+    if (event.status === "COMPLETED" || event.status === "DONE") {
+      toast.success("Transcription prête — chargement des sous-titres.");
+      router.refresh();
+    } else if (event.status === "FAILED") {
+      toast.error("La transcription a échoué. Réessaie depuis /transcriptions.");
+    }
+  });
 
   // SSE fast path — caption jobs updated immediately when webhook fires
   useAllJobEvents((event) => {
@@ -701,6 +724,31 @@ export default function CaptionsGenerateForm({
 
         {/* F3-step7 — header extrait dans CaptionsHeader */}
         <CaptionsHeader presetName={preset.name} isRegen={Boolean(initialSrt)} />
+
+        {/* V8.3 — Banner transcription auto-lancée / en cours pour le slot.
+            La page server a déclenché triggerAutoTranscriptionForVersion ;
+            le SSE listener ci-dessus refresh quand le job termine et les
+            segments arrivent automatiquement (initialSegments pré-rempli). */}
+        {pendingTranscription && (
+          <div className="mb-3 rounded-xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[12px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(96,165,250,0.30)]">
+            <p className="text-[13px] font-semibold text-sky-900 flex items-center gap-2">
+              <span className="inline-block h-2 w-2 rounded-full bg-sky-500 animate-pulse" />
+              Transcription en cours…
+            </p>
+            <p className="text-[11px] text-sky-700/80 mt-0.5">
+              Le sous-titrage démarre dès que la transcription est prête. La
+              page se rafraîchira automatiquement.
+            </p>
+          </div>
+        )}
+        {transcriptionBlocker && (
+          <div className="mb-3 rounded-xl bg-gradient-to-b from-rose-50/85 to-rose-50/55 backdrop-blur-[12px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(244,114,182,0.30)]">
+            <p className="text-[13px] font-semibold text-rose-900">
+              Impossible de pré-charger une transcription
+            </p>
+            <p className="text-[11px] text-rose-700/80 mt-0.5">{transcriptionBlocker}</p>
+          </div>
+        )}
 
         {/* F3-step6 — video upload extrait dans CaptionsVideoUploadBar */}
         <CaptionsVideoUploadBar videoFile={videoFile} setVideoFile={setVideoFile} />
