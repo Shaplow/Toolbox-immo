@@ -23,10 +23,12 @@
 import { prisma } from "@/lib/prisma";
 import { runpodConfigured, submitRunpodJob } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
-import { r2Configured } from "@/lib/r2";
+import { r2Configured, uploadToR2 } from "@/lib/r2";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
+const USE_RUNPOD         = process.env.USE_RUNPOD !== "false";
+const CAPTIONS_API_URL   = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
 
 type SkipReason =
   | "version_not_found"
@@ -34,15 +36,207 @@ type SkipReason =
   | "captions_and_description_disabled"
   | "r2_not_configured"
   | "runpod_not_configured"
-  | "already_has_transcription";
+  | "already_has_transcription"
+  | "local_fetch_failed";
 
 function logSkip(versionId: string, reason: SkipReason, extra?: Record<string, unknown>) {
   console.info(`[autoTranscriptionV] skip version=${versionId} reason=${reason}`, extra ?? {});
 }
 
+/**
+ * Mode local (USE_RUNPOD=false) : fetch le fichier depuis fileUrl + POST direct
+ * sur le render-engine local pour transcription synchrone. Évite RunPod/R2.
+ * Persiste les segments en R2 si dispo, sinon dans `public/transcriptions/`.
+ */
+async function runLocalTranscription(
+  publicationVersionId: string,
+  version: {
+    id: string;
+    fileUrl: string;
+    fileName: string;
+    uploadedByUserId: string;
+    slotId: string;
+  },
+): Promise<void> {
+  // Cherche un job existant pour éviter les doublons.
+  const existing = await prisma.transcriptionJob.findUnique({
+    where: { publicationVersionId },
+  });
+  if (existing && existing.status !== "FAILED") {
+    logSkip(publicationVersionId, "already_has_transcription", {
+      slotId: version.slotId,
+      transcriptionJobId: existing.id,
+      status: existing.status,
+    });
+    return;
+  }
+
+  const job =
+    existing && existing.status === "FAILED"
+      ? (await prisma.transcriptionJob.update({
+          where: { id: existing.id },
+          data: {
+            status: "PROCESSING",
+            errorMsg: null,
+            outputJsonKey: null,
+            segmentsJson: null,
+            segmentCount: null,
+            duration: null,
+            staleSince: null,
+            staleReason: null,
+            inputFilename: version.fileName,
+          },
+          select: { id: true },
+        }))
+      : await prisma.transcriptionJob.create({
+          data: {
+            userId: version.uploadedByUserId,
+            status: "PROCESSING",
+            inputFilename: version.fileName,
+            model: "turbo",
+            language: "fr",
+            enableDiarization: false,
+            publicationVersionId: version.id,
+            slotId: version.slotId,
+          },
+          select: { id: true },
+        });
+
+  try {
+    // 1. Fetch le fichier depuis fileUrl (R2 public URL ou local Next.js).
+    const videoRes = await fetch(version.fileUrl);
+    if (!videoRes.ok) {
+      throw new Error(`fetch fileUrl failed: ${videoRes.status} ${videoRes.statusText}`);
+    }
+    const videoBlob = await videoRes.blob();
+
+    // 2. POST en form-data sur le render-engine local.
+    const form = new FormData();
+    form.append("audio", videoBlob, version.fileName);
+    form.append("model_size", "large-v3-turbo");
+    form.append("language", "fr");
+    form.append("enable_diarization", "false");
+
+    const apiRes = await fetch(`${CAPTIONS_API_URL}/api/transcribe`, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(30 * 60 * 1000), // 30min max
+    });
+    if (!apiRes.ok) {
+      throw new Error(
+        `render-engine /api/transcribe ${apiRes.status}: ${await apiRes.text()}`,
+      );
+    }
+    const data = (await apiRes.json()) as {
+      segments: Array<{ start: number; end: number; text: string; speaker?: string }>;
+      segment_count: number;
+      duration: number;
+      language: string;
+      has_diarization: boolean;
+    };
+
+    // 3. Persiste les segments. R2 si configuré, sinon en JSON inline dans le job.
+    let outputJsonKey: string | null = null;
+    if (r2Configured()) {
+      const key = `transcription/${version.uploadedByUserId}/${Date.now()}/segments.json`;
+      await uploadToR2(
+        key,
+        Buffer.from(JSON.stringify(data.segments, null, 2), "utf-8"),
+        "application/json",
+      );
+      outputJsonKey = key;
+    }
+
+    await prisma.transcriptionJob.update({
+      where: { id: job.id },
+      data: {
+        status: "COMPLETED",
+        outputJsonKey,
+        // Si pas de R2, stocke les segments directement en DB pour ne pas perdre
+        // le résultat (lu par /api/transcription/[id]/download fallback).
+        segmentsJson: outputJsonKey ? null : JSON.stringify(data.segments),
+        segmentCount: data.segment_count,
+        duration: data.duration,
+        hasDiarization: data.has_diarization,
+      },
+    });
+
+    // 4. Promote comme transcription active du slot.
+    await prisma.publicationSlot.update({
+      where: { id: version.slotId },
+      data: { activeTranscriptionJobId: job.id },
+    });
+
+    console.info(
+      `[autoTranscriptionV] LOCAL job=${job.id} COMPLETED version=${version.id} slot=${version.slotId} segments=${data.segment_count}`,
+    );
+  } catch (err) {
+    await prisma.transcriptionJob.update({
+      where: { id: job.id },
+      data: { status: "FAILED", errorMsg: String(err) },
+    });
+    console.error(
+      `[autoTranscriptionV] LOCAL transcription failed version=${publicationVersionId}: ${String(err)}`,
+    );
+  }
+}
+
 export async function triggerAutoTranscriptionForVersion(
   publicationVersionId: string,
 ): Promise<void> {
+  // ── Mode local (USE_RUNPOD=false) : pipeline synchrone via render-engine
+  // local sur CAPTIONS_API_URL. Pas besoin de RunPod ni R2 — le SRT est
+  // stocké inline dans TranscriptionJob.segmentsJson si R2 indispo.
+  if (!USE_RUNPOD) {
+    const version = await prisma.publicationVersion.findUnique({
+      where: { id: publicationVersionId },
+      select: {
+        id: true,
+        slotId: true,
+        fileUrl: true,
+        fileName: true,
+        uploadedByUserId: true,
+        slot: {
+          select: {
+            needsCaptionsOverride: true,
+            needsDescriptionOverride: true,
+            pattern: { select: { needsCaptions: true, needsDescription: true } },
+          },
+        },
+      },
+    });
+    if (!version) {
+      logSkip(publicationVersionId, "version_not_found");
+      return;
+    }
+    if (!version.fileUrl) {
+      logSkip(publicationVersionId, "no_file_url", { slotId: version.slotId });
+      return;
+    }
+    // Même garde que le pipeline RunPod : on ne lance que si quelqu'un consomme.
+    const effectiveNeedsCaptions =
+      version.slot.needsCaptionsOverride ?? version.slot.pattern?.needsCaptions ?? false;
+    const effectiveNeedsDescription =
+      version.slot.needsDescriptionOverride ?? version.slot.pattern?.needsDescription ?? "none";
+    if (!effectiveNeedsCaptions && effectiveNeedsDescription !== "autoGenerate") {
+      logSkip(publicationVersionId, "captions_and_description_disabled", {
+        slotId: version.slotId,
+        effectiveNeedsCaptions,
+        effectiveNeedsDescription,
+      });
+      return;
+    }
+    await runLocalTranscription(publicationVersionId, {
+      id: version.id,
+      fileUrl: version.fileUrl,
+      fileName: version.fileName,
+      uploadedByUserId: version.uploadedByUserId,
+      slotId: version.slotId,
+    });
+    return;
+  }
+
+  // ── Mode RunPod (par défaut en prod) ────────────────────────────────────
   if (!r2Configured()) {
     logSkip(publicationVersionId, "r2_not_configured");
     return;

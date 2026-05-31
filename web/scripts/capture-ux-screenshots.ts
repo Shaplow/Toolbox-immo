@@ -534,34 +534,40 @@ async function resetSlotState(): Promise<void> {
       await prisma.publicationRush.deleteMany({ where: { slotId } });
       await prisma.publicationVersion.deleteMany({ where: { slotId } });
 
-      // 5. Pour le slot V8 manual : recrée la version par défaut + promote.
-      //    Permet aux scenarios qui vont jusqu'à cover/publier de fonctionner
-      //    sans devoir uploader une version (l'upload via setInputFiles cible
-      //    mal entre la dropzone rushes et la section versions). Si tu veux
-      //    tester l'upload de version dans un futur scenario, ne pas appeler
-      //    cette branche.
-      if (slotId === "test-slot-v8-manual") {
-        const monteur = await prisma.user.findUnique({
-          where: { email: "monteur@test.local" },
-          select: { id: true },
+      // 5. Recrée une version par défaut + promote sur les 2 slots de test.
+      //    Permet aux scenarios qui vont jusqu'à cover/publier OU qui veulent
+      //    tester l'auto-launch transcription d'avoir une cible vidéo réelle
+      //    (fileUrl pointant vers une vraie URL locale fetchable).
+      const monteur = await prisma.user.findUnique({
+        where: { email: "monteur@test.local" },
+        select: { id: true },
+      });
+      if (monteur) {
+        // V8 manual : status = EDIT_APPROVED (version validée prête à publier)
+        // test-slot-1 (auto_template + captions auto) : status = EDIT_APPROVED
+        //   → triggerAutoTranscriptionForVersion peut lancer le pipeline auto.
+        const fileUrl =
+          slotId === "test-slot-v8-manual"
+            ? "https://example.com/test-version.mp4"
+            // Pour test-slot-1, on pointe vers le fixture local servi par
+            // Next.js (accessible depuis le helper transcribe local).
+            : `${BASE_URL}/test-fixtures/sample-audio.mp3`;
+        const version = await prisma.publicationVersion.create({
+          data: {
+            slotId,
+            versionNumber: 1,
+            r2Key: `publications/${slotId}/versions/1.mp4`,
+            fileUrl,
+            fileName:
+              slotId === "test-slot-v8-manual" ? "test-version.mp4" : "sample.mp3",
+            mimeType: slotId === "test-slot-v8-manual" ? "video/mp4" : "audio/mpeg",
+            uploadedByUserId: monteur.id,
+          },
         });
-        if (monteur) {
-          const version = await prisma.publicationVersion.create({
-            data: {
-              slotId,
-              versionNumber: 1,
-              r2Key: `publications/${slotId}/versions/1.mp4`,
-              fileUrl: "https://example.com/test-version.mp4",
-              fileName: "test-version.mp4",
-              mimeType: "video/mp4",
-              uploadedByUserId: monteur.id,
-            },
-          });
-          await prisma.publicationSlot.update({
-            where: { id: slotId },
-            data: { currentVersionId: version.id, status: "EDIT_APPROVED" },
-          });
-        }
+        await prisma.publicationSlot.update({
+          where: { id: slotId },
+          data: { currentVersionId: version.id, status: "EDIT_APPROVED" },
+        });
       }
     }
     console.log(`  ↳ DB reset : ${TEST_SLOTS.length} slots — état initial restauré`);
