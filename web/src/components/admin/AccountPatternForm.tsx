@@ -652,38 +652,50 @@ export function AccountPatternForm({
           </div>
         )}
 
-        {/* Tab Production */}
+        {/* Tab Production — 3 blocs cognitifs distincts (cover / captions / description) */}
         {tab === "production" && (
-          <div className="space-y-4">
-            <FormField label="Mode cover">
-              <Combobox
-                value={values.coverMode}
-                onChange={(v) => set("coverMode", v)}
-                options={COVER_MODE_OPTIONS}
-              />
-            </FormField>
-            <p className="text-[11px] text-gray-500 -mt-2 leading-relaxed">
-              {COVER_MODE_HELP[values.coverMode]}
-            </p>
-
-            {values.coverMode === "autoPack" && (
-              <FormField label="Configuration cover" error={xfieldErrorsByField.coverConfigJson}>
-                <CoverConfigEditor
-                  templateId={values.templateId || null}
-                  value={parseCoverConfig(values.coverConfigJson)}
-                  onChange={(cfg) => set("coverConfigJson", JSON.stringify(cfg, null, 2))}
+          <div className="space-y-6">
+            {/* ─── Bloc 1 : Cover ─────────────────────────────────────────── */}
+            <section className="space-y-3">
+              <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-700">
+                Cover Instagram
+              </h3>
+              <FormField label="Mode cover">
+                <Combobox
+                  value={values.coverMode}
+                  onChange={(v) => set("coverMode", v)}
+                  options={COVER_MODE_OPTIONS}
                 />
+                {COVER_MODE_HELP[values.coverMode] && (
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500">
+                    {COVER_MODE_HELP[values.coverMode]}
+                  </p>
+                )}
               </FormField>
-            )}
 
-            {values.coverMode === "monteurUpload" && values.source !== "manual_rushes" && (
-              <p className="text-[11px] text-peach-800 bg-peach-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.2)]">
-                ⚠ Ce mode nécessite une source « manual_rushes » (la source actuelle est «{" "}
-                {values.source} »).
-              </p>
-            )}
+              {values.coverMode === "autoPack" && (
+                <FormField label="Configuration cover" error={xfieldErrorsByField.coverConfigJson}>
+                  <CoverConfigEditor
+                    templateId={values.templateId || null}
+                    value={parseCoverConfig(values.coverConfigJson)}
+                    onChange={(cfg) => set("coverConfigJson", JSON.stringify(cfg, null, 2))}
+                  />
+                </FormField>
+              )}
 
-            <div className="pt-2 border-t border-white/40">
+              {values.coverMode === "monteurUpload" && values.source !== "manual_rushes" && (
+                <p className="text-[11px] text-peach-800 bg-peach-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.2)]">
+                  ⚠ Ce mode nécessite une source « manual_rushes » (la source actuelle est «{" "}
+                  {values.source} »).
+                </p>
+              )}
+            </section>
+
+            {/* ─── Bloc 2 : Sous-titres ───────────────────────────────────── */}
+            <section className="space-y-3 pt-4 border-t border-white/40">
+              <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-700">
+                Sous-titres
+              </h3>
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[13px] font-semibold text-gray-950">Sous-titres auto</p>
@@ -698,26 +710,30 @@ export function AccountPatternForm({
                   size="sm"
                 />
               </div>
-            </div>
 
-            {values.needsCaptions && (
-              <FormField
-                label="Preset captions par défaut"
-                required
-                error={xfieldErrorsByField.captionPresetId}
-              >
-                <Combobox
-                  value={values.captionPresetId}
-                  onChange={(v) => set("captionPresetId", v)}
-                  options={captionPresetOptions}
-                  placeholder="— Choisir un preset —"
-                  emptyMessage="Aucun preset"
-                />
-              </FormField>
-            )}
+              {values.needsCaptions && (
+                <FormField
+                  label="Preset captions par défaut"
+                  required
+                  error={xfieldErrorsByField.captionPresetId}
+                >
+                  <Combobox
+                    value={values.captionPresetId}
+                    onChange={(v) => set("captionPresetId", v)}
+                    options={captionPresetOptions}
+                    placeholder="— Choisir un preset —"
+                    emptyMessage="Aucun preset"
+                  />
+                </FormField>
+              )}
+            </section>
 
-            <div className="pt-2 border-t border-white/40">
-              <FormField label="Description">
+            {/* ─── Bloc 3 : Description ───────────────────────────────────── */}
+            <section className="space-y-3 pt-4 border-t border-white/40">
+              <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-700">
+                Description Instagram
+              </h3>
+              <FormField label="Mode description">
                 <Combobox
                   value={values.needsDescription}
                   onChange={(v) => set("needsDescription", v)}
@@ -729,23 +745,23 @@ export function AccountPatternForm({
                   </p>
                 )}
               </FormField>
-            </div>
 
-            {values.needsDescription !== "none" && (
-              <FormField
-                label="Prompt description"
-                required={values.needsDescription === "autoGenerate"}
-                error={xfieldErrorsByField.descriptionPromptId}
-              >
-                <Combobox
-                  value={values.descriptionPromptId}
-                  onChange={(v) => set("descriptionPromptId", v)}
-                  options={descriptionPromptOptions}
-                  placeholder="— Choisir un prompt —"
-                  emptyMessage="Aucun prompt"
-                />
-              </FormField>
-            )}
+              {values.needsDescription !== "none" && (
+                <FormField
+                  label="Prompt description"
+                  required={values.needsDescription === "autoGenerate"}
+                  error={xfieldErrorsByField.descriptionPromptId}
+                >
+                  <Combobox
+                    value={values.descriptionPromptId}
+                    onChange={(v) => set("descriptionPromptId", v)}
+                    options={descriptionPromptOptions}
+                    placeholder="— Choisir un prompt —"
+                    emptyMessage="Aucun prompt"
+                  />
+                </FormField>
+              )}
+            </section>
           </div>
         )}
 
