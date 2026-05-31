@@ -52,7 +52,9 @@ const STEP_ROLES: Record<StepKey, UserRole[]> = {
   cover:      ["CM"],
   captions:   ["CM", "MONTEUR"],
   description:["CM"],
-  validation: ["CM"],
+  // Validation client : CM la déclenche, MONTEUR l'observe (informatif —
+  // anticipe une éventuelle CLIENT_REVISION qui le réenrôlerait).
+  validation: ["CM", "MONTEUR"],
   publish:    ["CM"],
 };
 
