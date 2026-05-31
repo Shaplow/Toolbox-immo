@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Upload,
@@ -18,6 +18,7 @@ import {
   Wand2,
   Settings,
   X,
+  RefreshCw,
 } from "lucide-react";
 import { parseSRT } from "@/lib/srt";
 import type { Segment } from "@/lib/transcriptionProcess";
@@ -173,10 +174,42 @@ export function DescriptionTool({
   const [model, setModel] = useState<"claude" | "gpt">(defaultModel ?? "claude");
 
   // Generation
+  const router = useRouter();
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [genError, setGenError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState(false);
+
+  /**
+   * V2 friction HIGH-2 du audit : avant, le tool standalone produisait un
+   * résultat mais l'user devait copier/coller manuellement dans la fiche.
+   * Le DescriptionJob avait bien slotId rempli côté API mais slot.description
+   * restait vide. Désormais, si on vient d'un slot (slotIdFromUrl), un bouton
+   * PATCH directement le slot et rebondit sur la fiche.
+   */
+  const handleApplyToSlot = useCallback(async () => {
+    if (!slotIdFromUrl || !result) return;
+    setApplying(true);
+    try {
+      const res = await fetch(`/api/calendar/slots/${slotIdFromUrl}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: result }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? "Échec de l'application au slot");
+      }
+      setApplied(true);
+      // Rebond fiche après une courte pause pour laisser voir le ✓ Appliqué.
+      setTimeout(() => router.push(returnTo ?? `/publications/${slotIdFromUrl}`), 600);
+    } catch (err) {
+      setGenError(err instanceof Error ? err.message : "Erreur inconnue.");
+      setApplying(false);
+    }
+  }, [slotIdFromUrl, result, router, returnTo]);
 
   // History
   const [jobs, setJobs] = useState<DescriptionJobRow[]>(initialJobs);
@@ -723,24 +756,51 @@ export function DescriptionTool({
       {/* ── Résultat ─────────────────────────────────────────────────── */}
       {result !== null && (
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
+          <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-gray-700">Description générée</h2>
-            <button
-              onClick={handleCopy}
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 transition-colors"
-            >
-              {copied ? (
-                <>
-                  <Check size={12} className="text-green-500" />
-                  <span className="text-green-600">Copié !</span>
-                </>
-              ) : (
-                <>
-                  <Copy size={12} />
-                  Copier
-                </>
+            <div className="flex items-center gap-3">
+              {slotIdFromUrl && (
+                <button
+                  onClick={() => void handleApplyToSlot()}
+                  disabled={applying || applied}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title="Écrit ce résultat dans slot.description et retourne à la fiche"
+                >
+                  {applied ? (
+                    <>
+                      <Check size={12} />
+                      Appliqué — redirection…
+                    </>
+                  ) : applying ? (
+                    <>
+                      <RefreshCw size={12} className="animate-spin" />
+                      Application…
+                    </>
+                  ) : (
+                    <>
+                      <Check size={12} />
+                      Appliquer à la publication
+                    </>
+                  )}
+                </button>
               )}
-            </button>
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 transition-colors"
+              >
+                {copied ? (
+                  <>
+                    <Check size={12} className="text-green-500" />
+                    <span className="text-green-600">Copié !</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy size={12} />
+                    Copier
+                  </>
+                )}
+              </button>
+            </div>
           </div>
           <div className="px-5 py-4">
             <textarea
