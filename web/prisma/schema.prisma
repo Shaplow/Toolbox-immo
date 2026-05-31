@@ -41,26 +41,34 @@ model User {
 }
 
 model CaptionJob {
-  id          String           @id @default(cuid())
-  userId      String
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status      String           @default("QUEUED") // QUEUED | PROCESSING | COMPLETED | FAILED
-  inputUrl    String?
-  inputKey    String? // clé R2 de la vidéo source (supprimée après complétion)
-  outputUrl   String?
-  outputKey   String? // clé R2 de l'output
-  runpodJobId String?          @unique // ID job RunPod pour polling
-  errorMsg    String? // message d'erreur lisible
-  config      String           @default("{}") // JSON sérialisé
-  srtContent  String? // Contenu SRT utilisé pour la génération (pour regénérer)
-  srtFilename String? // Nom du fichier SRT/JSON d'origine (pour détecter format)
-  previewMode Boolean          @default(false) // true = preview 6s, false = rendu complet
-  presetId    String? // ID du preset utilisé
+  id            String           @id @default(cuid())
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status        String           @default("QUEUED") // QUEUED | PROCESSING | COMPLETED | FAILED
+  inputUrl      String?
+  inputKey      String? // clé R2 de la vidéo source (supprimée après complétion)
+  outputUrl     String?
+  outputKey     String? // clé R2 de l'output
+  runpodJobId   String?          @unique // ID job RunPod pour polling
+  errorMsg      String? // message d'erreur lisible
+  config        String           @default("{}") // JSON sérialisé
+  srtContent    String? // Contenu SRT utilisé pour la génération (pour regénérer)
+  srtFilename   String? // Nom du fichier SRT/JSON d'origine (pour détecter format)
+  previewMode   Boolean          @default(false) // true = preview 6s, false = rendu complet
+  presetId      String? // ID du preset utilisé
   /// Slot de publication optionnellement lié (Phase 1.9 — A2)
-  slotId      String?
-  slot        PublicationSlot? @relation(fields: [slotId], references: [id], onDelete: SetNull)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  slotId        String?
+  slot          PublicationSlot? @relation(fields: [slotId], references: [id], onDelete: SetNull)
+  /// V6 — Job marqué obsolète quand son input upstream change (nouveau render,
+  /// nouvelle version promue). Reste consultable mais affiché avec un badge
+  /// "Obsolète" dans la fiche pour éviter qu'on prenne pour "courant" un job
+  /// lié à une vidéo qui n'est plus la version active.
+  staleSince    DateTime?
+  staleReason   String? // "version_promoted" | "render_replaced" | "pattern_changed"
+  /// V6 — Relation inverse : ce job est-il le "courant" du slot ?
+  activeForSlot PublicationSlot? @relation("SlotActiveCaption")
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   @@index([slotId])
 }
@@ -271,6 +279,12 @@ model TranscriptionJob {
   /// casser l'historique si le slot est archivé.
   slotId               String?
   slot                 PublicationSlot?    @relation(fields: [slotId], references: [id], onDelete: SetNull)
+  /// V6 — Job marqué obsolète quand son input upstream change (nouvelle
+  /// version promue, par exemple).
+  staleSince           DateTime?
+  staleReason          String? // "version_promoted" | "render_replaced"
+  /// V6 — Relation inverse : ce job est-il la "transcription courante" du slot ?
+  activeForSlot        PublicationSlot?    @relation("SlotActiveTranscription")
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
   descriptionJobs      DescriptionJob[]
@@ -307,6 +321,11 @@ model CoverFramePack {
   finalCoverUrl        String?
   finalCoverKey        String?
   errorMsg             String?
+  /// V6 — Pack marqué obsolète quand son input upstream change.
+  staleSince           DateTime?
+  staleReason          String? // "version_promoted" | "render_replaced"
+  /// V6 — Relation inverse : ce pack est-il le "cover courant" du slot ?
+  activeForSlot        PublicationSlot?      @relation("SlotActiveCover")
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   candidates           CoverFrameCandidate[]
@@ -374,6 +393,10 @@ model DescriptionJob {
   /// Slot de publication optionnellement lié (alimente la ProductionChain)
   slotId          String?
   slot            PublicationSlot?   @relation(fields: [slotId], references: [id], onDelete: SetNull)
+  /// V6 — Job marqué obsolète quand son input upstream change. Note : pas
+  /// d'activeForSlot — la description vit dans slot.description (texte).
+  staleSince      DateTime?
+  staleReason     String? // "version_promoted" | "render_replaced"
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
@@ -806,6 +829,15 @@ model PublicationSlot {
   /// standalone avec ?slotId= : sans cette FK, elles n'apparaissaient pas
   /// dans la ProductionChain du slot.
   transcriptionJobs             TranscriptionJob[]
+  /// V6 — Jobs actifs : ceux affichés dans la fiche (vs "latest by createdAt"
+  /// qui était trompeur quand un retry PROCESSING masquait un COMPLETED).
+  /// Helper resolveActive*Job() fait fallback latest COMPLETED non-stale si null.
+  activeCaptionJobId            String?                 @unique
+  activeCaptionJob              CaptionJob?             @relation("SlotActiveCaption", fields: [activeCaptionJobId], references: [id], onDelete: SetNull)
+  activeCoverPackId             String?                 @unique
+  activeCoverPack               CoverFramePack?         @relation("SlotActiveCover", fields: [activeCoverPackId], references: [id], onDelete: SetNull)
+  activeTranscriptionJobId      String?                 @unique
+  activeTranscriptionJob        TranscriptionJob?       @relation("SlotActiveTranscription", fields: [activeTranscriptionJobId], references: [id], onDelete: SetNull)
   createdAt                     DateTime                @default(now())
   updatedAt                     DateTime                @updatedAt
 
