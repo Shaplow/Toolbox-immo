@@ -276,6 +276,7 @@ Invoke with `/<name>` in the chat:
 - `/review-feature <files>` — trigger code-reviewer on a file list
 - `/hunt-bugs <module>` — trigger bug-hunter on a module
 - `/security-audit <surface>` — trigger security-auditor on a specific surface
+- `/audit-ux [surface]` — capture les surfaces clés via Playwright puis Claude analyse les screenshots (rapport ranked critique/moyen/ok). Pré-requis : DB test seedée + Docker up.
 
 ## Reference docs (read on demand)
 
