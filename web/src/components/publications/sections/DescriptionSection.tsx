@@ -33,7 +33,16 @@ import { canGenerateDescription } from "@/lib/publications/actions";
 
 interface Props {
   slot: { id: string };
-  pattern: { needsDescription: string } | null;
+  /** Subset du pattern requis par canGenerateDescription (source +
+   *  needsCaptions + coverMode + needsDescription). Avant Phase 2.6, on
+   *  hardcodait source="auto_template" — bug silencieux pour manual_rushes
+   *  et external_upload. */
+  pattern: {
+    needsDescription: string;
+    source: string;
+    needsCaptions: boolean;
+    coverMode: string;
+  } | null;
   /** Valeur initiale = slot.description ?? "" */
   initialDescription: string;
   /** true pour CM et ADMIN */
@@ -336,14 +345,7 @@ function DescriptionSectionInner({
   }
 
   const verdict = canGenerateDescription({
-    pattern: pattern
-      ? {
-          source: "auto_template",
-          needsCaptions: false,
-          needsDescription: pattern.needsDescription,
-          coverMode: "none",
-        }
-      : null,
+    pattern,
     resolved: null,
     render: null,
     currentVersion: null,

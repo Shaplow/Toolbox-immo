@@ -675,7 +675,16 @@ export function PublicationFiche({
               "description",
               <DescriptionSection
                 slot={{ id: slot.id }}
-                pattern={pattern ? { needsDescription: pattern.needsDescription } : null}
+                pattern={
+                  pattern
+                    ? {
+                        needsDescription: pattern.needsDescription,
+                        source: pattern.source,
+                        needsCaptions: pattern.needsCaptions,
+                        coverMode: pattern.coverMode,
+                      }
+                    : null
+                }
                 initialDescription={slot.description ?? ""}
                 canEdit={canEditDescription}
                 /**
