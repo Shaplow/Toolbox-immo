@@ -32,7 +32,10 @@ type PostBody = {
   coverMode?: string;
   coverConfig?: unknown;
   needsDescription?: string;
+  /** @deprecated V8 — utiliser needsCaptionsMode. Toujours accepté pour back-compat. */
   needsCaptions?: boolean;
+  /** V8 — "none" | "auto" | "manual". */
+  needsCaptionsMode?: string;
   needsAdminValidation?: boolean;
   needsClientValidation?: boolean;
   allowsClientRevision?: boolean;
@@ -83,6 +86,9 @@ function validatePatternBody(body: PostBody, requireAll: boolean): string | null
   }
   if (body.captionPresetId !== undefined && body.captionPresetId !== null && typeof body.captionPresetId !== "string") {
     return "captionPresetId doit être une chaîne ou null";
+  }
+  if (body.needsCaptionsMode !== undefined && !["none", "auto", "manual"].includes(body.needsCaptionsMode)) {
+    return "needsCaptionsMode invalide. Valeurs acceptées : none, auto, manual";
   }
   if (body.descriptionPromptId !== undefined && body.descriptionPromptId !== null && typeof body.descriptionPromptId !== "string") {
     return "descriptionPromptId doit être une chaîne ou null";
@@ -158,12 +164,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   // Validation cross-field (cohérence métier — règles C1-C5 + C10)
+  // V8 — needsCaptionsMode prend le pas sur needsCaptions Boolean. Fallback compat.
+  const captionsMode =
+    body.needsCaptionsMode ?? (body.needsCaptions ? "auto" : "none");
   const xfieldErrors = await validatePatternCrossFields({
     source: body.source!,
     templateId: body.templateId ?? null,
     coverMode: body.coverMode!,
     coverConfig: body.coverConfig ?? null,
     needsCaptions: body.needsCaptions ?? false,
+    needsCaptionsMode: captionsMode,
     needsDescription: body.needsDescription!,
     needsClientValidation: body.needsClientValidation ?? false,
     allowsClientRevision: body.allowsClientRevision ?? false,
@@ -187,7 +197,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         coverMode: body.coverMode!,
         coverConfig: body.coverConfig !== undefined ? (body.coverConfig as import("@prisma/client").Prisma.InputJsonValue) : undefined,
         needsDescription: body.needsDescription!,
-        needsCaptions: body.needsCaptions ?? false,
+        // V8 — écrit les deux champs en parallèle (mode = source de vérité,
+        // Boolean = back-compat pour rollback et consumers legacy non migrés).
+        needsCaptions: captionsMode === "auto",
+        needsCaptionsMode: captionsMode,
         needsAdminValidation: body.needsAdminValidation ?? false,
         needsClientValidation: body.needsClientValidation ?? false,
         allowsClientRevision: body.allowsClientRevision ?? false,

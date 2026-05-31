@@ -67,6 +67,9 @@ function PatternCard({
   const [deleting, setDeleting] = useState(false);
   const hasSlots = pattern._count.publicationSlots > 0;
 
+  // V8 — résolution mode captions pour validation orpheline (preset requis seulement si "auto").
+  const captionsMode =
+    pattern.needsCaptionsMode ?? (pattern.needsCaptions ? "auto" : "none");
   const orphanedConfig = detectOrphanedPatternConfig(
     {
       source: pattern.source,
@@ -74,6 +77,7 @@ function PatternCard({
       coverMode: pattern.coverMode,
       coverConfig: pattern.coverConfig ?? null,
       needsCaptions: pattern.needsCaptions,
+      needsCaptionsMode: captionsMode,
       needsDescription: pattern.needsDescription,
       needsClientValidation: pattern.needsClientValidation,
       allowsClientRevision: pattern.allowsClientRevision,
@@ -94,7 +98,8 @@ function PatternCard({
   // Flags actifs uniquement — chips compacts en bas de card.
   const activeFlags = [
     pattern.needsRushes && { label: "Rushes", variant: "peach" as const },
-    pattern.needsCaptions && { label: "Captions", variant: "sky" as const },
+    captionsMode === "auto" && { label: "Captions auto", variant: "sky" as const },
+    captionsMode === "manual" && { label: "Captions manuels", variant: "sky" as const },
     pattern.needsBrief && { label: "Brief", variant: "sage" as const },
     pattern.needsClientValidation && {
       label: pattern.allowsClientRevision ? "Validation client (ping-pong)" : "Validation client",

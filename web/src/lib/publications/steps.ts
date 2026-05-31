@@ -188,6 +188,7 @@ export function computePublicationSteps(input: {
     | "source"
     | "coverMode"
     | "needsCaptions"
+    | "needsCaptionsMode"
     | "needsDescription"
     | "needsClientValidation"
     | "needsRushes"
@@ -237,7 +238,15 @@ export function computePublicationSteps(input: {
     slot.status === "RUSHES_RECEIVED";
   const coverVisible =
     pattern != null && pattern.coverMode !== "none";
-  const captionsVisible = pattern?.needsCaptions === true;
+  // V8.2.2 — captions visible si mode auto OU manual (les 2 produisent un
+  // step captions dans la chaîne, juste avec UI différente côté fiche).
+  const captionsVisible =
+    pattern != null &&
+    (pattern.needsCaptionsMode === "auto" ||
+      pattern.needsCaptionsMode === "manual" ||
+      // Fallback compat Boolean si pattern pas encore migré (devrait pas
+      // arriver vu backfill, mais safe).
+      pattern.needsCaptions === true);
   const descriptionVisible =
     pattern != null && pattern.needsDescription !== "none";
   const validationVisible = pattern?.needsClientValidation === true;

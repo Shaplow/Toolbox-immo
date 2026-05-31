@@ -29,7 +29,10 @@ type PatchBody = {
   coverMode?: string;
   coverConfig?: unknown;
   needsDescription?: string;
+  /** @deprecated V8 — utiliser needsCaptionsMode. Toujours accepté pour back-compat. */
   needsCaptions?: boolean;
+  /** V8 — "none" | "auto" | "manual". */
+  needsCaptionsMode?: string;
   /** Phase 2.3 — validation admin du montage. */
   needsAdminValidation?: boolean;
   needsClientValidation?: boolean;
@@ -75,6 +78,9 @@ function validatePatchBody(body: PatchBody): string | null {
   if (body.descriptionPromptId !== undefined && body.descriptionPromptId !== null && typeof body.descriptionPromptId !== "string") {
     return "descriptionPromptId doit être une chaîne ou null";
   }
+  if (body.needsCaptionsMode !== undefined && !["none", "auto", "manual"].includes(body.needsCaptionsMode)) {
+    return "needsCaptionsMode invalide. Valeurs acceptées : none, auto, manual";
+  }
   return null;
 }
 
@@ -119,6 +125,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       coverMode: true,
       coverConfig: true,
       needsCaptions: true,
+      needsCaptionsMode: true,
       needsDescription: true,
       needsAdminValidation: true,
       needsClientValidation: true,
@@ -138,12 +145,20 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   }
 
   // Validation cross-field après merge body + existant (PATCH partiel)
+  // V8 — needsCaptionsMode prend le pas sur Boolean. Si patch fournit mode,
+  // on dérive aussi le Boolean ; si patch fournit Boolean, on dérive le mode
+  // pour rester cohérent dans validatePatternConfig.
+  const mergedMode =
+    body.needsCaptionsMode ??
+    existing.needsCaptionsMode ??
+    (body.needsCaptions ?? existing.needsCaptions ? "auto" : "none");
   const merged = {
     source: body.source ?? existing.source,
     templateId: body.templateId !== undefined ? body.templateId : existing.templateId,
     coverMode: body.coverMode ?? existing.coverMode,
     coverConfig: body.coverConfig !== undefined ? body.coverConfig : existing.coverConfig,
     needsCaptions: body.needsCaptions ?? existing.needsCaptions,
+    needsCaptionsMode: mergedMode,
     needsDescription: body.needsDescription ?? existing.needsDescription,
     needsAdminValidation: body.needsAdminValidation ?? existing.needsAdminValidation,
     needsClientValidation: body.needsClientValidation ?? existing.needsClientValidation,
@@ -168,7 +183,15 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (body.coverMode !== undefined) data.coverMode = body.coverMode;
   if ("coverConfig" in body) data.coverConfig = body.coverConfig !== null && body.coverConfig !== undefined ? (body.coverConfig as Prisma.InputJsonValue) : Prisma.JsonNull;
   if (body.needsDescription !== undefined) data.needsDescription = body.needsDescription;
-  if (body.needsCaptions !== undefined) data.needsCaptions = body.needsCaptions;
+  // V8 — écrit les deux champs en miroir. Si seul le mode est envoyé, on
+  // dérive le Boolean ; si seul le Boolean est envoyé, on dérive le mode.
+  if (body.needsCaptionsMode !== undefined) {
+    data.needsCaptionsMode = body.needsCaptionsMode;
+    data.needsCaptions = body.needsCaptionsMode === "auto";
+  } else if (body.needsCaptions !== undefined) {
+    data.needsCaptions = body.needsCaptions;
+    data.needsCaptionsMode = body.needsCaptions ? "auto" : "none";
+  }
   if (body.needsAdminValidation !== undefined) data.needsAdminValidation = body.needsAdminValidation;
   if (body.needsClientValidation !== undefined) data.needsClientValidation = body.needsClientValidation;
   if (body.allowsClientRevision !== undefined) data.allowsClientRevision = body.allowsClientRevision;

@@ -40,7 +40,10 @@ interface Props {
   pattern: {
     needsDescription: string;
     source: string;
+    /** @deprecated V8 — utiliser needsCaptionsMode. */
     needsCaptions: boolean;
+    /** V8 — "none" | "auto" | "manual". null = lit needsCaptions Boolean. */
+    needsCaptionsMode?: string | null;
     coverMode: string;
   } | null;
   /** Valeur initiale = slot.description ?? "" */

@@ -15,6 +15,7 @@ const recipeWithRushes = {
   source: "manual_rushes" as const,
   coverMode: "none" as const,
   needsCaptions: false,
+  needsCaptionsMode: "none" as const,
   needsDescription: "none" as const,
   needsClientValidation: false,
   needsRushes: true,
@@ -36,6 +37,7 @@ const recipeAutoTemplate = {
   source: "auto_template" as const,
   coverMode: "autoPack" as const,
   needsCaptions: true,
+  needsCaptionsMode: "auto" as const,
   needsDescription: "autoGenerate" as const,
   needsClientValidation: false,
   needsRushes: false,
@@ -145,6 +147,7 @@ describe("computePublicationSteps — ordre des steps", () => {
       source: "manual_rushes" as const,
       coverMode: "autoPack" as const,
       needsCaptions: true,
+      needsCaptionsMode: "auto" as const,
       needsDescription: "none" as const,
       needsClientValidation: false,
       needsRushes: true,
@@ -232,10 +235,10 @@ describe("computePublicationSteps — step 'captions' status", () => {
     expect(captions?.status).toBe("failed");
   });
 
-  it("step non visible si needsCaptions=false (job ignoré)", () => {
+  it("step non visible si needsCaptionsMode=none (job ignoré)", () => {
     const steps = computePublicationSteps({
       slot: baseSlot(),
-      pattern: { ...recipeAutoTemplate, needsCaptions: false },
+      pattern: { ...recipeAutoTemplate, needsCaptions: false, needsCaptionsMode: "none" },
       captionJob: { status: "COMPLETED" },
     });
     const captions = steps.find((s) => s.key === "captions");

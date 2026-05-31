@@ -144,7 +144,10 @@ interface PatternInfo {
   source: string;
   templateId: string | null;
   coverMode: string;
+  /** @deprecated V8 — utiliser needsCaptionsMode. Conservé pour compat. */
   needsCaptions: boolean;
+  /** V8 — "none" | "auto" | "manual". null = lit needsCaptions Boolean en fallback. */
+  needsCaptionsMode?: string | null;
   needsDescription: string;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
@@ -299,7 +302,10 @@ export interface PublicationFicheProps {
   resolvedConfig: {
     coverMode: string;
     coverPresetId: string | null;
+    /** @deprecated V8 — utiliser needsCaptionsMode. */
     needsCaptions: boolean;
+    /** V8 — "none" | "auto" | "manual". */
+    needsCaptionsMode?: "none" | "auto" | "manual";
     captionPresetId: string | null;
   };
   // Phase 1.3.6
@@ -396,7 +402,13 @@ export function PublicationFiche({
   );
   trackVisible("render", true);
   trackVisible("cover", true);
-  trackVisible("captions", pattern?.needsCaptions === true);
+  // V8 — captions visible si mode auto OU manual (legacy Boolean en fallback).
+  const captionsActive =
+    !!pattern &&
+    (pattern.needsCaptionsMode === "auto" ||
+      pattern.needsCaptionsMode === "manual" ||
+      pattern.needsCaptions === true);
+  trackVisible("captions", captionsActive);
   trackVisible("description", true);
   trackVisible("clientValidation", true);
   trackVisible("publish", true);
@@ -426,7 +438,7 @@ export function PublicationFiche({
     {
       key: "captions",
       label: "Sous-titres",
-      visible: pattern?.needsCaptions === true && shouldRenderForRole("captions", currentUserRole),
+      visible: captionsActive && shouldRenderForRole("captions", currentUserRole),
     },
     {
       key: "clientValidation",
@@ -600,12 +612,14 @@ export function PublicationFiche({
                       ? {
                           source: pattern.source,
                           needsCaptions: pattern.needsCaptions,
+                          needsCaptionsMode: pattern.needsCaptionsMode,
                           needsDescription: pattern.needsDescription,
                           coverMode: pattern.coverMode,
                         }
                       : null,
                     resolved: {
                       needsCaptions: resolvedConfig.needsCaptions,
+                      needsCaptionsMode: resolvedConfig.needsCaptionsMode,
                       needsDescription: pattern?.needsDescription ?? "none",
                       coverMode: resolvedConfig.coverMode,
                       coverPresetId: resolvedConfig.coverPresetId,
@@ -654,15 +668,23 @@ export function PublicationFiche({
             )}
             {shouldRenderForRole("render", currentUserRole) && renderNextStepHint("render")}
 
-            {/* 2. Sous-titres — conditionné par pattern.needsCaptions */}
-            {pattern?.needsCaptions === true &&
+            {/* 2. Sous-titres — visible si mode auto OU manual (V8). */}
+            {captionsActive &&
               wrap(
                 "captions",
                 <CaptionsSection
                   slot={{ id: slot.id }}
                   renderId={render?.id ?? null}
                   renderStatus={render?.status ?? null}
-                  pattern={pattern ? { needsCaptions: pattern.needsCaptions, source: pattern.source } : null}
+                  pattern={
+                    pattern
+                      ? {
+                          needsCaptions: pattern.needsCaptions,
+                          needsCaptionsMode: pattern.needsCaptionsMode,
+                          source: pattern.source,
+                        }
+                      : null
+                  }
                   canEdit={canEditCaptions}
                   currentVersion={currentVersion}
                   latestCaptionJob={latestCaptionJob}
@@ -673,7 +695,7 @@ export function PublicationFiche({
                   }
                 />
               )}
-            {pattern?.needsCaptions === true && shouldRenderForRole("captions", currentUserRole) &&
+            {captionsActive && shouldRenderForRole("captions", currentUserRole) &&
               renderNextStepHint("captions")}
 
             {/* 3. Validation client externe — masquée si needsClientValidation false */}
@@ -703,6 +725,7 @@ export function PublicationFiche({
                         needsDescription: pattern.needsDescription,
                         source: pattern.source,
                         needsCaptions: pattern.needsCaptions,
+                        needsCaptionsMode: pattern.needsCaptionsMode,
                         coverMode: pattern.coverMode,
                       }
                     : null

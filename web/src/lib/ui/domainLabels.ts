@@ -72,3 +72,21 @@ export const NEEDS_DESCRIPTION_HELP: Record<string, string> = {
   autoGenerate:
     "Claude (IA) rédige automatiquement la description depuis la transcription. Le CM peut ensuite l'ajuster.",
 };
+
+// ───────────────────────────────────────────────────────────────────────────
+// AccountPattern.needsCaptionsMode (V8 — remplace le Boolean needsCaptions)
+// ───────────────────────────────────────────────────────────────────────────
+
+export const CAPTIONS_MODE_LABELS_FR: Record<string, string> = {
+  none: "Aucun sous-titre",
+  auto: "Auto (preset + IA)",
+  manual: "Manuel (écrits à la main)",
+};
+
+export const CAPTIONS_MODE_HELP: Record<string, string> = {
+  none: "Pas de sous-titres sur la vidéo finale.",
+  auto:
+    "Transcription Whisper + burn-in via preset captions. Le pipeline déclenche tout automatiquement après le rendu.",
+  manual:
+    "L'éditeur écrit les sous-titres à la main dans l'app (pas de burn-in vidéo, juste un SRT stocké sur le slot).",
+};

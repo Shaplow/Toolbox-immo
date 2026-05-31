@@ -10,6 +10,8 @@
  * Règle : null = hérite du pattern ; true/false/string = écrase explicitement.
  */
 
+import { resolveCaptionsMode } from "@/lib/publications/captionsMode";
+
 // ─── Helper générique ─────────────────────────────────────────────────────────
 
 export type ResolveSource = "pattern" | "override" | "default";
@@ -100,7 +102,10 @@ interface SlotForAllOverrides {
   needsAdminValidationOverride?: boolean | null;
   needsClientValidationOverride: boolean | null;
   allowsClientRevisionOverride: boolean | null;
+  /** @deprecated V8 — utiliser needsCaptionsModeOverride. */
   needsCaptionsOverride: boolean | null;
+  /** V8 — "none" | "auto" | "manual". null = hérite du pattern. */
+  needsCaptionsModeOverride?: string | null;
   needsDescriptionOverride: string | null;
   needsRushesOverride: boolean | null;
   needsBriefOverride: boolean | null;
@@ -116,7 +121,10 @@ interface PatternForAllNeeds {
   needsAdminValidation?: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
+  /** @deprecated V8 — utiliser needsCaptionsMode. */
   needsCaptions: boolean;
+  /** V8 — "none" | "auto" | "manual". null = lit needsCaptions Boolean. */
+  needsCaptionsMode?: string | null;
   needsDescription: string;
   needsRushes: boolean;
   needsBrief: boolean;
@@ -138,7 +146,10 @@ export interface SlotResolvedConfig {
   needsAdminValidation: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
+  /** @deprecated V8 — utiliser needsCaptionsMode. Conservé pour compat consumers existants. */
   needsCaptions: boolean;
+  /** V8 — mode effectif des captions : "none" | "auto" | "manual". */
+  needsCaptionsMode: "none" | "auto" | "manual";
   needsDescription: string;
   needsRushes: boolean;
   needsBrief: boolean;
@@ -152,6 +163,7 @@ export interface SlotResolvedConfig {
     needsClientValidation: ResolveSource;
     allowsClientRevision: ResolveSource;
     needsCaptions: ResolveSource;
+    needsCaptionsMode: ResolveSource;
     needsDescription: ResolveSource;
     needsRushes: ResolveSource;
     needsBrief: ResolveSource;
@@ -174,6 +186,22 @@ export function resolveSlotConfig(
   const ncv = resolveOverride(slot.needsClientValidationOverride, pattern?.needsClientValidation, false);
   const acr = resolveOverride(slot.allowsClientRevisionOverride, pattern?.allowsClientRevision, false);
   const nc = resolveOverride(slot.needsCaptionsOverride, pattern?.needsCaptions, false);
+  // V8 — mode résolu via helper (gère le fallback Boolean → enum).
+  const ncMode = resolveCaptionsMode({
+    slot: {
+      needsCaptionsModeOverride: slot.needsCaptionsModeOverride,
+      needsCaptionsOverride: slot.needsCaptionsOverride,
+    },
+    pattern: pattern
+      ? { needsCaptionsMode: pattern.needsCaptionsMode, needsCaptions: pattern.needsCaptions }
+      : null,
+  });
+  const ncModeSource: ResolveSource =
+    slot.needsCaptionsModeOverride != null || slot.needsCaptionsOverride != null
+      ? "override"
+      : pattern
+        ? "pattern"
+        : "default";
   const nd = resolveOverride(slot.needsDescriptionOverride, pattern?.needsDescription, "none");
   const nr = resolveOverride(slot.needsRushesOverride, pattern?.needsRushes, false);
   const nb = resolveOverride(slot.needsBriefOverride, pattern?.needsBrief, false);
@@ -187,6 +215,7 @@ export function resolveSlotConfig(
     needsClientValidation: ncv.value,
     allowsClientRevision: acr.value,
     needsCaptions: nc.value,
+    needsCaptionsMode: ncMode,
     needsDescription: nd.value,
     needsRushes: nr.value,
     needsBrief: nb.value,
@@ -199,6 +228,7 @@ export function resolveSlotConfig(
       needsClientValidation: ncv.source,
       allowsClientRevision: acr.source,
       needsCaptions: nc.source,
+      needsCaptionsMode: ncModeSource,
       needsDescription: nd.source,
       needsRushes: nr.source,
       needsBrief: nb.source,

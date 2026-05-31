@@ -33,6 +33,8 @@ import {
   COVER_MODE_HELP,
   NEEDS_DESCRIPTION_LABELS_FR,
   NEEDS_DESCRIPTION_HELP,
+  CAPTIONS_MODE_LABELS_FR,
+  CAPTIONS_MODE_HELP,
 } from "@/lib/ui/domainLabels";
 
 function parseCoverConfig(json: string): object | null {
@@ -54,7 +56,10 @@ export type AccountPatternRow = {
   coverMode: string;
   coverConfig: unknown;
   needsDescription: string;
+  /** @deprecated V8 — utiliser needsCaptionsMode. Conservé pour back-compat. */
   needsCaptions: boolean;
+  /** V8 — "none" | "auto" | "manual". Optionnel pour rows pré-migration. */
+  needsCaptionsMode?: string | null;
   needsAdminValidation: boolean;
   needsClientValidation: boolean;
   allowsClientRevision: boolean;
@@ -89,7 +94,8 @@ type FormValues = {
   templateId: string;
   coverMode: string;
   coverConfigJson: string;
-  needsCaptions: boolean;
+  /** V8 — "none" | "auto" | "manual". */
+  needsCaptionsMode: string;
   needsDescription: string;
   needsAdminValidation: boolean;
   needsClientValidation: boolean;
@@ -115,7 +121,7 @@ function defaultValues(initial?: AccountPatternRow | null): FormValues {
       templateId: "",
       coverMode: "none",
       coverConfigJson: "",
-      needsCaptions: false,
+      needsCaptionsMode: "none",
       needsDescription: "none",
       needsAdminValidation: false,
       needsClientValidation: false,
@@ -140,7 +146,8 @@ function defaultValues(initial?: AccountPatternRow | null): FormValues {
     coverMode: initial.coverMode,
     coverConfigJson:
       initial.coverConfig != null ? JSON.stringify(initial.coverConfig, null, 2) : "",
-    needsCaptions: initial.needsCaptions,
+    needsCaptionsMode:
+      initial.needsCaptionsMode ?? (initial.needsCaptions ? "auto" : "none"),
     needsDescription: initial.needsDescription,
     needsAdminValidation: initial.needsAdminValidation,
     needsClientValidation: initial.needsClientValidation,
@@ -181,6 +188,10 @@ const COVER_MODE_OPTIONS = (
 const DESCRIPTION_OPTIONS = (
   ["none", "preFilled", "autoGenerate", "manualWrite"] as const
 ).map((value) => ({ value, label: NEEDS_DESCRIPTION_LABELS_FR[value] }));
+
+const CAPTIONS_MODE_OPTIONS = (
+  ["none", "auto", "manual"] as const
+).map((value) => ({ value, label: CAPTIONS_MODE_LABELS_FR[value] }));
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
@@ -292,7 +303,9 @@ export function AccountPatternForm({
         templateId: values.templateId || null,
         coverMode: values.coverMode,
         coverConfig: parsedCoverConfig,
-        needsCaptions: values.needsCaptions,
+        // V8 — back-compat Boolean (true si mode "auto") + nouvelle source de vérité mode.
+        needsCaptions: values.needsCaptionsMode === "auto",
+        needsCaptionsMode: values.needsCaptionsMode,
         needsDescription: values.needsDescription,
         needsAdminValidation: values.needsAdminValidation,
         needsClientValidation: values.needsClientValidation,
@@ -393,7 +406,8 @@ export function AccountPatternForm({
         templateId: values.templateId || null,
         coverMode: values.coverMode,
         coverConfig,
-        needsCaptions: values.needsCaptions,
+        needsCaptions: values.needsCaptionsMode === "auto",
+        needsCaptionsMode: values.needsCaptionsMode,
         needsDescription: values.needsDescription,
         needsAdminValidation: values.needsAdminValidation,
         needsClientValidation: values.needsClientValidation,
@@ -696,22 +710,20 @@ export function AccountPatternForm({
               <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-700">
                 Sous-titres
               </h3>
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[13px] font-semibold text-gray-950">Sous-titres auto</p>
-                  <p className="text-[11px] text-gray-500 mt-0.5">
-                    Génère et brûle des sous-titres sur la vidéo finale.
-                  </p>
-                </div>
-                <Switch
-                  checked={values.needsCaptions}
-                  onChange={(v) => set("needsCaptions", v)}
-                  accent="default"
-                  size="sm"
+              <FormField label="Mode sous-titres">
+                <Combobox
+                  value={values.needsCaptionsMode}
+                  onChange={(v) => set("needsCaptionsMode", v)}
+                  options={CAPTIONS_MODE_OPTIONS}
                 />
-              </div>
+                {CAPTIONS_MODE_HELP[values.needsCaptionsMode] && (
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500">
+                    {CAPTIONS_MODE_HELP[values.needsCaptionsMode]}
+                  </p>
+                )}
+              </FormField>
 
-              {values.needsCaptions && (
+              {values.needsCaptionsMode === "auto" && (
                 <FormField
                   label="Preset captions par défaut"
                   required

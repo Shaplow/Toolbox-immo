@@ -225,7 +225,10 @@ interface SlotForAutoTransition {
   status: string;
   pattern: {
     source: string;
+    /** @deprecated V8 — utiliser needsCaptionsMode. */
     needsCaptions: boolean;
+    /** V8 — "none" | "auto" | "manual". null = lit needsCaptions Boolean. */
+    needsCaptionsMode?: string | null;
     /** Phase 2026-05-30 : pris en compte pour cibler AWAITING_CLIENT après captions. */
     needsClientValidation?: boolean;
   } | null;
@@ -279,7 +282,14 @@ export function computeAutoTransitionTargetPure(
   let target: SlotStatus;
   if (renderStatus === "DONE") {
     const captionStatus = slot.latestCaptionJobStatus;
-    if (!slot.pattern.needsCaptions) {
+    // V8.2.2 — Le pipeline auto-transition n'attend les captions QUE en mode
+    // auto. En mode "manual", le CM écrit à la main dans la fiche : pas de
+    // job RunPod à attendre → on transitionne directement post-pipeline.
+    const captionsMode =
+      slot.pattern.needsCaptionsMode ??
+      (slot.pattern.needsCaptions ? "auto" : "none");
+    const captionsAutoExpected = captionsMode === "auto";
+    if (!captionsAutoExpected) {
       target = postPipelineTarget;
     } else if (captionStatus === "COMPLETED") {
       target = postPipelineTarget;
@@ -324,7 +334,7 @@ export async function computeAutoTransitionTarget(
       status: true,
       needsClientValidationOverride: true,
       pattern: {
-        select: { source: true, needsCaptions: true, needsClientValidation: true },
+        select: { source: true, needsCaptions: true, needsCaptionsMode: true, needsClientValidation: true },
       },
       render: { select: { status: true } },
       // V6.6.1 — On charge 5 jobs au lieu de 1 pour distinguer le PROCESSING
@@ -379,6 +389,8 @@ export async function syncSlotsPipelineStatuses(
     pattern: {
       source: string;
       needsCaptions: boolean;
+      /** V8 — "none" | "auto" | "manual". null = lit needsCaptions Boolean. */
+      needsCaptionsMode?: string | null;
       needsClientValidation?: boolean;
     } | null;
     render: { status: string } | null;
@@ -465,7 +477,7 @@ export async function applyAutoTransitionFromPipeline(
         status: true,
         needsClientValidationOverride: true,
         pattern: {
-          select: { source: true, needsCaptions: true, needsClientValidation: true },
+          select: { source: true, needsCaptions: true, needsCaptionsMode: true, needsClientValidation: true },
         },
         render: { select: { status: true } },
         captionJobs: {

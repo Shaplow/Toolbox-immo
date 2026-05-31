@@ -37,7 +37,13 @@ interface Props {
   /** Status du render principal — utilisé pour contextualiser le message
    *  "auto" (rendu en cours / fini / en échec). */
   renderStatus?: string | null;
-  pattern: { needsCaptions: boolean; source?: string } | null;
+  pattern: {
+    /** @deprecated V8 — utiliser needsCaptionsMode. */
+    needsCaptions: boolean;
+    /** V8 — "none" | "auto" | "manual". null = lit needsCaptions Boolean. */
+    needsCaptionsMode?: string | null;
+    source?: string;
+  } | null;
   /** true pour CM, MONTEUR, et ADMIN */
   canEdit: boolean;
   /** Version courante promue par l'ADMIN (si needsRushes=true). */
@@ -87,8 +93,13 @@ export function CaptionsSection({
     if (!jobId) router.refresh();
   });
 
-  // Si le pattern n'exige pas de captions, on masque la section
-  if (pattern?.needsCaptions !== true) return null;
+  // V8 — visible si mode auto OU manual (fallback Boolean si pattern legacy).
+  const captionsMode =
+    pattern?.needsCaptionsMode ??
+    (pattern?.needsCaptions ? "auto" : "none");
+  if (captionsMode === "none") return null;
+  const isManualMode = captionsMode === "manual";
+  const manualHref = `/publications/${slot.id}/captions/manual`;
 
   // renderId n'est pas consommé par /captions ni /descriptions (audit nav
   // 2026-05-28) — on l'omet pour ne pas laisser un param fantôme dans l'URL.
@@ -110,6 +121,7 @@ export function CaptionsSection({
       ? {
           source: pattern.source ?? "auto_template",
           needsCaptions: pattern.needsCaptions,
+          needsCaptionsMode: pattern.needsCaptionsMode,
           needsDescription: "none",
           coverMode: "none",
         }
@@ -133,6 +145,49 @@ export function CaptionsSection({
       Lié à V{currentVersion.versionNumber}
     </span>
   ) : null;
+
+  // V8.2.6 — Branche dédiée mode "manual" : pas de pipeline auto, pas de
+  // preset, pas de verdict canTriggerCaptions. Juste un bouton vers
+  // l'éditeur SRT manuel et l'état du dernier job COMPLETED écrit à la main.
+  if (isManualMode) {
+    return (
+      <Section
+        title="Sous-titres"
+        icon={Subtitles}
+        sectionId={sectionId}
+        storageKey={storageKey}
+        defaultOpen={defaultOpen}
+        collapsible={collapsible}
+        actions={
+          <span className="text-[11px] text-gray-600 bg-white/60 backdrop-blur-[6px] border border-white/50 px-2 py-0.5 rounded-full font-medium shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+            Mode manuel
+          </span>
+        }
+      >
+        <div className="space-y-3">
+          {latestCaptionJob?.status === "COMPLETED" ? (
+            <Alert variant="success" icon={CheckCircle}>
+              Sous-titres saisis à la main.
+            </Alert>
+          ) : (
+            <Alert variant="glass" icon={Subtitles}>
+              Mode manuel : rédige les sous-titres à la main, ils seront stockés
+              sur la publication (pas de burn-in vidéo).
+            </Alert>
+          )}
+          {canEdit && (
+            <Link href={manualHref}>
+              <Button variant="secondary" size="sm" icon={ExternalLink}>
+                {latestCaptionJob?.status === "COMPLETED"
+                  ? "Modifier les sous-titres"
+                  : "Écrire les sous-titres"}
+              </Button>
+            </Link>
+          )}
+        </div>
+      </Section>
+    );
+  }
 
   return (
     <Section

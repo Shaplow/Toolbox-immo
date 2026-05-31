@@ -61,6 +61,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
           source: true,
           coverMode: true,
           needsCaptions: true,
+          needsCaptionsMode: true,
           needsDescription: true,
           needsClientValidation: true,
           needsRushes: true,

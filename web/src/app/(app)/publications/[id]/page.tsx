@@ -65,6 +65,8 @@ export default async function PublicationPage({ params }: PageProps) {
           templateId: true,
           coverMode: true,
           needsCaptions: true,
+          // V8.2.2 — mode enum captions (auto/manual/none)
+          needsCaptionsMode: true,
           needsDescription: true,
           needsClientValidation: true,
           allowsClientRevision: true,
@@ -171,7 +173,11 @@ export default async function PublicationPage({ params }: PageProps) {
       id: slot.id,
       status: slot.status,
       pattern: slot.pattern
-        ? { source: slot.pattern.source, needsCaptions: slot.pattern.needsCaptions }
+        ? {
+            source: slot.pattern.source,
+            needsCaptions: slot.pattern.needsCaptions,
+            needsCaptionsMode: slot.pattern.needsCaptionsMode,
+          }
         : null,
       render: slot.render ? { status: slot.render.status } : null,
       captionJobs: slot.captionJobs.map((c) => ({ status: c.status })),
@@ -353,6 +359,7 @@ export default async function PublicationPage({ params }: PageProps) {
       needsClientValidationOverride: slot.needsClientValidationOverride,
       allowsClientRevisionOverride: slot.allowsClientRevisionOverride,
       needsCaptionsOverride: slot.needsCaptionsOverride,
+      needsCaptionsModeOverride: slot.needsCaptionsModeOverride,
       needsDescriptionOverride: slot.needsDescriptionOverride,
       needsRushesOverride: slot.needsRushesOverride,
       needsBriefOverride: slot.needsBriefOverride,
@@ -366,6 +373,7 @@ export default async function PublicationPage({ params }: PageProps) {
     ? {
         ...slot.pattern,
         needsCaptions: resolvedConfig.needsCaptions,
+        needsCaptionsMode: resolvedConfig.needsCaptionsMode,
         needsDescription: resolvedConfig.needsDescription,
         needsClientValidation: resolvedConfig.needsClientValidation,
         allowsClientRevision: resolvedConfig.allowsClientRevision,
@@ -501,6 +509,7 @@ export default async function PublicationPage({ params }: PageProps) {
               coverMode: effectivePattern.coverMode,
               // Toutes les valeurs needs* sont déjà résolues (overrides appliqués)
               needsCaptions: effectivePattern.needsCaptions,
+              needsCaptionsMode: effectivePattern.needsCaptionsMode,
               needsDescription: effectivePattern.needsDescription,
               needsClientValidation: effectivePattern.needsClientValidation,
               allowsClientRevision: effectivePattern.allowsClientRevision,
@@ -603,6 +612,7 @@ export default async function PublicationPage({ params }: PageProps) {
         coverMode: resolvedConfig.coverMode,
         coverPresetId: resolvedConfig.coverPresetId,
         needsCaptions: resolvedConfig.needsCaptions,
+        needsCaptionsMode: resolvedConfig.needsCaptionsMode,
         captionPresetId: resolvedConfig.captionPresetId,
       }}
       comments={comments}

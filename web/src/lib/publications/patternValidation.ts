@@ -42,7 +42,10 @@ export interface PatternValidationInput {
   coverMode: string;
   /** Objet ou JSON string représentant coverConfig (forme : { enabled?, coverPresetName? }). */
   coverConfig: unknown;
+  /** @deprecated V8 — utiliser needsCaptionsMode. */
   needsCaptions: boolean;
+  /** V8 — "none" | "auto" | "manual". Auto exige captionPresetId. Manuel non. */
+  needsCaptionsMode?: string | null;
   needsDescription: string;
   /** Phase 2.3 — validation admin du montage. Optionnel pour back-compat. */
   needsAdminValidation?: boolean;
@@ -113,8 +116,13 @@ export function validatePatternConfig(
     });
   }
 
-  // C3 : needsCaptions=true → captionPresetId requis
-  if (input.needsCaptions && !input.captionPresetId) {
+  // C3 : needsCaptionsMode="auto" → captionPresetId requis.
+  // V8.2.2 — Le mode "manual" n'a pas besoin de preset (édition à la main
+  // via CaptionEditor). Fallback compat : needsCaptions=true sans mode défini
+  // = ancien comportement = exige preset.
+  const captionsMode =
+    input.needsCaptionsMode ?? (input.needsCaptions ? "auto" : "none");
+  if (captionsMode === "auto" && !input.captionPresetId) {
     errors.push({
       field: "captionPresetId",
       code: "MISSING_CAPTION_PRESET",

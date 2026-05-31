@@ -48,7 +48,10 @@ export type ActionVerdict =
 export interface PatternForActions {
   /** "auto_template" | "manual_rushes" | "external_upload" */
   source: string;
+  /** @deprecated V8 — utiliser needsCaptionsMode. Conservé pour compat. */
   needsCaptions: boolean;
+  /** V8 — "none" | "auto" | "manual". null = lit needsCaptions Boolean en fallback. */
+  needsCaptionsMode?: string | null;
   /** "none" | "preFilled" | "autoGenerate" | "manualWrite" */
   needsDescription: string;
   /** "none" | "manualSelect" | "auto" */
@@ -56,7 +59,9 @@ export interface PatternForActions {
 }
 
 export interface ResolvedConfigForActions {
+  /** @deprecated V8 — utiliser needsCaptionsMode. */
   needsCaptions: boolean;
+  needsCaptionsMode?: string | null;
   needsDescription: string;
   coverMode: string;
   coverPresetId: string | null;
@@ -116,7 +121,14 @@ function isJobCompleted(status: string | undefined | null): boolean {
  */
 export function canTriggerCaptions(ctx: ActionContext): ActionVerdict {
   if (!ctx.canEdit) return { visible: false };
-  if (!ctx.pattern || !ctx.pattern.needsCaptions) return { visible: false };
+  // V8.2.2 — Le bouton "Lancer captions" est pour le mode AUTO uniquement.
+  // En mode "manual", l'admin écrit à la main via CaptionEditor (V8.2.4-6) —
+  // CaptionsSection affiche un bouton dédié, pas ce verdict.
+  if (!ctx.pattern) return { visible: false };
+  const mode =
+    ctx.pattern.needsCaptionsMode ??
+    (ctx.pattern.needsCaptions ? "auto" : "none");
+  if (mode !== "auto") return { visible: false };
 
   if (isAutoPipeline(ctx) && !ctx.latestCaptionJob) {
     // Message contextualisé selon l'état du render :
