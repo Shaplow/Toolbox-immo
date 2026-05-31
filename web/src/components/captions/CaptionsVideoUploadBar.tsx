@@ -25,17 +25,17 @@ export function CaptionsVideoUploadBar({ videoFile, setVideoFile }: Props) {
     <label
       className={`flex items-center gap-3 p-4 border rounded-2xl cursor-pointer transition-all mb-3 ${
         videoFile
-          ? "border-violet-200 bg-violet-50"
+          ? "border-violet-200 bg-rose-50"
           : "border-gray-100 bg-white hover:border-gray-200"
       }`}
     >
-      <div className={`w-9 h-9 rounded-xl flex shrink-0 items-center justify-center ${videoFile ? "bg-violet-100" : "bg-gray-100"}`}>
-        <Upload size={15} className={videoFile ? "text-violet-500" : "text-gray-400"} />
+      <div className={`w-9 h-9 rounded-xl flex shrink-0 items-center justify-center ${videoFile ? "bg-rose-100" : "bg-gray-100"}`}>
+        <Upload size={15} className={videoFile ? "text-rose-500" : "text-gray-400"} />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-gray-800">Vidéo</p>
         {videoFile ? (
-          <p className="text-xs text-violet-600 mt-0.5 truncate">{videoFile.name}</p>
+          <p className="text-xs text-rose-600 mt-0.5 truncate">{videoFile.name}</p>
         ) : (
           <p className="text-xs text-gray-400 mt-0.5">MP4 · MOV · WEBM</p>
         )}

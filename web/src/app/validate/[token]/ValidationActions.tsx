@@ -79,13 +79,13 @@ export function ValidationActions({ token, allowsRevision }: Props) {
               type="button"
               onClick={() => setShowRejectForm(true)}
               disabled={submitting !== null}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 font-medium hover:bg-amber-100 disabled:opacity-50 transition-colors"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-amber-300 bg-peach-50 text-peach-800 font-medium hover:bg-peach-100 disabled:opacity-50 transition-colors"
             >
               <MessageSquare size={16} />
               Demander des modifications
             </button>
           ) : (
-            <div className="space-y-3 border border-amber-200 rounded-lg p-3 bg-amber-50/50">
+            <div className="space-y-3 border border-peach-200 rounded-lg p-3 bg-peach-50/50">
               <label className="block">
                 <span className="text-sm font-medium text-gray-700">
                   Décrivez les modifications souhaitées

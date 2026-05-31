@@ -138,7 +138,7 @@ export function AdminFontsPanel() {
       <div className="rounded-[28px] border border-gray-200 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_45%,#ffffff_100%)] p-6 shadow-sm">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-indigo-500">Bibliothèque globale</p>
+            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-sky-500">Bibliothèque globale</p>
             <h2 className="text-2xl font-semibold text-gray-900 mt-2">Toutes les typographies de l&apos;app au même endroit</h2>
             <p className="text-sm text-gray-600 mt-2">
               Cette page centralise les polices utilisées par les templates et, pour les formats compatibles, par captions.
@@ -219,17 +219,17 @@ export function AdminFontsPanel() {
                       <p className="text-sm font-semibold text-gray-900 truncate" style={{ fontFamily: font.family }}>
                         {font.family}
                       </p>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${compatible ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${compatible ? "bg-sage-50 text-sage-700" : "bg-peach-50 text-peach-700"}`}>
                         {compatible ? "Captions + Templates" : "Templates uniquement"}
                       </span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 uppercase tracking-wide">
                         {getExtension(font).replace(".", "") || "n/a"}
                       </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-50 text-sky-600 font-medium">
                         {font.weight}w
                       </span>
                       {font.fontStyle === "italic" && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 italic font-medium">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 italic font-medium">
                           italic
                         </span>
                       )}

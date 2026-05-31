@@ -109,7 +109,7 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
       <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
         status === "DONE"       ? "bg-green-50 text-green-700" :
         status === "ERROR"      ? "bg-red-50 text-red-700" :
-        /* PENDING/PROCESSING */  "bg-indigo-50 text-indigo-700"
+        /* PENDING/PROCESSING */  "bg-sky-50 text-sky-700"
       }`}>
         {status === "PENDING"    && <><Spinner /> En attente…</>}
         {status === "PROCESSING" && <><Spinner /> Génération en cours…</>}
@@ -129,7 +129,7 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
           {typeof progress === "number" && status !== "DONE" && (
             <div className="space-y-1">
               <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
-                <div className="bg-indigo-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${Math.max(3, Math.round(progress * 100))}%` }} />
+                <div className="bg-sky-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${Math.max(3, Math.round(progress * 100))}%` }} />
               </div>
               <p className="text-xs text-gray-500">{Math.round(progress * 100)}%</p>
             </div>
@@ -142,10 +142,10 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
         try {
           const warnList = JSON.parse(errorMsg.slice("WARNINGS:".length)) as string[];
           return (
-            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
-              <p className="text-sm font-medium text-indigo-700 mb-2">⚠ Avertissements résolution :</p>
+            <div className="bg-sky-50 border border-sky-200 rounded-xl p-4">
+              <p className="text-sm font-medium text-sky-700 mb-2">⚠ Avertissements résolution :</p>
               <ul className="list-disc list-inside space-y-1">
-                {warnList.map((w) => <li key={w} className="text-xs text-indigo-700">{w}</li>)}
+                {warnList.map((w) => <li key={w} className="text-xs text-sky-700">{w}</li>)}
               </ul>
             </div>
           );

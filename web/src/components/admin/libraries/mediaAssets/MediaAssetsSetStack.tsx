@@ -99,7 +99,7 @@ export function MediaAssetsSetStack({ group, onClick, accountFilter }: Props) {
         <span
           className={[
             "text-[10.5px] truncate shrink min-w-0 max-w-[60%]",
-            isPackAuto ? "text-gray-400 italic" : "text-pink-700 font-medium",
+            isPackAuto ? "text-gray-400 italic" : "text-rose-700 font-medium",
           ].join(" ")}
           title={setTag ?? undefined}
         >

@@ -240,7 +240,7 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
                 style={{ left: `${left}%`, width: `${width}%` }}
                 className={`absolute h-full transition-colors ${
                   states[i].included
-                    ? isActive ? "bg-teal-500" : "bg-teal-300 hover:bg-teal-400"
+                    ? isActive ? "bg-sky-500" : "bg-teal-300 hover:bg-teal-400"
                     : "bg-gray-300 hover:bg-gray-400"
                 }`}
               />
@@ -261,7 +261,7 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
               key={i}
               className={`rounded-xl border transition-all ${
                 isActive
-                  ? "border-teal-300 bg-teal-50"
+                  ? "border-teal-300 bg-sky-50"
                   : state.included
                   ? "border-gray-100 bg-gray-50"
                   : "border-gray-100 bg-gray-50 opacity-50"
@@ -296,7 +296,7 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
                             onClick={() => handleWordClick(i, wi)}
                             className={`text-xs px-1 py-0.5 rounded transition-all ${
                               isInRange
-                                ? "bg-teal-100 text-teal-800 hover:bg-teal-200"
+                                ? "bg-sky-100 text-teal-800 hover:bg-teal-200"
                                 : "bg-white text-gray-300 hover:text-gray-500"
                             }`}
                           >
@@ -343,7 +343,7 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
           type="button"
           onClick={handleConfirm}
           disabled={includedCount === 0}
-          className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors"
+          className="flex items-center gap-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors"
         >
           <Check size={14} />
           Confirmer et continuer

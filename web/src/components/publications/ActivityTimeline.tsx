@@ -210,7 +210,7 @@ function ActivityIcon({ type }: ActivityIconProps) {
   const neutral = `${base} bg-gray-100 text-gray-600`;
   const success = `${base} bg-success-50 text-success-700`;
   const danger = `${base} bg-danger-50 text-danger-700`;
-  const warning = `${base} bg-amber-50 text-amber-700`;
+  const warning = `${base} bg-peach-50 text-peach-700`;
 
   switch (type) {
     case "STATUS_CHANGED":
@@ -359,7 +359,7 @@ export function ActivityTimeline({
                           href={publishedUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-indigo-600 hover:underline"
+                          className="text-sky-600 hover:underline"
                         >
                           Voir
                         </a>
@@ -388,7 +388,7 @@ export function ActivityTimeline({
           <button
             onClick={() => void loadMore()}
             disabled={loading}
-            className="text-xs text-indigo-600 hover:text-indigo-800 disabled:opacity-50 transition-colors"
+            className="text-xs text-sky-600 hover:text-indigo-800 disabled:opacity-50 transition-colors"
           >
             {loading ? "Chargement…" : "Charger plus"}
           </button>

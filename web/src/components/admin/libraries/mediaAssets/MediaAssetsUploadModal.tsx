@@ -399,10 +399,10 @@ export function MediaAssetsUploadModal({
           {/* Drop zone */}
           <div
             className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center gap-3 transition-colors ${
-              modalDragOver ? "border-indigo-400 bg-indigo-50" : "border-gray-200 bg-gray-50"
+              modalDragOver ? "border-indigo-400 bg-sky-50" : "border-gray-200 bg-gray-50"
             }`}
           >
-            <Upload size={28} className={modalDragOver ? "text-indigo-400" : "text-gray-300"} />
+            <Upload size={28} className={modalDragOver ? "text-sky-400" : "text-gray-300"} />
             <p className="text-sm text-gray-500 text-center">Glissez vos fichiers ici</p>
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -595,7 +595,7 @@ export function MediaAssetsUploadModal({
           {/* Progress */}
           {modalUploading && (
             <div className="space-y-1">
-              <div className="flex justify-between text-xs text-indigo-700">
+              <div className="flex justify-between text-xs text-sky-700">
                 <span>Upload en cours…</span>
                 <span>{modalProgress ?? 0}%</span>
               </div>

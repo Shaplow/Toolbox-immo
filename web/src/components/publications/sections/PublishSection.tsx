@@ -237,8 +237,8 @@ export function PublishSection({
         <div className="space-y-4">
           {/* Warning si étapes amont incomplètes */}
           {incompleteSteps.length > 0 && (
-            <div className="flex items-start gap-2 text-[13px] text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2.5">
-              <AlertTriangle size={14} className="text-amber-700 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 text-[13px] text-amber-900 bg-peach-50 border border-peach-200 rounded-md px-3 py-2.5">
+              <AlertTriangle size={14} className="text-peach-700 shrink-0 mt-0.5" />
               <div>
                 <p className="font-medium leading-tight">
                   {incompleteSteps.length === 1
@@ -246,7 +246,7 @@ export function PublishSection({
                     : `${incompleteSteps.length} étapes ne sont pas finalisées`}{" "}
                   : {incompleteSteps.map((s) => s.label).join(", ")}.
                 </p>
-                <p className="text-[12px] text-amber-800/80 mt-0.5 leading-relaxed">
+                <p className="text-[12px] text-peach-800/80 mt-0.5 leading-relaxed">
                   Tu peux quand même marquer publié — vérifie juste que c&apos;est
                   bien le contenu que tu veux figer.
                 </p>

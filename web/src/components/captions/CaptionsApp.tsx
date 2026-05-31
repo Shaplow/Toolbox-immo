@@ -444,7 +444,7 @@ export default function CaptionsApp({
                 <ChevronLeft size={14}/>Retour
               </Link>
             )}
-            <div className="w-10 h-10 bg-violet-600 rounded-xl flex items-center justify-center text-white shrink-0">
+            <div className="w-10 h-10 bg-rose-600 rounded-xl flex items-center justify-center text-white shrink-0">
               <Film size={20}/>
             </div>
             <div>
@@ -453,7 +453,7 @@ export default function CaptionsApp({
               </h1>
               <p className="text-sm text-gray-500 mt-0.5">Réglez la typo, les effets et le placement des sous-titres</p>
               <div className="mt-2 flex flex-wrap gap-2">
-                <span className="inline-flex items-center rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-medium text-violet-700">
+                <span className="inline-flex items-center rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-medium text-rose-700">
                   {loadedPresetName ? 'Preset chargé' : initialPresetId ? 'Preset existant' : 'Nouveau preset'}
                 </span>
                 <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 ring-1 ring-gray-200">
@@ -487,7 +487,7 @@ export default function CaptionsApp({
                 className={`flex items-center gap-1.5 px-4 py-1.5 text-xs rounded-lg disabled:opacity-60 transition-colors font-medium ${
                   saveStatus === 'ok' ? 'bg-green-600 text-white' :
                   saveStatus === 'err' ? 'bg-red-500 text-white' :
-                  'border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100'
+                  'border border-violet-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
                 }`}
                 disabled={saving}
                 onClick={() => void updatePreset()}
@@ -496,7 +496,7 @@ export default function CaptionsApp({
               </button>
             )}
             <button
-              className="flex items-center gap-1.5 px-4 py-1.5 text-xs bg-violet-600 hover:bg-violet-700 text-white rounded-lg disabled:opacity-60 transition-colors font-medium"
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs bg-rose-600 hover:bg-rose-700 text-white rounded-lg disabled:opacity-60 transition-colors font-medium"
               disabled={busy}
               onClick={() => runAction('render-full')}
             >

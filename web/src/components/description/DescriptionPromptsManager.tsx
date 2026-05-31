@@ -157,7 +157,7 @@ export function DescriptionPromptsManager({
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => openEdit(p)}
-                    className="p-1.5 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
+                    className="p-1.5 text-gray-400 hover:text-sky-600 rounded-lg hover:bg-sky-50 transition-colors"
                     title="Modifier"
                   >
                     <Pencil size={13} />
@@ -192,7 +192,7 @@ function PromptInlineForm({
   onSave: () => void; onCancel: () => void; label: string;
 }) {
   return (
-    <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-4 space-y-3">
+    <div className="bg-sky-50/60 border border-indigo-100 rounded-xl p-4 space-y-3">
       <div>
         <label className="text-xs font-medium text-gray-700 block mb-1">Nom</label>
         <input

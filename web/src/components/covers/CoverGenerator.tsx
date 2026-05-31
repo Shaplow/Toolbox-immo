@@ -1098,7 +1098,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
 
             {hasExtracted && !canDoNextRound && (
               <div className="rounded-xl border border-peach-200 bg-peach-50 p-3 text-center">
-                <p className="text-xs font-semibold text-amber-800">
+                <p className="text-xs font-semibold text-peach-800">
                   Toutes les frames ont été proposées.
                 </p>
                 <p className="text-xs text-peach-700 mt-0.5">

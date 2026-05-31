@@ -207,7 +207,7 @@ export function CaptionPromptsPanel({
                   <div className="flex items-center gap-2 mb-1">
                     <p className="text-sm font-medium text-gray-900">{p.name}</p>
                     {p.autoHighlight.enabled && (
-                      <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">
+                      <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-700">
                         {formatAutoHighlightModeLabel(p.autoHighlight.mode)}
                       </span>
                     )}
@@ -216,7 +216,7 @@ export function CaptionPromptsPanel({
                     {p.prompt}
                   </p>
                   {p.autoHighlight.enabled && p.autoHighlight.prompt && (
-                    <p className="text-xs text-violet-400 mt-1.5 line-clamp-2">
+                    <p className="text-xs text-rose-400 mt-1.5 line-clamp-2">
                       Auto-highlight : {p.autoHighlight.prompt}
                     </p>
                   )}
@@ -286,7 +286,7 @@ function CaptionPromptForm({
   const [showAhSection, setShowAhSection] = useState(ahEnabled);
 
   return (
-    <div className="bg-violet-50/50 border border-violet-100 rounded-xl p-5 space-y-4">
+    <div className="bg-rose-50/50 border border-violet-100 rounded-xl p-5 space-y-4">
       {/* Name */}
       <FormField label="Nom du prompt" required>
         <Input
@@ -317,7 +317,7 @@ function CaptionPromptForm({
             setShowAhSection(next);
             if (!next) onAhEnabled(false);
           }}
-          className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors"
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors"
         >
           <span>Auto-highlight</span>
           {showAhSection ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
@@ -330,7 +330,7 @@ function CaptionPromptForm({
                 type="checkbox"
                 checked={ahEnabled}
                 onChange={(e) => onAhEnabled(e.target.checked)}
-                className="h-4 w-4 rounded border-violet-300 text-violet-600 focus:ring-violet-300"
+                className="h-4 w-4 rounded border-rose-300 text-rose-600 focus:ring-violet-300"
               />
               Activer l&apos;auto-highlight pendant la correction IA
             </label>

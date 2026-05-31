@@ -73,7 +73,7 @@ export function CaptionsAIPanel({
         className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
           showAI
             ? "bg-gray-900 border-gray-900 text-white"
-            : "border-gray-200 text-gray-600 hover:border-violet-300 hover:text-rose-700"
+            : "border-gray-200 text-gray-600 hover:border-rose-300 hover:text-rose-700"
         }`}
       >
         <Wand2 size={11} />
@@ -84,7 +84,7 @@ export function CaptionsAIPanel({
       {/* Expanded panel */}
       {showAI && (
         <div className="mb-4 bg-rose-50 border border-violet-100 rounded-xl p-4">
-          <p className="text-xs font-semibold text-violet-800 mb-3">Correction IA</p>
+          <p className="text-xs font-semibold text-rose-800 mb-3">Correction IA</p>
 
           {/* Model selector */}
           <div className="flex gap-2 mb-4">
@@ -119,7 +119,7 @@ export function CaptionsAIPanel({
                   key={p.id}
                   className={`flex items-center gap-1 rounded-lg border transition-colors ${
                     selectedPromptId === p.id
-                      ? "border-violet-400 bg-white"
+                      ? "border-rose-400 bg-white"
                       : "border-transparent hover:bg-rose-100"
                   }`}
                 >
@@ -139,7 +139,7 @@ export function CaptionsAIPanel({
                       )}
                     </div>
                     {p.autoHighlight.enabled && (
-                      <p className="mt-1 text-[10px] text-violet-400">
+                      <p className="mt-1 text-[10px] text-rose-400">
                         Auto-highlight {formatAutoHighlightPlacementLabel(p.autoHighlight.placement)}
                       </p>
                     )}
@@ -149,7 +149,7 @@ export function CaptionsAIPanel({
             </div>
           ) : (
             <div className="mb-3 rounded-xl border border-violet-100 bg-white px-3 py-2.5">
-              <p className="text-[11px] text-violet-500">
+              <p className="text-[11px] text-rose-500">
                 Aucun prompt disponible pour le moment. Contactez votre administrateur.
               </p>
             </div>
@@ -162,7 +162,7 @@ export function CaptionsAIPanel({
                 {formatAutoHighlightModeLabel(selectedPrompt.autoHighlight.mode)} · consigne insérée {formatAutoHighlightPlacementLabel(selectedPrompt.autoHighlight.placement)}
               </p>
               {selectedPrompt.autoHighlight.prompt && (
-                <p className="mt-1 text-[11px] text-violet-500">
+                <p className="mt-1 text-[11px] text-rose-500">
                   {selectedPrompt.autoHighlight.prompt}
                 </p>
               )}

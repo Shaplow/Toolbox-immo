@@ -508,12 +508,12 @@ export function DescriptionTool({
                           : "border-gray-100 hover:border-gray-200 hover:bg-gray-50 text-gray-700"
                       }`}
                     >
-                      <Mic size={14} className={transcriptionId === t.id ? "text-teal-500" : "text-gray-300"} />
+                      <Mic size={14} className={transcriptionId === t.id ? "text-sky-500" : "text-gray-300"} />
                       <span className="flex-1 truncate">
                         {t.inputFilename ?? "Transcription sans nom"}
                       </span>
                       {transcriptionId === t.id && (
-                        <Check size={12} className="text-teal-500 shrink-0" />
+                        <Check size={12} className="text-sky-500 shrink-0" />
                       )}
                       <span className="text-xs text-gray-400 shrink-0">{formatDate(t.createdAt)}</span>
                     </button>

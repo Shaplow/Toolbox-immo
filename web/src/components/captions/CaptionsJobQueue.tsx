@@ -42,7 +42,7 @@ export function CaptionsJobQueue({ jobs, returnTo, busy }: Props) {
         <div className="text-center mt-3">
           <a
             href={returnTo}
-            className="text-xs text-indigo-600 hover:underline"
+            className="text-xs text-sky-600 hover:underline"
           >
             ← Retour à la publication
           </a>
@@ -74,7 +74,7 @@ export function CaptionsJobQueue({ jobs, returnTo, busy }: Props) {
                     ) : isFailed ? (
                       <AlertCircle size={16} className="text-red-400" />
                     ) : (
-                      <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+                      <div className="w-4 h-4 border-2 border-rose-400 border-t-transparent rounded-full animate-spin" />
                     )}
                   </div>
 
@@ -84,7 +84,7 @@ export function CaptionsJobQueue({ jobs, returnTo, busy }: Props) {
                       {job.videoName} · {job.createdAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
                     </p>
                     <p className={`text-[10px] mt-0.5 ${
-                      isDone ? "text-green-600" : isFailed ? "text-red-400" : "text-violet-500"
+                      isDone ? "text-green-600" : isFailed ? "text-red-400" : "text-rose-500"
                     }`}>
                       {isDone ? "Terminé" : isFailed ? "Échec" : "En cours…"}
                     </p>
@@ -95,7 +95,7 @@ export function CaptionsJobQueue({ jobs, returnTo, busy }: Props) {
                     <a
                       href={job.videoUrl}
                       download
-                      className="shrink-0 inline-flex items-center gap-1.5 text-xs bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
+                      className="shrink-0 inline-flex items-center gap-1.5 text-xs bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
                     >
                       <Download size={12} />
                       MP4

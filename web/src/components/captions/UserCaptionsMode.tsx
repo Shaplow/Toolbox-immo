@@ -62,7 +62,7 @@ export function UserCaptionsMode({
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Film size={18} className="text-violet-500" /> Captions
+              <Film size={18} className="text-rose-500" /> Captions
             </h1>
             <p className="text-sm text-gray-500 mt-0.5">Brûlez des sous-titres dans votre vidéo</p>
           </div>
@@ -75,7 +75,7 @@ export function UserCaptionsMode({
         <StepCard number={1} title="Style de sous-titres">
           {presetsLoading ? (
             <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
-              <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-rose-400 border-t-transparent rounded-full animate-spin" />
               Chargement…
             </div>
           ) : presets.length === 0 ? (
@@ -88,22 +88,22 @@ export function UserCaptionsMode({
                   onClick={() => onSelectPreset(p)}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${
                     selectedPresetId === p.id
-                      ? "bg-rose-50 border-violet-300 shadow-sm"
+                      ? "bg-rose-50 border-rose-300 shadow-sm"
                       : "bg-white border-gray-100 hover:border-gray-200"
                   }`}
                 >
                   <span className={`w-3 h-3 rounded-full border-2 shrink-0 ${
-                    selectedPresetId === p.id ? "bg-rose-500 border-violet-500" : "border-gray-300"
+                    selectedPresetId === p.id ? "bg-rose-500 border-rose-500" : "border-gray-300"
                   }`} />
                   <div>
-                    <p className={`text-sm font-medium ${selectedPresetId === p.id ? "text-violet-800" : "text-gray-800"}`}>
+                    <p className={`text-sm font-medium ${selectedPresetId === p.id ? "text-rose-800" : "text-gray-800"}`}>
                       {p.name}
                     </p>
                     {p.isBuiltin && (
-                      <p className="text-[10px] text-violet-400 mt-0.5">Style intégré</p>
+                      <p className="text-[10px] text-rose-400 mt-0.5">Style intégré</p>
                     )}
                   </div>
-                  {selectedPresetId === p.id && <span className="ml-auto text-violet-500 text-sm">✓</span>}
+                  {selectedPresetId === p.id && <span className="ml-auto text-rose-500 text-sm">✓</span>}
                 </button>
               ))}
             </div>
@@ -113,9 +113,9 @@ export function UserCaptionsMode({
         {/* Step 2 — Vidéo */}
         <StepCard number={2} title="Votre vidéo">
           <label className={`flex flex-col items-center gap-2 p-6 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
-            videoFile ? "border-violet-300 bg-rose-50" : "border-gray-200 hover:border-gray-300 bg-white"
+            videoFile ? "border-rose-300 bg-rose-50" : "border-gray-200 hover:border-gray-300 bg-white"
           }`}>
-            <Upload size={20} className={videoFile ? "text-violet-500" : "text-gray-400"} />
+            <Upload size={20} className={videoFile ? "text-rose-500" : "text-gray-400"} />
             <span className="text-sm font-medium text-gray-700">
               {videoFile ? videoFile.name : "Cliquer pour choisir une vidéo"}
             </span>
@@ -130,9 +130,9 @@ export function UserCaptionsMode({
         {/* Step 3 — Sous-titres */}
         <StepCard number={3} title="Sous-titres (.srt)">
           <label className={`flex flex-col items-center gap-2 p-6 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
-            (subsFile || captions.length > 0) ? "border-violet-300 bg-rose-50" : "border-gray-200 hover:border-gray-300 bg-white"
+            (subsFile || captions.length > 0) ? "border-rose-300 bg-rose-50" : "border-gray-200 hover:border-gray-300 bg-white"
           }`}>
-            <FileText size={20} className={(subsFile || captions.length > 0) ? "text-violet-500" : "text-gray-400"} />
+            <FileText size={20} className={(subsFile || captions.length > 0) ? "text-rose-500" : "text-gray-400"} />
             <span className="text-sm font-medium text-gray-700">
               {subsFile
                 ? subsFile.name

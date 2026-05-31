@@ -41,8 +41,8 @@ export function CaptionsSourceStatus({
   if (showTrimEditor) {
     return (
       <div className="px-4 py-3 flex items-center gap-3">
-        <div className="w-8 h-8 bg-violet-100 rounded-lg flex shrink-0 items-center justify-center">
-          {selectedTranscriptionId ? <Mic size={14} className="text-violet-600" /> : <FileText size={14} className="text-violet-600" />}
+        <div className="w-8 h-8 bg-rose-100 rounded-lg flex shrink-0 items-center justify-center">
+          {selectedTranscriptionId ? <Mic size={14} className="text-rose-600" /> : <FileText size={14} className="text-rose-600" />}
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-800">
@@ -60,8 +60,8 @@ export function CaptionsSourceStatus({
   if (captionsCount > 0) {
     return (
       <div className="px-4 py-3 flex items-center gap-3">
-        <div className="w-8 h-8 bg-violet-100 rounded-lg flex shrink-0 items-center justify-center">
-          <Check size={14} className="text-violet-600" />
+        <div className="w-8 h-8 bg-rose-100 rounded-lg flex shrink-0 items-center justify-center">
+          <Check size={14} className="text-rose-600" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-800">{captionsCount} lignes</p>
@@ -79,8 +79,8 @@ export function CaptionsSourceStatus({
   if (subsFile) {
     return (
       <div className="px-4 py-3 flex items-center gap-3">
-        <div className="w-8 h-8 bg-violet-100 rounded-lg flex shrink-0 items-center justify-center">
-          <FileText size={14} className="text-violet-600" />
+        <div className="w-8 h-8 bg-rose-100 rounded-lg flex shrink-0 items-center justify-center">
+          <FileText size={14} className="text-rose-600" />
         </div>
         <p className="text-sm font-medium text-gray-800 truncate">{subsFile.name}</p>
       </div>

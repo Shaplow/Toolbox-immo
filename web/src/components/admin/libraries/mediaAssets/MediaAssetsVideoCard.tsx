@@ -284,7 +284,7 @@ export function MediaAssetsVideoCard({
               onBlur={() => { void handleSaveCategory(asset, familyInput); setEditingFamilyKey(null); }}
               list="group-list"
               placeholder="Catégorie…"
-              className="w-24 text-[9px] border border-violet-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400"
+              className="w-24 text-[9px] border border-rose-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400"
             />
           ) : (
             <button
