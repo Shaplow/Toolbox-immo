@@ -628,8 +628,10 @@ export function TranscriptionList({
       <div
         role="button"
         tabIndex={0}
-        className={`relative rounded-2xl border-2 border-dashed p-10 text-center transition-colors ${
-          dragging ? "border-sky-400 bg-sky-50" : "border-gray-200 bg-white hover:border-sky-300 hover:bg-gray-50"
+        className={`relative rounded-2xl border-2 border-dashed p-10 text-center transition-colors backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] ${
+          dragging
+            ? "border-sky-400 bg-sky-50/70"
+            : "border-white/60 bg-white/60 hover:border-sky-300 hover:bg-sky-50/40"
         } ${uploadState ? "pointer-events-none opacity-80" : "cursor-pointer"}`}
         onDragEnter={(event) => {
           event.preventDefault();
@@ -694,10 +696,10 @@ export function TranscriptionList({
       </div>
 
       {feedback && (
-        <div className={`rounded-2xl border px-4 py-3 text-sm ${
+        <div className={`rounded-2xl backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,1)] ${
           feedback.type === "success"
-            ? "border-green-200 bg-green-50 text-green-700"
-            : "border-red-200 bg-red-50 text-red-700"
+            ? "bg-gradient-to-b from-green-50/85 to-green-50/55 text-green-800 shadow-[inset_0_0_0_1px_rgba(134,239,172,0.40)]"
+            : "bg-gradient-to-b from-rose-50/85 to-rose-50/55 text-rose-800 shadow-[inset_0_0_0_1px_rgba(244,114,182,0.30)]"
         }`}>
           {feedback.message}
         </div>
@@ -734,7 +736,7 @@ export function TranscriptionList({
         </div>
 
         {queueJobs.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-10 text-center text-sm text-gray-500">
+          <div className="rounded-2xl border border-dashed border-white/60 bg-white/40 backdrop-blur-[6px] px-6 py-10 text-center text-sm text-gray-500 shadow-[inset_0_1px_0_rgba(255,255,255,1)]">
             Aucun rush en attente ou en cours. Ajoutez vos fichiers ci-dessus pour préparer un lot.
           </div>
         ) : (
@@ -746,7 +748,7 @@ export function TranscriptionList({
               const isStarting = !!startingJobIds[job.id];
 
               return (
-                <li key={job.id} className="rounded-xl border border-gray-200 bg-white p-5">
+                <li key={job.id} className="rounded-xl border border-white/50 bg-white/60 backdrop-blur-[6px] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex min-w-0 items-start gap-3">
                       <div className="flex w-10 h-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-500">
@@ -807,12 +809,12 @@ export function TranscriptionList({
                       </div>
 
                       {jobErrors[job.id] && (
-                        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        <div className="rounded-xl bg-gradient-to-b from-rose-50/85 to-rose-50/55 backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 text-sm text-rose-800 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(244,114,182,0.30)]">
                           {jobErrors[job.id]}
                         </div>
                       )}
 
-                      <div className="flex flex-col gap-3 border-t border-gray-100 pt-3 md:flex-row md:items-center md:justify-between">
+                      <div className="flex flex-col gap-3 border-t border-white/40 pt-3 md:flex-row md:items-center md:justify-between">
                         <p className="text-sm text-gray-500">
                           Rush prêt. Lancez-le seul ou avec le lot complet.
                         </p>
@@ -854,7 +856,7 @@ export function TranscriptionList({
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-4 flex flex-col gap-4 border-t border-gray-100 pt-4 md:flex-row md:items-center md:justify-between">
+                    <div className="mt-4 flex flex-col gap-4 border-t border-white/40 pt-4 md:flex-row md:items-center md:justify-between">
                       <div className="flex flex-wrap gap-2 text-xs font-medium text-gray-500">
                         <span className="rounded-full bg-gray-100 px-3 py-1">{job.language.toUpperCase()}</span>
                         {job.enableDiarization && (
@@ -890,7 +892,7 @@ export function TranscriptionList({
 
           <ul className="space-y-3">
             {historyJobs.map((job) => (
-              <li key={job.id} className="rounded-xl border border-gray-200 bg-white p-5">
+              <li key={job.id} className="rounded-xl border border-white/50 bg-white/60 backdrop-blur-[6px] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex min-w-0 items-start gap-3">
                     <div className="flex w-10 h-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-500">

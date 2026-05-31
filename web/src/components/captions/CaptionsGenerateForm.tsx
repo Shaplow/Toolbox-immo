@@ -719,8 +719,13 @@ export default function CaptionsGenerateForm({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-2xl mx-auto px-6 py-10">
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
+        style={{ background: "var(--gradient-page-shell)" }}
+      >
+        <div className="px-6 sm:px-8 pt-6 pb-12">
+          <div className="max-w-2xl mx-auto">
 
         {/* F3-step7 — header extrait dans CaptionsHeader */}
         <CaptionsHeader presetName={preset.name} isRegen={Boolean(initialSrt)} />
@@ -754,8 +759,8 @@ export default function CaptionsGenerateForm({
         <CaptionsVideoUploadBar videoFile={videoFile} setVideoFile={setVideoFile} />
 
         {/* Source card — Sous-titres */}
-        <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden mb-3">
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <div className="bg-white/60 backdrop-blur-[6px] border border-white/50 rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] overflow-hidden mb-3">
+          <div className="px-4 py-3 border-b border-white/40 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700">Sous-titres</h2>
             {(captions.length > 0 || showTrimEditor || subsFile) && (
               <button
@@ -823,7 +828,7 @@ export default function CaptionsGenerateForm({
 
         {/* Highlight editor + AI corrector — shown after SRT parsed */}
         {!showTrimEditor && captions.length > 0 && (
-          <div className="bg-white border border-gray-100 rounded-2xl p-5 mb-3">
+          <div className="bg-white/60 backdrop-blur-[6px] border border-white/50 rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] p-5 mb-3">
             {/* Editor header */}
             <div className="flex items-center justify-between mb-3">
               <div>
@@ -897,6 +902,8 @@ export default function CaptionsGenerateForm({
           {/* F3-step5 — queue + lien retour extraits dans CaptionsJobQueue */}
           <CaptionsJobQueue jobs={jobs} returnTo={returnTo} busy={busy} />
         </>}
+          </div>
+        </div>
       </div>
     </div>
   );
