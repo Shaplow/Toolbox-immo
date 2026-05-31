@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Toolbox Immo — Workflow maps</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg-grad: linear-gradient(180deg, #fdf4ec 0%, #f3e8fd 50%, #e8f0fd 100%);
+      --card-bg: rgba(255, 255, 255, 0.7);
+      --card-border: rgba(15, 23, 42, 0.08);
+      --text: #1f2937;
+      --text-muted: #6b7280;
+      --accent: #6366f1;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg-grad);
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    main { max-width: 1100px; margin: 0 auto; }
+    h1 { font-size: 2rem; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 .5rem; }
+    .subtitle { color: var(--text-muted); margin: 0 0 2rem; font-size: 0.95rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; }
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(8px) saturate(150%);
+      border: 1px solid var(--card-border);
+      border-radius: 1rem;
+      padding: 1.25rem;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 1), 0 2px 8px rgba(15, 23, 42, 0.05);
+      transition: transform .1s ease, box-shadow .1s ease;
+    }
+    .card:hover { transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 1), 0 4px 16px rgba(15, 23, 42, 0.08); }
+    .card a { color: inherit; text-decoration: none; display: block; }
+    .card-title { font-size: 1rem; font-weight: 600; margin: 0 0 .35rem; }
+    .card-slug { font-family: ui-monospace, monospace; font-size: 0.7rem; color: var(--accent); margin-bottom: .65rem; }
+    .card-pitch { color: var(--text-muted); font-size: 0.85rem; line-height: 1.4; margin: 0 0 .75rem; }
+    .card-meta { font-size: 0.7rem; color: var(--text-muted); display: flex; gap: .75rem; align-items: center; }
+    .card-meta code { background: rgba(15, 23, 42, 0.06); padding: .15rem .4rem; border-radius: .35rem; font-size: 0.65rem; }
+    .empty { text-align: center; padding: 4rem 2rem; color: var(--text-muted); }
+    .empty code { background: rgba(15, 23, 42, 0.06); padding: .15rem .4rem; border-radius: .35rem; }
+    footer { margin-top: 3rem; text-align: center; color: var(--text-muted); font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Workflow maps</h1>
+    <p class="subtitle">0 workflow mappé — clique sur une card pour ouvrir le Markdown détaillé.</p>
+    <div class="empty"><p>Aucun workflow mappé pour l'instant.</p><p>Lance <code>/map-workflow "publication captions auto"</code> pour créer le premier.</p></div>
+    <footer>Généré le 2026-05-31T22:07 · <code>npm run workflows:dashboard</code></footer>
+  </main>
+</body>
+</html>

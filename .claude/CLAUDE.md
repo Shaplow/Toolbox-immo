@@ -178,6 +178,9 @@ Capture les surfaces clés (édite `SURFACES` dans `scripts/capture-ux-screensho
 - `/implement-feature <plan>` — délégue à toolbox-generalist
 - `/review-feature <files>` / `/hunt-bugs <module>` / `/security-audit <surface>` — audits read-only
 - `/audit-ux [scénario]` — capture screenshots + analyse visuelle multimodale (rapport ranked critique/moyen/ok)
+- `/map-workflow <description>` — scanne le code pour mapper un workflow user (entry points UI, routes API, modèles Prisma, jobs, side effects + schéma Mermaid). Sort un Markdown dans `.claude/workflows/<slug>.md` + régénère le dashboard HTML
+- `/onboard <slug>` — résumé pragmatique (≤200 mots) d'un workflow déjà mappé pour reprendre le contexte vite
+- `/e2e-from-desc <description>` — convertit une description FR en scenario Playwright dans `scripts/capture-ux-screenshots.ts`, teste en isolation, itère jusqu'à OK
 
 ## Validation Rule
 
