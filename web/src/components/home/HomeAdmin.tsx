@@ -24,7 +24,8 @@ interface HomeAdminProps {
 }
 
 /**
- * Tableau de bord Admin.
+ * Tableau de bord Admin — refonte V4 MID Liquid Glass (cohérence avec
+ * /calendar et /publications/[id]).
  *
  * Affiche des métriques globales utiles pour l'orchestrateur (slots en
  * retard, slots sans pattern, versions à valider) avec liens directs vers
@@ -93,224 +94,244 @@ export async function HomeAdmin({ userName }: HomeAdminProps) {
   });
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">
-          Bonjour{userName ? `, ${userName.split(" ")[0]}` : ""}
-        </h1>
-        <p className="text-sm text-gray-500 mt-1 capitalize">{todayLabel}</p>
-      </div>
-
-      {/* Métriques globales — chaque carte filtre le calendrier via ?filter=
-          sur la query string (Phase nav audit 2026-05-28). */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Link
-          href="/calendar?filter=overdue"
-          className={`rounded-xl border p-4 flex flex-col gap-1 transition-colors hover:opacity-80 ${
-            overdueCount > 0
-              ? "border-red-200 bg-red-50 hover:border-red-300"
-              : "border-gray-200 bg-gray-50 hover:border-gray-300"
-          }`}
-          title="Voir les slots en retard"
-        >
-          <div className="flex items-center gap-2">
-            <AlertTriangle
-              size={15}
-              className={overdueCount > 0 ? "text-red-500" : "text-gray-400"}
-            />
-            <span className="text-xs font-medium text-gray-600">
-              Slots en retard
-            </span>
-          </div>
-          <p
-            className={`text-3xl font-bold mt-1 ${
-              overdueCount > 0 ? "text-red-700" : "text-gray-400"
-            }`}
-          >
-            {overdueCount}
-          </p>
-        </Link>
-
-        <Link
-          href="/calendar?filter=no-pattern"
-          className={`rounded-xl border p-4 flex flex-col gap-1 transition-colors hover:opacity-80 ${
-            noPatternCount > 0
-              ? "border-amber-200 bg-amber-50 hover:border-amber-300"
-              : "border-gray-200 bg-gray-50 hover:border-gray-300"
-          }`}
-          title="Voir les slots sans pattern"
-        >
-          <div className="flex items-center gap-2">
-            <FileQuestion
-              size={15}
-              className={noPatternCount > 0 ? "text-amber-500" : "text-gray-400"}
-            />
-            <span className="text-xs font-medium text-gray-600">
-              Sans pattern
-            </span>
-          </div>
-          <p
-            className={`text-3xl font-bold mt-1 ${
-              noPatternCount > 0 ? "text-amber-700" : "text-gray-400"
-            }`}
-          >
-            {noPatternCount}
-          </p>
-        </Link>
-
-        {/* B10 — Slots sans monteur assigné (sinon invisibles côté monteur) */}
-        <Link
-          href="/calendar?filter=no-monteur"
-          className={`rounded-xl border p-4 flex flex-col gap-1 transition-colors hover:opacity-80 ${
-            noMonteurCount > 0
-              ? "border-orange-200 bg-orange-50 hover:border-orange-300"
-              : "border-gray-200 bg-gray-50 hover:border-gray-300"
-          }`}
-          title="Voir les slots sans monteur assigné"
-        >
-          <div className="flex items-center gap-2">
-            <UserX
-              size={15}
-              className={noMonteurCount > 0 ? "text-orange-500" : "text-gray-400"}
-            />
-            <span className="text-xs font-medium text-gray-600">
-              Sans monteur
-            </span>
-          </div>
-          <p
-            className={`text-3xl font-bold mt-1 ${
-              noMonteurCount > 0 ? "text-orange-700" : "text-gray-400"
-            }`}
-          >
-            {noMonteurCount}
-          </p>
-        </Link>
-
-        {/* Slots nécessitant un vidéaste mais non assignés (équivalent monteur). */}
-        <Link
-          href="/calendar?filter=no-videaste"
-          className={`rounded-xl border p-4 flex flex-col gap-1 transition-colors hover:opacity-80 ${
-            noVideasteCount > 0
-              ? "border-fuchsia-200 bg-fuchsia-50 hover:border-fuchsia-300"
-              : "border-gray-200 bg-gray-50 hover:border-gray-300"
-          }`}
-          title="Voir les slots sans vidéaste assigné"
-        >
-          <div className="flex items-center gap-2">
-            <Video
-              size={15}
-              className={noVideasteCount > 0 ? "text-fuchsia-500" : "text-gray-400"}
-            />
-            <span className="text-xs font-medium text-gray-600">
-              Sans vidéaste
-            </span>
-          </div>
-          <p
-            className={`text-3xl font-bold mt-1 ${
-              noVideasteCount > 0 ? "text-fuchsia-700" : "text-gray-400"
-            }`}
-          >
-            {noVideasteCount}
-          </p>
-        </Link>
-      </div>
-
-      {/* Widget "Versions à valider" */}
-      <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Film size={15} className="text-blue-600 shrink-0" />
-          <h2 className="text-sm font-semibold text-blue-800">Versions à valider</h2>
-          {editReviewSlots.length > 0 && (
-            <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-medium bg-blue-200 text-blue-800">
-              {editReviewSlots.length}
-            </span>
-          )}
-        </div>
-
-        {editReviewSlots.length === 0 ? (
-          <p className="text-xs text-blue-500 italic">Toutes les versions sont à jour.</p>
-        ) : (
-          <div className="space-y-2">
-            {editReviewSlots.map((slot) => {
-              const latestVersion = slot.versions[0];
-              const versionLabel = latestVersion ? `V${latestVersion.versionNumber}` : "Version";
-              const uploadDate = latestVersion
-                ? new Date(latestVersion.createdAt).toLocaleDateString("fr-FR", {
-                    day: "numeric",
-                    month: "short",
-                  })
-                : null;
-
-              return (
-                <Link
-                  key={slot.id}
-                  href={`/publications/${slot.id}`}
-                  className="flex items-center justify-between bg-white rounded-lg border border-blue-100 px-3 py-2 hover:border-blue-300 transition-colors group"
-                >
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-gray-900 truncate">
-                      {slot.pattern?.label ?? slot.title ?? "Publication"}
-                    </p>
-                    <p className="text-[11px] text-gray-500 mt-0.5">
-                      @{slot.account.handle}
-                      {slot.account.name !== slot.account.handle && (
-                        <span className="text-gray-400"> · {slot.account.name}</span>
-                      )}
-                    </p>
-                  </div>
-                  <div className="shrink-0 flex items-center gap-2 ml-3">
-                    <span className="text-[11px] font-medium text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
-                      {versionLabel} en attente
-                    </span>
-                    {uploadDate && (
-                      <span className="text-[10px] text-gray-400 hidden sm:block">{uploadDate}</span>
-                    )}
-                    <ArrowRight size={12} className="text-blue-400 group-hover:text-blue-600 transition-colors" />
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Lien principal vers le calendrier */}
-      <Link
-        href="/calendar"
-        className="flex items-center justify-between p-4 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-colors group"
+    <div className="min-h-screen">
+      {/* Wrapper outer pastel — cohérent avec /calendar et fiche publication */}
+      <div
+        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
+        style={{ background: "var(--gradient-page-shell)" }}
       >
-        <div className="flex items-center gap-3">
-          <CalendarDays size={18} className="text-indigo-600" />
-          <div>
-            <p className="text-sm font-semibold text-indigo-800">
-              Ouvrir le calendrier éditorial
-            </p>
-            <p className="text-xs text-indigo-500 mt-0.5">
-              Planification, assignation, statuts complets
-            </p>
+        <div className="px-6 sm:px-8 pt-6 pb-12">
+          <div className="max-w-3xl mx-auto space-y-6">
+            {/* Header glass — eyebrow + h1 + date */}
+            <header className="rounded-2xl bg-white/55 backdrop-blur-[12px] backdrop-saturate-150 px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                Tableau de bord
+              </p>
+              <h1 className="mt-1 text-[28px] sm:text-[32px] font-semibold tracking-tight text-gray-950">
+                Bonjour{userName ? `, ${userName.split(" ")[0]}` : ""}
+              </h1>
+              <p className="mt-1 text-[12px] text-gray-500 capitalize">{todayLabel}</p>
+            </header>
+
+            {/* Métriques globales — chaque carte filtre le calendrier via
+                ?filter= sur la query string (Phase nav audit 2026-05-28).
+                V4 refonte : glass cards + accents Coastal Studio (rose
+                urgent, peach attention, sage ok). */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <KpiCard
+                href="/calendar?filter=overdue"
+                icon={AlertTriangle}
+                label="Slots en retard"
+                count={overdueCount}
+                tone="rose"
+                title="Voir les slots en retard"
+              />
+              <KpiCard
+                href="/calendar?filter=no-pattern"
+                icon={FileQuestion}
+                label="Sans pattern"
+                count={noPatternCount}
+                tone="peach"
+                title="Voir les slots sans pattern"
+              />
+              <KpiCard
+                href="/calendar?filter=no-monteur"
+                icon={UserX}
+                label="Sans monteur"
+                count={noMonteurCount}
+                tone="peach"
+                title="Voir les slots sans monteur assigné"
+              />
+              <KpiCard
+                href="/calendar?filter=no-videaste"
+                icon={Video}
+                label="Sans vidéaste"
+                count={noVideasteCount}
+                tone="peach"
+                title="Voir les slots sans vidéaste assigné"
+              />
+            </div>
+
+            {/* Widget "Versions à valider" — glass sky */}
+            <section className="rounded-2xl bg-gradient-to-b from-sky-50/85 to-sky-50/45 backdrop-blur-[12px] backdrop-saturate-150 px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.28)]">
+              <div className="flex items-center gap-2 mb-3">
+                <Film size={15} className="text-sky-700 shrink-0" />
+                <h2 className="text-[13px] font-semibold text-sky-900">Versions à valider</h2>
+                {editReviewSlots.length > 0 && (
+                  <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-medium bg-sky-200/70 text-sky-900">
+                    {editReviewSlots.length}
+                  </span>
+                )}
+              </div>
+
+              {editReviewSlots.length === 0 ? (
+                <p className="text-[12px] text-sky-700/70 italic">
+                  Toutes les versions sont à jour.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {editReviewSlots.map((slot) => {
+                    const latestVersion = slot.versions[0];
+                    const versionLabel = latestVersion ? `V${latestVersion.versionNumber}` : "Version";
+                    const uploadDate = latestVersion
+                      ? new Date(latestVersion.createdAt).toLocaleDateString("fr-FR", {
+                          day: "numeric",
+                          month: "short",
+                        })
+                      : null;
+
+                    return (
+                      <Link
+                        key={slot.id}
+                        href={`/publications/${slot.id}`}
+                        className="flex items-center justify-between bg-white/70 backdrop-blur-[8px] rounded-xl px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:bg-white/90 transition-colors group"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[12px] font-medium text-gray-950 truncate">
+                            {slot.pattern?.label ?? slot.title ?? "Publication"}
+                          </p>
+                          <p className="text-[11px] text-gray-500 mt-0.5">
+                            @{slot.account.handle}
+                            {slot.account.name !== slot.account.handle && (
+                              <span className="text-gray-400"> · {slot.account.name}</span>
+                            )}
+                          </p>
+                        </div>
+                        <div className="shrink-0 flex items-center gap-2 ml-3">
+                          <span className="text-[11px] font-medium text-sky-800 bg-sky-100/70 px-1.5 py-0.5 rounded">
+                            {versionLabel} en attente
+                          </span>
+                          {uploadDate && (
+                            <span className="text-[10px] text-gray-400 hidden sm:block">
+                              {uploadDate}
+                            </span>
+                          )}
+                          <ArrowRight
+                            size={12}
+                            className="text-sky-500 group-hover:text-sky-700 transition-colors"
+                          />
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* Lien principal vers le calendrier — glass sage prononcé */}
+            <Link
+              href="/calendar"
+              className="flex items-center justify-between p-5 rounded-2xl bg-gradient-to-b from-sage-50/85 to-sage-50/45 backdrop-blur-[12px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(111,162,128,0.28)] hover:from-sage-50/95 hover:to-sage-50/55 transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <CalendarDays size={20} className="text-sage-700" />
+                <div>
+                  <p className="text-[14px] font-semibold text-sage-900">
+                    Ouvrir le calendrier éditorial
+                  </p>
+                  <p className="text-[11px] text-sage-700/80 mt-0.5">
+                    Planification, assignation, statuts complets
+                  </p>
+                </div>
+              </div>
+              <ArrowRight
+                size={16}
+                className="text-sage-600 group-hover:translate-x-0.5 transition-transform"
+              />
+            </Link>
+
+            {/* Liens secondaires — glass subtil */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Link
+                href="/admin/accounts"
+                className="flex items-center gap-2 px-4 py-3 rounded-xl bg-white/60 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:bg-white/85 transition-colors text-[12.5px] text-gray-700"
+              >
+                <CalendarClock size={14} className="text-gray-500 shrink-0" />
+                Gérer les comptes Instagram
+              </Link>
+              <Link
+                href="/admin/clients"
+                className="flex items-center gap-2 px-4 py-3 rounded-xl bg-white/60 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:bg-white/85 transition-colors text-[12.5px] text-gray-700"
+              >
+                <Building2 size={14} className="text-gray-500 shrink-0" />
+                Gérer les clients
+              </Link>
+            </div>
           </div>
         </div>
-        <ArrowRight size={16} className="text-indigo-400 group-hover:text-indigo-600 transition-colors" />
-      </Link>
-
-      {/* Liens secondaires */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Link
-          href="/admin/accounts"
-          className="flex items-center gap-2 px-4 py-3 rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-colors text-sm text-gray-700"
-        >
-          <CalendarClock size={14} className="text-gray-400 shrink-0" />
-          Gérer les comptes Instagram
-        </Link>
-        <Link
-          href="/admin/clients"
-          className="flex items-center gap-2 px-4 py-3 rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-colors text-sm text-gray-700"
-        >
-          <Building2 size={14} className="text-gray-400 shrink-0" />
-          Gérer les clients
-        </Link>
       </div>
     </div>
+  );
+}
+
+// ─── Sous-composant KpiCard ─────────────────────────────────────────────────
+
+type KpiTone = "rose" | "peach" | "sage" | "neutral";
+
+const TONE_STYLES: Record<KpiTone, { container: string; iconActive: string; numberActive: string; ring: string }> = {
+  rose: {
+    container: "bg-gradient-to-b from-rose-50/85 to-rose-50/45",
+    iconActive: "text-rose-700",
+    numberActive: "text-rose-800",
+    ring: "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(201,113,133,0.30)]",
+  },
+  peach: {
+    container: "bg-gradient-to-b from-peach-50/85 to-peach-50/45",
+    iconActive: "text-peach-700",
+    numberActive: "text-peach-800",
+    ring: "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(245,158,107,0.30)]",
+  },
+  sage: {
+    container: "bg-gradient-to-b from-sage-50/85 to-sage-50/45",
+    iconActive: "text-sage-700",
+    numberActive: "text-sage-800",
+    ring: "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(111,162,128,0.30)]",
+  },
+  neutral: {
+    container: "bg-white/55",
+    iconActive: "text-gray-700",
+    numberActive: "text-gray-900",
+    ring: "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
+  },
+};
+
+function KpiCard({
+  href,
+  icon: Icon,
+  label,
+  count,
+  tone,
+  title,
+}: {
+  href: string;
+  icon: typeof AlertTriangle;
+  label: string;
+  count: number;
+  tone: KpiTone;
+  title: string;
+}) {
+  // Si count === 0, on bascule en variant neutre (l'attention n'est pas requise).
+  const effectiveTone = count > 0 ? tone : "neutral";
+  const styles = TONE_STYLES[effectiveTone];
+  return (
+    <Link
+      href={href}
+      className={`rounded-2xl backdrop-blur-[12px] backdrop-saturate-150 px-4 py-3.5 flex flex-col gap-1 transition-all hover:-translate-y-px ${styles.container} ${styles.ring}`}
+      title={title}
+    >
+      <div className="flex items-center gap-2">
+        <Icon size={14} className={count > 0 ? styles.iconActive : "text-gray-400"} />
+        <span className="text-[10.5px] uppercase tracking-widest font-medium text-gray-600">
+          {label}
+        </span>
+      </div>
+      <p
+        className={`text-[28px] sm:text-[32px] font-semibold tracking-tight mt-1 ${
+          count > 0 ? styles.numberActive : "text-gray-400"
+        }`}
+      >
+        {count}
+      </p>
+    </Link>
   );
 }
