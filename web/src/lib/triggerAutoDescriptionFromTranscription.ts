@@ -95,7 +95,8 @@ type SkipReason =
   | "no_transcription_output"
   | "r2_not_configured"
   | "no_anthropic_key"
-  | "awaiting_client_validation";
+  | "awaiting_client_validation"
+  | "client_review_in_flight";
 
 function logSkip(jobId: string, reason: SkipReason, extra?: Record<string, unknown>) {
   console.info(
