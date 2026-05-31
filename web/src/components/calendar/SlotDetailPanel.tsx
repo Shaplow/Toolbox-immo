@@ -48,6 +48,7 @@ import { TimePicker } from "@/components/ui/TimePicker";
 import { AssigneePicker } from "@/components/ui/molecules/AssigneePicker";
 import { OverrideControl } from "@/components/ui/molecules/OverrideControl";
 import { toast } from "@/components/ui/Toast";
+import { resolveNextActionInfo } from "@/lib/publications/nextActionLabel";
 
 export type SlotDetailPanelMode = "admin" | "monteur" | "cm";
 
@@ -495,6 +496,38 @@ export function SlotDetailPanel({
           {/* Tab Statut */}
           {tab === "status" && (
             <>
+              {/* Phase 3 — Friction HIGH #3 du audit UX : avant, le drawer
+                  affichait uniquement un Combobox de statuts techniques sans
+                  expliquer qui doit agir maintenant et sur quoi. Désormais
+                  bandeau contextuel calculé depuis le statut + assignés. */}
+              {(() => {
+                const info = resolveNextActionInfo(slot.status, {
+                  assigneeMonteurId: slot.assigneeMonteurId,
+                  assigneeCmId: slot.assigneeCmId,
+                  assigneeVideasteId: slot.assigneeVideasteId,
+                  assigneeMonteurName: slot.assigneeMonteur?.name ?? null,
+                  assigneeCmName: slot.assigneeCm?.name ?? null,
+                  assigneeVideasteName: slot.assigneeVideaste?.name ?? null,
+                });
+                if (!info) return null;
+                const who = info.assigneeName
+                  ? `${info.ownerLabel} ${info.assigneeName}`
+                  : info.ownerLabel;
+                return (
+                  <div className="rounded-xl bg-gradient-to-b from-sage-50/80 to-sage-50/40 backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(111,162,128,0.28)]">
+                    <p className="text-[10px] uppercase tracking-widest font-semibold text-sage-700">
+                      Prochaine action attendue
+                    </p>
+                    <p className="mt-1 text-[13px] text-sage-900 leading-snug">
+                      {info.action}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-sage-700/80">
+                      Par {who}
+                    </p>
+                  </div>
+                );
+              })()}
+
               <FormField label="Statut">
                 <Combobox
                   value={status}
