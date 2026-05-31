@@ -72,7 +72,7 @@ export function MediaAssetsCompactCard({
       className={`group flex items-center gap-2 bg-white rounded-lg border px-2 py-1.5 transition-colors ${
         !isAssetAccessible ? "opacity-50" : ""
       } ${
-        selectMode && isSelected ? "border-indigo-400 ring-1 ring-indigo-200" : "border-gray-200 hover:border-indigo-300"
+        selectMode && isSelected ? "border-sky-400 ring-1 ring-indigo-200" : "border-gray-200 hover:border-sky-300"
       }`}
       onClick={() => { if (selectMode) toggleSelect(asset.id); }}
     >
@@ -113,15 +113,15 @@ export function MediaAssetsCompactCard({
                 onBlur={() => { void handleSaveCategory(asset, familyInput); setEditingFamilyKey(null); }}
                 list="group-list"
                 placeholder="Catégorie…"
-                className="w-20 text-[9px] border border-violet-300 rounded px-1 py-0.5 focus:outline-none"
+                className="w-20 text-[9px] border border-rose-300 rounded px-1 py-0.5 focus:outline-none"
               />
             ) : (
               <button
                 onClick={() => { setEditingFamilyKey(asset.id); setFamilyInput(asset.category ?? ""); }}
                 className={`flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded border ${
                   asset.category
-                    ? "bg-violet-50 text-violet-600 border-violet-100 hover:bg-violet-100"
-                    : "bg-gray-50 text-gray-300 border-dashed border-gray-200 hover:text-violet-500"
+                    ? "bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100"
+                    : "bg-gray-50 text-gray-300 border-dashed border-gray-200 hover:text-rose-500"
                 }`}
               >
                 <FolderOpen size={7} /><span>{asset.category || "–"}</span>
@@ -141,15 +141,15 @@ export function MediaAssetsCompactCard({
               onBlur={() => { void handleSaveSetTag(asset, setTagValue); }}
               list="set-tags-list"
               placeholder="pack…"
-              className="w-16 text-[9px] border border-pink-300 rounded px-1 py-0.5 focus:outline-none"
+              className="w-16 text-[9px] border border-rose-300 rounded px-1 py-0.5 focus:outline-none"
             />
           ) : (
             <button
               onClick={() => { setEditingSetTagId(asset.id); setSetTagValue(asset.setTag ?? ""); }}
               className={`flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded border ${
                 asset.setTag
-                  ? "bg-pink-50 text-pink-600 border-pink-100 hover:bg-pink-100"
-                  : "bg-gray-50 text-gray-300 border-dashed border-gray-200 hover:text-pink-500"
+                  ? "bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100"
+                  : "bg-gray-50 text-gray-300 border-dashed border-gray-200 hover:text-rose-500"
               }`}
             >
               <Layers size={7} /><span>{asset.setTag || "–"}</span>
@@ -160,7 +160,7 @@ export function MediaAssetsCompactCard({
           href={asset.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[11px] font-medium text-gray-700 truncate hover:text-indigo-600 hover:underline block"
+          className="text-[11px] font-medium text-gray-700 truncate hover:text-sky-700 hover:underline block"
           title={asset.filename}
         >
           {asset.filename}
@@ -168,7 +168,7 @@ export function MediaAssetsCompactCard({
         {asset.tags.length > 0 && (
           <div className="flex flex-wrap gap-0.5 mt-0.5">
             {asset.tags.map((t) => (
-              <span key={t} className="text-[9px] bg-indigo-50 text-indigo-500 border border-indigo-100 px-1 rounded">{t}</span>
+              <span key={t} className="text-[9px] bg-sky-50 text-sky-700 border border-sky-100 px-1 rounded">{t}</span>
             ))}
           </div>
         )}

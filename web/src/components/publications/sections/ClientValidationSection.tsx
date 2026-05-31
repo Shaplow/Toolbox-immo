@@ -204,12 +204,12 @@ export function ClientValidationSection({
 
       {/* ── État courant ───────────────────────────────────────────────────── */}
       {isAwaiting && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+        <div className="bg-peach-50 border border-peach-200 rounded-lg p-3 mb-4">
           <p className="text-sm text-amber-800">
             En attente de la réponse du client.
           </p>
           {activeToken && (
-            <p className="text-xs text-amber-700 mt-1">
+            <p className="text-xs text-peach-800 mt-1">
               Lien valide jusqu&apos;au{" "}
               {new Date(activeToken.expiresAt).toLocaleString("fr-FR", {
                 day: "numeric",
@@ -223,7 +223,7 @@ export function ClientValidationSection({
       )}
 
       {slotStatus === "CLIENT_REVISION" && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+        <div className="bg-peach-50 border border-peach-200 rounded-lg p-3 mb-4">
           <p className="text-sm text-amber-800">
             Le client a demandé des modifications. Corrigez puis renvoyez pour validation.
           </p>
@@ -289,7 +289,7 @@ export function ClientValidationSection({
       {isAdmin && activeToken && !validationUrl && (
         <div className="border border-gray-200 bg-gray-50 rounded-lg p-3 mb-4">
           <p className="text-xs text-gray-700 mb-2">
-            <AlertTriangle size={12} className="inline mr-1 text-amber-500" />
+            <AlertTriangle size={12} className="inline mr-1 text-peach-700" />
             Un lien actif existe mais son URL complète n&apos;est plus accessible.
             Régénérez-en un pour repartager au client.
           </p>
@@ -372,7 +372,7 @@ export function ClientValidationSection({
                       r.action === "approved"
                         ? "bg-success-50 text-success-700"
                         : r.action === "rejected"
-                          ? "bg-amber-50 text-amber-700"
+                          ? "bg-peach-50 text-peach-800"
                           : "bg-danger-50 text-danger-700"
                     }`}
                   >

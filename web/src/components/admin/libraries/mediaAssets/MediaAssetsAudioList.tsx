@@ -54,10 +54,10 @@ export function MediaAssetsAudioList({
       {assets.map((asset) => (
         <div
           key={asset.id}
-          className="group flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl hover:border-indigo-300 transition-colors"
+          className="group flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl hover:border-sky-300 transition-colors"
         >
-          <div className="w-9 h-9 bg-indigo-50 rounded-lg flex items-center justify-center shrink-0">
-            <Music2 size={16} className="text-indigo-400" />
+          <div className="w-9 h-9 bg-sky-50 rounded-lg flex items-center justify-center shrink-0">
+            <Music2 size={16} className="text-sky-500" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-800 truncate">{asset.filename}</p>
@@ -78,7 +78,7 @@ export function MediaAssetsAudioList({
                     }
                   }}
                   onBlur={() => void handleSaveUsage(asset, usageInput)}
-                  className="w-16 text-[10px] border border-indigo-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="w-16 text-[10px] border border-sky-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                 />
               ) : (
                 <button
@@ -86,7 +86,7 @@ export function MediaAssetsAudioList({
                     setEditingUsageId(asset.id);
                     setUsageInput(String(asset.usageCount));
                   }}
-                  className="flex items-center gap-0.5 hover:text-indigo-600 hover:underline transition-colors"
+                  className="flex items-center gap-0.5 hover:text-sky-700 hover:underline transition-colors"
                   title="Cliquer pour modifier"
                 >
                   {asset.usageCount} usage{asset.usageCount !== 1 ? "s" : ""}
@@ -111,7 +111,7 @@ export function MediaAssetsAudioList({
                 }}
                 onBlur={() => void handleSaveTags(asset, tagInput.split(",").map((t) => t.trim()).filter(Boolean))}
                 placeholder="tag1, tag2"
-                className="mt-1 w-full text-[10px] border border-indigo-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="mt-1 w-full text-[10px] border border-sky-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
               />
             ) : (
               <div
@@ -124,7 +124,7 @@ export function MediaAssetsAudioList({
               >
                 {asset.tags.length > 0
                   ? asset.tags.map((t) => (
-                      <span key={t} className="text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-200 px-1 rounded">
+                      <span key={t} className="text-[9px] bg-sky-50 text-sky-700 border border-sky-200 px-1 rounded">
                         {t}
                       </span>
                     ))
@@ -139,7 +139,7 @@ export function MediaAssetsAudioList({
           <audio controls src={asset.url} className="h-8 w-36 sm:w-48 shrink-0" preload="none" />
           <button
             onClick={() => void handleResetAssetUsage(asset)}
-            className="p-1.5 text-gray-300 hover:text-orange-500 rounded transition-colors opacity-0 group-hover:opacity-100"
+            className="p-1.5 text-gray-300 hover:text-peach-700 rounded transition-colors opacity-0 group-hover:opacity-100"
             title={accountFilter ? "Réinitialiser les stats de ce compte" : "Réinitialiser les compteurs"}
           >
             <RotateCcw size={14} />

@@ -55,13 +55,13 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               setSelectedIds(new Set(filtered.map((a) => a.id)));
             }
           }}
-          className="flex items-center gap-1.5 text-xs text-indigo-700 hover:underline"
+          className="flex items-center gap-1.5 text-xs text-sky-800 hover:underline"
         >
           {allSelected ? <CheckSquare size={12} /> : <Square size={12} />}
           {allSelected ? "Tout désélectionner" : "Tout sélectionner"}
         </button>
         {selectedIds.size > 0 && (
-          <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+          <span className="text-xs font-semibold text-sky-800 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-full">
             {selectedIds.size} sélectionné{selectedIds.size > 1 ? "s" : ""}
           </span>
         )}
@@ -77,14 +77,14 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               onChange={(e) => setBulkCategoryInput(e.target.value)}
               list="group-list"
               placeholder="Catégorie…"
-              className="w-28 text-xs border border-violet-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-violet-400"
+              className="w-28 text-xs border border-rose-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-violet-400"
               onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplyCategory(); } }}
             />
             <button
               onClick={() => { void handleBulkApplyCategory(); }}
               disabled={bulkApplying}
               className={`px-2.5 py-1 text-white text-xs rounded disabled:opacity-50 ${
-                bulkCategoryInput.trim() ? "bg-violet-600 hover:bg-violet-700" : "bg-gray-400 hover:bg-gray-500"
+                bulkCategoryInput.trim() ? "bg-gray-900 hover:bg-gray-700" : "bg-gray-400 hover:bg-gray-500"
               }`}
               title={bulkCategoryInput.trim() ? "Appliquer la catégorie" : "Retirer la catégorie"}
             >
@@ -98,7 +98,7 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               onChange={(e) => setBulkSetTagInput(e.target.value)}
               list="bulk-set-tags-list"
               placeholder="Pack…"
-              className="w-28 text-xs border border-pink-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-pink-400"
+              className="w-28 text-xs border border-rose-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-pink-400"
               onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplySetTag(); } }}
             />
             <button
@@ -118,14 +118,14 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               value={bulkTagsInput}
               onChange={(e) => setBulkTagsInput(e.target.value)}
               placeholder="Tags (virgule)…"
-              className="w-36 text-xs border border-indigo-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              className="w-36 text-xs border border-sky-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
               onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplyTags(); } }}
             />
             <button
               onClick={() => { void handleBulkApplyTags(); }}
               disabled={bulkApplying}
               className={`px-2.5 py-1 text-white text-xs rounded disabled:opacity-50 ${
-                bulkTagsInput.trim() ? "bg-indigo-600 hover:bg-indigo-700" : "bg-gray-400 hover:bg-gray-500"
+                bulkTagsInput.trim() ? "bg-gray-900 hover:bg-gray-700" : "bg-gray-400 hover:bg-gray-500"
               }`}
               title={bulkTagsInput.trim() ? "Appliquer les tags" : "Retirer les tags"}
             >

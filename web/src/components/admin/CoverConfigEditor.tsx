@@ -110,18 +110,18 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
   return (
     <div className="flex flex-col gap-3">
       {!defaultPreset ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 flex items-start gap-2">
-          <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-          <div className="text-xs text-amber-800 flex-1">
+        <div className="rounded-lg border border-peach-200 bg-peach-50 px-3 py-2.5 flex items-start gap-2">
+          <AlertTriangle size={16} className="text-peach-700 shrink-0 mt-0.5" />
+          <div className="text-xs text-peach-800 flex-1">
             <p className="font-medium mb-0.5">Cover non configurée dans ce template</p>
-            <p className="text-amber-700">
+            <p className="text-peach-800">
               Active la cover automatique côté template (onglet « Cover auto »).
             </p>
             <Link
               href={`/templates/${templateId}/edit`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-amber-700 underline hover:text-amber-900 mt-1.5"
+              className="inline-flex items-center gap-1 text-peach-800 underline hover:text-peach-900 mt-1.5"
             >
               Ouvrir le builder
               <ExternalLink size={11} />
@@ -129,18 +129,18 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
           </div>
         </div>
       ) : !isEnabled ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 flex items-start gap-2">
-          <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-          <div className="text-xs text-amber-800 flex-1">
+        <div className="rounded-lg border border-peach-200 bg-peach-50 px-3 py-2.5 flex items-start gap-2">
+          <AlertTriangle size={16} className="text-peach-700 shrink-0 mt-0.5" />
+          <div className="text-xs text-peach-800 flex-1">
             <p className="font-medium mb-0.5">Cover désactivée dans le template</p>
-            <p className="text-amber-700">
+            <p className="text-peach-800">
               La config existe mais le toggle « Activer après chaque render » est off.
             </p>
             <Link
               href={`/templates/${templateId}/edit`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-amber-700 underline hover:text-amber-900 mt-1.5"
+              className="inline-flex items-center gap-1 text-peach-800 underline hover:text-peach-900 mt-1.5"
             >
               Activer dans le builder
               <ExternalLink size={11} />
@@ -148,18 +148,18 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
           </div>
         </div>
       ) : (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 flex items-start gap-2">
-          <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
-          <div className="text-xs text-emerald-800 flex-1">
+        <div className="rounded-lg border border-sage-200 bg-sage-50 px-3 py-2.5 flex items-start gap-2">
+          <CheckCircle2 size={16} className="text-sage-700 shrink-0 mt-0.5" />
+          <div className="text-xs text-sage-800 flex-1">
             <p className="font-medium mb-0.5">Cover automatique configurée</p>
-            <p className="text-emerald-700">
+            <p className="text-sage-800">
               {frameCount} frames extraites · {overlayCount} overlay{overlayCount > 1 ? "s" : ""} actif{overlayCount > 1 ? "s" : ""}
             </p>
             <Link
               href={`/templates/${templateId}/edit`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-emerald-700 underline hover:text-emerald-900 mt-1.5"
+              className="inline-flex items-center gap-1 text-sage-800 underline hover:text-sage-900 mt-1.5"
             >
               Modifier dans le builder
               <ExternalLink size={11} />

@@ -492,7 +492,7 @@ export function DescriptionTool({
               ) : transcriptions.length === 0 ? (
                 <div className="text-sm text-gray-400 text-center py-4">
                   Aucune transcription terminée. <br />
-                  <Link href="/transcriptions" className="text-teal-600 hover:underline">
+                  <Link href="/transcriptions" className="text-sky-700 hover:underline">
                     Lancer une transcription →
                   </Link>
                 </div>
@@ -504,7 +504,7 @@ export function DescriptionTool({
                       onClick={() => setTranscriptionId(t.id)}
                       className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors text-sm ${
                         transcriptionId === t.id
-                          ? "border-teal-300 bg-teal-50 text-teal-800"
+                          ? "border-teal-300 bg-sky-50 text-sky-900"
                           : "border-gray-100 hover:border-gray-200 hover:bg-gray-50 text-gray-700"
                       }`}
                     >
@@ -557,7 +557,7 @@ export function DescriptionTool({
               }}
               className={`w-full rounded-xl border border-dashed px-4 py-4 text-left transition-colors ${
                 referenceImage
-                  ? "border-amber-200 bg-amber-50/70 hover:border-amber-300"
+                  ? "border-peach-200 bg-peach-50/70 hover:border-peach-300"
                   : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
               }`}
             >
@@ -578,8 +578,8 @@ export function DescriptionTool({
                 </div>
               ) : referenceImage ? (
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100">
-                    <Check size={16} className="text-amber-600" />
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-peach-100">
+                    <Check size={16} className="text-peach-700" />
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-gray-800">

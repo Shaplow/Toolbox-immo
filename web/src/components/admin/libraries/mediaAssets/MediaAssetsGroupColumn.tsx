@@ -143,15 +143,15 @@ export function MediaAssetsGroupColumn({
                 }}
                 list="group-list"
                 placeholder="ex: Tenue A, Plan Ext…"
-                className="w-full text-[10px] border border-violet-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                className="w-full text-[10px] border border-rose-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-rose-400"
               />
             ) : (
               <button
                 onClick={() => { setEditingFamilyKey(groupKey); setFamilyInput(category ?? ""); }}
                 className={`flex items-center gap-1 text-[10px] w-full text-left px-1.5 py-0.5 rounded border transition-colors ${
                   category
-                    ? "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100 font-medium"
-                    : "text-gray-400 border-dashed border-gray-200 hover:border-violet-200 hover:text-violet-500"
+                    ? "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100 font-medium"
+                    : "text-gray-400 border-dashed border-gray-200 hover:border-rose-200 hover:text-rose-500"
                 }`}
                 title="Catégorie du pack — deux packs de la même catégorie ne se suivent jamais dans la rotation"
               >
@@ -166,7 +166,7 @@ export function MediaAssetsGroupColumn({
         {/* Pack name */}
         {setTag ? (
           <div className="flex items-center gap-1.5">
-            <Layers size={11} className="text-pink-400 shrink-0" />
+            <Layers size={11} className="text-rose-400 shrink-0" />
             <span className="text-xs font-semibold text-gray-800 truncate" title={setTag}>{setTag}</span>
           </div>
         ) : category ? (
@@ -181,7 +181,7 @@ export function MediaAssetsGroupColumn({
           {(setTag || category) && (
             isAutoMode ? (
               autoRank === 1 ? (
-                <span className="text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                <span className="text-[10px] font-medium bg-sage-50 text-sage-800 border border-sage-200 px-1.5 py-0.5 rounded flex items-center gap-1">
                   <RotateCcw size={9} /> Prochain
                 </span>
               ) : (
@@ -192,7 +192,7 @@ export function MediaAssetsGroupColumn({
             ) : (
               isSequenced ? (
                 <div className="flex items-center gap-0.5">
-                  <span className="text-[10px] font-mono bg-indigo-100 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                  <span className="text-[10px] font-mono bg-sky-100 text-sky-800 border border-sky-200 px-1.5 py-0.5 rounded flex items-center gap-1">
                     <ListOrdered size={10} /> #{seqIdx + 1}
                   </span>
                   <button onClick={() => moveSetTag(setTag!, -1)} disabled={seqIdx === 0} className="p-0.5 rounded hover:bg-gray-100 disabled:opacity-30">
@@ -206,7 +206,7 @@ export function MediaAssetsGroupColumn({
                   </button>
                 </div>
               ) : (
-                <button onClick={() => addToSequence(setTag!)} className="flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-700 border border-indigo-200 rounded-full px-2 py-0.5">
+                <button onClick={() => addToSequence(setTag!)} className="flex items-center gap-1 text-[10px] text-sky-700 hover:text-sky-800 border border-sky-200 rounded-full px-2 py-0.5">
                   <PlusCircle size={10} /> Fixer l&apos;ordre
                 </button>
               )
@@ -222,13 +222,13 @@ export function MediaAssetsGroupColumn({
 
       {/* Rushes avec rôles définis */}
       {hasRoles && (
-        <div className="border border-dashed border-amber-200 bg-amber-50/40 rounded-xl p-1.5 mb-2">
-          <span className="text-[9px] font-semibold text-amber-600 uppercase tracking-wide mb-1.5 flex items-center gap-1">
+        <div className="border border-dashed border-peach-200 bg-peach-50/40 rounded-xl p-1.5 mb-2">
+          <span className="text-[9px] font-semibold text-peach-700 uppercase tracking-wide mb-1.5 flex items-center gap-1">
             <Film size={9} /> Rushes
           </span>
           {roleTags.map(([tag, assets]) => (
             <div key={tag} className="mb-1.5 last:mb-0">
-              <span className="text-[9px] text-amber-500 mb-1 block pl-0.5">{tag}</span>
+              <span className="text-[9px] text-peach-700 mb-1 block pl-0.5">{tag}</span>
               <div className="flex flex-col gap-1.5">{assets.map((a) => renderVideoCard(a))}</div>
             </div>
           ))}

@@ -102,12 +102,12 @@ export const PHASE_LABELS: Record<PublicationPhase, string> = {
  */
 export const PHASE_COLORS: Record<PublicationPhase, string> = {
   planned: "bg-gray-100 text-gray-700 border-gray-200",
-  shooting: "bg-yellow-100 text-yellow-800 border-yellow-200",
+  shooting: "bg-peach-100 text-yellow-800 border-peach-200",
   production: "bg-stone-100 text-stone-700 border-stone-200",
   // amber = orange/jaune "attention requise" admin
-  admin_review: "bg-amber-100 text-amber-800 border-amber-300",
-  cm_review: "bg-indigo-100 text-indigo-700 border-indigo-200",
-  publishing: "bg-teal-100 text-teal-700 border-teal-200",
+  admin_review: "bg-peach-100 text-amber-800 border-peach-300",
+  cm_review: "bg-sky-100 text-sky-800 border-sky-200",
+  publishing: "bg-sky-100 text-sky-800 border-sky-200",
   published: "bg-green-100 text-green-700 border-green-200",
   terminated: "bg-gray-100 text-gray-500 border-gray-200",
 };
@@ -117,11 +117,11 @@ export const PHASE_COLORS: Record<PublicationPhase, string> = {
  */
 export const PHASE_DOT: Record<PublicationPhase, string> = {
   planned: "bg-gray-400",
-  shooting: "bg-yellow-500",
+  shooting: "bg-peach-500",
   production: "bg-stone-500",
-  admin_review: "bg-amber-500",
-  cm_review: "bg-indigo-500",
-  publishing: "bg-teal-500",
+  admin_review: "bg-peach-500",
+  cm_review: "bg-sky-500",
+  publishing: "bg-sky-500",
   published: "bg-green-500",
   terminated: "bg-gray-300",
 };
