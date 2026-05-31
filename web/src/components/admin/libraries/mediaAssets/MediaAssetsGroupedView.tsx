@@ -58,14 +58,14 @@ export function MediaAssetsGroupedView({
       <div className="flex items-center justify-between px-3 py-2 rounded-lg border bg-gray-50 border-gray-200">
         {seqState.length === 0 ? (
           <span className="text-xs text-gray-600 flex items-center gap-1.5">
-            <RotateCcw size={12} className="text-emerald-500" />
-            <span className="font-medium text-emerald-700">Rotation auto</span>
+            <RotateCcw size={12} className="text-sage-500" />
+            <span className="font-medium text-sage-800">Rotation auto</span>
             <span className="text-gray-400">— les groupes les moins récemment utilisés passent en premier</span>
           </span>
         ) : (
           <span className="text-xs text-gray-600 flex items-center gap-1.5">
-            <ListOrdered size={12} className="text-indigo-500" />
-            <span className="font-medium text-indigo-700">Ordre personnalisé</span>
+            <ListOrdered size={12} className="text-sky-700" />
+            <span className="font-medium text-sky-800">Ordre personnalisé</span>
             <span className="text-gray-400">— {seqState.length} groupe{seqState.length !== 1 ? "s" : ""} dans la rotation</span>
           </span>
         )}
@@ -93,11 +93,11 @@ export function MediaAssetsGroupedView({
           {sectionsByGroup.hasGroups ? (
             <div className="space-y-8">
               {sectionsByGroup.sections.map(({ name, groups }) => (
-                <div key={name} className="rounded-2xl border border-violet-100 bg-violet-50/30 p-4">
+                <div key={name} className="rounded-2xl border border-violet-100 bg-rose-50/30 p-4">
                   <div className="flex items-center gap-2 mb-4">
-                    <FolderOpen size={14} className="text-violet-500 shrink-0" />
-                    <span className="text-sm font-semibold text-violet-800">{name}</span>
-                    <span className="text-xs text-violet-400 font-medium">
+                    <FolderOpen size={14} className="text-rose-500 shrink-0" />
+                    <span className="text-sm font-semibold text-rose-800">{name}</span>
+                    <span className="text-xs text-rose-400 font-medium">
                       {groups.reduce((n, g) => n + g.groupAssets.length, 0)}
                       {" "}rush{groups.reduce((n, g) => n + g.groupAssets.length, 0) !== 1 ? "es" : ""}
                     </span>
@@ -115,7 +115,7 @@ export function MediaAssetsGroupedView({
                             }`}
                           >
                             <div className="flex items-center gap-1.5">
-                              <Layers size={11} className="text-pink-400 shrink-0" />
+                              <Layers size={11} className="text-rose-400 shrink-0" />
                               <span className="text-xs font-semibold text-gray-800 truncate">{g.setTag}</span>
                               <span className="text-[10px] text-gray-400 ml-auto">
                                 {g.accessibleCount} rush{g.accessibleCount !== 1 ? "es" : ""}
@@ -128,7 +128,7 @@ export function MediaAssetsGroupedView({
                                 </span>
                               ) : seqState.length === 0 ? (
                                 g.autoRank === 1 ? (
-                                  <span className="text-[9px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                                  <span className="text-[9px] font-medium bg-sage-50 text-sage-800 border border-sage-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
                                     <RotateCcw size={8} /> Prochain
                                   </span>
                                 ) : g.autoRank ? (

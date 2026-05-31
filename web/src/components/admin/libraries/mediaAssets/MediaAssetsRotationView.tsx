@@ -49,14 +49,14 @@ interface Props {
 const PALETTE = ["violet", "blue", "amber", "emerald", "rose", "cyan", "orange", "teal"] as const;
 
 const COLOR_CLASSES: Record<string, { bg: string; text: string; border: string }> = {
-  violet:  { bg: "bg-violet-50",  text: "text-violet-700",  border: "border-violet-200" },
+  violet:  { bg: "bg-rose-50",  text: "text-rose-800",  border: "border-rose-200" },
   blue:    { bg: "bg-blue-50",    text: "text-blue-700",    border: "border-blue-200" },
-  amber:   { bg: "bg-amber-50",   text: "text-amber-700",   border: "border-amber-200" },
-  emerald: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
+  amber:   { bg: "bg-peach-50",   text: "text-peach-800",   border: "border-peach-200" },
+  emerald: { bg: "bg-sage-50", text: "text-sage-800", border: "border-sage-200" },
   rose:    { bg: "bg-rose-50",    text: "text-rose-700",    border: "border-rose-200" },
-  cyan:    { bg: "bg-cyan-50",    text: "text-cyan-700",    border: "border-cyan-200" },
-  orange:  { bg: "bg-orange-50",  text: "text-orange-700",  border: "border-orange-200" },
-  teal:    { bg: "bg-teal-50",    text: "text-teal-700",    border: "border-teal-200" },
+  cyan:    { bg: "bg-sky-50",    text: "text-sky-800",    border: "border-sky-200" },
+  orange:  { bg: "bg-peach-50",  text: "text-peach-800",  border: "border-peach-200" },
+  teal:    { bg: "bg-sky-50",    text: "text-sky-800",    border: "border-sky-200" },
 };
 
 export function MediaAssetsRotationView({
@@ -95,12 +95,12 @@ export function MediaAssetsRotationView({
   return (
     <div className="space-y-1.5">
       {/* Encadré explicatif — clarifier comment l'auto-pick choisit les rushes */}
-      <details className="rounded-xl border border-indigo-100 bg-indigo-50/50 px-3 py-2 mb-1 group">
-        <summary className="cursor-pointer flex items-center gap-2 text-xs font-medium text-indigo-900 select-none">
-          <HelpCircle size={13} className="text-indigo-500" />
+      <details className="rounded-xl border border-sky-100 bg-sky-50/50 px-3 py-2 mb-1 group">
+        <summary className="cursor-pointer flex items-center gap-2 text-xs font-medium text-sky-950 select-none">
+          <HelpCircle size={13} className="text-sky-700" />
           Comment fonctionne la rotation ?
         </summary>
-        <div className="mt-2 text-[11px] text-indigo-900/90 leading-relaxed space-y-1.5">
+        <div className="mt-2 text-[11px] text-sky-950/90 leading-relaxed space-y-1.5">
           <p>
             Chaque rush est rangé dans une <b>catégorie</b> (ex.&nbsp;: <i>Extérieur</i>)
             puis dans un <b>pack</b> (ex.&nbsp;: <i>Maison-Provence</i>). Un même pack
@@ -126,8 +126,8 @@ export function MediaAssetsRotationView({
           <div className="flex items-center gap-2 flex-wrap">
             {seqState.length === 0 ? (
               <>
-                <span className="flex items-center gap-1 text-xs font-semibold text-emerald-700">
-                  <RotateCcw size={12} className="text-emerald-500" /> Rotation auto
+                <span className="flex items-center gap-1 text-xs font-semibold text-sage-800">
+                  <RotateCcw size={12} className="text-sage-500" /> Rotation auto
                 </span>
                 <span className="text-gray-300 text-xs">·</span>
                 <span className="text-xs text-gray-500">{allNamed.length} groupe{allNamed.length !== 1 ? "s" : ""}</span>
@@ -146,8 +146,8 @@ export function MediaAssetsRotationView({
               </>
             ) : (
               <>
-                <span className="flex items-center gap-1 text-xs font-semibold text-indigo-700">
-                  <ListOrdered size={12} className="text-indigo-500" /> Ordre personnalisé
+                <span className="flex items-center gap-1 text-xs font-semibold text-sky-800">
+                  <ListOrdered size={12} className="text-sky-700" /> Ordre personnalisé
                 </span>
                 <span className="text-gray-300 text-xs">·</span>
                 <span className="text-xs text-gray-500">{seqState.length} pack{seqState.length !== 1 ? "s" : ""} fixés</span>
@@ -170,7 +170,7 @@ export function MediaAssetsRotationView({
           )}
         </div>
         {inaccessibleCount > 0 && (
-          <span className="flex items-center gap-1 text-[11px] text-amber-600">
+          <span className="flex items-center gap-1 text-[11px] text-peach-700">
             <AlertTriangle size={10} className="shrink-0" />
             {inaccessibleCount} groupe{inaccessibleCount !== 1 ? "s" : ""} hors accès pour ce compte
           </span>
@@ -197,7 +197,7 @@ export function MediaAssetsRotationView({
                   <Lock size={10} />
                 </div>
               ) : g.autoRank === 1 ? (
-                <span className="px-2 py-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold whitespace-nowrap">
+                <span className="px-2 py-1 rounded-full bg-sage-500 text-white text-[10px] font-bold whitespace-nowrap">
                   Prochain
                 </span>
               ) : g.autoRank != null ? (
@@ -233,7 +233,7 @@ export function MediaAssetsRotationView({
                 {g.setTag ? (
                   <>
                     <span className="text-[10px] text-gray-300">›</span>
-                    <span className="flex items-center gap-0.5 text-[10px] font-semibold bg-pink-50 text-pink-700 border border-pink-100 px-1.5 py-0.5 rounded">
+                    <span className="flex items-center gap-0.5 text-[10px] font-semibold bg-rose-50 text-rose-800 border border-pink-100 px-1.5 py-0.5 rounded">
                       <Layers size={9} />{g.setTag}
                     </span>
                   </>
@@ -287,7 +287,7 @@ export function MediaAssetsRotationView({
                   ) : (
                     <button
                       onClick={() => addToSequence(g.setTag!)}
-                      className="p-0.5 text-indigo-400 hover:text-indigo-600"
+                      className="p-0.5 text-sky-500 hover:text-sky-700"
                       title="Fixer"
                     >
                       <PlusCircle size={12} />

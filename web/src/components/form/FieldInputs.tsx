@@ -85,7 +85,7 @@ export function SelectFieldInput({
         ))}
       </select>
       {isMetaValues && !value && (
-        <span className="text-[10px] text-teal-600">
+        <span className="text-[10px] text-sky-700">
           Valeur sélectionnée automatiquement depuis l&apos;asset si laissé vide.
         </span>
       )}
@@ -123,14 +123,14 @@ export function ImageFieldInput({
 
   if (uploadProgress !== null && uploadProgress !== undefined) {
     return (
-      <div className="w-full h-32 border-2 border-dashed border-indigo-300 rounded-xl flex flex-col items-center justify-center gap-3 bg-indigo-50 px-6">
+      <div className="w-full h-32 border-2 border-dashed border-sky-300 rounded-xl flex flex-col items-center justify-center gap-3 bg-sky-50 px-6">
         <div className="w-full bg-gray-200 rounded-full h-1.5">
           <div
-            className="bg-indigo-400 h-1.5 rounded-full transition-all duration-300"
+            className="bg-sky-400 h-1.5 rounded-full transition-all duration-300"
             style={{ width: `${uploadProgress}%` }}
           />
         </div>
-        <p className="text-xs text-indigo-700 font-medium">Upload… {uploadProgress}%</p>
+        <p className="text-xs text-sky-800 font-medium">Upload… {uploadProgress}%</p>
       </div>
     );
   }
@@ -145,9 +145,9 @@ export function ImageFieldInput({
 
   if (!imageUrl) {
     return (
-      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors group">
-        <span className="text-2xl text-gray-300 group-hover:text-indigo-400 transition-colors">↑</span>
-        <span className="text-sm font-medium text-gray-400 group-hover:text-indigo-700 mt-1">Cliquer pour choisir une image</span>
+      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-sky-400 hover:bg-sky-50 transition-colors group">
+        <span className="text-2xl text-gray-300 group-hover:text-sky-500 transition-colors">↑</span>
+        <span className="text-sm font-medium text-gray-400 group-hover:text-sky-800 mt-1">Cliquer pour choisir une image</span>
         <span className="text-xs text-gray-300 mt-0.5">JPG · PNG · WEBP</span>
         <input
           type="file"
@@ -203,7 +203,7 @@ export function ImageFieldInput({
         <p className="text-[10px] text-gray-400">
           Point focal : {Math.round(fp.x * 100)}% / {Math.round(fp.y * 100)}%
         </p>
-        <label className="text-xs text-indigo-700 hover:text-indigo-700 cursor-pointer hover:underline">
+        <label className="text-xs text-sky-800 hover:text-sky-800 cursor-pointer hover:underline">
           Changer l&apos;image
           <input
             type="file"
@@ -255,23 +255,23 @@ export function VideoFieldInput({
 
   if (uploadProgress !== null && uploadProgress !== undefined) {
     return (
-      <div className="w-full h-32 border-2 border-dashed border-indigo-300 rounded-xl flex flex-col items-center justify-center gap-3 bg-indigo-50 px-6">
+      <div className="w-full h-32 border-2 border-dashed border-sky-300 rounded-xl flex flex-col items-center justify-center gap-3 bg-sky-50 px-6">
         <div className="w-full bg-gray-200 rounded-full h-2">
           <div
-            className="bg-indigo-400 h-2 rounded-full transition-all duration-300"
+            className="bg-sky-400 h-2 rounded-full transition-all duration-300"
             style={{ width: `${uploadProgress}%` }}
           />
         </div>
-        <p className="text-xs text-indigo-700 font-medium">Upload en cours… {uploadProgress}%</p>
+        <p className="text-xs text-sky-800 font-medium">Upload en cours… {uploadProgress}%</p>
       </div>
     );
   }
 
   if (!videoUrl) {
     return (
-      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors group">
-        <span className="text-2xl text-gray-300 group-hover:text-indigo-400 transition-colors">🎬</span>
-        <span className="text-sm font-medium text-gray-400 group-hover:text-indigo-700 mt-1">Cliquer pour choisir une vidéo</span>
+      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-sky-400 hover:bg-sky-50 transition-colors group">
+        <span className="text-2xl text-gray-300 group-hover:text-sky-500 transition-colors">🎬</span>
+        <span className="text-sm font-medium text-gray-400 group-hover:text-sky-800 mt-1">Cliquer pour choisir une vidéo</span>
         <span className="text-xs text-gray-300 mt-0.5">MP4 · MOV · WEBM — max 2 Go</span>
         <input
           type="file"
@@ -328,7 +328,7 @@ export function VideoFieldInput({
         <p className="text-[10px] text-gray-400">
           Cadrage : {Math.round(fp.x * 100)}% / {Math.round(fp.y * 100)}%
         </p>
-        <label className="text-xs text-indigo-700 hover:text-indigo-700 cursor-pointer hover:underline">
+        <label className="text-xs text-sky-800 hover:text-sky-800 cursor-pointer hover:underline">
           Changer la vidéo
           <input
             type="file"
@@ -359,23 +359,23 @@ export function AudioFieldInput({
 
   if (uploadProgress !== null && uploadProgress !== undefined) {
     return (
-      <div className="w-full h-24 border-2 border-dashed border-indigo-300 rounded-xl flex flex-col items-center justify-center gap-3 bg-indigo-50 px-6">
+      <div className="w-full h-24 border-2 border-dashed border-sky-300 rounded-xl flex flex-col items-center justify-center gap-3 bg-sky-50 px-6">
         <div className="w-full bg-gray-200 rounded-full h-2">
           <div
-            className="bg-indigo-400 h-2 rounded-full transition-all duration-300"
+            className="bg-sky-400 h-2 rounded-full transition-all duration-300"
             style={{ width: `${uploadProgress}%` }}
           />
         </div>
-        <p className="text-xs text-indigo-700 font-medium">Upload en cours… {uploadProgress}%</p>
+        <p className="text-xs text-sky-800 font-medium">Upload en cours… {uploadProgress}%</p>
       </div>
     );
   }
 
   if (!audioUrl) {
     return (
-      <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors group">
-        <span className="text-2xl text-gray-300 group-hover:text-indigo-400 transition-colors">♪</span>
-        <span className="text-sm font-medium text-gray-400 group-hover:text-indigo-700 mt-1">Cliquer pour choisir un fichier audio</span>
+      <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-sky-400 hover:bg-sky-50 transition-colors group">
+        <span className="text-2xl text-gray-300 group-hover:text-sky-500 transition-colors">♪</span>
+        <span className="text-sm font-medium text-gray-400 group-hover:text-sky-800 mt-1">Cliquer pour choisir un fichier audio</span>
         <span className="text-xs text-gray-300 mt-0.5">MP3 · WAV · AAC · M4A · OGG</span>
         <input
           type="file"
@@ -391,7 +391,7 @@ export function AudioFieldInput({
     <div className="space-y-2">
       <audio src={audioUrl} controls className="w-full" />
       <div className="flex items-center justify-end">
-        <label className="text-xs text-indigo-700 hover:text-indigo-700 cursor-pointer hover:underline">
+        <label className="text-xs text-sky-800 hover:text-sky-800 cursor-pointer hover:underline">
           Changer le fichier audio
           <input
             type="file"
@@ -455,20 +455,20 @@ export function FieldInput({
           </span>
         )}
         {isConditional && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+          <span className="inline-flex items-center gap-1 rounded-full border border-peach-200 bg-peach-50 px-2 py-0.5 text-[10px] font-medium text-peach-800">
+            <span className="h-1.5 w-1.5 rounded-full bg-peach-500" />
             conditionnel
           </span>
         )}
         {fromLibrary && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-600">
-            <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
+          <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
             depuis la bibliothèque
           </span>
         )}
         {fromAsset && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[10px] font-medium text-teal-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-teal-400" />
+          <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-800">
+            <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
             depuis l&apos;asset
           </span>
         )}

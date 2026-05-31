@@ -198,13 +198,13 @@ export function MediaAssetsVideoCard({
         {!isAdvanced && !isManualMode && (asset.category || (asset.setTag && !asset.setTag.startsWith("pack_"))) && (
           <div className="absolute top-2 right-2 flex flex-col items-end gap-1 max-w-[70%] z-10">
             {asset.category && (
-              <span className="text-[9.5px] font-medium px-1.5 py-0.5 rounded-md bg-white/85 backdrop-blur-[6px] text-violet-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(139,92,246,0.18)] inline-flex items-center gap-0.5 truncate max-w-full">
+              <span className="text-[9.5px] font-medium px-1.5 py-0.5 rounded-md bg-white/85 backdrop-blur-[6px] text-rose-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(139,92,246,0.18)] inline-flex items-center gap-0.5 truncate max-w-full">
                 <FolderOpen size={8} className="shrink-0" />
                 <span className="truncate">{asset.category}</span>
               </span>
             )}
             {asset.setTag && !asset.setTag.startsWith("pack_") && (
-              <span className="text-[9.5px] font-medium px-1.5 py-0.5 rounded-md bg-white/85 backdrop-blur-[6px] text-pink-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(236,72,153,0.18)] inline-flex items-center gap-0.5 truncate max-w-full">
+              <span className="text-[9.5px] font-medium px-1.5 py-0.5 rounded-md bg-white/85 backdrop-blur-[6px] text-rose-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(236,72,153,0.18)] inline-flex items-center gap-0.5 truncate max-w-full">
                 <Layers size={8} className="shrink-0" />
                 <span className="truncate">{asset.setTag}</span>
               </span>
@@ -218,15 +218,15 @@ export function MediaAssetsVideoCard({
           </div>
         )}
         {asset.disabled && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-amber-900/50 gap-1 pointer-events-none">
-            <EyeOff size={18} className="text-amber-200" />
-            <span className="text-[10px] text-amber-100 font-medium">Désactivé</span>
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-peach-900/50 gap-1 pointer-events-none">
+            <EyeOff size={18} className="text-peach-200" />
+            <span className="text-[10px] text-peach-100 font-medium">Désactivé</span>
           </div>
         )}
         {selectMode && (
           <div className="absolute top-1 right-1 z-10" onClick={(e) => { e.stopPropagation(); toggleSelect(asset.id); }}>
             {isSelected
-              ? <CheckSquare size={16} className="text-indigo-600 drop-shadow" />
+              ? <CheckSquare size={16} className="text-sky-700 drop-shadow" />
               : <Square size={16} className="text-white/80 drop-shadow" />}
           </div>
         )}
@@ -291,8 +291,8 @@ export function MediaAssetsVideoCard({
               onClick={() => { setEditingFamilyKey(asset.id); setFamilyInput(asset.category ?? ""); }}
               className={`flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
                 asset.category
-                  ? "bg-violet-50 text-violet-600 border-violet-100 hover:bg-violet-100"
-                  : "bg-gray-50 text-gray-400 border-dashed border-gray-200 hover:text-violet-500 hover:border-violet-200"
+                  ? "bg-rose-50 text-rose-700 border-violet-100 hover:bg-rose-100"
+                  : "bg-gray-50 text-gray-400 border-dashed border-gray-200 hover:text-rose-500 hover:border-rose-200"
               }`}
               title="Catégorie — cliquer pour modifier"
             >
@@ -321,7 +321,7 @@ export function MediaAssetsVideoCard({
                   assets.filter((a) => a.setTag === setTagValue.trim() && a.id !== asset.id && a.category).map((a) => a.category!)
                 ));
                 return existingCategories.length > 0 ? (
-                  <span className="text-[9px] flex items-center gap-0.5 font-medium text-orange-600">
+                  <span className="text-[9px] flex items-center gap-0.5 font-medium text-peach-700">
                     <FolderOpen size={8} /> Catégorie existante&nbsp;: {existingCategories[0]}
                   </span>
                 ) : null;
@@ -333,8 +333,8 @@ export function MediaAssetsVideoCard({
               onClick={() => { setEditingSetTagId(asset.id); setSetTagValue(asset.setTag ?? ""); }}
               className={`flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
                 asset.setTag
-                  ? "bg-pink-50 text-pink-600 border-pink-100 hover:bg-pink-100"
-                  : "bg-gray-50 text-gray-400 border-dashed border-gray-200 hover:text-pink-500 hover:border-pink-200"
+                  ? "bg-rose-50 text-rose-700 border-pink-100 hover:bg-rose-100"
+                  : "bg-gray-50 text-gray-400 border-dashed border-gray-200 hover:text-rose-500 hover:border-rose-200"
               }`}
               title="Pack — cliquer pour assigner"
             >
@@ -358,7 +358,7 @@ export function MediaAssetsVideoCard({
               }}
               onBlur={() => { void handleSaveTags(asset, tagInput.split(",").map((t) => t.trim()).filter(Boolean)); }}
               placeholder="intro, outro, plan1…"
-              className="w-full text-xs border border-indigo-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              className="w-full text-xs border border-sky-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-200"
             />
           </div>
         ) : (
@@ -368,7 +368,7 @@ export function MediaAssetsVideoCard({
             title="Tags : cliquer pour éditer (intro, outro, rôle…)"
           >
             {asset.tags.length > 0 ? asset.tags.map((t) => (
-              <span key={t} className="text-[10px] bg-indigo-50 text-indigo-600 border border-indigo-200 px-1.5 py-0.5 rounded">{t}</span>
+              <span key={t} className="text-[10px] bg-sky-50 text-sky-700 border border-sky-200 px-1.5 py-0.5 rounded">{t}</span>
             )) : (
               <span className="text-[10px] text-gray-300 flex items-center gap-0.5"><Tag size={9} /> ajouter tags…</span>
             )}
@@ -400,7 +400,7 @@ export function MediaAssetsVideoCard({
                           if (e.key === "Escape") void handleSaveMetadata(asset, field.key, metaInput);
                         }}
                         onBlur={() => void handleSaveMetadata(asset, field.key, metaInput)}
-                        className="w-full min-w-0 text-[10px] border border-indigo-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white resize-y"
+                        className="w-full min-w-0 text-[10px] border border-sky-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white resize-y"
                       />
                     ) : (
                       <input
@@ -413,7 +413,7 @@ export function MediaAssetsVideoCard({
                           if (e.key === "Escape") setEditingMetaKey(null);
                         }}
                         onBlur={() => void handleSaveMetadata(asset, field.key, metaInput)}
-                        className="flex-1 min-w-0 text-[10px] border border-indigo-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+                        className="flex-1 min-w-0 text-[10px] border border-sky-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
                       />
                     )
                   ) : (
@@ -423,10 +423,10 @@ export function MediaAssetsVideoCard({
                         hasError
                           ? "bg-red-50 text-red-600 border-red-300"
                           : justSaved && displayValue
-                          ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                          ? "bg-sage-100 text-sage-800 border-sage-300"
                           : displayValue
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
-                          : "bg-gray-50 text-gray-300 border-dashed border-gray-200 hover:text-emerald-500 hover:border-emerald-200"
+                          ? "bg-sage-50 text-sage-800 border-sage-200 hover:bg-sage-100"
+                          : "bg-gray-50 text-gray-300 border-dashed border-gray-200 hover:text-sage-500 hover:border-sage-200"
                       }`}
                       title={displayValue || `Saisir ${field.label}`}
                     >
@@ -491,7 +491,7 @@ export function MediaAssetsVideoCard({
                 if (e.key === "Escape") { setEditingUsageId(null); setUsageInput(""); }
               }}
               onBlur={() => { void handleSaveUsage(asset, usageInput); }}
-              className="w-14 text-[10px] border border-indigo-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              className="w-14 text-[10px] border border-sky-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400"
               onClick={(e) => e.stopPropagation()}
             />
           ) : accountFilter ? (
@@ -504,7 +504,7 @@ export function MediaAssetsVideoCard({
           ) : (
             <button
               onClick={(e) => { e.stopPropagation(); setEditingUsageId(asset.id); setUsageInput(String(asset.usageCount)); }}
-              className="flex items-center gap-0.5 text-[10px] text-gray-400 hover:text-indigo-600 hover:underline transition-colors"
+              className="flex items-center gap-0.5 text-[10px] text-gray-400 hover:text-sky-700 hover:underline transition-colors"
               title="Cliquer pour modifier"
             >
               <BarChart2 size={10} /> {asset.usageCount}
@@ -534,7 +534,7 @@ export function MediaAssetsVideoCard({
           ) : (
             <button
               onClick={(e) => { e.stopPropagation(); setEditingLastUsedId(asset.id); setLastUsedInput(toDateInputValue(asset.lastUsedAt)); }}
-              className="flex items-center gap-0.5 text-[10px] text-gray-400 hover:text-orange-600 hover:underline transition-colors"
+              className="flex items-center gap-0.5 text-[10px] text-gray-400 hover:text-peach-700 hover:underline transition-colors"
               title="Dernière utilisation : cliquer pour modifier"
             >
               <Clock size={10} /> {formatDate(asset.lastUsedAt)}
@@ -556,7 +556,7 @@ export function MediaAssetsVideoCard({
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onEditAsset(asset); }}
-            className="absolute top-8 left-1.5 w-6 h-6 bg-white/80 hover:bg-violet-50 text-gray-500 hover:text-violet-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
+            className="absolute top-8 left-1.5 w-6 h-6 bg-white/80 hover:bg-rose-50 text-gray-500 hover:text-rose-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
             title="Éditer (trim, audio)"
           >
             <Scissors size={11} />
@@ -565,8 +565,8 @@ export function MediaAssetsVideoCard({
             onClick={(e) => { e.stopPropagation(); void handleToggleDisabled(asset); }}
             className={`absolute top-14.5 left-1.5 w-6 h-6 bg-white/80 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow ${
               asset.disabled
-                ? "text-amber-500 hover:text-amber-700 hover:bg-amber-50"
-                : "text-gray-500 hover:text-amber-500 hover:bg-amber-50"
+                ? "text-peach-700 hover:text-peach-800 hover:bg-peach-50"
+                : "text-gray-500 hover:text-peach-700 hover:bg-peach-50"
             }`}
             title={asset.disabled ? "Réactiver dans la rotation" : "Désactiver de la rotation (garder dans la bibliothèque)"}
           >
@@ -574,7 +574,7 @@ export function MediaAssetsVideoCard({
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); void handleResetAssetUsage(asset); }}
-            className="absolute top-1.5 right-1.5 w-6 h-6 bg-white/80 hover:bg-orange-50 text-gray-500 hover:text-orange-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
+            className="absolute top-1.5 right-1.5 w-6 h-6 bg-white/80 hover:bg-peach-50 text-gray-500 hover:text-peach-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
             title={accountFilter ? "Réinitialiser les stats de ce compte" : "Réinitialiser les compteurs"}
           >
             <RotateCcw size={11} />

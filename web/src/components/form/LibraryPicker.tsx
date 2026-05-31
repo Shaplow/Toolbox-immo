@@ -108,7 +108,7 @@ export function LibraryPickerModal({
         <div className="flex-1 overflow-y-auto p-6">
           {loading ? (
             <div className="flex items-center justify-center py-20">
-              <div className="w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (assets ?? []).length === 0 ? (
             <div className="text-center py-20 text-gray-400">
@@ -126,7 +126,7 @@ export function LibraryPickerModal({
                   className={`group relative rounded-xl overflow-hidden border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
                     currentAssetId === asset.id
                       ? "border-indigo-500 shadow-md shadow-indigo-200/60"
-                      : "border-transparent hover:border-indigo-300"
+                      : "border-transparent hover:border-sky-300"
                   }`}
                   onMouseEnter={() => setHoverPlayId(asset.id)}
                   onMouseLeave={() => setHoverPlayId(null)}
@@ -155,12 +155,12 @@ export function LibraryPickerModal({
                       </span>
                     )}
                     {currentAssetId === asset.id && (
-                      <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-indigo-500 rounded-full flex items-center justify-center shadow">
+                      <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-sky-500 rounded-full flex items-center justify-center shadow">
                         <Check size={11} className="text-white" />
                       </div>
                     )}
                     {hoverPlayId === asset.id && currentAssetId !== asset.id && (
-                      <div className="absolute inset-0 bg-indigo-600/10 pointer-events-none" />
+                      <div className="absolute inset-0 bg-sky-600/10 pointer-events-none" />
                     )}
                   </div>
                   <div className="px-2 py-1.5 bg-white">
@@ -190,17 +190,17 @@ export function LibraryPickerModal({
                   }}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
                     currentAssetId === asset.id
-                      ? "border-indigo-500 bg-indigo-50"
-                      : "border-gray-100 bg-gray-50 hover:border-indigo-300 hover:bg-indigo-50/50"
+                      ? "border-indigo-500 bg-sky-50"
+                      : "border-gray-100 bg-gray-50 hover:border-sky-300 hover:bg-sky-50/50"
                   }`}
                 >
                   <div
                     className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                      currentAssetId === asset.id ? "bg-indigo-100" : "bg-white border border-gray-200"
+                      currentAssetId === asset.id ? "bg-sky-100" : "bg-white border border-gray-200"
                     }`}
                   >
                     {currentAssetId === asset.id ? (
-                      <Check size={14} className="text-indigo-600" />
+                      <Check size={14} className="text-sky-700" />
                     ) : (
                       <Music2 size={14} className="text-gray-400" />
                     )}
@@ -258,8 +258,8 @@ export function LibraryFieldInput({
           {field.label || field.key}
           {field.required && <span className="text-red-500 ml-1">*</span>}
         </label>
-        <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-600">
-          <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
+        <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+          <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
           depuis la bibliothèque
         </span>
       </div>
@@ -284,7 +284,7 @@ export function LibraryFieldInput({
               <button
                 type="button"
                 onClick={() => setPickerOpen(true)}
-                className="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
+                className="mt-2 text-xs font-medium text-sky-700 hover:text-sky-900 hover:underline"
               >
                 Changer →
               </button>
@@ -292,8 +292,8 @@ export function LibraryFieldInput({
           </div>
         ) : (
           <div className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-xl">
-            <div className="w-9 h-9 bg-indigo-50 border border-indigo-100 rounded-lg flex items-center justify-center shrink-0">
-              <Music2 size={16} className="text-indigo-400" />
+            <div className="w-9 h-9 bg-sky-50 border border-sky-100 rounded-lg flex items-center justify-center shrink-0">
+              <Music2 size={16} className="text-sky-500" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-800 truncate">{currentSelection.filename}</p>
@@ -301,7 +301,7 @@ export function LibraryFieldInput({
             <button
               type="button"
               onClick={() => setPickerOpen(true)}
-              className="text-xs font-medium text-indigo-600 hover:text-indigo-800 hover:underline shrink-0"
+              className="text-xs font-medium text-sky-700 hover:text-sky-900 hover:underline shrink-0"
             >
               Changer
             </button>
@@ -311,12 +311,12 @@ export function LibraryFieldInput({
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
-          className="w-full flex flex-col items-center justify-center h-28 border-2 border-dashed border-gray-200 rounded-xl hover:border-indigo-400 hover:bg-indigo-50 transition-colors group focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className="w-full flex flex-col items-center justify-center h-28 border-2 border-dashed border-gray-200 rounded-xl hover:border-sky-400 hover:bg-sky-50 transition-colors group focus:outline-none focus:ring-2 focus:ring-indigo-400"
         >
-          <span className="text-2xl text-gray-300 group-hover:text-indigo-400 transition-colors">
+          <span className="text-2xl text-gray-300 group-hover:text-sky-500 transition-colors">
             {libraryMeta.type === "video" ? "🎬" : "♪"}
           </span>
-          <span className="text-sm font-medium text-gray-400 group-hover:text-indigo-700 mt-1">
+          <span className="text-sm font-medium text-gray-400 group-hover:text-sky-800 mt-1">
             Choisir depuis la bibliothèque
           </span>
         </button>

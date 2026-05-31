@@ -378,7 +378,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
   const statusLabel = (asset: AssetWithJobStatus) => {
     switch (asset.autocutStatus) {
       case "none": return null;
-      case "pending": return <span className="text-xs text-yellow-600 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> En attente</span>;
+      case "pending": return <span className="text-xs text-peach-700 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> En attente</span>;
       case "processing": return <span className="text-xs text-blue-600 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Analyse…</span>;
       case "done": return <span className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 size={10} /> Analysé</span>;
       case "failed": return <span className="text-xs text-red-600 flex items-center gap-1"><AlertTriangle size={10} /> Erreur</span>;
@@ -401,7 +401,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
             <div className="flex items-center gap-2">
-              <Wand2 size={18} className="text-purple-600" />
+              <Wand2 size={18} className="text-rose-700" />
               <h2 className="text-base font-semibold text-gray-900">Atelier Autocut</h2>
               <span className="text-xs text-gray-400">— {library.name}</span>
             </div>
@@ -409,7 +409,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
               {doneCount > 0 && (
                 <button
                   onClick={() => setView("review")}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700"
                 >
                   Valider les analyses ({doneCount}) <ChevronRight size={13} />
                 </button>
@@ -440,7 +440,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
               className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900"
             >
               {selectedIds.size === selectableCount && selectableCount > 0
-                ? <CheckSquare size={14} className="text-indigo-600" />
+                ? <CheckSquare size={14} className="text-sky-700" />
                 : <Square size={14} />}
               Tout sélectionner
             </button>
@@ -465,7 +465,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
               <button
                 onClick={() => void handleAnalyze()}
                 disabled={submitting || selectedIds.size === 0}
-                className="flex items-center gap-1.5 px-4 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 disabled:opacity-50"
               >
                 {submitting ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
                 Analyser ({selectedIds.size})
@@ -480,7 +480,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
             </div>
           )}
           {resetResult && (
-            <div className="mx-6 mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-700">
+            <div className="mx-6 mt-3 p-3 bg-peach-50 border border-peach-200 rounded-lg text-xs text-peach-800">
               {resetResult.deleted} analyse{resetResult.deleted > 1 ? "s" : ""} supprimée{resetResult.deleted > 1 ? "s" : ""}.
               Les fichiers déjà coupés sont préservés.
             </div>
@@ -520,7 +520,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
                     >
                       {isSelectable ? (
                         isSelected
-                          ? <CheckSquare size={15} className="text-indigo-600 flex-shrink-0" />
+                          ? <CheckSquare size={15} className="text-sky-700 flex-shrink-0" />
                           : <Square size={15} className="text-gray-300 flex-shrink-0" />
                       ) : (
                         <span className="w-[15px] flex-shrink-0" />
@@ -583,7 +583,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
               type="checkbox"
               checked={mixToMono}
               onChange={(e) => setMixToMono(e.target.checked)}
-              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-400"
+              className="rounded border-gray-300 text-sky-700 focus:ring-indigo-400"
             />
             Mix mono
           </label>
@@ -592,7 +592,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
               type="checkbox"
               checked={normalize}
               onChange={(e) => setNormalize(e.target.checked)}
-              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-400"
+              className="rounded border-gray-300 text-sky-700 focus:ring-indigo-400"
             />
             Normaliser
           </label>
@@ -638,14 +638,14 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
               {reviewTotal === 0 ? (
                 <button
                   onClick={() => setView("select")}
-                  className="mt-4 text-sm text-indigo-600 hover:underline"
+                  className="mt-4 text-sm text-sky-700 hover:underline"
                 >
                   ← Retour à la sélection
                 </button>
               ) : (
                 <button
                   onClick={() => { setReviewPage(1); void loadReviewQueue(1); }}
-                  className="mt-4 flex items-center gap-1.5 mx-auto text-sm text-indigo-600 hover:underline"
+                  className="mt-4 flex items-center gap-1.5 mx-auto text-sm text-sky-700 hover:underline"
                 >
                   Charger la suite <ChevronRight size={13} />
                 </button>

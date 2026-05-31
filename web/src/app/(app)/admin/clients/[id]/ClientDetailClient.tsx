@@ -217,12 +217,12 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
     <div className="p-8 max-w-3xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-8">
-        <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shrink-0">
+        <div className="w-10 h-10 bg-gray-900 rounded-xl flex items-center justify-center text-white shrink-0">
           <Building2 size={20} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <Link href="/admin/clients" className="text-xs text-gray-400 hover:text-indigo-700 flex items-center gap-1 transition-colors">
+            <Link href="/admin/clients" className="text-xs text-gray-400 hover:text-sky-800 flex items-center gap-1 transition-colors">
               <ChevronLeft size={12} /> Clients
             </Link>
           </div>
@@ -253,7 +253,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
           <Instagram size={14} />
           Comptes Instagram
           {client.accounts.length > 0 && (
-            <span className="ml-1 text-[10px] bg-indigo-100 text-indigo-700 rounded-full px-1.5 py-0.5 font-semibold">
+            <span className="ml-1 text-[10px] bg-sky-100 text-sky-800 rounded-full px-1.5 py-0.5 font-semibold">
               {client.accounts.length}
             </span>
           )}
@@ -303,7 +303,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
               </div>
               <div className="flex items-center justify-end gap-3">
                 {saveOk && (
-                  <span className="flex items-center gap-1 text-xs text-emerald-600">
+                  <span className="flex items-center gap-1 text-xs text-sage-700">
                     <Check size={12} /> Enregistré
                   </span>
                 )}
@@ -348,7 +348,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
                           key={account.id}
                           className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                             isAttached
-                              ? "bg-indigo-50 border-indigo-200"
+                              ? "bg-sky-50 border-sky-200"
                               : "bg-white border-gray-100 hover:border-gray-200"
                           }`}
                         >
@@ -360,7 +360,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
                             className="accent-indigo-600 shrink-0"
                           />
                           <div className="flex-1 min-w-0">
-                            <p className={`text-xs font-semibold ${isAttached ? "text-indigo-800" : "text-gray-700"}`}>
+                            <p className={`text-xs font-semibold ${isAttached ? "text-sky-900" : "text-gray-700"}`}>
                               {account.name}
                             </p>
                             <p className="text-[11px] text-gray-400">@{account.handle}</p>
@@ -371,7 +371,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
                             </span>
                           )}
                           {toggling && (
-                            <div className="w-3 h-3 border border-indigo-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                            <div className="w-3 h-3 border border-sky-400 border-t-transparent rounded-full animate-spin shrink-0" />
                           )}
                         </label>
                       );
@@ -393,13 +393,13 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
               <p className="text-xs text-gray-500">
                 Comptes Instagram configurés pour ce client.
               </p>
-              <Link href="/admin/accounts" className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors">
+              <Link href="/admin/accounts" className="text-xs text-sky-700 hover:text-sky-900 transition-colors">
                 → Voir tous les comptes Instagram
               </Link>
             </div>
             <button
               onClick={() => setShowAddForm((v) => !v)}
-              className="flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
+              className="flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 transition-colors"
             >
               <Plus className="h-4 w-4" />
               Ajouter un compte Instagram
@@ -452,7 +452,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
           {/* Liste des comptes */}
           {igLoading ? (
             <div className="flex items-center justify-center h-32 text-gray-400">
-              <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin mr-2" />
+              <div className="w-5 h-5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mr-2" />
               Chargement...
             </div>
           ) : igError ? (

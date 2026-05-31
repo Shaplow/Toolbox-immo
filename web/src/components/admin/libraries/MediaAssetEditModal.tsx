@@ -271,8 +271,8 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-violet-100 rounded-lg flex items-center justify-center shrink-0">
-              <Scissors size={15} className="text-violet-600" />
+            <div className="w-8 h-8 bg-rose-100 rounded-lg flex items-center justify-center shrink-0">
+              <Scissors size={15} className="text-rose-700" />
             </div>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Éditer le rush</h2>
@@ -314,7 +314,7 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
                   type="button"
                   onClick={previewSelection}
                   disabled={busy}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 text-[11px] font-medium hover:bg-violet-100 transition-colors disabled:opacity-40"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-rose-200 bg-rose-50 text-rose-800 text-[11px] font-medium hover:bg-rose-100 transition-colors disabled:opacity-40"
                 >
                   <Play size={10} className="fill-violet-700" />
                   Prévisualiser la sélection
@@ -345,15 +345,15 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
                     style={{ left: `${endPct}%`, right: 0 }}
                   />
                   <div
-                    className="absolute h-2 bg-violet-400 rounded-full pointer-events-none"
+                    className="absolute h-2 bg-rose-400 rounded-full pointer-events-none"
                     style={{ left: `${startPct}%`, right: `${100 - endPct}%` }}
                   />
                   <div
-                    className="absolute w-5 h-5 bg-violet-600 rounded-full border-2 border-white shadow-lg pointer-events-none ring-2 ring-violet-200"
+                    className="absolute w-5 h-5 bg-rose-600 rounded-full border-2 border-white shadow-lg pointer-events-none ring-2 ring-rose-200"
                     style={{ left: `calc(${startPct}% - 10px)` }}
                   />
                   <div
-                    className="absolute w-5 h-5 bg-violet-600 rounded-full border-2 border-white shadow-lg pointer-events-none ring-2 ring-violet-200"
+                    className="absolute w-5 h-5 bg-rose-600 rounded-full border-2 border-white shadow-lg pointer-events-none ring-2 ring-rose-200"
                     style={{ left: `calc(${endPct}% - 10px)` }}
                   />
                 </div>
@@ -411,7 +411,7 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
                   {/* Duration (readonly) */}
                   <div className="flex-1">
                     <label className="text-[10px] font-medium text-gray-500 mb-1 block">Durée</label>
-                    <div className="border border-gray-100 bg-indigo-50 rounded-lg px-2 py-1.5 text-xs text-indigo-600 font-semibold text-center">
+                    <div className="border border-gray-100 bg-sky-50 rounded-lg px-2 py-1.5 text-xs text-sky-700 font-semibold text-center">
                       {fmt(Math.max(0, trimEnd - trimStart))}
                     </div>
                     <p className="text-[10px] mt-0.5">&nbsp;</p>
@@ -469,8 +469,8 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
                     onClick={() => setGainDb(v)}
                     className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
                       gainDb === v
-                        ? "bg-violet-600 text-white border-violet-600"
-                        : "bg-white text-gray-500 border-gray-200 hover:border-violet-300 hover:bg-violet-50"
+                        ? "bg-gray-900 text-white border-gray-900"
+                        : "bg-white text-gray-500 border-gray-200 hover:border-violet-300 hover:bg-rose-50"
                     }`}
                   >
                     {v > 0 ? `+${v}` : v}&nbsp;dB
@@ -481,24 +481,24 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
 
             {/* Mix to mono + Normalize */}
             <div className="grid grid-cols-2 gap-3">
-              <label className="flex items-start gap-2.5 cursor-pointer select-none p-3 rounded-xl border border-gray-200 hover:border-violet-200 hover:bg-violet-50/40 transition-colors">
+              <label className="flex items-start gap-2.5 cursor-pointer select-none p-3 rounded-xl border border-gray-200 hover:border-rose-200 hover:bg-rose-50/40 transition-colors">
                 <input
                   type="checkbox"
                   checked={mixToMono}
                   onChange={(e) => setMixToMono(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-400"
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-rose-700 focus:ring-violet-400"
                 />
                 <div>
                   <p className="text-sm font-medium text-gray-800 leading-tight">Mix mono</p>
                   <p className="text-[11px] text-gray-400 mt-0.5 leading-tight">Fusionne L+R — utile si le micro est sur un seul canal.</p>
                 </div>
               </label>
-              <label className="flex items-start gap-2.5 cursor-pointer select-none p-3 rounded-xl border border-gray-200 hover:border-violet-200 hover:bg-violet-50/40 transition-colors">
+              <label className="flex items-start gap-2.5 cursor-pointer select-none p-3 rounded-xl border border-gray-200 hover:border-rose-200 hover:bg-rose-50/40 transition-colors">
                 <input
                   type="checkbox"
                   checked={normalize}
                   onChange={(e) => setNormalize(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-400"
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-rose-700 focus:ring-violet-400"
                 />
                 <div>
                   <p className="text-sm font-medium text-gray-800 leading-tight">Normaliser</p>
@@ -509,9 +509,9 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
           </div>
 
           {/* Destructive warning */}
-          <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
-            <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-800">
+          <div className="flex items-start gap-2 p-3 bg-peach-50 border border-peach-200 rounded-xl">
+            <AlertTriangle size={14} className="text-peach-700 shrink-0 mt-0.5" />
+            <p className="text-xs text-peach-800">
               Cette opération est <strong>irréversible</strong>. Le fichier original sera écrasé.
             </p>
           </div>
@@ -536,20 +536,20 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
           {/* Operation summary */}
           <div className="flex flex-wrap gap-1">
             {trimChanged && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] bg-violet-100 text-violet-700 border border-violet-200">
+              <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-100 text-rose-800 border border-rose-200">
                 Découpe {fmt(trimStart)} → {fmt(trimEnd)}
               </span>
             )}
             {gainDb !== 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] bg-violet-100 text-violet-700 border border-violet-200">
+              <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-100 text-rose-800 border border-rose-200">
                 Volume {gainDb > 0 ? `+${gainDb}` : gainDb}&nbsp;dB
               </span>
             )}
             {mixToMono && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] bg-violet-100 text-violet-700 border border-violet-200">Mix mono</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-100 text-rose-800 border border-rose-200">Mix mono</span>
             )}
             {normalize && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] bg-violet-100 text-violet-700 border border-violet-200">Normalisation</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-100 text-rose-800 border border-rose-200">Normalisation</span>
             )}
             {!hasOps && (
               <span className="text-[11px] text-gray-400 italic">Aucune opération sélectionnée</span>
@@ -568,7 +568,7 @@ export function MediaAssetEditModal({ asset, onClose, onDone }: Props) {
               <button
                 onClick={() => { void handleSubmit(); }}
                 disabled={!hasOps || busy}
-                className="flex items-center gap-2 px-4 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {busy ? (
                   <>
