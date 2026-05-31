@@ -11,6 +11,7 @@ import { resolveSlotConfig } from "@/lib/services/slot/config";
 import {
   resolveActiveCaptionJob,
   resolveActiveDescriptionJob,
+  resolveActiveTranscription,
 } from "@/lib/publications/jobLifecycle";
 import { PublicationFiche } from "./PublicationFiche";
 import type { CommentData } from "@/components/publications/CommentItem";
@@ -142,6 +143,17 @@ export default async function PublicationPage({ params }: PageProps) {
           staleSince: true,
           staleReason: true,
         },
+      },
+      // V6.6.2 — Status transcription (latest) pour DescriptionSection :
+      // permet de dire "Transcription en cours…" au lieu de "Lancer la
+      // chaîne" quand un job de transcription tourne déjà.
+      activeTranscriptionJob: {
+        select: { id: true, status: true, staleSince: true },
+      },
+      transcriptionJobs: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { id: true, status: true, staleSince: true },
       },
     },
   });
@@ -323,6 +335,16 @@ export default async function PublicationPage({ params }: PageProps) {
   const latestDescriptionJobFull = latestDescriptionJob
     ? slot.descriptionJobs.find((d) => d.id === latestDescriptionJob.id) ?? null
     : null;
+
+  // V6.6.2 — Status de la transcription active (active explicit ou latest
+  // non-stale) pour DescriptionSection.
+  const activeTranscription = resolveActiveTranscription({
+    activeTranscriptionJob: slot.activeTranscriptionJob
+      ? { id: slot.activeTranscriptionJob.id, status: slot.activeTranscriptionJob.status, staleSince: slot.activeTranscriptionJob.staleSince }
+      : null,
+    transcriptionJobs: slot.transcriptionJobs.map((t) => ({ id: t.id, status: t.status, staleSince: t.staleSince })),
+  });
+  const transcriptionJobStatus = activeTranscription?.status ?? null;
 
   // Cohérence Workflows Phase 4 — Résolution exhaustive (pattern + overrides slot)
   // Couvre validation client + needsCaptions/Description/Rushes/Brief en un seul appel.
@@ -593,6 +615,7 @@ export default async function PublicationPage({ params }: PageProps) {
         hasClaude: !!process.env.ANTHROPIC_API_KEY,
         hasGPT: !!process.env.OPENAI_API_KEY,
       }}
+      transcriptionJobStatus={transcriptionJobStatus}
     />
   );
 }

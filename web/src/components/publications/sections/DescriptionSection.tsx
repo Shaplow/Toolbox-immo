@@ -73,6 +73,10 @@ interface Props {
    *  expose un picker — si une seule API est dispo on passe directement sans
    *  picker mais la valeur est respectée. */
   aiConfig?: { hasClaude: boolean; hasGPT: boolean };
+  /** V6.6.2 — Status de la transcription du slot. Si PROCESSING/QUEUED,
+   *  on adapte le message "Lancer la chaîne" en "Transcription en cours…
+   *  la description IA se lancera après" pour éviter un double-trigger. */
+  transcriptionJobStatus?: string | null;
   /** V3 friction MED-3 : status du render et présence d'une version courante.
    *  Avant on passait null en dur à canGenerateDescription — pas de bug visible
    *  aujourd'hui (la fonction ne lit pas ces champs), mais piège latent dès
@@ -116,6 +120,7 @@ function DescriptionSectionInner({
   slotStatus,
   needsClientValidation,
   aiConfig,
+  transcriptionJobStatus,
   renderStatus,
   hasCurrentVersion,
   sectionId = "description",
@@ -520,32 +525,45 @@ function DescriptionSectionInner({
             )}
             {!waitingForClient && !pendingJobResult && !jobInFlight && !jobFailed && (
               <>
-                <Alert variant="glass" icon={Sparkles}>
-                  La chaîne ne semble pas avoir démarré (transcription absente
-                  ou pipeline interrompu). Clique sur « Lancer la chaîne »
-                  pour déclencher transcription + description.
-                </Alert>
-                {canEdit && (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      icon={RefreshCw}
-                      loading={retryingChain}
-                      onClick={() => void handleRetryChain()}
-                      title="Lance la transcription si absente, puis enchaîne la description"
-                    >
-                      Lancer la chaîne
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      icon={Sparkles}
-                      onClick={() => setShowAi(true)}
-                    >
-                      Générer manuellement
-                    </Button>
-                  </div>
+                {/* V6.6.2 — Distinguer "transcription en cours" de "chaîne pas
+                    démarrée". Avant : on disait "Lancer la chaîne" même quand
+                    la transcription tournait déjà → admin tentait un double-
+                    trigger inutile. */}
+                {transcriptionJobStatus === "PROCESSING" || transcriptionJobStatus === "QUEUED" ? (
+                  <Alert variant="glass" icon={Loader2}>
+                    Transcription en cours… La description IA se lancera
+                    automatiquement après.
+                  </Alert>
+                ) : (
+                  <>
+                    <Alert variant="glass" icon={Sparkles}>
+                      La chaîne ne semble pas avoir démarré (transcription absente
+                      ou pipeline interrompu). Clique sur « Lancer la chaîne »
+                      pour déclencher transcription + description.
+                    </Alert>
+                    {canEdit && (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          icon={RefreshCw}
+                          loading={retryingChain}
+                          onClick={() => void handleRetryChain()}
+                          title="Lance la transcription si absente, puis enchaîne la description"
+                        >
+                          Lancer la chaîne
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={Sparkles}
+                          onClick={() => setShowAi(true)}
+                        >
+                          Générer manuellement
+                        </Button>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}

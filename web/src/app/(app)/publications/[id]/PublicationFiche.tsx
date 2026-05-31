@@ -313,6 +313,9 @@ export interface PublicationFicheProps {
    *  modèles IA sont configurés (Claude/GPT). Sans ça, la modal hardcoderait
    *  "claude" et échouerait silencieusement si seul GPT était configuré. */
   aiConfig?: { hasClaude: boolean; hasGPT: boolean };
+  /** V6.6.2 — Status transcription pour DescriptionSection (évite "Lancer
+   *  la chaîne" trompeur quand transcription PROCESSING). */
+  transcriptionJobStatus?: string | null;
 }
 
 export function PublicationFiche({
@@ -345,6 +348,7 @@ export function PublicationFiche({
   currentUserId,
   currentUserRole,
   aiConfig,
+  transcriptionJobStatus,
 }: PublicationFicheProps) {
   // F4 — Destructure local des permissions pour garder les call sites
   // historiques inchangés (`{canEditRender}` etc.). Le grouping est dans
@@ -724,6 +728,7 @@ export function PublicationFiche({
                 renderStatus={render?.status ?? null}
                 hasCurrentVersion={!!currentVersionId}
                 needsClientValidation={clientValidation.needsClientValidation}
+                transcriptionJobStatus={transcriptionJobStatus}
               />
             )}
             {shouldRenderForRole("description", currentUserRole) && renderNextStepHint("description")}
