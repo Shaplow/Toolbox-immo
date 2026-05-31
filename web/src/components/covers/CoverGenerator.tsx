@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Film, Upload, Download, RefreshCw, Check, X, Image as ImageIcon, Layers } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/useConfirm";
@@ -103,6 +104,7 @@ interface CoverGeneratorProps {
 }
 
 export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, initialTab = "packs" }: CoverGeneratorProps = {}) {
+  const router = useRouter();
   const { confirm, dialog: confirmDialog } = useConfirm();
   // ── Tab ────────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"packs" | "manual">(initialTab);
@@ -306,6 +308,16 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
         }),
       });
       if (!res.ok) throw new Error(await res.text());
+
+      // Phase V2 — friction HIGH-4 du audit 2026-05-31 : avant on restait
+      // bloqué sur l'outil après le seul clic qui compte. Désormais, si on
+      // vient d'une fiche publication (slotId), on rebondit dessus avec un
+      // toast confirmant l'application. Sans slotId, comportement legacy.
+      if (slotId) {
+        toast.success("Cover appliquée à la publication.");
+        router.push(`/publications/${slotId}`);
+        return;
+      }
       toast.success("Cover PNG générée.");
       await loadPacks();
     } catch (err) {
@@ -313,7 +325,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
     } finally {
       setPackBusyId(null);
     }
-  }, [confirm, loadPacks, overlayOffsetByPack, selectedCandidateByPack]);
+  }, [confirm, loadPacks, overlayOffsetByPack, selectedCandidateByPack, router, slotId]);
 
   const patchPackOverlayGroups = useCallback(async (packId: string, groupIds: string[]) => {
     // Optimistic update
