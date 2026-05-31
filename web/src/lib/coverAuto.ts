@@ -709,10 +709,35 @@ export async function triggerAutoCoverPackForRender(
   const config = preset.config as unknown as CoverAutoConfig;
   if (!config?.enabled) return;
 
-  const existing = await prisma.coverFramePack.findUnique({ where: { renderId } });
-  if (existing) {
-    console.info(`[autoCover] Pack déjà existant (${existing.id}) pour render=${renderId} — skip`);
-    return;
+  // V7.6 — Garde unifiée slot-level. Avant : on vérifiait juste `renderId`,
+  // mais un pack pouvait être créé en parallèle via `publicationVersionId`
+  // (autoCoverTrigger.ts). 2 packs non-stale pour le même slot — divergence.
+  // Désormais : findFirst sur les 2 FK + filtre non-stale. Si déjà un pack
+  // actif pour ce slot, on skip.
+  if (slotId) {
+    const existingSlotPack = await prisma.coverFramePack.findFirst({
+      where: {
+        OR: [
+          { render: { publicationSlotId: slotId } },
+          { publicationVersion: { slotId } },
+        ],
+        staleSince: null,
+      },
+      select: { id: true },
+    });
+    if (existingSlotPack) {
+      console.info(
+        `[autoCover] Pack non-stale déjà existant (${existingSlotPack.id}) pour slot=${slotId} — skip render=${renderId}`,
+      );
+      return;
+    }
+  } else {
+    // Fallback legacy : pas de slot (cas standalone très rare) → check renderId seul.
+    const existing = await prisma.coverFramePack.findUnique({ where: { renderId } });
+    if (existing) {
+      console.info(`[autoCover] Pack déjà existant (${existing.id}) pour render=${renderId} — skip`);
+      return;
+    }
   }
 
   const frameCount = normalizeFrameCount(config.frameCount);

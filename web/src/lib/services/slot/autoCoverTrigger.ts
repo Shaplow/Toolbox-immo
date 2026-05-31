@@ -110,9 +110,19 @@ export async function tryAutoTriggerCover(
     });
     if (!preset) return { status: "skipped", reason: "preset_not_found" };
 
-    // Idempotence : skip si un pack existe déjà pour cette version
-    const existing = await prisma.coverFramePack.findUnique({
-      where: { publicationVersionId: slot.currentVersionId! },
+    // V7.6 — Garde unifiée slot-level (Pattern C audit V6). Avant : on
+    // vérifiait juste `publicationVersionId`, mais un pack pouvait être
+    // créé en parallèle via `renderId` (coverAuto.ts). 2 packs non-stale
+    // pour le même slot — divergence. Désormais : findFirst sur les 2 FK
+    // + filtre non-stale.
+    const existing = await prisma.coverFramePack.findFirst({
+      where: {
+        OR: [
+          { publicationVersionId: slot.currentVersionId! },
+          { render: { publicationSlotId: slotId } },
+        ],
+        staleSince: null,
+      },
       select: { id: true },
     });
     if (existing) {
