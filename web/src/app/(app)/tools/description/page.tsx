@@ -1,3 +1,12 @@
+/**
+ * Legacy redirect — V5.C.2.
+ *
+ * Aucun lien interne ne pointe vers /tools/description depuis Phase 1.x.
+ * Conservé pour compat bookmarks anciens utilisateurs.
+ * Préserve les searchParams (slotId, returnTo, etc.) en re-construisant
+ * la query string avant le redirect.
+ * Drop prévu après 1-2 mois si les logs montrent 0 hit.
+ */
 import { redirect } from "next/navigation";
 
 export default async function DescriptionLegacyRedirect({
