@@ -88,12 +88,12 @@ export function UserCaptionsMode({
                   onClick={() => onSelectPreset(p)}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${
                     selectedPresetId === p.id
-                      ? "bg-violet-50 border-violet-300 shadow-sm"
+                      ? "bg-rose-50 border-violet-300 shadow-sm"
                       : "bg-white border-gray-100 hover:border-gray-200"
                   }`}
                 >
                   <span className={`w-3 h-3 rounded-full border-2 shrink-0 ${
-                    selectedPresetId === p.id ? "bg-violet-500 border-violet-500" : "border-gray-300"
+                    selectedPresetId === p.id ? "bg-rose-500 border-violet-500" : "border-gray-300"
                   }`} />
                   <div>
                     <p className={`text-sm font-medium ${selectedPresetId === p.id ? "text-violet-800" : "text-gray-800"}`}>
@@ -113,14 +113,14 @@ export function UserCaptionsMode({
         {/* Step 2 — Vidéo */}
         <StepCard number={2} title="Votre vidéo">
           <label className={`flex flex-col items-center gap-2 p-6 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
-            videoFile ? "border-violet-300 bg-violet-50" : "border-gray-200 hover:border-gray-300 bg-white"
+            videoFile ? "border-violet-300 bg-rose-50" : "border-gray-200 hover:border-gray-300 bg-white"
           }`}>
             <Upload size={20} className={videoFile ? "text-violet-500" : "text-gray-400"} />
             <span className="text-sm font-medium text-gray-700">
               {videoFile ? videoFile.name : "Cliquer pour choisir une vidéo"}
             </span>
             {videoFile && (
-              <span className="text-xs text-violet-600">{(videoFile.size / 1_000_000).toFixed(1)} Mo</span>
+              <span className="text-xs text-rose-700">{(videoFile.size / 1_000_000).toFixed(1)} Mo</span>
             )}
             <input type="file" accept="video/*" className="hidden"
               onChange={(e) => onVideoChange(e.target.files?.[0] ?? null)} />
@@ -130,7 +130,7 @@ export function UserCaptionsMode({
         {/* Step 3 — Sous-titres */}
         <StepCard number={3} title="Sous-titres (.srt)">
           <label className={`flex flex-col items-center gap-2 p-6 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
-            (subsFile || captions.length > 0) ? "border-violet-300 bg-violet-50" : "border-gray-200 hover:border-gray-300 bg-white"
+            (subsFile || captions.length > 0) ? "border-violet-300 bg-rose-50" : "border-gray-200 hover:border-gray-300 bg-white"
           }`}>
             <FileText size={20} className={(subsFile || captions.length > 0) ? "text-violet-500" : "text-gray-400"} />
             <span className="text-sm font-medium text-gray-700">
@@ -162,7 +162,7 @@ export function UserCaptionsMode({
         <button
           disabled={!canGenerate || busy}
           onClick={onRender}
-          className="w-full flex items-center justify-center gap-2 py-3.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-semibold text-sm transition-colors"
+          className="w-full flex items-center justify-center gap-2 py-3.5 bg-gray-900 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-semibold text-sm transition-colors"
         >
           {busy
             ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Génération en cours…</>
@@ -178,7 +178,7 @@ export function UserCaptionsMode({
         {/* Progress */}
         {renderProgress >= 0 && (
           <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-            <div className="bg-violet-500 h-2 rounded-full transition-all duration-500"
+            <div className="bg-rose-500 h-2 rounded-full transition-all duration-500"
               style={{ width: `${Math.round(renderProgress * 100)}%` }} />
           </div>
         )}
@@ -207,7 +207,7 @@ function StepCard({ number, title, children }: { number: number; title: string; 
   return (
     <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
       <div className="flex items-center gap-3 mb-4">
-        <span className="w-6 h-6 rounded-full bg-violet-100 text-violet-700 text-xs font-bold flex items-center justify-center shrink-0">
+        <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-800 text-xs font-bold flex items-center justify-center shrink-0">
           {number}
         </span>
         <h2 className="text-sm font-semibold text-gray-800">{title}</h2>

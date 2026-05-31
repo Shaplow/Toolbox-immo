@@ -138,8 +138,8 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
       {/* Header */}
       <div className="bg-white border border-gray-100 rounded-2xl p-5 space-y-4">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center shrink-0">
-            <Mic2 className="w-5 h-5 text-indigo-600" />
+          <div className="w-10 h-10 bg-sky-50 rounded-xl flex items-center justify-center shrink-0">
+            <Mic2 className="w-5 h-5 text-sky-700" />
           </div>
           <div className="flex-1 min-w-0">
             <h1 className="font-semibold text-gray-900 truncate">
@@ -153,7 +153,7 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
           <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
             job.status === "COMPLETED" ? "bg-green-50 text-green-700" :
             job.status === "FAILED"    ? "bg-red-50 text-red-700" :
-            job.status === "PROCESSING" ? "bg-indigo-50 text-indigo-700" :
+            job.status === "PROCESSING" ? "bg-sky-50 text-sky-800" :
             "bg-gray-50 text-gray-500"
           }`}>
             {job.status === "COMPLETED" && <CheckCircle className="w-3.5 h-3.5" />}
@@ -186,13 +186,13 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
             {LANG_LABELS[job.language] ?? job.language}
           </span>
           {job.hasDiarization && (
-            <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 text-xs">
+            <span className="px-2.5 py-1 rounded-full bg-sky-50 text-sky-700 text-xs">
               Diarisé
             </span>
           )}          {qualityScore !== null && (
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
               qualityScore >= 80 ? "bg-green-50 text-green-700" :
-              qualityScore >= 60 ? "bg-yellow-50 text-yellow-700" :
+              qualityScore >= 60 ? "bg-peach-50 text-peach-800" :
               "bg-red-50 text-red-700"
             }`}>
               SRT {qualityScore}/100
@@ -204,7 +204,7 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
       {/* Processing state */}
       {(job.status === "QUEUED" || job.status === "PROCESSING") && (
         <div className="flex flex-col items-center gap-4 py-12 text-gray-400">
-          <Loader2 className="w-10 h-10 animate-spin text-indigo-400" />
+          <Loader2 className="w-10 h-10 animate-spin text-sky-500" />
           <div className="text-center">
             <p className="font-medium text-gray-600">
               {job.status === "QUEUED" ? "En file d'attente…" : "Transcription en cours…"}
@@ -214,7 +214,7 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
           <button
             type="button"
             onClick={() => { void fetch(`/api/transcription/${job.id}`).then((r) => r.json()).then((d: JobDetail) => setJob(d)); }}
-            className="flex items-center gap-1.5 text-sm text-indigo-600 hover:underline"
+            className="flex items-center gap-1.5 text-sm text-sky-700 hover:underline"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Actualiser
@@ -237,13 +237,13 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
           <button
             type="button"
             onClick={handleUseInCaptions}
-            className="w-full flex items-center justify-between gap-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl px-5 py-4 transition-colors"
+            className="w-full flex items-center justify-between gap-3 bg-gray-900 hover:bg-gray-700 text-white rounded-xl px-5 py-4 transition-colors"
           >
             <div className="flex items-center gap-3">
               <Scissors className="w-5 h-5 shrink-0" />
               <div className="text-left">
                 <p className="font-semibold text-sm">Utiliser dans Captions</p>
-                <p className="text-teal-200 text-xs">Découper les segments et générer des sous-titres vidéo</p>
+                <p className="text-sky-200 text-xs">Découper les segments et générer des sous-titres vidéo</p>
               </div>
             </div>
             <ArrowRight className="w-4 h-4 shrink-0" />
@@ -254,14 +254,14 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
             type="button"
             onClick={() => void download("srt")}
             disabled={downloading === "srt"}
-            className="w-full flex items-center justify-between gap-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white
+            className="w-full flex items-center justify-between gap-3 bg-gray-900 hover:bg-gray-700 disabled:opacity-60 text-white
               rounded-xl px-5 py-4 transition-colors"
           >
             <div className="flex items-center gap-3">
               <FileText className="w-5 h-5 shrink-0" />
               <div className="text-left">
                 <p className="font-semibold text-sm">Télécharger le SRT</p>
-                <p className="text-indigo-200 text-xs">Sous-titres prêts pour l&apos;éditeur captions</p>
+                <p className="text-sky-300 text-xs">Sous-titres prêts pour l&apos;éditeur captions</p>
               </div>
             </div>
             {downloading === "srt"
@@ -275,8 +275,8 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
             <button
               type="button"
               onClick={() => void relaunchWithDiarization()}
-              className="w-full flex items-center justify-center gap-2 border border-indigo-200 text-indigo-600
-                hover:bg-indigo-50 rounded-xl px-5 py-3 text-sm transition-colors"
+              className="w-full flex items-center justify-center gap-2 border border-sky-200 text-sky-700
+                hover:bg-sky-50 rounded-xl px-5 py-3 text-sm transition-colors"
             >
               <Mic2 className="w-4 h-4" />
               Relancer avec identification des intervenants

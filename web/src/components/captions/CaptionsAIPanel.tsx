@@ -72,8 +72,8 @@ export function CaptionsAIPanel({
         onClick={onToggleShowAI}
         className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
           showAI
-            ? "bg-violet-600 border-violet-600 text-white"
-            : "border-gray-200 text-gray-600 hover:border-violet-300 hover:text-violet-600"
+            ? "bg-gray-900 border-gray-900 text-white"
+            : "border-gray-200 text-gray-600 hover:border-violet-300 hover:text-rose-700"
         }`}
       >
         <Wand2 size={11} />
@@ -83,7 +83,7 @@ export function CaptionsAIPanel({
 
       {/* Expanded panel */}
       {showAI && (
-        <div className="mb-4 bg-violet-50 border border-violet-100 rounded-xl p-4">
+        <div className="mb-4 bg-rose-50 border border-violet-100 rounded-xl p-4">
           <p className="text-xs font-semibold text-violet-800 mb-3">Correction IA</p>
 
           {/* Model selector */}
@@ -101,8 +101,8 @@ export function CaptionsAIPanel({
                   !m.enabled
                     ? "border-gray-200 text-gray-300 bg-gray-50 cursor-not-allowed"
                     : aiModel === m.id
-                    ? "border-violet-400 bg-violet-600 text-white"
-                    : "border-violet-200 text-violet-700 hover:bg-violet-100"
+                    ? "border-gray-700 bg-gray-900 text-white"
+                    : "border-rose-200 text-rose-800 hover:bg-rose-100"
                 }`}
               >
                 {m.label}
@@ -120,12 +120,12 @@ export function CaptionsAIPanel({
                   className={`flex items-center gap-1 rounded-lg border transition-colors ${
                     selectedPromptId === p.id
                       ? "border-violet-400 bg-white"
-                      : "border-transparent hover:bg-violet-100"
+                      : "border-transparent hover:bg-rose-100"
                   }`}
                 >
                   <button
                     onClick={() => setSelectedPromptId(p.id)}
-                    className="flex-1 text-left text-xs px-3 py-2 text-violet-700"
+                    className="flex-1 text-left text-xs px-3 py-2 text-rose-800"
                   >
                     <div className="flex items-center gap-2">
                       {selectedPromptId === p.id
@@ -133,7 +133,7 @@ export function CaptionsAIPanel({
                         : <span>{p.name}</span>
                       }
                       {p.autoHighlight.enabled && (
-                        <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+                        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-medium text-rose-800">
                           {formatAutoHighlightModeLabel(p.autoHighlight.mode)}
                         </span>
                       )}
@@ -156,9 +156,9 @@ export function CaptionsAIPanel({
           )}
 
           {selectedPrompt?.autoHighlight.enabled && (
-            <div className="mb-3 rounded-xl border border-violet-200 bg-white px-3 py-2.5">
-              <p className="text-[11px] font-semibold text-violet-700">Auto-highlight actif</p>
-              <p className="mt-0.5 text-[11px] text-violet-600">
+            <div className="mb-3 rounded-xl border border-rose-200 bg-white px-3 py-2.5">
+              <p className="text-[11px] font-semibold text-rose-800">Auto-highlight actif</p>
+              <p className="mt-0.5 text-[11px] text-rose-700">
                 {formatAutoHighlightModeLabel(selectedPrompt.autoHighlight.mode)} · consigne insérée {formatAutoHighlightPlacementLabel(selectedPrompt.autoHighlight.placement)}
               </p>
               {selectedPrompt.autoHighlight.prompt && (
@@ -170,7 +170,7 @@ export function CaptionsAIPanel({
           )}
 
           {selectedPromptNeedsHighlight2 && !highlight2Enabled && (
-            <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
+            <div className="mb-3 flex items-start gap-2 rounded-xl border border-peach-200 bg-peach-50 px-3 py-2 text-peach-800">
               <AlertCircle size={14} className="mt-0.5 shrink-0" />
               <p className="text-[11px] leading-5">
                 Le prompt sélectionné demande Highlight 2, mais ce preset ne l&apos;active pas.
@@ -179,7 +179,7 @@ export function CaptionsAIPanel({
           )}
 
           {!promptStorageAvailable && (
-            <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
+            <div className="mb-3 flex items-start gap-2 rounded-xl border border-peach-200 bg-peach-50 px-3 py-2 text-peach-800">
               <AlertCircle size={14} className="mt-0.5 shrink-0" />
               <p className="text-[11px] leading-5">
                 {promptStorageMessage ?? "Les prompts captions ne sont pas disponibles sur cette instance."}
@@ -199,7 +199,7 @@ export function CaptionsAIPanel({
               !selectedPromptId ||
               (selectedPromptNeedsHighlight2 && !highlight2Enabled)
             }
-            className="w-full flex items-center justify-center gap-2 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold transition-colors"
+            className="w-full flex items-center justify-center gap-2 py-2 bg-gray-900 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold transition-colors"
           >
             {aiLoading ? (
               <>
