@@ -97,42 +97,72 @@ export async function triggerAutoTranscriptionForVersion(
     return;
   }
 
-  // Idempotence : déjà une transcription liée à cette version → skip.
+  // Idempotence : déjà une transcription liée à cette version.
+  // V6.3.2 — distinguer COMPLETED (skip légitime) de FAILED (retry).
+  // Avant : skip inconditionnel → chain morte si la première transcription
+  // avait échoué, l'admin devait passer par /transcriptions manuel.
+  // Désormais : si FAILED, on reset le job existant pour re-tenter
+  // (pattern aligné sur triggerAutoTranscriptionForRender — commit bdf750a).
   const existing = await prisma.transcriptionJob.findUnique({
     where: { publicationVersionId },
   });
-  if (existing) {
+  if (existing && existing.status !== "FAILED") {
     logSkip(publicationVersionId, "already_has_transcription", {
       slotId: version.slotId,
       transcriptionJobId: existing.id,
+      status: existing.status,
     });
     return;
   }
-
   const jobTimestamp = Date.now();
   const outputJsonKey = `transcription/${version.uploadedByUserId}/${jobTimestamp}/segments.json`;
   const webhookUrl = getRunpodWebhookUrl("/api/webhooks/runpod/transcription");
 
+  // V6.3.2 — Si existing FAILED, reset + réutiliser l'ID (préserve FK aval
+  // DescriptionJob.transcriptionId). Sinon create un nouveau job.
   let job: { id: string };
-  try {
-    job = await prisma.transcriptionJob.create({
+  if (existing && existing.status === "FAILED") {
+    await prisma.transcriptionJob.update({
+      where: { id: existing.id },
       data: {
-        userId: version.uploadedByUserId,
         status: "QUEUED",
+        errorMsg: null,
+        runpodJobId: null,
+        outputJsonKey,
+        segmentsJson: null,
+        segmentCount: null,
+        duration: null,
+        staleSince: null,
+        staleReason: null,
         inputKey: version.r2Key,
         inputFilename: version.fileName,
-        model: "turbo",
-        language: "fr",
-        enableDiarization: false,
-        outputJsonKey,
-        publicationVersionId: version.id,
       },
     });
-  } catch (err) {
-    console.warn(
-      `[autoTranscriptionV] Création job ignorée pour version=${publicationVersionId} : ${String(err)}`,
+    job = { id: existing.id };
+    console.info(
+      `[autoTranscriptionV] reset FAILED job=${existing.id} pour retry (version=${publicationVersionId})`,
     );
-    return;
+  } else {
+    try {
+      job = await prisma.transcriptionJob.create({
+        data: {
+          userId: version.uploadedByUserId,
+          status: "QUEUED",
+          inputKey: version.r2Key,
+          inputFilename: version.fileName,
+          model: "turbo",
+          language: "fr",
+          enableDiarization: false,
+          outputJsonKey,
+          publicationVersionId: version.id,
+        },
+      });
+    } catch (err) {
+      console.warn(
+        `[autoTranscriptionV] Création job ignorée pour version=${publicationVersionId} : ${String(err)}`,
+      );
+      return;
+    }
   }
 
   const payload = {
