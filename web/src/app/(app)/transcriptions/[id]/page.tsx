@@ -58,7 +58,13 @@ export default async function TranscriptionJobPage({
   const sourceSlot = sourceRender?.publicationSlot ?? null;
 
   return (
-    <div className="p-8 max-w-2xl mx-auto">
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
+        style={{ background: "var(--gradient-page-shell)" }}
+      >
+        <div className="px-6 sm:px-8 pt-6 pb-12">
+          <div className="max-w-3xl mx-auto">
       <Link
         href="/transcriptions"
         className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 mb-6 transition-colors"
@@ -154,6 +160,9 @@ export default async function TranscriptionJobPage({
           )}
         </div>
       )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
