@@ -29,6 +29,7 @@ import { canAccessTool } from "@/lib/permissions/tools";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
 import { logActivity } from "@/lib/services/slot/activity";
+import { getFromR2, r2Configured } from "@/lib/r2";
 
 const MAX_TRANSCRIPT_CHARS = 50_000;
 const MAX_PERSONALIZATION_CHARS = 2_000;
@@ -77,6 +78,75 @@ function normalizeRecipeKind(value: unknown): RecipeKind {
   return typeof value === "string" && VALID_RECIPE_KINDS.has(value as RecipeKind)
     ? (value as RecipeKind)
     : "transcript_only";
+}
+
+/**
+ * Charge le texte de la dernière TranscriptionJob COMPLETED rattachée à un
+ * slot (via slot.render.transcriptionJob ou slot.currentVersion.transcriptionJob).
+ *
+ * Priorité segmentsJson (inline dev local) puis outputJsonKey (R2 prod).
+ * Retourne null si pas de transcription utilisable.
+ */
+async function loadSlotTranscriptionText(slotId: string): Promise<string | null> {
+  const slot = await prisma.publicationSlot.findUnique({
+    where: { id: slotId },
+    select: {
+      render: {
+        select: {
+          transcriptionJob: {
+            select: { status: true, segmentsJson: true, outputJsonKey: true },
+          },
+        },
+      },
+      currentVersion: {
+        select: {
+          transcriptionJob: {
+            select: { status: true, segmentsJson: true, outputJsonKey: true },
+          },
+        },
+      },
+    },
+  });
+  if (!slot) return null;
+  const txJob =
+    slot.render?.transcriptionJob ?? slot.currentVersion?.transcriptionJob ?? null;
+  if (!txJob || txJob.status !== "COMPLETED") return null;
+
+  // 1) segmentsJson inline (dev local + fallback prod si stocké)
+  if (txJob.segmentsJson) {
+    try {
+      const parsed = JSON.parse(txJob.segmentsJson) as Array<{ text?: string }>;
+      const joined = parsed
+        .map((s) => (s.text ?? "").trim())
+        .filter(Boolean)
+        .join("\n");
+      if (joined) return joined;
+    } catch {
+      // continue avec R2
+    }
+  }
+
+  // 2) outputJsonKey sur R2 (prod RunPod)
+  if (txJob.outputJsonKey && r2Configured()) {
+    try {
+      const buf = await getFromR2(txJob.outputJsonKey);
+      if (!buf) return null;
+      const parsed = JSON.parse(buf.toString("utf-8")) as {
+        segments?: Array<{ text?: string }>;
+      };
+      const segments = parsed.segments ?? [];
+      const joined = segments
+        .map((s) => (s.text ?? "").trim())
+        .filter(Boolean)
+        .join("\n");
+      return joined || null;
+    } catch (err) {
+      console.warn(`[description/generate] R2 transcription fetch failed slot=${slotId}:`, err);
+      return null;
+    }
+  }
+
+  return null;
 }
 
 function buildUserMessage(
@@ -362,7 +432,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const normalizedTranscriptText = transcriptText?.trim() ?? "";
+  let normalizedTranscriptText = transcriptText?.trim() ?? "";
+
+  // Phase 3 — Bug bug-hunter #11 du audit 2026-05-31 : avant, le bouton
+  // "Générer avec IA" inline dans DescriptionSection appelait cette route
+  // sans transcriptText, ce qui forçait un 400. Désormais, si on a un
+  // slotId valide et que le slot porte une transcription COMPLETED, on
+  // charge automatiquement son texte (segmentsJson inline ou outputJsonKey
+  // sur R2). Le client n'a rien à faire — appel cohérent avec la chaîne
+  // auto.
+  if (!normalizedTranscriptText && !referenceImage && resolvedSlotId) {
+    const fetched = await loadSlotTranscriptionText(resolvedSlotId);
+    if (fetched) {
+      normalizedTranscriptText = fetched.slice(0, MAX_TRANSCRIPT_CHARS);
+    }
+  }
+
   if (!normalizedTranscriptText && !referenceImage) {
     return NextResponse.json(
       { error: "Ajoute une transcription ou une image de référence" },
