@@ -2,26 +2,28 @@
 /**
  * Capture les surfaces UX clés de Toolbox Immo pour audit visuel.
  *
- * Différent du spec visual regression (`production-chain-v8-visual.spec.ts`) :
- *  - Pas de baseline ni diff — capture pure pour analyse one-shot
- *  - Output timestampé dans `.claude/ux-audit/<YYYY-MM-DD_HH-mm>/<page>.png`
- *  - Liste de surfaces extensible (édite SURFACES ci-dessous)
+ * Deux modes coexistent :
+ *
+ *  1. SURFACES — pages isolées (snapshot d'état) → pour vérifier
+ *     la qualité visuelle individuelle.
+ *
+ *  2. SCENARIOS — workflow user complet enchaînant goto/click/fill
+ *     avec capture après chaque étape → pour vérifier la cohérence
+ *     d'ensemble (transitions, breadcrumbs, langage, états).
+ *
+ * Output : `.claude/ux-audit/<YYYY-MM-DD_HH-mm>/`
+ *  - `surfaces/<name>.png`
+ *  - `scenarios/<scenario-name>/<NN>-<step-name>.png`
  *
  * Workflow :
- *   1. Assure-toi que la DB de test est seedée :
- *      cd web && npm run test:db:setup && npm run test:db:seed
- *   2. Lance le serveur de test (port 3100) en arrière-plan OU laisse le
- *      script le démarrer lui-même.
- *   3. Lance :
- *      cd web && npm run ux:capture
- *   4. Les screenshots sortent dans .claude/ux-audit/<timestamp>/
- *   5. Demande à Claude d'analyser les images.
+ *   1. cd web && npm run test:db:setup && npm run test:db:seed
+ *   2. npm run ux:capture
+ *   3. Claude lit les PNG via le Read tool et rapporte.
  *
- * Usage en mode "audit" :
- *   /audit-ux            # déclenche le workflow complet
+ * Tu peux aussi déclencher via /audit-ux dans le chat.
  */
 
-import { chromium, type Browser, type BrowserContext } from "@playwright/test";
+import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { execSync, spawn, type ChildProcess } from "child_process";
 import { mkdirSync, existsSync } from "fs";
 import { dirname, resolve } from "path";
@@ -44,26 +46,20 @@ const TEST_DB_URL =
 const ADMIN_USERNAME = "test_admin";
 const ADMIN_PASSWORD = "testpass";
 
-// Output : .claude/ux-audit/<timestamp>/<surface>.png
-const ts = new Date()
-  .toISOString()
-  .replace(/[:T]/g, "-")
-  .slice(0, 16);
+const ts = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 16);
 const OUTPUT_DIR = resolve(repoRoot, ".claude", "ux-audit", ts);
 
-// ─── Surfaces à capturer ────────────────────────────────────────────────────
-// Édite cette liste pour étendre l'audit à d'autres pages.
+// ─── SURFACES isolées ───────────────────────────────────────────────────────
+// Capture pure d'une page (snapshot d'état). Pour audit qualité visuelle.
 
 interface Surface {
   name: string;
   path: string;
-  /** Optional setup fn called before capture (login déjà fait, page navigated). */
-  wait?: number; // ms à attendre après navigation
+  wait?: number;
   desc: string;
 }
 
 const SURFACES: Surface[] = [
-  // V8 — chaîne de production (mode manual)
   {
     name: "01-fiche-publication-manual",
     path: "/publications/test-slot-v8-manual",
@@ -88,7 +84,6 @@ const SURFACES: Surface[] = [
     wait: 1500,
     desc: "Page generate avec banner transcription (pending OU blocker)",
   },
-  // Surfaces parents — pour vérifier la cohérence globale
   {
     name: "05-home-admin",
     path: "/home",
@@ -103,7 +98,114 @@ const SURFACES: Surface[] = [
   },
 ];
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── SCENARIOS (workflows multi-pages) ──────────────────────────────────────
+// Enchaîne des étapes pour tester la cohérence d'un parcours user complet.
+
+type StepAction =
+  | { type: "goto"; path: string }
+  | { type: "click"; selector: string }
+  | { type: "fill"; selector: string; value: string }
+  | { type: "wait"; ms: number };
+
+interface Step {
+  /** Préfixe du fichier output (numéroté pour l'ordre). */
+  label: string;
+  action: StepAction;
+  /** Capture après cette étape (default true sauf actions de transition rapide). */
+  capture?: boolean;
+  /** Temps à attendre après l'action avant capture (ms). Default 400. */
+  settleMs?: number;
+}
+
+interface Scenario {
+  name: string;
+  description: string;
+  steps: Step[];
+}
+
+const SCENARIOS: Scenario[] = [
+  {
+    name: "captions-manual-workflow",
+    description:
+      "Admin écrit des sous-titres en mode manuel : fiche → éditeur → save → retour fiche. Vérifier cohérence des breadcrumbs, copy, états entre les 3 surfaces.",
+    steps: [
+      {
+        label: "01-fiche-avant-ecriture",
+        action: { type: "goto", path: "/publications/test-slot-v8-manual" },
+        settleMs: 800,
+      },
+      {
+        label: "02-clic-ecrire-sous-titres",
+        action: {
+          type: "click",
+          selector: 'a:has-text("Écrire les sous-titres"), a:has-text("Modifier les sous-titres")',
+        },
+        settleMs: 800,
+      },
+      {
+        label: "03-editeur-empty-state",
+        action: { type: "wait", ms: 200 },
+      },
+      {
+        label: "04-rempli-1er-bloc",
+        action: {
+          type: "fill",
+          selector: 'textarea[placeholder*="texte affiché"]',
+          value: "Premier sous-titre — workflow audit UX",
+        },
+        settleMs: 200,
+      },
+      {
+        label: "05-clic-enregistrer",
+        action: { type: "click", selector: 'button:has-text("Enregistrer")' },
+        settleMs: 1500,
+      },
+      {
+        label: "06-fiche-apres-save",
+        action: { type: "wait", ms: 500 },
+      },
+    ],
+  },
+  {
+    name: "captions-auto-from-fiche",
+    description:
+      "Admin lance les captions auto depuis la fiche : fiche slot auto → click 'Lancer captions' → atterrit sur /captions/.../generate avec banner transcription pending. Vérifier que la transition est claire et que le banner explique le pourquoi.",
+    steps: [
+      {
+        label: "01-fiche-auto-template",
+        action: { type: "goto", path: "/publications/test-slot-1" },
+        settleMs: 800,
+      },
+      {
+        label: "02-captions-generate-page",
+        action: {
+          type: "goto",
+          path: "/captions/test-caption-preset-1/generate?slotId=test-slot-1",
+        },
+        settleMs: 1500,
+      },
+    ],
+  },
+  {
+    name: "calendar-to-fiche",
+    description:
+      "Admin part du calendrier et ouvre une fiche : vérifier que la nav est fluide, que le slot card est lisible, que le retour est cohérent.",
+    steps: [
+      {
+        label: "01-calendar-vue-hebdo",
+        action: { type: "goto", path: "/calendar" },
+        settleMs: 800,
+      },
+      {
+        label: "02-fiche-depuis-calendar",
+        action: { type: "goto", path: "/publications/test-slot-v8-manual" },
+        settleMs: 800,
+      },
+    ],
+  },
+];
+
+// ─── Login helper ────────────────────────────────────────────────────────────
 
 async function login(context: BrowserContext): Promise<void> {
   const page = await context.newPage();
@@ -115,24 +217,78 @@ async function login(context: BrowserContext): Promise<void> {
   await page.close();
 }
 
+// ─── Capture helpers ─────────────────────────────────────────────────────────
+
 async function captureSurface(
   context: BrowserContext,
   surface: Surface,
 ): Promise<string> {
   const page = await context.newPage();
-  // Viewport fixe pour reproductibilité (mêmes dimensions que le spec regression).
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${BASE_URL}${surface.path}`);
   if (surface.wait) await page.waitForTimeout(surface.wait);
-  const outPath = resolve(OUTPUT_DIR, `${surface.name}.png`);
-  await page.screenshot({
-    path: outPath,
-    fullPage: true,
-    animations: "disabled",
-  });
+  const outPath = resolve(OUTPUT_DIR, "surfaces", `${surface.name}.png`);
+  mkdirSync(dirname(outPath), { recursive: true });
+  await page.screenshot({ path: outPath, fullPage: true, animations: "disabled" });
   await page.close();
   return outPath;
 }
+
+async function runStep(page: Page, step: Step): Promise<void> {
+  const { action } = step;
+  switch (action.type) {
+    case "goto":
+      await page.goto(`${BASE_URL}${action.path}`);
+      break;
+    case "click":
+      await page.locator(action.selector).first().click({ timeout: 10_000 });
+      break;
+    case "fill":
+      await page.locator(action.selector).first().fill(action.value);
+      break;
+    case "wait":
+      await page.waitForTimeout(action.ms);
+      break;
+  }
+  await page.waitForTimeout(step.settleMs ?? 400);
+}
+
+async function captureScenario(
+  context: BrowserContext,
+  scenario: Scenario,
+): Promise<{ ok: number; failed: number }> {
+  const dir = resolve(OUTPUT_DIR, "scenarios", scenario.name);
+  mkdirSync(dir, { recursive: true });
+  const page = await context.newPage();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  // Login déjà partagé via context cookies — pas besoin de re-login.
+
+  let ok = 0;
+  let failed = 0;
+  for (const step of scenario.steps) {
+    try {
+      await runStep(page, step);
+      if (step.capture !== false) {
+        const outPath = resolve(dir, `${step.label}.png`);
+        await page.screenshot({
+          path: outPath,
+          fullPage: true,
+          animations: "disabled",
+        });
+      }
+      ok++;
+    } catch (err) {
+      console.error(`    ✗ step ${step.label} : ${String(err).split("\n")[0]}`);
+      failed++;
+      // Continue le scenario même si une étape échoue — la capture suivante
+      // documentera l'état réel (utile pour debug).
+    }
+  }
+  await page.close();
+  return { ok, failed };
+}
+
+// ─── Server lifecycle ────────────────────────────────────────────────────────
 
 async function isServerUp(): Promise<boolean> {
   try {
@@ -145,39 +301,27 @@ async function isServerUp(): Promise<boolean> {
 
 async function startServer(): Promise<ChildProcess> {
   console.log(`▶ Démarre next dev sur le port ${TEST_PORT}…`);
-  const proc = spawn(
-    "next",
-    ["dev", "-p", String(TEST_PORT)],
-    {
-      cwd: webDir,
-      env: {
-        ...process.env,
-        DATABASE_URL: TEST_DB_URL,
-        NEXTAUTH_URL: BASE_URL,
-      },
-      stdio: ["ignore", "pipe", "pipe"],
+  const proc = spawn("next", ["dev", "-p", String(TEST_PORT)], {
+    cwd: webDir,
+    env: {
+      ...process.env,
+      DATABASE_URL: TEST_DB_URL,
+      NEXTAUTH_URL: BASE_URL,
     },
-  );
-  // Attente de "Ready in" dans les logs
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   await new Promise<void>((res, rej) => {
     const timer = setTimeout(() => rej(new Error("server start timeout")), 60_000);
-    proc.stdout?.on("data", (data: Buffer) => {
+    const handler = (data: Buffer) => {
       const s = data.toString();
       if (s.includes("Ready") || s.includes("Local:")) {
         clearTimeout(timer);
         res();
       }
-    });
-    proc.stderr?.on("data", (data: Buffer) => {
-      // Next écrit ses logs sur stderr aussi
-      const s = data.toString();
-      if (s.includes("Ready") || s.includes("Local:")) {
-        clearTimeout(timer);
-        res();
-      }
-    });
+    };
+    proc.stdout?.on("data", handler);
+    proc.stderr?.on("data", handler);
   });
-  // Petite latence pour que les routes soient prêtes
   await new Promise((r) => setTimeout(r, 1500));
   return proc;
 }
@@ -185,11 +329,10 @@ async function startServer(): Promise<ChildProcess> {
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log(`▶ Audit UX — capture des surfaces clés`);
+  console.log(`▶ Audit UX — capture surfaces + scenarios`);
   console.log(`  Output : ${OUTPUT_DIR}`);
   mkdirSync(OUTPUT_DIR, { recursive: true });
 
-  // 1. Démarre le serveur si pas déjà up
   let ownsServer: ChildProcess | null = null;
   if (!(await isServerUp())) {
     ownsServer = await startServer();
@@ -197,7 +340,6 @@ async function main() {
     console.log(`  ↳ Serveur déjà UP sur ${BASE_URL}, réutilisation.`);
   }
 
-  // 2. Lance Chromium + login admin
   let browser: Browser | null = null;
   try {
     browser = await chromium.launch({ headless: true });
@@ -206,32 +348,41 @@ async function main() {
     });
     await login(context);
 
-    // 3. Capture chaque surface
-    let n = 0;
+    // SURFACES
+    console.log(`\n▶ Surfaces isolées (${SURFACES.length})`);
+    let surfaceOk = 0;
     for (const surface of SURFACES) {
       try {
-        const out = await captureSurface(context, surface);
-        n++;
-        console.log(`  ✓ ${surface.name} → ${out}`);
+        await captureSurface(context, surface);
+        console.log(`  ✓ ${surface.name}`);
+        surfaceOk++;
       } catch (err) {
-        console.error(`  ✗ ${surface.name} : ${String(err)}`);
+        console.error(`  ✗ ${surface.name} : ${String(err).split("\n")[0]}`);
       }
     }
 
-    console.log(`\n✅ ${n}/${SURFACES.length} captures dans ${OUTPUT_DIR}`);
-    console.log(`\n   Demande à Claude :`);
-    console.log(`     "Audit visuel des screenshots dans ${OUTPUT_DIR}"`);
-
-    // Liste les fichiers pour copier-coller facile
-    console.log(`\n   Fichiers :`);
-    for (const surface of SURFACES) {
-      console.log(`     - ${OUTPUT_DIR}/${surface.name}.png — ${surface.desc}`);
+    // SCENARIOS
+    console.log(`\n▶ Scenarios (${SCENARIOS.length})`);
+    let totalSteps = 0;
+    let totalOk = 0;
+    for (const scenario of SCENARIOS) {
+      console.log(`  ▸ ${scenario.name} — ${scenario.steps.length} étapes`);
+      const { ok, failed } = await captureScenario(context, scenario);
+      totalSteps += ok + failed;
+      totalOk += ok;
+      console.log(`    ${ok}/${ok + failed} captures`);
     }
+
+    console.log(`\n✅ Surfaces : ${surfaceOk}/${SURFACES.length}`);
+    console.log(`✅ Scenarios : ${totalOk}/${totalSteps} étapes capturées`);
+    console.log(`\n📁 ${OUTPUT_DIR}`);
+    console.log(`\n   Demande à Claude :`);
+    console.log(`     /audit-ux        # rapport classé surface par surface + scenario par scenario`);
+    console.log(`     /audit-ux captions-manual-workflow   # focus sur 1 scenario`);
   } finally {
     if (browser) await browser.close();
     if (ownsServer) {
       ownsServer.kill();
-      // Évite "child process didn't exit"
       execSync(`lsof -ti:${TEST_PORT} | xargs kill -9 2>/dev/null || true`, {
         stdio: "ignore",
       });

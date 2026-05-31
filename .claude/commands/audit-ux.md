@@ -1,77 +1,89 @@
 ---
-description: Audit UX visuel — capture les surfaces clés de l'app puis analyse les screenshots.
-argument-hint: [optionnel : surface(s) précise(s) à cibler, ex. "fiche publication"]
+description: Audit UX visuel — capture surfaces isolées + workflows multi-pages puis analyse la cohérence d'ensemble.
+argument-hint: [optionnel : nom de scenario à cibler, ex. "captions-manual-workflow"]
 ---
 
-Lance un audit UX visuel en deux temps : **capture** puis **analyse**.
+Lance un audit UX visuel en **trois temps** : capture → analyse par surface → analyse de cohérence inter-pages.
 
-## Étape 1 — Capture des screenshots
-
-Exécute le script de capture (génère un dossier timestampé dans `.claude/ux-audit/`) :
+## Étape 1 — Capture
 
 ```bash
 cd web && npm run ux:capture
 ```
 
-Pré-requis :
-- Docker Postgres up : `cd web && npm run infra:up`
-- DB de test seedée :
-  ```bash
-  cd web && npm run test:db:setup && npm run test:db:seed
-  ```
+Pré-requis : Docker up + DB de test seedée (`cd web && npm run test:db:setup && npm run test:db:seed`).
 
-Le script :
-1. Démarre `next dev` sur le port 3100 (avec DATABASE_URL → toolbox_test) si pas déjà up
-2. Login admin via NextAuth credentials (test_admin/testpass)
-3. Capture full-page de chaque surface listée dans `scripts/capture-ux-screenshots.ts` (variable `SURFACES`)
-4. Output : `.claude/ux-audit/<YYYY-MM-DD_HH-mm>/<surface>.png`
-5. Coupe le serveur s'il l'a démarré lui-même
+Le script génère :
+- `.claude/ux-audit/<timestamp>/surfaces/*.png` — pages isolées (snapshot d'état)
+- `.claude/ux-audit/<timestamp>/scenarios/<name>/<NN>-<step>.png` — workflows multi-étapes
 
-## Étape 2 — Analyse des screenshots
+## Étape 2 — Analyse par surface
 
-Une fois la capture terminée, lis chaque PNG du dossier output avec le **Read tool** (oui, tu peux ouvrir des images comme tu lirais un fichier — elles arrivent visuellement dans ton contexte multimodal).
+Pour chaque PNG du dossier `surfaces/`, lis-le avec le **Read tool** (les images arrivent visuellement dans ton contexte multimodal). Rapporte par surface, classé :
 
-Pour chaque surface, rapporte :
+- 🔴 **Critique** — Bug logique, info trompeuse, action bloquée. L'utilisateur va se planter.
+- 🟡 **Moyen** — Friction, redondance, hint manquant, copy ambigu. L'utilisateur freiné mais s'en sort.
+- 🟢 **OK** — Surface propre.
 
-### Format de rapport
+Pour chaque problème : zone (titre/label), une phrase de description, une phrase de fix proposé.
 
-Pour chaque surface, classe les problèmes en 3 catégories :
+## Étape 3 — Analyse de cohérence (scenarios)
 
-- 🔴 **Critique** — Bug logique, incohérence sémantique, info trompeuse, action bloquée. L'utilisateur va se planter.
-- 🟡 **Moyen** — Friction UX, redondance, hint manquant, copy ambigu, contraste limite. L'utilisateur est freiné mais s'en sort.
-- 🟢 **OK** — Surface propre, rien à signaler.
+Pour chaque scenario, lis **toutes les captures de la séquence dans l'ordre numéroté** (01, 02, 03…). Évalue la cohérence d'**ensemble**, pas juste chaque écran isolément :
 
-Pour chaque problème, sois précis :
-- Cite la zone (titre de section, label de bouton)
-- Décris ce qui cloche en une phrase
-- Propose le fix en une phrase
+### Questions à se poser entre les étapes
 
-### Ce qu'il faut chercher
+- **Transition** : le clic mène-t-il où l'utilisateur s'attendait ? Le titre/breadcrumb de la page d'arrivée correspond-il à l'action déclenchée ?
+- **Langage** : le mot "Sous-titres" est-il appelé pareil sur la fiche que sur l'éditeur ? Pas de glissement de vocabulaire ?
+- **Retour** : depuis chaque écran intermédiaire, le retour est-il clair et cohérent (1 chemin évident, pas 2 boutons redondants) ?
+- **État après action** : après "Enregistrer" / "Promouvoir" / etc., la fiche source reflète-t-elle la nouvelle réalité ? (statut changé, badge mis à jour, banner différent).
+- **Continuité visuelle** : même shell Liquid Glass v2 partout, mêmes couleurs d'accent par rôle, pas de fond gris en plein milieu d'un workflow glass.
+- **Charge mentale** : trop d'étapes pour une action simple ? Confirmation de trop ? Champ pré-rempli manqué ?
 
-**Cohérence sémantique** : un step "Fait" alors qu'aucune ressource n'existe, "En attente" alors que rien ne bloque, etc.
+### Format de rapport scenario
 
-**Doublons & redondance** : breadcrumb + bouton retour, label répété, badge dupliqué.
+Pour chaque scenario :
 
-**Langage Liquid Glass v2** : fond `bg-gray-50` ou `bg-white` plein au lieu de gradient page-shell / cards glass. Cherche les zones qui "cassent" l'unité visuelle.
+```
+## Scenario : <nom>
 
-**Empty states** : sont-ils guidants ou juste un message neutre ?
+**Pitch** : ce que le user essaie de faire en 1 phrase.
 
-**Loading / pending** : un spinner qui reste alors que rien ne tourne ?
+**Étapes capturées** : N PNG dans l'ordre.
 
-**Erreurs / blockers** : message jargon technique (RunPod/R2/FK) vs message user-friendly.
+**Cohérence d'ensemble** :
+- 🔴 / 🟡 / 🟢 — sur les transitions, le langage, le retour, l'état final.
 
-**Hierarchie** : titre/subtitle alignés, espacement cohérent entre sections, primary action clairement identifiable.
+**Verdict workflow** : "L'utilisateur arrive à but" / "Bloque à l'étape X" / "Friction principale entre étape A et B".
+```
 
-**Boutons primary** : un seul par surface, le bon (ex. "Enregistrer" et pas "Effacer").
+## Étape 4 — Conclusion
 
-## Sortie attendue
+Termine par une recommandation **"Si je devais fixer une seule chose pour rendre la chaîne fluide, ce serait X"**.
 
-Un rapport markdown structuré par surface, classé par gravité, terminé par une recommandation **"Si je devais fixer une seule chose, ce serait X"**.
-
-Ne propose pas d'implémentation — c'est un audit, pas un sprint. Le user décidera quoi fixer.
+Ne propose pas d'implémentation — c'est un audit. Le user choisit ensuite quoi fixer.
 
 ## Cible (si fournie)
 
 $ARGUMENTS
 
-Si aucune cible n'est précisée, audite TOUTES les surfaces capturées.
+Si un nom de scenario est passé, focus dessus uniquement. Sinon, audite TOUT.
+
+## Ajouter / modifier des scenarios
+
+Édite la const `SCENARIOS` dans `web/scripts/capture-ux-screenshots.ts`. Format :
+
+```ts
+{
+  name: "mon-workflow",
+  description: "Ce que le user essaie de faire",
+  steps: [
+    { label: "01-depart", action: { type: "goto", path: "/foo" }, settleMs: 500 },
+    { label: "02-clic-X", action: { type: "click", selector: 'button:has-text("X")' } },
+    { label: "03-fill-Y", action: { type: "fill", selector: 'input[name="y"]', value: "bla" } },
+    { label: "04-arrivee", action: { type: "wait", ms: 800 } },
+  ],
+}
+```
+
+Actions supportées : `goto`, `click`, `fill`, `wait`. Capture full-page après chaque étape (sauf si `capture: false`).
