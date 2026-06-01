@@ -101,6 +101,19 @@ export async function POST(_req: NextRequest, { params }: Params) {
     previousVersionNumber = prev?.versionNumber ?? null;
   }
 
+  // Bug-hunter #5 (2026-06-01) : `markJobsStaleForSlot` est désormais inclus
+  // dans la transaction. Sans ça, fenêtre observable entre commit currentVersionId
+  // et le stale-mark : un webhook RunPod COMPLETED arrivant dans cet intervalle
+  // set `activeCaptionJobId = newJob.id`, puis le stale-mark reset à null et
+  // marque ce job freshly-completed comme stale. Race confirmée par bug-hunter
+  // publications P1.1. La cascade auto (cover + transcription) reste hors tx.
+  let staleCounts = {
+    captionJobsMarkedCount: 0,
+    descriptionJobsMarkedCount: 0,
+    coverPacksMarkedCount: 0,
+    transcriptionJobsMarkedCount: 0,
+  };
+
   await prisma.$transaction(async (tx) => {
     // Update la version courante
     await tx.publicationSlot.update({
@@ -136,29 +149,17 @@ export async function POST(_req: NextRequest, { params }: Params) {
     // Auto-transition dans la même tx — évite un statut figé sur EDIT_REVIEW
     // si le process crash entre le commit de la tx et l'appel hors-tx.
     await applyAutoTransition(tx as typeof prisma, slotId, slot.status, "VERSION_PROMOTED", userContext.actualUser.id);
+
+    // Stale-mark atomique avec le changement de currentVersionId.
+    if (previousVersionId) {
+      staleCounts = await markJobsStaleForSlot(tx, slotId, "version_promoted");
+    }
   });
 
-  // V6.3 — Cascade d'invalidation : marquer comme stale tous les jobs aval
-  // liés à l'ancienne version (CaptionJob, DescriptionJob, CoverFramePack,
-  // TranscriptionJob). Reset slot.active*Id à null. La fiche affichera
-  // désormais ces jobs avec un badge "Obsolète" (vague V6.5).
-  // Exécuté hors transaction (best-effort) pour ne pas bloquer la promotion
-  // si une stale-mark échoue.
-  let staleCounts = {
-    captionJobsMarkedCount: 0,
-    descriptionJobsMarkedCount: 0,
-    coverPacksMarkedCount: 0,
-    transcriptionJobsMarkedCount: 0,
-  };
   if (previousVersionId) {
-    try {
-      staleCounts = await markJobsStaleForSlot(prisma, slotId, "version_promoted");
-      console.info(
-        `[promote] slot=${slotId} jobs marked stale: captions=${staleCounts.captionJobsMarkedCount} desc=${staleCounts.descriptionJobsMarkedCount} cover=${staleCounts.coverPacksMarkedCount} trans=${staleCounts.transcriptionJobsMarkedCount}`,
-      );
-    } catch (err) {
-      console.error(`[promote] markJobsStaleForSlot failed slot=${slotId}:`, err);
-    }
+    console.info(
+      `[promote] slot=${slotId} jobs marked stale: captions=${staleCounts.captionJobsMarkedCount} desc=${staleCounts.descriptionJobsMarkedCount} cover=${staleCounts.coverPacksMarkedCount} trans=${staleCounts.transcriptionJobsMarkedCount}`,
+    );
   }
 
   // Auto-trigger cover si pattern.coverMode = "auto" et preset configuré.

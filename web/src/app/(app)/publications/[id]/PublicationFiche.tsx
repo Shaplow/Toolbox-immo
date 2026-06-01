@@ -34,6 +34,7 @@ import { cloneElement } from "react";
 import type { ReactElement } from "react";
 import type { PublicationStep } from "@/lib/publications/steps";
 import { promoteVersionWarning } from "@/lib/publications/actions";
+import { resolveCaptionsMode, isCaptionsEnabled } from "@/lib/publications/captionsMode";
 import type { CommentData } from "@/components/publications/CommentItem";
 import type { ActivityItem } from "@/components/publications/ActivityTimeline";
 import type { UserRole } from "@/types/roles";
@@ -402,12 +403,9 @@ export function PublicationFiche({
   );
   trackVisible("render", true);
   trackVisible("cover", true);
-  // V8 — captions visible si mode auto OU manual (legacy Boolean en fallback).
-  const captionsActive =
-    !!pattern &&
-    (pattern.needsCaptionsMode === "auto" ||
-      pattern.needsCaptionsMode === "manual" ||
-      pattern.needsCaptions === true);
+  // V8 — captions visible si mode auto OU manual. resolveCaptionsMode gère
+  // le fallback Boolean → enum pour les patterns pas encore migrés.
+  const captionsActive = !!pattern && isCaptionsEnabled(resolveCaptionsMode({ pattern }));
   trackVisible("captions", captionsActive);
   trackVisible("description", true);
   trackVisible("clientValidation", true);
@@ -712,12 +710,17 @@ export function PublicationFiche({
                 COMPLETED (le client doit voir la version finale avec captions). */}
             {(() => {
               const captionsRequired = captionsActive;
+              // Bug-hunter #2 (2026-06-01) : exiger !staleSince pour éviter
+              // d'envoyer au client une validation sur un caption obsolète
+              // (lié à l'ancienne version pré-promote).
               const captionsReady =
                 !captionsRequired ||
-                latestCaptionJob?.status === "COMPLETED";
+                (latestCaptionJob?.status === "COMPLETED" && !latestCaptionJob?.staleSince);
               const canSendValidation = captionsReady;
               const cannotSendReason = !captionsReady
-                ? "Les sous-titres ne sont pas encore générés. Le client doit voir la vidéo finale avec sous-titres avant validation."
+                ? latestCaptionJob?.staleSince
+                  ? "Les sous-titres en place sont obsolètes (lien à l'ancienne version). Relance la chaîne avant de valider."
+                  : "Les sous-titres ne sont pas encore générés. Le client doit voir la vidéo finale avec sous-titres avant validation."
                 : null;
               return wrap(
                 "clientValidation",

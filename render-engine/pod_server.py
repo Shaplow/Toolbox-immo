@@ -14,10 +14,14 @@ Variables d'environnement requises : identiques au worker RunPod
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import os as _os
 import threading
 import time
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 # ─── HF_HOME fallback ─────────────────────────────────────────────────────────
@@ -142,9 +146,60 @@ async def run_job(request: Request) -> JSONResponse:
 # Delays between retry attempts (seconds). Total budget: 5 + 15 + 30 = 50s of retries.
 _WEBHOOK_RETRY_DELAYS_S = [5, 15, 30]
 
+# Security-auditor Critical-1 (2026-06-01) — HMAC body signing.
+#
+# Avant : le webhook secret était passé en query param `?secret=...`. Il fuite
+# dans les logs serveur (CDN, proxy), RunPod history, browser referers.
+#
+# Maintenant : on signe le body avec HMAC-SHA256(secret, "{timestamp}.{body}")
+# et on passe la signature + timestamp dans les headers. Le serveur Next valide
+# la signature avant d'accepter le webhook. Période de transition : on conserve
+# AUSSI le query secret pour que l'ancien path verify continue de marcher pendant
+# que les routes Next sont migrées.
+_WEBHOOK_SECRET = _os.environ.get("RUNPOD_WEBHOOK_SECRET", "")
+
+
+def _sign_webhook_body(body_json: str) -> dict[str, str]:
+    """Compute HMAC-SHA256 headers for a webhook POST.
+
+    Returns a dict of headers to attach. Returns empty dict if no secret is
+    configured (dev environment) — Next side will fall back to query secret
+    (also missing in this case) and the route will refuse the call.
+
+    Format :
+      X-Toolbox-Timestamp: <iso8601>
+      X-Toolbox-Signature: sha256=<hex>
+        where hex = HMAC-SHA256(secret, "{timestamp}.{body_json}")
+
+    Binding timestamp.body : sans le binding, un attaquant peut rejouer
+    le body avec un nouveau timestamp. Avec binding, la signature change
+    si l'un ou l'autre change.
+    """
+    if not _WEBHOOK_SECRET:
+        return {}
+    ts = datetime.now(timezone.utc).isoformat()
+    signed_payload = f"{ts}.{body_json}".encode("utf-8")
+    digest = hmac.new(
+        _WEBHOOK_SECRET.encode("utf-8"),
+        signed_payload,
+        hashlib.sha256,
+    ).hexdigest()
+    return {
+        "X-Toolbox-Timestamp": ts,
+        "X-Toolbox-Signature": f"sha256={digest}",
+        "Content-Type": "application/json",
+    }
+
 
 def _send_webhook_with_retry(job_id: str, url: str, payload: dict[str, Any]) -> None:
-    """POST the webhook with up to 3 retries on network/timeout failure."""
+    """POST the webhook with up to 3 retries on network/timeout failure.
+
+    Body is signed with HMAC-SHA256 if RUNPOD_WEBHOOK_SECRET is configured.
+    Falls back to query-param secret (legacy, deprecated) otherwise.
+    """
+    # Serialize body once so we sign the exact bytes that will be sent.
+    body_json = json.dumps(payload, separators=(",", ":"))
+    headers = _sign_webhook_body(body_json)
     max_attempts = len(_WEBHOOK_RETRY_DELAYS_S) + 1
     for attempt in range(1, max_attempts + 1):
         if attempt > 1:
@@ -156,14 +211,19 @@ def _send_webhook_with_retry(job_id: str, url: str, payload: dict[str, Any]) -> 
             )
             time.sleep(delay)
         try:
-            response = httpx.post(url, json=payload, timeout=30)
+            response = httpx.post(
+                url,
+                content=body_json,
+                headers=headers or {"Content-Type": "application/json"},
+                timeout=30,
+            )
             # Treat HTTP errors (4xx, 5xx) as failures so they are retried.
             # Without this, a 401/500 from the web app silently succeeds here
             # and onPodJobComplete() is never called → pod stuck running forever.
             response.raise_for_status()
             print(
                 f"[pod_server] Webhook appelé ✓ (attempt {attempt}, {url}, "
-                f"status={response.status_code})",
+                f"status={response.status_code}, hmac={'yes' if headers else 'no'})",
                 flush=True,
             )
             return

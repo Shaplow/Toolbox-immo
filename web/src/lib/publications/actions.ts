@@ -26,6 +26,8 @@
  * Les tests unit purs sur ce module garantissent les invariants métier.
  */
 
+import { resolveCaptionsMode, isCaptionsAuto } from "./captionsMode";
+
 export type ActionIntent =
   /** Le job tourne ou tournera automatiquement (pipeline) — pas d'action user. */
   | "auto"
@@ -125,10 +127,8 @@ export function canTriggerCaptions(ctx: ActionContext): ActionVerdict {
   // En mode "manual", l'admin écrit à la main via CaptionEditor (V8.2.4-6) —
   // CaptionsSection affiche un bouton dédié, pas ce verdict.
   if (!ctx.pattern) return { visible: false };
-  const mode =
-    ctx.pattern.needsCaptionsMode ??
-    (ctx.pattern.needsCaptions ? "auto" : "none");
-  if (mode !== "auto") return { visible: false };
+  const mode = resolveCaptionsMode({ pattern: ctx.pattern });
+  if (!isCaptionsAuto(mode)) return { visible: false };
 
   if (isAutoPipeline(ctx) && !ctx.latestCaptionJob) {
     // Message contextualisé selon l'état du render :
@@ -260,9 +260,13 @@ export function canGenerateDescription(ctx: ActionContext): ActionVerdict {
  * Promouvoir une PublicationVersion comme version courante.
  *
  * Retourne un `coherenceWarning` si des jobs (captions / cover) existent
- * déjà sur l'ancienne version — ils ne sont pas automatiquement re-générés
- * sur la nouvelle, et restent liés à l'ancienne version (incohérence
- * silencieuse). Cf. ClientValidation/VersionsSection.
+ * déjà sur l'ancienne version. Ils sont marqués obsolètes par la cascade
+ * `markJobsStaleForSlot` ; et la chaîne auto (cover autoPack, transcription
+ * → captions/description) est relancée automatiquement par la route promote
+ * via `tryAutoTriggerCover` + `triggerAutoTranscriptionForVersion`.
+ *
+ * Pour les modes manuels (cover manualSelect/monteurUpload, captions manual)
+ * l'admin doit re-déclencher manuellement — d'où le warning informatif.
  */
 export function promoteVersionWarning(ctx: ActionContext): string | null {
   const warnings: string[] = [];
@@ -274,8 +278,7 @@ export function promoteVersionWarning(ctx: ActionContext): string | null {
   }
   if (warnings.length === 0) return null;
   return (
-    "Attention : " +
     warnings.join(" et ") +
-    " ont déjà été générés sur la version précédente. Tu devras les relancer si tu veux les regénérer sur la nouvelle version courante."
+    " seront marqués obsolètes. La chaîne automatique va se relancer (si configurée en mode auto) ; sinon tu devras les regénérer manuellement."
   );
 }

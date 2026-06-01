@@ -110,8 +110,13 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // Garde contre la ré-importation accidentelle :
   // si la campaign a déjà des entrées, exiger force=true dans le formData.
+  // L'atomicité (count + createMany dans la même tx) est dans le createMany bloc
+  // plus bas pour éviter de tenir une tx pendant tout le parsing CSV.
+  // Bug-hunter #10 : check initial conservé en best-effort (early-return) mais
+  // re-vérifié dans la tx finale via advisory lock.
   const existingCount = await prisma.dataEntry.count({ where: { campaignId } });
-  if (existingCount > 0 && formData.get("force") !== "true") {
+  const forceFlag = formData.get("force") === "true";
+  if (existingCount > 0 && !forceFlag) {
     return NextResponse.json(
       {
         error: `Cette campaign contient déjà ${existingCount} entrée(s). Envoyez force=true pour ajouter quand même.`,
@@ -180,12 +185,37 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Aucune ligne de données trouvée dans le CSV" }, { status: 400 });
   }
 
+  // Bug-hunter #10 (2026-06-01) : transaction + advisory lock pour éviter
+  // double-import sous double-click ou requêtes concurrentes. Le lock sur le
+  // hash de campaignId est libéré au commit/rollback. Re-vérifier le count
+  // à l'intérieur du lock pour fail si une autre tx a importé entre-temps.
   try {
-    const result = await prisma.dataEntry.createMany({ data: entries });
+    const result = await prisma.$transaction(async (tx) => {
+      // Advisory lock — sérialise les imports concurrents sur la même campagne.
+      // pg_advisory_xact_lock prend un bigint, on hash le campaignId via hashtext.
+      await tx.$executeRawUnsafe(
+        `SELECT pg_advisory_xact_lock(hashtext($1))`,
+        `import:${campaignId}`,
+      );
+
+      // Re-vérification atomique : si une autre tx a importé pendant qu'on
+      // attendait le lock, on respecte la garde force=true.
+      const reCheck = await tx.dataEntry.count({ where: { campaignId } });
+      if (reCheck > existingCount && !forceFlag) {
+        throw new Error(
+          `Une autre import a ajouté ${reCheck - existingCount} entrée(s) pendant la requête. Recharge et confirme avec force=true.`,
+        );
+      }
+
+      return tx.dataEntry.createMany({ data: entries });
+    });
     return NextResponse.json({ imported: result.count }, { status: 201 });
   } catch (err) {
     console.error(`[admin/libraries/data/campaigns/${campaignId}/import] createMany error:`, err);
-    return NextResponse.json({ error: "Erreur serveur lors de l'import" }, { status: 500 });
+    const msg = err instanceof Error && err.message.startsWith("Une autre import")
+      ? err.message
+      : "Erreur serveur lors de l'import";
+    return NextResponse.json({ error: msg }, { status: 409 });
   }
 }
 

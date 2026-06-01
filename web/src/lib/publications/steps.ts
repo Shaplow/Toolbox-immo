@@ -16,6 +16,7 @@ import type {
 } from "@prisma/client";
 import type { UserRole } from "@/types/roles";
 import { POST_VALIDATION_STATUSES } from "./constants";
+import { resolveCaptionsMode, isCaptionsEnabled } from "./captionsMode";
 
 // ---------------------------------------------------------------------------
 // Types publics
@@ -277,13 +278,7 @@ export function computePublicationSteps(input: {
     pattern != null && pattern.coverMode !== "none";
   // V8.2.2 — captions visible si mode auto OU manual (les 2 produisent un
   // step captions dans la chaîne, juste avec UI différente côté fiche).
-  const captionsVisible =
-    pattern != null &&
-    (pattern.needsCaptionsMode === "auto" ||
-      pattern.needsCaptionsMode === "manual" ||
-      // Fallback compat Boolean si pattern pas encore migré (devrait pas
-      // arriver vu backfill, mais safe).
-      pattern.needsCaptions === true);
+  const captionsVisible = pattern != null && isCaptionsEnabled(resolveCaptionsMode({ pattern }));
   const descriptionVisible =
     pattern != null && pattern.needsDescription !== "none";
   const validationVisible = pattern?.needsClientValidation === true;

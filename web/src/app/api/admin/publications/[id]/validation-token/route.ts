@@ -16,6 +16,7 @@ import {
   CLIENT_VALIDATION_TOKEN_TTL_MS,
 } from "@/lib/publications/clientValidation";
 import { resolveClientValidationConfig } from "@/lib/services/slot/config";
+import { resolveCaptionsMode, isCaptionsAuto } from "@/lib/publications/captionsMode";
 import { logActivity } from "@/lib/services/slot/activity";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -38,7 +39,17 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
       status: true,
       needsClientValidationOverride: true,
       allowsClientRevisionOverride: true,
-      pattern: { select: { needsClientValidation: true, allowsClientRevision: true } },
+      needsCaptionsModeOverride: true,
+      needsCaptionsOverride: true,
+      activeCaptionJobId: true,
+      pattern: {
+        select: {
+          needsClientValidation: true,
+          allowsClientRevision: true,
+          needsCaptionsMode: true,
+          needsCaptions: true,
+        },
+      },
     },
   });
   if (!slot) {
@@ -70,6 +81,43 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
       },
       { status: 400 },
     );
+  }
+
+  // V8.10 — Verrou backend : captions auto doivent être COMPLETED + non-stale.
+  // Le client doit voir la vidéo finale avec sous-titres, pas la brute.
+  // Évite bypass via API directe quand UI lock (canSendValidation) est désactivé.
+  // Mode "manual" exclu : pas de CaptionJob généré (édition libre via CaptionEditor),
+  // pas de garde possible. Mode "none" : aucun captions requis.
+  const captionsMode = resolveCaptionsMode({
+    slot: {
+      needsCaptionsModeOverride: slot.needsCaptionsModeOverride,
+      needsCaptionsOverride: slot.needsCaptionsOverride,
+    },
+    pattern: slot.pattern,
+  });
+  if (isCaptionsAuto(captionsMode)) {
+    if (!slot.activeCaptionJobId) {
+      return NextResponse.json(
+        {
+          error:
+            "Aucun job de sous-titres actif sur ce slot. Lance les captions avant d'envoyer pour validation.",
+        },
+        { status: 400 },
+      );
+    }
+    const activeCaption = await prisma.captionJob.findUnique({
+      where: { id: slot.activeCaptionJobId },
+      select: { status: true, staleSince: true },
+    });
+    if (!activeCaption || activeCaption.status !== "COMPLETED" || activeCaption.staleSince) {
+      return NextResponse.json(
+        {
+          error:
+            "Les sous-titres doivent être terminés avant l'envoi pour validation (le client doit voir la vidéo finale).",
+        },
+        { status: 400 },
+      );
+    }
   }
 
   // ADMIN qui crée le token = actualUser (pas effectiveUser, pour audit fidèle)

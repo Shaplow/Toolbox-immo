@@ -14,6 +14,15 @@
  */
 
 import type { CaptionJob, CoverFramePack, DescriptionJob, PrismaClient, TranscriptionJob } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+
+/**
+ * Type union accepté pour les helpers qui peuvent tourner en transaction.
+ * Permet d'appeler ces helpers depuis un callback `$transaction(async (tx) => ...)`
+ * ou directement avec `prisma`. Sans ça, on a un risque de fenêtre commit↔helper
+ * où des webhooks parallèles peuvent corrompre l'état (cf. bug-hunter P1.1).
+ */
+type PrismaTxOrClient = PrismaClient | Prisma.TransactionClient;
 
 // ── Types utilitaires ──────────────────────────────────────────────────────
 
@@ -115,7 +124,7 @@ interface MarkStaleResult {
  * de pattern source qui invalide la chaîne actuelle.
  */
 export async function markJobsStaleForSlot(
-  prisma: PrismaClient,
+  prisma: PrismaTxOrClient,
   slotId: string,
   reason: StaleReason,
 ): Promise<MarkStaleResult> {

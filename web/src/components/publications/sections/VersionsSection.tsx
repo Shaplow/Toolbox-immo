@@ -173,20 +173,18 @@ function VersionCard({
       // V6.5.2 — Si des jobs aval ont été marqués stale par la cascade
       // (V6.3.1), informer l'admin qu'il faut régénérer ces jobs pour la
       // nouvelle version.
+      // UX-auditor #1 (2026-06-01) : éviter "marqués obsolètes" jargon DB.
+      // Wording dirigé : ce qui est ré-déclenché auto vs ce qui demande action.
       const c = data.staleCounts;
       if (c) {
         const items: string[] = [];
-        if (c.captionJobsMarkedCount > 0)
-          items.push(`${c.captionJobsMarkedCount} sous-titres`);
-        if (c.coverPacksMarkedCount > 0)
-          items.push(`${c.coverPacksMarkedCount} cover`);
-        if (c.descriptionJobsMarkedCount > 0)
-          items.push(`${c.descriptionJobsMarkedCount} description IA`);
-        if (c.transcriptionJobsMarkedCount > 0)
-          items.push(`${c.transcriptionJobsMarkedCount} transcription`);
+        if (c.captionJobsMarkedCount > 0) items.push("sous-titres");
+        if (c.coverPacksMarkedCount > 0) items.push("cover");
+        if (c.descriptionJobsMarkedCount > 0) items.push("description IA");
+        if (c.transcriptionJobsMarkedCount > 0) items.push("transcription");
         if (items.length > 0) {
           toast.info(
-            `${items.join(", ")} marqués obsolètes — régénère-les pour la nouvelle version.`,
+            `Les ${items.join(", ")} liés à la version précédente seront régénérés automatiquement pour la nouvelle version courante.`,
           );
         }
       }

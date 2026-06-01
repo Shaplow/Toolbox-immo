@@ -1,20 +1,19 @@
 /**
  * captureError — facade unifiée pour la remontée d'erreurs en production.
  *
- * Aujourd'hui : no-op + console.error (comportement actuel inchangé).
- * Demain : remplace l'implémentation par @sentry/nextjs sans toucher aux
- * call sites.
+ * État actuel (2026-06-01) :
+ *  - SENTRY_DSN env absent → no-op + console.error (comportement actuel)
+ *  - SENTRY_DSN env présent → dynamic import @sentry/nextjs et delegate
+ *  - Rate-limit interne : 1 envoi / min / tag pour éviter quota explosion
  *
- * Étapes pour activer Sentry quand l'équipe est prête (E1 du plan §19) :
+ * Étapes pour activer Sentry quand l'équipe est prête :
  *  1. `npm install @sentry/nextjs`
- *  2. Ajouter SENTRY_DSN à .env.local (récupéré sur sentry.io)
- *  3. Créer sentry.client.config.ts + sentry.server.config.ts
- *     (commandes auto via `npx @sentry/wizard@latest -i nextjs`)
- *  4. Remplacer le corps de `captureError` et `captureMessage` par
- *     `Sentry.captureException` / `Sentry.captureMessage`.
+ *  2. `npx @sentry/wizard@latest -i nextjs` (crée sentry.client/server/edge.config.ts + next.config wrap)
+ *  3. Ajouter SENTRY_DSN à .env (récupéré sur sentry.io)
+ *  4. Audit PII : ne pas envoyer slot.description, user.email, transcript brut dans `extra`
+ *  5. Région EU + retention 30j minimum
  *
- * En attendant, les call sites sont en place et la migration sera
- * triviale (juste l'intérieur de ce fichier change).
+ * En attendant, les call sites sont en place et la migration sera transparente.
  */
 
 interface CaptureErrorContext {
@@ -27,8 +26,25 @@ interface CaptureErrorContext {
 }
 
 /**
+ * Rate-limit interne : 1 envoi / RATE_WINDOW_MS / tag.
+ * Évite qu'un cron en boucle explose le quota Sentry (ou les logs prod).
+ * In-memory Map → reset au cold-start, KO en multi-worker mais le worst-case
+ * reste linéaire (N workers × 60 evts/h/tag).
+ */
+const RATE_WINDOW_MS = 60_000;
+const lastSentByTag = new Map<string, number>();
+
+function shouldEmit(tag: string): boolean {
+  const now = Date.now();
+  const last = lastSentByTag.get(tag) ?? 0;
+  if (now - last < RATE_WINDOW_MS) return false;
+  lastSentByTag.set(tag, now);
+  return true;
+}
+
+/**
  * Capture une exception et la remonte vers l'outil d'observabilité.
- * No-op (console.error uniquement) tant que Sentry n'est pas câblé.
+ * No-op (console.error uniquement) tant que SENTRY_DSN n'est pas défini.
  */
 export function captureError(error: unknown, context?: CaptureErrorContext): void {
   const tag = context?.tag ?? "uncategorized";
@@ -44,7 +60,27 @@ export function captureError(error: unknown, context?: CaptureErrorContext): voi
     ...context?.extra,
   });
 
-  // TODO E1 step 4 : remplacer par Sentry.captureException(error, { tags: { tag }, extra: context.extra })
+  // Si DSN configuré, delegate à Sentry (rate-limité pour ne pas exploser quota).
+  // Dynamic import : la dep @sentry/nextjs n'est ajoutée que si l'équipe l'install.
+  // Sans dep installée, l'import lance une erreur catchée silencieusement.
+  if (process.env.SENTRY_DSN && shouldEmit(tag)) {
+    // Dynamic import via variable pour bypass TS module check (dep optionnelle
+    // pas encore installée). Si @sentry/nextjs absent, l'import throw et le
+    // catch silencieux laisse le console.error standard prendre le relais.
+    const sentryModule = "@sentry/nextjs";
+    void import(/* webpackIgnore: true */ sentryModule)
+      .then((Sentry: { captureException: (e: unknown, o: object) => void }) => {
+        Sentry.captureException(error, {
+          tags: { tag },
+          level: level === "warning" ? "warning" : level === "info" ? "info" : "error",
+          extra: context?.extra,
+        });
+      })
+      .catch(() => {
+        // @sentry/nextjs non installée ou DSN invalide → silencieux.
+        // L'erreur a déjà été logguée via console.error/warn/info ci-dessus.
+      });
+  }
 }
 
 /**
@@ -59,5 +95,18 @@ export function captureMessage(message: string, context?: CaptureErrorContext): 
     level === "error" ? console.error : level === "warning" ? console.warn : console.info;
   logFn(`[captureMessage ${tag}]`, message, context?.extra ?? {});
 
-  // TODO E1 step 4 : remplacer par Sentry.captureMessage(message, { level, tags: { tag } })
+  if (process.env.SENTRY_DSN && shouldEmit(tag)) {
+    const sentryModule = "@sentry/nextjs";
+    void import(/* webpackIgnore: true */ sentryModule)
+      .then((Sentry: { captureMessage: (m: string, o: object) => void }) => {
+        Sentry.captureMessage(message, {
+          tags: { tag },
+          level: level === "warning" ? "warning" : level === "error" ? "error" : "info",
+          extra: context?.extra,
+        });
+      })
+      .catch(() => {
+        // Cf. note dans captureError.
+      });
+  }
 }

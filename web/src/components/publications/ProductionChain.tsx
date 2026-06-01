@@ -45,6 +45,10 @@ const STEP_TO_SECTION: Record<string, string> = {
   cover: "cover",
   captions: "captions",
   description: "description",
+  // UX-auditor #4 (2026-06-01) : sans cette entrée, le clic sur le step
+  // "Validation client" dans le Stepper tombait dans un return silencieux
+  // (sectionId = undefined). Le step était actionnable sans cible scroll.
+  validation: "clientValidation",
   publish: "publish",
 };
 

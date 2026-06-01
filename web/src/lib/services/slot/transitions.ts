@@ -15,6 +15,7 @@
 import type { SlotStatus, UserRole } from "@/types/roles";
 import type { PrismaClient } from "@prisma/client";
 import { logActivity } from "./activity";
+import { resolveCaptionsMode, isCaptionsAuto } from "@/lib/publications/captionsMode";
 
 // ─── Statuts legacy toujours présents en base (Phase 1.3 backfill) ────────────
 
@@ -285,10 +286,7 @@ export function computeAutoTransitionTargetPure(
     // V8.2.2 — Le pipeline auto-transition n'attend les captions QUE en mode
     // auto. En mode "manual", le CM écrit à la main dans la fiche : pas de
     // job RunPod à attendre → on transitionne directement post-pipeline.
-    const captionsMode =
-      slot.pattern.needsCaptionsMode ??
-      (slot.pattern.needsCaptions ? "auto" : "none");
-    const captionsAutoExpected = captionsMode === "auto";
+    const captionsAutoExpected = isCaptionsAuto(resolveCaptionsMode({ pattern: slot.pattern }));
     if (!captionsAutoExpected) {
       target = postPipelineTarget;
     } else if (captionStatus === "COMPLETED") {
@@ -394,19 +392,24 @@ export async function syncSlotsPipelineStatuses(
       needsClientValidation?: boolean;
     } | null;
     render: { status: string } | null;
-    captionJobs?: Array<{ status: string }>;
+    captionJobs?: Array<{ status: string; staleSince?: Date | string | null }>;
   }>,
 ): Promise<Map<string, SlotStatus>> {
   const updates = new Map<string, SlotStatus>();
 
   const targets = slots
     .map((s) => {
+      // Bug-hunter #2 (2026-06-01) : ignorer les jobs stale dans le calcul
+      // de transition. Un caption COMPLETED stale (post-promote V2) faisait
+      // basculer le slot en AWAITING_CLIENT à chaque page load, alors que la
+      // nouvelle transcription tournait encore. Slot data-integrity issue.
+      const freshCaption = s.captionJobs?.find((c) => !c.staleSince) ?? null;
       const target = computeAutoTransitionTargetPure({
         status: s.status,
         pattern: s.pattern,
         needsClientValidationOverride: s.needsClientValidationOverride,
         render: s.render,
-        latestCaptionJobStatus: s.captionJobs?.[0]?.status ?? null,
+        latestCaptionJobStatus: freshCaption?.status ?? null,
       });
       return target ? { id: s.id, from: s.status, to: target } : null;
     })

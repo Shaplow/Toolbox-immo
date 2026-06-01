@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runpod";
+import { verifyAndParseRunpodWebhook } from "@/lib/webhooks/runpod";
 import { isR2PublicUrl } from "@/lib/r2";
 
 /**
@@ -22,10 +22,8 @@ type MediaEditOutput = {
 };
 
 export async function POST(req: NextRequest) {
-  const authError = verifyRunpodWebhook(req);
-  if (authError) return authError;
-
-  const parsed = await parseRunpodWebhookBody<MediaEditOutput>(req);
+  // Security-auditor Critical-1 — auth HMAC body-signed.
+  const parsed = await verifyAndParseRunpodWebhook<MediaEditOutput>(req);
   if (!parsed.ok) return parsed.response;
 
   const { id: runpodId, status, output, error } = parsed.body;
@@ -61,10 +59,18 @@ export async function POST(req: NextRequest) {
     const newUrl = output.video_url && isR2PublicUrl(output.video_url)
       ? output.video_url
       : undefined;
+    // Bug-hunter #7 — Si le worker renvoie un video_url non-R2 (worker mal configuré,
+    // env R2_PUBLIC_URL absente, etc.), on doit FAIL le job. Sinon : asset.url
+    // garde l'ancienne valeur (cache-bust trompeur) tandis qu'un nouvel objet
+    // R2 a été créé par le worker et reste orphelin pour toujours.
     if (output.video_url && newUrl === undefined) {
-      console.warn(
-        `[webhook/media-edit] job=${job.id} rejected non-R2 video_url=${output.video_url}`,
-      );
+      const errorMsg = `Output video_url non-R2 rejeté (sécurité) : ${output.video_url}`;
+      console.error(`[webhook/media-edit] job=${job.id} ${errorMsg}`);
+      await prisma.mediaEditJob.update({
+        where: { id: job.id },
+        data: { status: "failed", errorMsg },
+      });
+      return NextResponse.json({ ok: true });
     }
 
     await prisma.$transaction(async (tx) => {

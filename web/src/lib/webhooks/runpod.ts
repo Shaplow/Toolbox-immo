@@ -13,9 +13,59 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 
 const WEBHOOK_SECRET = process.env.RUNPOD_WEBHOOK_SECRET;
+
+/**
+ * Security-auditor Critical-1 (2026-06-01) — HMAC body-signing optionnel.
+ *
+ * Le secret en query param (?secret=...) fuite dans les logs serveur (CDN,
+ * proxy, RunPod history). Migration vers HMAC body-signed via header
+ * `X-Toolbox-Signature: sha256=<hex>` + `X-Toolbox-Timestamp: <iso>`.
+ *
+ * Phase de transition : on accepte les DEUX méthodes pendant 7 jours pour
+ * éviter de casser les jobs en vol. Le worker render-engine doit ensuite
+ * être migré pour signer le body et plus passer le secret en query.
+ *
+ * Replay attack protection : timestamp doit être < 5min du now serveur,
+ * sinon reject même si signature valide.
+ */
+const HMAC_REPLAY_WINDOW_MS = 5 * 60 * 1000;
+
+/**
+ * Vérifie une signature HMAC-SHA256 sur le body brut.
+ * Retourne true si valide ET timestamp dans la fenêtre anti-replay.
+ */
+function verifyHmacSignature(rawBody: string, signatureHeader: string | null, timestampHeader: string | null): boolean {
+  if (!WEBHOOK_SECRET || !signatureHeader || !timestampHeader) return false;
+
+  // Format header attendu : "sha256=<hex>"
+  const sigMatch = /^sha256=([a-f0-9]{64})$/i.exec(signatureHeader);
+  if (!sigMatch) return false;
+  const providedHex = sigMatch[1];
+
+  // Timestamp dans la fenêtre anti-replay
+  const ts = Date.parse(timestampHeader);
+  if (Number.isNaN(ts)) return false;
+  const now = Date.now();
+  if (Math.abs(now - ts) > HMAC_REPLAY_WINDOW_MS) return false;
+
+  // Calcul HMAC sur `timestamp.body` pour binding (sinon attaquant peut rejouer
+  // un body avec un nouveau timestamp et reconstruire la signature).
+  const expected = createHmac("sha256", WEBHOOK_SECRET)
+    .update(`${timestampHeader}.${rawBody}`)
+    .digest("hex");
+
+  try {
+    const expectedBuf = Buffer.from(expected, "hex");
+    const providedBuf = Buffer.from(providedHex, "hex");
+    if (expectedBuf.length !== providedBuf.length) return false;
+    return timingSafeEqual(expectedBuf, providedBuf);
+  } catch {
+    return false;
+  }
+}
 
 if (!WEBHOOK_SECRET && process.env.NODE_ENV !== "test") {
   // Non gated par NODE_ENV=production : staging / preview deployments
@@ -64,6 +114,24 @@ export function verifyRunpodWebhook(req: NextRequest): NextResponse | null {
     );
     return null;
   }
+
+  // Phase 1 (header HMAC, prefer) — Security-auditor Critical-1 fix.
+  // Worker render-engine doit signer body avec HMAC-SHA256 + timestamp.
+  // Si headers présents et valides → accepter sans recourir au query param.
+  const sigHeader = req.headers.get("x-toolbox-signature");
+  const tsHeader = req.headers.get("x-toolbox-timestamp");
+  if (sigHeader && tsHeader) {
+    // Note : on ne peut pas re-read le body ici (déjà consommé par le caller).
+    // À implémenter : la verify HMAC nécessite que le caller passe le rawBody.
+    // En attendant la migration worker, le query param reste accepté ci-dessous.
+    // TODO : refactor `parseRunpodWebhookBody` pour clone le body et fournir
+    // une variante `verifyRunpodWebhookWithBody(req, rawBody)`.
+    console.info("[verifyRunpodWebhook] HMAC headers detected but verify pending body-clone refactor — fallback query param.");
+  }
+
+  // Phase 2 (legacy query param, deprecated) — toujours accepté pendant la
+  // transition pour ne pas casser les jobs en vol. À retirer une fois que
+  // le worker render-engine est migré.
   const provided = req.nextUrl.searchParams.get("secret");
   if (!provided) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -84,6 +152,50 @@ export function verifyRunpodWebhook(req: NextRequest): NextResponse | null {
   return null;
 }
 
+/**
+ * Variante de `verifyRunpodWebhook` qui vérifie en priorité une signature
+ * HMAC body-signed. Le caller doit fournir le rawBody (avant parse JSON).
+ * À utiliser dans les nouveaux webhooks ou après refactor des existants.
+ *
+ * Migration recommandée :
+ * 1. Worker render-engine signe `X-Toolbox-Signature: sha256=hex(hmac(SECRET, ts.body))`
+ * 2. Worker envoie aussi `X-Toolbox-Timestamp: <iso>`
+ * 3. Côté Next : `const raw = await req.text(); const body = JSON.parse(raw); verifyRunpodWebhookWithBody(req, raw);`
+ * 4. Une fois tous les workers migrés (~7j), retirer le fallback query param.
+ */
+export function verifyRunpodWebhookWithBody(req: NextRequest, rawBody: string): NextResponse | null {
+  if (!WEBHOOK_SECRET) {
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        { error: "Webhook secret not configured on server" },
+        { status: 503 },
+      );
+    }
+    return null;
+  }
+
+  const sigHeader = req.headers.get("x-toolbox-signature");
+  const tsHeader = req.headers.get("x-toolbox-timestamp");
+  if (verifyHmacSignature(rawBody, sigHeader, tsHeader)) {
+    return null; // HMAC valide
+  }
+
+  // Fallback legacy query param (à retirer post-migration)
+  const provided = req.nextUrl.searchParams.get("secret");
+  if (!provided) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const providedBuf = Buffer.from(provided, "utf8");
+  const secretBuf = Buffer.from(WEBHOOK_SECRET, "utf8");
+  if (providedBuf.length !== secretBuf.length) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!timingSafeEqual(providedBuf, secretBuf)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return null;
+}
+
 export interface RunpodWebhookBody<TOutput = Record<string, unknown>> {
   id: string;
   status: string;
@@ -92,11 +204,75 @@ export interface RunpodWebhookBody<TOutput = Record<string, unknown>> {
 }
 
 /**
+ * One-shot helper : lit le body, vérifie l'auth (HMAC OU query secret legacy),
+ * parse le JSON. Remplace l'enchaînement `verifyRunpodWebhook` +
+ * `parseRunpodWebhookBody` qui consommait le body deux fois — incompatible
+ * avec la verify HMAC qui a besoin du rawBody avant le JSON.parse.
+ *
+ * Security-auditor Critical-1 (2026-06-01) : usage prioritaire pour les
+ * nouvelles routes webhook. Les routes existantes peuvent continuer à utiliser
+ * le double-appel mais perdront l'option HMAC (fallback query secret only).
+ */
+export async function verifyAndParseRunpodWebhook<TOutput = Record<string, unknown>>(
+  req: NextRequest,
+): Promise<
+  | { ok: true; body: RunpodWebhookBody<TOutput> }
+  | { ok: false; response: NextResponse }
+> {
+  // Lire le body RAW une seule fois — req.body est une stream non-rewindable.
+  let rawBody: string;
+  try {
+    rawBody = await req.text();
+  } catch {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Cannot read body" }, { status: 400 }),
+    };
+  }
+
+  // Auth : HMAC en priorité, fallback query secret legacy.
+  const authError = verifyRunpodWebhookWithBody(req, rawBody);
+  if (authError) {
+    return { ok: false, response: authError };
+  }
+
+  // Parse JSON
+  let body: RunpodWebhookBody<TOutput>;
+  try {
+    body = JSON.parse(rawBody) as RunpodWebhookBody<TOutput>;
+  } catch {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Invalid JSON" }, { status: 400 }),
+    };
+  }
+
+  if (!body.id || !body.status) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Missing id or status" }, { status: 400 }),
+    };
+  }
+
+  // Non-blocking : decrement active job count and maybe stop the pod.
+  // Cf. parseRunpodWebhookBody pour le rationale.
+  if (body.id.startsWith("pod-")) {
+    void import("@/lib/podOrchestrator").then(({ onPodJobComplete }) => {
+      void onPodJobComplete();
+    });
+  }
+
+  return { ok: true, body };
+}
+
+/**
  * Parses and validates the JSON body sent by RunPod on job completion.
  * Returns { ok: true, body } on success, or { ok: false, response } on parse error.
  *
  * Also triggers a non-blocking idle-stop check on the pod after each completed
  * job — this is the single call site for maybeStopIdlePod() across all webhooks.
+ *
+ * @deprecated Use `verifyAndParseRunpodWebhook` instead (supports HMAC body-signing).
  */
 export async function parseRunpodWebhookBody<TOutput = Record<string, unknown>>(
   req: NextRequest

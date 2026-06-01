@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { deleteFromR2, r2Configured } from "@/lib/r2";
-import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runpod";
+import { verifyAndParseRunpodWebhook } from "@/lib/webhooks/runpod";
 import { notifyUser } from "@/lib/sseStore";
 import { triggerAutoCaptionForTranscription } from "@/lib/triggerAutoCaptionFromTranscription";
 import { triggerAutoDescriptionForTranscription } from "@/lib/triggerAutoDescriptionFromTranscription";
@@ -25,10 +25,8 @@ type TranscriptionOutput = {
 };
 
 export async function POST(req: NextRequest) {
-  const authError = verifyRunpodWebhook(req);
-  if (authError) return authError;
-
-  const parsed = await parseRunpodWebhookBody<TranscriptionOutput>(req);
+  // Security-auditor Critical-1 — auth HMAC body-signed.
+  const parsed = await verifyAndParseRunpodWebhook<TranscriptionOutput>(req);
   if (!parsed.ok) return parsed.response;
 
   const { id: runpodJobId, status, output, error } = parsed.body;

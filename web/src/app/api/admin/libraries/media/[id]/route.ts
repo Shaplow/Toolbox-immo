@@ -86,20 +86,25 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Bibliothèque introuvable" }, { status: 404 });
   }
 
-  // Supprimer les fichiers R2 en premier (ignoré en dev sans config R2)
+  // Supprimer les fichiers R2 en premier (ignoré en dev sans config R2).
+  // Parallèle via Promise.allSettled : si certains échouent, on stoppe l'opération
+  // mais les déjà-supprimés ne sont pas réessayés. `deleteFromR2` est idempotent
+  // (NoSuchKey traité comme succès par S3), donc un retry par l'admin est safe.
   if (r2Configured()) {
-    const r2Errors: string[] = [];
-    for (const asset of library.assets) {
-      try {
-        await deleteFromR2(asset.r2Key);
-      } catch (err) {
-        r2Errors.push(asset.r2Key);
-        console.error(`[admin/libraries/media] R2 delete failed for ${asset.r2Key}:`, err);
-      }
-    }
+    const results = await Promise.allSettled(
+      library.assets.map((asset) => deleteFromR2(asset.r2Key))
+    );
+    const r2Errors = results
+      .map((r, i) => (r.status === "rejected" ? library.assets[i].r2Key : null))
+      .filter((k): k is string => k !== null);
     if (r2Errors.length > 0) {
+      r2Errors.forEach((key) =>
+        console.error(`[admin/libraries/media] R2 delete failed for ${key}`)
+      );
       return NextResponse.json(
-        { error: `Échec suppression R2 pour ${r2Errors.length} fichier(s). Réessayez.` },
+        {
+          error: `Échec suppression R2 pour ${r2Errors.length} fichier(s) sur ${library.assets.length}. Réessayez (les suppressions déjà réalisées sont idempotentes).`,
+        },
         { status: 500 }
       );
     }

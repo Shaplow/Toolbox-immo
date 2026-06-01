@@ -21,6 +21,152 @@ import type {
 type PrismaQueryClient = Pick<typeof prisma, '$queryRaw'>;
 
 /**
+ * Bug-hunter #3 (2026-06-01) — burn-once race fix.
+ *
+ * Atomique : SELECT FOR UPDATE SKIP LOCKED + claim immédiat (insert
+ * MediaAssetUsage avec usageCount=0 si accountId, sinon increment
+ * MediaAsset.usageCount=1) dans la même transaction. Garantit que 2
+ * renders concurrents ne peuvent pas picker le même asset quand
+ * maxUsageCount est set.
+ *
+ * Caller : à utiliser par les paths qui font du `least_used` strict avec
+ * burn-once (api/renders POST notamment). Les paths read-only/preview
+ * continuent à utiliser `selectMediaAsset` (pas de claim, pas de lock).
+ */
+export async function selectAndClaimMediaAsset(
+  libraryId: string,
+  rule: MediaSelectionRule | undefined,
+  formData?: Record<string, unknown>,
+  accountId?: string,
+  excludeAssetIds?: string[],
+  minDuration?: number,
+): Promise<{ id: string; url: string; filename: string; metadata: Record<string, string | number | null> } | null> {
+  return prisma.$transaction(async (tx) => {
+    // SELECT FOR UPDATE SKIP LOCKED via raw query — le lock est posé
+    // jusqu'au commit/rollback de cette transaction. Un 2e concurrent
+    // sur le même asset saute via SKIP LOCKED et picke le suivant.
+    const picked = await selectMediaAssetWithLock({
+      tx,
+      libraryId,
+      rule,
+      formData,
+      accountId,
+      excludeAssetIds,
+      minDuration,
+    });
+    if (!picked) return null;
+
+    // Claim immédiat : marque l'asset comme "déjà pris" pour les
+    // concurrents qui attendent l'unlock (post-commit). Pour per_account :
+    // upsert MediaAssetUsage avec lastUsedAt=now. Pour shared :
+    // increment MediaAsset.usageCount.
+    if (accountId) {
+      await tx.mediaAssetUsage.upsert({
+        where: { assetId_accountId: { assetId: picked.id, accountId } },
+        create: {
+          assetId: picked.id,
+          accountId,
+          usageCount: 1,
+          lastUsedAt: new Date(),
+        },
+        update: {
+          usageCount: { increment: 1 },
+          lastUsedAt: new Date(),
+        },
+      });
+    } else {
+      await tx.mediaAsset.update({
+        where: { id: picked.id },
+        data: {
+          usageCount: { increment: 1 },
+          lastUsedAt: new Date(),
+        },
+      });
+    }
+
+    return picked;
+  });
+}
+
+/** Internal : SELECT with FOR UPDATE SKIP LOCKED, scoped to a tx. */
+async function selectMediaAssetWithLock(args: {
+  tx: Prisma.TransactionClient;
+  libraryId: string;
+  rule: MediaSelectionRule | undefined;
+  formData?: Record<string, unknown>;
+  accountId?: string;
+  excludeAssetIds?: string[];
+  minDuration?: number;
+}): Promise<{ id: string; url: string; filename: string; metadata: Record<string, string | number | null> } | null> {
+  const { tx, libraryId, rule, formData, accountId, excludeAssetIds, minDuration } = args;
+  const config = normalizeRule(rule);
+  const { strategy } = config;
+  if (strategy === "manual") return null;
+
+  const lib = await tx.mediaLibrary.findUnique({
+    where: { id: libraryId },
+    select: { maxUsageCount: true, rotationMode: true },
+  });
+  if (lib?.rotationMode === "none") return null;
+
+  const tagFrag = buildTagFragment(config, formData);
+  const burnFilter = buildBurnFilter(lib?.maxUsageCount ?? null, accountId);
+  const accessFilter = accountId
+    ? Prisma.sql`AND ma."disabled" = false
+        AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
+        OR EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id AND acc."accountId" = ${accountId}))`
+    : Prisma.sql`AND ma."disabled" = false
+        AND NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)`;
+  const excludeFrag = excludeAssetIds && excludeAssetIds.length > 0
+    ? Prisma.sql`AND ma.id NOT IN (${Prisma.join(excludeAssetIds.map((id) => Prisma.sql`${id}`), ", ")})`
+    : Prisma.sql``;
+  const durationFrag = minDuration != null && minDuration > 0
+    ? Prisma.sql`AND ma.duration >= ${minDuration}`
+    : Prisma.sql``;
+
+  // Ordering selon strategy. FOR UPDATE SKIP LOCKED appliqué à la fin.
+  let orderClause: Prisma.Sql;
+  let joinClause: Prisma.Sql = Prisma.sql``;
+  if (strategy === "random") {
+    orderClause = Prisma.sql`ORDER BY RANDOM()`;
+  } else if (strategy === "oldest_used") {
+    if (accountId) {
+      joinClause = Prisma.sql`LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}`;
+      orderClause = Prisma.sql`ORDER BY mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC`;
+    } else {
+      orderClause = Prisma.sql`ORDER BY ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC`;
+    }
+  } else {
+    if (accountId) {
+      joinClause = Prisma.sql`LEFT JOIN "MediaAssetUsage" mau ON mau."assetId" = ma.id AND mau."accountId" = ${accountId}`;
+      orderClause = Prisma.sql`ORDER BY COALESCE(mau."usageCount", 0) ASC, mau."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC`;
+    } else {
+      orderClause = Prisma.sql`ORDER BY ma."usageCount" ASC, ma."lastUsedAt" ASC NULLS FIRST, ma."createdAt" ASC`;
+    }
+  }
+
+  type AssetRow = { id: string; url: string; filename: string; metadata: string };
+  const rows = await tx.$queryRaw<AssetRow[]>(
+    Prisma.sql`SELECT ma.id, ma.url, ma.filename, ma.metadata FROM "MediaAsset" ma
+      ${joinClause}
+      WHERE ma."libraryId" = ${libraryId}
+      ${accessFilter}
+      ${burnFilter}
+      ${tagFrag}
+      ${excludeFrag}
+      ${durationFrag}
+      ${orderClause}
+      LIMIT 1
+      FOR UPDATE OF ma SKIP LOCKED`
+  );
+  if (!rows[0]) return null;
+
+  let metadata: Record<string, string | number | null> = {};
+  try { metadata = JSON.parse(rows[0].metadata ?? "{}") as Record<string, string | number | null>; } catch { /* keep empty */ }
+  return { id: rows[0].id, url: rows[0].url, filename: rows[0].filename, metadata };
+}
+
+/**
  * Account ID sentinel used as cursor/usage key for shared-scope libraries.
  * A single virtual "account" represents all real accounts collectively so
  * the rotation cursor is shared and concurrent generations serialize on it.

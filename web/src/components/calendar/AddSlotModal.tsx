@@ -496,6 +496,18 @@ export function AddSlotModal({
             </FormField>
           </div>
 
+          {/* F1 — Warning si scheduledAt off-pattern : la clé d'idempotence
+              de generateCalendarSlots inclut scheduledAt, donc un slot one-off
+              à une heure différente coexistera avec celui auto-généré. */}
+          {isPatternMode && selectedPattern?.publishTime && time !== selectedPattern.publishTime && (
+            <div className="rounded-xl bg-gradient-to-b from-peach-50/85 to-peach-50/55 backdrop-blur-[10px] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(245,158,107,0.30)]">
+              <p className="text-[12px] text-peach-900">
+                <span className="font-semibold">Heure différente du pattern</span> ({selectedPattern.publishTime}).
+                Le slot sera créé à {time}. Si tu génères la semaine plus tard, un autre slot pourrait être ajouté à {selectedPattern.publishTime}.
+              </p>
+            </div>
+          )}
+
           {/* Titre */}
           <FormField
             label="Titre"

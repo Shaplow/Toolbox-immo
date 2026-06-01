@@ -15,6 +15,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Subtitles, ExternalLink, Loader2, CheckCircle, AlertCircle, Play, Sparkles } from "lucide-react";
 import { canTriggerCaptions, type ActionVerdict } from "@/lib/publications/actions";
+import { resolveCaptionsMode } from "@/lib/publications/captionsMode";
 import { useJobEvent, useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
@@ -93,10 +94,8 @@ export function CaptionsSection({
     if (!jobId) router.refresh();
   });
 
-  // V8 — visible si mode auto OU manual (fallback Boolean si pattern legacy).
-  const captionsMode =
-    pattern?.needsCaptionsMode ??
-    (pattern?.needsCaptions ? "auto" : "none");
+  // V8 — visible si mode auto OU manual. resolveCaptionsMode gère le fallback Boolean.
+  const captionsMode = resolveCaptionsMode({ pattern });
   if (captionsMode === "none") return null;
   const isManualMode = captionsMode === "manual";
   const manualHref = `/publications/${slot.id}/captions/manual`;

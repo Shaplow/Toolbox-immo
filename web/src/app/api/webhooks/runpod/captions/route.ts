@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getR2PublicUrl, deleteFromR2, r2Configured, isR2PublicUrl } from "@/lib/r2";
-import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runpod";
+import { verifyAndParseRunpodWebhook } from "@/lib/webhooks/runpod";
 import { notifyUser } from "@/lib/sseStore";
 import { onCaptionsCompleted } from "@/lib/services/slot/pipelineHooks";
 
@@ -21,10 +21,8 @@ type CaptionOutput = {
 };
 
 export async function POST(req: NextRequest) {
-  const authError = verifyRunpodWebhook(req);
-  if (authError) return authError;
-
-  const parsed = await parseRunpodWebhookBody<CaptionOutput>(req);
+  // Security-auditor Critical-1 — auth HMAC body-signed.
+  const parsed = await verifyAndParseRunpodWebhook<CaptionOutput>(req);
   if (!parsed.ok) return parsed.response;
 
   const { id: runpodJobId, status, output, error } = parsed.body;

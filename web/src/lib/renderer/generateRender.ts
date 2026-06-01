@@ -15,7 +15,7 @@ import { isBlockVisibleForListing, resolveBlockForListing } from "@/lib/template
 import { getVisibleFieldKeys } from "@/lib/formSections";
 import { RENDER_PIPELINE, RENDER_STAGE } from "./renderWorkflow";
 import { recordLibraryUsage, revertLibraryCursors } from "@/lib/recordLibraryUsage";
-import { selectMediaAsset, selectMediaAssetBySetSequence, selectMediaAssetByMetadataValue, normalizeRule } from "@/lib/contentLibraryResolver";
+import { selectAndClaimMediaAsset, selectMediaAssetBySetSequence, selectMediaAssetByMetadataValue, normalizeRule } from "@/lib/contentLibraryResolver";
 import { triggerAutoTranscriptionLocal } from "@/lib/triggerAutoTranscriptionLocal";
 import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
 import { onRenderCompleted } from "@/lib/services/slot/pipelineHooks";
@@ -463,7 +463,10 @@ async function resolveMusicConfig(
     const audioMinDuration =
       !musicBlock.loop && estimatedVideoDuration > 0 ? estimatedVideoDuration : undefined;
 
-    const asset = await selectMediaAsset(
+    // Bug-hunter #3 (2026-06-01) — selectAndClaimMediaAsset au lieu de
+     // selectMediaAsset : pose un lock atomique + claim immédiat pour
+     // éviter qu'un render concurrent prenne le même asset audio en burn-once.
+    const asset = await selectAndClaimMediaAsset(
       musicBlock.libraryId,
       musicBlock.audioSelectionRule,
       undefined,
@@ -644,7 +647,8 @@ async function resolveVideoBlockAsset(
 
   // Standard rotation fallback
   if (!videoBlock.libraryId) return null;
-  return selectMediaAsset(videoBlock.libraryId, videoBlock.selectionRule, undefined, accountId ?? undefined);
+  // Bug-hunter #3 (2026-06-01) — claim atomique pour la race burn-once.
+  return selectAndClaimMediaAsset(videoBlock.libraryId, videoBlock.selectionRule, undefined, accountId ?? undefined);
 }
 
 async function generateVideoRender(
@@ -1290,7 +1294,8 @@ async function resolveSlotVideoUrl(
         };
       }
     } else {
-      const asset = await selectMediaAsset(slot.libraryId, rule, undefined, accountId ?? undefined);
+      // Bug-hunter #3 (2026-06-01) — claim atomique pour la race burn-once sur slot vidéo.
+      const asset = await selectAndClaimMediaAsset(slot.libraryId, rule, undefined, accountId ?? undefined);
       if (asset) {
         return { url: asset.url, assetId: asset.id, resolvedSetTag: null, resolvedCategory: null, metadata: asset.metadata };
       }

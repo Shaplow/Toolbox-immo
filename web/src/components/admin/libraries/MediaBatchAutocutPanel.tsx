@@ -444,7 +444,14 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
                 : <Square size={14} />}
               Tout sélectionner
             </button>
-            <span className="text-xs text-gray-400">{selectedIds.size} sélectionné{selectedIds.size > 1 ? "s" : ""}</span>
+            <span className="text-xs text-gray-400">
+              {selectedIds.size} sélectionné{selectedIds.size > 1 ? "s" : ""}
+              {selectedIds.size > 20 && (
+                <span className="ml-2 text-peach-700">
+                  · découpé en {Math.ceil(selectedIds.size / 20)} batches de 20 max
+                </span>
+              )}
+            </span>
             <div className="ml-auto flex items-center gap-2">
               <button
                 onClick={() => void loadAssets()}

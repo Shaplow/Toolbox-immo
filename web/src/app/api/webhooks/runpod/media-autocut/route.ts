@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyRunpodWebhook, parseRunpodWebhookBody } from "@/lib/webhooks/runpod";
+import { verifyAndParseRunpodWebhook } from "@/lib/webhooks/runpod";
 import { notifyAll } from "@/lib/sseStore";
 
 /**
@@ -28,10 +28,8 @@ type MediaAutocutBatchOutput = {
 };
 
 export async function POST(req: NextRequest) {
-  const authError = verifyRunpodWebhook(req);
-  if (authError) return authError;
-
-  const parsed = await parseRunpodWebhookBody<MediaAutocutBatchOutput>(req);
+  // Security-auditor Critical-1 — auth HMAC body-signed.
+  const parsed = await verifyAndParseRunpodWebhook<MediaAutocutBatchOutput>(req);
   if (!parsed.ok) return parsed.response;
 
   const { id: runpodId, status, output, error } = parsed.body;
@@ -93,8 +91,13 @@ export async function POST(req: NextRequest) {
   // Utiliser updateMany au lieu de update pour éviter P2025 si un job a été supprimé
   // (ex. asset supprimé en cascade pendant le processing).
   // Les compteurs sont déclarés dans la callback pour être retry-safe.
+  // Bug-hunter #10 (2026-06-01) : notifyAll déplacée hors transaction.
+  // Avant : SSE était émis dans le callback `$transaction` avant le commit
+  // → si rollback, le client recevait un done erroné ; si replica lag, polling
+  // immédiat post-SSE renvoyait l'ancien status. Maintenant les variables
+  // (batchStatus, doneCount, failCount) sont remontées et l'event part après await.
   try {
-    await prisma.$transaction(async (tx) => {
+    const txResult = await prisma.$transaction(async (tx) => {
       let doneCount = 0;
       let failCount = 0;
 
@@ -144,15 +147,17 @@ export async function POST(req: NextRequest) {
         `[webhook/media-autocut] batch=${batch!.id} done=${doneCount} failed=${failCount}`
       );
 
-      // SSE notify post-tx (out of band). batchStatus capturé dans la closure.
-      // notifyAll broadcast car le modèle ne tracke pas l'admin déclencheur.
-      notifyAll({
-        jobType: "media-autocut",
-        jobId: batch!.id,
-        status: batchStatus.toUpperCase(),
-        doneCount,
-        failCount,
-      });
+      return { batchStatus, doneCount, failCount };
+    });
+
+    // SSE émis après commit garanti. notifyAll broadcast car le modèle ne
+    // tracke pas l'admin déclencheur.
+    notifyAll({
+      jobType: "media-autocut",
+      jobId: batch.id,
+      status: txResult.batchStatus.toUpperCase(),
+      doneCount: txResult.doneCount,
+      failCount: txResult.failCount,
     });
   } catch (txErr) {
     console.error(`[webhook/media-autocut] transaction failed for batch=${batch.id}:`, txErr);

@@ -91,5 +91,15 @@ export async function DELETE() {
     path: "/",
     maxAge: 0,
   });
+  // Security-auditor MED3 (2026-06-01) : nettoyer aussi le cookie view-as.
+  // Sinon : ADMIN avec view-as actif puis impersonation puis stop → reste
+  // en view-as silencieusement, canAdminBypass=false jusqu'à clear manuel.
+  response.cookies.set(VIEW_AS_ROLE_COOKIE_NAME, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
   return response;
 }

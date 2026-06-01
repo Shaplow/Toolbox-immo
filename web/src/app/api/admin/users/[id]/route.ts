@@ -49,17 +49,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const futureRole = (role as string | undefined) ?? existing?.role ?? "EXTERNAL_GENERATOR";
 
     if (futureRole === "EXTERNAL_GENERATOR") {
-      const prevPerms: Tool[] = (() => {
-        try { return JSON.parse(existing?.permissions ?? "[]") as Tool[]; }
-        catch { return []; }
-      })();
+      // Security-auditor MED5 (2026-06-01) : vérifier TOUTES les perms finales,
+      // pas seulement les ajoutées. Sinon : ADMIN bascule user role=MONTEUR
+      // (sans contrainte) + ajoute "captions/transcription/description" puis
+      // re-bascule role=EXTERNAL_GENERATOR — `added` est vide (perms étaient
+      // déjà là), garde passée, EXTERNAL_GENERATOR retient des outils interdits.
       const allowed = new Set<Tool>(EXTERNAL_GENERATOR_ALLOWED_TOOLS);
-      const added = nextPerms.filter((p) => !prevPerms.includes(p));
-      const forbiddenAdditions = added.filter((p) => !allowed.has(p));
-      if (forbiddenAdditions.length > 0) {
+      const forbiddenFinal = nextPerms.filter((p) => !allowed.has(p));
+      if (forbiddenFinal.length > 0) {
         return NextResponse.json(
           {
-            error: `Le rôle Client externe ne peut pas se voir attribuer : ${forbiddenAdditions.join(", ")}. Seuls ${EXTERNAL_GENERATOR_ALLOWED_TOOLS.join(", ")} sont autorisés.`,
+            error: `Le rôle Client externe ne peut conserver que : ${EXTERNAL_GENERATOR_ALLOWED_TOOLS.join(", ")}. Outils interdits détectés : ${forbiddenFinal.join(", ")}.`,
           },
           { status: 400 },
         );

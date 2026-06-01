@@ -180,7 +180,8 @@ export default async function PublicationPage({ params }: PageProps) {
           }
         : null,
       render: slot.render ? { status: slot.render.status } : null,
-      captionJobs: slot.captionJobs.map((c) => ({ status: c.status })),
+      // Bug-hunter #2 : passer staleSince pour ne pas transitioner sur captions obsolètes
+      captionJobs: slot.captionJobs.map((c) => ({ status: c.status, staleSince: c.staleSince })),
     },
   ]);
   const effectiveStatus = pipelineUpdates.get(slot.id) ?? slot.status;
@@ -327,8 +328,11 @@ export default async function PublicationPage({ params }: PageProps) {
   // la "version sous-titrée" qui doit remplacer la brute dans la fiche +
   // validation client. Distinct du latestCaptionJob qui peut être en
   // PROCESSING / FAILED après un retry et masquait la version finale.
+  // Bug-hunter #2 (2026-06-01) : filtrer staleSince=null — un caption obsolète
+  // (marqué stale par cascade post-promote V2) pointait sur la vidéo de
+  // l'ancienne version et la fiche/validation client servaient l'ancien rendu.
   const latestCompletedCaptionJob =
-    slot.captionJobs.find((j) => j.status === "COMPLETED" && j.outputUrl) ?? null;
+    slot.captionJobs.find((j) => j.status === "COMPLETED" && j.outputUrl && !j.staleSince) ?? null;
   // P0.2 — dernier job description IA lié (le step utilise aussi slot.description en fallback)
   // V6.4.1 — fallback latest COMPLETED non-stale (DescriptionJob).
   const latestDescriptionJob = resolveActiveDescriptionJob({
@@ -406,9 +410,14 @@ export default async function PublicationPage({ params }: PageProps) {
   // external_upload). Sans ce fallback, le pack créé par tryAutoTrigger
   // Cover post-promote restait invisible pour les slots manual_rushes et
   // le step "cover" était figé à "todo".
+  // Bug-hunter #2 (2026-06-01) : filtrer staleSince=null. Un pack lié à
+  // l'ancienne version mais conservé sur la nouvelle (cascade stale-mark) faisait
+  // dire à CoverSection "Pack cover prêt, sélectionnez une frame" alors que
+  // le step considérait correctement la cover comme "todo".
   const versionCoverPack = slot.currentVersionId
-    ? await prisma.coverFramePack.findUnique({
-        where: { publicationVersionId: slot.currentVersionId },
+    ? await prisma.coverFramePack.findFirst({
+        where: { publicationVersionId: slot.currentVersionId, staleSince: null },
+        orderBy: { createdAt: "desc" },
         select: {
           id: true,
           status: true,

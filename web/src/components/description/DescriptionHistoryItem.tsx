@@ -26,6 +26,11 @@ export function DescriptionHistoryItem({ job }: Props) {
 
   const isDone = job.status === "COMPLETED";
   const isFailed = job.status === "FAILED";
+  // Cas wasApplied=false : COMPLETED + errorMsg explicite signalant que
+  // le résultat n'a pas été écrit sur slot.description (CM a rédigé
+  // pendant la génération). Le badge "Non appliquée" évite la friction
+  // silencieuse identifiée dans l'audit F3.
+  const notApplied = isDone && !!job.errorMsg;
 
   const handleCopy = () => {
     if (!job.result) return;
@@ -55,10 +60,17 @@ export function DescriptionHistoryItem({ job }: Props) {
           )}
           <span
             className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
-              isDone ? "bg-green-50 text-green-600" : isFailed ? "bg-red-50 text-red-500" : "bg-gray-100 text-gray-500"
+              notApplied
+                ? "bg-peach-50 text-peach-700"
+                : isDone
+                  ? "bg-green-50 text-green-600"
+                  : isFailed
+                    ? "bg-red-50 text-red-500"
+                    : "bg-gray-100 text-gray-500"
             }`}
+            title={notApplied ? (job.errorMsg ?? undefined) : undefined}
           >
-            {isDone ? "OK" : isFailed ? "Erreur" : job.status}
+            {notApplied ? "Non appliquée" : isDone ? "OK" : isFailed ? "Erreur" : job.status}
           </span>
         </button>
         <span className="text-[11px] text-gray-400 shrink-0">
@@ -92,7 +104,12 @@ export function DescriptionHistoryItem({ job }: Props) {
       )}
 
       {open && (
-        <div className="mt-2">
+        <div className="mt-2 space-y-2">
+          {notApplied && (
+            <p className="text-xs text-peach-700 bg-peach-50 rounded-lg px-3 py-2">
+              {job.errorMsg}
+            </p>
+          )}
           {isDone && job.result ? (
             <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed bg-gray-50 rounded-lg px-3 py-2">
               {job.result}

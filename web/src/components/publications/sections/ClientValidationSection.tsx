@@ -319,8 +319,11 @@ export function ClientValidationSection({
 
       {/* V8.10 — Verrou métier : on ne peut pas envoyer pour validation si
           les amont (captions notamment) ne sont pas prêts. Le client doit
-          voir la vidéo finale, pas la brute. */}
-      {isAdmin && !canSendValidation && !isResolved && (
+          voir la vidéo finale, pas la brute.
+          UX-auditor #2 (2026-06-01) : afficher aussi pour CM/MONTEUR (avant
+          réservé ADMIN) afin que le rôle responsable comprenne pourquoi le
+          bouton est grisé / invisible. */}
+      {!canSendValidation && !isResolved && (
         <div className="mb-4 rounded-xl bg-gradient-to-b from-peach-50/85 to-peach-50/55 backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(245,158,107,0.30)]">
           <p className="text-[13px] font-semibold text-peach-900 flex items-center gap-2">
             <AlertTriangle size={14} className="flex-shrink-0" />

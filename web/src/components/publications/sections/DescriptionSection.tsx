@@ -681,7 +681,12 @@ function DescriptionSectionInner({
                   size="sm"
                   icon={saved ? Check : Save}
                   loading={saving}
-                  disabled={!isDirty}
+                  disabled={!isDirty || jobInFlight}
+                  title={
+                    jobInFlight
+                      ? "Une description IA est en cours — attends la fin pour éviter de l'écraser."
+                      : undefined
+                  }
                   onClick={async () => {
                     await handleSave();
                     // En mode auto + contenu : on retourne en preview après save
@@ -693,6 +698,11 @@ function DescriptionSectionInner({
 
                 {saved && (
                   <span className="text-xs text-success-700">Légende sauvegardée.</span>
+                )}
+                {jobInFlight && (
+                  <span className="text-xs text-peach-700">
+                    Génération IA en cours &mdash; sauvegarde bloquée le temps d&apos;éviter l&apos;écrasement.
+                  </span>
                 )}
               </div>
             )}
