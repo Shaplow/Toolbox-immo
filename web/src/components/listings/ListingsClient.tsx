@@ -931,16 +931,6 @@ export function ListingsClient({
         </div>
       )}
 
-      {/* Hint serveur — si on a atteint la limite max remontée par le server
-          (50 items pour le tab actif), informer qu'il peut exister des items
-          plus anciens non listés. À convertir en pagination server quand on
-          aura besoin. */}
-      {!isEmpty && rawEntries.length >= 50 && (
-        <p className="mt-4 text-center text-[11px] text-peach-600">
-          Limite serveur atteinte (50 plus récents) — les éléments antérieurs ne
-          sont pas listés ici. Ouvrez la page détail pour la traçabilité complète.
-        </p>
-      )}
 
       {/* Modal de prévisualisation rapide (œil sur une row de génération).
           key= initialRenderId pour que l'index interne se reset proprement
