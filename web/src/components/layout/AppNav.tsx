@@ -200,6 +200,13 @@ export function AppNav({
     ];
   }
 
+  // Wordmark : "Team PDC" partout sauf pour un client externe — il voit son
+  // propre nom (son espace, pas une marque d'agence). Fallback "Mon espace"
+  // si le name est vide (cas dégénéré, ne devrait pas arriver en prod).
+  const wordmark = isExternalGenerator
+    ? (navUser.name?.trim() || "Mon espace")
+    : "Team PDC";
+
   const viewAsRoleLabel = isRoleOverride
     ? effectiveUser.role === "VIDEASTE"
       ? "Vidéaste"
@@ -247,11 +254,11 @@ export function AppNav({
             <Link
               href="/home"
               className="inline-flex items-center px-2 py-1.5 -mx-2 -my-1.5 rounded-xl focus-ring transition-all hover:bg-white/50 hover:backdrop-blur-[8px] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] min-w-0"
-              title="Team PDC · Accueil"
+              title={`${wordmark} · Accueil`}
             >
               <span className="min-w-0 flex-1">
                 <span className="block font-hand text-[22px] leading-none text-gray-950 truncate">
-                  Team PDC
+                  {wordmark}
                 </span>
                 {isRoleOverride && (
                   <span className="mt-1 inline-flex items-center gap-1 text-[9px] uppercase tracking-widest text-peach-700 font-semibold">
