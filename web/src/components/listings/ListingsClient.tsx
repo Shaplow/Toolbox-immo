@@ -41,6 +41,7 @@ import { Chip } from "@/components/ui/Chip";
 import { Pagination } from "@/components/ui/Pagination";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import { RenderQuickView, type QuickViewRender } from "./RenderQuickView";
+import { DeleteListingButton } from "./DeleteListingButton";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,8 @@ export type RenderRow = {
   coverPack: { id: string; status: string } | null;
   /** Cover auto activée si le slot lié a un pattern avec coverMode=auto (Phase 1.8). */
   coverAutoEnabled: boolean;
+  /** Slot auquel ce render est rattaché — bloque la suppression admin depuis /listings. */
+  linkedSlotId: string | null;
 };
 
 export type ListingRow = {
@@ -191,6 +194,8 @@ interface TimelineEntry {
     downloadUrl: string | null;
     downloadExt: string | null;
     quickViewTitle: string;
+    /** Croix de suppression admin — false si un render du listing est lié à un slot. */
+    canDelete: boolean;
   };
 }
 
@@ -281,6 +286,7 @@ function TimelineRow({
   const canRegen = !!actions?.templateId;
   const canDownload = !!actions?.downloadUrl;
   const canQuickView = !!actions && actions.renders.length > 0;
+  const canDelete = !!actions?.canDelete;
 
   // Helper pour intercepter les clics sur les actions sans déclencher la
   // navigation outer du <Link>.
@@ -322,7 +328,7 @@ function TimelineRow({
         </div>
         {/* Actions inline + date + chevron */}
         <div className="shrink-0 flex items-center gap-1 text-[11px] text-gray-400">
-          {(canQuickView || canRegen || canDownload) && (
+          {(canQuickView || canRegen || canDownload || canDelete) && (
             <div className="flex items-center gap-0.5 mr-1">
               {canQuickView && (
                 <button
@@ -366,6 +372,7 @@ function TimelineRow({
                   <Download size={13} />
                 </a>
               )}
+              {canDelete && <DeleteListingButton listingId={actions!.listingId} />}
             </div>
           )}
           <span className="hidden sm:inline tabular-nums">{formatDate(entry.createdAt)}</span>
@@ -386,6 +393,7 @@ function TimelineRow({
 function listingToEntry(
   item: GridItem,
   allListingRenders: RenderRow[],
+  isAdmin: boolean,
 ): TimelineEntry {
   const template = item.listing.template;
   const titleBase = template?.name ?? "Template supprimé";
@@ -420,6 +428,13 @@ function listingToEntry(
       ? "png"
       : null;
 
+  // Suppression possible si admin ET aucun render du listing n'est rattaché
+  // à un slot — sinon la suppression doit passer par la fiche de publication
+  // (sinon on viderait silencieusement la production d'une mission active).
+  // Les listings sans renders (cas dégénéré) restent supprimables par l'admin.
+  const canDelete =
+    isAdmin && allListingRenders.every((r) => !r.linkedSlotId);
+
   const rowActions: TimelineEntry["rowActions"] = currentRender
     ? {
         templateId: template?.id ?? null,
@@ -429,6 +444,7 @@ function listingToEntry(
         downloadUrl,
         downloadExt,
         quickViewTitle: titleBase,
+        canDelete,
       }
     : undefined;
 
@@ -685,8 +701,8 @@ export function ListingsClient({
     }
     return items
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .map((item) => listingToEntry(item, item.allRenders));
-  }, [filteredListings, renderStates]);
+      .map((item) => listingToEntry(item, item.allRenders, isAdmin));
+  }, [filteredListings, renderStates, isAdmin]);
 
   const captionEntries = useMemo<TimelineEntry[]>(
     () =>

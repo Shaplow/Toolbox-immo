@@ -1,46 +1,96 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { X, Check, Loader2 } from "lucide-react";
+import { toast } from "@/components/ui/Toast";
 
-export function DeleteListingButton({ id }: { id: string }) {
+interface Props {
+  listingId: string;
+  /** Appelé après suppression réussie (en plus du router.refresh interne). */
+  onDeleted?: () => void;
+}
+
+export function DeleteListingButton({ listingId, onDeleted }: Props) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  async function handleDelete() {
+  const stop = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  async function handleDelete(e: React.MouseEvent) {
+    stop(e);
     setLoading(true);
-    await fetch(`/api/listings/${id}`, { method: "DELETE" });
-    router.refresh();
+    try {
+      const res = await fetch(`/api/listings/${listingId}`, { method: "DELETE" });
+      if (!res.ok) {
+        let message = "Suppression impossible";
+        try {
+          const data = (await res.json()) as { error?: string };
+          if (data?.error) message = data.error;
+        } catch {
+          // Pas de JSON parseable (204 ou body vide) — garde le message générique.
+        }
+        toast.error(message);
+        setLoading(false);
+        setConfirming(false);
+        return;
+      }
+      toast.success("Génération supprimée");
+      onDeleted?.();
+      router.refresh();
+    } catch {
+      toast.error("Erreur réseau lors de la suppression");
+      setLoading(false);
+      setConfirming(false);
+    }
   }
 
   if (confirming) {
     return (
-      <div className="flex items-center gap-1 shrink-0">
+      <span className="inline-flex items-center gap-0.5">
         <button
+          type="button"
           onClick={handleDelete}
           disabled={loading}
-          className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 transition-colors"
+          title="Confirmer la suppression"
+          aria-label="Confirmer la suppression"
+          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-white bg-rose-500 hover:bg-rose-600 disabled:opacity-50 transition-all focus-ring"
         >
-          {loading ? "…" : "Confirmer"}
+          {loading ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
         </button>
         <button
-          onClick={() => setConfirming(false)}
-          className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
+          type="button"
+          onClick={(e) => {
+            stop(e);
+            setConfirming(false);
+          }}
+          disabled={loading}
+          title="Annuler"
+          aria-label="Annuler"
+          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-500 hover:text-gray-900 hover:bg-white/70 transition-all focus-ring"
         >
-          Annuler
+          <X size={13} />
         </button>
-      </div>
+      </span>
     );
   }
 
   return (
     <button
-      onClick={() => setConfirming(true)}
-      title="Supprimer ce listing"
-      className="shrink-0 text-gray-300 hover:text-red-400 transition-colors text-base leading-none"
+      type="button"
+      onClick={(e) => {
+        stop(e);
+        setConfirming(true);
+      }}
+      title="Supprimer (admin)"
+      aria-label="Supprimer cette génération"
+      className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-400 hover:text-rose-600 hover:bg-white/70 transition-all focus-ring"
     >
-      ✕
+      <X size={13} />
     </button>
   );
 }

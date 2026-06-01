@@ -218,6 +218,9 @@ export default async function ListingsPage({ searchParams }: PageProps) {
       coverPack: r.coverFramePack ? { id: r.coverFramePack.id, status: r.coverFramePack.status } : null,
       // Cover auto activée si le slot lié a un pattern coverMode=autoPack (Phase 2.5).
       coverAutoEnabled: r.publicationSlot?.pattern?.coverMode === "autoPack",
+      // Présent → render rattaché à une publication : pas de suppression depuis
+      // /listings, passer par la fiche /publications/[id].
+      linkedSlotId: r.publicationSlot?.id ?? null,
     })),
   }));
 
