@@ -47,11 +47,57 @@ export default async function HomePage() {
     orderBy: { createdAt: "desc" },
   });
 
+  // Preview de la dernière génération par template — affichée en thumbnail
+  // dans chaque card sur l'accueil. On ne charge que les renders DONE de
+  // l'utilisateur lui-même (pas ceux d'un autre user partageant le template),
+  // et on choisit la source dans l'ordre : finalCoverUrl > pngUrl > videoUrl.
+  const ownRenders = await prisma.render.findMany({
+    where: {
+      status: "DONE",
+      listing: { userId: effectiveUser.id },
+      templateId: { in: templateAccesses.map((a) => a.template.id) },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      templateId: true,
+      pngUrl: true,
+      videoUrl: true,
+      coverFramePack: { select: { status: true, finalCoverUrl: true } },
+    },
+  });
+
+  const previewByTemplate = new Map<
+    string,
+    { pngUrl: string | null; videoUrl: string | null; coverUrl: string | null }
+  >();
+  for (const r of ownRenders) {
+    if (!r.templateId || previewByTemplate.has(r.templateId)) continue;
+    const cover =
+      r.coverFramePack &&
+      (r.coverFramePack.status === "READY" || r.coverFramePack.status === "SELECTED")
+        ? r.coverFramePack.finalCoverUrl
+        : null;
+    if (!cover && !r.pngUrl && !r.videoUrl) continue;
+    previewByTemplate.set(r.templateId, {
+      pngUrl: r.pngUrl,
+      videoUrl: r.videoUrl,
+      coverUrl: cover,
+    });
+  }
+
   return (
     <HomeExternalClient
       permissions={effectiveUser.permissions}
       access={{
-        templates: templateAccesses.map((a) => ({ id: a.template.id, name: a.template.name })),
+        templates: templateAccesses.map((a) => {
+          const preview = previewByTemplate.get(a.template.id) ?? null;
+          return {
+            id: a.template.id,
+            name: a.template.name,
+            previewUrl: preview?.coverUrl ?? preview?.pngUrl ?? null,
+            previewVideoUrl: preview?.coverUrl || preview?.pngUrl ? null : preview?.videoUrl ?? null,
+          };
+        }),
       }}
     />
   );

@@ -1,6 +1,6 @@
 ﻿import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { ListingsClient, type ListingRow, type CaptionJobRow, type TranscriptionJobRow, type DescriptionJobRow } from "@/components/listings/ListingsClient";
+import { ListingsClient, type ListingRow, type CaptionJobRow, type TranscriptionJobRow, type DescriptionJobRow, type CoverPackRow } from "@/components/listings/ListingsClient";
 import { getUserContext, parsePermissions } from "@/lib/userContext";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { RefreshButton } from "@/components/ui/RefreshButton";
@@ -83,65 +83,21 @@ export default async function ListingsPage({ searchParams }: PageProps) {
   // ---------------------------------------------------------------------------
   // Listings : filtrage selon le rôle
   //
-  // ADMIN   → tous les listings (comportement précédent inchangé)
-  // USER    → uniquement les listings dont userId = userId
-  // MONTEUR → listings dont userId = userId  OR  render.publicationSlot.assigneeMonteurId = actualUserId
-  // CM      → listings dont userId = userId  OR  render.publicationSlot.assigneeCmId    = actualUserId
+  // ADMIN → tous les listings.
+  // Autres → uniquement les listings dont userId = userId (ce qu'ils ont
+  // eux-mêmes généré). Règle "je ne vois que ce que je génère, sauf admin".
   //
-  // Pour MONTEUR/CM : 2 requêtes séparées + merge JS afin d'éviter une jointure
-  // imbriquée complexe (OR sur 2 niveaux de relation). Volumétrie : ~10 comptes,
-  // ~30-40 publications/semaine → pas de contrainte de perf.
+  // (2026-06-01) MONTEUR/CM ne voient plus les listings assignés via slot —
+  // pour ces cas, la fiche /publications/[id] est l'unique surface où ils
+  // agissent sur les renders d'une mission. Évite aussi le 404 trompeur du
+  // bouton "Régénérer" depuis /listings sur un Listing non-propre.
   // ---------------------------------------------------------------------------
 
-  let listings: Awaited<ReturnType<typeof prisma.listing.findMany<{ include: typeof LISTING_INCLUDE }>>>;
-
-  if (isAdmin) {
-    listings = await prisma.listing.findMany({
-      where: {},
-      orderBy: { createdAt: "desc" },
-      include: LISTING_INCLUDE,
-    });
-  } else if (effectiveRole === "MONTEUR" || effectiveRole === "CM") {
-    // Requête 1 : listings dont l'utilisateur effectif est propriétaire
-    const ownListings = await prisma.listing.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      include: LISTING_INCLUDE,
-    });
-
-    // Requête 2 : listings dont un render est associé à un slot assigné à l'utilisateur effectif
-    const assigneeField = effectiveRole === "MONTEUR" ? "assigneeMonteurId" : "assigneeCmId";
-    const assignedListings = await prisma.listing.findMany({
-      where: {
-        renders: {
-          some: {
-            publicationSlot: {
-              [assigneeField]: userId,
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      include: LISTING_INCLUDE,
-    });
-
-    // Merge et déduplication par id, tri global par createdAt desc
-    const seen = new Set<string>();
-    const merged = [...ownListings, ...assignedListings].filter((l) => {
-      if (seen.has(l.id)) return false;
-      seen.add(l.id);
-      return true;
-    });
-    merged.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    listings = merged;
-  } else {
-    // USER ou rôle inconnu : uniquement ses propres listings
-    listings = await prisma.listing.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      include: LISTING_INCLUDE,
-    });
-  }
+  let listings = await prisma.listing.findMany({
+    where: isAdmin ? {} : { userId },
+    orderBy: { createdAt: "desc" },
+    include: LISTING_INCLUDE,
+  });
 
   // Filtres slotId : appliqués via Prisma quand slotBannerContext est set.
   // CaptionJob et DescriptionJob ont slotId direct. TranscriptionJob via render.
@@ -185,6 +141,52 @@ export default async function ListingsPage({ searchParams }: PageProps) {
     include: {
       prompt: { select: { name: true } },
       user: { select: { name: true, email: true } },
+    },
+  });
+
+  // Cover packs : même règle de scope que les autres jobs.
+  // Filtre slot : pack lié à un render dont le slot est ciblé, OU pack lié à
+  // une PublicationVersion du slot (covers manuels sur version uploadée).
+  const slotFilterCoverPack = slotBannerContext
+    ? {
+        OR: [
+          { render: { publicationSlotId: slotBannerContext.id } },
+          { publicationVersion: { slotId: slotBannerContext.id } },
+        ],
+      }
+    : {};
+  const coverPacks = await prisma.coverFramePack.findMany({
+    where: {
+      ...(isAdmin ? {} : { userId }),
+      ...slotFilterCoverPack,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: {
+      user: { select: { name: true, email: true } },
+      template: { select: { id: true, name: true } },
+      render: {
+        select: {
+          publicationSlot: {
+            select: {
+              id: true,
+              title: true,
+              account: { select: { handle: true } },
+            },
+          },
+        },
+      },
+      publicationVersion: {
+        select: {
+          slot: {
+            select: {
+              id: true,
+              title: true,
+              account: { select: { handle: true } },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -267,12 +269,34 @@ export default async function ListingsPage({ searchParams }: PageProps) {
     prompt: j.prompt ?? null,
   }));
 
+  const coverPackRows: CoverPackRow[] = coverPacks.map((p) => {
+    const linkedSlot = p.render?.publicationSlot ?? p.publicationVersion?.slot ?? null;
+    return {
+      id: p.id,
+      status: p.status,
+      finalCoverUrl: p.finalCoverUrl ?? null,
+      errorMsg: p.errorMsg ?? null,
+      createdAt: p.createdAt.toISOString(),
+      ownerName: isAdmin ? (p.user.name ?? p.user.email ?? "?") : null,
+      templateName: p.template?.name ?? null,
+      slotId: linkedSlot?.id ?? null,
+      slotTitle: linkedSlot?.title ?? null,
+      accountHandle: linkedSlot?.account.handle ?? null,
+    };
+  });
+
   const inProgressCount =
     rows.reduce((n, l) => n + l.renders.filter((r) => r.status === "PROCESSING" || r.status === "PENDING").length, 0) +
     captionRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length +
-    transcriptionRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length;
+    transcriptionRows.filter((j) => j.status === "PROCESSING" || j.status === "QUEUED").length +
+    coverPackRows.filter((p) => p.status === "PROCESSING" || p.status === "QUEUED").length;
 
-  const totalItems = rows.length + captionRows.length + transcriptionRows.length + descriptionRows.length;
+  const totalItems =
+    rows.length +
+    captionRows.length +
+    transcriptionRows.length +
+    descriptionRows.length +
+    coverPackRows.length;
   const subtitleParts = [`${totalItems} élément${totalItems !== 1 ? "s" : ""}`];
   if (inProgressCount > 0) subtitleParts.push(`${inProgressCount} en cours`);
 
@@ -342,6 +366,7 @@ export default async function ListingsPage({ searchParams }: PageProps) {
             initialCaptionJobs={captionRows}
             initialTranscriptionJobs={transcriptionRows}
             initialDescriptionJobs={descriptionRows}
+            initialCoverPacks={coverPackRows}
             isAdmin={isAdmin}
             hasCaptions={hasCaptions}
             hasTranscription={hasTranscription}

@@ -14,7 +14,14 @@ function parsePermissions(raw: string | null | undefined): string[] {
 }
 
 export interface HomeExternalClientAccess {
-  templates: Array<{ id: string; name: string }>;
+  templates: Array<{
+    id: string;
+    name: string;
+    /** Cover image (PNG ou cover finale du CoverFramePack) du dernier rendu DONE de l'user. */
+    previewUrl: string | null;
+    /** Fallback : URL vidéo du dernier rendu DONE quand pas d'image dispo. */
+    previewVideoUrl: string | null;
+  }>;
 }
 
 interface HomeExternalClientProps {
@@ -124,21 +131,58 @@ export function HomeExternalClient({ permissions, access }: HomeExternalClientPr
                   <LayoutTemplate size={16} className="text-gray-400" />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {access.templates.map((t) => (
-                    <Link
-                      key={t.id}
-                      href={`/generate/${t.id}`}
-                      className="group flex items-center justify-between gap-2 px-4 py-3 rounded-xl bg-white shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.04),0_8px_20px_-12px_rgba(15,23,42,0.14)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.14),0_4px_8px_rgba(15,23,42,0.06),0_12px_28px_-12px_rgba(15,23,42,0.22)] hover:-translate-y-px transition-all"
-                    >
-                      <span className="text-[13px] font-medium text-gray-950 truncate">
-                        {t.name}
-                      </span>
-                      <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 group-hover:text-gray-950 transition-colors shrink-0">
-                        Générer
-                        <ArrowRight size={12} />
-                      </span>
-                    </Link>
-                  ))}
+                  {access.templates.map((t) => {
+                    const hasPreview = !!t.previewUrl || !!t.previewVideoUrl;
+                    return (
+                      <Link
+                        key={t.id}
+                        href={`/generate/${t.id}`}
+                        className="group flex items-stretch gap-3 p-2 pr-4 rounded-xl bg-white shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.04),0_8px_20px_-12px_rgba(15,23,42,0.14)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.14),0_4px_8px_rgba(15,23,42,0.06),0_12px_28px_-12px_rgba(15,23,42,0.22)] hover:-translate-y-px transition-all"
+                      >
+                        {/* Thumbnail — object-contain pour respecter les
+                            ratios (portrait reels, carré, paysage) sans cropper
+                            les bords. Fond glass neutre quand l'image n'occupe
+                            pas tout le box. */}
+                        <div className="shrink-0 w-[68px] h-[68px] rounded-lg bg-gradient-to-b from-gray-50/80 to-gray-100/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] overflow-hidden flex items-center justify-center">
+                          {t.previewUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={t.previewUrl}
+                              alt=""
+                              loading="lazy"
+                              className="max-w-full max-h-full w-auto h-auto object-contain"
+                            />
+                          ) : t.previewVideoUrl ? (
+                            <video
+                              src={t.previewVideoUrl}
+                              muted
+                              playsInline
+                              preload="metadata"
+                              className="max-w-full max-h-full w-auto h-auto object-contain"
+                            />
+                          ) : (
+                            <LayoutTemplate size={20} className="text-gray-300" />
+                          )}
+                        </div>
+
+                        {/* Body — nom + indicateur preview/Générer */}
+                        <div className="min-w-0 flex-1 flex items-center justify-between gap-2">
+                          <span className="min-w-0">
+                            <span className="block text-[13px] font-medium text-gray-950 truncate">
+                              {t.name}
+                            </span>
+                            <span className="block text-[10.5px] text-gray-400 mt-0.5">
+                              {hasPreview ? "Dernière génération" : "Pas encore généré"}
+                            </span>
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 group-hover:text-gray-950 transition-colors shrink-0">
+                            Générer
+                            <ArrowRight size={12} />
+                          </span>
+                        </div>
+                      </Link>
+                    );
+                  })}
                 </div>
               </section>
             )}

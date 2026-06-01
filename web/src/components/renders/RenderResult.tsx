@@ -3,10 +3,20 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  Download,
+  RotateCw,
+  Sparkles,
+} from "lucide-react";
 import { getRenderStageLabel } from "@/lib/renderer/renderWorkflow";
 import { useJobPolling } from "@/lib/hooks/useJobPolling";
 import type { JobEventPayload } from "@/lib/sseStore";
 import { toast } from "@/components/ui/Toast";
+import { Button } from "@/components/ui/Button";
 
 type RenderStatus = "PENDING" | "PROCESSING" | "DONE" | "ERROR";
 
@@ -35,7 +45,7 @@ interface Props {
   hasCovers?: boolean;
 }
 
-export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUrl: initVideo, errorMsg: initErr, templateId, stage: initStage, statusDetail: initDetail, progress: initProgress, coverAutoEnabled = false, hasCovers = false }: Props) {
+export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUrl: initVideo, errorMsg: initErr, templateId, listingId, stage: initStage, statusDetail: initDetail, progress: initProgress, coverAutoEnabled = false, hasCovers = false }: Props) {
   const router = useRouter();
   const [status, setStatus] = useState<RenderStatus>(initialStatus as RenderStatus);
   const [pngUrl, setPngUrl] = useState(initPng);
@@ -103,119 +113,154 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
     }
   }, [renderId, router]);
 
+  // ── Données dérivées pour le téléchargement ──────────────────────────────
+  const downloadUrl = videoUrl ?? pngUrl ?? null;
+  const downloadExt = videoUrl ? "MP4" : pngUrl ? "PNG" : null;
+  // Filtre les WARNINGS: du errorMsg côté status DONE (cas particulier).
+  const isWarningPayload =
+    status === "DONE" && !!errorMsg && errorMsg.startsWith("WARNINGS:");
+  const warningList = isWarningPayload
+    ? (() => {
+        try {
+          return JSON.parse(errorMsg!.slice("WARNINGS:".length)) as string[];
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+
   return (
-    <div className="space-y-6">
-      {/* Status badge */}
-      <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
-        status === "DONE"       ? "bg-green-50 text-green-700" :
-        status === "ERROR"      ? "bg-red-50 text-red-700" :
-        /* PENDING/PROCESSING */  "bg-sky-50 text-sky-700"
-      }`}>
-        {status === "PENDING"    && <><Spinner /> En attente…</>}
-        {status === "PROCESSING" && <><Spinner /> Génération en cours…</>}
-        {status === "DONE"       && <>✓ Terminé</>}
-        {status === "ERROR"      && <>✕ Erreur</>}
+    <div className="space-y-5">
+      {/* Status badge — glass v2 par tonalité */}
+      <div>
+        <StatusPill status={status} />
       </div>
 
-      {/* Error message */}
-      {status === "ERROR" && errorMsg && (
-        <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl p-4">{errorMsg}</p>
+      {/* Error message — carte glass rose */}
+      {status === "ERROR" && errorMsg && !isWarningPayload && (
+        <div className="rounded-2xl bg-gradient-to-b from-rose-50/85 to-rose-50/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(201,113,133,0.28)] px-4 py-3">
+          <p className="text-[13px] text-rose-700">{errorMsg}</p>
+        </div>
       )}
 
-      {(stage || statusDetail || typeof progress === "number") && (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
-          {stage && <p className="text-sm font-medium text-gray-800">Étape: {getRenderStageLabel(stage)}</p>}
-          {statusDetail && <p className="text-sm text-gray-600">{statusDetail}</p>}
-          {typeof progress === "number" && status !== "DONE" && (
+      {/* Progression — carte glass peach quand encore en cours */}
+      {(stage || statusDetail || typeof progress === "number") && status !== "DONE" && (
+        <div className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] px-4 py-3 space-y-2">
+          {stage && (
+            <p className="text-[12.5px] font-medium text-gray-800">
+              Étape : {getRenderStageLabel(stage)}
+            </p>
+          )}
+          {statusDetail && <p className="text-[12px] text-gray-500">{statusDetail}</p>}
+          {typeof progress === "number" && (
             <div className="space-y-1">
-              <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
-                <div className="bg-sky-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${Math.max(3, Math.round(progress * 100))}%` }} />
+              <div className="w-full bg-white/60 rounded-full h-1.5 overflow-hidden shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+                <div
+                  className="bg-gradient-to-r from-peach-400 to-peach-500 h-1.5 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.max(3, Math.round(progress * 100))}%` }}
+                />
               </div>
-              <p className="text-xs text-gray-500">{Math.round(progress * 100)}%</p>
+              <p className="text-[11px] text-gray-500 tabular-nums">
+                {Math.round(progress * 100)}%
+              </p>
             </div>
           )}
         </div>
       )}
 
-      {/* Resolution warnings */}
-      {status === "DONE" && errorMsg?.startsWith("WARNINGS:") && (() => {
-        try {
-          const warnList = JSON.parse(errorMsg.slice("WARNINGS:".length)) as string[];
-          return (
-            <div className="bg-sky-50 border border-sky-200 rounded-xl p-4">
-              <p className="text-sm font-medium text-sky-700 mb-2">⚠ Avertissements résolution :</p>
-              <ul className="list-disc list-inside space-y-1">
-                {warnList.map((w) => <li key={w} className="text-xs text-sky-700">{w}</li>)}
-              </ul>
-            </div>
-          );
-        } catch { return null; }
-      })()}
+      {/* Avertissements résolution (DONE + WARNINGS:) */}
+      {warningList && (
+        <div className="rounded-2xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.32)] px-4 py-3">
+          <p className="text-[12.5px] font-medium text-sky-800 mb-1.5">
+            Avertissements résolution
+          </p>
+          <ul className="list-disc list-inside space-y-0.5">
+            {warningList.map((w) => (
+              <li key={w} className="text-[11.5px] text-sky-800/90">
+                {w}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
-      {/* Preview + downloads — image */}
-      {status === "DONE" && pngUrl && (
-        <div className="space-y-4">
-          {/* Preview */}
-          <div className="bg-gray-100 rounded-xl overflow-hidden border border-gray-200">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={pngUrl} alt="Aperçu du visuel" className="w-full h-auto" />
-          </div>
-
-          {/* Downloads */}
-          <div className="flex gap-3">
-            <a
-              href={pngUrl}
-              download
-              className="flex-1 text-center py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
-            >
-              ↓ Télécharger PNG
-            </a>
+      {/* Preview — carte glass, media contenu à max-h-[60vh] pour rentrer
+          dans l'écran avec le footer actions visible */}
+      {status === "DONE" && (videoUrl || pngUrl) && (
+        <div className="rounded-2xl bg-gradient-to-b from-gray-50/80 to-gray-100/60 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] overflow-hidden">
+          <div className="flex items-center justify-center min-h-[35vh] max-h-[60vh] p-3">
+            {videoUrl ? (
+              <video
+                src={videoUrl}
+                controls
+                playsInline
+                className="block max-h-[55vh] max-w-full w-auto h-auto rounded-xl"
+              />
+            ) : pngUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={pngUrl}
+                alt="Aperçu du visuel"
+                className="block max-h-[55vh] max-w-full w-auto h-auto object-contain rounded-xl"
+              />
+            ) : null}
           </div>
         </div>
       )}
 
-      {/* Preview + download — vidéo */}
-      {status === "DONE" && videoUrl && (
-        <div className="space-y-4">
-          <div className="bg-black rounded-xl overflow-hidden border border-gray-200">
-            <video src={videoUrl} controls className="w-full h-auto" />
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <a
-              href={videoUrl}
-              download
-              className="block w-full text-center py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+      {/* Actions principales — Régénérer + Télécharger (DONE) */}
+      {status === "DONE" && (
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          {templateId && (
+            <Button
+              variant="secondary"
+              size="md"
+              icon={RotateCw}
+              onClick={() =>
+                router.push(`/generate/${templateId}?listingId=${listingId}`)
+              }
             >
-              ↓ Télécharger MP4
+              Régénérer
+            </Button>
+          )}
+          {downloadUrl && downloadExt && (
+            <a
+              href={downloadUrl}
+              download
+              className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium bg-gradient-to-b from-gray-700 to-gray-900 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_0_0_1px_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.12),0_4px_12px_-4px_rgba(15,23,42,0.22)] hover:from-gray-600 hover:to-gray-800 transition-all focus-ring"
+            >
+              <Download size={14} />
+              Télécharger {downloadExt}
             </a>
-            {coverAutoEnabled && hasCovers && (
-              <button
-                type="button"
-                onClick={() => void generateCover()}
-                disabled={coverBusy}
-                className="block w-full text-center py-2.5 bg-sky-600 text-white rounded-lg text-sm font-medium hover:bg-sky-700 transition-colors disabled:opacity-50"
-              >
-                {coverBusy ? "Préparation…" : "Générer une cover"}
-              </button>
-            )}
-          </div>
+          )}
+          {videoUrl && coverAutoEnabled && hasCovers && (
+            <Button
+              variant="ghost"
+              size="md"
+              icon={Sparkles}
+              loading={coverBusy}
+              onClick={() => void generateCover()}
+            >
+              Générer une cover
+            </Button>
+          )}
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex gap-3 pt-2 border-t border-gray-100">
+      {/* Liens secondaires — back + nouveau visuel from scratch */}
+      <div className="flex items-center gap-4 pt-3 border-t border-white/40 text-[12px]">
         <Link
           href="/listings"
-          className="text-sm text-gray-600 hover:text-gray-900 transition-colors font-medium"
+          className="text-gray-600 hover:text-gray-900 transition-colors font-medium"
         >
           ← Mes générations
         </Link>
         {templateId && (
           <Link
             href={`/generate/${templateId}`}
-            className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
+            className="text-gray-400 hover:text-gray-700 transition-colors"
           >
-            Nouveau visuel
+            Nouveau visuel (vide)
           </Link>
         )}
       </div>
@@ -223,11 +268,26 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
   );
 }
 
-function Spinner() {
+// ── Status pill (glass v2 par tonalité) ──────────────────────────────────────
+function StatusPill({ status }: { status: RenderStatus }) {
+  const isProcessing = status === "PENDING" || status === "PROCESSING";
+  const isDone = status === "DONE";
+  const isError = status === "ERROR";
+  const label =
+    status === "PENDING" ? "En attente"
+    : status === "PROCESSING" ? "Génération en cours"
+    : status === "DONE" ? "Terminé"
+    : "Erreur";
+  const Icon = isProcessing ? Loader2 : isDone ? CheckCircle2 : isError ? AlertCircle : Clock;
+  const cls = isProcessing
+    ? "bg-peach-50/70 text-peach-700 shadow-[inset_0_0_0_1px_rgba(221,140,90,0.22)]"
+    : isDone
+      ? "bg-sage-50/70 text-sage-700 shadow-[inset_0_0_0_1px_rgba(111,162,128,0.22)]"
+      : "bg-rose-50/70 text-rose-700 shadow-[inset_0_0_0_1px_rgba(201,113,133,0.28)]";
   return (
-    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-    </svg>
+    <span className={`inline-flex items-center gap-1.5 rounded-full backdrop-blur-[6px] px-3 py-1 text-[12px] font-medium ${cls}`}>
+      <Icon size={12} className={isProcessing ? "animate-spin" : ""} />
+      {label}
+    </span>
   );
 }

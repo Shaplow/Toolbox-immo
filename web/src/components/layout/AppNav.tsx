@@ -173,13 +173,14 @@ export function AppNav({
       },
     ];
   } else if (isExternalGenerator) {
-    // EXTERNAL_GENERATOR : Accueil + Studio direct (use case = générer)
-    // + Mes générations (récupérer ses propres outputs).
+    // EXTERNAL_GENERATOR : Accueil (gateway templates assignés) + Mes
+    // générations. Pas de Studio en top-level — l'accueil expose déjà les
+    // templates accessibles avec preview, le hub /templates n'apporte rien
+    // de plus pour un client externe (et il pollue avec d'autres entités).
     navSections = [
       {
         items: [
           { href: "/home", label: "Accueil", icon: <Home size={14} /> },
-          { href: "/templates", label: "Studio", icon: <Clapperboard size={14} /> },
           { href: "/listings", label: "Mes générations", icon: <History size={14} /> },
         ],
       },

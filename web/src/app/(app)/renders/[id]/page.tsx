@@ -101,69 +101,81 @@ export default async function RenderPage({ params }: Props) {
         ];
 
   return (
-    <div className="p-8 max-w-2xl mx-auto">
-      {/* Back link + breadcrumb hiérarchisé */}
-      <div className="mb-6 space-y-1.5">
-        <Link
-          href={backHref}
-          className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          <ChevronLeft size={13} />
-          {backLabel}
-        </Link>
-        {breadcrumb.length > 0 && (
-          <nav className="flex items-center gap-1 text-xs text-gray-400 flex-wrap">
-            {breadcrumb.map((item, i) => (
-              <span key={item.href} className="flex items-center gap-1">
-                <Link
-                  href={item.href}
-                  className="hover:text-sky-600 transition-colors truncate max-w-[200px]"
-                >
-                  {item.label}
-                </Link>
-                <ChevronRight size={11} className="text-gray-300" />
-                {i === breadcrumb.length - 1 && (
-                  <span className="text-gray-500 font-medium">Render</span>
-                )}
-              </span>
-            ))}
-          </nav>
-        )}
-      </div>
+    <div className="min-h-screen">
+      <div
+        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
+        style={{ background: "var(--gradient-page-shell)" }}
+      >
+        {/* Header (back + breadcrumb + titre) */}
+        <div className="rounded-t-3xl overflow-hidden">
+          <div className="px-6 sm:px-8 pt-6 pb-2">
+            <div className="mb-3 space-y-1.5">
+              <Link
+                href={backHref}
+                className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <ChevronLeft size={13} />
+                {backLabel}
+              </Link>
+              {breadcrumb.length > 0 && (
+                <nav className="flex items-center gap-1 text-xs text-gray-400 flex-wrap">
+                  {breadcrumb.map((item, i) => (
+                    <span key={item.href} className="flex items-center gap-1">
+                      <Link
+                        href={item.href}
+                        className="hover:text-sky-600 transition-colors truncate max-w-[200px]"
+                      >
+                        {item.label}
+                      </Link>
+                      <ChevronRight size={11} className="text-gray-300" />
+                      {i === breadcrumb.length - 1 && (
+                        <span className="text-gray-500 font-medium">Render</span>
+                      )}
+                    </span>
+                  ))}
+                </nav>
+              )}
+            </div>
+            <ToolPageHeader
+              icon={Sparkles}
+              iconColor="peach"
+              title={render.template?.name ?? "Résultat"}
+              subtitle={
+                render.template?.client
+                  ? `${render.template.client} · ${new Date(render.createdAt).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+                  : render.template
+                    ? `Généré le ${new Date(render.createdAt).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+                    : "Template supprimé"
+              }
+            />
+          </div>
+        </div>
 
-      <ToolPageHeader
-        icon={Sparkles}
-        iconColor="indigo"
-        title={render.template?.name ?? "Résultat"}
-        subtitle={
-          render.template?.client
-            ? `${render.template.client} · ${new Date(render.createdAt).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
-            : render.template
-              ? `Généré le ${new Date(render.createdAt).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
-              : "Template supprimé"
-        }
-      />
-      <RenderResult
-        renderId={render.id}
-        initialStatus={render.status}
-        pngUrl={render.pngUrl}
-        videoUrl={
-          // Si ce render est lié à un slot avec captions COMPLETED, on affiche
-          // la version sous-titrée. Sinon, vidéo brute du render.
-          getSlotFinalVideoUrl({
-            render: { videoUrl: render.videoUrl },
-            latestCaptionJob: render.publicationSlot?.captionJobs[0] ?? null,
-          })
-        }
-        errorMsg={render.errorMsg}
-        templateId={render.template?.id ?? ""}
-        listingId={render.listingId}
-        stage={render.stage}
-        statusDetail={render.statusDetail}
-        progress={render.progress}
-        coverAutoEnabled={coverAutoEnabled}
-        hasCovers={hasCovers}
-      />
+        {/* Body : résultat (status + preview + actions) */}
+        <div className="px-4 sm:px-6 md:px-8 pt-2 pb-12 max-w-3xl mx-auto w-full">
+          <RenderResult
+            renderId={render.id}
+            initialStatus={render.status}
+            pngUrl={render.pngUrl}
+            videoUrl={
+              // Si ce render est lié à un slot avec captions COMPLETED, on affiche
+              // la version sous-titrée. Sinon, vidéo brute du render.
+              getSlotFinalVideoUrl({
+                render: { videoUrl: render.videoUrl },
+                latestCaptionJob: render.publicationSlot?.captionJobs[0] ?? null,
+              })
+            }
+            errorMsg={render.errorMsg}
+            templateId={render.template?.id ?? ""}
+            listingId={render.listingId}
+            stage={render.stage}
+            statusDetail={render.statusDetail}
+            progress={render.progress}
+            coverAutoEnabled={coverAutoEnabled}
+            hasCovers={hasCovers}
+          />
+        </div>
+      </div>
     </div>
   );
 }

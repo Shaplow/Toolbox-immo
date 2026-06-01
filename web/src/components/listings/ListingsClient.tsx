@@ -18,6 +18,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Film,
   Clapperboard,
@@ -29,12 +30,17 @@ import {
   AlertCircle,
   Clock,
   Search,
+  Eye,
+  Download,
+  RotateCw,
+  ImageIcon,
 } from "lucide-react";
 import { Combobox } from "@/components/ui/Combobox";
 import { Input } from "@/components/ui/Input";
 import { Chip } from "@/components/ui/Chip";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { Pagination } from "@/components/ui/Pagination";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
+import { RenderQuickView, type QuickViewRender } from "./RenderQuickView";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -107,6 +113,21 @@ export type DescriptionJobRow = {
   prompt: { name: string } | null;
 };
 
+export type CoverPackRow = {
+  id: string;
+  /** QUEUED | PROCESSING | READY | SELECTED | FAILED */
+  status: string;
+  finalCoverUrl: string | null;
+  errorMsg: string | null;
+  createdAt: string;
+  ownerName: string | null;
+  templateName: string | null;
+  /** Slot lié si pack rattaché via render ou publicationVersion. */
+  slotId: string | null;
+  slotTitle: string | null;
+  accountHandle: string | null;
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string) {
@@ -145,8 +166,9 @@ const GROUP_ORDER = ["Aujourd'hui", "Cette semaine", "Plus tôt"];
 
 // Phase B refonte 2026-05-30 — palette Coastal Studio v2 par type de job.
 // peach = création vidéo (renders), sky = sous-titres (captions),
-// sage = parole / transcription, rose = génération texte long (descriptions).
-type Tone = "peach" | "sky" | "sage" | "rose";
+// sage = parole / transcription, rose = génération texte long (descriptions),
+// amber = covers / images (cohérent avec ImageIcon des sections cover).
+type Tone = "peach" | "sky" | "sage" | "rose" | "amber";
 
 interface TimelineEntry {
   id: string;
@@ -160,6 +182,16 @@ interface TimelineEntry {
   ownerName?: string | null;
   /** Message d'erreur affiché sous la row quand status FAILED/ERROR. */
   errorMsg?: string | null;
+  /** Actions inline disponibles (tab Générations uniquement). */
+  rowActions?: {
+    templateId: string | null;
+    listingId: string;
+    renders: QuickViewRender[];
+    initialRenderId: string;
+    downloadUrl: string | null;
+    downloadExt: string | null;
+    quickViewTitle: string;
+  };
 }
 
 const TONE_ICON_BG: Record<Tone, string> = {
@@ -167,6 +199,7 @@ const TONE_ICON_BG: Record<Tone, string> = {
   sky:   "bg-sky-100/70 text-sky-700",
   sage:  "bg-sage-100/70 text-sage-700",
   rose:  "bg-rose-100/70 text-rose-700",
+  amber: "bg-amber-100/70 text-amber-700",
 };
 
 // Bord gauche signature glass v2 — apparaît en <span> absolute dans TimelineRow
@@ -176,6 +209,7 @@ const TONE_LEFT_BAR: Record<Tone, string> = {
   sky:   "bg-sky-400",
   sage:  "bg-sage-400",
   rose:  "bg-rose-400",
+  amber: "bg-amber-400",
 };
 
 // Tab badge styles — classes statiques explicites (Tailwind purge ne supporte
@@ -185,6 +219,7 @@ const TAB_BADGE_ACTIVE: Record<Tone, string> = {
   sky:   "bg-sky-100 text-sky-700",
   sage:  "bg-sage-100 text-sage-700",
   rose:  "bg-rose-100 text-rose-700",
+  amber: "bg-amber-100 text-amber-700",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -194,15 +229,24 @@ const STATUS_LABEL: Record<string, string> = {
   RUNNING: "En cours",
   COMPLETED: "Terminé",
   DONE: "Terminé",
+  READY: "Prêt",
+  SELECTED: "Sélectionné",
   FAILED: "Échec",
   ERROR: "Échec",
 };
 
+// Helpers status groupés — partagés par StatusBadge et les filtres pour
+// rester cohérents quand on ajoute un nouveau status (ex: READY/SELECTED des
+// cover packs).
+const STATUS_IN_PROGRESS = new Set(["PENDING", "QUEUED", "PROCESSING", "RUNNING"]);
+const STATUS_DONE = new Set(["COMPLETED", "DONE", "READY", "SELECTED"]);
+const STATUS_ERROR = new Set(["FAILED", "ERROR"]);
+
 function StatusBadge({ status }: { status: string }) {
   const label = STATUS_LABEL[status] ?? status;
-  const isInProgress = ["PENDING", "QUEUED", "PROCESSING", "RUNNING"].includes(status);
-  const isDone = ["COMPLETED", "DONE"].includes(status);
-  const isError = ["FAILED", "ERROR"].includes(status);
+  const isInProgress = STATUS_IN_PROGRESS.has(status);
+  const isDone = STATUS_DONE.has(status);
+  const isError = STATUS_ERROR.has(status);
 
   const Icon = isInProgress ? Loader2 : isDone ? CheckCircle2 : isError ? AlertCircle : Clock;
   // Glass v2 pastilles — backdrop-blur + ring inset signature au lieu de border solide.
@@ -222,10 +266,29 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function TimelineRow({ entry }: { entry: TimelineEntry }) {
+function TimelineRow({
+  entry,
+  onQuickView,
+}: {
+  entry: TimelineEntry;
+  onQuickView?: (entry: TimelineEntry) => void;
+}) {
+  const router = useRouter();
   const Icon = entry.icon;
   const isError = ["FAILED", "ERROR"].includes(entry.status);
   const showError = isError && entry.errorMsg;
+  const actions = entry.rowActions;
+  const canRegen = !!actions?.templateId;
+  const canDownload = !!actions?.downloadUrl;
+  const canQuickView = !!actions && actions.renders.length > 0;
+
+  // Helper pour intercepter les clics sur les actions sans déclencher la
+  // navigation outer du <Link>.
+  const stop = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   return (
     <Link
       href={entry.href}
@@ -242,6 +305,11 @@ function TimelineRow({ entry }: { entry: TimelineEntry }) {
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-[13px] font-semibold text-gray-950 truncate">{entry.title}</p>
             <StatusBadge status={entry.status} />
+            {actions && actions.renders.length > 1 && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-peach-50/70 text-peach-700 shadow-[inset_0_0_0_1px_rgba(221,140,90,0.22)] tabular-nums">
+                {actions.renders.length} variantes
+              </span>
+            )}
           </div>
           <p className="text-[11.5px] text-gray-500 mt-0.5 truncate">
             {entry.sublabel ?? "—"}
@@ -252,7 +320,54 @@ function TimelineRow({ entry }: { entry: TimelineEntry }) {
             )}
           </p>
         </div>
-        <div className="shrink-0 flex items-center gap-2 text-[11px] text-gray-400">
+        {/* Actions inline + date + chevron */}
+        <div className="shrink-0 flex items-center gap-1 text-[11px] text-gray-400">
+          {(canQuickView || canRegen || canDownload) && (
+            <div className="flex items-center gap-0.5 mr-1">
+              {canQuickView && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    stop(e);
+                    onQuickView?.(entry);
+                  }}
+                  title="Vue rapide"
+                  aria-label="Vue rapide"
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-500 hover:text-gray-900 hover:bg-white/70 transition-all focus-ring"
+                >
+                  <Eye size={13} />
+                </button>
+              )}
+              {canRegen && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    stop(e);
+                    router.push(
+                      `/generate/${actions!.templateId}?listingId=${actions!.listingId}`,
+                    );
+                  }}
+                  title="Régénérer"
+                  aria-label="Régénérer"
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-500 hover:text-peach-700 hover:bg-white/70 transition-all focus-ring"
+                >
+                  <RotateCw size={13} />
+                </button>
+              )}
+              {canDownload && (
+                <a
+                  href={actions!.downloadUrl!}
+                  download
+                  onClick={(e) => e.stopPropagation()}
+                  title={`Télécharger ${actions!.downloadExt?.toUpperCase() ?? ""}`}
+                  aria-label="Télécharger"
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-500 hover:text-gray-900 hover:bg-white/70 transition-all focus-ring"
+                >
+                  <Download size={13} />
+                </a>
+              )}
+            </div>
+          )}
           <span className="hidden sm:inline tabular-nums">{formatDate(entry.createdAt)}</span>
           <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-700 transition-colors" />
         </div>
@@ -268,7 +383,10 @@ function TimelineRow({ entry }: { entry: TimelineEntry }) {
 
 // ── Mapping data → timeline entries ───────────────────────────────────────────
 
-function listingToEntry(item: GridItem): TimelineEntry {
+function listingToEntry(
+  item: GridItem,
+  allListingRenders: RenderRow[],
+): TimelineEntry {
   const template = item.listing.template;
   const titleBase = template?.name ?? "Template supprimé";
   const sublabelParts: string[] = [];
@@ -281,6 +399,39 @@ function listingToEntry(item: GridItem): TimelineEntry {
       // Silent : formats parsing optionnel.
     }
   }
+
+  // Actions inline : on n'expose les variantes que parmi les renders terminés
+  // qui ont un media. Téléchargement pointe sur le render courant (vidéo en
+  // priorité, sinon image).
+  const playableRenders: QuickViewRender[] = allListingRenders
+    .filter((r) => r.pngUrl || r.videoUrl)
+    .map((r) => ({
+      id: r.id,
+      status: r.status,
+      pngUrl: r.pngUrl,
+      videoUrl: r.videoUrl,
+    }));
+
+  const currentRender = item.render;
+  const downloadUrl = currentRender?.videoUrl ?? currentRender?.pngUrl ?? null;
+  const downloadExt = currentRender?.videoUrl
+    ? "mp4"
+    : currentRender?.pngUrl
+      ? "png"
+      : null;
+
+  const rowActions: TimelineEntry["rowActions"] = currentRender
+    ? {
+        templateId: template?.id ?? null,
+        listingId: item.listing.id,
+        renders: playableRenders,
+        initialRenderId: currentRender.id,
+        downloadUrl,
+        downloadExt,
+        quickViewTitle: titleBase,
+      }
+    : undefined;
+
   return {
     id: item.id,
     icon: Clapperboard,
@@ -291,6 +442,7 @@ function listingToEntry(item: GridItem): TimelineEntry {
     createdAt: item.createdAt,
     href: item.render ? `/renders/${item.render.id}` : `/templates`,
     ownerName: item.listing.ownerName,
+    rowActions,
   };
 }
 
@@ -346,29 +498,56 @@ function descriptionToEntry(job: DescriptionJobRow): TimelineEntry {
   };
 }
 
+function coverPackToEntry(pack: CoverPackRow): TimelineEntry {
+  const parts: string[] = [];
+  if (pack.templateName) parts.push(pack.templateName);
+  if (pack.accountHandle) parts.push(`@${pack.accountHandle}`);
+  // Si lié à un slot : ouvrir la sous-route cover de la publication. Sinon,
+  // fallback /tools/cover (cas pack standalone créé directement depuis l'outil).
+  const href = pack.slotId
+    ? `/publications/${pack.slotId}/cover`
+    : "/tools/cover";
+  return {
+    id: pack.id,
+    icon: ImageIcon,
+    iconTone: "amber",
+    title: pack.slotTitle ?? pack.templateName ?? "Cover sans nom",
+    sublabel: parts.join(" · ") || null,
+    status: pack.status,
+    createdAt: pack.createdAt,
+    href,
+    ownerName: pack.ownerName,
+    errorMsg: pack.errorMsg,
+  };
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
-type TabKey = "templates" | "captions" | "transcription" | "description";
+type TabKey = "templates" | "captions" | "transcription" | "description" | "covers";
+
+const PAGE_SIZE = 20;
 
 export function ListingsClient({
   initialListings,
   initialCaptionJobs,
   initialTranscriptionJobs,
   initialDescriptionJobs,
+  initialCoverPacks,
   isAdmin,
   hasCaptions = false,
   hasTranscription = false,
   hasDescription = false,
+  hasCovers = false,
 }: {
   initialListings: ListingRow[];
   initialCaptionJobs: CaptionJobRow[];
   initialTranscriptionJobs: TranscriptionJobRow[];
   initialDescriptionJobs: DescriptionJobRow[];
+  initialCoverPacks: CoverPackRow[];
   isAdmin: boolean;
   hasCaptions?: boolean;
   hasTranscription?: boolean;
   hasDescription?: boolean;
-  /** Conservé pour compat de prop (B6 partiel) — non utilisé en v2 (cover gen retiré). */
   hasCovers?: boolean;
 }) {
   const [tab, setTab] = useState<TabKey>("templates");
@@ -376,6 +555,8 @@ export function ListingsClient({
   const [search, setSearch] = useState("");
   // Filtre status : "all" | "in_progress" | "done" | "failed".
   const [statusFilter, setStatusFilter] = useState<"all" | "in_progress" | "done" | "failed">("all");
+  // Modal de prévisualisation rapide (tab Générations uniquement).
+  const [quickViewEntry, setQuickViewEntry] = useState<TimelineEntry | null>(null);
 
   // ── Render states (live polling) ─────────────────────────────────────────
   const [renderStates, setRenderStates] = useState<Record<string, RenderRow>>(() => {
@@ -452,8 +633,9 @@ export function ListingsClient({
     for (const j of initialCaptionJobs) if (j.ownerName) names.add(j.ownerName);
     for (const j of initialTranscriptionJobs) if (j.ownerName) names.add(j.ownerName);
     for (const j of initialDescriptionJobs) if (j.ownerName) names.add(j.ownerName);
+    for (const p of initialCoverPacks) if (p.ownerName) names.add(p.ownerName);
     return Array.from(names).sort();
-  }, [initialListings, initialCaptionJobs, initialTranscriptionJobs, initialDescriptionJobs]);
+  }, [initialListings, initialCaptionJobs, initialTranscriptionJobs, initialDescriptionJobs, initialCoverPacks]);
 
   const filteredListings = useMemo(
     () => (userFilter ? initialListings.filter((l) => l.ownerName === userFilter) : initialListings),
@@ -471,23 +653,39 @@ export function ListingsClient({
     () => (userFilter ? initialDescriptionJobs.filter((j) => j.ownerName === userFilter) : initialDescriptionJobs),
     [initialDescriptionJobs, userFilter],
   );
+  const filteredCoverPacks = useMemo(
+    () => (userFilter ? initialCoverPacks.filter((p) => p.ownerName === userFilter) : initialCoverPacks),
+    [initialCoverPacks, userFilter],
+  );
 
   // ── Build flat lists of entries (one timeline entry per item) ────────────
   const listingEntries = useMemo<TimelineEntry[]>(() => {
-    const items: GridItem[] = [];
+    const items: (GridItem & { allRenders: RenderRow[] })[] = [];
     for (const listing of filteredListings) {
       const renders = listing.renders.map((r) => renderStates[r.id] ?? r);
       if (renders.length === 0) {
-        items.push({ id: `listing-${listing.id}`, createdAt: listing.createdAt, listing, render: null });
+        items.push({
+          id: `listing-${listing.id}`,
+          createdAt: listing.createdAt,
+          listing,
+          render: null,
+          allRenders: [],
+        });
       } else {
         for (const render of renders) {
-          items.push({ id: render.id, createdAt: render.createdAt, listing, render });
+          items.push({
+            id: render.id,
+            createdAt: render.createdAt,
+            listing,
+            render,
+            allRenders: renders,
+          });
         }
       }
     }
     return items
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .map(listingToEntry);
+      .map((item) => listingToEntry(item, item.allRenders));
   }, [filteredListings, renderStates]);
 
   const captionEntries = useMemo<TimelineEntry[]>(
@@ -517,6 +715,15 @@ export function ListingsClient({
     [filteredDescriptions],
   );
 
+  const coverEntries = useMemo<TimelineEntry[]>(
+    () =>
+      filteredCoverPacks
+        .slice()
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .map(coverPackToEntry),
+    [filteredCoverPacks],
+  );
+
   const rawEntries: TimelineEntry[] =
     tab === "templates"
       ? listingEntries
@@ -524,14 +731,16 @@ export function ListingsClient({
       ? captionEntries
       : tab === "transcription"
       ? transcriptionEntries
+      : tab === "covers"
+      ? coverEntries
       : descriptionEntries;
 
   const activeEntries = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rawEntries.filter((e) => {
-      if (statusFilter === "in_progress" && !["PENDING", "QUEUED", "PROCESSING", "RUNNING"].includes(e.status)) return false;
-      if (statusFilter === "done" && !["COMPLETED", "DONE"].includes(e.status)) return false;
-      if (statusFilter === "failed" && !["FAILED", "ERROR"].includes(e.status)) return false;
+      if (statusFilter === "in_progress" && !STATUS_IN_PROGRESS.has(e.status)) return false;
+      if (statusFilter === "done" && !STATUS_DONE.has(e.status)) return false;
+      if (statusFilter === "failed" && !STATUS_ERROR.has(e.status)) return false;
       if (q) {
         const haystack = [e.title, e.sublabel ?? "", e.ownerName ?? ""].join(" ").toLowerCase();
         if (!haystack.includes(q)) return false;
@@ -540,12 +749,44 @@ export function ListingsClient({
     });
   }, [rawEntries, search, statusFilter]);
 
-  const activeGroups = useMemo(() => groupByDate(activeEntries), [activeEntries]);
+  // ── Pagination client-side ────────────────────────────────────────────────
+  // Une page courante distincte par tab : on garde la position quand l'user
+  // bascule d'un tab à l'autre puis revient. Reset auto à 1 quand le set
+  // visible change (filtre status/search/user).
+  const [pageByTab, setPageByTab] = useState<Record<TabKey, number>>({
+    templates: 1, captions: 1, transcription: 1, description: 1, covers: 1,
+  });
+  const page = pageByTab[tab] ?? 1;
+  const setPage = (n: number) => setPageByTab((prev) => ({ ...prev, [tab]: n }));
+
+  // Reset la page courante quand l'ensemble visible change (les filtres).
+  // Stocke la signature à laquelle on a déjà appliqué le reset pour ne pas
+  // boucler ni écraser une nav explicite de l'user.
+  const filterSignature = `${tab}|${search}|${statusFilter}|${userFilter ?? ""}`;
+  const lastResetSignature = useRef(filterSignature);
+  useEffect(() => {
+    if (lastResetSignature.current !== filterSignature) {
+      lastResetSignature.current = filterSignature;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPageByTab((prev) => ({ ...prev, [tab]: 1 }));
+    }
+  }, [filterSignature, tab]);
+
+  const totalEntries = activeEntries.length;
+  const totalPages = Math.max(1, Math.ceil(totalEntries / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedEntries = useMemo(
+    () => activeEntries.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [activeEntries, safePage],
+  );
+
+  const activeGroups = useMemo(() => groupByDate(pagedEntries), [pagedEntries]);
   const isEmpty = GROUP_ORDER.every((g) => !activeGroups[g]?.length);
 
   // ── Tab definitions ──────────────────────────────────────────────────────
   const tabs: { id: TabKey; label: string; count: number; tone: Tone; show: boolean }[] = [
     { id: "templates", label: "Générations", count: filteredListings.length, tone: "peach", show: true },
+    { id: "covers", label: "Covers", count: filteredCoverPacks.length, tone: "amber", show: hasCovers },
     { id: "captions", label: "Captions", count: filteredCaptions.length, tone: "sky", show: hasCaptions },
     { id: "transcription", label: "Transcriptions", count: filteredTranscriptions.length, tone: "sage", show: hasTranscription },
     { id: "description", label: "Descriptions", count: filteredDescriptions.length, tone: "rose", show: hasDescription },
@@ -556,6 +797,7 @@ export function ListingsClient({
     captions: { icon: Film, label: "Aucun caption généré", linkHref: "/captions", linkLabel: "Captions" },
     transcription: { icon: Mic, label: "Aucune transcription", linkHref: "/transcriptions", linkLabel: "Transcriptions" },
     description: { icon: AlignLeft, label: "Aucune description générée", linkHref: "/descriptions", linkLabel: "Descriptions" },
+    covers: { icon: ImageIcon, label: "Aucune cover générée", linkHref: "/tools/cover", linkLabel: "Cover" },
   } as const;
   const empty = emptyConfig[tab];
   const EmptyIcon = empty.icon;
@@ -664,28 +906,56 @@ export function ListingsClient({
             </div>
             <div className="space-y-2">
               {activeGroups[group]!.map((entry) => (
-                <TimelineRow key={entry.id} entry={entry} />
+                <TimelineRow
+                  key={entry.id}
+                  entry={entry}
+                  onQuickView={setQuickViewEntry}
+                />
               ))}
             </div>
           </section>
         ))}
       </div>
 
-      {/* Pagination hint : si on a hit la limite serveur (50), avertir l'user
-          qu'il y a probablement d'autres items plus anciens. Vraie pagination
-          déferrée (chantier dédié — modif page.tsx server + URL params). */}
-      {!isEmpty && activeEntries.length >= 50 && (
-        <p className="mt-6 text-center text-[11px] text-peach-600">
-          Affichage des 50 plus récents — les éléments plus anciens ne sont pas
-          listés ici. Ouvrez la page détail d&apos;un élément pour la traçabilité complète.
+      {/* Pagination client-side — visible quand au moins 2 pages, sous la
+          timeline (au-dessus du bandeau hint). */}
+      {!isEmpty && totalPages > 1 && (
+        <div className="mt-6 flex justify-center">
+          <Pagination
+            page={safePage}
+            total={totalEntries}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+            showRange
+          />
+        </div>
+      )}
+
+      {/* Hint serveur — si on a atteint la limite max remontée par le server
+          (50 items pour le tab actif), informer qu'il peut exister des items
+          plus anciens non listés. À convertir en pagination server quand on
+          aura besoin. */}
+      {!isEmpty && rawEntries.length >= 50 && (
+        <p className="mt-4 text-center text-[11px] text-peach-600">
+          Limite serveur atteinte (50 plus récents) — les éléments antérieurs ne
+          sont pas listés ici. Ouvrez la page détail pour la traçabilité complète.
         </p>
       )}
 
-      {/* Bandeau "lecture seule" pour rappeler que les actions se font sur les pages détail */}
-      {!isEmpty && (
-        <p className="mt-4 text-center text-[11px] text-gray-400">
-          Cliquez sur un élément pour ouvrir la page détail (regénération, suppression et actions y sont disponibles).
-        </p>
+      {/* Modal de prévisualisation rapide (œil sur une row de génération).
+          key= initialRenderId pour que l'index interne se reset proprement
+          quand on change de render initial sans fermer le modal entre temps. */}
+      {quickViewEntry?.rowActions && (
+        <RenderQuickView
+          key={quickViewEntry.rowActions.initialRenderId}
+          open={!!quickViewEntry}
+          onClose={() => setQuickViewEntry(null)}
+          title={quickViewEntry.rowActions.quickViewTitle}
+          templateId={quickViewEntry.rowActions.templateId}
+          listingId={quickViewEntry.rowActions.listingId}
+          renders={quickViewEntry.rowActions.renders}
+          initialRenderId={quickViewEntry.rowActions.initialRenderId}
+        />
       )}
     </div>
   );
