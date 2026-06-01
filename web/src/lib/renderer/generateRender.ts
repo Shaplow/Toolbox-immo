@@ -153,6 +153,40 @@ function getActiveVideoBlocks(
     });
 }
 
+/**
+ * Filtre les slots de videoSequence qui ne peuvent rien résoudre dans le
+ * contexte courant (ex : binding pointant vers un champ schema masqué par
+ * showIf, sans libraryId de secours). Sans ça, un template "photo OU vidéo"
+ * dont le slot vidéo a été auto-créé par ensureVideoSequence pousse le
+ * pipeline en mode séquence même quand l'utilisateur a choisi "Photo" —
+ * resolveSlotVideoUrl finit par échouer avec "aucune vidéo trouvée".
+ */
+function getActiveSequenceSlots(
+  templateJson: TemplateJSON,
+  listingData: ListingData,
+): VideoSequenceSlot[] {
+  const slots = templateJson.videoSequence ?? [];
+  if (slots.length === 0) return [];
+  const groupMap = new Map((templateJson.groups ?? []).map((group) => [group.id, group]));
+  const declaredFieldKeys = new Set((templateJson.schema ?? []).map((field) => field.key));
+  const visibleFieldKeys = getVisibleFieldKeys(templateJson.schema ?? [], templateJson.formSections ?? [], listingData);
+
+  return slots.filter((slot) => {
+    if (slot.libraryId) return true;
+    if (slot.binding && declaredFieldKeys.has(slot.binding) && !visibleFieldKeys.has(slot.binding)) {
+      return false;
+    }
+    if (slot.videoBlockId) {
+      const block = templateJson.blocks.find((b) => b.id === slot.videoBlockId);
+      if (block) {
+        const group = block.groupId ? groupMap.get(block.groupId) : undefined;
+        if (!isBlockVisibleForListing(block, listingData, group)) return false;
+      }
+    }
+    return true;
+  });
+}
+
 export async function startRenderGeneration(renderId: string): Promise<"accepted" | "already-processed" | "missing"> {
   const now = new Date();
   const startData: Prisma.RenderUpdateManyMutationInput = {
@@ -217,12 +251,17 @@ export async function generateRender(renderId: string): Promise<void> {
   // unified-sequence.ts). La branche pipeline single (generateVideoRender)
   // est dead code et supprimée en Phase 5 du chantier.
   const videoBlocks = getActiveVideoBlocks(templateJson, enrichedListing);
+  const activeSequenceSlots = getActiveSequenceSlots(templateJson, enrichedListing);
   console.log(
-    `[generateRender] ${renderId} — activeVideoBlocks: ${videoBlocks.length}, sequenceSlots: ${templateJson.videoSequence?.length ?? 0}, USE_RUNPOD=${process.env.USE_RUNPOD}`
+    `[generateRender] ${renderId} — activeVideoBlocks: ${videoBlocks.length}, sequenceSlots: ${templateJson.videoSequence?.length ?? 0}, activeSequenceSlots: ${activeSequenceSlots.length}, USE_RUNPOD=${process.env.USE_RUNPOD}`
   );
 
-  if (templateJson.videoSequence && templateJson.videoSequence.length > 0) {
-    await generateSequenceRender(renderId, templateJson, enrichedListing, render.accountId ?? null);
+  if (activeSequenceSlots.length > 0) {
+    const effectiveTemplateJson: TemplateJSON = {
+      ...templateJson,
+      videoSequence: activeSequenceSlots,
+    };
+    await generateSequenceRender(renderId, effectiveTemplateJson, enrichedListing, render.accountId ?? null);
     return;
   }
 
