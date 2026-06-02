@@ -18,6 +18,7 @@ import {
 import { resolveClientValidationConfig } from "@/lib/services/slot/config";
 import { resolveCaptionsMode, isCaptionsAuto } from "@/lib/publications/captionsMode";
 import { logActivity } from "@/lib/services/slot/activity";
+import { resolveActiveCaptionJob } from "@/lib/publications/jobLifecycle";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -41,7 +42,13 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
       allowsClientRevisionOverride: true,
       needsCaptionsModeOverride: true,
       needsCaptionsOverride: true,
-      activeCaptionJobId: true,
+      activeCaptionJob: {
+        select: { id: true, status: true, staleSince: true },
+      },
+      captionJobs: {
+        select: { id: true, status: true, staleSince: true },
+        orderBy: { createdAt: "desc" },
+      },
       pattern: {
         select: {
           needsClientValidation: true,
@@ -96,7 +103,18 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
     pattern: slot.pattern,
   });
   if (isCaptionsAuto(captionsMode)) {
-    if (!slot.activeCaptionJobId) {
+    // Aligné sur l'UI (PublicationFiche.canSendValidation) : résolution via
+    // resolveActiveCaptionJob qui fallback sur captionJobs[] si le pointeur
+    // activeCaptionJob est null. Avant ce fix, le pipeline auto ne promouvait
+    // pas activeCaptionJobId → UI affichait "Sous-titres générés" mais l'API
+    // rejetait l'envoi avec "Aucun job actif". Désormais onCaptionsCompleted
+    // auto-promeut, mais on garde le fallback ici pour réparer les slots déjà
+    // dans cet état (pas de migration data).
+    const activeCaption = resolveActiveCaptionJob({
+      activeCaptionJob: slot.activeCaptionJob,
+      captionJobs: slot.captionJobs,
+    });
+    if (!activeCaption) {
       return NextResponse.json(
         {
           error:
@@ -105,11 +123,7 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
         { status: 400 },
       );
     }
-    const activeCaption = await prisma.captionJob.findUnique({
-      where: { id: slot.activeCaptionJobId },
-      select: { status: true, staleSince: true },
-    });
-    if (!activeCaption || activeCaption.status !== "COMPLETED" || activeCaption.staleSince) {
+    if (activeCaption.status !== "COMPLETED" || activeCaption.staleSince) {
       return NextResponse.json(
         {
           error:
@@ -117,6 +131,15 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
         },
         { status: 400 },
       );
+    }
+    // Auto-rattrapage : si le job a été résolu via fallback (pas via le
+    // pointeur), on promeut maintenant pour rendre la DB cohérente pour les
+    // consommateurs ultérieurs.
+    if (!slot.activeCaptionJob) {
+      await prisma.publicationSlot.update({
+        where: { id: slotId },
+        data: { activeCaptionJobId: activeCaption.id },
+      });
     }
   }
 

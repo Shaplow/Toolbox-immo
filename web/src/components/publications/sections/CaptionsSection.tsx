@@ -10,16 +10,17 @@
 
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Subtitles, ExternalLink, Loader2, CheckCircle, AlertCircle, Play, Sparkles } from "lucide-react";
+import { Subtitles, ExternalLink, Loader2, CheckCircle, AlertCircle, Play, Sparkles, RefreshCw } from "lucide-react";
 import { canTriggerCaptions, type ActionVerdict } from "@/lib/publications/actions";
 import { resolveCaptionsMode } from "@/lib/publications/captionsMode";
 import { useJobEvent, useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Section } from "@/components/ui/molecules/Section";
+import { toast } from "@/components/ui/Toast";
 
 interface CaptionJobInfo {
   id: string;
@@ -47,6 +48,9 @@ interface Props {
   } | null;
   /** true pour CM, MONTEUR, et ADMIN */
   canEdit: boolean;
+  /** ADMIN strict — utilisé pour exposer le filet de sécurité "relancer la
+   *  chaîne sous-titres" quand le pipeline auto a silencieusement échoué. */
+  isAdmin?: boolean;
   /** Version courante promue par l'ADMIN (si needsRushes=true). */
   currentVersion?: { versionNumber: number; fileName: string } | null;
   /** Dernier job captions lié à ce slot (Phase 1.9 A2). */
@@ -67,6 +71,7 @@ export function CaptionsSection({
   renderStatus,
   pattern,
   canEdit,
+  isAdmin = false,
   currentVersion,
   latestCaptionJob,
   effectiveCaptionPresetId,
@@ -76,6 +81,28 @@ export function CaptionsSection({
   collapsible = false,
 }: Props) {
   const router = useRouter();
+  const [isRetriggering, setIsRetriggering] = useState(false);
+
+  const handleRetriggerAutoCaptions = async () => {
+    setIsRetriggering(true);
+    try {
+      const res = await fetch(
+        `/api/admin/publications/${slot.id}/retrigger-auto-captions`,
+        { method: "POST" },
+      );
+      const data = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
+      if (!res.ok) {
+        toast.error(data.error ?? "Impossible de relancer la chaîne sous-titres");
+      } else {
+        toast.success(data.message ?? "Pipeline sous-titres relancé");
+        router.refresh();
+      }
+    } catch (err) {
+      toast.error(`Erreur : ${String(err)}`);
+    } finally {
+      setIsRetriggering(false);
+    }
+  };
   // Polling SSE — refresh auto quand le webhook RunPod marque le job
   // captions COMPLETED/FAILED. Sans ça, l'utilisateur reste bloqué sur
   // "Traitement en cours…" jusqu'à un F5 manuel.
@@ -260,6 +287,32 @@ export function CaptionsSection({
             Aucun job de sous-titres encore lancé pour cette publication.
           </Alert>
         )}
+
+        {/* Filet de sécurité ADMIN : visible uniquement quand le pipeline
+            auto aurait dû tourner mais ne l'a pas fait. Cas observé :
+            webhook RunPod renders DONE mais aucun TranscriptionJob créé
+            (cause racine en cours d'investigation — logging ajouté).
+            Discret par construction : conditions très étroites = rare. */}
+        {isAdmin &&
+          captionsMode === "auto" &&
+          !latestCaptionJob &&
+          renderId &&
+          renderStatus === "DONE" && (
+            <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-200/60">
+              <span className="text-[11px] text-gray-500">
+                Admin — la chaîne auto ne s&apos;est pas déclenchée ?
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={isRetriggering ? Loader2 : RefreshCw}
+                disabled={isRetriggering}
+                onClick={handleRetriggerAutoCaptions}
+              >
+                {isRetriggering ? "Relance…" : "Relancer la chaîne"}
+              </Button>
+            </div>
+          )}
 
         {/* CTA actif uniquement si le verdict l'autorise — ET on garde le
             cas "Regénérer" (DONE/FAILED) qui ne dépend pas du verdict

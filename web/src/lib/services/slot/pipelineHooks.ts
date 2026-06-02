@@ -22,6 +22,7 @@
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/services/slot/activity";
 import { applyAutoTransitionFromPipeline } from "@/lib/services/slot/transitions";
+import { autoPromoteIfNoActive } from "@/lib/publications/jobLifecycle";
 
 /**
  * À appeler juste après qu'un Render passe à status="DONE".
@@ -63,6 +64,12 @@ export async function onCaptionsCompleted(captionJobId: string): Promise<void> {
       select: { slotId: true, outputUrl: true },
     });
     if (!job?.slotId) return;
+
+    // Auto-promote en tête : sans ça, slot.activeCaptionJobId reste null après
+    // un job COMPLETED via pipeline auto, alors que l'UI affiche bien le job
+    // via le fallback resolveActiveCaptionJob → divergence avec les gardes
+    // backend qui lisent activeCaptionJobId strict (ex. envoi validation client).
+    await autoPromoteIfNoActive(prisma, job.slotId, "caption", captionJobId);
 
     await logActivity(prisma, {
       slotId: job.slotId,

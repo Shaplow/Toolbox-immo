@@ -125,14 +125,25 @@ export async function POST(req: NextRequest) {
 
     // ── Pipeline sous-titres automatique ──────────────────────────────────
     // Non bloquant : les erreurs internes ne doivent pas faire échouer le webhook.
+    // Log explicite à l'entrée pour pouvoir corréler quand un render DONE
+    // n'a finalement pas généré de TranscriptionJob (bug 2/4 observé).
     if (outputKey) {
+      console.info(
+        `[webhook/renders] render=${render.id} — déclenchement triggerAutoTranscriptionForRender (outputKey=${outputKey})`,
+      );
       void triggerAutoTranscriptionForRender(
         render.id,
         render.templateId,
         outputKey,
         userId,
       ).catch((err) =>
-        console.error(`[webhook/renders] triggerAutoTranscription threw: ${String(err)}`),
+        console.error(
+          `[webhook/renders] triggerAutoTranscriptionForRender threw pour render=${render.id} : ${String(err)}`,
+        ),
+      );
+    } else {
+      console.warn(
+        `[webhook/renders] render=${render.id} sans outputKey — pipeline sous-titres auto NON déclenché`,
       );
     }
 

@@ -693,6 +693,7 @@ export function PublicationFiche({
                       : null
                   }
                   canEdit={canEditCaptions}
+                  isAdmin={currentUserRole === "ADMIN"}
                   currentVersion={currentVersion}
                   latestCaptionJob={latestCaptionJob}
                   effectiveCaptionPresetId={

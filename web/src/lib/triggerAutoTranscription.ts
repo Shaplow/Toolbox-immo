@@ -151,7 +151,12 @@ export async function triggerAutoTranscriptionForRender(
   renderOutputKey: string,
   userId: string,
 ): Promise<void> {
-  if (!templateId) return;
+  if (!templateId) {
+    console.warn(
+      `[autoTranscription] render=${renderId} — templateId absent — skip (le pipeline auto ne peut pas démarrer sans template)`,
+    );
+    return;
+  }
 
   // ── Mode local (USE_RUNPOD=false) : pipeline synchrone via render-engine
   // local. Vérifie pareil que le mode RunPod : template doit avoir
@@ -223,11 +228,16 @@ export async function triggerAutoTranscriptionForRender(
   let captionAutoConfig: TemplateJSON["captionAutoConfig"] | undefined;
   try {
     const template = await prisma.template.findUnique({ where: { id: templateId } });
-    if (!template) return;
+    if (!template) {
+      console.warn(
+        `[autoTranscription] render=${renderId} template=${templateId} introuvable — skip`,
+      );
+      return;
+    }
     const json = JSON.parse(template.jsonData) as TemplateJSON;
     captionAutoConfig = json.captionAutoConfig;
   } catch (err) {
-    console.error(`[autoTranscription] Lecture template=${templateId} échouée : ${String(err)}`);
+    console.error(`[autoTranscription] Lecture template=${templateId} échouée pour render=${renderId} : ${String(err)}`);
     return;
   }
 
@@ -258,7 +268,12 @@ export async function triggerAutoTranscriptionForRender(
     console.warn(`[autoTranscription] Lecture slot pattern échouée pour render=${renderId} : ${String(err)}`);
   }
 
-  if (!captionAutoConfig?.enabled && !needsDescriptionAuto) return;
+  if (!captionAutoConfig?.enabled && !needsDescriptionAuto) {
+    console.info(
+      `[autoTranscription] render=${renderId} — ni captionAutoConfig.enabled ni needsDescription=autoGenerate — skip légitime`,
+    );
+    return;
+  }
 
   // Fix 2026-05-30 : avant le create, on regarde s'il existe déjà une
   // transcription pour ce render (contrainte unique sur renderId). Cas :
