@@ -90,11 +90,19 @@ export function CaptionsSection({
         `/api/admin/publications/${slot.id}/retrigger-auto-captions`,
         { method: "POST" },
       );
-      const data = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+        diagnostic?: string;
+        before?: unknown;
+        after?: unknown;
+      };
+      // Diagnostic complet en console pour debug — la toast peut tronquer.
+      console.info("[retrigger-auto-captions] diagnostic complet :", data);
       if (!res.ok) {
-        toast.error(data.error ?? "Impossible de relancer la chaîne sous-titres");
+        toast.error(data.error ?? data.diagnostic ?? "Impossible de relancer la chaîne sous-titres");
       } else {
-        toast.success(data.message ?? "Pipeline sous-titres relancé");
+        toast.success(data.diagnostic ?? data.message ?? "Pipeline sous-titres relancé");
         router.refresh();
       }
     } catch (err) {

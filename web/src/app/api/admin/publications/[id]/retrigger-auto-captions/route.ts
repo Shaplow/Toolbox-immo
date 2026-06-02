@@ -90,24 +90,60 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
     payload: { renderId: render.id },
   });
 
-  // Fire-and-forget cohérent avec le webhook RunPod renders. La fonction est
-  // idempotente : si un TranscriptionJob existe déjà en COMPLETED/QUEUED/
-  // PROCESSING, elle skip avec un log info ; les FAILED sont reset.
-  void triggerAutoTranscriptionForRender(
-    render.id,
-    render.templateId,
-    outputKey,
-    render.listing.userId,
-  ).catch((err) =>
+  // Snapshot état avant — permet de savoir si la fonction a créé/modifié
+  // quelque chose (sinon = early return silencieux).
+  const beforeJob = await prisma.transcriptionJob.findUnique({
+    where: { renderId: render.id },
+    select: { id: true, status: true },
+  });
+
+  // Diagnostic admin : on AWAIT (au lieu de void) pour pouvoir reporter
+  // l'erreur réelle dans la response. Le coût latence (≤ qq secondes pour
+  // submit RunPod) est acceptable pour un endpoint admin de debug.
+  let triggerError: string | null = null;
+  try {
+    await triggerAutoTranscriptionForRender(
+      render.id,
+      render.templateId,
+      outputKey,
+      render.listing.userId,
+    );
+  } catch (err) {
+    triggerError = err instanceof Error ? err.message : String(err);
     console.error(
       `[retrigger-auto-captions] triggerAutoTranscriptionForRender threw pour slot=${slotId} render=${render.id}:`,
       err,
-    ),
-  );
+    );
+  }
+
+  // Snapshot état après — diagnostic structuré pour l'admin.
+  const afterJob = await prisma.transcriptionJob.findUnique({
+    where: { renderId: render.id },
+    select: { id: true, status: true, errorMsg: true },
+  });
+
+  let diagnostic: string;
+  if (triggerError) {
+    diagnostic = `Exception : ${triggerError}`;
+  } else if (!beforeJob && !afterJob) {
+    diagnostic =
+      "Aucun TranscriptionJob créé après l'appel — la chaîne a return early silencieusement. Regarde les logs serveur (lignes commençant par [autoTranscription] render=${render.id}).";
+  } else if (!beforeJob && afterJob) {
+    diagnostic = `TranscriptionJob créé (id=${afterJob.id}, status=${afterJob.status}).${afterJob.errorMsg ? ` Erreur : ${afterJob.errorMsg}` : ""}`;
+  } else if (beforeJob && afterJob && beforeJob.status !== afterJob.status) {
+    diagnostic = `TranscriptionJob existant ${beforeJob.id} ${beforeJob.status} → ${afterJob.status}.${afterJob.errorMsg ? ` Erreur : ${afterJob.errorMsg}` : ""}`;
+  } else if (beforeJob && afterJob) {
+    diagnostic = `TranscriptionJob ${afterJob.id} déjà ${afterJob.status} — skip idempotent.`;
+  } else {
+    diagnostic = "État incohérent (job pre-existant disparu).";
+  }
 
   return NextResponse.json({
-    ok: true,
+    ok: triggerError === null,
     renderId: render.id,
-    message: "Pipeline auto sous-titres relancé (transcription → captions).",
+    diagnostic,
+    before: beforeJob,
+    after: afterJob,
+    message: diagnostic,
   });
 }
