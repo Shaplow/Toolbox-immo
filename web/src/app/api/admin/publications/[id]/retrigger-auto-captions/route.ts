@@ -16,11 +16,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
-import { triggerAutoCaptionForTranscription } from "@/lib/triggerAutoCaptionFromTranscription";
+import {
+  triggerAutoCaptionForTranscription,
+  resolveZone,
+  resolveSlotExcludeZones,
+  applyExcludeZones,
+} from "@/lib/triggerAutoCaptionFromTranscription";
 import { logActivity } from "@/lib/services/slot/activity";
-import { r2Configured } from "@/lib/r2";
+import { r2Configured, getFromR2 } from "@/lib/r2";
 import { runpodConfigured } from "@/lib/runpod";
-import type { TemplateJSON } from "@/types/template";
+import type { TemplateJSON, AnyBlock } from "@/types/template";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -170,6 +175,67 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
               });
               if (!preset) {
                 preflightSkipReason = `Template ${tpl.id} référence un preset captions ${cfg.presetId} qui n'existe pas en base`;
+              } else {
+                // Pre-flight étendu : lecture R2 des segments + filtrage zones.
+                // Si on arrive ici, toutes les conditions de skip "config"
+                // passent. Reste 2 raisons silencieuses possibles :
+                //  - getFromR2(outputJsonKey) throw (R2 erreur réseau / 404)
+                //  - filteredSegments.length === 0 après zones d'exclusion
+                try {
+                  const buf = await getFromR2(fullTranscription.outputJsonKey);
+                  const rawSegments = JSON.parse(buf.toString("utf-8")) as Array<{
+                    start: number;
+                    end: number;
+                    text: string;
+                  }>;
+                  const blocks: AnyBlock[] = tplJson.blocks ?? [];
+                  const resolvedZones = (cfg.excludeZones ?? [])
+                    .map((zone) => resolveZone(zone, blocks))
+                    .filter((z): z is NonNullable<typeof z> => z !== null);
+
+                  // Charger render pour slotDurations / job.duration via la transcription complète
+                  const renderForZones = await prisma.render.findUnique({
+                    where: { id: fullTranscription.renderId },
+                    select: { slotDurations: true },
+                  });
+                  let slotDurations: Record<string, number> | undefined;
+                  if (renderForZones?.slotDurations) {
+                    try {
+                      slotDurations = JSON.parse(renderForZones.slotDurations) as Record<
+                        string,
+                        number
+                      >;
+                    } catch {
+                      // ignore
+                    }
+                  }
+                  const txDuration = await prisma.transcriptionJob.findUnique({
+                    where: { id: fullTranscription.id },
+                    select: { duration: true },
+                  });
+
+                  const slotZones =
+                    cfg.excludeSlotIds?.length && tplJson.videoSequence?.length
+                      ? resolveSlotExcludeZones(
+                          cfg.excludeSlotIds,
+                          tplJson.videoSequence,
+                          txDuration?.duration ?? null,
+                          slotDurations,
+                        )
+                      : [];
+
+                  const filtered = applyExcludeZones(
+                    rawSegments,
+                    [...resolvedZones, ...slotZones],
+                    txDuration?.duration ?? null,
+                  );
+
+                  if (filtered.length === 0) {
+                    preflightSkipReason = `Aucun segment de transcription après filtrage des zones d'exclusion (${rawSegments.length} segments bruts, ${resolvedZones.length + slotZones.length} zones d'exclusion) — la vidéo est entièrement couverte par des zones excluant les sous-titres`;
+                  }
+                } catch (r2Err) {
+                  preflightSkipReason = `Lecture R2 des segments échouée (key=${fullTranscription.outputJsonKey}) : ${String(r2Err)}`;
+                }
               }
             }
           }
