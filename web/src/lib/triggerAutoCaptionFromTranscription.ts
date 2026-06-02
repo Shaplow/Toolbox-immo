@@ -273,7 +273,12 @@ export async function triggerAutoCaptionForTranscription(transcriptionJobId: str
 
   // Reload the job to get current state (including inputKey retained by the webhook)
   const job = await prisma.transcriptionJob.findUnique({ where: { id: transcriptionJobId } });
-  if (!job?.renderId) return;
+  if (!job?.renderId) {
+    console.warn(
+      `[autoCaption] transcriptionJob=${transcriptionJobId} introuvable ou sans renderId — skip`,
+    );
+    return;
+  }
   if (!job.outputJsonKey) {
     console.warn(`[autoCaption] outputJsonKey manquant sur transcriptionJob=${transcriptionJobId}`);
     return;
@@ -285,10 +290,20 @@ export async function triggerAutoCaptionForTranscription(transcriptionJobId: str
 
   // Load the linked render and template
   const render = await prisma.render.findUnique({ where: { id: job.renderId } });
-  if (!render?.templateId) return;
+  if (!render?.templateId) {
+    console.warn(
+      `[autoCaption] render=${job.renderId} introuvable ou sans templateId — skip pour transcriptionJob=${transcriptionJobId}`,
+    );
+    return;
+  }
 
   const template = await prisma.template.findUnique({ where: { id: render.templateId } });
-  if (!template) return;
+  if (!template) {
+    console.warn(
+      `[autoCaption] template=${render.templateId} introuvable — skip pour transcriptionJob=${transcriptionJobId}`,
+    );
+    return;
+  }
 
   let templateJson: TemplateJSON;
   try {
@@ -299,7 +314,12 @@ export async function triggerAutoCaptionForTranscription(transcriptionJobId: str
   }
 
   const captionAutoConfig = templateJson.captionAutoConfig;
-  if (!captionAutoConfig?.enabled || !captionAutoConfig.presetId) return;
+  if (!captionAutoConfig?.enabled || !captionAutoConfig.presetId) {
+    console.info(
+      `[autoCaption] template=${render.templateId} captionAutoConfig désactivé ou sans presetId — skip pour transcriptionJob=${transcriptionJobId}`,
+    );
+    return;
+  }
 
   // Load the preset config
   const preset = await prisma.captionPreset.findUnique({ where: { id: captionAutoConfig.presetId } });

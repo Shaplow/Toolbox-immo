@@ -1,19 +1,22 @@
 /**
  * POST /api/admin/publications/[id]/retrigger-auto-captions
  *
- * Filet de sécurité admin : rappelle `triggerAutoTranscriptionForRender` sur
- * le Render attaché au slot quand la chaîne auto a silencieusement échoué
- * (cas observé : webhook RunPod renders DONE mais aucun TranscriptionJob créé).
+ * Filet de sécurité admin quand la chaîne auto a silencieusement échoué.
+ * Détecte où la chaîne s'est cassée et relance la phase manquante :
+ *   - Pas de TranscriptionJob → triggerAutoTranscriptionForRender (full chain)
+ *   - TranscriptionJob COMPLETED mais pas de CaptionJob → triggerAutoCaptionForTranscription
+ *   - TranscriptionJob FAILED → triggerAutoTranscriptionForRender (reset + resubmit)
+ *   - TranscriptionJob QUEUED/PROCESSING → no-op (laisser tourner)
  *
- * Idempotent — l'appelée gère déjà les états COMPLETED/QUEUED/PROCESSING et
- * reset les FAILED. Cet endpoint ne fait que ré-armer le pipeline.
+ * Idempotent. Diagnostic structuré retourné dans la response pour debug.
  *
- * ADMIN uniquement. Pas visible côté UI pour les autres rôles.
+ * ADMIN uniquement.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
+import { triggerAutoCaptionForTranscription } from "@/lib/triggerAutoCaptionFromTranscription";
 import { logActivity } from "@/lib/services/slot/activity";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -90,60 +93,101 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
     payload: { renderId: render.id },
   });
 
-  // Snapshot état avant — permet de savoir si la fonction a créé/modifié
-  // quelque chose (sinon = early return silencieux).
-  const beforeJob = await prisma.transcriptionJob.findUnique({
+  // Snapshot état avant : où est cassée la chaîne ?
+  const transcriptionBefore = await prisma.transcriptionJob.findUnique({
     where: { renderId: render.id },
     select: { id: true, status: true },
   });
+  const captionBefore = await prisma.captionJob.findFirst({
+    where: { slotId, staleSince: null },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, status: true },
+  });
 
-  // Diagnostic admin : on AWAIT (au lieu de void) pour pouvoir reporter
-  // l'erreur réelle dans la response. Le coût latence (≤ qq secondes pour
-  // submit RunPod) est acceptable pour un endpoint admin de debug.
+  // Décision : quelle phase relancer ?
+  let phaseTriggered: "transcription" | "caption" | "none";
   let triggerError: string | null = null;
-  try {
-    await triggerAutoTranscriptionForRender(
-      render.id,
-      render.templateId,
-      outputKey,
-      render.listing.userId,
-    );
-  } catch (err) {
-    triggerError = err instanceof Error ? err.message : String(err);
-    console.error(
-      `[retrigger-auto-captions] triggerAutoTranscriptionForRender threw pour slot=${slotId} render=${render.id}:`,
-      err,
-    );
+
+  if (
+    transcriptionBefore &&
+    transcriptionBefore.status === "COMPLETED" &&
+    (!captionBefore ||
+      captionBefore.status === "FAILED")
+  ) {
+    // Cas observé : transcription OK mais caption jamais créé (chaîne cassée
+    // entre webhook transcription COMPLETED et triggerAutoCaptionForTranscription).
+    phaseTriggered = "caption";
+    try {
+      await triggerAutoCaptionForTranscription(transcriptionBefore.id);
+    } catch (err) {
+      triggerError = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[retrigger-auto-captions] triggerAutoCaptionForTranscription threw pour slot=${slotId} transcription=${transcriptionBefore.id}:`,
+        err,
+      );
+    }
+  } else if (
+    transcriptionBefore &&
+    (transcriptionBefore.status === "QUEUED" || transcriptionBefore.status === "PROCESSING")
+  ) {
+    phaseTriggered = "none";
+  } else {
+    // Pas de transcription OU transcription FAILED : on (re)lance depuis le début.
+    phaseTriggered = "transcription";
+    try {
+      await triggerAutoTranscriptionForRender(
+        render.id,
+        render.templateId,
+        outputKey,
+        render.listing.userId,
+      );
+    } catch (err) {
+      triggerError = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[retrigger-auto-captions] triggerAutoTranscriptionForRender threw pour slot=${slotId} render=${render.id}:`,
+        err,
+      );
+    }
   }
 
-  // Snapshot état après — diagnostic structuré pour l'admin.
-  const afterJob = await prisma.transcriptionJob.findUnique({
+  // Snapshot état après
+  const transcriptionAfter = await prisma.transcriptionJob.findUnique({
     where: { renderId: render.id },
+    select: { id: true, status: true, errorMsg: true },
+  });
+  const captionAfter = await prisma.captionJob.findFirst({
+    where: { slotId, staleSince: null },
+    orderBy: { createdAt: "desc" },
     select: { id: true, status: true, errorMsg: true },
   });
 
   let diagnostic: string;
   if (triggerError) {
-    diagnostic = `Exception : ${triggerError}`;
-  } else if (!beforeJob && !afterJob) {
-    diagnostic =
-      "Aucun TranscriptionJob créé après l'appel — la chaîne a return early silencieusement. Regarde les logs serveur (lignes commençant par [autoTranscription] render=${render.id}).";
-  } else if (!beforeJob && afterJob) {
-    diagnostic = `TranscriptionJob créé (id=${afterJob.id}, status=${afterJob.status}).${afterJob.errorMsg ? ` Erreur : ${afterJob.errorMsg}` : ""}`;
-  } else if (beforeJob && afterJob && beforeJob.status !== afterJob.status) {
-    diagnostic = `TranscriptionJob existant ${beforeJob.id} ${beforeJob.status} → ${afterJob.status}.${afterJob.errorMsg ? ` Erreur : ${afterJob.errorMsg}` : ""}`;
-  } else if (beforeJob && afterJob) {
-    diagnostic = `TranscriptionJob ${afterJob.id} déjà ${afterJob.status} — skip idempotent.`;
+    diagnostic = `Exception (${phaseTriggered}) : ${triggerError}`;
+  } else if (phaseTriggered === "none") {
+    diagnostic = `Transcription ${transcriptionBefore?.id} déjà ${transcriptionBefore?.status} — laissée tourner (aucune action).`;
+  } else if (phaseTriggered === "transcription") {
+    if (!transcriptionAfter) {
+      diagnostic = `Phase transcription relancée — aucun TranscriptionJob créé après l'appel (early return silencieux dans triggerAutoTranscriptionForRender). Vérifie les logs serveur [autoTranscription] render=${render.id}.`;
+    } else {
+      diagnostic = `Phase transcription : ${transcriptionBefore?.status ?? "absent"} → ${transcriptionAfter.status} (id=${transcriptionAfter.id})${transcriptionAfter.errorMsg ? `. Erreur : ${transcriptionAfter.errorMsg}` : ""}.`;
+    }
   } else {
-    diagnostic = "État incohérent (job pre-existant disparu).";
+    // phase caption
+    if (!captionAfter || captionAfter.id === captionBefore?.id) {
+      diagnostic = `Phase caption relancée — aucun nouveau CaptionJob créé (early return silencieux dans triggerAutoCaptionForTranscription). Vérifie les logs serveur [autoCaption] transcriptionJob=${transcriptionBefore?.id}.`;
+    } else {
+      diagnostic = `Phase caption : ${captionBefore?.status ?? "absent"} → ${captionAfter.status} (id=${captionAfter.id})${captionAfter.errorMsg ? `. Erreur : ${captionAfter.errorMsg}` : ""}.`;
+    }
   }
 
   return NextResponse.json({
     ok: triggerError === null,
     renderId: render.id,
+    phaseTriggered,
     diagnostic,
-    before: beforeJob,
-    after: afterJob,
+    before: { transcription: transcriptionBefore, caption: captionBefore },
+    after: { transcription: transcriptionAfter, caption: captionAfter },
     message: diagnostic,
   });
 }
