@@ -18,6 +18,9 @@ import { prisma } from "@/lib/prisma";
 import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
 import { triggerAutoCaptionForTranscription } from "@/lib/triggerAutoCaptionFromTranscription";
 import { logActivity } from "@/lib/services/slot/activity";
+import { r2Configured } from "@/lib/r2";
+import { runpodConfigured } from "@/lib/runpod";
+import type { TemplateJSON } from "@/types/template";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -108,23 +111,83 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
   let phaseTriggered: "transcription" | "caption" | "none";
   let triggerError: string | null = null;
 
+  // Pre-flight check pour la phase caption : on inspecte EXACTEMENT chaque
+  // condition de skip de triggerAutoCaptionForTranscription pour reporter
+  // au front sans avoir à lire les logs serveur.
+  let preflightSkipReason: string | null = null;
+
   if (
     transcriptionBefore &&
     transcriptionBefore.status === "COMPLETED" &&
-    (!captionBefore ||
-      captionBefore.status === "FAILED")
+    (!captionBefore || captionBefore.status === "FAILED")
   ) {
-    // Cas observé : transcription OK mais caption jamais créé (chaîne cassée
-    // entre webhook transcription COMPLETED et triggerAutoCaptionForTranscription).
+    // Inspection précise des conditions de skip de triggerAutoCaptionForTranscription.
+    const fullTranscription = await prisma.transcriptionJob.findUnique({
+      where: { id: transcriptionBefore.id },
+      select: { id: true, renderId: true, outputJsonKey: true, inputKey: true },
+    });
+    if (!r2Configured()) {
+      preflightSkipReason = "R2 non configuré côté serveur (R2_PUBLIC_URL/etc manquants)";
+    } else if (!runpodConfigured() || !process.env.RUNPOD_API_KEY || !process.env.RUNPOD_ENDPOINT_ID) {
+      preflightSkipReason = "RunPod non configuré (RUNPOD_API_KEY / RUNPOD_ENDPOINT_ID manquants)";
+    } else if (!fullTranscription?.renderId) {
+      preflightSkipReason = `TranscriptionJob ${transcriptionBefore.id} n'a pas de renderId (lien rompu)`;
+    } else if (!fullTranscription.outputJsonKey) {
+      preflightSkipReason = `TranscriptionJob ${transcriptionBefore.id} sans outputJsonKey (segments non sauvegardés en R2)`;
+    } else if (!fullTranscription.inputKey) {
+      preflightSkipReason = `TranscriptionJob ${transcriptionBefore.id} sans inputKey (la vidéo source R2 a été nettoyée — le webhook transcription a effacé inputKey alors qu'il devait le conserver pour un job auto-pipeline)`;
+    } else {
+      const renderFull = await prisma.render.findUnique({
+        where: { id: fullTranscription.renderId },
+        select: { id: true, templateId: true },
+      });
+      if (!renderFull?.templateId) {
+        preflightSkipReason = `Render ${fullTranscription.renderId} introuvable ou sans templateId`;
+      } else {
+        const tpl = await prisma.template.findUnique({
+          where: { id: renderFull.templateId },
+          select: { id: true, jsonData: true },
+        });
+        if (!tpl) {
+          preflightSkipReason = `Template ${renderFull.templateId} introuvable en base`;
+        } else {
+          let tplJson: TemplateJSON | null = null;
+          try {
+            tplJson = JSON.parse(tpl.jsonData) as TemplateJSON;
+          } catch {
+            preflightSkipReason = `Template ${tpl.id} jsonData invalide (parse JSON failed)`;
+          }
+          if (tplJson) {
+            const cfg = tplJson.captionAutoConfig;
+            if (!cfg?.enabled) {
+              preflightSkipReason = `Template ${tpl.id} : captionAutoConfig.enabled=false → captions auto désactivées sur ce template`;
+            } else if (!cfg.presetId) {
+              preflightSkipReason = `Template ${tpl.id} : captionAutoConfig.presetId manquant — aucun preset captions configuré`;
+            } else {
+              const preset = await prisma.captionPreset.findUnique({
+                where: { id: cfg.presetId },
+                select: { id: true },
+              });
+              if (!preset) {
+                preflightSkipReason = `Template ${tpl.id} référence un preset captions ${cfg.presetId} qui n'existe pas en base`;
+              }
+            }
+          }
+        }
+      }
+    }
+
     phaseTriggered = "caption";
-    try {
-      await triggerAutoCaptionForTranscription(transcriptionBefore.id);
-    } catch (err) {
-      triggerError = err instanceof Error ? err.message : String(err);
-      console.error(
-        `[retrigger-auto-captions] triggerAutoCaptionForTranscription threw pour slot=${slotId} transcription=${transcriptionBefore.id}:`,
-        err,
-      );
+    if (!preflightSkipReason) {
+      try {
+        await triggerAutoCaptionForTranscription(transcriptionBefore.id);
+      } catch (err) {
+        triggerError = err instanceof Error ? err.message : String(err);
+        console.error(
+          `[retrigger-auto-captions] triggerAutoCaptionForTranscription threw pour slot=${slotId} transcription=${transcriptionBefore.id}:`,
+          err,
+        );
+      }
     }
   } else if (
     transcriptionBefore &&
@@ -162,7 +225,9 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
   });
 
   let diagnostic: string;
-  if (triggerError) {
+  if (preflightSkipReason) {
+    diagnostic = `Cause identifiée du skip caption : ${preflightSkipReason}`;
+  } else if (triggerError) {
     diagnostic = `Exception (${phaseTriggered}) : ${triggerError}`;
   } else if (phaseTriggered === "none") {
     diagnostic = `Transcription ${transcriptionBefore?.id} déjà ${transcriptionBefore?.status} — laissée tourner (aucune action).`;
