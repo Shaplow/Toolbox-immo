@@ -1,7 +1,7 @@
 ---
 slug: generation-render-template
 name: Génération vidéo / image depuis un template
-generatedAt: 2026-06-01T00:00:00Z
+generatedAt: 2026-06-01T12:30:00Z
 ---
 
 # Génération render template
@@ -53,15 +53,35 @@ flowchart LR
 
 ## Helpers / triggers
 
-- `web/src/lib/renderer/generateRender.ts:156` — `startRenderGeneration()` : prépare PROCESSING + async generateRender()
-- `web/src/lib/renderer/generateRender.ts:187` — `generateRender()` : dispatch image vs vidéo
-- `web/src/lib/renderer/generateRender.ts:891` — `generateVideoRenderLocal()` (USE_RUNPOD=false)
-- `web/src/lib/renderer/generateRender.ts:1432` — `generateSequenceRender()` pipeline multi-slot RunPod
-- `web/src/lib/renderer/generateRender.ts:1675` — `generateSequenceRenderLocal()` exécution locale seq
-- `web/src/lib/renderer/generateRender.ts:116` — `failRender()` marque ERROR + revert cursors
+- `web/src/lib/renderer/generateRender.ts:164` — **`getActiveSequenceSlots()`** (2026-06-01) : filtre les slots videoSequence inutilisables (binding pointant vers un champ schema masqué par showIf, sans libraryId de secours) avant la décision de pipeline. Sans ça, un template "photo OU vidéo" dont le slot vidéo a été auto-créé par `ensureVideoSequence` pousse le pipeline en mode séquence même quand l'utilisateur a choisi "Photo" — `resolveSlotVideoUrl` échoue avec "aucune vidéo trouvée".
+- `web/src/lib/renderer/generateRender.ts:190` — `startRenderGeneration()` : prépare PROCESSING + async generateRender()
+- `web/src/lib/renderer/generateRender.ts:221` — `generateRender()` : dispatch image vs vidéo (utilise activeSequenceSlots)
+- `web/src/lib/renderer/generateRender.ts` — `generateVideoRenderLocal()` (USE_RUNPOD=false)
+- `web/src/lib/renderer/generateRender.ts` — `generateSequenceRender()` pipeline multi-slot RunPod
+- `web/src/lib/renderer/generateRender.ts` — `generateSequenceRenderLocal()` exécution locale seq
+- `web/src/lib/renderer/generateRender.ts` — `failRender()` marque ERROR + revert cursors
 - `web/src/lib/services/slot/pipelineHooks.ts:30` — `onRenderCompleted()` log + auto-transition pipeline (DRAFT → PLANNED)
 - `web/src/lib/triggerAutoTranscription.ts:148` — `triggerAutoTranscriptionForRender()` post-DONE si `captionAutoConfig.enabled`
 - `web/src/lib/coverAuto.ts:565` — `triggerAutoCoverPackForRender()` post-DONE si `coverAutoConfig` activé
+
+### Décision de pipeline (généralisation 2026-06-01)
+
+```ts
+// generateRender.ts:253-264
+const videoBlocks = getActiveVideoBlocks(templateJson, enrichedListing);
+const activeSequenceSlots = getActiveSequenceSlots(templateJson, enrichedListing);
+
+if (activeSequenceSlots.length > 0) {
+  // Pipeline vidéo (sequence) avec slots filtrés
+  const effectiveTemplateJson = { ...templateJson, videoSequence: activeSequenceSlots };
+  await generateSequenceRender(renderId, effectiveTemplateJson, enrichedListing, accountId);
+} else {
+  // Pipeline image (HTML → PNG) ou vidéo single legacy
+  ...
+}
+```
+
+**Symétrie** : `getActiveSequenceSlots` est le miroir de `getActiveVideoBlocks` côté `videoSequence`. Tout slot dont le binding pointe vers un champ schema déclaré mais non visible (showIf=false), ou vers un block masqué par conditionalRules, est filtré — sauf s'il a un `libraryId` de secours (binding library independant).
 
 ## Asset rotation (préfill + advance)
 

@@ -1,105 +1,165 @@
 ---
 slug: listings-management
-name: Listings — création/gestion projets de génération (EXTERNAL_GENERATOR)
-generatedAt: 2026-06-01T00:00:00Z
+name: Listings — historique et gestion projets de génération
+generatedAt: 2026-06-01T12:30:00Z
 ---
 
 # Listings management
 
 ## Pitch
-"Mes générations" pour EXTERNAL_GENERATOR. Listing = projet de génération sur 1 template assigné. CRUD listing, formulaire validé contre `template.jsonData.schema`, déclenche Render(s) via `/api/renders`. ADMIN voit cross-user via `/api/admin/listings`. Pas de champ `status` direct sur Listing — porté par Renders enfants.
+
+"Mon historique" — surface unifiée qui regroupe toutes les générations d'un user en 5 onglets (Générations / Covers / Captions / Transcriptions / Descriptions) avec timeline groupée par date, filtres (search/status/user), pagination 20/page et live updates (SSE captions/transcriptions + polling 5s renders).
+
+ADMIN voit cross-user (filtre user dispo) + croix de suppression avec nettoyage R2 sur les listings non rattachés à un slot. MONTEUR/CM/VIDEASTE ne voient que ce qu'ils ont eux-mêmes généré (règle 2026-06-01 : plus de listings assignés via slot — ces cas passent par la fiche `/publications/[id]`). EXTERNAL_GENERATOR voit ses listings + ses cover packs.
 
 ## Schéma Mermaid
 
 ```mermaid
 flowchart LR
-  Home[HomeExternalClient] --> Lien["Mes générations"]
-  Lien --> Listings["/listings"]
-  Listings --> New["/generate/[templateId]"]
-  New --> Form[ListingForm validation schema template]
-  Form --> Create["POST /api/listings"]
-  Create --> Listing[Listing row]
-  Form --> Render["POST /api/renders"]
-  Render --> Pipeline[Render PENDING + cursors avance]
-  Pipeline --> Final[Render DONE imageUrl/videoUrl]
+  Home[Nav: Mes générations] --> Page["/listings"]
+  Page -->|tab Générations| TimelineRender[Timeline renders]
+  Page -->|tab Covers| TimelineCover[Timeline CoverFramePack]
+  Page -->|tab Captions| TimelineCaption[Timeline CaptionJob]
+  Page -->|tab Transcriptions| TimelineTr[Timeline TranscriptionJob]
+  Page -->|tab Descriptions| TimelineDesc[Timeline DescriptionJob]
+  TimelineRender -->|Eye| QuickView[RenderQuickView modal carrousel]
+  TimelineRender -->|RotateCw| Regen["/generate/[tpl]?listingId=..."]
+  TimelineRender -->|Download| MediaURL[videoUrl/pngUrl direct]
+  TimelineRender -->|X admin| DEL["DELETE /api/listings/[id]"]
+  DEL --> Cleanup[R2 cleanup + cascade DB]
+  TimelineCover -->|click| SubRoute["/publications/[slot]/cover"]
+  Page -->|search/status/user/page| Filters[Pagination 20/page par tab]
+  Page -.->|?slotId=...| BannerSlot[Banner filtré pour slot]
 ```
 
 ## Entry points UI
 
 | Composant | Fichier:Ligne | Rôle |
 |---|---|---|
-| Lien HomeExternalClient | `components/home/HomeExternalClient.tsx:100` | Pill button → `/listings` |
-| Page liste | `app/(app)/listings/page.tsx:1` | Listings + Renders + Jobs associés |
-| Page génération | `app/(app)/generate/[templateId]/page.tsx:1` | Création/édition listing |
-| ListingForm | `components/form/ListingForm.tsx:80` | RHF + validation + SSE polling |
-| DeleteListingButton | `components/listings/DeleteListingButton.tsx:13` | Client-side delete |
+| Lien nav latérale | `components/layout/AppNav.tsx:164,198` | "Mes générations" — visible pour tous rôles |
+| Lien HomeExternalClient | `components/home/HomeExternalClient.tsx:106-112` | CTA pill "Mes générations" |
+| Page liste | `app/(app)/listings/page.tsx:41-383` | SSR : fetch listings + jobs scopés par rôle, filtre `slotId` |
+| ListingsClient | `components/listings/ListingsClient.tsx:546-967` | Client : tabs, filters, timeline, pagination, polling |
+| TimelineRow | `components/listings/ListingsClient.tsx:274-389` | Row avec actions inline (Eye/RotateCw/Download/X) |
+| RenderQuickView | `components/listings/RenderQuickView.tsx:42-207` | Modal carrousel variantes (clavier ←/→, dots, footer Régénérer/Télécharger) |
+| DeleteListingButton | `components/listings/DeleteListingButton.tsx:14-96` | Croix admin avec confirm inline (Check/X) + toast |
+| Pagination | `components/ui/Pagination.tsx` | Composant primitive, 20/page, état par tab |
 
 ## Routes API
 
 ### Listing
-| Méthode | Path | Effets |
-|---|---|---|
-| POST | `/api/listings:9` | Création + validation schema template + `canAccessTemplate` |
-| GET | `/api/listings:83` | Liste user courant |
-| GET | `/api/listings/[id]:7` | Détail (owner check) |
-| PUT | `/api/listings/[id]:51` | Édition jsonData (owner + admin) |
-| DELETE | `/api/listings/[id]:28` | **ADMIN only** |
-| GET | `/api/admin/listings:15` | Cross-user (admin + canAdminBypass stricte) |
+| Méthode | Path | Fichier:Ligne | Auth | Effets |
+|---|---|---|---|---|
+| POST | `/api/listings` | `route.ts:9-80` | getUserContext + canAccessTemplate | Création + validation schema template |
+| GET | `/api/listings` | `route.ts:83+` | getUserContext | Liste filtrée userId, slotId queryParam optionnel |
+| GET | `/api/listings/[id]` | `[id]/route.ts:17-36` | getUserContext (owner ou admin) | Détail + parse jsonData |
+| PUT | `/api/listings/[id]` | `[id]/route.ts:170-191` | owner ou canAdminBypass | Édition jsonData |
+| **DELETE** | `/api/listings/[id]` | `[id]/route.ts:38-168` | **ADMIN only** | **409 si linkedSlot, sinon R2 cleanup + cascade DB** |
+| GET | `/api/admin/listings` | `route.ts:15+` | canAdminBypass strict | Cross-user (admin uniquement) |
 
 ### Render
-| Méthode | Path | Effets |
-|---|---|---|
-| POST | `/api/renders:81` | Génération img/vidéo, vérifie `hasTool(TOOLS.TEMPLATES)` |
-| GET | `/api/renders/[id]:16` | Statut + owner check via listing.userId |
+| Méthode | Path | Fichier:Ligne | Effets |
+|---|---|---|---|
+| POST | `/api/renders` | `route.ts:81+` | `hasTool(TOOLS.TEMPLATES)` + `canAccessTemplate` + advance cursors |
+| GET | `/api/renders/[id]` | `[id]/route.ts:16+` | Statut polling (owner via listing.userId) |
+| DELETE | `/api/renders/[id]` | `[id]/route.ts:74+` | Admin only |
 
-## Modèles Prisma
+### Cover pack (régénération depuis listings/fiche)
+| Méthode | Path | Fichier:Ligne | Effets |
+|---|---|---|---|
+| POST | `/api/cover-packs/[id]/regenerate` | `route.ts:11-70` | **canUserAccessSlot** (CM/MONTEUR assignés OK, plus juste pack.userId) |
 
-- **`Listing`** (`schema.prisma:183`) — id, templateId FK, **jsonData JSON** (form data), userId FK, createdAt, updatedAt, renders[]
-- **`Render`** (`schema.prisma:195`) — id, listingId FK, status (PENDING|PROCESSING|DONE|ERROR), pngUrl, videoUrl, pipeline, runpodJobId, accountId?, publicationSlotId?
-- **`Template`** (`schema.prisma:117`) — id, jsonData (TemplateJSON), userId FK, accesses[] (TemplateAccess)
-- **`TemplateAccess`** (`schema.prisma:172`) — (userId, templateId) unique
+## DELETE listing — pipeline détaillé (nouveau 2026-06-01)
 
-## Helpers & Validation
+`web/src/app/api/listings/[id]/route.ts:38-168`
 
-- `lib/validation/listing.schema.ts:5` — `listingSchema` zod : titre, adresse, prix, DPE, agence, etc.
-- `lib/permissions.ts:115` — `canAccessTemplate(userId, templateId, role)` : ADMIN=true sinon `TemplateAccess.findUnique`
-- `lib/permissions.ts:87` — `hasTool(userId, tool)` : check "templates" sur user
-- `app/api/listings/route.ts:44` — Schema field validation depuis `template.jsonData` (required fields, visibility conditions)
-- `lib/renderer/generateRender.ts` — `startRenderGeneration()` : dispatch local OR RunPod (image/video)
+```
+1. Auth + isAdmin check (403 sinon)
+2. Load listing + renders + coverFramePack(.candidates) + transcriptionJob
+3. Si UN render a publicationSlotId → 409 "Passe par la fiche de publication"
+4. Collecte clés R2 à nettoyer :
+   - pour chaque render : videoUrl, pngUrl
+   - coverFramePack SI sans publicationVersionId : finalCoverKey + candidates.imageKey
+   - transcriptionJob SI sans publicationVersionId ET sans slotId : inputKey, outputJsonKey
+5. R2 cleanup tolérant (Promise.all + catch silencieux par clé)
+6. DB cleanup ordonné : coverFramePack.deleteMany → transcriptionJob.deleteMany
+   → render.deleteMany → listing.delete
+7. console.warn audit log (admin, listing, counts)
+8. 204 No Content
+```
 
-## Access Control & Variants
+**Garde-fou 409** : éviter de vider silencieusement la production d'une mission active.
 
-- `lib/permissions.ts:51` — **`EXTERNAL_GENERATOR_ALLOWED_TOOLS = ["templates", "covers"]`**
-- `app/(app)/listings/page.tsx:98` — ADMIN voit tout / USER+MONTEUR+CM voient leurs listings + assignés via slot
-- `app/api/listings/[id]/route.ts:34` — DELETE ADMIN only / PUT owner+admin / GET owner check
-- `components/form/ListingForm.tsx:24` — **`libraryPrefillContext`** : pré-remplissage depuis DataEntry/MediaAsset (rotation mode, usagePolicy)
-- `ListingForm.tsx:112` — `resolveVariant()` : terminal states SSE + polling
+**R2 cleanup tolérant** : un échec unitaire (objet déjà absent, réseau passager) n'interrompt pas la suppression DB — l'orphan sweep (`r2Cleanup.ts`) rattrape au prochain run.
 
-## Flux & Pré-conditions
+**Cover pack épargné si publicationVersionId** : le pack sert ailleurs (cover finale d'une version uploadée), Prisma fait juste un SetNull sur renderId.
 
-1. EXTERNAL_GENERATOR a ≥1 TemplateAccess
-2. `/generate/[templateId]` → `canAccessTemplate` check avant form
-3. POST `/api/listings` → validation + create row
-4. POST `/api/renders` → vérifie `hasTool(TOOLS.TEMPLATES)` + create Render PENDING + avance cursors rotation
-5. ListingForm SSE poll `/api/events/jobs` pour update variants
+## Pagination & filtres (client-side)
 
-## Key Observations
+`components/listings/ListingsClient.tsx:768-797`
 
-- **Pas de status Listing** : porté par Renders enfants (PENDING/PROCESSING/DONE/ERROR)
-- **Template Assignment** : `TemplateAccess` → EXTERNAL_GENERATOR ne génère que sur templates assignés
-- **Asset Rotation** : `libraryPrefillContext` (auto mode avec curseur per_account/library OU override fixe)
-- **Impersonation Compliance** : `/api/listings` filtre userId courant ; `/api/admin/listings` strict sur `canAdminBypass`
-- **Render Pipeline agnostique** : Render a accountId/publicationSlotId optionnels — un Listing peut générer N Renders
+- `PAGE_SIZE = 20`
+- État `pageByTab` : 1 page courante par tab, conservée quand l'user bascule
+- `filterSignature = "tab|search|statusFilter|userFilter"` — reset auto à `page=1` quand la signature change
+- Filtres status : `all | in_progress | done | failed` (sets `STATUS_IN_PROGRESS / STATUS_DONE / STATUS_ERROR`)
+- Search : matche `title + sublabel + ownerName` (lowercase)
+- Filtre user : admin only, `<Combobox>` peuplé depuis `allUsers` (dédupliqué cross-tab)
+
+## Live updates
+
+- **Renders** : polling `setInterval(5s)` sur `/api/renders/[id]` pour les renders en PROCESSING/PENDING (ref pour éviter stale closures)
+- **Captions/Transcriptions** : `useAllJobEvents` (SSE bus) — `event.jobType = "captions" | "transcription"` → maj `captionStates / transcriptionStates`
+- **Descriptions/Covers** : pas de live update direct (refresh manuel via Refresh button du header)
+
+## Modèles Prisma touchés
+
+- `Listing` (`schema.prisma:183-193`) — id, templateId FK, jsonData JSON, userId FK, renders[]
+- `Render` (`schema.prisma:195+`) — id, listingId FK, status, pngUrl, videoUrl, errorMsg, publicationSlotId?, accountId?, coverFramePack? (1-1)
+- `CoverFramePack` (`schema.prisma`) — status (QUEUED|PROCESSING|READY|SELECTED|FAILED), finalCoverUrl, finalCoverKey, renderId, publicationVersionId, candidates[]
+- `CoverFrameCandidate` — imageKey (R2)
+- `CaptionJob`, `TranscriptionJob`, `DescriptionJob` (chacun avec inputKey/outputJsonKey/slotId/publicationVersionId)
+
+## Permissions & scope
+
+`app/(app)/listings/page.tsx:96-100`
+
+- **ADMIN** : `where = {}` → tous listings cross-user
+- **Autres rôles** : `where = { userId }` → uniquement leurs créations
+- **(2026-06-01)** MONTEUR/CM/VIDEASTE ne voient plus listings via `slot.assignee*` — règle "je ne vois que ce que je génère, sauf admin"
+- **Filtre slotId** (queryParam) : post-fetch filter, jobs/listings rattachés à un slot précis (banner sky en haut)
 
 ## Variants par rôle
 
 | Rôle | Ce qui change |
 |---|---|
-| EXTERNAL_GENERATOR | Voit ses listings, templates assignés |
-| ADMIN | Voit tout cross-user via `/api/admin/listings` |
-| Autres rôles | Listings limités à leurs créations |
+| ADMIN | Voit tout cross-user, filtre par user, croix suppression visible sur listings non-rattachés |
+| EXTERNAL_GENERATOR | Voit ses listings + ses cover packs, accès via nav (Accueil + Mes générations) |
+| MONTEUR/CM/VIDEASTE | Voient ce qu'ils ont eux-mêmes généré (plus de scope via slot assignee) |
+
+## Side effects
+
+- `router.refresh()` après DELETE (refresh SSR + refetch live)
+- `toast.success("Génération supprimée")` ou `toast.error(<message API>)`
+- `console.warn` audit DELETE côté API
+
+## Pré-conditions / invariants
+
+- Listings sans renders (cas dégénéré) restent supprimables admin
+- Liens `coverFramePack ↔ publicationVersion` épargnent le pack si il sert encore
+- `linkedSlotId` calculé via `r.publicationSlot?.id` (joint dans `LISTING_INCLUDE`)
+- `coverAutoEnabled` activé via `r.publicationSlot.pattern.coverMode === "autoPack"`
 
 ## Skills/agents pertinents
 
 - `.claude/skills/admin-permissions/SKILL.md`
-- `.claude/skills/asset-rotation/SKILL.md`
+- `.claude/skills/asset-rotation/SKILL.md` (pour les cursors)
+- `.claude/skills/render-engine/SKILL.md` (R2 cleanup)
+
+## Liens vers code
+
+- Page : `web/src/app/(app)/listings/page.tsx`
+- Client : `web/src/components/listings/ListingsClient.tsx`
+- Modal : `web/src/components/listings/RenderQuickView.tsx`
+- Delete : `web/src/components/listings/DeleteListingButton.tsx`
+- API DELETE : `web/src/app/api/listings/[id]/route.ts:38-168`
+- Cover regen : `web/src/app/api/cover-packs/[id]/regenerate/route.ts`
