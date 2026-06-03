@@ -233,23 +233,101 @@ export async function POST(req: NextRequest) {
       }
 
       // prevDataEntryState — claim state for DataEntry failure-recovery revert.
+      // Fix C1: validate that entryId matches the sanitized dataEntryId submitted in the
+      // same request. A malicious client could otherwise supply an arbitrary entryId to
+      // trigger DELETE DataEntryUsage on a row belonging to a different generation.
+      // We only accept prevDataEntryState when its entryId matches the validated dataEntryId.
       if (raw.prevDataEntryState && typeof raw.prevDataEntryState === "object" && !Array.isArray(raw.prevDataEntryState)) {
         const s = raw.prevDataEntryState as Record<string, unknown>;
         if (typeof s.entryId === "string" && typeof s.campaignId === "string"
           && typeof s.usagePolicy === "string"
           && (s.claimType === "usedInCycle" || s.claimType === "perAccountUsage")
           && (s.accountId === undefined || typeof s.accountId === "string")) {
-          sanitizedUsedAssets.prevDataEntryState = {
-            entryId: s.entryId,
-            campaignId: s.campaignId,
-            usagePolicy: s.usagePolicy,
-            claimType: s.claimType,
-            accountId: s.accountId as string | undefined,
-          };
+          // C1: entryId in prevDataEntryState must match the validated dataEntryId
+          if (sanitizedUsedAssets.dataEntryId && s.entryId !== sanitizedUsedAssets.dataEntryId) {
+            console.warn(
+              `[POST /api/renders] C1 guard: prevDataEntryState.entryId=${s.entryId} does not match dataEntryId=${sanitizedUsedAssets.dataEntryId} — ignoring prevDataEntryState`,
+            );
+          } else {
+            sanitizedUsedAssets.prevDataEntryState = {
+              entryId: s.entryId,
+              campaignId: s.campaignId,
+              usagePolicy: s.usagePolicy,
+              claimType: s.claimType,
+              accountId: s.accountId as string | undefined,
+            };
+          }
         }
       }
 
     }
+
+    // ── Phase 4: minDuration validation ─────────────────────────────────────────
+    // For each VideoBlock (or MusicBlock) with a minDuration defined in the template,
+    // verify that the manually chosen asset (from sanitizedUsedAssets.videoAssets or audioAssetId)
+    // meets the duration requirement. AUTO-selected assets are already filtered upstream
+    // by selectAndClaimMediaAsset's minDuration param; this check guards against
+    // a tampered client payload bypassing the picker's disabled state.
+    if (sanitizedUsedAssets.videoAssets || sanitizedUsedAssets.audioAssetId) {
+      const templateRow = await prisma.template.findUnique({
+        where: { id: templateId },
+        select: { content: true },
+      });
+      if (templateRow?.content) {
+        try {
+          const tplJson = JSON.parse(templateRow.content) as {
+            blocks?: Array<{ id: string; type: string; minDuration?: number; name?: string; libraryId?: string }>;
+          };
+          const blocks = tplJson.blocks ?? [];
+
+          // Video blocks
+          for (const block of blocks) {
+            if (
+              block.type === "video" &&
+              block.minDuration != null &&
+              block.minDuration > 0 &&
+              block.libraryId
+            ) {
+              const chosenAssetId = sanitizedUsedAssets.videoAssets?.[block.id];
+              if (chosenAssetId) {
+                const assetRow = await prisma.mediaAsset.findUnique({
+                  where: { id: chosenAssetId },
+                  select: { duration: true },
+                });
+                if (assetRow?.duration != null && assetRow.duration < block.minDuration) {
+                  return NextResponse.json(
+                    {
+                      error: `Vidéo "${block.name ?? block.id}" : durée insuffisante (${assetRow.duration}s disponibles, ${block.minDuration}s requis)`,
+                    },
+                    { status: 400 },
+                  );
+                }
+              }
+            }
+          }
+
+          // Music block
+          const musicBlock = blocks.find((b) => b.type === "music" && b.minDuration != null && b.minDuration > 0);
+          if (musicBlock && sanitizedUsedAssets.audioAssetId) {
+            const assetRow = await prisma.mediaAsset.findUnique({
+              where: { id: sanitizedUsedAssets.audioAssetId },
+              select: { duration: true },
+            });
+            if (assetRow?.duration != null && assetRow.duration < musicBlock.minDuration!) {
+              return NextResponse.json(
+                {
+                  error: `Musique "${musicBlock.name ?? "piste audio"}" : durée insuffisante (${assetRow.duration}s disponibles, ${musicBlock.minDuration}s requis)`,
+                },
+                { status: 400 },
+              );
+            }
+          }
+        } catch {
+          // Non-critical — malformed template JSON should not block the submit
+        }
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────────
 
     // Validate accountId if provided
     let validatedAccountId: string | undefined;
@@ -343,9 +421,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Phase 1.3 — Advance AccountDataLibraryCursor for the DataLibrary if the submit
+    // Phase 3.D — Advance AccountDataLibraryCursor for the DataLibrary if the submit
     // contains group hints (resolvedSetTag/resolvedCategory from the prefill).
     // Only runs when validatedAccountId is present and a dataEntryId was submitted.
+    //
+    // Phase 3.B: advanceDataLibraryCursorOnSubmit now handles both shared and per_account
+    // scope, returning the effectiveCursorId so we store it correctly in the revert snapshot.
     if (sanitizedUsedAssets.dataEntryId && validatedAccountId &&
         (sanitizedUsedAssets.dataResolvedSetTag !== undefined || sanitizedUsedAssets.dataResolvedCategory !== undefined)) {
       // Look up the DataLibrary ID via DataEntry → DataCampaign → DataLibrary
@@ -361,11 +442,13 @@ export async function POST(req: NextRequest) {
           sanitizedUsedAssets.dataResolvedCategory ?? null,
           validatedAccountId,
         );
-        if (dataAdvance.prevState !== null) {
-          // Store snapshot for failure-recovery revert
+        if (dataAdvance.prevState !== null && dataAdvance.effectiveCursorId !== null) {
+          // Store snapshot for failure-recovery revert.
+          // Phase 3.B: use effectiveCursorId (not validatedAccountId) so that revert
+          // targets the right cursor row for shared-scope libs (SHARED_DATA_CURSOR_ACCOUNT_ID).
           sanitizedUsedAssets.prevDataLibraryCursorState = {
             libraryId: dataLibraryId,
-            accountId: validatedAccountId,
+            accountId: dataAdvance.effectiveCursorId,
             prevLastUsedSetTag: dataAdvance.prevState.lastUsedSetTag,
             prevLastUsedCategory: dataAdvance.prevState.lastUsedCategory,
             claimedSetTag: sanitizedUsedAssets.dataResolvedSetTag ?? null,
