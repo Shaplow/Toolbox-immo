@@ -41,11 +41,18 @@ function extractR2KeyFromVideoUrl(videoUrl: string): string | null {
   return videoUrl.slice(publicUrl.length + 1);
 }
 
-export async function POST(_req: NextRequest, { params }: RouteContext) {
+export async function POST(req: NextRequest, { params }: RouteContext) {
   const userContext = await getUserContext();
   if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
+
+  // ?force=true : invalide la transcription existante et marque les
+  // CaptionJobs comme stale, pour forcer un re-Whisper from scratch.
+  // Cas d'usage : on a modifié les params VAD côté worker (silero threshold,
+  // min_silence_duration) et on veut re-transcrire un job dont le résultat
+  // a été pollué par les anciens params.
+  const force = new URL(req.url).searchParams.get("force") === "true";
 
   const { id: slotId } = await params;
 
@@ -98,8 +105,31 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
     slotId,
     actorId: userContext.actualUser.id,
     type: "CAPTIONS_PIPELINE_RETRIGGERED",
-    payload: { renderId: render.id },
+    payload: { renderId: render.id, force },
   });
+
+  // ── Mode force : invalide la transcription + caption job existants ───────
+  // On ne supprime PAS (l'historique reste). On marque FAILED côté
+  // transcription (pour que triggerAutoTranscriptionForRender la reset à
+  // QUEUED + resubmit) et staleSince côté caption (pour ne plus apparaître
+  // comme job actif). Reset des pointeurs activeX à null en passant.
+  if (force) {
+    const now = new Date();
+    await prisma.$transaction([
+      prisma.transcriptionJob.updateMany({
+        where: { renderId: render.id, status: { not: "FAILED" } },
+        data: { status: "FAILED", errorMsg: "Invalidée par admin (force re-transcribe)" },
+      }),
+      prisma.captionJob.updateMany({
+        where: { slotId, staleSince: null },
+        data: { staleSince: now, staleReason: "pattern_changed" },
+      }),
+      prisma.publicationSlot.update({
+        where: { id: slotId },
+        data: { activeCaptionJobId: null, activeTranscriptionJobId: null },
+      }),
+    ]);
+  }
 
   // Snapshot état avant : où est cassée la chaîne ?
   const transcriptionBefore = await prisma.transcriptionJob.findUnique({

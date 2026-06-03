@@ -13,7 +13,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Subtitles, ExternalLink, Loader2, CheckCircle, AlertCircle, Play, Sparkles, RefreshCw } from "lucide-react";
+import { Subtitles, ExternalLink, Loader2, CheckCircle, AlertCircle, Play, Sparkles, RefreshCw, RotateCcw } from "lucide-react";
 import { canTriggerCaptions, type ActionVerdict } from "@/lib/publications/actions";
 import { resolveCaptionsMode } from "@/lib/publications/captionsMode";
 import { useJobEvent, useAllJobEvents } from "@/lib/hooks/jobEventBus";
@@ -82,14 +82,16 @@ export function CaptionsSection({
 }: Props) {
   const router = useRouter();
   const [isRetriggering, setIsRetriggering] = useState(false);
+  const [isForceRetranscribing, setIsForceRetranscribing] = useState(false);
 
-  const handleRetriggerAutoCaptions = async () => {
-    setIsRetriggering(true);
+  const callRetriggerEndpoint = async (force: boolean): Promise<void> => {
+    const setLoading = force ? setIsForceRetranscribing : setIsRetriggering;
+    setLoading(true);
     try {
-      const res = await fetch(
-        `/api/admin/publications/${slot.id}/retrigger-auto-captions`,
-        { method: "POST" },
-      );
+      const url = force
+        ? `/api/admin/publications/${slot.id}/retrigger-auto-captions?force=true`
+        : `/api/admin/publications/${slot.id}/retrigger-auto-captions`;
+      const res = await fetch(url, { method: "POST" });
       const data = (await res.json().catch(() => ({}))) as {
         message?: string;
         error?: string;
@@ -108,9 +110,12 @@ export function CaptionsSection({
     } catch (err) {
       toast.error(`Erreur : ${String(err)}`);
     } finally {
-      setIsRetriggering(false);
+      setLoading(false);
     }
   };
+
+  const handleRetriggerAutoCaptions = () => callRetriggerEndpoint(false);
+  const handleForceRetranscribe = () => callRetriggerEndpoint(true);
   // Polling SSE — refresh auto quand le webhook RunPod marque le job
   // captions COMPLETED/FAILED. Sans ça, l'utilisateur reste bloqué sur
   // "Traitement en cours…" jusqu'à un F5 manuel.
@@ -296,31 +301,42 @@ export function CaptionsSection({
           </Alert>
         )}
 
-        {/* Filet de sécurité ADMIN : visible uniquement quand le pipeline
-            auto aurait dû tourner mais ne l'a pas fait. Cas observé :
-            webhook RunPod renders DONE mais aucun TranscriptionJob créé
-            (cause racine en cours d'investigation — logging ajouté).
-            Discret par construction : conditions très étroites = rare. */}
-        {isAdmin &&
-          captionsMode === "auto" &&
-          !latestCaptionJob &&
-          renderId &&
-          renderStatus === "DONE" && (
-            <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-200/60">
-              <span className="text-[11px] text-gray-500">
-                Admin — la chaîne auto ne s&apos;est pas déclenchée ?
-              </span>
+        {/* Filets de sécurité ADMIN :
+             - "Relancer la chaîne" : si pipeline auto ne s'est pas
+               déclenché (pas de captionJob alors qu'il devrait y en avoir).
+             - "Re-transcrire" : invalide la transcription actuelle et
+               relance Whisper. Utile après tuning VAD côté worker ou
+               quand la transcription a un timing pollué (mots étirés).
+            Le 2e bouton est plus large (visible même avec captionJob
+            existant) car c'est une action de force voulue. */}
+        {isAdmin && captionsMode === "auto" && renderId && renderStatus === "DONE" && (
+          <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-200/60">
+            <span className="text-[11px] text-gray-500">Admin</span>
+            <div className="flex items-center gap-2">
+              {!latestCaptionJob && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={isRetriggering ? Loader2 : RefreshCw}
+                  disabled={isRetriggering || isForceRetranscribing}
+                  onClick={handleRetriggerAutoCaptions}
+                >
+                  {isRetriggering ? "Relance…" : "Relancer la chaîne"}
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
-                icon={isRetriggering ? Loader2 : RefreshCw}
-                disabled={isRetriggering}
-                onClick={handleRetriggerAutoCaptions}
+                icon={isForceRetranscribing ? Loader2 : RotateCcw}
+                disabled={isRetriggering || isForceRetranscribing}
+                onClick={handleForceRetranscribe}
+                title="Invalide la transcription actuelle et relance Whisper from scratch"
               >
-                {isRetriggering ? "Relance…" : "Relancer la chaîne"}
+                {isForceRetranscribing ? "Re-transcription…" : "Re-transcrire"}
               </Button>
             </div>
-          )}
+          </div>
+        )}
 
         {/* CTA actif uniquement si le verdict l'autorise — ET on garde le
             cas "Regénérer" (DONE/FAILED) qui ne dépend pas du verdict
