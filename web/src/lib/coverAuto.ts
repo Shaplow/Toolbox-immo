@@ -56,21 +56,69 @@ function normalizeFrameCount(value: unknown): number {
     : DEFAULT_FRAME_COUNT;
 }
 
-async function probeDuration(videoUrl: string): Promise<number | null> {
-  try {
-    const res = await fetch(`${CAPTIONS_API}/api/probe-duration`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: videoUrl }),
-      signal: AbortSignal.timeout(60_000),
-    });
-    if (!res.ok) return null;
-    const data = await res.json() as { duration?: number | null };
-    return typeof data.duration === "number" && data.duration > 0 ? data.duration : null;
-  } catch (err) {
-    console.warn(`[coverAuto] probe duration failed for ${videoUrl}:`, err);
-    return null;
+type ProbeResult = { ok: true; duration: number } | { ok: false; reason: string };
+
+/**
+ * Probe la durée d'une vidéo via le render-engine (CAPTIONS_API).
+ * Retourne un résultat structuré pour permettre au caller de propager la cause
+ * d'échec (timeout, 5xx, durée invalide, etc.) dans le message d'erreur final.
+ *
+ * Retry exponentiel sur les causes potentiellement transient (timeout, 5xx,
+ * erreur réseau). PAS de retry sur HTTP 4xx ni sur durée invalide (causes
+ * permanentes côté upstream).
+ */
+async function probeDuration(videoUrl: string): Promise<ProbeResult> {
+  if (!CAPTIONS_API) return { ok: false, reason: "CAPTIONS_API non configuré" };
+
+  const attempts = 3;
+  const backoffMs = [0, 500, 1500];
+  let lastReason = "raison inconnue";
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (backoffMs[attempt] > 0) await new Promise((r) => setTimeout(r, backoffMs[attempt]));
+
+    let retryable = false;
+    try {
+      const res = await fetch(`${CAPTIONS_API}/api/probe-duration`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: videoUrl }),
+        signal: AbortSignal.timeout(60_000),
+      });
+
+      if (!res.ok) {
+        lastReason = `CAPTIONS_API HTTP ${res.status}`;
+        if (res.status >= 500) {
+          retryable = true;
+        } else {
+          // 4xx → cause permanente côté URL/auth, pas de retry.
+          console.warn(`[coverAuto] probe duration HTTP ${res.status} for ${videoUrl} (no retry)`);
+          return { ok: false, reason: lastReason };
+        }
+      } else {
+        const data = await res.json() as { duration?: number | null };
+        if (typeof data.duration === "number" && data.duration > 0) {
+          return { ok: true, duration: data.duration };
+        }
+        // Durée absente/invalide → upstream a répondu mais sans donnée exploitable.
+        // Pas de retry (réponse 200 OK = pas transient).
+        lastReason = "durée invalide dans la réponse du render-engine";
+        console.warn(`[coverAuto] probe duration invalid response for ${videoUrl}:`, data);
+        return { ok: false, reason: lastReason };
+      }
+    } catch (err) {
+      const isTimeout = err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError");
+      lastReason = isTimeout
+        ? "CAPTIONS_API timeout (60s)"
+        : `erreur réseau: ${err instanceof Error ? err.message : String(err)}`;
+      retryable = true;
+      console.warn(`[coverAuto] probe attempt ${attempt + 1}/${attempts} failed for ${videoUrl}: ${lastReason}`);
+    }
+
+    if (!retryable) break;
   }
+
+  return { ok: false, reason: lastReason };
 }
 
 function subtractZones(duration: number, zones: Array<{ startSec: number; endSec: number | null }>): FrameInterval[] {
@@ -287,11 +335,15 @@ async function resolveNativeCoverSources(
 
     const sourceUrl = toRenderMediaUrl(rawUrl);
     const assetDuration = assetById.get(videoAssets[sourceItem.id] ?? "")?.duration ?? null;
-    const probedDuration = typeof assetDuration === "number" && assetDuration > 0 ? assetDuration : await probeDuration(sourceUrl);
-    if (!probedDuration) {
-      console.warn(`[coverAuto] Durée rush introuvable pour source=${sourceItem.id} url=${sourceUrl}`);
-      continue;
+    let probedDuration: number | null = null;
+    if (typeof assetDuration === "number" && assetDuration > 0) {
+      probedDuration = assetDuration;
+    } else {
+      const probe = await probeDuration(sourceUrl);
+      if (probe.ok) probedDuration = probe.duration;
+      else console.warn(`[coverAuto] Durée rush introuvable pour source=${sourceItem.id} url=${sourceUrl}: ${probe.reason}`);
     }
+    if (!probedDuration) continue;
     const duration = sourceItem.maxDuration && sourceItem.maxDuration > 0
       ? Math.min(probedDuration, sourceItem.maxDuration)
       : probedDuration;
@@ -482,8 +534,31 @@ export async function prepareCoverFramePack(packId: string): Promise<void> {
         })));
       }
     } else {
-      duration = duration ?? await probeDuration(pack.sourceVideoUrl);
-      if (!duration) throw new Error("Durée vidéo introuvable pour préparer les frames cover");
+      // Fallback 1 : sommer Render.slotDurations si dispo (couvre les renders
+      // sequence pour lesquels resolveNativeCoverSources est vide pour d'autres
+      // raisons — ex. excludeZones qui masquent tout).
+      if (!duration && pack.render?.slotDurations) {
+        try {
+          const slotDurMap = JSON.parse(pack.render.slotDurations) as Record<string, number>;
+          const sumSlot = Object.values(slotDurMap).reduce(
+            (s, v) => s + (typeof v === "number" && v > 0 ? v : 0),
+            0,
+          );
+          if (sumSlot > 0) duration = sumSlot;
+        } catch { /* JSON invalide, on continue vers probe */ }
+      }
+
+      // Fallback 2 : probe la durée via le render-engine.
+      let probeReason: string | null = null;
+      if (!duration) {
+        const probe = await probeDuration(pack.sourceVideoUrl);
+        if (probe.ok) duration = probe.duration;
+        else probeReason = probe.reason;
+      }
+
+      if (!duration) {
+        throw new Error(`Durée vidéo introuvable pour préparer les frames cover${probeReason ? ` (${probeReason})` : ""}`);
+      }
       const timestamps = resolveCoverTimestamps(templateJson, config, duration, frameCount, seen.finalTimestamps, slotDurations);
       framePicks = timestamps.map((timestamp) => ({ sourceUrl: pack.sourceVideoUrl!, timestamp }));
       extractedFrames = await extractFrames(pack.sourceVideoUrl, timestamps);
