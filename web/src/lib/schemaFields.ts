@@ -134,7 +134,7 @@ export function parseSelectOptions(raw: string): string[] {
 }
 
 export function isConditionSourceField(field: SchemaField): boolean {
-  return field.type === "select" || field.type === "boolean";
+  return field.type === "select" || field.type === "boolean" || field.type === "text";
 }
 
 export function getConditionSourceFields(schema: SchemaField[], excludeKey?: string): SchemaField[] {
@@ -171,6 +171,9 @@ export function getConditionValueOptions(field: SchemaField | undefined): Array<
   }
   if (field.type === "select") {
     return (field.options ?? []).map((option) => ({ value: option, label: option }));
+  }
+  if (field.type === "text") {
+    return [{ value: "", label: "(vide)" }];
   }
   return [];
 }
