@@ -9,6 +9,8 @@ import { LibraryFieldInput } from "@/components/form/LibraryPicker";
 import { FieldInput } from "@/components/form/FieldInputs";
 import { ListingFormVariantCard } from "@/components/form/ListingFormVariantCard";
 import { toast } from "@/components/ui/Toast";
+import { Alert } from "@/components/ui/Alert";
+import { Select } from "@/components/ui/Select";
 import type { JobEventPayload } from "@/lib/sseStore";
 
 interface Props {
@@ -23,6 +25,12 @@ interface Props {
   libraryPrefillContext?: LibraryPrefillContext;
   /** Quand true, la génération se lance automatiquement au montage sans afficher le formulaire. */
   autoSubmit?: boolean;
+  /** Liste des comptes Instagram accessibles — toujours fournie si le template utilise une lib,
+   *  permet de changer de compte après coup (ou de charger le prefill si templateNeedsAccount). */
+  instagramAccounts?: Array<{ id: string; handle: string; name?: string | null }>;
+  /** Vrai si le prefill SSR a été bloqué car le template utilise une lib et aucun accountId
+   *  n'était connu. Le form doit bloquer le bouton Générer jusqu'à sélection + fetch. */
+  templateNeedsAccount?: boolean;
 }
 
 type Variant = {
@@ -50,7 +58,19 @@ function resolveInitialFieldValue(field: SchemaField, initialValue: unknown): un
 function buildUsedAssets(
   ctx: LibraryPrefillContext,
   selections: Record<string, LibraryAssetOption | null>,
-): { videoAssets?: Record<string, string>; audioAssetId?: string; dataEntryId?: string; setSequencedLibraryIds?: string[]; usedSetTagByLibrary?: Record<string, string>; usedCategoryByLibrary?: Record<string, string>; prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: "usedInCycle" | "perAccountUsage"; accountId?: string } } | undefined {
+): {
+  videoAssets?: Record<string, string>;
+  audioAssetId?: string;
+  dataEntryId?: string;
+  /** resolvedSetTag from the DataEntry group selection — drives AccountDataLibraryCursor advance. */
+  dataResolvedSetTag?: string | null;
+  /** resolvedCategory from the DataEntry group selection — drives AccountDataLibraryCursor advance. */
+  dataResolvedCategory?: string | null;
+  setSequencedLibraryIds?: string[];
+  usedSetTagByLibrary?: Record<string, string>;
+  usedCategoryByLibrary?: Record<string, string>;
+  prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: "usedInCycle" | "perAccountUsage"; accountId?: string };
+} | undefined {
   const fieldMap = ctx.fieldLibraryMap ?? {};
   const videoAssets: Record<string, string> = {};
   let audioAssetId: string | undefined;
@@ -70,6 +90,8 @@ function buildUsedAssets(
     videoAssets: hasVideo ? videoAssets : undefined,
     audioAssetId,
     dataEntryId: ctx.dataSuggestion?.entryId,
+    dataResolvedSetTag: ctx.dataSuggestion?.resolvedSetTag,
+    dataResolvedCategory: ctx.dataSuggestion?.resolvedCategory,
     setSequencedLibraryIds: ctx.setSequencedLibraryIds?.length ? ctx.setSequencedLibraryIds : undefined,
     usedSetTagByLibrary: ctx.usedSetTagByLibrary && Object.keys(ctx.usedSetTagByLibrary).length > 0 ? ctx.usedSetTagByLibrary : undefined,
     usedCategoryByLibrary: ctx.usedCategoryByLibrary && Object.keys(ctx.usedCategoryByLibrary).length > 0 ? ctx.usedCategoryByLibrary : undefined,
@@ -77,7 +99,16 @@ function buildUsedAssets(
   };
 }
 
-export function ListingForm({ templateId, currentUserId, schema, formSections, mediaFieldAspectRatios = {}, initialValues, libraryPrefillContext, autoSubmit }: Props) {
+export function ListingForm({ templateId, currentUserId, schema, formSections, mediaFieldAspectRatios = {}, initialValues, libraryPrefillContext: initialLibraryPrefillContext, autoSubmit, instagramAccounts = [], templateNeedsAccount = false }: Props) {
+  // Phase 2.3 : prefill contexte — peut être chargé côté client après sélection IG.
+  const [libraryPrefillContext, setLibraryPrefillContext] = useState<LibraryPrefillContext | undefined>(
+    initialLibraryPrefillContext,
+  );
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(
+    initialLibraryPrefillContext?.selectedAccountId ?? "",
+  );
+  const [prefillLoading, setPrefillLoading] = useState(false);
+
   // Keys of data fields pre-filled from a DataEntry (drives badge display)
   const libraryPrefilledKeys = useMemo(
     () => new Set(libraryPrefillContext?.prefilledDataKeys ?? []),
@@ -87,7 +118,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
   // Track which library asset is currently selected per field key
   const [librarySelections, setLibrarySelections] = useState<Record<string, LibraryAssetOption | null>>(
     () => Object.fromEntries(
-      Object.entries(libraryPrefillContext?.initialSuggestions ?? {}).map(([k, v]) => [k, v]),
+      Object.entries(initialLibraryPrefillContext?.initialSuggestions ?? {}).map(([k, v]) => [k, v]),
     ),
   );
   const router = useRouter();
@@ -107,6 +138,52 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
   const listingIdRef = useRef<string | null>(null);
   // SSE source — shared across all variants
   const sseSourceRef = useRef<EventSource | null>(null);
+
+  // Phase 2.3 — charge le prefill depuis l'API après sélection d'un compte IG.
+  async function handleAccountChange(accountId: string) {
+    setSelectedAccountId(accountId);
+    if (!accountId) return;
+    setPrefillLoading(true);
+    try {
+      const res = await fetch(`/api/templates/${templateId}/prefill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId,
+          // slotId/listingId ne sont pas connus côté client dans ce contexte
+          // (la page les a déjà utilisés pour les champs — pas de double-fetch).
+          slotId: null,
+          listingId: null,
+          initialValues: values,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json() as {
+          context: LibraryPrefillContext | null;
+          updatedInitialValues: Record<string, unknown>;
+        };
+        if (data.context) {
+          setLibraryPrefillContext(data.context);
+          // Injecter les suggestions dans les valeurs du form
+          const newSuggestions = data.context.initialSuggestions ?? {};
+          setLibrarySelections((prev) => ({ ...prev, ...newSuggestions }));
+          setValues((prev) => {
+            const patch: Record<string, unknown> = {};
+            for (const [k, v] of Object.entries(newSuggestions)) {
+              if (v?.url) patch[k] = v.url;
+            }
+            return Object.keys(patch).length > 0 ? { ...prev, ...patch } : prev;
+          });
+        }
+      } else {
+        toast.error("Impossible de charger les suggestions pour ce compte.");
+      }
+    } catch {
+      toast.error("Erreur réseau lors du chargement des suggestions.");
+    } finally {
+      setPrefillLoading(false);
+    }
+  }
 
   // Resolve a variant to its terminal state (called from both poll and SSE paths)
   const resolveVariant = useCallback((renderId: string, data: {
@@ -529,25 +606,66 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
         </div>
       ) : null}
       <form ref={formRef} onSubmit={handleGenerate} className={`min-w-0 space-y-6 order-2 md:order-none md:col-span-3 ${autoSubmit ? "hidden" : ""}`}>
-        {/* ── Instagram account selector (theme_sequence templates) ── */}
-        {(libraryPrefillContext?.instagramAccounts?.length ?? 0) > 0 && (
+        {/* ── Sélecteur compte Instagram (Phase 2.3) ─────────────────────────
+            Cas 1 — templateNeedsAccount && !libraryPrefillContext :
+              Prefill bloqué. Afficher Alert bloquant + Select compte.
+            Cas 2 — instagramAccounts fournis ET prefill déjà chargé :
+              Changer de compte recharge le prefill via POST (pas de reload page).
+        ───────────────────────────────────────────────────────────────────── */}
+        {templateNeedsAccount && !libraryPrefillContext && instagramAccounts.length > 0 && (
+          <Alert
+            variant="warning"
+            title="Sélectionne d'abord un compte Instagram"
+            className="mb-2"
+          >
+            <div className="mt-2 space-y-3">
+              <p>Ce template utilise une bibliothèque de contenus. Choisis un compte pour charger les suggestions adaptées.</p>
+              <Select
+                value={selectedAccountId}
+                onChange={handleAccountChange}
+                placeholder="— Sélectionner un compte —"
+                disabled={prefillLoading}
+                options={instagramAccounts.map((a) => ({
+                  value: a.id,
+                  label: `@${a.handle}${a.name ? ` · ${a.name}` : ""}`,
+                }))}
+                variant="glass"
+              />
+              {prefillLoading && (
+                <p className="text-[11.5px] text-peach-700 flex items-center gap-2">
+                  <span className="inline-block h-3 w-3 rounded-full border-2 border-peach-500 border-t-transparent animate-spin" />
+                  Chargement des suggestions…
+                </p>
+              )}
+            </div>
+          </Alert>
+        )}
+        {/* Sélecteur "changer de compte" : visible quand prefill déjà chargé */}
+        {instagramAccounts.length > 0 && libraryPrefillContext && (
           <div className="rounded-2xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.32)] p-3 flex items-center gap-3">
             <span className="text-[12.5px] font-semibold text-sky-900 shrink-0">Compte Instagram</span>
-            <select
-              value={libraryPrefillContext?.selectedAccountId ?? ""}
-              onChange={(e) => {
-                const id = e.target.value;
-                const url = new URL(window.location.href);
-                if (id) { url.searchParams.set("accountId", id); } else { url.searchParams.delete("accountId"); }
-                router.push(url.toString());
+            <Select
+              value={selectedAccountId || libraryPrefillContext.selectedAccountId || ""}
+              onChange={(id) => {
+                if (!id) return;
+                // Si le prefill était déjà chargé SSR, on recharge via client
+                void handleAccountChange(id);
               }}
-              className="flex-1 rounded-lg bg-white/80 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(125,180,210,0.32)] px-3 py-1.5 text-[12.5px] text-gray-950 outline-none focus:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.55),0_0_0_3px_rgba(169,209,230,0.4)]"
-            >
-              <option value="">— Sélectionner un compte —</option>
-              {libraryPrefillContext!.instagramAccounts!.map((a) => (
-                <option key={a.id} value={a.id}>@{a.handle} · {a.name}</option>
-              ))}
-            </select>
+              placeholder="— Sélectionner un compte —"
+              disabled={prefillLoading}
+              options={instagramAccounts.map((a) => ({
+                value: a.id,
+                label: `@${a.handle}${a.name ? ` · ${a.name}` : ""}`,
+              }))}
+              variant="glass"
+              className="flex-1"
+            />
+            {prefillLoading && (
+              <span className="text-[11px] text-sky-600 shrink-0 flex items-center gap-1.5">
+                <span className="inline-block h-3 w-3 rounded-full border-2 border-sky-500 border-t-transparent animate-spin" />
+                Chargement…
+              </span>
+            )}
           </div>
         )}
 
@@ -667,10 +785,11 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
               </button>
               <button
                 type="submit"
-                disabled={generating}
+                disabled={generating || prefillLoading || (templateNeedsAccount && !libraryPrefillContext)}
+                title={templateNeedsAccount && !libraryPrefillContext ? "Sélectionne un compte Instagram pour charger les suggestions" : undefined}
                 className="px-5 py-1.5 rounded-lg bg-gradient-to-b from-gray-800 to-gray-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_2px_4px_rgba(15,23,42,0.18)] text-[12.5px] font-semibold text-white hover:from-gray-900 hover:to-gray-950 disabled:opacity-60 transition-all"
               >
-                {generating ? "Génération…" : variants.length === 0 ? "Générer" : "Générer une variante"}
+                {generating ? "Génération…" : prefillLoading ? "Chargement…" : variants.length === 0 ? "Générer" : "Générer une variante"}
               </button>
             </div>
           </div>
