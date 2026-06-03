@@ -4,7 +4,7 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { startRenderGeneration } from "@/lib/renderer/generateRender";
-import { advanceLibraryCursorsOnSubmit, advanceAudioUsageOnSubmit, advanceDataLibraryCursorOnSubmit } from "@/lib/contentLibraryResolver";
+import { advanceLibraryCursorsOnSubmit, advanceAudioUsageOnSubmit, advanceDataLibraryCursorOnSubmit, advanceDataEntryClaimOnSubmit } from "@/lib/contentLibraryResolver";
 import { applyAutoTransitionFromPipeline } from "@/lib/services/slot/transitions";
 
 /**
@@ -237,34 +237,12 @@ export async function POST(req: NextRequest) {
         if (Object.keys(sanitized).length > 0) sanitizedUsedAssets.usedCategoryByLibrary = sanitized;
       }
 
-      // prevDataEntryState — claim state for DataEntry failure-recovery revert.
-      // Fix C1: validate that entryId matches the sanitized dataEntryId submitted in the
-      // same request. A malicious client could otherwise supply an arbitrary entryId to
-      // trigger DELETE DataEntryUsage on a row belonging to a different generation.
-      // We only accept prevDataEntryState when its entryId matches the validated dataEntryId.
-      if (raw.prevDataEntryState && typeof raw.prevDataEntryState === "object" && !Array.isArray(raw.prevDataEntryState)) {
-        const s = raw.prevDataEntryState as Record<string, unknown>;
-        if (typeof s.entryId === "string" && typeof s.campaignId === "string"
-          && typeof s.usagePolicy === "string"
-          && (s.claimType === "usedInCycle" || s.claimType === "perAccountUsage")
-          && (s.accountId === undefined || typeof s.accountId === "string")) {
-          // C1: entryId in prevDataEntryState must match the validated dataEntryId
-          if (sanitizedUsedAssets.dataEntryId && s.entryId !== sanitizedUsedAssets.dataEntryId) {
-            console.warn(
-              `[POST /api/renders] C1 guard: prevDataEntryState.entryId=${s.entryId} does not match dataEntryId=${sanitizedUsedAssets.dataEntryId} — ignoring prevDataEntryState`,
-            );
-          } else {
-            sanitizedUsedAssets.prevDataEntryState = {
-              entryId: s.entryId,
-              campaignId: s.campaignId,
-              usagePolicy: s.usagePolicy,
-              claimType: s.claimType,
-              accountId: s.accountId as string | undefined,
-            };
-          }
-        }
-      }
-
+      // Phase 8.M1 : prevDataEntryState n'est plus accepté du body client.
+      // Le claim DataEntry est désormais posé côté serveur via
+      // advanceDataEntryClaimOnSubmit (voir plus bas), exactement comme
+      // advanceLibraryCursorsOnSubmit gère le claim Media. Cela élimine le
+      // vecteur d'attaque C1 (client trustait l'entryId) ET le claim leak
+      // M1 (claim au prefill qui ne se libère jamais si l'user abandonne).
     }
 
     // ── Phase 4: minDuration validation ─────────────────────────────────────────
@@ -459,6 +437,43 @@ export async function POST(req: NextRequest) {
             claimedSetTag: sanitizedUsedAssets.dataResolvedSetTag ?? null,
             claimedCategory: sanitizedUsedAssets.dataResolvedCategory ?? null,
           };
+        }
+      }
+    }
+
+    // ── Phase 8.M1: Claim DataEntry au submit (PAS au prefill) ─────────────
+    // Mirror du flow Media : selectDataEntry est désormais readOnly au prefill,
+    // et le claim définitif (INSERT DataEntryUsage usageCount=0 ou UPDATE
+    // usedInCycle=true) se fait ICI au submit, atomiquement avec FOR UPDATE.
+    //
+    // Si l'entry suggérée n'est plus disponible (claim concurrent), la
+    // fonction fallback sur un re-pick. Best-effort : si tout échoue, le
+    // render se fait quand même mais sans claim → recordLibraryUsage au DONE
+    // incrémentera l'usage standard.
+    if (sanitizedUsedAssets.dataEntryId) {
+      // Charge la campaignId via la DataEntry pour passer à advanceDataEntryClaimOnSubmit.
+      const dataEntry = await prisma.dataEntry.findUnique({
+        where: { id: sanitizedUsedAssets.dataEntryId },
+        select: { campaignId: true },
+      });
+      if (dataEntry?.campaignId) {
+        const dataClaim = await advanceDataEntryClaimOnSubmit(
+          dataEntry.campaignId,
+          sanitizedUsedAssets.dataEntryId,
+          validatedAccountId ?? undefined,
+        );
+        if (dataClaim) {
+          sanitizedUsedAssets.prevDataEntryState = {
+            entryId: dataClaim.claimState.entryId,
+            campaignId: dataClaim.claimState.campaignId,
+            usagePolicy: dataClaim.claimState.usagePolicy,
+            claimType: dataClaim.claimState.claimType,
+            accountId: dataClaim.claimState.accountId,
+          };
+          // If re-pick changed the entry, update dataEntryId so usage tracking is consistent.
+          if (dataClaim.claimState.entryId !== sanitizedUsedAssets.dataEntryId) {
+            sanitizedUsedAssets.dataEntryId = dataClaim.claimState.entryId;
+          }
         }
       }
     }

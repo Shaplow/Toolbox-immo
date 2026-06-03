@@ -1295,11 +1295,17 @@ export async function resolveLibraryPrefill(
       }
     }
 
+    // Phase 8.M1 : readOnly=true → ne pose plus de claim DataEntryUsage(usageCount=0)
+    // ni n'update usedInCycle au SSR. Si l'user abandonne la page, aucun état n'est
+    // laissé en DB. Le claim définitif (atomique avec FOR UPDATE) se fait au submit
+    // via advanceDataEntryClaimOnSubmit appelée depuis POST /api/renders. Symétrique
+    // avec selectMediaAssetBySetSequence(..., readOnly=true).
     const dataSuggestion = await selectDataEntry(
       template.contentLibrary.dataCampaignId,
       template.contentLibrary.dataSelectionRule,
       accountId,
       prevCursorState,
+      true, // readOnly
     );
     if (dataSuggestion) {
       result.dataSuggestion = {
@@ -1500,6 +1506,115 @@ export async function advanceDataLibraryCursorOnSubmit(
 }
 
 /**
+ * Phase 8.M1 — Claim DataEntry atomique au moment du submit.
+ *
+ * Avant Phase 8.M1, selectDataEntry posait le claim (INSERT DataEntryUsage
+ * usageCount=0 ou UPDATE usedInCycle=true) au PREFILL SSR. Si l'user
+ * abandonnait la page, le claim restait et l'entry était définitivement
+ * marquée "consommée" pour ce compte. Asymétrique avec Media (readOnly
+ * au prefill, claim au submit).
+ *
+ * Phase 8.M1 corrige : selectDataEntry est désormais readOnly au prefill
+ * (juste pick avec FOR UPDATE SKIP LOCKED pour stabilité concurrente, sans
+ * mutation), et CE helper claim l'entry au submit avec garde anti-race.
+ *
+ * Stratégie :
+ *  - Si l'entry suggéré est encore claimable (NOT EXISTS DataEntryUsage)
+ *    → claim posé.
+ *  - Sinon (un autre render a déjà claimé l'entry entre prefill et submit)
+ *    → fallback : re-pick + claim sur une autre entry éligible. Le render
+ *    final utilisera des données différentes que la suggestion mais
+ *    n'échoue pas (le user voit les data du form figées via dataEntryId
+ *    envoyé, mais le claim DB est sur une autre — c'est best-effort).
+ *
+ * Pour `usagePolicy === "unlimited"` ou `"none"`, pas de claim — return null
+ * (le caller traite comme "pas de revert state à stocker").
+ *
+ * Le retour `null` signifie "rien à claim" (unlimited, manual, ou exhausted).
+ * Le caller (POST /api/renders) ne stocke alors pas de prevDataEntryState.
+ */
+export async function advanceDataEntryClaimOnSubmit(
+  campaignId: string,
+  suggestedEntryId: string | null | undefined,
+  accountId: string | undefined,
+): Promise<{ claimState: DataEntryClaimState } | null> {
+  const campaign = await prisma.dataCampaign.findUnique({
+    where: { id: campaignId },
+    select: {
+      library: {
+        select: {
+          rotationMode: true,
+          rotationScope: true,
+          maxUsageCount: true,
+        },
+      },
+    },
+  });
+  if (!campaign?.library) return null;
+  const lib = campaign.library;
+  if (lib.rotationMode === "none") return null;
+
+  const usagePolicy: "cycle_per_account" | "once_per_account" | "once_global" | "unlimited" =
+    lib.maxUsageCount === 1
+      ? (lib.rotationScope === "per_account" ? "once_per_account" : "once_global")
+      : (lib.rotationScope === "per_account" ? "cycle_per_account" : "unlimited");
+
+  // "unlimited" → no claim mechanism (lastUsedAt incrémenté au DONE via recordLibraryUsage).
+  if (usagePolicy === "unlimited") return null;
+
+  // Per-account policies require accountId.
+  if ((usagePolicy === "cycle_per_account" || usagePolicy === "once_per_account") && !accountId) {
+    return null;
+  }
+
+  // Tente le claim sur l'entry suggérée d'abord (best-effort).
+  // Si elle est déjà claimée par un render concurrent, on retombe sur
+  // selectDataEntry(readOnly=false) qui re-pioche atomiquement.
+  if (suggestedEntryId) {
+    if (usagePolicy === "cycle_per_account" || usagePolicy === "once_per_account") {
+      try {
+        await prisma.dataEntryUsage.create({
+          data: { entryId: suggestedEntryId, accountId: accountId!, usageCount: 0, lastUsedAt: new Date() },
+        });
+        return {
+          claimState: { entryId: suggestedEntryId, campaignId, usagePolicy, claimType: "perAccountUsage", accountId },
+        };
+      } catch {
+        // Unique constraint (entryId, accountId) → déjà claim, on fallback.
+        console.info(`[advanceDataEntryClaimOnSubmit] suggested entry ${suggestedEntryId} already claimed for account ${accountId} — re-picking`);
+      }
+    } else if (usagePolicy === "once_global") {
+      // Atomic CAS : claim seulement si pas encore claim.
+      const updated = await prisma.$executeRaw(Prisma.sql`
+        UPDATE "DataEntry"
+        SET "usedInCycle" = true
+        WHERE id = ${suggestedEntryId}
+          AND "usedInCycle" = false
+          AND "usageCount" = 0
+      `);
+      if (updated > 0) {
+        return {
+          claimState: { entryId: suggestedEntryId, campaignId, usagePolicy, claimType: "usedInCycle", accountId },
+        };
+      }
+      console.info(`[advanceDataEntryClaimOnSubmit] suggested entry ${suggestedEntryId} already claimed globally — re-picking`);
+    }
+  }
+
+  // Fallback : re-pick avec selectDataEntry en mode CLAIM (readOnly=false).
+  // Mirror du fallback Media quand un asset suggéré est devenu indisponible.
+  const reSelected = await selectDataEntry(
+    campaignId,
+    undefined, // rule — la lib joue le pattern par défaut
+    accountId,
+    undefined, // prevCursorState — pas de besoin de re-piloter l'anti-rep ici
+    false, // readOnly = false → claim posé
+  );
+  if (reSelected?.claimState) return { claimState: reSelected.claimState };
+  return null;
+}
+
+/**
  * Stamps MediaAssetUsage.lastUsedAt for the submitted audio asset at form submission time.
  * Called from POST /api/renders after advanceLibraryCursorsOnSubmit.
  * Returns the prev/claimed state needed for failure-recovery revert.
@@ -1671,6 +1786,19 @@ export async function selectDataEntry(
   rule: "not_used_in_cycle" | "least_used" | "manual" | undefined,
   accountId?: string,
   prevCursorState?: { lastUsedSetTag: string | null; lastUsedCategory: string | null; hasHistory: boolean },
+  /**
+   * Phase 8.M1 — Symétrie avec selectMediaAssetBySetSequence(..., readOnly=true).
+   * En readOnly:
+   *  - Aucun claim n'est écrit (INSERT DataEntryUsage usageCount=0, UPDATE usedInCycle=true).
+   *  - Aucun curseur n'est avancé.
+   *  - Le pick utilise FOR UPDATE SKIP LOCKED pour piocher de manière déterministe
+   *    contre la concurrence, mais ne mute pas la DB.
+   * Le claim définitif (avec FOR UPDATE) se fait à advanceDataEntryClaimOnSubmit
+   * appelé depuis POST /api/renders au moment du submit — comme Media.
+   *
+   * Default false pour backwards compat (callers internes du grouping flow).
+   */
+  readOnly: boolean = false,
 ): Promise<{
   entryId: string;
   fields: Record<string, string>;
@@ -1912,12 +2040,15 @@ export async function selectDataEntry(
         FOR UPDATE SKIP LOCKED
         LIMIT 1`);
       if (rows[0]) {
-        await (tx ? tx.dataEntryUsage : prisma.dataEntryUsage).create({
-          data: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
-        });
+        // Phase 8.M1 : skip claim si readOnly (claim posé au submit côté serveur).
+        if (!readOnly) {
+          await (tx ? tx.dataEntryUsage : prisma.dataEntryUsage).create({
+            data: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
+          });
+        }
         return {
           entry: rows[0],
-          claimState: { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId },
+          claimState: readOnly ? undefined : { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId },
         };
       }
       // Fallback within group: cycle restart — genuinely used entries
@@ -1952,14 +2083,17 @@ export async function selectDataEntry(
         FOR UPDATE SKIP LOCKED
         LIMIT 1`);
       if (rows[0]) {
-        await (tx ? tx.dataEntryUsage : prisma.dataEntryUsage).upsert({
-          where: { entryId_accountId: { entryId: rows[0].id, accountId } },
-          update: { lastUsedAt: new Date() },
-          create: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
-        });
+        // Phase 8.M1 : skip claim si readOnly.
+        if (!readOnly) {
+          await (tx ? tx.dataEntryUsage : prisma.dataEntryUsage).upsert({
+            where: { entryId_accountId: { entryId: rows[0].id, accountId } },
+            update: { lastUsedAt: new Date() },
+            create: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
+          });
+        }
         return {
           entry: rows[0],
-          claimState: { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId },
+          claimState: readOnly ? undefined : { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId },
         };
       }
       return null;
@@ -1978,13 +2112,16 @@ export async function selectDataEntry(
         FOR UPDATE SKIP LOCKED
         LIMIT 1`);
       if (rows[0]) {
-        await (tx ? tx.dataEntry : prisma.dataEntry).update({
-          where: { id: rows[0].id },
-          data: { usedInCycle: true },
-        });
+        // Phase 8.M1 : skip claim si readOnly.
+        if (!readOnly) {
+          await (tx ? tx.dataEntry : prisma.dataEntry).update({
+            where: { id: rows[0].id },
+            data: { usedInCycle: true },
+          });
+        }
         return {
           entry: rows[0],
-          claimState: { entryId: rows[0].id, campaignId, usagePolicy, claimType: "usedInCycle", accountId },
+          claimState: readOnly ? undefined : { entryId: rows[0].id, campaignId, usagePolicy, claimType: "usedInCycle", accountId },
         };
       }
       return null;
@@ -2083,10 +2220,13 @@ export async function selectDataEntry(
             LIMIT 1`);
           if (rows[0]) {
             entry = rows[0];
-            await tx.dataEntryUsage.create({
-              data: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
-            });
-            claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId };
+            // Phase 8.M1 : skip claim si readOnly.
+            if (!readOnly) {
+              await tx.dataEntryUsage.create({
+                data: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
+              });
+              claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId };
+            }
           } else {
             // Fallback: cycle restart — pick from genuinely used entries (usageCount >= 1), least used first.
             // FOR UPDATE OF de SKIP LOCKED ensures concurrent cron jobs pick distinct entries
@@ -2130,12 +2270,15 @@ export async function selectDataEntry(
             LIMIT 1`);
           if (rows[0]) {
             entry = rows[0];
-            await tx.dataEntryUsage.upsert({
-              where: { entryId_accountId: { entryId: rows[0].id, accountId } },
-              update: { lastUsedAt: new Date() },
-              create: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
-            });
-            claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId };
+            // Phase 8.M1 : skip claim si readOnly.
+            if (!readOnly) {
+              await tx.dataEntryUsage.upsert({
+                where: { entryId_accountId: { entryId: rows[0].id, accountId } },
+                update: { lastUsedAt: new Date() },
+                create: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
+              });
+              claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId };
+            }
           }
           // No fallback for once_per_account — null means exhausted
         });
@@ -2165,8 +2308,11 @@ export async function selectDataEntry(
             LIMIT 1`);
           if (rows[0]) {
             entry = rows[0];
-            await tx.dataEntry.update({ where: { id: rows[0].id }, data: { usedInCycle: true } });
-            claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "usedInCycle", accountId };
+            // Phase 8.M1 : skip claim si readOnly.
+            if (!readOnly) {
+              await tx.dataEntry.update({ where: { id: rows[0].id }, data: { usedInCycle: true } });
+              claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "usedInCycle", accountId };
+            }
           }
           // No fallback for once_global — null means globally exhausted
         });
