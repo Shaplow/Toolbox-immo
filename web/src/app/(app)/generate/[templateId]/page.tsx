@@ -4,11 +4,11 @@ import { notFound } from "next/navigation";
 import { Clapperboard, Info, RotateCcw } from "lucide-react";
 import { ListingForm } from "@/components/form/ListingForm";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
-import { collectTemplateConditionValues, normalizeTemplateJSON } from "@/lib/templateNormalization";
+import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import type { TemplateJSON, VideoBlock } from "@/types/template";
-import { DPE_AUTO_FIELDS } from "@/lib/renderer/blocks/renderDPEBlock";
 import { getUserContext } from "@/lib/userContext";
 import { buildLibraryPrefillContext } from "@/lib/generate/buildLibraryPrefillContext";
+import { buildMergedSchema } from "@/lib/generate/buildMergedSchema";
 
 function buildMediaFieldAspectRatios(json: TemplateJSON): Record<string, number> {
   const ratios = new Map<string, { ratio: number; area: number }>();
@@ -29,6 +29,15 @@ function buildMediaFieldAspectRatios(json: TemplateJSON): Record<string, number>
   }
 
   return Object.fromEntries(Array.from(ratios.entries()).map(([key, value]) => [key, value.ratio]));
+}
+
+/** Vrai si le template lie au moins un bloc (vidéo ou musique) ou une DataLibrary. */
+function templateUsesLibrary(json: TemplateJSON): boolean {
+  return (
+    json.blocks.some((b) => (b.type === "video" || b.type === "music") && !!(b as { libraryId?: string }).libraryId) ||
+    (json.videoSequence ?? []).some((s) => !!(s as { libraryId?: string }).libraryId) ||
+    !!json.contentLibrary?.dataCampaignId
+  );
 }
 
 type Props = {
@@ -94,59 +103,7 @@ export default async function GeneratePage({ params, searchParams }: Props) {
 
   const json = normalizeTemplateJSON(JSON.parse(template.jsonData) as TemplateJSON);
 
-  // Start from the user-defined schema (source of truth for manual variables)
-  const schemaMap = new Map(json.schema.map((f) => [f.key, f]));
-
-  // If the template contains at least one DPE block, inject the 4 fixed DPE fields
-  // (only for keys not already declared manually in the schema)
-  const hasDpe = json.blocks.some((b) => b.type === "dpe");
-  if (hasDpe) {
-    for (const field of DPE_AUTO_FIELDS) {
-      if (!schemaMap.has(field.key)) schemaMap.set(field.key, field);
-    }
-  }
-
-  // Auto-inject video fields for video blocks with a binding not already in schema
-  for (const block of json.blocks) {
-    if (block.type === "video" && block.binding && !schemaMap.has(block.binding)) {
-      schemaMap.set(block.binding, {
-        key: block.binding,
-        label: block.binding.charAt(0).toUpperCase() + block.binding.slice(1).replace(/_/g, " "),
-        type: "video",
-        required: true,
-        description: "Vidéo à intégrer dans le template (MP4 · MOV · WEBM)",
-      });
-    }
-  }
-
-  // Auto-inject audio fields for music blocks with a binding not already in schema
-  for (const block of json.blocks) {
-    if (block.type === "music" && block.binding && !schemaMap.has(block.binding)) {
-      schemaMap.set(block.binding, {
-        key: block.binding,
-        label: block.binding.charAt(0).toUpperCase() + block.binding.slice(1).replace(/_/g, " "),
-        type: "audio",
-        required: false,
-        description: "Musique de fond (MP3 · WAV · AAC · M4A · OGG)",
-      });
-    }
-  }
-
-  const conditionValues = collectTemplateConditionValues(json);
-  for (const [field, values] of conditionValues) {
-    if (!schemaMap.has(field)) {
-      schemaMap.set(field, {
-        key: field,
-        label: field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, " "),
-        type: "select",
-        required: false,
-        options: [...Array.from(values)],
-        description: "Champ conditionnel — laisser vide pour masquer les blocs conditionnels",
-      });
-    }
-  }
-
-  const mergedSchema = [...schemaMap.values()];
+  const mergedSchema = buildMergedSchema(json);
 
   // For video fields that will be auto-resolved from a metadata-values-from-library
   // select field at render time, remove the required constraint.
@@ -185,8 +142,23 @@ export default async function GeneratePage({ params, searchParams }: Props) {
   }
 
   // ─── Content Library pre-fill (extrait dans le helper Phase 1.9 C2) ────────
-  const { context: libraryPrefillContext, updatedInitialValues } =
-    await buildLibraryPrefillContext({
+  // Phase 2.2 : si pas d'accountId ET le template utilise une bibliothèque
+  // (MediaLibrary ou DataLibrary), on bloque le prefill SSR ici. Le form
+  // affichera un sélecteur compte IG et chargera le prefill côté client via
+  // POST /api/templates/[id]/prefill une fois le compte choisi.
+  const templateNeedsAccount = templateUsesLibrary(json) && !accountId;
+
+  // Charge la liste des comptes IG pour le dropdown du sélecteur (toujours,
+  // même si accountId est déjà connu — permet de changer de compte après coup).
+  const instagramAccounts = await prisma.instagramAccount.findMany({
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, handle: true },
+  });
+
+  let libraryPrefillContext: import("@/types/libraryPrefill").LibraryPrefillContext | undefined;
+  if (!templateNeedsAccount) {
+    // accountId connu (ou template sans lib) : prefill SSR normal.
+    const { context, updatedInitialValues } = await buildLibraryPrefillContext({
       json,
       mergedSchema,
       initialValues,
@@ -194,7 +166,10 @@ export default async function GeneratePage({ params, searchParams }: Props) {
       slotId: slotId ?? null,
       listingId: listingId ?? null,
     });
-  initialValues = updatedInitialValues;
+    libraryPrefillContext = context;
+    initialValues = updatedInitialValues;
+  }
+  // Sinon : prefill différé côté client après sélection du compte IG.
 
   // For "auto" mode: filter out video schema fields covered by videoSequence libraryId slots
   const autoMode = json.generationMode === "auto";
@@ -285,6 +260,8 @@ export default async function GeneratePage({ params, searchParams }: Props) {
             initialValues={initialValues}
             libraryPrefillContext={libraryPrefillContext}
             autoSubmit={autoMode}
+            instagramAccounts={instagramAccounts}
+            templateNeedsAccount={templateNeedsAccount}
           />
         </div>
       </div>
