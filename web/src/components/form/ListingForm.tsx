@@ -140,9 +140,17 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
   const sseSourceRef = useRef<EventSource | null>(null);
 
   // Phase 2.3 — charge le prefill depuis l'API après sélection d'un compte IG.
+  // Phase 8.M2 : AbortController pour annuler le fetch en cours quand l'user
+  // change de compte rapidement → évite que le dernier-arrivé écrase un
+  // contexte plus récent (race condition).
+  const prefillAbortRef = useRef<AbortController | null>(null);
   async function handleAccountChange(accountId: string) {
     setSelectedAccountId(accountId);
     if (!accountId) return;
+    // Cancel un fetch en cours pour ce changement
+    prefillAbortRef.current?.abort();
+    const controller = new AbortController();
+    prefillAbortRef.current = controller;
     setPrefillLoading(true);
     try {
       const res = await fetch(`/api/templates/${templateId}/prefill`, {
@@ -156,12 +164,16 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
           listingId: null,
           initialValues: values,
         }),
+        signal: controller.signal,
       });
       if (res.ok) {
         const data = await res.json() as {
           context: LibraryPrefillContext | null;
           updatedInitialValues: Record<string, unknown>;
         };
+        // Garde anti-stale : si un autre changement a déjà overridé l'aborter,
+        // ce résultat est obsolète — ignore-le.
+        if (prefillAbortRef.current !== controller) return;
         if (data.context) {
           setLibraryPrefillContext(data.context);
           // Injecter les suggestions dans les valeurs du form
@@ -187,10 +199,13 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
       } else {
         toast.error("Impossible de charger les suggestions pour ce compte.");
       }
-    } catch {
+    } catch (err) {
+      // AbortError = on a sciemment annulé pour un changement plus récent, no-op.
+      if (err instanceof Error && err.name === "AbortError") return;
       toast.error("Erreur réseau lors du chargement des suggestions.");
     } finally {
-      setPrefillLoading(false);
+      // Ne reset loading que si l'aborter actif est encore le nôtre (pas écrasé)
+      if (prefillAbortRef.current === controller) setPrefillLoading(false);
     }
   }
 

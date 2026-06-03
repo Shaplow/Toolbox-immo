@@ -59,12 +59,18 @@ export function buildMergedSchema(json: TemplateJSON): SchemaField[] {
   const conditionValues = collectTemplateConditionValues(json);
   for (const [field, values] of conditionValues) {
     if (!schemaMap.has(field)) {
+      // Phase 8.M5 : filtrer les valeurs vides ("") du set d'options. Une rule
+      // text-field avec equals:"" (= "vide") serait collectée mais ne doit pas
+      // devenir une option du select — sinon le user verrait un select avec
+      // une seule option blanche. Si toutes les valeurs sont vides → fallback
+      // sur un field text au lieu de select.
+      const validOptions = [...values].filter((v) => v !== "");
       schemaMap.set(field, {
         key: field,
         label: field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, " "),
-        type: "select",
+        type: validOptions.length > 0 ? "select" : "text",
         required: false,
-        options: [...Array.from(values)],
+        ...(validOptions.length > 0 ? { options: validOptions } : {}),
         description: "Champ conditionnel — laisser vide pour masquer les blocs conditionnels",
       });
     }

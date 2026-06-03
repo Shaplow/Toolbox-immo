@@ -151,6 +151,7 @@ export function AppNav({
           { href: "/calendar", label: "Calendrier", icon: <CalendarDays size={14} /> },
           { href: "/admin/accounts", label: "Comptes Instagram", icon: <Instagram size={14} /> },
           { href: "/admin/libraries", label: "Médiathèque", icon: <Library size={14} /> },
+          { href: "/admin/cursors", label: "Curseurs rotation", icon: <RotateCw size={14} /> },
         ],
       },
       {

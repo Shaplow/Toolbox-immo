@@ -30,11 +30,17 @@ export function matchesCondition(condition: ConditionMatch | undefined, listing:
 }
 
 function hasNonVisibilityEffects(effects: BlockConditionalEffects): boolean {
+  // Phase 8.M4 : opacity = 1 et rotation = 0 sont des no-ops visuels. On les
+  // exclut pour ne pas qu'une rule `{ visible: true, opacity: 1 }` (par ex.
+  // créée par erreur dans le builder) bascule un bloc en mode "decorative show"
+  // alors que l'intent réel était "show pure" (default hidden).
+  const meaningfulOpacity = effects.opacity !== undefined && effects.opacity !== 1;
+  const meaningfulRotation = effects.rotation !== undefined && effects.rotation !== 0;
   return (
     effects.offsetX !== undefined ||
     effects.offsetY !== undefined ||
-    effects.rotation !== undefined ||
-    effects.opacity !== undefined ||
+    meaningfulRotation ||
+    meaningfulOpacity ||
     effects.backgroundColor !== undefined ||
     effects.textColor !== undefined
   );
