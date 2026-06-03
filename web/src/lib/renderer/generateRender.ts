@@ -499,8 +499,12 @@ async function resolveMusicConfig(
     } else if (templateJson.canvas?.maxDuration && templateJson.canvas.maxDuration > 0) {
       estimatedVideoDuration = templateJson.canvas.maxDuration;
     }
-    const audioMinDuration =
-      !musicBlock.loop && estimatedVideoDuration > 0 ? estimatedVideoDuration : undefined;
+    // minDuration from block definition takes priority; otherwise auto-derive from video duration
+    // so a non-looping track is long enough to cover the full render.
+    const audioMinDuration: number | undefined =
+      musicBlock.minDuration != null && musicBlock.minDuration > 0
+        ? musicBlock.minDuration
+        : (!musicBlock.loop && estimatedVideoDuration > 0 ? estimatedVideoDuration : undefined);
 
     // Bug-hunter #3 (2026-06-01) — selectAndClaimMediaAsset au lieu de
      // selectMediaAsset : pose un lock atomique + claim immédiat pour
@@ -711,7 +715,8 @@ async function resolveVideoBlockAsset(
   // Standard rotation fallback
   if (!videoBlock.libraryId) return null;
   // Bug-hunter #3 (2026-06-01) — claim atomique pour la race burn-once.
-  return selectAndClaimMediaAsset(videoBlock.libraryId, videoBlock.selectionRule, undefined, accountId ?? undefined);
+  // Pass minDuration from the block definition to filter out assets that are too short.
+  return selectAndClaimMediaAsset(videoBlock.libraryId, videoBlock.selectionRule, undefined, accountId ?? undefined, undefined, videoBlock.minDuration);
 }
 
 async function generateVideoRender(
@@ -1279,6 +1284,8 @@ async function resolveSlotVideoUrl(
   pinnedSetTag?: string,
   pinnedCategory?: string,
   prefillAssetId?: string | null,
+  /** Durée minimale requise pour l'asset (s). Héritée du VideoBlock.minDuration ou slot.maxDuration. */
+  minDuration?: number,
 ): Promise<{ url: string; assetId: string | null; resolvedSetTag: string | null; resolvedCategory: string | null; metadata: Record<string, string | number | null> }> {
   // 1. Binding explicite dans les données du formulaire
   if (slot.binding) {
@@ -1379,7 +1386,8 @@ async function resolveSlotVideoUrl(
       }
     } else {
       // Bug-hunter #3 (2026-06-01) — claim atomique pour la race burn-once sur slot vidéo.
-      const asset = await selectAndClaimMediaAsset(slot.libraryId, rule, undefined, accountId ?? undefined);
+      // Pass minDuration (from VideoBlock.minDuration or slot.maxDuration) to filter short assets.
+      const asset = await selectAndClaimMediaAsset(slot.libraryId, rule, undefined, accountId ?? undefined, undefined, minDuration);
       if (asset) {
         return { url: asset.url, assetId: asset.id, resolvedSetTag: null, resolvedCategory: null, metadata: asset.metadata };
       }
@@ -1580,10 +1588,19 @@ async function generateSequenceRender(
     const localPinnedSetTagByLibrary: Record<string, string> = {};
     const localPinnedCategoryByLibrary: Record<string, string> = {};
     const resolvedSlots: { slot: VideoSequenceSlot; videoUrl: string; metadata: Record<string, string | number | null> }[] = [];
+    const allBlocks = templateJson.blocks ?? [];
     for (const slot of slots) {
       const pinnedSetTag = slot.libraryId ? localPinnedSetTagByLibrary[slot.libraryId] : undefined;
       const pinnedCategory = slot.libraryId ? localPinnedCategoryByLibrary[slot.libraryId] : undefined;
-      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, pinnedCategory, prefillVideoAssets[slot.id]);
+      // Resolve minDuration from the linked VideoBlock (by videoBlockId or binding),
+      // falling back to slot.maxDuration so that the asset covers at least the slot's required duration.
+      const linkedVideoBlock = slot.videoBlockId
+        ? allBlocks.find((b) => b.type === "video" && b.id === slot.videoBlockId) as VideoBlock | undefined
+        : slot.binding
+          ? allBlocks.find((b) => b.type === "video" && b.binding === slot.binding) as VideoBlock | undefined
+          : undefined;
+      const slotMinDuration: number | undefined = linkedVideoBlock?.minDuration ?? (slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined);
+      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, pinnedCategory, prefillVideoAssets[slot.id], slotMinDuration);
       accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, usedCategoryByLibrary, sequenceSlotAssets);
       // Track pinned set for subsequent slots sharing the same library
       if (slot.libraryId && normalizeRule(slot.selectionRule).strategy === "theme_sequence") {
@@ -1807,10 +1824,19 @@ async function generateSequenceRenderLocal(
     const localPinnedSetTagByLibrary: Record<string, string> = {};
     const localPinnedCategoryByLibrary: Record<string, string> = {};
     const resolvedSlots: { slot: VideoSequenceSlot; videoUrl: string; metadata: Record<string, string | number | null> }[] = [];
+    const allBlocksLocal = templateJson.blocks ?? [];
     for (const slot of slots) {
       const pinnedSetTag = slot.libraryId ? localPinnedSetTagByLibrary[slot.libraryId] : undefined;
       const pinnedCategory = slot.libraryId ? localPinnedCategoryByLibrary[slot.libraryId] : undefined;
-      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, pinnedCategory, prefillVideoAssets[slot.id]);
+      // Resolve minDuration from the linked VideoBlock (by videoBlockId or binding),
+      // falling back to slot.maxDuration so that the asset covers at least the slot's required duration.
+      const linkedVideoBlockLocal = slot.videoBlockId
+        ? allBlocksLocal.find((b) => b.type === "video" && b.id === slot.videoBlockId) as VideoBlock | undefined
+        : slot.binding
+          ? allBlocksLocal.find((b) => b.type === "video" && b.binding === slot.binding) as VideoBlock | undefined
+          : undefined;
+      const slotMinDurationLocal: number | undefined = linkedVideoBlockLocal?.minDuration ?? (slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined);
+      const resolved = await resolveSlotVideoUrl(slot, listingData, accountId, templateJson.schema, pinnedSetTag, pinnedCategory, prefillVideoAssets[slot.id], slotMinDurationLocal);
       accumulateSlotTracking(slot, resolved, setSequencedLibraryIds, usedSetTagByLibrary, usedCategoryByLibrary, sequenceSlotAssets);
       if (slot.libraryId && normalizeRule(slot.selectionRule).strategy === "theme_sequence") {
         if (resolved.resolvedSetTag && !localPinnedSetTagByLibrary[slot.libraryId]) {

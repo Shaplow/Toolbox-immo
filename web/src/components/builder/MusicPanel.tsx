@@ -148,6 +148,26 @@ export function MusicPanel() {
             />
           </label>
         </div>
+
+        {/* Durée minimale */}
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[9px] text-gray-400 uppercase tracking-wide">Durée minimale (s)</span>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={musicBlock.minDuration ?? ""}
+            placeholder="—"
+            onChange={(e) => {
+              const v = e.target.value === "" ? undefined : Math.max(0, Number(e.target.value));
+              updateBlock(musicBlock.id, { minDuration: v } as Partial<AnyBlock>);
+            }}
+            className="border border-gray-200 rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+          />
+          <span className="text-[9px] text-gray-400 leading-snug">
+            Si défini, seuls les assets d&apos;au moins cette durée sont sélectionnés.
+          </span>
+        </div>
       </div>
     </div>
   );

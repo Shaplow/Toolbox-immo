@@ -34,6 +34,12 @@ interface PickerModalProps {
   tagFilter?: string;
   /** Instagram account ID — when set, filters to accessible assets and shows per-account usage counts. */
   accountId?: string;
+  /**
+   * Durée minimale requise pour l'asset (secondes).
+   * Les assets plus courts sont grisés et désactivés dans le picker.
+   * L'endpoint API est interrogé avec ce filtre pour pré-exclure les assets inéligibles.
+   */
+  minDuration?: number;
 }
 
 export function LibraryPickerModal({
@@ -45,6 +51,7 @@ export function LibraryPickerModal({
   onSelect,
   tagFilter,
   accountId,
+  minDuration,
 }: PickerModalProps) {
   // null = not yet loaded; Asset[] = fetched (may be empty)
   const [assets, setAssets] = useState<Asset[] | null>(null);
@@ -58,6 +65,7 @@ export function LibraryPickerModal({
     const params = new URLSearchParams();
     if (tagFilter?.trim()) params.set("tag", tagFilter.trim());
     if (accountId?.trim()) params.set("accountId", accountId.trim());
+    if (minDuration != null && minDuration > 0) params.set("minDuration", String(minDuration));
     const url = `/api/libraries/${libraryId}/assets${params.size > 0 ? `?${params.toString()}` : ""}`;
     fetch(url)
       .then((r) => (r.ok ? (r.json() as Promise<Asset[]>) : Promise.resolve([])))
@@ -72,7 +80,7 @@ export function LibraryPickerModal({
       cancelled = true;
       setAssets(null);
     };
-  }, [isOpen, libraryId, tagFilter, accountId]);
+  }, [isOpen, libraryId, tagFilter, accountId, minDuration]);
 
   if (!isOpen) return null;
 
@@ -115,108 +123,136 @@ export function LibraryPickerModal({
               <p className="font-medium">Aucun fichier dans cette bibliothèque</p>
             </div>
           ) : isVideo ? (
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-              {(assets ?? []).map((asset) => (
-                <button
-                  key={asset.id}
-                  onClick={() => {
-                    onSelect({ id: asset.id, url: asset.url, filename: asset.filename });
-                    onClose();
-                  }}
-                  className={`group relative rounded-xl overflow-hidden border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-sky-400 ${
-                    currentAssetId === asset.id
-                      ? "border-sky-500 shadow-md shadow-indigo-200/60"
-                      : "border-transparent hover:border-sky-300"
-                  }`}
-                  onMouseEnter={() => setHoverPlayId(asset.id)}
-                  onMouseLeave={() => setHoverPlayId(null)}
-                >
-                  <div className="relative aspect-[9/16] bg-gray-200">
-                    {hoverPlayId === asset.id ? (
-                      <video
-                        src={asset.url}
-                        autoPlay
-                        muted
-                        loop
-                        playsInline
-                        className="absolute inset-0 w-full h-full object-cover"
-                      />
-                    ) : (
-                      <video
-                        src={`${asset.url}#t=0.5`}
-                        muted
-                        preload="metadata"
-                        className="absolute inset-0 w-full h-full object-cover"
-                      />
-                    )}
-                    {asset.duration && (
-                      <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[9px] px-1.5 py-0.5 rounded leading-none">
-                        {fmtDuration(asset.duration)}
-                      </span>
-                    )}
-                    {currentAssetId === asset.id && (
-                      <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-sky-500 rounded-full flex items-center justify-center shadow">
-                        <Check size={11} className="text-white" />
-                      </div>
-                    )}
-                    {hoverPlayId === asset.id && currentAssetId !== asset.id && (
-                      <div className="absolute inset-0 bg-sky-600/10 pointer-events-none" />
-                    )}
-                  </div>
-                  <div className="px-2 py-1.5 bg-white">
-                    <p
-                      className="text-[10px] font-medium text-gray-700 truncate leading-tight"
-                      title={asset.filename}
+            <div className="space-y-4">
+              {minDuration != null && minDuration > 0 && (assets ?? []).some((a) => a.duration !== null && a.duration < minDuration) && (
+                <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                  Les vidéos en gris ne répondent pas à la durée requise ({fmtDuration(minDuration)})
+                </div>
+              )}
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+                {(assets ?? []).map((asset) => {
+                  const tooShort = minDuration != null && minDuration > 0 && asset.duration !== null && asset.duration < minDuration;
+                  return (
+                    <button
+                      key={asset.id}
+                      disabled={tooShort}
+                      title={tooShort ? `Durée insuffisante : ${fmtDuration(asset.duration)} disponible, ${fmtDuration(minDuration)} requis` : undefined}
+                      onClick={() => {
+                        if (tooShort) return;
+                        onSelect({ id: asset.id, url: asset.url, filename: asset.filename });
+                        onClose();
+                      }}
+                      className={`group relative rounded-xl overflow-hidden border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-sky-400 ${
+                        tooShort
+                          ? "opacity-50 cursor-not-allowed border-transparent"
+                          : currentAssetId === asset.id
+                            ? "border-sky-500 shadow-md shadow-indigo-200/60"
+                            : "border-transparent hover:border-sky-300"
+                      }`}
+                      onMouseEnter={() => !tooShort && setHoverPlayId(asset.id)}
+                      onMouseLeave={() => setHoverPlayId(null)}
                     >
-                      {asset.filename.replace(/\.[^.]+$/, "")}
-                    </p>
-                    <p className="text-[9px] text-gray-400 mt-0.5">
-                      {asset.usageCount} usage{asset.usageCount !== 1 ? "s" : ""}
-                      {asset.duration ? ` · ${fmtDuration(asset.duration)}` : ""}
-                    </p>
-                  </div>
-                </button>
-              ))}
+                      <div className="relative aspect-[9/16] bg-gray-200">
+                        {hoverPlayId === asset.id ? (
+                          <video
+                            src={asset.url}
+                            autoPlay
+                            muted
+                            loop
+                            playsInline
+                            className="absolute inset-0 w-full h-full object-cover"
+                          />
+                        ) : (
+                          <video
+                            src={`${asset.url}#t=0.5`}
+                            muted
+                            preload="metadata"
+                            className="absolute inset-0 w-full h-full object-cover"
+                          />
+                        )}
+                        {asset.duration && (
+                          <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[9px] px-1.5 py-0.5 rounded leading-none">
+                            {fmtDuration(asset.duration)}
+                          </span>
+                        )}
+                        {currentAssetId === asset.id && (
+                          <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-sky-500 rounded-full flex items-center justify-center shadow">
+                            <Check size={11} className="text-white" />
+                          </div>
+                        )}
+                        {hoverPlayId === asset.id && currentAssetId !== asset.id && (
+                          <div className="absolute inset-0 bg-sky-600/10 pointer-events-none" />
+                        )}
+                      </div>
+                      <div className="px-2 py-1.5 bg-white">
+                        <p
+                          className="text-[10px] font-medium text-gray-700 truncate leading-tight"
+                          title={asset.filename}
+                        >
+                          {asset.filename.replace(/\.[^.]+$/, "")}
+                        </p>
+                        <p className="text-[9px] text-gray-400 mt-0.5">
+                          {asset.usageCount} usage{asset.usageCount !== 1 ? "s" : ""}
+                          {asset.duration ? ` · ${fmtDuration(asset.duration)}` : ""}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           ) : (
             /* Audio list */
             <div className="space-y-1.5">
-              {(assets ?? []).map((asset) => (
-                <button
-                  key={asset.id}
-                  onClick={() => {
-                    onSelect({ id: asset.id, url: asset.url, filename: asset.filename });
-                    onClose();
-                  }}
-                  className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-sky-400 ${
-                    currentAssetId === asset.id
-                      ? "border-sky-500 bg-sky-50"
-                      : "border-gray-100 bg-gray-50 hover:border-sky-300 hover:bg-sky-50/50"
-                  }`}
-                >
-                  <div
-                    className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                      currentAssetId === asset.id ? "bg-sky-100" : "bg-white border border-gray-200"
+              {minDuration != null && minDuration > 0 && (assets ?? []).some((a) => a.duration !== null && a.duration < minDuration) && (
+                <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                  Les musiques en gris ne répondent pas à la durée requise ({fmtDuration(minDuration)})
+                </div>
+              )}
+              {(assets ?? []).map((asset) => {
+                const tooShort = minDuration != null && minDuration > 0 && asset.duration !== null && asset.duration < minDuration;
+                return (
+                  <button
+                    key={asset.id}
+                    disabled={tooShort}
+                    title={tooShort ? `Durée insuffisante : ${fmtDuration(asset.duration)} disponible, ${fmtDuration(minDuration)} requis` : undefined}
+                    onClick={() => {
+                      if (tooShort) return;
+                      onSelect({ id: asset.id, url: asset.url, filename: asset.filename });
+                      onClose();
+                    }}
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-sky-400 ${
+                      tooShort
+                        ? "opacity-50 cursor-not-allowed border-gray-100 bg-gray-50"
+                        : currentAssetId === asset.id
+                          ? "border-sky-500 bg-sky-50"
+                          : "border-gray-100 bg-gray-50 hover:border-sky-300 hover:bg-sky-50/50"
                     }`}
                   >
-                    {currentAssetId === asset.id ? (
-                      <Check size={14} className="text-sky-700" />
-                    ) : (
-                      <Music2 size={14} className="text-gray-400" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{asset.filename}</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">
-                      {asset.duration ? fmtDuration(asset.duration) : ""}
-                      {asset.duration && asset.usageCount > 0 ? " · " : ""}
-                      {asset.usageCount > 0
-                        ? `${asset.usageCount} usage${asset.usageCount !== 1 ? "s" : ""}`
-                        : "Non encore utilisé"}
-                    </p>
-                  </div>
-                </button>
-              ))}
+                    <div
+                      className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                        currentAssetId === asset.id ? "bg-sky-100" : "bg-white border border-gray-200"
+                      }`}
+                    >
+                      {currentAssetId === asset.id ? (
+                        <Check size={14} className="text-sky-700" />
+                      ) : (
+                        <Music2 size={14} className="text-gray-400" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{asset.filename}</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        {asset.duration ? fmtDuration(asset.duration) : ""}
+                        {asset.duration && asset.usageCount > 0 ? " · " : ""}
+                        {asset.usageCount > 0
+                          ? `${asset.usageCount} usage${asset.usageCount !== 1 ? "s" : ""}`
+                          : "Non encore utilisé"}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -237,6 +273,11 @@ interface LibraryFieldInputProps {
   tagFilter?: string;
   /** Instagram account ID — filters to accessible assets and shows per-account usage counts. */
   accountId?: string;
+  /**
+   * Durée minimale requise pour l'asset (secondes).
+   * Transmise au picker pour griser les assets trop courts.
+   */
+  minDuration?: number;
 }
 
 export function LibraryFieldInput({
@@ -247,6 +288,7 @@ export function LibraryFieldInput({
   error,
   tagFilter,
   accountId,
+  minDuration,
 }: LibraryFieldInputProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -333,6 +375,7 @@ export function LibraryFieldInput({
         onSelect={onSelect}
         tagFilter={tagFilter}
         accountId={accountId}
+        minDuration={minDuration}
       />
     </div>
   );

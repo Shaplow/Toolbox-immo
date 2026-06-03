@@ -20,6 +20,11 @@ export interface LibraryFieldMeta {
    * whose current value should be passed as a tag filter to the picker.
    */
   tagFilterParam?: string;
+  /**
+   * Durée minimale requise pour l'asset (secondes), héritée de VideoBlock.minDuration ou MusicBlock.minDuration.
+   * Passée au picker pour griser les assets trop courts.
+   */
+  minDuration?: number;
 }
 
 export interface LibraryPrefillContext {

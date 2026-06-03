@@ -312,6 +312,11 @@ export interface VideoBlock extends BaseBlock {
   libraryId?: string;
   /** Règle de sélection automatique depuis la bibliothèque. */
   selectionRule?: MediaSelectionRule;
+  /**
+   * Durée minimale de l'asset attendue, en secondes (optionnel).
+   * Si défini, exclut les assets plus courts en AUTO et MANUEL.
+   */
+  minDuration?: number;
 }
 
 /**
@@ -358,6 +363,11 @@ export interface MusicBlock extends BaseBlock {
   type: "music";
   /** Volume de la piste musique (0–1, défaut 0.3). */
   volume?: number;
+  /**
+   * Durée minimale de l'asset audio attendue, en secondes (optionnel).
+   * Si défini, exclut les assets plus courts en AUTO et MANUEL.
+   */
+  minDuration?: number;
   /** Boucler la musique si plus courte que la vidéo (défaut false). */
   loop?: boolean;
   /** Fondu d'entrée en secondes (défaut 0). */

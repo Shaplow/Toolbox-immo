@@ -27,8 +27,17 @@ export async function GET(req: NextRequest, { params }: Params) {
   const tag = req.nextUrl.searchParams.get("tag")?.trim().toLowerCase() ?? "";
   // Optional accountId — when present, filters to accessible assets and returns per-account stats
   const accountId = req.nextUrl.searchParams.get("accountId")?.trim() || null;
+  // Optional minDuration — when present, excludes assets shorter than this value (seconds).
+  // NULL duration is tolerated (asset not probed yet) to avoid hiding valid assets.
+  const minDurationParam = req.nextUrl.searchParams.get("minDuration");
+  const minDuration = minDurationParam ? parseFloat(minDurationParam) : null;
 
   const tagWhere = tag ? { tags: { contains: `"${tag}"`, mode: "insensitive" as const } } : {};
+  // Duration filter: accept assets with no duration (unprobed) OR duration >= minDuration.
+  const durationWhere =
+    minDuration != null && !isNaN(minDuration) && minDuration > 0
+      ? { OR: [{ duration: null }, { duration: { gte: minDuration } }] }
+      : {};
 
   // Access filter: mirrors the resolver logic in contentLibraryResolver.ts
   //   with accountId    → global (no restrictions) OR restricted-to-me
@@ -40,7 +49,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (accountId) {
     // Per-account path: fetch with per-account usage stats, sort in JS (can't orderBy relation)
     const rawAssets = await prisma.mediaAsset.findMany({
-      where: { libraryId, ...tagWhere, ...accessWhere },
+      where: { libraryId, ...tagWhere, ...accessWhere, ...durationWhere },
       select: {
         id: true,
         filename: true,
@@ -80,7 +89,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   // Global path: no accountId — use global counters, sort by usageCount ASC (matches least_used resolver)
   const assets = await prisma.mediaAsset.findMany({
-    where: { libraryId, ...tagWhere, ...accessWhere },
+    where: { libraryId, ...tagWhere, ...accessWhere, ...durationWhere },
     orderBy: [{ usageCount: "asc" }, { lastUsedAt: "asc" }, { createdAt: "asc" }],
     select: {
       id: true,

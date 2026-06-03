@@ -80,6 +80,25 @@ export function VideoBlockPropertiesPanel({
           />
         )}
 
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-600">Durée minimale (s)</span>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={block.minDuration ?? ""}
+            placeholder="—"
+            onChange={(e) => {
+              const v = e.target.value === "" ? undefined : Math.max(0, Number(e.target.value));
+              onChange({ minDuration: v });
+            }}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500 w-full"
+          />
+          <span className="text-[10px] text-gray-400 leading-relaxed">
+            Si défini, seuls les assets d&apos;au moins cette durée sont sélectionnés (auto et manuel).
+          </span>
+        </label>
+
         {/* Bridge vers le panneau Séquence — remplace l'ancienne phrase
             "la source se configure dans l'onglet Séquence" par une action
             directe qui ouvre le panneau et scrolle au bon slot. */}

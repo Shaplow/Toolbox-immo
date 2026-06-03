@@ -115,7 +115,7 @@ export async function buildLibraryPrefillContext({
 
   const fieldLibraryMap: Record<
     string,
-    { libraryId: string; blockId: string; type: "video" | "audio"; tagFilterParam?: string }
+    { libraryId: string; blockId: string; type: "video" | "audio"; tagFilterParam?: string; minDuration?: number }
   > = {};
   const initialSuggestions: Record<
     string,
@@ -136,6 +136,7 @@ export async function buildLibraryPrefillContext({
         blockId: block.id,
         type: "video" as const,
         tagFilterParam,
+        minDuration: (block as VideoBlock).minDuration,
       };
     }
   }
@@ -152,11 +153,19 @@ export async function buildLibraryPrefillContext({
       typeof rule === "object" && rule !== null && "tagFilterParam" in rule
         ? (rule as { tagFilterParam?: string }).tagFilterParam
         : undefined;
+    // Resolve minDuration from the linked VideoBlock if available
+    const linkedVideoBlock = slot.videoBlockId
+      ? (json.blocks.find((b) => b.type === "video" && b.id === slot.videoBlockId) as VideoBlock | undefined)
+      : slot.binding
+        ? (json.blocks.find((b) => b.type === "video" && b.binding === slot.binding) as VideoBlock | undefined)
+        : undefined;
+    const slotMinDuration: number | undefined = linkedVideoBlock?.minDuration ?? (slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined);
     const slotLibMeta = {
       libraryId: slot.libraryId,
       blockId: slot.id,
       type: "video" as const,
       tagFilterParam,
+      minDuration: slotMinDuration,
     };
 
     // Priority 1: explicit binding (exact match)
@@ -192,6 +201,7 @@ export async function buildLibraryPrefillContext({
       blockId: musicBlock.id,
       type: "audio" as const,
       tagFilterParam,
+      minDuration: musicBlock.minDuration,
     };
   }
 

@@ -746,6 +746,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
                           : undefined
                       }
                       accountId={libraryPrefillContext.selectedAccountId ?? undefined}
+                      minDuration={libraryPrefillContext.fieldLibraryMap[field.key].minDuration}
                     />
                   ) : (
                     <FieldInput
