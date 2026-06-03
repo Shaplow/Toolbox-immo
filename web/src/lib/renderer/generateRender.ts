@@ -1361,6 +1361,8 @@ async function resolveSlotVideoUrl(
     const strategy = ruleConfig.strategy;
 
     if (strategy === "theme_sequence") {
+      // Phase 4 : passe slot.maxDuration comme minimum requis pour l'asset.
+      const slotMinDuration = slot.maxDuration && slot.maxDuration > 0 ? slot.maxDuration : undefined;
       const asset = await selectMediaAssetBySetSequence(
         slot.libraryId,
         accountId ?? undefined,
@@ -1368,6 +1370,9 @@ async function resolveSlotVideoUrl(
         pinnedSetTag,
         pinnedCategory,
         ruleConfig,
+        undefined,  // cursorAccountId
+        false,      // readOnly (claim au submit comme avant)
+        slotMinDuration,
       );
       if (asset) {
         // selectMediaAssetBySetSequence doesn't yet return metadata — fetch it separately

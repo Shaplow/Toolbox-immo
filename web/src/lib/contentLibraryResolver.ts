@@ -252,12 +252,18 @@ function buildTagFragment(
  * - global (no accountId) : COUNT depuis MediaAsset.usageCount.
  * - maxUsageCount null/<=0 : pas de filtre (rotation infinie).
  */
-function buildBurnFilter(maxUsageCount: number | null, accountId?: string): Prisma.Sql {
-  if (maxUsageCount == null || maxUsageCount <= 0) return Prisma.sql``;
+function buildBurnFilter(maxUsageCount: number | null, accountId?: string, minDuration?: number): Prisma.Sql {
+  // Phase 4 gap fix : combine burn + duration en un seul fragment pour économiser
+  // 13 injections séparées dans selectMediaAssetBySetSequence. NULL duration permise
+  // (tolérance pour les assets non probés).
+  const durationClause = minDuration != null && minDuration > 0
+    ? Prisma.sql`AND (ma.duration IS NULL OR ma.duration >= ${minDuration})`
+    : Prisma.sql``;
+  if (maxUsageCount == null || maxUsageCount <= 0) return durationClause;
   if (accountId) {
-    return Prisma.sql`AND COALESCE((SELECT mau2."usageCount" FROM "MediaAssetUsage" mau2 WHERE mau2."assetId" = ma.id AND mau2."accountId" = ${accountId}), 0) < ${maxUsageCount}`;
+    return Prisma.sql`AND COALESCE((SELECT mau2."usageCount" FROM "MediaAssetUsage" mau2 WHERE mau2."assetId" = ma.id AND mau2."accountId" = ${accountId}), 0) < ${maxUsageCount} ${durationClause}`;
   }
-  return Prisma.sql`AND ma."usageCount" < ${maxUsageCount}`;
+  return Prisma.sql`AND ma."usageCount" < ${maxUsageCount} ${durationClause}`;
 }
 
 /** Select the best asset from a MediaLibrary according to rule.
@@ -494,6 +500,9 @@ export async function selectMediaAssetBySetSequence(
    *  without advancing the cursor.  Used by resolveLibraryPrefill so the page-load
    *  preview no longer permanently advances the rotation. */
   readOnly?: boolean,
+  /** Phase 4 gap fix : filtre les assets dont la durée est inférieure à
+   *  minDuration. NULL permis (tolérance pour les assets non probés). */
+  minDuration?: number,
 ): Promise<{ id: string; url: string; filename: string; resolvedSetTag: string | null; resolvedCategory: string | null; prevCursorState?: CursorRevertState } | null> {
   const library = await prisma.mediaLibrary.findUnique({
     where: { id: libraryId },
@@ -515,7 +524,7 @@ export async function selectMediaAssetBySetSequence(
   // - shared      : global tous comptes confondus (utilise ma.usageCount)
   const isSharedScope = library.rotationScope === "shared";
   const burnAccountId = isSharedScope ? undefined : accountId;
-  const burnFilter = buildBurnFilter(library.maxUsageCount ?? null, burnAccountId);
+  const burnFilter = buildBurnFilter(library.maxUsageCount ?? null, burnAccountId, minDuration);
 
   // Build tag fragment: prefer structured ruleConfig, fall back to legacy tagFilter string
   const tagFrag: Prisma.Sql = ruleConfig
@@ -1071,6 +1080,7 @@ export async function resolveLibraryPrefill(
             rule,
             effectiveCursorAccountId(libId),
             true,
+            (b as { minDuration?: number }).minDuration,
           );
           if (suggestion) {
             result.videoSuggestions[b.id] = {
@@ -1142,6 +1152,8 @@ export async function resolveLibraryPrefill(
         let pinnedCategory: string | null | undefined = undefined;
         for (const s of slots) {
           const rule = normalizeRule(s.selectionRule);
+          // Phase 4 : passe slot.maxDuration comme minimum requis pour l'asset.
+          const slotMinDuration = s.maxDuration && s.maxDuration > 0 ? s.maxDuration : undefined;
           const suggestion = await selectMediaAssetBySetSequence(
             libId,
             effectiveAccountId(libId),
@@ -1151,6 +1163,7 @@ export async function resolveLibraryPrefill(
             rule,
             effectiveCursorAccountId(libId),
             true,
+            slotMinDuration,
           );
           if (suggestion) {
             result.videoSuggestions[s.id] = {
