@@ -117,12 +117,23 @@ def _apply_vad_trim(
         get_speech_timestamps = _VAD_GET_SPEECH_TS
         audio_tensor = torch.from_numpy(audio).float()
 
+        # threshold=0.85 (vs défaut 0.5) : silero-VAD est entraîné sur parole
+        # humaine pure ; un threshold élevé filtre la musique de fond et les
+        # ambiances. Sur des templates avec musique mixée à la voix (RVA4,
+        # cover bands, etc.), 0.5 laissait passer la musique comme "parole"
+        # → last_speech_end restait à la fin de la zone musicale → les mots
+        # finaux étirés par WhisperX (cas connu : Whisper extend l'`end` du
+        # dernier mot dans le silence qui suit) n'étaient pas clippés.
+        #
+        # min_silence_duration_ms=250 (vs 100) : cut dès qu'il y a 250ms de
+        # non-parole continue, ce qui resserre les zones VAD autour des
+        # phrases parlées réelles.
         speech_ts = get_speech_timestamps(
             audio_tensor,
             _VAD_MODEL,
             sampling_rate=sample_rate,
-            threshold=0.5,
-            min_silence_duration_ms=100,
+            threshold=0.85,
+            min_silence_duration_ms=250,
             speech_pad_ms=speech_pad_ms,
         )
     except Exception as exc:
