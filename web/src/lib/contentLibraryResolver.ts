@@ -1259,13 +1259,40 @@ export async function resolveLibraryPrefill(
 
   // --- Data library ---
   if (template.contentLibrary?.dataCampaignId) {
+    // Phase 1.2 — load per-account cursor to enable category anti-repetition.
+    // Only applicable when rotationScope === "per_account" and accountId is known.
+    let prevCursorState: { lastUsedSetTag: string | null; lastUsedCategory: string | null; hasHistory: boolean } | undefined;
+    if (accountId) {
+      const campaignWithLib = await prisma.dataCampaign.findUnique({
+        where: { id: template.contentLibrary.dataCampaignId },
+        select: { libraryId: true, library: { select: { rotationScope: true } } },
+      });
+      if (campaignWithLib?.library.rotationScope === "per_account") {
+        const cursorRow = await prisma.accountDataLibraryCursor.findUnique({
+          where: { accountId_libraryId: { accountId, libraryId: campaignWithLib.libraryId } },
+          select: { lastUsedSetTag: true, lastUsedCategory: true, lastAdvancedAt: true },
+        });
+        prevCursorState = {
+          lastUsedSetTag: cursorRow?.lastUsedSetTag ?? null,
+          lastUsedCategory: cursorRow?.lastUsedCategory ?? null,
+          hasHistory: cursorRow?.lastAdvancedAt != null,
+        };
+      }
+    }
+
     const dataSuggestion = await selectDataEntry(
       template.contentLibrary.dataCampaignId,
       template.contentLibrary.dataSelectionRule,
       accountId,
+      prevCursorState,
     );
     if (dataSuggestion) {
-      result.dataSuggestion = { entryId: dataSuggestion.entryId, fields: dataSuggestion.fields };
+      result.dataSuggestion = {
+        entryId: dataSuggestion.entryId,
+        fields: dataSuggestion.fields,
+        resolvedSetTag: dataSuggestion.resolvedSetTag,
+        resolvedCategory: dataSuggestion.resolvedCategory,
+      };
       if (dataSuggestion.claimState) {
         result.prevDataEntryState = dataSuggestion.claimState;
       }
@@ -1376,6 +1403,64 @@ export async function advanceLibraryCursorsOnSubmit(
 }
 
 /**
+ * Advances AccountDataLibraryCursor for a DataLibrary at form submission time.
+ * Mirror of advanceLibraryCursorsOnSubmit but for DataLibrary per-account cursors.
+ *
+ * Only applies when the DataLibrary has rotationScope === "per_account".
+ * For "shared" or when accountId is missing, returns null (no-op).
+ *
+ * Returns prevState (lastUsedSetTag + lastUsedCategory before the write) so the
+ * caller can conditionally revert if the Render creation fails.
+ */
+export async function advanceDataLibraryCursorOnSubmit(
+  dataLibraryId: string,
+  submittedSetTag: string | null,
+  submittedCategory: string | null,
+  accountId: string,
+): Promise<{ prevState: { lastUsedSetTag: string | null; lastUsedCategory: string | null } | null }> {
+  // Load library to check rotationScope
+  const library = await prisma.dataLibrary.findUnique({
+    where: { id: dataLibraryId },
+    select: { rotationScope: true },
+  });
+  if (!library || library.rotationScope !== "per_account") return { prevState: null };
+
+  // Skip if nothing resolved (no group was selected)
+  if (submittedSetTag === null && submittedCategory === null) return { prevState: null };
+
+  let prevState: { lastUsedSetTag: string | null; lastUsedCategory: string | null } | null = null;
+
+  await prisma.$transaction(async (tx) => {
+    // Ensure cursor row exists before locking
+    await tx.accountDataLibraryCursor.upsert({
+      where: { accountId_libraryId: { accountId, libraryId: dataLibraryId } },
+      update: {},
+      create: { accountId, libraryId: dataLibraryId },
+    });
+
+    // Lock cursor row and snapshot current state
+    const locked = await tx.$queryRaw<{ lastUsedSetTag: string | null; lastUsedCategory: string | null }[]>(
+      Prisma.sql`SELECT "lastUsedSetTag", "lastUsedCategory" FROM "AccountDataLibraryCursor" WHERE "accountId" = ${accountId} AND "libraryId" = ${dataLibraryId} FOR UPDATE`,
+    );
+    prevState = {
+      lastUsedSetTag: locked[0]?.lastUsedSetTag ?? null,
+      lastUsedCategory: locked[0]?.lastUsedCategory ?? null,
+    };
+
+    await tx.accountDataLibraryCursor.update({
+      where: { accountId_libraryId: { accountId, libraryId: dataLibraryId } },
+      data: {
+        lastUsedSetTag: submittedSetTag,
+        lastUsedCategory: submittedCategory,
+        lastAdvancedAt: new Date(),
+      },
+    });
+  });
+
+  return { prevState };
+}
+
+/**
  * Stamps MediaAssetUsage.lastUsedAt for the submitted audio asset at form submission time.
  * Called from POST /api/renders after advanceLibraryCursorsOnSubmit.
  * Returns the prev/claimed state needed for failure-recovery revert.
@@ -1423,7 +1508,14 @@ export interface LibraryPrefill {
   /** Single audio asset suggestion (first MusicBlock with a libraryId) */
   audioSuggestion: { id: string; url: string; filename: string } | null;
   /** Parsed fields from the selected DataEntry */
-  dataSuggestion: { entryId: string; fields: Record<string, string> } | null;
+  dataSuggestion: {
+    entryId: string;
+    fields: Record<string, string>;
+    /** Resolved setTag of the selected group — used to advance AccountDataLibraryCursor at submit. */
+    resolvedSetTag?: string | null;
+    /** Resolved category of the selected group — used to advance AccountDataLibraryCursor at submit. */
+    resolvedCategory?: string | null;
+  } | null;
   /**
    * Libraries that used set_sequence for this prefill.
    * Passed through usedAssets so recordLibraryUsage can advance cursor += 1.
@@ -1499,12 +1591,48 @@ export type DataEntryClaimState = {
  * When accountId is provided and the policy supports it, the selected entry is
  * "claimed" atomically using SELECT … FOR UPDATE SKIP LOCKED so that concurrent
  * cron generations for the same account/campaign pick different entries.
+ *
+ * prevCursorState: when provided (per-account rotation), the group selection
+ * applies the same 3-level anti-repetition logic as selectMediaAssetBySetSequence:
+ *   - ≥2 distinct categories → exclude the last used category family.
+ *   - 1 category, ≥2 setTags → exclude the last used setTag.
+ *   - Otherwise (single group) → no exclusion.
  */
-async function selectDataEntry(
+/**
+ * Anti-repetition group selection for DataEntry rotation.
+ * Mirrors selectEligibleGroups (selectMediaAssetBySetSequence).
+ *
+ * @internal Exported for unit testing only.
+ */
+export function selectEligibleDataGroups(
+  allGroups: Array<{ setTag: string | null; category: string | null }>,
+  lastCategory: string | null,
+  lastSetTag: string | null,
+  hasHistory: boolean,
+): Array<{ setTag: string | null; category: string | null }> {
+  if (!hasHistory) return allGroups; // jamais joué → tout est éligible
+  const distinctCategories = new Set(allGroups.map((g) => g.category)).size;
+  if (distinctCategories >= 2) {
+    // ≥2 catégories : exclude catégorie (incl null === null pour orphelins)
+    return allGroups.filter((g) => g.category !== lastCategory);
+  }
+  // 1 catégorie unique (peut être null) : exclude setTag (incl null === null)
+  return allGroups.filter((g) => g.setTag !== lastSetTag);
+}
+
+/** @internal Exported for unit testing only. */
+export async function selectDataEntry(
   campaignId: string,
   rule: "not_used_in_cycle" | "least_used" | "manual" | undefined,
   accountId?: string,
-): Promise<{ entryId: string; fields: Record<string, string>; claimState?: DataEntryClaimState } | null> {
+  prevCursorState?: { lastUsedSetTag: string | null; lastUsedCategory: string | null; hasHistory: boolean },
+): Promise<{
+  entryId: string;
+  fields: Record<string, string>;
+  claimState?: DataEntryClaimState;
+  resolvedSetTag?: string | null;
+  resolvedCategory?: string | null;
+} | null> {
   if (rule === "manual") return null;
 
   // Phase 1.x — les réglages rotation vivent désormais sur DataLibrary
@@ -1548,6 +1676,7 @@ async function selectDataEntry(
     : Prisma.sql`AND NOT EXISTS (SELECT 1 FROM "DataEntryAccess" dea WHERE dea."entryId" = de.id)`;
 
   type EntryRow = { id: string; fields: string };
+  type GroupRow = { setTag: string | null; category: string | null };
 
   // Helper: fetch one entry without locking (used for fallback paths and for !accountId cases)
   async function queryOne(extraWhere: Prisma.Sql, orderBy?: Prisma.Sql): Promise<EntryRow | null> {
@@ -1577,128 +1706,406 @@ async function selectDataEntry(
     return rows[0] ?? null;
   }
 
-  let entry: EntryRow | null = null;
-  let claimState: DataEntryClaimState | undefined;
-
-  // -----------------------------------------------------------------------
-  // "cycle_per_account" — per-account cycle via DataEntryUsage.
-  // Primary: no usage row for this account.
-  // Claim: INSERT DataEntryUsage(usageCount=0, lastUsedAt=now) — marks entry as claimed.
-  // Fallback: restart cycle — pick from rows with usageCount >= 1 (genuinely used).
-  // -----------------------------------------------------------------------
-  if (usagePolicy === "cycle_per_account") {
-    if (accountId) {
-      await prisma.$transaction(async (tx) => {
-        // Primary: entry never touched by this account
-        const rows = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
-          SELECT de.id, de.fields FROM "DataEntry" de
-          WHERE de."campaignId" = ${campaignId}
-            AND NOT EXISTS (
-              SELECT 1 FROM "DataEntryUsage" deu2
-              WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}
-            )
-            ${accessFilter}
-          ORDER BY de."createdAt" ASC
-          FOR UPDATE SKIP LOCKED
-          LIMIT 1`);
-        if (rows[0]) {
-          entry = rows[0];
-          await tx.dataEntryUsage.create({
-            data: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
-          });
-          claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId };
-        } else {
-          // Fallback: cycle restart — pick from genuinely used entries (usageCount >= 1), least used first.
-          // FOR UPDATE OF de SKIP LOCKED ensures concurrent cron jobs pick distinct entries
-          // during a simultaneous cycle restart.
-          const fallback = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
-            SELECT de.id, de.fields FROM "DataEntry" de
+  // Helper: discover (setTag, category) groups eligible for the given policy.
+  // Groups are ordered by cat_last_used ASC NULLS FIRST, last_used ASC NULLS FIRST,
+  // group_created_at ASC — mirrors the MediaAsset group discovery sort.
+  async function discoverGroups(
+    policy: "cycle_per_account" | "once_per_account" | "once_global" | "unlimited",
+  ): Promise<GroupRow[]> {
+    if (policy === "cycle_per_account" && accountId) {
+      // Groups where at least one entry has NOT been claimed by this account yet
+      // (no DataEntryUsage row) OR where at least one genuinely-used entry exists
+      // (usageCount >= 1) — same as the two-step primary+fallback logic, but at group level.
+      // We list ALL groups and let pickEntryFromGroup decide per-entry eligibility.
+      return prisma.$queryRaw<GroupRow[]>(Prisma.sql`
+        SELECT sub2."setTag", sub2."category"
+        FROM (
+          SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
+                 MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
+          FROM (
+            SELECT de."setTag", de."category",
+                   MAX(deu."lastUsedAt") AS last_used,
+                   MIN(de."createdAt") AS group_created_at
+            FROM "DataEntry" de
             LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${accountId}
             WHERE de."campaignId" = ${campaignId}
-              AND COALESCE(deu."usageCount", 0) >= 1
               ${accessFilter}
-            ORDER BY deu."usageCount" ASC, deu."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC
-            FOR UPDATE OF de SKIP LOCKED
-            LIMIT 1`);
-          entry = fallback[0] ?? null;
-          // No claim for fallback — it's a cycle restart, DONE will just increment usageCount
+            GROUP BY de."setTag", de."category"
+            HAVING COUNT(*) > 0
+          ) sub1
+        ) sub2
+        ORDER BY sub2.cat_last_used ASC NULLS FIRST, sub2.last_used ASC NULLS FIRST,
+                 sub2.group_created_at ASC NULLS LAST,
+                 sub2."setTag" ASC NULLS LAST, sub2."category" ASC NULLS FIRST`);
+    }
+    if (policy === "once_per_account" && accountId) {
+      // Groups where at least one entry hasn't been consumed (usageCount=0, not yet claimed)
+      return prisma.$queryRaw<GroupRow[]>(Prisma.sql`
+        SELECT sub2."setTag", sub2."category"
+        FROM (
+          SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
+                 MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
+          FROM (
+            SELECT de."setTag", de."category",
+                   MAX(deu."lastUsedAt") AS last_used,
+                   MIN(de."createdAt") AS group_created_at
+            FROM "DataEntry" de
+            LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${accountId}
+            WHERE de."campaignId" = ${campaignId}
+              AND NOT EXISTS (
+                SELECT 1 FROM "DataEntryUsage" deu2
+                WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}
+                  AND deu2."usageCount" > 0
+              )
+              ${accessFilter}
+            GROUP BY de."setTag", de."category"
+            HAVING COUNT(*) > 0
+          ) sub1
+        ) sub2
+        ORDER BY sub2.cat_last_used ASC NULLS FIRST, sub2.last_used ASC NULLS FIRST,
+                 sub2.group_created_at ASC NULLS LAST,
+                 sub2."setTag" ASC NULLS LAST, sub2."category" ASC NULLS FIRST`);
+    }
+    if (policy === "once_global") {
+      // Groups where at least one entry is unused globally
+      return prisma.$queryRaw<GroupRow[]>(Prisma.sql`
+        SELECT sub2."setTag", sub2."category"
+        FROM (
+          SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
+                 MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
+          FROM (
+            SELECT de."setTag", de."category",
+                   MAX(de."lastUsedAt") AS last_used,
+                   MIN(de."createdAt") AS group_created_at
+            FROM "DataEntry" de
+            WHERE de."campaignId" = ${campaignId}
+              AND de."usageCount" = 0
+              AND de."usedInCycle" = false
+              ${accessFilter}
+            GROUP BY de."setTag", de."category"
+            HAVING COUNT(*) > 0
+          ) sub1
+        ) sub2
+        ORDER BY sub2.cat_last_used ASC NULLS FIRST, sub2.last_used ASC NULLS FIRST,
+                 sub2.group_created_at ASC NULLS LAST,
+                 sub2."setTag" ASC NULLS LAST, sub2."category" ASC NULLS FIRST`);
+    }
+    // unlimited — all groups
+    return prisma.$queryRaw<GroupRow[]>(Prisma.sql`
+      SELECT sub2."setTag", sub2."category"
+      FROM (
+        SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
+               MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
+        FROM (
+          SELECT de."setTag", de."category",
+                 MAX(de."lastUsedAt") AS last_used,
+                 MIN(de."createdAt") AS group_created_at
+          FROM "DataEntry" de
+          WHERE de."campaignId" = ${campaignId}
+            ${accessFilter}
+          GROUP BY de."setTag", de."category"
+          HAVING COUNT(*) > 0
+        ) sub1
+      ) sub2
+      ORDER BY sub2.cat_last_used ASC NULLS FIRST, sub2.last_used ASC NULLS FIRST,
+               sub2.group_created_at ASC NULLS LAST,
+               sub2."setTag" ASC NULLS LAST, sub2."category" ASC NULLS FIRST`);
+  }
+
+  // Helper: pick the best entry within a specific (setTag, category) group.
+  // Filters applied here mirror the per-policy eligibility.
+  async function pickEntryFromGroup(
+    setTag: string | null,
+    category: string | null,
+    policy: "cycle_per_account" | "once_per_account" | "once_global" | "unlimited",
+    tx?: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  ): Promise<{ entry: EntryRow; claimState?: DataEntryClaimState } | null> {
+    const client = tx ?? prisma;
+    const setTagClause = setTag !== null
+      ? Prisma.sql`AND de."setTag" = ${setTag}`
+      : Prisma.sql`AND de."setTag" IS NULL`;
+    const categoryClause = category !== null
+      ? Prisma.sql`AND de."category" = ${category}`
+      : Prisma.sql`AND de."category" IS NULL`;
+
+    if (policy === "cycle_per_account" && accountId) {
+      // Primary within group: not yet claimed by this account
+      const rows = await client.$queryRaw<EntryRow[]>(Prisma.sql`
+        SELECT de.id, de.fields FROM "DataEntry" de
+        WHERE de."campaignId" = ${campaignId}
+          ${setTagClause}
+          ${categoryClause}
+          AND NOT EXISTS (
+            SELECT 1 FROM "DataEntryUsage" deu2
+            WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}
+          )
+          ${accessFilter}
+        ORDER BY de."createdAt" ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1`);
+      if (rows[0]) {
+        await (tx ? tx.dataEntryUsage : prisma.dataEntryUsage).create({
+          data: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
+        });
+        return {
+          entry: rows[0],
+          claimState: { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId },
+        };
+      }
+      // Fallback within group: cycle restart — genuinely used entries
+      const fallback = await client.$queryRaw<EntryRow[]>(Prisma.sql`
+        SELECT de.id, de.fields FROM "DataEntry" de
+        LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${accountId}
+        WHERE de."campaignId" = ${campaignId}
+          ${setTagClause}
+          ${categoryClause}
+          AND COALESCE(deu."usageCount", 0) >= 1
+          ${accessFilter}
+        ORDER BY deu."usageCount" ASC, deu."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC
+        FOR UPDATE OF de SKIP LOCKED
+        LIMIT 1`);
+      if (fallback[0]) return { entry: fallback[0] };
+      return null;
+    }
+
+    if (policy === "once_per_account" && accountId) {
+      const rows = await client.$queryRaw<EntryRow[]>(Prisma.sql`
+        SELECT de.id, de.fields FROM "DataEntry" de
+        WHERE de."campaignId" = ${campaignId}
+          ${setTagClause}
+          ${categoryClause}
+          AND NOT EXISTS (
+            SELECT 1 FROM "DataEntryUsage" deu2
+            WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}
+              AND deu2."usageCount" > 0
+          )
+          ${accessFilter}
+        ORDER BY de."createdAt" ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1`);
+      if (rows[0]) {
+        await (tx ? tx.dataEntryUsage : prisma.dataEntryUsage).upsert({
+          where: { entryId_accountId: { entryId: rows[0].id, accountId } },
+          update: { lastUsedAt: new Date() },
+          create: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
+        });
+        return {
+          entry: rows[0],
+          claimState: { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId },
+        };
+      }
+      return null;
+    }
+
+    if (policy === "once_global") {
+      const rows = await client.$queryRaw<EntryRow[]>(Prisma.sql`
+        SELECT de.id, de.fields FROM "DataEntry" de
+        WHERE de."campaignId" = ${campaignId}
+          ${setTagClause}
+          ${categoryClause}
+          AND de."usageCount" = 0
+          AND de."usedInCycle" = false
+          ${accessFilter}
+        ORDER BY de."createdAt" ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1`);
+      if (rows[0]) {
+        await (tx ? tx.dataEntry : prisma.dataEntry).update({
+          where: { id: rows[0].id },
+          data: { usedInCycle: true },
+        });
+        return {
+          entry: rows[0],
+          claimState: { entryId: rows[0].id, campaignId, usagePolicy, claimType: "usedInCycle", accountId },
+        };
+      }
+      return null;
+    }
+
+    // unlimited — least used within group, no locking
+    const rows = await (tx ?? prisma).$queryRaw<EntryRow[]>(
+      accountId
+        ? Prisma.sql`SELECT de.id, de.fields FROM "DataEntry" de
+            LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${accountId}
+            WHERE de."campaignId" = ${campaignId}
+              ${setTagClause}
+              ${categoryClause}
+              ${accessFilter}
+            ORDER BY COALESCE(deu."usageCount", 0) ASC, deu."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC
+            LIMIT 1`
+        : Prisma.sql`SELECT de.id, de.fields FROM "DataEntry" de
+            WHERE de."campaignId" = ${campaignId}
+              ${setTagClause}
+              ${categoryClause}
+              ${accessFilter}
+            ORDER BY de."usageCount" ASC, de."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC
+            LIMIT 1`
+    );
+    if (rows[0]) return { entry: rows[0] };
+    return null;
+  }
+
+  let entry: EntryRow | null = null;
+  let claimState: DataEntryClaimState | undefined;
+  let resolvedSetTag: string | null | undefined;
+  let resolvedCategory: string | null | undefined;
+
+  // -----------------------------------------------------------------------
+  // Group-based selection when prevCursorState is provided (per-account mode
+  // with rotation tracking). Mirrors selectMediaAssetBySetSequence auto mode.
+  // -----------------------------------------------------------------------
+  if (prevCursorState && (usagePolicy === "cycle_per_account" || usagePolicy === "once_per_account")) {
+    const allGroups = await discoverGroups(usagePolicy);
+
+    if (allGroups.length > 0) {
+      const eligible = selectEligibleDataGroups(
+        allGroups,
+        prevCursorState.lastUsedCategory,
+        prevCursorState.lastUsedSetTag,
+        prevCursorState.hasHistory,
+      );
+      const candidates = eligible.length > 0 ? eligible : allGroups;
+
+      // Must run inside a transaction so claims (INSERT DataEntryUsage) are atomic.
+      // For once_per_account only: if accountId branch is selected above (policy check),
+      // we need tx; for cycle_per_account likewise.
+      await prisma.$transaction(async (tx) => {
+        for (const candidate of candidates) {
+          const picked = await pickEntryFromGroup(candidate.setTag, candidate.category, usagePolicy, tx);
+          if (picked) {
+            entry = picked.entry;
+            claimState = picked.claimState;
+            resolvedSetTag = candidate.setTag;
+            resolvedCategory = candidate.category;
+            return; // commit
+          }
         }
       });
+
+      // If group-based pick found nothing, fall through to the legacy flat selection below.
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Flat selection (no prevCursorState, or group discovery returned nothing,
+  // or policies that don't benefit from group grouping).
+  // Preserves ALL original locking semantics.
+  // -----------------------------------------------------------------------
+  if (!entry) {
+    if (usagePolicy === "cycle_per_account") {
+      if (accountId) {
+        await prisma.$transaction(async (tx) => {
+          // Primary: entry never touched by this account
+          const rows = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
+            SELECT de.id, de.fields FROM "DataEntry" de
+            WHERE de."campaignId" = ${campaignId}
+              AND NOT EXISTS (
+                SELECT 1 FROM "DataEntryUsage" deu2
+                WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}
+              )
+              ${accessFilter}
+            ORDER BY de."createdAt" ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1`);
+          if (rows[0]) {
+            entry = rows[0];
+            await tx.dataEntryUsage.create({
+              data: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
+            });
+            claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId };
+          } else {
+            // Fallback: cycle restart — pick from genuinely used entries (usageCount >= 1), least used first.
+            // FOR UPDATE OF de SKIP LOCKED ensures concurrent cron jobs pick distinct entries
+            // during a simultaneous cycle restart.
+            const fallback = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
+              SELECT de.id, de.fields FROM "DataEntry" de
+              LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${accountId}
+              WHERE de."campaignId" = ${campaignId}
+                AND COALESCE(deu."usageCount", 0) >= 1
+                ${accessFilter}
+              ORDER BY deu."usageCount" ASC, deu."lastUsedAt" ASC NULLS FIRST, de."createdAt" ASC
+              FOR UPDATE OF de SKIP LOCKED
+              LIMIT 1`);
+            entry = fallback[0] ?? null;
+            // No claim for fallback — it's a cycle restart, DONE will just increment usageCount
+          }
+        });
+      } else {
+        entry = await queryOne(Prisma.sql``);
+      }
+
+    // -----------------------------------------------------------------------
+    // "once_per_account" — hard per-account limit via DataEntryUsage.
+    // Claim: same INSERT as cycle_per_account.
+    // No fallback — returns null when exhausted for this account.
+    // -----------------------------------------------------------------------
+    } else if (usagePolicy === "once_per_account") {
+      if (accountId) {
+        await prisma.$transaction(async (tx) => {
+          const rows = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
+            SELECT de.id, de.fields FROM "DataEntry" de
+            WHERE de."campaignId" = ${campaignId}
+              AND NOT EXISTS (
+                SELECT 1 FROM "DataEntryUsage" deu2
+                WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}
+                  AND deu2."usageCount" > 0
+              )
+              ${accessFilter}
+            ORDER BY de."createdAt" ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1`);
+          if (rows[0]) {
+            entry = rows[0];
+            await tx.dataEntryUsage.upsert({
+              where: { entryId_accountId: { entryId: rows[0].id, accountId } },
+              update: { lastUsedAt: new Date() },
+              create: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
+            });
+            claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId };
+          }
+          // No fallback for once_per_account — null means exhausted
+        });
+      } else {
+        entry = await queryOne(
+          Prisma.sql`AND NOT EXISTS (SELECT 1 FROM "DataEntryUsage" deu2 WHERE deu2."entryId" = de.id AND deu2."usageCount" > 0)`
+        );
+      }
+
+    // -----------------------------------------------------------------------
+    // "once_global" — hard global limit via usageCount.
+    // Claim: SET usedInCycle=true so concurrent queries see AND usedInCycle=false.
+    // The filter includes AND usedInCycle=false as the claim sentinel.
+    // Revert: SET usedInCycle=false WHERE usageCount=0.
+    // -----------------------------------------------------------------------
+    } else if (usagePolicy === "once_global") {
+      if (accountId) {
+        await prisma.$transaction(async (tx) => {
+          const rows = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
+            SELECT de.id, de.fields FROM "DataEntry" de
+            WHERE de."campaignId" = ${campaignId}
+              AND de."usageCount" = 0
+              AND de."usedInCycle" = false
+              ${accessFilter}
+            ORDER BY de."createdAt" ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1`);
+          if (rows[0]) {
+            entry = rows[0];
+            await tx.dataEntry.update({ where: { id: rows[0].id }, data: { usedInCycle: true } });
+            claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "usedInCycle", accountId };
+          }
+          // No fallback for once_global — null means globally exhausted
+        });
+      } else {
+        entry = await queryOne(Prisma.sql`AND de."usageCount" = 0 AND de."usedInCycle" = false`);
+      }
+
+    // -----------------------------------------------------------------------
+    // "unlimited" — no constraint, always least used. No locking needed.
+    // -----------------------------------------------------------------------
     } else {
       entry = await queryOne(Prisma.sql``);
     }
-
-  // -----------------------------------------------------------------------
-  // "once_per_account" — hard per-account limit via DataEntryUsage.
-  // Claim: same INSERT as cycle_per_account.
-  // No fallback — returns null when exhausted for this account.
-  // -----------------------------------------------------------------------
-  } else if (usagePolicy === "once_per_account") {
-    if (accountId) {
-      await prisma.$transaction(async (tx) => {
-        const rows = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
-          SELECT de.id, de.fields FROM "DataEntry" de
-          WHERE de."campaignId" = ${campaignId}
-            AND NOT EXISTS (
-              SELECT 1 FROM "DataEntryUsage" deu2
-              WHERE deu2."entryId" = de.id AND deu2."accountId" = ${accountId}
-                AND deu2."usageCount" > 0
-            )
-            ${accessFilter}
-          ORDER BY de."createdAt" ASC
-          FOR UPDATE SKIP LOCKED
-          LIMIT 1`);
-        if (rows[0]) {
-          entry = rows[0];
-          await tx.dataEntryUsage.upsert({
-            where: { entryId_accountId: { entryId: rows[0].id, accountId } },
-            update: { lastUsedAt: new Date() },
-            create: { entryId: rows[0].id, accountId, usageCount: 0, lastUsedAt: new Date() },
-          });
-          claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId };
-        }
-        // No fallback for once_per_account — null means exhausted
-      });
-    } else {
-      entry = await queryOne(
-        Prisma.sql`AND NOT EXISTS (SELECT 1 FROM "DataEntryUsage" deu2 WHERE deu2."entryId" = de.id AND deu2."usageCount" > 0)`
-      );
-    }
-
-  // -----------------------------------------------------------------------
-  // "once_global" — hard global limit via usageCount.
-  // Claim: SET usedInCycle=true so concurrent queries see AND usedInCycle=false.
-  // The filter includes AND usedInCycle=false as the claim sentinel.
-  // Revert: SET usedInCycle=false WHERE usageCount=0.
-  // -----------------------------------------------------------------------
-  } else if (usagePolicy === "once_global") {
-    if (accountId) {
-      await prisma.$transaction(async (tx) => {
-        const rows = await tx.$queryRaw<EntryRow[]>(Prisma.sql`
-          SELECT de.id, de.fields FROM "DataEntry" de
-          WHERE de."campaignId" = ${campaignId}
-            AND de."usageCount" = 0
-            AND de."usedInCycle" = false
-            ${accessFilter}
-          ORDER BY de."createdAt" ASC
-          FOR UPDATE SKIP LOCKED
-          LIMIT 1`);
-        if (rows[0]) {
-          entry = rows[0];
-          await tx.dataEntry.update({ where: { id: rows[0].id }, data: { usedInCycle: true } });
-          claimState = { entryId: rows[0].id, campaignId, usagePolicy, claimType: "usedInCycle", accountId };
-        }
-        // No fallback for once_global — null means globally exhausted
-      });
-    } else {
-      entry = await queryOne(Prisma.sql`AND de."usageCount" = 0 AND de."usedInCycle" = false`);
-    }
-
-  // -----------------------------------------------------------------------
-  // "unlimited" — no constraint, always least used. No locking needed.
-  // -----------------------------------------------------------------------
-  } else {
-    entry = await queryOne(Prisma.sql``);
   }
 
   if (!entry) return null;
@@ -1710,5 +2117,5 @@ async function selectDataEntry(
     fields = {};
   }
 
-  return { entryId: entry.id, fields, claimState };
+  return { entryId: entry.id, fields, claimState, resolvedSetTag, resolvedCategory };
 }

@@ -122,7 +122,6 @@ export async function buildLibraryPrefillContext({
     { id: string; url: string; filename: string } | null
   > = {};
   const prefilledDataKeys: string[] = [];
-  let dataSuggestion: { entryId: string; fields: Record<string, string> } | null = null;
 
   // Build fieldLibraryMap — always, even when regenerating
   for (const block of json.blocks) {
@@ -216,6 +215,12 @@ export async function buildLibraryPrefillContext({
         accountId?: string;
       }
     | undefined;
+  let dataSuggestion: {
+    entryId: string;
+    fields: Record<string, string>;
+    resolvedSetTag?: string | null;
+    resolvedCategory?: string | null;
+  } | null = null;
 
   if (listingId) {
     // Regenerating from an existing listing: try to match stored URLs back to
@@ -367,7 +372,14 @@ export async function buildLibraryPrefillContext({
         initialValues = { ...initialValues, [schemaField.key]: value };
         prefilledDataKeys.push(schemaField.key);
       }
-      dataSuggestion = prefill.dataSuggestion;
+      dataSuggestion = prefill.dataSuggestion
+        ? {
+            entryId: prefill.dataSuggestion.entryId,
+            fields: prefill.dataSuggestion.fields,
+            resolvedSetTag: prefill.dataSuggestion.resolvedSetTag,
+            resolvedCategory: prefill.dataSuggestion.resolvedCategory,
+          }
+        : null;
     }
   }
 

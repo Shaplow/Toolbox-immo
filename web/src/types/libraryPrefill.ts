@@ -30,7 +30,15 @@ export interface LibraryPrefillContext {
   /** text/data field keys pre-filled from a DataEntry — drives the "depuis la bibliothèque" badge */
   prefilledDataKeys: string[];
   /** full data suggestion with entryId for usage tracking */
-  dataSuggestion?: { entryId: string; fields: Record<string, string> } | null;
+  dataSuggestion?: {
+    entryId: string;
+    fields: Record<string, string>;
+    /** Resolved setTag of the group selected during prefill — passed to the render endpoint
+     *  so advanceDataLibraryCursorOnSubmit can record it in AccountDataLibraryCursor. */
+    resolvedSetTag?: string | null;
+    /** Resolved category of the group selected during prefill — same purpose. */
+    resolvedCategory?: string | null;
+  } | null;
   /**
    * Libraries whose selection used set_sequence.
    * Passed to the render endpoint so recordLibraryUsage can advance cursor.
