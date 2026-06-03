@@ -616,7 +616,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
           <Alert
             variant="warning"
             title="Sélectionne d'abord un compte Instagram"
-            className="mb-2"
+            className="mb-2 relative z-30"
           >
             <div className="mt-2 space-y-3">
               <p>Ce template utilise une bibliothèque de contenus. Choisis un compte pour charger les suggestions adaptées.</p>
@@ -642,7 +642,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
         )}
         {/* Sélecteur "changer de compte" : visible quand prefill déjà chargé */}
         {instagramAccounts.length > 0 && libraryPrefillContext && (
-          <div className="rounded-2xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.32)] p-3 flex items-center gap-3">
+          <div className="relative z-30 rounded-2xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.32)] p-3 flex items-center gap-3">
             <span className="text-[12.5px] font-semibold text-sky-900 shrink-0">Compte Instagram</span>
             <Select
               value={selectedAccountId || libraryPrefillContext.selectedAccountId || ""}
