@@ -1592,7 +1592,7 @@ export async function advanceDataEntryClaimOnSubmit(
   // Si elle est déjà claimée par un render concurrent, on retombe sur
   // selectDataEntry(readOnly=false) qui re-pioche atomiquement.
   if (suggestedEntryId) {
-    if (usagePolicy === "cycle_per_account" || usagePolicy === "once_per_account") {
+    if (usagePolicy === "cycle_per_account") {
       try {
         await prisma.dataEntryUsage.create({
           data: { entryId: suggestedEntryId, accountId: accountId!, usageCount: 0, lastUsedAt: new Date() },
@@ -1603,6 +1603,29 @@ export async function advanceDataEntryClaimOnSubmit(
       } catch {
         // Unique constraint (entryId, accountId) → déjà claim, on fallback.
         console.info(`[advanceDataEntryClaimOnSubmit] suggested entry ${suggestedEntryId} already claimed for account ${accountId} — re-picking`);
+      }
+    } else if (usagePolicy === "once_per_account") {
+      // Code-reviewer M1 : pour once_per_account, on doit utiliser upsert
+      // (pas create). Le create lèverait sur unique-constraint si une row
+      // usageCount=0 existe déjà (cas re-essai après abandon), déclenchant
+      // un fallback re-pick alors que l'entry n'est pas réellement consommée
+      // (usageCount > 0 = consommation effective).
+      try {
+        const upserted = await prisma.dataEntryUsage.upsert({
+          where: { entryId_accountId: { entryId: suggestedEntryId, accountId: accountId! } },
+          update: {}, // ne touche pas si row existe (claim déjà posé OU consommé)
+          create: { entryId: suggestedEntryId, accountId: accountId!, usageCount: 0, lastUsedAt: new Date() },
+        });
+        // Si usageCount > 0, l'entry est réellement consommée → on fallback.
+        if (upserted.usageCount > 0) {
+          console.info(`[advanceDataEntryClaimOnSubmit] suggested entry ${suggestedEntryId} already consumed (usageCount > 0) — re-picking`);
+        } else {
+          return {
+            claimState: { entryId: suggestedEntryId, campaignId, usagePolicy, claimType: "perAccountUsage", accountId },
+          };
+        }
+      } catch (err) {
+        console.warn(`[advanceDataEntryClaimOnSubmit] upsert failed:`, err);
       }
     } else if (usagePolicy === "once_global") {
       // Atomic CAS : claim seulement si pas encore claim.
@@ -1624,11 +1647,37 @@ export async function advanceDataEntryClaimOnSubmit(
 
   // Fallback : re-pick avec selectDataEntry en mode CLAIM (readOnly=false).
   // Mirror du fallback Media quand un asset suggéré est devenu indisponible.
+  //
+  // Code-reviewer M6 : on passe le prevCursorState lu depuis AccountDataLibraryCursor
+  // pour que l'anti-répétition cat/setTag s'applique aussi au re-pick. Sans ça,
+  // le fallback pouvait tomber sur la même catégorie que la génération précédente,
+  // cassant l'anti-répétition silencieusement.
+  let prevCursorState: { lastUsedSetTag: string | null; lastUsedCategory: string | null; hasHistory: boolean } | undefined;
+  if (accountId) {
+    // Détermine la libraryId pour lire le bon AccountDataLibraryCursor.
+    const dataEntry = await prisma.dataEntry.findUnique({
+      where: { id: suggestedEntryId ?? "" },
+      select: { campaign: { select: { libraryId: true } } },
+    });
+    const libraryId = dataEntry?.campaign?.libraryId;
+    if (libraryId) {
+      const effectiveCursorId = lib.rotationScope === "shared" ? SHARED_DATA_CURSOR_ACCOUNT_ID : accountId;
+      const cursorRow = await prisma.accountDataLibraryCursor.findUnique({
+        where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId } },
+        select: { lastUsedSetTag: true, lastUsedCategory: true, lastAdvancedAt: true },
+      });
+      prevCursorState = {
+        lastUsedSetTag: cursorRow?.lastUsedSetTag ?? null,
+        lastUsedCategory: cursorRow?.lastUsedCategory ?? null,
+        hasHistory: cursorRow?.lastAdvancedAt != null,
+      };
+    }
+  }
   const reSelected = await selectDataEntry(
     campaignId,
     undefined, // rule — la lib joue le pattern par défaut
     accountId,
-    undefined, // prevCursorState — pas de besoin de re-piloter l'anti-rep ici
+    prevCursorState, // M6 : on porte l'anti-rép historique
     false, // readOnly = false → claim posé
   );
   if (reSelected?.claimState) return { claimState: reSelected.claimState };

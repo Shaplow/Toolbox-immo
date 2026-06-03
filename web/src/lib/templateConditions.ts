@@ -30,17 +30,18 @@ export function matchesCondition(condition: ConditionMatch | undefined, listing:
 }
 
 function hasNonVisibilityEffects(effects: BlockConditionalEffects): boolean {
-  // Phase 8.M4 : opacity = 1 et rotation = 0 sont des no-ops visuels. On les
-  // exclut pour ne pas qu'une rule `{ visible: true, opacity: 1 }` (par ex.
-  // créée par erreur dans le builder) bascule un bloc en mode "decorative show"
-  // alors que l'intent réel était "show pure" (default hidden).
-  const meaningfulOpacity = effects.opacity !== undefined && effects.opacity !== 1;
-  const meaningfulRotation = effects.rotation !== undefined && effects.rotation !== 0;
+  // NOTE : on ne filtre pas opacity:1 ou rotation:0 comme no-ops. Ces valeurs
+  // peuvent être posées EXPLICITEMENT par le user pour s'assurer qu'une rule
+  // précédente n'avait pas changé la valeur — c'est un usage légitime, pas
+  // une régression. Un fix initial Phase 8.M4 les avait exclus, mais le
+  // code-reviewer (2e tour) a souligné le risque de régression sur les
+  // templates existants qui auraient une rule {visible:true, opacity:1}
+  // basculant silencieusement de visible (decorative show) à caché (pure show).
   return (
     effects.offsetX !== undefined ||
     effects.offsetY !== undefined ||
-    meaningfulRotation ||
-    meaningfulOpacity ||
+    effects.rotation !== undefined ||
+    effects.opacity !== undefined ||
     effects.backgroundColor !== undefined ||
     effects.textColor !== undefined
   );

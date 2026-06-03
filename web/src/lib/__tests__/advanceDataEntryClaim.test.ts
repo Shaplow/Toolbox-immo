@@ -19,11 +19,15 @@ const mockQueryRaw = vi.fn();
 const mockTransaction = vi.fn();
 const mockDataEntryUsageUpsert = vi.fn();
 const mockAccountDataLibraryCursorFindUnique = vi.fn();
+const mockDataEntryFindUnique = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     dataCampaign: {
       findUnique: (...args: unknown[]) => mockDataCampaignFindUnique(...args),
+    },
+    dataEntry: {
+      findUnique: (...args: unknown[]) => mockDataEntryFindUnique(...args),
     },
     dataEntryUsage: {
       create: (...args: unknown[]) => mockDataEntryUsageCreate(...args),
