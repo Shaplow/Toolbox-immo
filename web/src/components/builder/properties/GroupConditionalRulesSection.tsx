@@ -114,7 +114,10 @@ export function GroupConditionalRulesSection({
                       onChange={(e) => updateRule(index, { when: { ...rule.when, equals: e.target.value } })}
                       className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
                     >
-                      <option value="">— choisir —</option>
+                      {/* Pas de placeholder "— choisir —" si une option a déjà value="" (ex. "(vide)" pour text) → évite le conflit de value. */}
+                      {!valueOptions.some((option) => option.value === "") && (
+                        <option value="">— choisir —</option>
+                      )}
                       {valueOptions.map((option) => (
                         <option key={option.value} value={option.value}>{option.label}</option>
                       ))}
