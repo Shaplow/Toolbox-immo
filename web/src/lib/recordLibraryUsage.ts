@@ -45,6 +45,15 @@ interface UsedAssets {
     prevLastUsedAt: string | null;
     claimedLastUsedAt: string;
   };
+  /** DataLibrary cursor snapshot for failure-recovery revert (Phase 1.3) */
+  prevDataLibraryCursorState?: {
+    libraryId: string;
+    accountId: string;
+    prevLastUsedSetTag: string | null;
+    prevLastUsedCategory: string | null;
+    claimedSetTag: string | null;
+    claimedCategory: string | null;
+  };
 }
 
 export async function recordLibraryUsage(renderId: string): Promise<void> {
@@ -554,6 +563,31 @@ export async function revertLibraryCursors(renderId: string): Promise<void> {
       }
     } catch (err) {
       console.error(`[revertLibraryCursors] audio revert failed for render=${renderId}:`, err);
+    }
+  }
+
+  // --- DataLibrary cursor revert (Phase 1.3) ---
+  // Conditional: revert only if no later generation has since advanced the cursor.
+  const dataLibState = usedAssets.prevDataLibraryCursorState;
+  if (dataLibState) {
+    try {
+      const updated = await prisma.$executeRaw(Prisma.sql`
+        UPDATE "AccountDataLibraryCursor"
+        SET "lastUsedSetTag"   = ${dataLibState.prevLastUsedSetTag},
+            "lastUsedCategory" = ${dataLibState.prevLastUsedCategory},
+            "lastAdvancedAt"   = NULL
+        WHERE "accountId" = ${dataLibState.accountId}
+          AND "libraryId" = ${dataLibState.libraryId}
+          AND "lastUsedSetTag"   IS NOT DISTINCT FROM ${dataLibState.claimedSetTag}
+          AND "lastUsedCategory" IS NOT DISTINCT FROM ${dataLibState.claimedCategory}
+      `);
+      if (updated > 0) {
+        console.info(
+          `[revertLibraryCursors] render=${renderId} DataLibrary=${dataLibState.libraryId} cursor reverted`,
+        );
+      }
+    } catch (err) {
+      console.error(`[revertLibraryCursors] DataLibrary cursor revert failed for render=${renderId}:`, err);
     }
   }
 }

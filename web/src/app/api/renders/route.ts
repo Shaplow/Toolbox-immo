@@ -4,7 +4,7 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { startRenderGeneration } from "@/lib/renderer/generateRender";
-import { advanceLibraryCursorsOnSubmit, advanceAudioUsageOnSubmit } from "@/lib/contentLibraryResolver";
+import { advanceLibraryCursorsOnSubmit, advanceAudioUsageOnSubmit, advanceDataLibraryCursorOnSubmit } from "@/lib/contentLibraryResolver";
 import { applyAutoTransitionFromPipeline } from "@/lib/services/slot/transitions";
 
 /**
@@ -32,6 +32,14 @@ async function revertAdvancesOnFailure(usedAssets: {
     accountId: string;
     prevLastUsedAt: string | null;
     claimedLastUsedAt: string;
+  };
+  prevDataLibraryCursorState?: {
+    libraryId: string;
+    accountId: string;
+    prevLastUsedSetTag: string | null;
+    prevLastUsedCategory: string | null;
+    claimedSetTag: string | null;
+    claimedCategory: string | null;
   };
 }) {
   if (usedAssets.prevCursorStateByLibrary) {
@@ -73,6 +81,24 @@ async function revertAdvancesOnFailure(usedAssets: {
       }
     } catch (err) {
       console.error(`[revertAdvancesOnFailure] audio revert failed asset=${assetId}:`, err);
+    }
+  }
+  // DataLibrary cursor revert — only if we wrote it during this request
+  if (usedAssets.prevDataLibraryCursorState) {
+    const { libraryId, accountId, prevLastUsedSetTag, prevLastUsedCategory, claimedSetTag, claimedCategory } = usedAssets.prevDataLibraryCursorState;
+    try {
+      await prisma.$executeRaw(Prisma.sql`
+        UPDATE "AccountDataLibraryCursor"
+        SET "lastUsedSetTag"   = ${prevLastUsedSetTag},
+            "lastUsedCategory" = ${prevLastUsedCategory},
+            "lastAdvancedAt"   = NULL
+        WHERE "accountId" = ${accountId}
+          AND "libraryId" = ${libraryId}
+          AND "lastUsedSetTag"   IS NOT DISTINCT FROM ${claimedSetTag}
+          AND "lastUsedCategory" IS NOT DISTINCT FROM ${claimedCategory}
+      `);
+    } catch (err) {
+      console.error(`[revertAdvancesOnFailure] DataLibrary cursor revert failed lib=${libraryId}:`, err);
     }
   }
 }
@@ -126,16 +152,22 @@ export async function POST(req: NextRequest) {
       videoAssets?: Record<string, string>;
       audioAssetId?: string;
       dataEntryId?: string;
+      /** resolvedSetTag from DataEntry group selection — drives AccountDataLibraryCursor advance. */
+      dataResolvedSetTag?: string | null;
+      /** resolvedCategory from DataEntry group selection — drives AccountDataLibraryCursor advance. */
+      dataResolvedCategory?: string | null;
       setSequencedLibraryIds?: string[];
       usedSetTagByLibrary?: Record<string, string>;
       usedCategoryByLibrary?: Record<string, string>;
       prevCursorStateByLibrary?: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null; cursorAccountId?: string }>;
       prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: string; accountId?: string };
       prevAudioUsageState?: { assetId: string; accountId: string; prevLastUsedAt: string | null; claimedLastUsedAt: string };
+      /** DataLibrary cursor state snapshot for failure-recovery revert. */
+      prevDataLibraryCursorState?: { libraryId: string; accountId: string; prevLastUsedSetTag: string | null; prevLastUsedCategory: string | null; claimedSetTag: string | null; claimedCategory: string | null };
     } = {};
 
     if (usedAssets && typeof usedAssets === "object") {
-    const raw = usedAssets as { videoAssets?: unknown; audioAssetId?: unknown; dataEntryId?: unknown; setSequencedLibraryIds?: unknown; usedSetTagByLibrary?: unknown; usedCategoryByLibrary?: unknown; prevDataEntryState?: unknown };
+    const raw = usedAssets as { videoAssets?: unknown; audioAssetId?: unknown; dataEntryId?: unknown; dataResolvedSetTag?: unknown; dataResolvedCategory?: unknown; setSequencedLibraryIds?: unknown; usedSetTagByLibrary?: unknown; usedCategoryByLibrary?: unknown; prevDataEntryState?: unknown };
 
       // Video assets: blockId → assetId
       if (raw.videoAssets && typeof raw.videoAssets === "object" && !Array.isArray(raw.videoAssets)) {
@@ -161,6 +193,15 @@ export async function POST(req: NextRequest) {
       if (typeof raw.dataEntryId === "string") {
         const found = await prisma.dataEntry.findUnique({ where: { id: raw.dataEntryId }, select: { id: true } });
         if (found) sanitizedUsedAssets.dataEntryId = raw.dataEntryId;
+      }
+
+      // DataLibrary cursor group hints (strings or null) — pass through for AccountDataLibraryCursor advance.
+      // Validation: only accept string or null (no arbitrary types).
+      if (raw.dataResolvedSetTag === null || typeof raw.dataResolvedSetTag === "string") {
+        sanitizedUsedAssets.dataResolvedSetTag = raw.dataResolvedSetTag ?? null;
+      }
+      if (raw.dataResolvedCategory === null || typeof raw.dataResolvedCategory === "string") {
+        sanitizedUsedAssets.dataResolvedCategory = raw.dataResolvedCategory ?? null;
       }
 
       // Set sequenced libraries — validate each libraryId exists
@@ -298,6 +339,38 @@ export async function POST(req: NextRequest) {
         );
         if (audioAdvance) {
           sanitizedUsedAssets.prevAudioUsageState = audioAdvance.prevAudioUsageState;
+        }
+      }
+    }
+
+    // Phase 1.3 — Advance AccountDataLibraryCursor for the DataLibrary if the submit
+    // contains group hints (resolvedSetTag/resolvedCategory from the prefill).
+    // Only runs when validatedAccountId is present and a dataEntryId was submitted.
+    if (sanitizedUsedAssets.dataEntryId && validatedAccountId &&
+        (sanitizedUsedAssets.dataResolvedSetTag !== undefined || sanitizedUsedAssets.dataResolvedCategory !== undefined)) {
+      // Look up the DataLibrary ID via DataEntry → DataCampaign → DataLibrary
+      const dataEntry = await prisma.dataEntry.findUnique({
+        where: { id: sanitizedUsedAssets.dataEntryId },
+        select: { campaign: { select: { libraryId: true } } },
+      });
+      const dataLibraryId = dataEntry?.campaign?.libraryId;
+      if (dataLibraryId) {
+        const dataAdvance = await advanceDataLibraryCursorOnSubmit(
+          dataLibraryId,
+          sanitizedUsedAssets.dataResolvedSetTag ?? null,
+          sanitizedUsedAssets.dataResolvedCategory ?? null,
+          validatedAccountId,
+        );
+        if (dataAdvance.prevState !== null) {
+          // Store snapshot for failure-recovery revert
+          sanitizedUsedAssets.prevDataLibraryCursorState = {
+            libraryId: dataLibraryId,
+            accountId: validatedAccountId,
+            prevLastUsedSetTag: dataAdvance.prevState.lastUsedSetTag,
+            prevLastUsedCategory: dataAdvance.prevState.lastUsedCategory,
+            claimedSetTag: sanitizedUsedAssets.dataResolvedSetTag ?? null,
+            claimedCategory: sanitizedUsedAssets.dataResolvedCategory ?? null,
+          };
         }
       }
     }
