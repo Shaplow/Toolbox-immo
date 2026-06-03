@@ -153,8 +153,13 @@ html {
   --color-sage-50:  #f1f7f2;
   --color-sage-100: #dceee0;
   --color-sage-200: #b9dcc1;
+  --color-sage-300: #a0d0aa;
+  --color-sage-400: #87b994;
   --color-sage-500: #6fa280;
+  --color-sage-600: #4f815f;
   --color-sage-700: #2f5f3f;
+  --color-sage-800: #234a30;
+  --color-sage-900: #17341f;
 
   /* Sky — info, planning, programmé. */
   --color-sky-50:  #eff6fb;
