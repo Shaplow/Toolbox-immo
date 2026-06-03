@@ -68,7 +68,7 @@ export function TemplateAdminActions({ id }: { id: string }) {
   }
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative" data-menu-open={open ? "true" : undefined}>
       <button
         type="button"
         onClick={() => { setOpen((v) => !v); setConfirming(false); }}
