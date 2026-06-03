@@ -59,15 +59,21 @@ export async function PATCH(_req: NextRequest, { params }: Params) {
     );
   }
 
-  // Probe duration for audio assets (fire-and-forget on failure — never blocks the upload).
-  if (asset.mimeType.startsWith("audio/") && asset.duration == null) {
+  // Probe duration pour audio ET vidéo (fire-and-forget on failure — never blocks the upload).
+  // Critique pour le filtre minDuration sur VideoBlock/MusicBlock : sans duration probée,
+  // l'asset reste NULL en DB et bypasse silencieusement le filtre (qui tolère NULL pour
+  // ne pas bloquer les assets legacy non probés).
+  if (
+    (asset.mimeType.startsWith("audio/") || asset.mimeType.startsWith("video/"))
+    && asset.duration == null
+  ) {
     const duration = await probeDuration(asset.url);
     if (duration != null) {
       await prisma.mediaAsset.update({ where: { id: assetId }, data: { duration } }).catch((e) => {
         console.warn(`[confirm] duration update failed for asset ${assetId}:`, e);
       });
     } else {
-      console.warn(`[confirm] duration probe failed for audio asset ${assetId} (${asset.filename})`);
+      console.warn(`[confirm] duration probe failed for ${asset.mimeType} asset ${assetId} (${asset.filename})`);
     }
   }
 
