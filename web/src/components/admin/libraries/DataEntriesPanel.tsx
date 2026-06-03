@@ -4,7 +4,6 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import { Upload, RotateCcw, Download, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
-import { Chip } from "@/components/ui/Chip";
 import { toast } from "@/components/ui/Toast";
 import { DataEntriesSpreadsheet } from "@/components/admin/libraries/dataEntries/DataEntriesSpreadsheet";
 
@@ -80,6 +79,8 @@ function parseFieldsSchema(raw: string | null | undefined): FieldDef[] {
 }
 
 import { useConfirm } from "@/components/ui/useConfirm";
+import { useBulkEditDataEntries } from "@/components/admin/libraries/dataEntries/useBulkEditDataEntries";
+import { DataEntriesBulkActionBar } from "@/components/admin/libraries/dataEntries/DataEntriesBulkActionBar";
 
 export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props) {
   // Phase 1.x — schéma de champs au niveau lib (source de vérité).
@@ -101,7 +102,6 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
   // Phase 1.x design (spreadsheet) — édition inline, plus de drawer.
   // focusBottomSignal bump à chaque création vide pour que la spreadsheet
   // scroll + focus la cellule Set de la dernière row.
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [focusBottomSignal, setFocusBottomSignal] = useState(0);
 
   // Phase 1.x — fallback rétrocompatible : si la lib n'a pas de schéma déclaré
@@ -153,6 +153,9 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
   }, [campaignId, libraryId, accountFilter]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Hook bulk edit access — sélection multi-row + actions accès comptes.
+  const bulk = useBulkEditDataEntries({ campaignId, accounts, reload: load });
 
   // Load accounts for filter selector
   useEffect(() => {
@@ -326,32 +329,8 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
     }
   }
 
-  async function handleDeleteEntry(entryId: string) {
-    const ok = await confirm({
-      title: "Supprimer cette fiche ?",
-      description: "Cette action est irréversible.",
-      confirmLabel: "Supprimer",
-      variant: "danger",
-    });
-    if (!ok) return;
-    const res = await fetch(`/api/admin/libraries/data/campaigns/${campaignId}/entries/${entryId}`, {
-      method: "DELETE",
-    });
-    if (!res.ok) {
-      toast.error("Erreur lors de la suppression");
-      return;
-    }
-    setEntries((prev) => prev.filter((e) => e.id !== entryId));
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(entryId);
-      return next;
-    });
-    toast.success("Fiche supprimée.");
-  }
-
   async function handleBulkDelete() {
-    const ids = Array.from(selectedIds);
+    const ids = Array.from(bulk.selectedIds);
     if (ids.length === 0) return;
     const ok = await confirm({
       title: `Supprimer ${ids.length} fiche${ids.length !== 1 ? "s" : ""} ?`,
@@ -365,8 +344,8 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
         fetch(`/api/admin/libraries/data/campaigns/${campaignId}/entries/${id}`, { method: "DELETE" }),
       ),
     );
-    setEntries((prev) => prev.filter((e) => !selectedIds.has(e.id)));
-    setSelectedIds(new Set());
+    setEntries((prev) => prev.filter((e) => !bulk.selectedIds.has(e.id)));
+    bulk.clearSelection();
     toast.success(`${ids.length} fiche${ids.length !== 1 ? "s" : ""} supprimée${ids.length !== 1 ? "s" : ""}.`);
   }
 
@@ -575,14 +554,14 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
         </div>
       ) : (
         <>
-          {/* Bulk action bar (Phase 1.x design) — apparaît quand au moins 1 fiche sélectionnée. */}
-          {selectedIds.size > 0 && (
+          {/* Bulk action bar — delete + accès comptes IG. Apparaît quand ≥1 fiche sélectionnée. */}
+          {bulk.selectedIds.size > 0 && (
             <div className="mb-3 rounded-xl px-3 py-2 bg-sky-50/60 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.32)] flex items-center justify-between gap-2 flex-wrap">
               <p className="text-[12.5px] font-medium text-sky-700">
-                {selectedIds.size} fiche{selectedIds.size > 1 ? "s" : ""} sélectionnée{selectedIds.size > 1 ? "s" : ""}
+                {bulk.selectedIds.size} fiche{bulk.selectedIds.size > 1 ? "s" : ""} sélectionnée{bulk.selectedIds.size > 1 ? "s" : ""}
               </p>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                <Button variant="ghost" size="sm" onClick={bulk.clearSelection}>
                   Désélectionner
                 </Button>
                 <Button variant="danger" size="sm" icon={Trash2} onClick={() => void handleBulkDelete()}>
@@ -596,10 +575,18 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
             entries={entries.filter(isAccessible)}
             onEntriesChange={setEntries}
             schema={schemaFields}
-            selectedKeys={selectedIds}
-            onSelectionChange={setSelectedIds}
+            selectedKeys={bulk.selectedIds}
+            onSelectionChange={bulk.setSelectedIds}
             focusBottomSignal={focusBottomSignal}
           />
+          {/* Sticky bar accès bulk — affichée uniquement si comptes disponibles et sélection active. */}
+          {accounts.length > 0 && bulk.selectedIds.size > 0 && (
+            <DataEntriesBulkActionBar
+              bulk={bulk}
+              allVisibleIds={entries.filter(isAccessible).map((e) => e.id)}
+              accounts={accounts}
+            />
+          )}
         </>
       )}
 
