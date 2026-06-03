@@ -28,6 +28,9 @@ interface UsedAssets {
     claimedCursor: number;
     prevLastUsedCategory: string | null;
     claimedLastUsedCategory: string | null;
+    /** Phase 6 — snapshot lastUsedSetTag so the CAS revert covers concurrent setTag-only changes. */
+    prevLastUsedSetTag: string | null;
+    claimedLastUsedSetTag: string | null;
     cursorAccountId?: string;
   }>;
   /** DataEntry claim state for failure-recovery revert */
@@ -404,16 +407,21 @@ export async function revertRenderUsage(renderId: string): Promise<RevertSummary
         // Use the cursorAccountId stored at prefill time (handles shared libs that use
         // SHARED_CURSOR_ACCOUNT_ID as their cursor key instead of the real accountId).
         const cursorAccountId = state.cursorAccountId ?? accountId;
+        // Phase 6 : ajout lastUsedSetTag dans SET + condition CAS.
+        // Évite d'écraser un prefill concurrent qui aurait modifié uniquement
+        // lastUsedSetTag (override mode, sans toucher lastUsedCategory).
         const updated = await prisma.$executeRaw(Prisma.sql`
           UPDATE "AccountLibraryCursor"
           SET
             cursor               = ${state.prevCursor},
             "lastUsedCategory"   = ${state.prevLastUsedCategory},
+            "lastUsedSetTag"     = ${state.prevLastUsedSetTag},
             "lastAdvancedAt"     = NULL
           WHERE "accountId"  = ${cursorAccountId}
             AND "libraryId"  = ${libraryId}
             AND cursor IS NOT DISTINCT FROM ${state.claimedCursor}
             AND "lastUsedCategory" IS NOT DISTINCT FROM ${state.claimedLastUsedCategory}
+            AND "lastUsedSetTag" IS NOT DISTINCT FROM ${state.claimedLastUsedSetTag}
         `);
         if (updated > 0) {
           summary.cursors.push({ libraryId, reverted: true });
@@ -488,15 +496,18 @@ export async function revertLibraryCursors(renderId: string): Promise<void> {
           // Conditional revert: only apply if the cursor row still reflects exactly what
           // this generation wrote.  If a concurrent or later generation has since advanced
           // the cursor, the WHERE won't match and the update is a no-op.
+          // Phase 6 : ajout lastUsedSetTag dans SET + condition CAS.
           const updated = await prisma.$executeRaw(Prisma.sql`
             UPDATE "AccountLibraryCursor"
             SET
               cursor               = ${state.prevCursor},
-              "lastUsedCategory"   = ${state.prevLastUsedCategory}
+              "lastUsedCategory"   = ${state.prevLastUsedCategory},
+              "lastUsedSetTag"     = ${state.prevLastUsedSetTag}
             WHERE "accountId"  = ${cursorAccountId}
               AND "libraryId"  = ${libraryId}
               AND cursor IS NOT DISTINCT FROM ${state.claimedCursor}
               AND "lastUsedCategory" IS NOT DISTINCT FROM ${state.claimedLastUsedCategory}
+              AND "lastUsedSetTag" IS NOT DISTINCT FROM ${state.claimedLastUsedSetTag}
           `);
           if (updated > 0) {
             console.info(`[revertLibraryCursors] render=${renderId} library=${libraryId} cursor reverted ${state.claimedCursor}→${state.prevCursor}`);

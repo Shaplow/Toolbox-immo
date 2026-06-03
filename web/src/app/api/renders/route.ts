@@ -24,6 +24,9 @@ async function revertAdvancesOnFailure(usedAssets: {
       claimedCursor: number;
       prevLastUsedCategory: string | null;
       claimedLastUsedCategory: string | null;
+      /** Phase 6 — snapshot lastUsedSetTag pour CAS revert plus strict. */
+      prevLastUsedSetTag: string | null;
+      claimedLastUsedSetTag: string | null;
       cursorAccountId?: string;
     }
   >;
@@ -50,11 +53,13 @@ async function revertAdvancesOnFailure(usedAssets: {
         await prisma.$executeRaw(Prisma.sql`
           UPDATE "AccountLibraryCursor"
           SET cursor = ${state.prevCursor},
-              "lastUsedCategory" = ${state.prevLastUsedCategory}
+              "lastUsedCategory" = ${state.prevLastUsedCategory},
+              "lastUsedSetTag"   = ${state.prevLastUsedSetTag}
           WHERE "accountId" = ${cursorAccountId}
             AND "libraryId" = ${libraryId}
             AND cursor IS NOT DISTINCT FROM ${state.claimedCursor}
             AND "lastUsedCategory" IS NOT DISTINCT FROM ${state.claimedLastUsedCategory}
+            AND "lastUsedSetTag" IS NOT DISTINCT FROM ${state.claimedLastUsedSetTag}
         `);
       } catch (err) {
         console.error(`[revertAdvancesOnFailure] cursor revert failed lib=${libraryId}:`, err);
@@ -159,7 +164,7 @@ export async function POST(req: NextRequest) {
       setSequencedLibraryIds?: string[];
       usedSetTagByLibrary?: Record<string, string>;
       usedCategoryByLibrary?: Record<string, string>;
-      prevCursorStateByLibrary?: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null; cursorAccountId?: string }>;
+      prevCursorStateByLibrary?: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null; prevLastUsedSetTag: string | null; claimedLastUsedSetTag: string | null; cursorAccountId?: string }>;
       prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: string; accountId?: string };
       prevAudioUsageState?: { assetId: string; accountId: string; prevLastUsedAt: string | null; claimedLastUsedAt: string };
       /** DataLibrary cursor state snapshot for failure-recovery revert. */

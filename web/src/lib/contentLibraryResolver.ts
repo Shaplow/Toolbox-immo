@@ -471,6 +471,10 @@ export type CursorRevertState = {
   prevLastUsedCategory: string | null;
   /** lastUsedCategory WE WROTE (auto mode) — revert condition: lastUsedCategory still equals this */
   claimedLastUsedCategory: string | null;
+  /** lastUsedSetTag BEFORE we wrote (Phase 6 — closes CAS gap that could overwrite a concurrent setTag-only change) */
+  prevLastUsedSetTag: string | null;
+  /** lastUsedSetTag WE WROTE — revert condition: lastUsedSetTag still equals this */
+  claimedLastUsedSetTag: string | null;
   /** accountId used as the cursor key (may be SHARED_CURSOR_ACCOUNT_ID for shared-scope libs) */
   cursorAccountId: string;
 };
@@ -640,18 +644,19 @@ export async function selectMediaAssetBySetSequence(
           update: {},
           create: { accountId: effectiveCursorId, libraryId, cursor: 0 },
         });
-        const locked = await tx.$queryRaw<{ cursor: number; lastUsedCategory: string | null }[]>(
-          Prisma.sql`SELECT cursor, "lastUsedCategory" FROM "AccountLibraryCursor" WHERE "accountId" = ${effectiveCursorId} AND "libraryId" = ${libraryId} FOR UPDATE`,
+        const locked = await tx.$queryRaw<{ cursor: number; lastUsedCategory: string | null; lastUsedSetTag: string | null }[]>(
+          Prisma.sql`SELECT cursor, "lastUsedCategory", "lastUsedSetTag" FROM "AccountLibraryCursor" WHERE "accountId" = ${effectiveCursorId} AND "libraryId" = ${libraryId} FOR UPDATE`,
         );
         const current = locked[0]?.cursor ?? 0;
         const prevLastUsedCat = locked[0]?.lastUsedCategory ?? null;
+        const prevLastUsedSetTag = locked[0]?.lastUsedSetTag ?? null;
         selectedSetTag = sequence[current % sequence.length];
         if (!selectedSetTag) return;
         const nextCursor = (current + 1) % sequence.length;
         // Snapshot BEFORE writing so we can conditionally revert on render failure.
-        // Override mode never touches lastUsedCategory, so claimedLastUsedCategory = prevLastUsedCat
-        // (the WHERE condition in the revert will still fire only if nothing else changed it).
-        prevCursorState = { prevCursor: current, claimedCursor: nextCursor, prevLastUsedCategory: prevLastUsedCat, claimedLastUsedCategory: prevLastUsedCat, cursorAccountId: effectiveCursorId };
+        // Override mode never touches lastUsedCategory, so claimedLastUsedCategory = prevLastUsedCat.
+        // Phase 6: also snapshot lastUsedSetTag (claimed = selectedSetTag).
+        prevCursorState = { prevCursor: current, claimedCursor: nextCursor, prevLastUsedCategory: prevLastUsedCat, claimedLastUsedCategory: prevLastUsedCat, prevLastUsedSetTag, claimedLastUsedSetTag: selectedSetTag, cursorAccountId: effectiveCursorId };
         await tx.accountLibraryCursor.update({
           where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId } },
           data: { cursor: nextCursor, lastUsedSetTag: selectedSetTag, lastAdvancedAt: new Date() },
@@ -843,8 +848,11 @@ export async function selectMediaAssetBySetSequence(
           resultRow = rows[0];
           resultSetTag = candidate.setTag;
           resultCategory = candidate.category;
-          // Snapshot BEFORE writing so we can conditionally revert on render failure
-          prevCursorState = { prevCursor: 0, claimedCursor: 0, prevLastUsedCategory: lockedCategory, claimedLastUsedCategory: candidate.category, cursorAccountId: effectiveCursorId };
+          // Snapshot BEFORE writing so we can conditionally revert on render failure.
+          // Phase 6 : also snapshot lastUsedSetTag so the CAS revert can verify nothing
+          // else (e.g. a concurrent prefill that only updated lastUsedSetTag) has changed
+          // the row between our claim and the revert.
+          prevCursorState = { prevCursor: 0, claimedCursor: 0, prevLastUsedCategory: lockedCategory, claimedLastUsedCategory: candidate.category, prevLastUsedSetTag: lockedSetTag, claimedLastUsedSetTag: candidate.setTag, cursorAccountId: effectiveCursorId };
           // Write lastUsedCategory immediately — the next generator waiting on FOR UPDATE
           // will see this value and exclude this category family.
           await tx.accountLibraryCursor.update({
@@ -1357,11 +1365,12 @@ export async function advanceLibraryCursorsOnSubmit(
 
       if (sequence.length > 0) {
         // Override mode: advance cursor from its CURRENT position (handles concurrency)
-        const locked = await tx.$queryRaw<{ cursor: number; lastUsedCategory: string | null }[]>(
-          Prisma.sql`SELECT cursor, "lastUsedCategory" FROM "AccountLibraryCursor" WHERE "accountId" = ${cursorAccountId} AND "libraryId" = ${lib.id} FOR UPDATE`,
+        const locked = await tx.$queryRaw<{ cursor: number; lastUsedCategory: string | null; lastUsedSetTag: string | null }[]>(
+          Prisma.sql`SELECT cursor, "lastUsedCategory", "lastUsedSetTag" FROM "AccountLibraryCursor" WHERE "accountId" = ${cursorAccountId} AND "libraryId" = ${lib.id} FOR UPDATE`,
         );
         const current = locked[0]?.cursor ?? 0;
         const prevLastUsedCat = locked[0]?.lastUsedCategory ?? null;
+        const prevLastUsedSetTag = locked[0]?.lastUsedSetTag ?? null;
         const selectedSetTag = sequence[current % sequence.length];
         if (!selectedSetTag) return;
         const nextCursor = (current + 1) % sequence.length;
@@ -1370,6 +1379,8 @@ export async function advanceLibraryCursorsOnSubmit(
           claimedCursor: nextCursor,
           prevLastUsedCategory: prevLastUsedCat,
           claimedLastUsedCategory: prevLastUsedCat,
+          prevLastUsedSetTag,
+          claimedLastUsedSetTag: selectedSetTag,
           cursorAccountId,
         };
         result.usedSetTagByLibrary[lib.id] = selectedSetTag;
@@ -1383,15 +1394,18 @@ export async function advanceLibraryCursorsOnSubmit(
         const submittedSetTag = submittedSetTagByLibrary[lib.id] ?? null;
         if (!submittedCategory && !submittedSetTag) return;
 
-        const locked = await tx.$queryRaw<{ lastUsedCategory: string | null }[]>(
-          Prisma.sql`SELECT "lastUsedCategory" FROM "AccountLibraryCursor" WHERE "accountId" = ${cursorAccountId} AND "libraryId" = ${lib.id} FOR UPDATE`,
+        const locked = await tx.$queryRaw<{ lastUsedCategory: string | null; lastUsedSetTag: string | null }[]>(
+          Prisma.sql`SELECT "lastUsedCategory", "lastUsedSetTag" FROM "AccountLibraryCursor" WHERE "accountId" = ${cursorAccountId} AND "libraryId" = ${lib.id} FOR UPDATE`,
         );
         const prevLastUsedCategory = locked[0]?.lastUsedCategory ?? null;
+        const prevLastUsedSetTag = locked[0]?.lastUsedSetTag ?? null;
         result.prevCursorStateByLibrary[lib.id] = {
           prevCursor: 0,
           claimedCursor: 0,
           prevLastUsedCategory,
           claimedLastUsedCategory: submittedCategory,
+          prevLastUsedSetTag,
+          claimedLastUsedSetTag: submittedSetTag,
           cursorAccountId,
         };
         await tx.accountLibraryCursor.update({
