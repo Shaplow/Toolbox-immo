@@ -44,6 +44,14 @@ async function revertAdvancesOnFailure(usedAssets: {
     claimedSetTag: string | null;
     claimedCategory: string | null;
   };
+  /** Bug-hunter B2 : claim DataEntry à revert si le render kickoff fail. */
+  prevDataEntryState?: {
+    entryId: string;
+    campaignId: string;
+    usagePolicy: string;
+    claimType: "usedInCycle" | "perAccountUsage";
+    accountId?: string;
+  };
 }) {
   if (usedAssets.prevCursorStateByLibrary) {
     for (const [libraryId, state] of Object.entries(usedAssets.prevCursorStateByLibrary)) {
@@ -106,6 +114,34 @@ async function revertAdvancesOnFailure(usedAssets: {
       console.error(`[revertAdvancesOnFailure] DataLibrary cursor revert failed lib=${libraryId}:`, err);
     }
   }
+  // Bug-hunter B2 : DataEntry claim revert — sans ça, un kickoff failure
+  // laisse le claim (usedInCycle=true ou DataEntryUsage usageCount=0) en DB
+  // sans render correspondant → l'entry est "consommée" sans avoir servi.
+  if (usedAssets.prevDataEntryState) {
+    const { entryId, claimType, accountId } = usedAssets.prevDataEntryState;
+    try {
+      if (claimType === "usedInCycle") {
+        // CAS revert : seulement si usageCount=0 (= claim non encore consommé par recordUsage).
+        await prisma.$executeRaw(Prisma.sql`
+          UPDATE "DataEntry"
+          SET "usedInCycle" = false
+          WHERE id = ${entryId}
+            AND "usedInCycle" = true
+            AND "usageCount" = 0
+        `);
+      } else if (claimType === "perAccountUsage" && accountId) {
+        // Delete claim row uniquement si usageCount=0 (préserve les vraies consommations).
+        await prisma.$executeRaw(Prisma.sql`
+          DELETE FROM "DataEntryUsage"
+          WHERE "entryId" = ${entryId}
+            AND "accountId" = ${accountId}
+            AND "usageCount" = 0
+        `);
+      }
+    } catch (err) {
+      console.error(`[revertAdvancesOnFailure] DataEntry claim revert failed entryId=${entryId}:`, err);
+    }
+  }
 }
 
 // POST /api/renders — déclenche une génération
@@ -165,7 +201,7 @@ export async function POST(req: NextRequest) {
       usedSetTagByLibrary?: Record<string, string>;
       usedCategoryByLibrary?: Record<string, string>;
       prevCursorStateByLibrary?: Record<string, { prevCursor: number; claimedCursor: number; prevLastUsedCategory: string | null; claimedLastUsedCategory: string | null; prevLastUsedSetTag: string | null; claimedLastUsedSetTag: string | null; cursorAccountId?: string }>;
-      prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: string; accountId?: string };
+      prevDataEntryState?: { entryId: string; campaignId: string; usagePolicy: string; claimType: "usedInCycle" | "perAccountUsage"; accountId?: string };
       prevAudioUsageState?: { assetId: string; accountId: string; prevLastUsedAt: string | null; claimedLastUsedAt: string };
       /** DataLibrary cursor state snapshot for failure-recovery revert. */
       prevDataLibraryCursorState?: { libraryId: string; accountId: string; prevLastUsedSetTag: string | null; prevLastUsedCategory: string | null; claimedSetTag: string | null; claimedCategory: string | null };
@@ -275,9 +311,21 @@ export async function POST(req: NextRequest) {
               if (chosenAssetId) {
                 const assetRow = await prisma.mediaAsset.findUnique({
                   where: { id: chosenAssetId },
-                  select: { duration: true },
+                  select: { duration: true, filename: true },
                 });
-                if (assetRow?.duration != null && assetRow.duration < block.minDuration) {
+                if (assetRow?.duration == null) {
+                  // Bug-hunter B10 : un asset sans duration probée bypasse le check
+                  // silencieusement. Si le template impose une minDuration explicite,
+                  // on refuse pour forcer un re-upload ou un backfill admin plutôt
+                  // que produire une vidéo cassée.
+                  return NextResponse.json(
+                    {
+                      error: `Vidéo "${block.name ?? block.id}" : durée de l'asset "${assetRow?.filename ?? chosenAssetId}" inconnue — re-uploadez le fichier ou lancez un backfill duration (admin).`,
+                    },
+                    { status: 400 },
+                  );
+                }
+                if (assetRow.duration < block.minDuration) {
                   return NextResponse.json(
                     {
                       error: `Vidéo "${block.name ?? block.id}" : durée insuffisante (${assetRow.duration}s disponibles, ${block.minDuration}s requis)`,
@@ -294,9 +342,17 @@ export async function POST(req: NextRequest) {
           if (musicBlock && sanitizedUsedAssets.audioAssetId) {
             const assetRow = await prisma.mediaAsset.findUnique({
               where: { id: sanitizedUsedAssets.audioAssetId },
-              select: { duration: true },
+              select: { duration: true, filename: true },
             });
-            if (assetRow?.duration != null && assetRow.duration < musicBlock.minDuration!) {
+            if (assetRow?.duration == null) {
+              return NextResponse.json(
+                {
+                  error: `Musique "${musicBlock.name ?? "piste audio"}" : durée de "${assetRow?.filename ?? sanitizedUsedAssets.audioAssetId}" inconnue — re-uploadez le fichier ou lancez un backfill duration (admin).`,
+                },
+                { status: 400 },
+              );
+            }
+            if (assetRow.duration < musicBlock.minDuration!) {
               return NextResponse.json(
                 {
                   error: `Musique "${musicBlock.name ?? "piste audio"}" : durée insuffisante (${assetRow.duration}s disponibles, ${musicBlock.minDuration}s requis)`,
@@ -432,17 +488,20 @@ export async function POST(req: NextRequest) {
     // render se fait quand même mais sans claim → recordLibraryUsage au DONE
     // incrémentera l'usage standard.
     if (sanitizedUsedAssets.dataEntryId) {
+      // Snapshot de l'entryId originale AVANT toute mutation (utile pour
+      // détecter un re-pick par advanceDataEntryClaimOnSubmit).
+      const originalDataEntryId: string = sanitizedUsedAssets.dataEntryId;
       // Charge la campaignId + libraryId d'un coup pour les 2 opérations qui
       // suivent (claim + cursor advance). Fusion C1/L3 du code-reviewer.
       const initialEntry = await prisma.dataEntry.findUnique({
-        where: { id: sanitizedUsedAssets.dataEntryId },
+        where: { id: originalDataEntryId },
         select: { campaignId: true, campaign: { select: { libraryId: true } } },
       });
       if (initialEntry?.campaignId) {
         // 1. Claim — peut re-pick une autre entry.
         const dataClaim = await advanceDataEntryClaimOnSubmit(
           initialEntry.campaignId,
-          sanitizedUsedAssets.dataEntryId,
+          originalDataEntryId,
           validatedAccountId ?? undefined,
         );
         if (dataClaim) {
@@ -454,24 +513,30 @@ export async function POST(req: NextRequest) {
             accountId: dataClaim.claimState.accountId,
           };
           // If re-pick changed the entry, update dataEntryId so usage tracking is consistent.
-          if (dataClaim.claimState.entryId !== sanitizedUsedAssets.dataEntryId) {
+          if (dataClaim.claimState.entryId !== originalDataEntryId) {
             sanitizedUsedAssets.dataEntryId = dataClaim.claimState.entryId;
           }
         }
 
         // 2. Advance cursor DataLibrary — basé sur l'entry FINAL (après claim).
-        //    Re-fetch si l'entry a changé pour avoir le bon libraryId (case re-pick
-        //    cross-campaign rare mais documenté en C1). Sinon réutilise initialEntry.
+        //    Bug-hunter B1 fix : la comparaison correcte est dataClaim.claimState.entryId
+        //    !== originalDataEntryId (l'entryId initialement soumise). Avant, on comparait
+        //    à campaignId, ce qui était TOUJOURS truthy → re-fetch déclenché à chaque submit
+        //    et si l'entry était supprimée entre temps, finalLibraryId tombait undefined →
+        //    cursor jamais avancé.
         if (validatedAccountId &&
             (sanitizedUsedAssets.dataResolvedSetTag !== undefined || sanitizedUsedAssets.dataResolvedCategory !== undefined)) {
           let finalLibraryId = initialEntry.campaign?.libraryId;
-          if (dataClaim && dataClaim.claimState.entryId !== initialEntry.campaignId) {
+          const repickHappened = dataClaim != null && dataClaim.claimState.entryId !== originalDataEntryId;
+          if (repickHappened) {
             // L'entry a changé suite à re-pick. Re-fetch pour récupérer le bon libraryId.
             const refetched = await prisma.dataEntry.findUnique({
               where: { id: sanitizedUsedAssets.dataEntryId },
               select: { campaign: { select: { libraryId: true } } },
             });
-            finalLibraryId = refetched?.campaign?.libraryId;
+            // Si l'entry a été supprimée entre temps (très rare), garde le finalLibraryId
+            // de l'entry initiale plutôt que tomber sur undefined → cursor jamais advancé.
+            if (refetched?.campaign?.libraryId) finalLibraryId = refetched.campaign.libraryId;
           }
           if (finalLibraryId) {
             const dataAdvance = await advanceDataLibraryCursorOnSubmit(

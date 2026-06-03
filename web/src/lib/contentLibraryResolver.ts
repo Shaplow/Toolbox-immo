@@ -1653,10 +1653,13 @@ export async function advanceDataEntryClaimOnSubmit(
   // le fallback pouvait tomber sur la même catégorie que la génération précédente,
   // cassant l'anti-répétition silencieusement.
   let prevCursorState: { lastUsedSetTag: string | null; lastUsedCategory: string | null; hasHistory: boolean } | undefined;
-  if (accountId) {
+  if (accountId && suggestedEntryId) {
+    // Bug-hunter B5 : findUnique({ id: "" }) renvoie silencieusement null →
+    // prevCursorState reste undefined et l'anti-répétition saute. On ne tente
+    // de lire le cursor QUE si un suggestedEntryId existe vraiment.
     // Détermine la libraryId pour lire le bon AccountDataLibraryCursor.
     const dataEntry = await prisma.dataEntry.findUnique({
-      where: { id: suggestedEntryId ?? "" },
+      where: { id: suggestedEntryId },
       select: { campaign: { select: { libraryId: true } } },
     });
     const libraryId = dataEntry?.campaign?.libraryId;
