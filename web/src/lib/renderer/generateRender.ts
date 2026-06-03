@@ -631,6 +631,30 @@ function applyAssetMetadata(
 }
 
 /**
+ * Best-effort lookup: trouve l'asset MediaLibrary correspondant à une URL dans
+ * la library donnée. Utilisé pour récupérer le `assetId` quand `videoUrl` a été
+ * fourni via form binding (sélection manuelle) au lieu de la rotation auto.
+ *
+ * Sans ce mapping, `usedAssets.videoAssets[blockId]` reste vide, et coverAuto
+ * tombe sur la vidéo finale (avec overlays) au lieu du clip de base.
+ */
+async function findAssetIdByUrl(libraryId: string, url: string): Promise<{ id: string; metadata: Record<string, string | number | null> } | null> {
+  try {
+    const asset = await prisma.mediaAsset.findFirst({
+      where: { libraryId, url },
+      select: { id: true, metadata: true },
+    });
+    if (!asset) return null;
+    let metadata: Record<string, string | number | null> = {};
+    try { metadata = JSON.parse(asset.metadata ?? "{}") as Record<string, string | number | null>; } catch { /* ignore */ }
+    return { id: asset.id, metadata };
+  } catch (err) {
+    console.warn(`[findAssetIdByUrl] failed libraryId=${libraryId} url=${url}:`, err);
+    return null;
+  }
+}
+
+/**
  * Best-effort: add a video assetId to the render's usedAssets videoAssets map.
  * Called when a single VideoBlock.libraryId was used instead of a form binding.
  */
@@ -777,6 +801,17 @@ async function generateVideoRender(
       throw new Error(
         `Bloc vidéo sans URL : renseigne la variable "${videoBlock.binding ?? "(pas de binding)"}" dans le formulaire, ou configure une bibliothèque dans l'onglet Vidéo & Musique`
       );
+    }
+
+    // Si l'URL vient du form binding sans passer par la library auto-selection,
+    // retrouver le MediaAsset matching pour que coverAuto extraie les frames du
+    // clip de base (et non de la vidéo finale avec overlays).
+    if (videoUrl && videoBlock.libraryId && !singleVideoAssetId) {
+      const matched = await findAssetIdByUrl(videoBlock.libraryId, videoUrl);
+      if (matched) {
+        singleVideoAssetId = matched.id;
+        singleVideoMetadata = matched.metadata;
+      }
     }
 
     // Build patched template (backward compat: libraryMetadataRef on TextBlocks)
@@ -992,6 +1027,16 @@ async function generateVideoRenderLocal(
         rawVideoUrl = asset.url;
         singleVideoAssetId = asset.id;
         singleVideoMetadata = asset.metadata;
+      }
+    }
+
+    // Si l'URL vient du form binding sans assetId, retrouver le MediaAsset
+    // pour que coverAuto puisse extraire les frames du clip de base.
+    if (rawVideoUrl && videoBlock.libraryId && !singleVideoAssetId) {
+      const matched = await findAssetIdByUrl(videoBlock.libraryId, rawVideoUrl);
+      if (matched) {
+        singleVideoAssetId = matched.id;
+        singleVideoMetadata = matched.metadata;
       }
     }
 
