@@ -1481,14 +1481,20 @@ export async function advanceDataLibraryCursorOnSubmit(
   const effectiveCursorId =
     library.rotationScope === "shared" ? SHARED_DATA_CURSOR_ACCOUNT_ID : accountId;
 
-  let prevState: { lastUsedSetTag: string | null; lastUsedCategory: string | null } | null = null;
-
   // Fix C3: removed the early return for (submittedSetTag === null && submittedCategory === null).
   // We MUST write lastAdvancedAt even for orphan-group libs so that hasHistory becomes true
   // after the first generation. Without this, selectEligibleDataGroups returns all groups
   // on every call (no history = no exclusion) → same entry repeatedly.
 
-  await prisma.$transaction(async (tx) => {
+  // Code-reviewer C2 fix : retourner prevState UNIQUEMENT si la transaction
+  // a effectivement commit. Avant : prevState était `let` en dehors, donc une
+  // tx qui rejette après l'affectation mais avant le commit aurait laissé
+  // prevState avec une valeur DB qu'on n'a en réalité jamais écrite — causant
+  // un revert "fantôme" plus tard (no-op via CAS mais log trompeur).
+  // Maintenant : prevState est retourné par le callback, donc seulement
+  // si le commit réussit. Si la tx throw, l'erreur remonte et l'appelant
+  // ne stocke pas de revert state.
+  const prevState = await prisma.$transaction(async (tx) => {
     // Ensure cursor row exists before locking
     await tx.accountDataLibraryCursor.upsert({
       where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId: dataLibraryId } },
@@ -1500,7 +1506,7 @@ export async function advanceDataLibraryCursorOnSubmit(
     const locked = await tx.$queryRaw<{ lastUsedSetTag: string | null; lastUsedCategory: string | null }[]>(
       Prisma.sql`SELECT "lastUsedSetTag", "lastUsedCategory" FROM "AccountDataLibraryCursor" WHERE "accountId" = ${effectiveCursorId} AND "libraryId" = ${dataLibraryId} FOR UPDATE`,
     );
-    prevState = {
+    const snapshot = {
       lastUsedSetTag: locked[0]?.lastUsedSetTag ?? null,
       lastUsedCategory: locked[0]?.lastUsedCategory ?? null,
     };
@@ -1513,6 +1519,8 @@ export async function advanceDataLibraryCursorOnSubmit(
         lastAdvancedAt: new Date(),
       },
     });
+
+    return snapshot;
   });
 
   return { prevState, effectiveCursorId };

@@ -16,7 +16,10 @@ import { CursorManagementClient } from "@/components/admin/cursors/CursorManagem
 
 export default async function CursorsPage() {
   const userContext = await getUserContext();
-  if (!userContext?.actualUser.id || userContext.actualUser.role !== "ADMIN") {
+  // Code-reviewer C3 : align sur le pattern canonique CLAUDE.md (canAdminBypass,
+  // pas actualUser.role). canAdminBypass est true pour les ADMIN, y compris
+  // sous impersonation — comme le veulent les routes API correspondantes.
+  if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     redirect("/templates");
   }
 

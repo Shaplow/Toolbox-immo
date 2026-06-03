@@ -410,36 +410,17 @@ export async function POST(req: NextRequest) {
     //
     // Phase 3.B: advanceDataLibraryCursorOnSubmit now handles both shared and per_account
     // scope, returning the effectiveCursorId so we store it correctly in the revert snapshot.
-    if (sanitizedUsedAssets.dataEntryId && validatedAccountId &&
-        (sanitizedUsedAssets.dataResolvedSetTag !== undefined || sanitizedUsedAssets.dataResolvedCategory !== undefined)) {
-      // Look up the DataLibrary ID via DataEntry → DataCampaign → DataLibrary
-      const dataEntry = await prisma.dataEntry.findUnique({
-        where: { id: sanitizedUsedAssets.dataEntryId },
-        select: { campaign: { select: { libraryId: true } } },
-      });
-      const dataLibraryId = dataEntry?.campaign?.libraryId;
-      if (dataLibraryId) {
-        const dataAdvance = await advanceDataLibraryCursorOnSubmit(
-          dataLibraryId,
-          sanitizedUsedAssets.dataResolvedSetTag ?? null,
-          sanitizedUsedAssets.dataResolvedCategory ?? null,
-          validatedAccountId,
-        );
-        if (dataAdvance.prevState !== null && dataAdvance.effectiveCursorId !== null) {
-          // Store snapshot for failure-recovery revert.
-          // Phase 3.B: use effectiveCursorId (not validatedAccountId) so that revert
-          // targets the right cursor row for shared-scope libs (SHARED_DATA_CURSOR_ACCOUNT_ID).
-          sanitizedUsedAssets.prevDataLibraryCursorState = {
-            libraryId: dataLibraryId,
-            accountId: dataAdvance.effectiveCursorId,
-            prevLastUsedSetTag: dataAdvance.prevState.lastUsedSetTag,
-            prevLastUsedCategory: dataAdvance.prevState.lastUsedCategory,
-            claimedSetTag: sanitizedUsedAssets.dataResolvedSetTag ?? null,
-            claimedCategory: sanitizedUsedAssets.dataResolvedCategory ?? null,
-          };
-        }
-      }
-    }
+    //
+    // Code-reviewer C1 + M5 fix : ordre des opérations critiquissime — d'abord le
+    // CLAIM DataEntry (qui peut re-pick une autre entry), PUIS l'advance cursor
+    // DataLibrary basé sur l'entry RÉELLEMENT claim. Cela évite la désync :
+    // - Si on advance le cursor sur l'entry initiale et que le claim re-pick une
+    //   autre entry, le cursor pointe vers la mauvaise catégorie/setTag.
+    // - Si on advance après le claim, on lit la campaignId/libraryId de l'entry
+    //   définitivement claim.
+    //
+    // En bonus : on fusionne les 2 findUnique précédents (C1 + L3) en un seul
+    // include qui charge campaignId + libraryId d'un coup, après le claim.
 
     // ── Phase 8.M1: Claim DataEntry au submit (PAS au prefill) ─────────────
     // Mirror du flow Media : selectDataEntry est désormais readOnly au prefill,
@@ -451,14 +432,16 @@ export async function POST(req: NextRequest) {
     // render se fait quand même mais sans claim → recordLibraryUsage au DONE
     // incrémentera l'usage standard.
     if (sanitizedUsedAssets.dataEntryId) {
-      // Charge la campaignId via la DataEntry pour passer à advanceDataEntryClaimOnSubmit.
-      const dataEntry = await prisma.dataEntry.findUnique({
+      // Charge la campaignId + libraryId d'un coup pour les 2 opérations qui
+      // suivent (claim + cursor advance). Fusion C1/L3 du code-reviewer.
+      const initialEntry = await prisma.dataEntry.findUnique({
         where: { id: sanitizedUsedAssets.dataEntryId },
-        select: { campaignId: true },
+        select: { campaignId: true, campaign: { select: { libraryId: true } } },
       });
-      if (dataEntry?.campaignId) {
+      if (initialEntry?.campaignId) {
+        // 1. Claim — peut re-pick une autre entry.
         const dataClaim = await advanceDataEntryClaimOnSubmit(
-          dataEntry.campaignId,
+          initialEntry.campaignId,
           sanitizedUsedAssets.dataEntryId,
           validatedAccountId ?? undefined,
         );
@@ -473,6 +456,40 @@ export async function POST(req: NextRequest) {
           // If re-pick changed the entry, update dataEntryId so usage tracking is consistent.
           if (dataClaim.claimState.entryId !== sanitizedUsedAssets.dataEntryId) {
             sanitizedUsedAssets.dataEntryId = dataClaim.claimState.entryId;
+          }
+        }
+
+        // 2. Advance cursor DataLibrary — basé sur l'entry FINAL (après claim).
+        //    Re-fetch si l'entry a changé pour avoir le bon libraryId (case re-pick
+        //    cross-campaign rare mais documenté en C1). Sinon réutilise initialEntry.
+        if (validatedAccountId &&
+            (sanitizedUsedAssets.dataResolvedSetTag !== undefined || sanitizedUsedAssets.dataResolvedCategory !== undefined)) {
+          let finalLibraryId = initialEntry.campaign?.libraryId;
+          if (dataClaim && dataClaim.claimState.entryId !== initialEntry.campaignId) {
+            // L'entry a changé suite à re-pick. Re-fetch pour récupérer le bon libraryId.
+            const refetched = await prisma.dataEntry.findUnique({
+              where: { id: sanitizedUsedAssets.dataEntryId },
+              select: { campaign: { select: { libraryId: true } } },
+            });
+            finalLibraryId = refetched?.campaign?.libraryId;
+          }
+          if (finalLibraryId) {
+            const dataAdvance = await advanceDataLibraryCursorOnSubmit(
+              finalLibraryId,
+              sanitizedUsedAssets.dataResolvedSetTag ?? null,
+              sanitizedUsedAssets.dataResolvedCategory ?? null,
+              validatedAccountId,
+            );
+            if (dataAdvance.prevState !== null && dataAdvance.effectiveCursorId !== null) {
+              sanitizedUsedAssets.prevDataLibraryCursorState = {
+                libraryId: finalLibraryId,
+                accountId: dataAdvance.effectiveCursorId,
+                prevLastUsedSetTag: dataAdvance.prevState.lastUsedSetTag,
+                prevLastUsedCategory: dataAdvance.prevState.lastUsedCategory,
+                claimedSetTag: sanitizedUsedAssets.dataResolvedSetTag ?? null,
+                claimedCategory: sanitizedUsedAssets.dataResolvedCategory ?? null,
+              };
+            }
           }
         }
       }
