@@ -8,7 +8,9 @@ import {
   resolveTextTemplate,
   type TextTemplateSegment,
 } from "@/lib/textTemplate";
+import { resolveSystemTokens } from "@/lib/systemTokens";
 import { buildSchemaPreviewData } from "@/lib/schemaFields";
+import { DatePresetMenu } from "./DatePresetMenu";
 import type { AnyBlock, SchemaField, TextBlock } from "@/types/template";
 import type { ListingData } from "@/types/listing";
 import { Section } from "./Section";
@@ -42,7 +44,9 @@ export function TextContentSection({
   const schemaKeyListId = `schema-keys-${block.id}`;
   const schemaFieldOptions = [...schema].sort((a, b) => a.label.localeCompare(b.label, "fr", { sensitivity: "base" }));
   const previewData = buildSchemaPreviewData(schema);
-  const previewText = resolveTextTemplate(currentContent, previewData as ListingData, schema);
+  const previewText = resolveSystemTokens(
+    resolveTextTemplate(currentContent, previewData as ListingData, schema),
+  );
 
   function applySegments(nextSegments: TextTemplateSegment[]) {
     const nextContent = compileTextTemplate(nextSegments);
@@ -77,6 +81,10 @@ export function TextContentSection({
           ? { type: "variable", key: "nouvelle_variable" }
           : { type: "if", field: "", equals: "", thenContent: "", elseContent: "" };
     applySegments([...currentSegments, baseSegment]);
+  }
+
+  function addTokenSegment(token: string) {
+    applySegments([...currentSegments, { type: "text", value: token }]);
   }
 
   const segmentTypeLabel: Record<TextTemplateSegment["type"], string> = {
@@ -260,6 +268,7 @@ export function TextContentSection({
             + {type === "text" ? "Texte" : type === "variable" ? "Variable" : "Condition"}
           </button>
         ))}
+        <DatePresetMenu onPick={addTokenSegment} />
       </div>
 
       <datalist id={schemaKeyListId}>
@@ -290,6 +299,7 @@ export function TextContentSection({
       <p className="text-[10px] text-gray-400 mt-1 leading-relaxed">
         <code className="bg-gray-100 px-0.5 rounded">{`{{variable}}`}</code> pour insérer une valeur.{" "}
         <code className="bg-gray-100 px-0.5 rounded">{`{{#if champ == val}}...{{else}}...{{/if}}`}</code> pour un segment conditionnel.{" "}
+        <code className="bg-gray-100 px-0.5 rounded">{`{{maintenant:month_year}}`}</code> pour insérer la date du jour (auto-résolu au render).{" "}
         Les espaces, tirets et retours à la ligne sont conservés tels qu&apos;ils sont écrits.
       </p>
 

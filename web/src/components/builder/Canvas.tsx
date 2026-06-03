@@ -18,6 +18,7 @@ import {
   shouldApplyPerLineTextGoo,
 } from "@/lib/perLineTextBackground";
 import { compileTextTemplate, resolveTextTemplate } from "@/lib/textTemplate";
+import { resolveSystemTokens } from "@/lib/systemTokens";
 import { roundLayoutDebugValue, type LayoutDebugSnapshot } from "@/lib/layoutDebug";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled } from "@/lib/textBackground";
@@ -1474,7 +1475,7 @@ function BlockPreview({
         ?? (block.contentSegments ? compileTextTemplate(block.contentSegments) : undefined)
         ?? (block.binding ? `{{${block.binding}}}` : block.staticText ?? "");
       const displayContent = showResolvedTextPreview
-        ? resolveTextTemplate(formulaContent, previewListing, schema)
+        ? resolveSystemTokens(resolveTextTemplate(formulaContent, previewListing, schema))
         : (block.content ?? (block.contentSegments ? compileTextTemplate(block.contentSegments) : undefined));
       const vAlign = block.style.verticalAlign ?? "top";
       const justifyContent =

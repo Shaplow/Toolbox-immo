@@ -2,6 +2,7 @@
 import type { ListingData } from "@/types/listing";
 import { formatPrice } from "@/types/listing";
 import { compileTextTemplate, resolveTextTemplate } from "@/lib/textTemplate";
+import { resolveSystemTokens } from "@/lib/systemTokens";
 import { formatConfiguredNumber, toFlexibleNumber } from "@/lib/numberFormatting";
 import { getPerLineTextEffectiveRadius, getPerLineTextGooFilterId, getPerLineTextSideBridgeMetrics, shouldApplyPerLineTextGoo } from "@/lib/perLineTextBackground";
 import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled } from "@/lib/textBackground";
@@ -39,6 +40,8 @@ export function renderTextBlock(
   } else {
     text = block.staticText ?? "";
   }
+
+  text = resolveSystemTokens(text);
 
   const { rules, style } = block;
   const vAlign = style.verticalAlign ?? "top";
