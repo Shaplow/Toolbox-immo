@@ -52,15 +52,18 @@ function resolveVisibility(hidden: boolean | undefined, rules: BlockConditionalR
   const hasShowRule = matchedVisibility.some((rule) => rule.effects.visible === true);
   if (hasShowRule) return true;
 
-  // Historical builder behavior created new rules with visible=true by default,
-  // even when the user only wanted color/background/offset variations.
-  // Preserve the base block visibility when no rule matches and every visibility
-  // rule is only acting as a decorative variant on an already-visible block.
-  const decorativeShowRules = visibilityRules.every((rule) => (
-    rule.effects.visible === true && hasNonVisibilityEffects(rule.effects)
+  // No rule matched. Determine the default visibility.
+  // Default = "visible" UNLESS at least one rule is a pure-show
+  // (visible:true with no other effect) — those rules define explicit
+  // conditional visibility ("hidden by default, visible when X matches").
+  // Decorative-show rules (visible:true + color/etc.) and pure-hide rules
+  // (visible:false) both leave the default as "visible" so they can coexist
+  // (e.g. decorative coloration + a separate "hide when empty" rule).
+  const hasPureShowRule = visibilityRules.some((rule) => (
+    rule.effects.visible === true && !hasNonVisibilityEffects(rule.effects)
   ));
 
-  return decorativeShowRules;
+  return !hasPureShowRule;
 }
 
 function resolveMatchedEffects(rules: BlockConditionalRule[], listing: Record<string, unknown>): BlockConditionalEffects {
