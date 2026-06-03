@@ -1259,17 +1259,24 @@ export async function resolveLibraryPrefill(
 
   // --- Data library ---
   if (template.contentLibrary?.dataCampaignId) {
-    // Phase 1.2 — load per-account cursor to enable category anti-repetition.
-    // Only applicable when rotationScope === "per_account" and accountId is known.
+    // Phase 1.2 + Phase 3.B — load cursor state to enable category anti-repetition.
+    // Applies to both "per_account" and "shared" rotationScope.
+    // For shared scope, the cursor is keyed by SHARED_DATA_CURSOR_ACCOUNT_ID.
     let prevCursorState: { lastUsedSetTag: string | null; lastUsedCategory: string | null; hasHistory: boolean } | undefined;
-    if (accountId) {
-      const campaignWithLib = await prisma.dataCampaign.findUnique({
-        where: { id: template.contentLibrary.dataCampaignId },
-        select: { libraryId: true, library: { select: { rotationScope: true } } },
-      });
-      if (campaignWithLib?.library.rotationScope === "per_account") {
+    const campaignWithLib = await prisma.dataCampaign.findUnique({
+      where: { id: template.contentLibrary.dataCampaignId },
+      select: { libraryId: true, library: { select: { rotationScope: true } } },
+    });
+    if (campaignWithLib) {
+      const scope = campaignWithLib.library.rotationScope;
+      // Determine the effective cursor account ID: shared libs use a global synthetic key.
+      const cursorAccountId =
+        scope === "shared"
+          ? SHARED_DATA_CURSOR_ACCOUNT_ID
+          : accountId; // per_account: only load when accountId is known
+      if (cursorAccountId) {
         const cursorRow = await prisma.accountDataLibraryCursor.findUnique({
-          where: { accountId_libraryId: { accountId, libraryId: campaignWithLib.libraryId } },
+          where: { accountId_libraryId: { accountId: cursorAccountId, libraryId: campaignWithLib.libraryId } },
           select: { lastUsedSetTag: true, lastUsedCategory: true, lastAdvancedAt: true },
         });
         prevCursorState = {
@@ -1404,43 +1411,61 @@ export async function advanceLibraryCursorsOnSubmit(
 
 /**
  * Advances AccountDataLibraryCursor for a DataLibrary at form submission time.
- * Mirror of advanceLibraryCursorsOnSubmit but for DataLibrary per-account cursors.
+ * Mirror of advanceLibraryCursorsOnSubmit but for DataLibrary cursors.
  *
- * Only applies when the DataLibrary has rotationScope === "per_account".
- * For "shared" or when accountId is missing, returns null (no-op).
+ * Phase 3.B: supports both "per_account" and "shared" rotationScope.
+ *   - per_account: cursor key = real accountId
+ *   - shared: cursor key = SHARED_DATA_CURSOR_ACCOUNT_ID (one global cursor)
+ *
+ * Fix C3: always writes lastAdvancedAt even when submittedSetTag and
+ * submittedCategory are both null (orphan-group libs). Without this, the
+ * `hasHistory = lastAdvancedAt != null` check in selectDataEntry stays false
+ * forever → selectEligibleDataGroups returns ALL groups every time → same
+ * orphan entry picked repeatedly (rotation broken for all-orphan libs).
  *
  * Returns prevState (lastUsedSetTag + lastUsedCategory before the write) so the
  * caller can conditionally revert if the Render creation fails.
+ * Also returns the effectiveCursorId used so the caller can store it in the
+ * snapshot for the revert path.
  */
 export async function advanceDataLibraryCursorOnSubmit(
   dataLibraryId: string,
   submittedSetTag: string | null,
   submittedCategory: string | null,
   accountId: string,
-): Promise<{ prevState: { lastUsedSetTag: string | null; lastUsedCategory: string | null } | null }> {
+): Promise<{
+  prevState: { lastUsedSetTag: string | null; lastUsedCategory: string | null } | null;
+  effectiveCursorId: string | null;
+}> {
   // Load library to check rotationScope
   const library = await prisma.dataLibrary.findUnique({
     where: { id: dataLibraryId },
     select: { rotationScope: true },
   });
-  if (!library || library.rotationScope !== "per_account") return { prevState: null };
+  if (!library) return { prevState: null, effectiveCursorId: null };
 
-  // Skip if nothing resolved (no group was selected)
-  if (submittedSetTag === null && submittedCategory === null) return { prevState: null };
+  // Phase 3.B: compute effective cursor account ID based on scope
+  const effectiveCursorId =
+    library.rotationScope === "shared" ? SHARED_DATA_CURSOR_ACCOUNT_ID : accountId;
 
   let prevState: { lastUsedSetTag: string | null; lastUsedCategory: string | null } | null = null;
+
+  // Fix C3: removed the early return for (submittedSetTag === null && submittedCategory === null).
+  // We MUST write lastAdvancedAt even for orphan-group libs so that hasHistory becomes true
+  // after the first generation. Without this, selectEligibleDataGroups returns all groups
+  // on every call (no history = no exclusion) → same entry repeatedly.
 
   await prisma.$transaction(async (tx) => {
     // Ensure cursor row exists before locking
     await tx.accountDataLibraryCursor.upsert({
-      where: { accountId_libraryId: { accountId, libraryId: dataLibraryId } },
+      where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId: dataLibraryId } },
       update: {},
-      create: { accountId, libraryId: dataLibraryId },
+      create: { accountId: effectiveCursorId, libraryId: dataLibraryId },
     });
 
     // Lock cursor row and snapshot current state
     const locked = await tx.$queryRaw<{ lastUsedSetTag: string | null; lastUsedCategory: string | null }[]>(
-      Prisma.sql`SELECT "lastUsedSetTag", "lastUsedCategory" FROM "AccountDataLibraryCursor" WHERE "accountId" = ${accountId} AND "libraryId" = ${dataLibraryId} FOR UPDATE`,
+      Prisma.sql`SELECT "lastUsedSetTag", "lastUsedCategory" FROM "AccountDataLibraryCursor" WHERE "accountId" = ${effectiveCursorId} AND "libraryId" = ${dataLibraryId} FOR UPDATE`,
     );
     prevState = {
       lastUsedSetTag: locked[0]?.lastUsedSetTag ?? null,
@@ -1448,7 +1473,7 @@ export async function advanceDataLibraryCursorOnSubmit(
     };
 
     await tx.accountDataLibraryCursor.update({
-      where: { accountId_libraryId: { accountId, libraryId: dataLibraryId } },
+      where: { accountId_libraryId: { accountId: effectiveCursorId, libraryId: dataLibraryId } },
       data: {
         lastUsedSetTag: submittedSetTag,
         lastUsedCategory: submittedCategory,
@@ -1457,7 +1482,7 @@ export async function advanceDataLibraryCursorOnSubmit(
     });
   });
 
-  return { prevState };
+  return { prevState, effectiveCursorId };
 }
 
 /**
@@ -1620,6 +1645,12 @@ export function selectEligibleDataGroups(
   return allGroups.filter((g) => g.setTag !== lastSetTag);
 }
 
+/**
+ * Synthetic accountId used as the cursor key for DataLibrary rotations when
+ * rotationScope === "shared". Mirrors SHARED_CURSOR_ACCOUNT_ID for MediaLibrary.
+ */
+export const SHARED_DATA_CURSOR_ACCOUNT_ID = "__shared__data__";
+
 /** @internal Exported for unit testing only. */
 export async function selectDataEntry(
   campaignId: string,
@@ -1643,6 +1674,7 @@ export async function selectDataEntry(
     select: {
       library: {
         select: {
+          id: true,
           rotationMode: true,
           rotationScope: true,
           maxUsageCount: true,
@@ -1668,6 +1700,15 @@ export async function selectDataEntry(
     lib.maxUsageCount === 1
       ? (lib.rotationScope === "per_account" ? "once_per_account" : "once_global")
       : (lib.rotationScope === "per_account" ? "cycle_per_account" : "unlimited");
+
+  // Phase 3.B — effective cursor account ID:
+  // - shared scope: one global cursor shared across all accounts
+  // - per_account scope: each account has its own cursor
+  // Mirrors the SHARED_CURSOR_ACCOUNT_ID pattern in selectMediaAssetBySetSequence.
+  const effectiveCursorId: string | undefined =
+    lib.rotationScope === "shared"
+      ? SHARED_DATA_CURSOR_ACCOUNT_ID
+      : accountId;
 
   // Access filter fragment (built once, used in all queries)
   const accessFilter = accountId
@@ -1709,15 +1750,24 @@ export async function selectDataEntry(
   // Helper: discover (setTag, category) groups eligible for the given policy.
   // Groups are ordered by cat_last_used ASC NULLS FIRST, last_used ASC NULLS FIRST,
   // group_created_at ASC — mirrors the MediaAsset group discovery sort.
+  //
+  // Phase 3.A: ALL policies go through group-based discovery (not just per_account).
+  // Phase 3.B: usage ordering uses effectiveCursorId (SHARED_DATA_CURSOR_ACCOUNT_ID for
+  //            shared-scope libs) so the staleness ranking reflects the shared global cursor.
+  // Fix C2: accepts an optional tx client so it can run INSIDE the outer $transaction,
+  //         preventing the "discovery reads stale, claim sees a different set" race.
   async function discoverGroups(
     policy: "cycle_per_account" | "once_per_account" | "once_global" | "unlimited",
+    tx?: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   ): Promise<GroupRow[]> {
+    const client = tx ?? prisma;
     if (policy === "cycle_per_account" && accountId) {
       // Groups where at least one entry has NOT been claimed by this account yet
       // (no DataEntryUsage row) OR where at least one genuinely-used entry exists
       // (usageCount >= 1) — same as the two-step primary+fallback logic, but at group level.
       // We list ALL groups and let pickEntryFromGroup decide per-entry eligibility.
-      return prisma.$queryRaw<GroupRow[]>(Prisma.sql`
+      // Usage ordering uses effectiveCursorId (may be SHARED_DATA_CURSOR_ACCOUNT_ID for shared libs).
+      return client.$queryRaw<GroupRow[]>(Prisma.sql`
         SELECT sub2."setTag", sub2."category"
         FROM (
           SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
@@ -1727,7 +1777,7 @@ export async function selectDataEntry(
                    MAX(deu."lastUsedAt") AS last_used,
                    MIN(de."createdAt") AS group_created_at
             FROM "DataEntry" de
-            LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${accountId}
+            LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${effectiveCursorId}
             WHERE de."campaignId" = ${campaignId}
               ${accessFilter}
             GROUP BY de."setTag", de."category"
@@ -1740,7 +1790,7 @@ export async function selectDataEntry(
     }
     if (policy === "once_per_account" && accountId) {
       // Groups where at least one entry hasn't been consumed (usageCount=0, not yet claimed)
-      return prisma.$queryRaw<GroupRow[]>(Prisma.sql`
+      return client.$queryRaw<GroupRow[]>(Prisma.sql`
         SELECT sub2."setTag", sub2."category"
         FROM (
           SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
@@ -1750,7 +1800,7 @@ export async function selectDataEntry(
                    MAX(deu."lastUsedAt") AS last_used,
                    MIN(de."createdAt") AS group_created_at
             FROM "DataEntry" de
-            LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${accountId}
+            LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${effectiveCursorId}
             WHERE de."campaignId" = ${campaignId}
               AND NOT EXISTS (
                 SELECT 1 FROM "DataEntryUsage" deu2
@@ -1767,8 +1817,9 @@ export async function selectDataEntry(
                  sub2."setTag" ASC NULLS LAST, sub2."category" ASC NULLS FIRST`);
     }
     if (policy === "once_global") {
-      // Groups where at least one entry is unused globally
-      return prisma.$queryRaw<GroupRow[]>(Prisma.sql`
+      // Groups where at least one entry is unused globally.
+      // Phase 3.A: now used for group-based selection like per_account policies.
+      return client.$queryRaw<GroupRow[]>(Prisma.sql`
         SELECT sub2."setTag", sub2."category"
         FROM (
           SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
@@ -1790,17 +1841,20 @@ export async function selectDataEntry(
                  sub2.group_created_at ASC NULLS LAST,
                  sub2."setTag" ASC NULLS LAST, sub2."category" ASC NULLS FIRST`);
     }
-    // unlimited — all groups
-    return prisma.$queryRaw<GroupRow[]>(Prisma.sql`
+    // unlimited — all groups.
+    // Phase 3.A: now used for group-based selection (anti-repetition across unlimited libs).
+    // Usage ordering uses effectiveCursorId for shared-scope libraries.
+    return client.$queryRaw<GroupRow[]>(Prisma.sql`
       SELECT sub2."setTag", sub2."category"
       FROM (
         SELECT sub1."setTag", sub1."category", sub1.last_used, sub1.group_created_at,
                MAX(sub1.last_used) OVER (PARTITION BY sub1."category") AS cat_last_used
         FROM (
           SELECT de."setTag", de."category",
-                 MAX(de."lastUsedAt") AS last_used,
+                 MAX(deu."lastUsedAt") AS last_used,
                  MIN(de."createdAt") AS group_created_at
           FROM "DataEntry" de
+          LEFT JOIN "DataEntryUsage" deu ON deu."entryId" = de.id AND deu."accountId" = ${effectiveCursorId}
           WHERE de."campaignId" = ${campaignId}
             ${accessFilter}
           GROUP BY de."setTag", de."category"
@@ -1951,25 +2005,32 @@ export async function selectDataEntry(
   let resolvedCategory: string | null | undefined;
 
   // -----------------------------------------------------------------------
-  // Group-based selection when prevCursorState is provided (per-account mode
-  // with rotation tracking). Mirrors selectMediaAssetBySetSequence auto mode.
+  // Group-based selection when prevCursorState is provided.
+  //
+  // Phase 3.A: applied to ALL policies (not just per_account) so that
+  // once_global and unlimited also benefit from anti-repetition grouping.
+  //
+  // Phase 3.B: discoverGroups uses effectiveCursorId for usage ordering so
+  // shared-scope libs rank group staleness on the shared cursor, not per-account.
+  //
+  // Fix C2: discoverGroups runs INSIDE the $transaction so its read is consistent
+  // with the subsequent FOR UPDATE SKIP LOCKED picks.
   // -----------------------------------------------------------------------
-  if (prevCursorState && (usagePolicy === "cycle_per_account" || usagePolicy === "once_per_account")) {
-    const allGroups = await discoverGroups(usagePolicy);
+  if (prevCursorState) {
+    // Must run inside a transaction so group discovery and claims are atomic.
+    await prisma.$transaction(async (tx) => {
+      // C2 fix: discoverGroups runs inside the transaction with the tx client.
+      const allGroups = await discoverGroups(usagePolicy, tx);
 
-    if (allGroups.length > 0) {
-      const eligible = selectEligibleDataGroups(
-        allGroups,
-        prevCursorState.lastUsedCategory,
-        prevCursorState.lastUsedSetTag,
-        prevCursorState.hasHistory,
-      );
-      const candidates = eligible.length > 0 ? eligible : allGroups;
+      if (allGroups.length > 0) {
+        const eligible = selectEligibleDataGroups(
+          allGroups,
+          prevCursorState.lastUsedCategory,
+          prevCursorState.lastUsedSetTag,
+          prevCursorState.hasHistory,
+        );
+        const candidates = eligible.length > 0 ? eligible : allGroups;
 
-      // Must run inside a transaction so claims (INSERT DataEntryUsage) are atomic.
-      // For once_per_account only: if accountId branch is selected above (policy check),
-      // we need tx; for cycle_per_account likewise.
-      await prisma.$transaction(async (tx) => {
         for (const candidate of candidates) {
           const picked = await pickEntryFromGroup(candidate.setTag, candidate.category, usagePolicy, tx);
           if (picked) {
@@ -1980,10 +2041,9 @@ export async function selectDataEntry(
             return; // commit
           }
         }
-      });
-
-      // If group-based pick found nothing, fall through to the legacy flat selection below.
-    }
+      }
+      // If group-based pick found nothing, fall through to legacy flat selection (entry stays null).
+    });
   }
 
   // -----------------------------------------------------------------------

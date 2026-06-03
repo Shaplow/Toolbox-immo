@@ -186,3 +186,76 @@ describe("Helper assertNoConsecutiveCategory", () => {
     ).not.toThrow();
   });
 });
+
+// ─── Fix C3 : comportement de la rotation sur une lib 100% orphelins ─────────
+//
+// Avant C3 : advanceDataLibraryCursorOnSubmit retournait prématurément quand
+// submittedSetTag === null && submittedCategory === null → lastAdvancedAt jamais
+// écrit → hasHistory resterait false → selectEligibleDataGroups retourne tous
+// les groupes → même entrée à chaque fois.
+//
+// Après C3 : même avec null/null, lastAdvancedAt est toujours écrit.
+// Ce test valide que selectEligibleDataGroups se comporte correctement selon
+// que hasHistory est vrai (après advance) ou faux (avant le premier advance).
+//
+// Note : le test de la DB (lastAdvancedAt effectivement écrit) est couvert
+// par les integration tests (Phase 10 rotation.data-revert-on-error.test.ts).
+// Ici on teste la conséquence logique : une fois hasHistory=true,
+// selectEligibleDataGroups doit bien tenter l'anti-répétition même avec null/null.
+
+describe("Fix C3 — Orphan group (null/null) et hasHistory", () => {
+  const orphanGroup = [{ setTag: null, category: null }];
+
+  it("hasHistory=false (jamais avancé) → retourne tous les groupes (pas d'exclusion)", () => {
+    const eligible = selectEligibleDataGroups(orphanGroup, null, null, false);
+    expect(eligible).toEqual(orphanGroup);
+  });
+
+  it("hasHistory=true + lastCategory=null → exclut le groupe null dans le path ≥2cat ? Non : 1 seule cat", () => {
+    // Une lib 100% orphelins a 1 catégorie unique (null). L'anti-rep exclut
+    // le dernier setTag (null). Il reste [] → candidats = allGroups (fallback).
+    const eligible = selectEligibleDataGroups(orphanGroup, null, null, true);
+    // 1 catégorie → path setTag exclusion → exclut setTag=null → []
+    expect(eligible).toEqual([]);
+    // Le caller utilise eligible.length > 0 ? eligible : allGroups → allGroups
+    // Donc la rotation ne se bloque pas même si eligible est vide.
+  });
+
+  it("simulation 3 générations consecutives orphelins: sélection ne se bloque pas", () => {
+    // Après C3, hasHistory devient true dès la 1ère génération.
+    // La rotation doit sélectionner le groupe orphelin à chaque tour (fallback).
+    const selections = simulateSelectionsWithHistory(orphanGroup, 3);
+    expect(selections).toHaveLength(3);
+    selections.forEach((s) => {
+      expect(s.setTag).toBeNull();
+      expect(s.category).toBeNull();
+    });
+  });
+
+  /**
+   * Simule N sélections en commençant avec hasHistory=true dès le 2ème tour
+   * (comme après le premier advance avec C3 corrigé).
+   */
+  function simulateSelectionsWithHistory(
+    allGroups: Array<{ setTag: string | null; category: string | null }>,
+    rounds: number,
+  ): Array<{ setTag: string | null; category: string | null }> {
+    const selected: Array<{ setTag: string | null; category: string | null }> = [];
+    let lastCat: string | null = null;
+    let lastSet: string | null = null;
+    let hasHistory = false;
+
+    for (let i = 0; i < rounds; i++) {
+      const eligible = selectEligibleDataGroups(allGroups, lastCat, lastSet, hasHistory);
+      const pool = eligible.length > 0 ? eligible : allGroups;
+      const picked = pool[0];
+      selected.push(picked);
+      lastCat = picked.category;
+      lastSet = picked.setTag;
+      // C3 fix: hasHistory becomes true after first advance (even with null/null)
+      hasHistory = true;
+    }
+
+    return selected;
+  }
+});

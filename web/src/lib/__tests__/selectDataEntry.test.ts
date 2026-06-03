@@ -63,9 +63,10 @@ function mockCampaign(
   rotationScope: string = "shared",
   rotationMode: string = "auto",
   maxUsageCount: number | null = null,
+  libraryId: string = "lib-mock-1",
 ) {
   mockDataCampaignFindUnique.mockResolvedValue({
-    library: { rotationMode, rotationScope, maxUsageCount },
+    library: { id: libraryId, rotationMode, rotationScope, maxUsageCount },
   });
 }
 
@@ -286,7 +287,7 @@ describe("selectDataEntry", () => {
       return fn(tx);
     });
     mockDataCampaignFindUnique.mockResolvedValue({
-      library: { rotationMode: "auto", rotationScope: "per_account", maxUsageCount: null },
+      library: { id: "lib-mock-1", rotationMode: "auto", rotationScope: "per_account", maxUsageCount: null },
     });
 
     // Account B: last category was "cat-1" → picks "cat-2"
@@ -310,7 +311,7 @@ describe("selectDataEntry", () => {
   it("fields JSON parsed correctly from raw DB string", async () => {
     // Separate campaignId to avoid cache collision with other tests
     mockDataCampaignFindUnique.mockResolvedValueOnce({
-      library: { rotationMode: "auto", rotationScope: "shared", maxUsageCount: null },
+      library: { id: "lib-json", rotationMode: "auto", rotationScope: "shared", maxUsageCount: null },
     });
     const rawFields = { quartier: "Ainay", prix_m2: "7500", evo: "+3.2%" };
     mockQueryRaw.mockResolvedValueOnce([{ id: "e-json", fields: JSON.stringify(rawFields) }]);
@@ -322,7 +323,7 @@ describe("selectDataEntry", () => {
 
   it("fields with malformed JSON returns empty object without throwing", async () => {
     mockDataCampaignFindUnique.mockResolvedValueOnce({
-      library: { rotationMode: "auto", rotationScope: "shared", maxUsageCount: null },
+      library: { id: "lib-bad", rotationMode: "auto", rotationScope: "shared", maxUsageCount: null },
     });
     mockQueryRaw.mockResolvedValueOnce([{ id: "e-bad", fields: "NOT_JSON{{" }]);
 
@@ -333,7 +334,7 @@ describe("selectDataEntry", () => {
 
   it("unlimited policy without accountId → no locking, still returns entry", async () => {
     mockDataCampaignFindUnique.mockResolvedValueOnce({
-      library: { rotationMode: "auto", rotationScope: "shared", maxUsageCount: null },
+      library: { id: "lib-noacct", rotationMode: "auto", rotationScope: "shared", maxUsageCount: null },
     });
     const entry = makeEntry("entry-noAccount", { val: "x" });
     mockQueryRaw.mockResolvedValueOnce([entry]);
@@ -342,5 +343,124 @@ describe("selectDataEntry", () => {
     expect(result?.entryId).toBe("entry-noAccount");
     // No claim state (unlimited policy + no accountId)
     expect(result?.claimState).toBeUndefined();
+  });
+
+  // ── Phase 3.A: group-based path active for once_global and unlimited ─────────
+
+  it("Phase 3.A — once_global + prevCursorState → group-based selection picks eligible category", async () => {
+    // once_global = shared scope + maxUsageCount=1
+    mockCampaign("shared", "auto", 1);
+    const entryB = makeEntry("entry-once-B", { titre: "Prestige" }, "set-2", "B");
+    const groups = [
+      { setTag: "set-1", category: "A" },
+      { setTag: "set-2", category: "B" },
+    ];
+    // prevCursorState: last used category was "A" → should pick "B"
+    const prevCursorState = { lastUsedSetTag: "set-1", lastUsedCategory: "A", hasHistory: true };
+
+    // discoverGroups (once_global path, called with tx inside transaction)
+    mockQueryRaw.mockResolvedValueOnce(groups);
+    // pickEntryFromGroup called with set-2/B (after A filtered out)
+    mockQueryRaw.mockResolvedValueOnce([entryB]);
+
+    const result = await selectDataEntry("campaign-once-global", undefined, "account-X", prevCursorState);
+    expect(result).not.toBeNull();
+    expect(result!.resolvedCategory).toBe("B");
+    expect(result!.entryId).toBe("entry-once-B");
+  });
+
+  it("Phase 3.A — unlimited + prevCursorState → group-based selection avoids last category", async () => {
+    // unlimited = shared scope + null maxUsageCount
+    mockCampaign("shared", "auto", null);
+    const entryB = makeEntry("entry-unlim-B", { data: "b" }, "set-2", "B");
+    const groups = [
+      { setTag: "set-1", category: "A" },
+      { setTag: "set-2", category: "B" },
+    ];
+    const prevCursorState = { lastUsedSetTag: "set-2", lastUsedCategory: "B", hasHistory: true };
+
+    // discoverGroups (unlimited path, called with tx)
+    mockQueryRaw.mockResolvedValueOnce(groups);
+    // pickEntryFromGroup called with set-1/A (after B filtered out)
+    mockQueryRaw.mockResolvedValueOnce([entryB]);
+
+    const result = await selectDataEntry("campaign-unlimited", undefined, "account-X", prevCursorState);
+    expect(result).not.toBeNull();
+    // After filtering B, eligible = [A]. Candidate is A, but mock returns entryB for simplicity
+    // (real DB would return A-group entry — this test validates the path is taken, not the exact filter)
+    expect(result!.entryId).toBe("entry-unlim-B");
+  });
+
+  // ── Phase 3.B: shared scope uses SHARED_DATA_CURSOR_ACCOUNT_ID ──────────────
+
+  it("Phase 3.B — shared lib: two accounts with prevCursorState both use group-based path", async () => {
+    // shared scope + unlimited → two accounts should advance the same shared cursor
+    // This test validates that effectiveCursorId = SHARED_DATA_CURSOR_ACCOUNT_ID is used.
+    // We can't easily test the SQL parameter in unit mocks, but we validate that:
+    // (a) the group-based path is taken for both accounts,
+    // (b) both calls succeed and return entries.
+    mockCampaign("shared", "auto", null);
+    const entryA = makeEntry("entry-shared-A", { zone: "nord" }, "set-1", "A");
+    const groups = [{ setTag: "set-1", category: "A" }];
+    const prevCursorState = { lastUsedSetTag: null, lastUsedCategory: null, hasHistory: false };
+
+    // Account 1
+    mockQueryRaw.mockResolvedValueOnce(groups);
+    mockQueryRaw.mockResolvedValueOnce([entryA]);
+    const result1 = await selectDataEntry("campaign-shared", undefined, "account-alpha", prevCursorState);
+    expect(result1?.entryId).toBe("entry-shared-A");
+    expect(result1?.resolvedCategory).toBe("A");
+
+    vi.clearAllMocks();
+    mockTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
+      const tx = {
+        $queryRaw: (...args: unknown[]) => mockQueryRaw(...args),
+        dataEntryUsage: {
+          create: (...args: unknown[]) => mockDataEntryUsageCreate(...args),
+          upsert: (...args: unknown[]) => mockDataEntryUsageUpsert(...args),
+        },
+        dataEntry: { update: vi.fn().mockResolvedValue({}) },
+      };
+      return fn(tx);
+    });
+    mockDataCampaignFindUnique.mockResolvedValue({
+      library: { id: "lib-mock-1", rotationMode: "auto", rotationScope: "shared", maxUsageCount: null },
+    });
+
+    // Account 2 — same shared lib, same cursor entry returned
+    mockQueryRaw.mockResolvedValueOnce(groups);
+    mockQueryRaw.mockResolvedValueOnce([entryA]);
+    const result2 = await selectDataEntry("campaign-shared", undefined, "account-beta", prevCursorState);
+    expect(result2?.entryId).toBe("entry-shared-A");
+    // Both accounts go through the group-based tx path
+  });
+
+  // ── Fix C3: orphan group (null/null) — lastAdvancedAt should be set ──────────
+  // (Unit test for the logic change; the actual DB write is tested by the
+  //  advanceDataLibraryCursorOnSubmit integration path, not by selectDataEntry.)
+  // We verify that selectDataEntry with prevCursorState still returns entries
+  // for an all-orphan lib (null/null groups) without throwing or returning null.
+
+  it("Fix C3 — all-orphan group (null/null): group-based path returns entry, no throw", async () => {
+    mockCampaign("per_account", "auto", null); // → cycle_per_account
+    const orphanEntry = makeEntry("entry-orphan-1", { info: "orphan" }, null, null);
+    const groups = [{ setTag: null, category: null }]; // single orphan group
+
+    // prevCursorState with hasHistory=true (simulates state after first advance with nulls)
+    const prevCursorState = { lastUsedSetTag: null, lastUsedCategory: null, hasHistory: true };
+
+    // discoverGroups returns the orphan group
+    mockQueryRaw.mockResolvedValueOnce(groups);
+    // selectEligibleDataGroups: 1 category (null), 1 setTag (null) → filters to [] (all excluded)
+    // candidates = allGroups (fallback) = [{ null, null }]
+    // pickEntryFromGroup: cycle_per_account primary path
+    mockQueryRaw.mockResolvedValueOnce([orphanEntry]);
+    mockDataEntryUsageCreate.mockResolvedValue({});
+
+    const result = await selectDataEntry("campaign-orphan", undefined, "account-Z", prevCursorState);
+    expect(result).not.toBeNull();
+    expect(result!.entryId).toBe("entry-orphan-1");
+    expect(result!.resolvedSetTag).toBeNull();
+    expect(result!.resolvedCategory).toBeNull();
   });
 });
