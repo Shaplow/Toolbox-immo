@@ -562,7 +562,7 @@ model MediaAutocutJob {
 
 /// Bibliothèque de données texte, rattachée à un type de template (RPI, RTIPS…).
 model DataLibrary {
-  id              String         @id @default(cuid())
+  id              String                     @id @default(cuid())
   name            String
   /// Identifiant métier du type : "RPI" | "RTIPS" | "RPOD" | etc.
   templateType    String
@@ -571,11 +571,11 @@ model DataLibrary {
   /// - "auto"     : least-used round-robin (défaut).
   /// - "override" : ordre fixe (TODO V2 : nécessitera DataEntry.position).
   /// - "none"     : pas de rotation auto, sélection manuelle uniquement.
-  rotationMode    String         @default("auto")
+  rotationMode    String                     @default("auto")
   /// Portée de la rotation (mirror MediaLibrary) :
   /// - "shared" (défaut)  : pool partagé entre tous les comptes (compteur global DataEntry.usageCount).
   /// - "per_account"      : chaque compte tourne indépendamment (DataEntryUsage par compte).
-  rotationScope   String         @default("shared")
+  rotationScope   String                     @default("shared")
   /// Burn-once / consommation max par fiche.
   /// - `null` (défaut) : rotation infinie, fiches recyclées (least-used).
   /// - `N > 0` : chaque fiche peut être utilisée max N fois (filtrée au-delà).
@@ -586,14 +586,15 @@ model DataLibrary {
   /// création/édition d'une fiche, valider l'import.
   /// types supportés : "text" | "number" | "url" | "textarea".
   /// Si vide → fallback rétrocompatible (déduction depuis la première entry).
-  fieldsSchema    String         @default("[]")
+  fieldsSchema    String                     @default("[]")
   /// Token de remplissage public (Phase 1.x Vague 3). Si non-null, la lib
   /// expose une page sans auth à `/data-fill/<token>` où un externe peut
   /// soumettre des fiches. Le token est révocable / régénérable depuis l'admin.
-  publicFillToken String?        @unique
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  publicFillToken String?                    @unique
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
   campaigns       DataCampaign[]
+  cursors         AccountDataLibraryCursor[]
 }
 
 /// Cycle de données (ex: "RPI Q1 2026"). Une fiche active à la fois par library.
@@ -644,15 +645,16 @@ model DataEntry {
 
 /// Compte Instagram client géré par l'admin (pas de login propre dans l'app).
 model InstagramAccount {
-  id               String                 @id @default(cuid())
+  id               String                     @id @default(cuid())
   name             String
   /// Handle Instagram sans le @
-  handle           String                 @unique
+  handle           String                     @unique
   clientId         String?
-  client           Client?                @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  createdAt        DateTime               @default(now())
-  updatedAt        DateTime               @updatedAt
+  client           Client?                    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
   cursors          AccountLibraryCursor[]
+  dataCursors      AccountDataLibraryCursor[]
   renders          Render[]
   publicationSlots PublicationSlot[]
   assetAccesses    MediaAssetAccess[]
@@ -725,6 +727,26 @@ model AccountLibraryCursor {
   /// Dernier setTag utilisé — permet d'éviter deux fois le même groupe de suite (mode auto et override)
   lastUsedSetTag   String?
   /// Dernière catégorie utilisée — pour l'exclusion famille en mode auto (deux sets de même catégorie ne se suivent pas)
+  lastUsedCategory String?
+  lastAdvancedAt   DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([accountId, libraryId])
+}
+
+/// Curseur de rotation par compte pour une DataLibrary (mirror simplifié de AccountLibraryCursor).
+/// Garde la dernière catégorie et le dernier setTag utilisés pour permettre l'exclusion consécutive
+/// en mode auto. Pas de `cursor` Int (DataLibrary n'a pas encore de setSequence/mode override).
+model AccountDataLibraryCursor {
+  id               String           @id @default(cuid())
+  accountId        String
+  account          InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  libraryId        String
+  library          DataLibrary      @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  /// Dernier setTag utilisé par ce compte sur cette lib — évite de répéter deux fois le même set de suite.
+  lastUsedSetTag   String?
+  /// Dernière catégorie utilisée — pour l'exclusion famille en mode auto (deux sets de même catégorie ne se suivent pas).
   lastUsedCategory String?
   lastAdvancedAt   DateTime?
   createdAt        DateTime         @default(now())
