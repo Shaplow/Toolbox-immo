@@ -169,8 +169,17 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
           setLibrarySelections((prev) => ({ ...prev, ...newSuggestions }));
           setValues((prev) => {
             const patch: Record<string, unknown> = {};
+            // 1) URLs médias depuis initialSuggestions.
             for (const [k, v] of Object.entries(newSuggestions)) {
               if (v?.url) patch[k] = v.url;
+            }
+            // 2) Champs data depuis updatedInitialValues, scopés aux clés
+            //    réellement prefill par la DataEntry (évite d'écraser ce que
+            //    l'user a tapé sur d'autres champs).
+            for (const key of data.context?.prefilledDataKeys ?? []) {
+              if (data.updatedInitialValues[key] !== undefined) {
+                patch[key] = data.updatedInitialValues[key];
+              }
             }
             return Object.keys(patch).length > 0 ? { ...prev, ...patch } : prev;
           });
