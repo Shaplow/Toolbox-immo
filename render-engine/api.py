@@ -739,7 +739,13 @@ async def render_sequence_local(request: Request):
 
         # ── Concat ────────────────────────────────────────────────────────────
         combined_path = work_dir / f"seq_{stamp}_combined.mp4"
-        if len(clip_paths) == 1:
+        # Si un seul clip ET pas de cap global → réutilise direct.
+        # Sinon, on doit re-encoder pour appliquer `-t _global_max_duration`
+        # (canvas.maxDuration du template) qui tronque/pad la sortie finale.
+        # Avant ce fix, `_global_max_duration` était lu mais jamais utilisé →
+        # la vidéo finale gardait la durée native cumulée des clips, ignorant
+        # le cap canvas configuré dans le builder.
+        if len(clip_paths) == 1 and _global_max_duration is None:
             combined_path = clip_paths[0]
         else:
             concat_list = work_dir / f"seq_{stamp}_concat.txt"
@@ -751,9 +757,14 @@ async def render_sequence_local(request: Request):
                 "ffmpeg", "-y",
                 "-f", "concat", "-safe", "0",
                 "-i", str(concat_list),
-                "-c", "copy",
-                str(combined_path),
             ]
+            # Cap final si canvas.maxDuration défini — re-encode requis
+            # (le `-c copy` ne respecte pas `-t` strictement avec concat demuxer).
+            if _global_max_duration is not None and _global_max_duration > 0:
+                concat_cmd += ["-t", str(_global_max_duration), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "aac"]
+            else:
+                concat_cmd += ["-c", "copy"]
+            concat_cmd.append(str(combined_path))
             try:
                 proc = await asyncio.to_thread(_sp.run, concat_cmd, capture_output=True, text=True, timeout=5 * 60)
             except _sp.TimeoutExpired:

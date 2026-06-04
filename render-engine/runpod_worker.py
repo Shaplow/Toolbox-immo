@@ -1325,11 +1325,17 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
         # ── Phase 4: Apply global max_duration cap (optional) ─────────────────
         if _global_max_duration is not None:
             capped_path = tmp_path / f"capped_{stamp}.mp4"
+            # Bugfix : avant on faisait `-t X -c copy` qui coupe au keyframe le
+            # plus proche → si le clip dure 6.48s avec un keyframe avant 6s, on
+            # gardait toutes les frames jusqu'au GOP suivant, output > 6s. On
+            # re-encode pour cap PRÉCISÉMENT à la frame (audio stream-copy OK
+            # car AAC frame size faible).
             cap_cmd = [
                 "ffmpeg", "-y",
                 "-i", str(final_path),
                 "-t", str(_global_max_duration),
-                "-c", "copy",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                "-c:a", "copy",
                 str(capped_path),
             ]
             print(f"[worker/render_sequence] Applying global max_duration={_global_max_duration}s")
