@@ -154,7 +154,14 @@ export function renderTextBlock(
 
     const spanStyle = spanParts.join(";");
     const textStyle = "position:relative";
-    const wrapperStyle = `width:100%;position:relative;text-align:${textAlign};${shouldApplyPerLineGoo && perLineGooFilterId ? `filter:url(#${perLineGooFilterId});` : ""}overflow:visible`;
+    // Bugfix : en per-line mode, le wrapper portait toujours `overflow:visible`
+    // et n'appliquait jamais le maxLines (qui était sur innerStyle, jamais utilisé
+    // ici). On bascule sur display:-webkit-box + WebkitLineClamp quand maxLines
+    // est défini — le span avec decoration-break:clone reste compatible.
+    const perLineMaxLinesStyle = rules.maxLines
+      ? `display:-webkit-box;-webkit-line-clamp:${rules.maxLines};-webkit-box-orient:vertical;overflow:hidden;`
+      : "overflow:visible";
+    const wrapperStyle = `width:100%;position:relative;text-align:${textAlign};${shouldApplyPerLineGoo && perLineGooFilterId ? `filter:url(#${perLineGooFilterId});` : ""}${perLineMaxLinesStyle}`;
     const bridgeStyle = bridgeMetrics.width > 0
       ? [
           "position:absolute",

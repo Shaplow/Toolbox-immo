@@ -1430,7 +1430,16 @@ function BlockPreview({
     const baseFontSize = baseTextFontSizePx;
     if (!contentNode || !baseFontSize) return;
 
-    if (!block.rules.shrinkToFit || !block.rules.minFontSize) return;
+    if (!block.rules.shrinkToFit || !block.rules.minFontSize) {
+      // Bugfix : si l'user a désactivé shrinkToFit après l'avoir activé,
+      // remet la taille de base pour ne pas garder une fontSize fittée stale.
+      // Async via rAF pour respecter la règle react-hooks/set-state-in-effect.
+      if (fittedFontSizePx !== null) {
+        const resetId = window.requestAnimationFrame(() => setFittedFontSizePx(null));
+        return () => window.cancelAnimationFrame(resetId);
+      }
+      return;
+    }
 
     const backgroundEnabled = isTextBackgroundEnabled(block.style);
     const backgroundMode = getTextBackgroundMode(block.style);
@@ -1448,10 +1457,23 @@ function BlockPreview({
     const step = Math.max(0.5, styleScale * 0.5);
     let nextFontSize = baseFontSize;
 
+    // En per-line mode, le ref pointe sur un span inline → scrollHeight/scrollWidth
+    // sont peu fiables. On utilise getBoundingClientRect qui mesure les "line boxes"
+    // visuelles du span (incluant decoration-break clone).
+    const isInlineSpan = backgroundEnabled && backgroundMode === "per-line";
+    const measure = (): { width: number; height: number } => {
+      if (isInlineSpan) {
+        const rect = contentNode.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      }
+      return { width: contentNode.scrollWidth, height: contentNode.scrollHeight };
+    };
+
     contentNode.style.fontSize = `${baseFontSize}px`;
     while (nextFontSize > minFontSizePx) {
-      const overflowsHeight = contentNode.scrollHeight - 0.5 > availableHeight;
-      const overflowsWidth = contentNode.scrollWidth - 0.5 > availableWidth;
+      const { width, height } = measure();
+      const overflowsHeight = height - 0.5 > availableHeight;
+      const overflowsWidth = width - 0.5 > availableWidth;
       if (!overflowsHeight && !overflowsWidth) break;
 
       nextFontSize = Math.max(minFontSizePx, nextFontSize - step);
@@ -1465,7 +1487,7 @@ function BlockPreview({
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [baseTextFontSizePx, block, fontMetricsVersion, styleScale]);
+  }, [baseTextFontSizePx, block, fontMetricsVersion, styleScale, fittedFontSizePx]);
 
   let content: React.ReactNode;
 
@@ -1595,6 +1617,18 @@ function BlockPreview({
         const textContent = displayContent !== undefined
           ? (displayContent || <span style={{ opacity: 0.35 }}>Texte…</span>)
           : (block.binding ? `{{${block.binding}}}` : (block.staticText || <span style={{ opacity: 0.35 }}>Texte…</span>));
+        // Bugfix : en per-line mode, maxLines était ignoré (le clamp s'appliquait
+        // sur innerTextStyle qui n'est utilisé qu'en mode normal/fixed). On
+        // applique le webkit-line-clamp sur le wrapper block-text-align — le
+        // span inner avec decoration-break clone continue de fonctionner.
+        const perLineMaxLinesStyle: React.CSSProperties = block.rules.maxLines
+          ? {
+              display: "-webkit-box",
+              WebkitLineClamp: block.rules.maxLines,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }
+          : {};
         content = (
           <div style={{ ...style, display: "flex", flexDirection: "column", justifyContent, overflow: "visible" }}>
             <div
@@ -1604,7 +1638,8 @@ function BlockPreview({
                 position: "relative",
                 textAlign,
                 filter: shouldApplyPerLineGoo && perLineGooFilterId ? `url(#${perLineGooFilterId})` : undefined,
-                overflow: "visible",
+                ...perLineMaxLinesStyle,
+                ...(block.rules.maxLines ? {} : { overflow: "visible" }),
               }}
             >
               {bridgeStyle ? <span aria-hidden="true" style={bridgeStyle} /> : null}
