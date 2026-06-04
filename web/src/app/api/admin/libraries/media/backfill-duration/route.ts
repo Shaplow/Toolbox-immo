@@ -22,11 +22,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import path from "path";
+import { existsSync } from "fs";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
 const execFileAsync = promisify(execFile);
 const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
+
+/**
+ * Résout une URL d'asset en target probeable par ffprobe :
+ *  - "/uploads/xyz.mp4" (dev sans R2) → chemin filesystem absolu vers
+ *    web/public/uploads/xyz.mp4 si existe.
+ *  - URL absolue (R2 / https) → renvoyée telle quelle.
+ *  - Tout autre cas → renvoyée telle quelle, ffprobe tentera.
+ */
+function resolveProbeTarget(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith("/uploads/")) {
+    const localPath = path.join(process.cwd(), "public", url);
+    if (existsSync(localPath)) return localPath;
+  }
+  return url;
+}
 
 async function probeDurationFromRenderEngine(url: string): Promise<number | null> {
   try {
@@ -46,17 +64,29 @@ async function probeDurationFromRenderEngine(url: string): Promise<number | null
 }
 
 async function probeDuration(url: string): Promise<number | null> {
-  // ffprobe local first (works on prod server with ffmpeg installed)
+  const target = resolveProbeTarget(url);
+  // ffprobe local en premier (fonctionne sur path fichier ET URL HTTPS).
   try {
     const { stdout } = await execFileAsync(
       "ffprobe",
-      ["-v", "error", "-show_entries", "format=duration", "-of", "json", url],
+      ["-v", "error", "-show_entries", "format=duration", "-of", "json", target],
       { timeout: 30_000 },
     );
     const d = parseFloat((JSON.parse(stdout) as { format?: { duration?: string } }).format?.duration ?? "");
     if (!isNaN(d) && d > 0) return d;
-  } catch { /* fall through to render-engine */ }
-  return probeDurationFromRenderEngine(url);
+  } catch { /* fall through */ }
+
+  // Si le target était un path local /uploads/ qui n'existe pas, render-engine
+  // ne pourra pas le récupérer non plus → on skip le fallback.
+  if (target !== url && !target.startsWith("/")) {
+    // target a été résolu en path filesystem → on a déjà tenté localement.
+    return null;
+  }
+  if (target.startsWith("/uploads/")) {
+    // Path relatif non résolu en local → render-engine ne pourra pas le download.
+    return null;
+  }
+  return probeDurationFromRenderEngine(target);
 }
 
 export async function POST(req: NextRequest) {
