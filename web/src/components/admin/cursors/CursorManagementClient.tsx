@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { Library, Database, RefreshCw } from "lucide-react";
+import { Library, Database, RefreshCw, BookOpen } from "lucide-react";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
@@ -163,6 +163,7 @@ export function CursorManagementClient({ mediaLibraries, dataLibraries }: Props)
       {/* ── Table curseurs ─────────────────────────────────────── */}
       {!libraryId ? (
         <EmptyState
+          icon={BookOpen}
           title="Sélectionner une bibliothèque"
           description="Choisissez un type et une bibliothèque pour visualiser et ajuster les curseurs de rotation."
         />

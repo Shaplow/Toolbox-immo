@@ -105,6 +105,31 @@ const SURFACES: Surface[] = [
     wait: 800,
     desc: "Vue calendrier hebdo des slots",
   },
+  // ── Nouvelles surfaces 2026-06-04 (Phase 5 + length validation + validate fix) ──
+  {
+    name: "07-admin-cursors-empty",
+    path: "/admin/cursors",
+    wait: 800,
+    desc: "Page /admin/cursors (Phase 5) — selector lib vide, état initial",
+  },
+  {
+    name: "08-admin-libraries-hub",
+    path: "/admin/libraries",
+    wait: 600,
+    desc: "Hub Ressources — entrée centrale Media / Data / Fonts / Prompts",
+  },
+  {
+    name: "09-admin-libraries-data",
+    path: "/admin/libraries/data",
+    wait: 800,
+    desc: "Liste DataLibrary — vérifier bulk-edit access disponible sur une lib",
+  },
+  {
+    name: "10-validate-token-invalid",
+    path: "/validate/invalid-token-test-12345",
+    wait: 600,
+    desc: "Page validation client avec token invalide — vérifier not-found dédié (commit 11f5866)",
+  },
 ];
 
 // ─── SCENARIOS (workflows multi-pages) ──────────────────────────────────────

@@ -13,7 +13,7 @@
  */
 
 import { useState } from "react";
-import { ArrowUp, ArrowDown, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { ArrowUp, ArrowDown, RotateCcw, SlidersHorizontal, Users } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -127,6 +127,7 @@ export function CursorAccountList({
   if (rows.length === 0) {
     return (
       <EmptyState
+        icon={Users}
         title="Aucun curseur"
         description="Cette bibliothèque n'a pas encore de curseur enregistré. Les curseurs sont créés automatiquement à la première génération."
       />
