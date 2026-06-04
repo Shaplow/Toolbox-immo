@@ -86,6 +86,18 @@ export const PHASE_LABELS: Record<PublicationPhase, string> = {
   terminated: "Terminé",
 };
 
+/** Badge label compact (1 mot) pour la SlotCard du calendrier. */
+export const PHASE_BADGE_LABELS: Record<PublicationPhase, string> = {
+  planned: "Planifié",
+  shooting: "Shoot",
+  production: "Production",
+  admin_review: "Validation",
+  cm_review: "Finalisation",
+  publishing: "Publication",
+  published: "Publié",
+  terminated: "Terminé",
+};
+
 // ── Couleurs (Tailwind classes) ───────────────────────────────────────────────
 
 /**

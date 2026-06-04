@@ -17,7 +17,7 @@ import { Settings2 } from "lucide-react";
 import { AvatarGroup } from "@/components/ui/Avatar";
 import { type PublicationSlot } from "@/types/calendar";
 import { resolveSlotOwner } from "@/lib/slots/statusLabels";
-import { getPublicationPhase, PHASE_LABELS } from "@/lib/slots/phase";
+import { getPublicationPhase, PHASE_LABELS, PHASE_BADGE_LABELS, PHASE_COLORS } from "@/lib/slots/phase";
 import type { UserRole } from "@/types/roles";
 import { SOURCE_LABELS_FR } from "@/lib/ui/domainLabels";
 
@@ -30,25 +30,14 @@ interface SlotCardProps {
   currentUserId?: string;
 }
 
-// Couleur du dot leading par phase — cohérent avec PHASE_DOT existant.
-const PHASE_DOT_COLOR: Record<ReturnType<typeof getPublicationPhase>, string> = {
-  planned: "bg-gray-400",
-  shooting: "bg-peach-500",
-  production: "bg-stone-500",
-  admin_review: "bg-peach-500",
-  cm_review: "bg-sky-500",
-  publishing: "bg-info-500",
-  published: "bg-success-500",
-  terminated: "bg-gray-300",
-};
-
 export function SlotCard({ slot, onClick, onOpenDrawer, currentUserRole, currentUserId }: SlotCardProps) {
   const time = new Date(slot.scheduledAt).toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
   });
   const phase = getPublicationPhase(slot.status);
-  const phaseDotColor = PHASE_DOT_COLOR[phase];
+  const phaseBadgeLabel = PHASE_BADGE_LABELS[phase];
+  const phaseBadgeColor = PHASE_COLORS[phase];
   const ownerRole = resolveSlotOwner(slot);
 
   const isMine =
@@ -99,22 +88,16 @@ export function SlotCard({ slot, onClick, onOpenDrawer, currentUserRole, current
           : "",
       ].filter(Boolean).join(" ")}
     >
-      {/* Ligne 1 : dot phase + heure + status discret + (hover) roue édition rapide */}
+      {/* Ligne 1 : badge phase explicite (1 mot, couleur) + heure + (hover) roue */}
       <div className="flex items-center gap-2">
         <span
-          className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${phaseDotColor}`}
-          aria-hidden
-          title={PHASE_LABELS[phase]}
-        />
-        <span className="text-[11px] font-mono text-gray-600 tabular-nums font-medium">
-          {time}
-        </span>
-        {/* Status en cours — hyper discret, tronqué si trop long. */}
-        <span
-          className="text-[9.5px] uppercase tracking-widest text-gray-300 truncate min-w-0"
+          className={`inline-flex items-center px-1.5 py-0.5 rounded-md border text-[9px] font-semibold uppercase tracking-wider shrink-0 ${phaseBadgeColor}`}
           title={PHASE_LABELS[phase]}
         >
-          · {PHASE_LABELS[phase]}
+          {phaseBadgeLabel}
+        </span>
+        <span className="text-[11px] font-mono text-gray-600 tabular-nums font-medium">
+          {time}
         </span>
         {/* Mini roue : visible au hover seulement. Click → open drawer (édition
             rapide / suppression). e.stopPropagation pour ne pas trigger onClick
@@ -148,10 +131,10 @@ export function SlotCard({ slot, onClick, onOpenDrawer, currentUserRole, current
         </p>
       )}
 
-      {/* Ligne 4 : handle + avatars */}
+      {/* Ligne 4 : nom du compte + avatars */}
       <div className="mt-2.5 flex items-center justify-between gap-1.5 min-h-[16px]">
-        <span className="text-[11px] text-gray-500 truncate">
-          @{slot.account.handle}
+        <span className="text-[11px] text-gray-500 truncate" title={`@${slot.account.handle}`}>
+          {slot.account.name}
         </span>
         {avatars.length > 0 && (
           <AvatarGroup avatars={avatars} max={3} size="xs" />
