@@ -645,62 +645,37 @@ async def render_sequence_local(request: Request):
             )
 
             if timed_slot:
-                seg_clip_paths: list[Path] = []
-                for seg_i, seg in enumerate(slot_segments):  # type: ignore[possibly-undefined]
-                    seg_b64 = overlay_data_list[seg["index"]] if overlay_data_list[seg["index"]] else None  # type: ignore[possibly-undefined]
-                    seg_dur: float | None = (seg["end"] - seg["start"]) if seg["end"] is not None else None
-                    if seg_dur is not None and max_dur is not None:
-                        seg_dur = min(seg_dur, max_dur - seg["start"])
-                    seg_out = work_dir / f"seq_{stamp}_slot{i}_seg{seg_i}.mp4"
-
-                    # `-ss` APRÈS `-i` = output seek (frame-precise) +
-                    # `-c copy` = pas de re-encode. Le re-encode produisait
-                    # un fichier qui crashait le filtergraph suivant
-                    # ("Stream specifier ':v' matches no streams").
-                    trim_path = work_dir / f"seq_{stamp}_slot{i}_seg{seg_i}_trim.mp4"
-                    trim_cmd = [
-                        "ffmpeg", "-y",
-                        "-i", str(video_path),
-                        "-ss", str(seg["start"]),
-                        *(["-t", str(seg_dur)] if seg_dur is not None else []),
-                        "-c", "copy",
-                        str(trim_path),
-                    ]
-                    await asyncio.to_thread(_sp.run, trim_cmd, capture_output=True, check=True, timeout=2 * 60)
-
-                    if seg_b64:
-                        seg_overlay_path = work_dir / f"seq_{stamp}_slot{i}_seg{seg_i}_overlay.png"
-                        seg_overlay_path.write_bytes(base64.b64decode(seg_b64))
-                        seg_cmd = build_template_ffmpeg_cmd(
-                            video_path=trim_path, overlay_path=seg_overlay_path, out_path=seg_out,
-                            block=normalized_block, video_codec=_codec, video_codec_args=_codec_args,
-                            audio_codec=_audio_codec, audio_codec_args=_audio_args,
-                            max_duration=None, source_has_audio=video_info.has_audio,
-                            mute_source=slot_mute_source, source_volume=slot_source_volume,
+                # Timed overlays : un SEUL ffmpeg call sur le clip complet via
+                # build_template_ffmpeg_cmd_timed qui applique chaque overlay
+                # avec enable='between(t,X,Y)'. Frame-precise par construction,
+                # pas de trim+concat (qui accumulait des bugs : keyframe-snap
+                # + "Stream specifier ':v' matches no streams").
+                slot_overlay_paths: list[Path] = []
+                for ovl_i, ovl_b64 in enumerate(overlay_data_list):  # type: ignore[possibly-undefined]
+                    if ovl_b64 is None:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"slot {slot_id} : overlay index {ovl_i} est null — non supporté en timed mode",
                         )
-                    else:
-                        seg_cmd = build_template_ffmpeg_cmd_video_only(
-                            video_path=trim_path, out_path=seg_out,
-                            block=normalized_block, video_codec=_codec, video_codec_args=_codec_args,
-                            audio_codec=_audio_codec, audio_codec_args=_audio_args,
-                            max_duration=None, source_has_audio=video_info.has_audio,
-                            mute_source=slot_mute_source, source_volume=slot_source_volume,
-                        )
-                    proc = await asyncio.to_thread(_sp.run, seg_cmd, capture_output=True, text=True, timeout=10 * 60)
-                    if proc.returncode != 0:
-                        raise HTTPException(status_code=500, detail=f"FFmpeg timed-overlay error slot={slot_id} seg={seg_i}: {proc.stderr[-800:]}")
-                    seg_clip_paths.append(seg_out)
+                    ovl_path = work_dir / f"seq_{stamp}_slot{i}_overlay{ovl_i}.png"
+                    ovl_path.write_bytes(base64.b64decode(ovl_b64))
+                    slot_overlay_paths.append(ovl_path)
 
-                if len(seg_clip_paths) == 1:
-                    clip_path = seg_clip_paths[0]
-                else:
-                    seg_concat = work_dir / f"seq_{stamp}_slot{i}_segconcat.txt"
-                    seg_concat.write_text("\n".join(f"file '{p.resolve()}'" for p in seg_clip_paths), encoding="utf-8")
-                    concat_proc = await asyncio.to_thread(_sp.run, [
-                        "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(seg_concat), "-c", "copy", str(clip_path)
-                    ], capture_output=True, text=True, timeout=5 * 60)
-                    if concat_proc.returncode != 0:
-                        raise HTTPException(status_code=500, detail=f"FFmpeg timed-overlay concat error slot={slot_id}: {concat_proc.stderr[-800:]}")
+                seg_cmd = build_template_ffmpeg_cmd_timed(
+                    video_path=video_path,
+                    overlay_paths=slot_overlay_paths,
+                    out_path=clip_path,
+                    block=normalized_block,
+                    segments=slot_segments,  # type: ignore[possibly-undefined]
+                    video_codec=_codec, video_codec_args=_codec_args,
+                    audio_codec=_audio_codec, audio_codec_args=_audio_args,
+                    max_duration=max_dur,
+                    source_has_audio=video_info.has_audio,
+                    mute_source=slot_mute_source, source_volume=slot_source_volume,
+                )
+                proc = await asyncio.to_thread(_sp.run, seg_cmd, capture_output=True, text=True, timeout=10 * 60)
+                if proc.returncode != 0:
+                    raise HTTPException(status_code=500, detail=f"FFmpeg timed-overlay error slot={slot_id}: {proc.stderr[-800:]}")
             else:
                 if overlay_data:  # type: ignore[possibly-undefined]
                     overlay_path = work_dir / f"seq_{stamp}_slot{i}_overlay.png"

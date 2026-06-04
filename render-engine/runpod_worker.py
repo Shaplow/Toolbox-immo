@@ -1101,80 +1101,42 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                 return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10 * 60)
 
             if timed_slot:
-                # Timed overlays: build a sub-clip per segment, then concat them into clip_path
-                seg_clip_paths: list[Path] = []
-                for seg_i, seg in enumerate(slot_segments):  # type: ignore[possibly-undefined]
-                    seg_overlay_url = slot_overlay_urls[seg["index"]] if slot_overlay_urls[seg["index"]] else None  # type: ignore[possibly-undefined]
-                    seg_dur: float | None = (seg["end"] - seg["start"]) if seg["end"] is not None else None
-                    if seg_dur is not None and max_dur is not None:
-                        seg_dur = min(seg_dur, max_dur - seg["start"])
-                    seg_out = tmp_path / f"slot_{i}_seg{seg_i}_{stamp}.mp4"
-
-                    # Trim source video to the segment window.
-                    # `-ss` AFTER `-i` = output seek (frame-precise) avec
-                    # `-c copy` qui copie le stream depuis la frame demandée
-                    # sans re-encode. Cela évite à la fois (a) le keyframe-snap
-                    # de `-ss X -c copy` avant -i (bug observé : segment vide)
-                    # et (b) les risques d'un re-encode (le re-encode produisait
-                    # un fichier qui crashait le filtergraph en aval — Input #0
-                    # absent / Stream specifier ':v' matches no streams).
-                    trim_path = tmp_path / f"slot_{i}_seg{seg_i}_trim_{stamp}.mp4"
-                    trim_cmd = [
-                        "ffmpeg", "-y",
-                        "-i", str(video_path),
-                        "-ss", str(seg["start"]),
-                        *(["-t", str(seg_dur)] if seg_dur is not None else []),
-                        "-c", "copy",
-                        str(trim_path),
-                    ]
-                    subprocess.run(trim_cmd, capture_output=True, check=True, timeout=2 * 60)
-
-                    if seg_overlay_url:
-                        seg_overlay_path = tmp_path / f"slot_{i}_seg{seg_i}_overlay_{stamp}.png"
-                        _download_file(seg_overlay_url, seg_overlay_path)
-                        seg_cmd = build_template_ffmpeg_cmd(
-                            video_path=trim_path,
-                            overlay_path=seg_overlay_path,
-                            out_path=seg_out,
-                            block=normalized_block,
-                            video_codec=codec,
-                            video_codec_args=codec_args,
-                            audio_codec=audio_codec,
-                            audio_codec_args=audio_args,
-                            max_duration=None,
-                            source_has_audio=video_info.has_audio,
-                            mute_source=slot_mute_source,
-                            source_volume=slot_source_volume,
+                # Timed overlays : un SEUL ffmpeg call sur le clip complet avec
+                # `enable='between(t,X,Y)'` par overlay (via build_template_filter
+                # _complex_timed). Approche frame-precise par construction, sans
+                # avoir besoin de trim+concat (l'ancienne implementation cumulait
+                # des bugs : keyframe-snap sur `-ss avant -i`, et "Stream
+                # specifier ':v' matches no streams" sur ré-encode/output-seek).
+                # Mirror exact du single-clip pipeline (l. ~811).
+                slot_overlay_paths: list[Path] = []
+                for ovl_i, ovl_url in enumerate(slot_overlay_urls):  # type: ignore[possibly-undefined]
+                    if ovl_url is None:
+                        # Un overlay null = état "pas d'overlay" (rare mais possible).
+                        # On télécharge un PNG transparent dummy ? Pour l'instant on
+                        # require que tous les overlays soient non-null ici.
+                        raise RuntimeError(
+                            f"slot {slot_id} : overlay index {ovl_i} est null — non supporté en timed mode"
                         )
-                    else:
-                        seg_cmd = build_template_ffmpeg_cmd_video_only(
-                            video_path=trim_path,
-                            out_path=seg_out,
-                            block=normalized_block,
-                            video_codec=codec,
-                            video_codec_args=codec_args,
-                            audio_codec=audio_codec,
-                            audio_codec_args=audio_args,
-                            max_duration=None,
-                            source_has_audio=video_info.has_audio,
-                            mute_source=slot_mute_source,
-                            source_volume=slot_source_volume,
-                        )
-                    subprocess.run(seg_cmd, capture_output=True, check=True, timeout=10 * 60)
-                    seg_clip_paths.append(seg_out)
+                    ovl_path = tmp_path / f"slot_{i}_overlay{ovl_i}_{stamp}.png"
+                    _download_file(ovl_url, ovl_path)
+                    slot_overlay_paths.append(ovl_path)
 
-                if len(seg_clip_paths) == 1:
-                    clip_path = seg_clip_paths[0]
-                else:
-                    seg_concat_list = tmp_path / f"slot_{i}_segconcat_{stamp}.txt"
-                    seg_concat_list.write_text(
-                        "\n".join(f"file '{p.resolve()}'" for p in seg_clip_paths),
-                        encoding="utf-8",
-                    )
-                    subprocess.run(
-                        ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(seg_concat_list), "-c", "copy", str(clip_path)],
-                        capture_output=True, check=True, timeout=5 * 60
-                    )
+                seg_cmd = build_template_ffmpeg_cmd_timed(
+                    video_path=video_path,
+                    overlay_paths=slot_overlay_paths,
+                    out_path=clip_path,
+                    block=normalized_block,
+                    segments=slot_segments,  # type: ignore[possibly-undefined]
+                    video_codec=codec,
+                    video_codec_args=codec_args,
+                    audio_codec=audio_codec,
+                    audio_codec_args=audio_args,
+                    max_duration=max_dur,
+                    source_has_audio=video_info.has_audio,
+                    mute_source=slot_mute_source,
+                    source_volume=slot_source_volume,
+                )
+                subprocess.run(seg_cmd, capture_output=True, check=True, timeout=10 * 60)
             else:
                 try:
                     result = _run_slot_ffmpeg(codec, codec_args, audio_codec, audio_args)
