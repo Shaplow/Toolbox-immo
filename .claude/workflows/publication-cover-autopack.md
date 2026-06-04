@@ -1,7 +1,7 @@
 ---
 slug: publication-cover-autopack
 name: Publication — cover autoPack (extraction frames + sélection CM)
-generatedAt: 2026-06-01T00:00:00Z
+generatedAt: 2026-06-04T00:00:00Z
 ---
 
 # Publication — cover autoPack
@@ -46,6 +46,19 @@ flowchart LR
 | POST webhook | `/api/webhooks/runpod/renders` | `route.ts:140` | `triggerAutoCoverPackForRender` fire-and-forget post-DONE |
 
 ## Helpers / triggers
+
+### Source de la vidéo pour extraction (Phase 2 — commit `e401d3a`)
+
+Avant fix : `prepareCoverFramePack` utilisait `pack.sourceVideoUrl` qui pointait sur la **vidéo finale rendue** (avec overlays texte + DPE + etc.) → les frames extraites contenaient les overlays.
+
+Fix : `resolveNativeCoverSources` (`coverAuto.ts:240-300`) parcourt `template.videoSequence` ou `template.blocks` (videoBlocks) et résout `sourceUrl` via :
+- **`resolveSlotNativeUrl`** : pour les slots de videoSequence, lookup direct MediaAsset.
+- **`resolveVideoBlockNativeUrl`** : pour VideoBlock standalone, lookup via `usedAssets.videoAssets[blockId]` → `MediaAsset.url` du clip de base R2.
+- Fallback `pack.sourceVideoUrl` (vidéo finale) UNIQUEMENT si aucune source native résolue (rétro-compat).
+
+Conséquence : les frames cover candidates sont extraites du clip de base brut, sans overlays.
+
+### Helpers / triggers (legacy section)
 
 - `web/src/lib/coverAuto.ts:565` — **`triggerAutoCoverPackForRender()`** : gates centralisées :
   - `pattern.coverMode === "autoPack"`

@@ -1,14 +1,16 @@
 ---
 slug: admin-rotation-cursor-reset
-name: Admin — reset des curseurs de rotation par compte
-generatedAt: 2026-06-01T12:30:00Z
+name: Admin — reset + ajustement manuel des curseurs de rotation
+generatedAt: 2026-06-04T00:00:00Z
 ---
 
-# Admin rotation cursor reset
+# Admin rotation — reset + ajustement manuel
 
 ## Pitch
 
-Action admin pour réinitialiser tous les curseurs de rotation (`AccountLibraryCursor`) d'un compte Instagram à 0. Permet de repartir du début de la séquence d'assets/données pour ce compte (rotation `theme_sequence`). Utilisé typiquement quand on a fini un cycle, qu'on veut faire un démo / test, ou que la rotation a dévié et qu'on veut tout reset.
+Deux surfaces admin pour piloter les cursors :
+1. **Reset compte** (`/admin/accounts/[id]`) — wipe tous les `AccountLibraryCursor` d'un compte à `cursor=0, lastAdvancedAt=null`.
+2. **Ajustement par lib** (`/admin/cursors`, Phase 5 — commit `060564a`) — UI top-level pour modifier manuellement `cursor`, `lastUsedSetTag`, `lastUsedCategory` pour un (lib × compte) précis. Couvre Media + Data.
 
 Trigger : bouton `RefreshCw` dans la row d'un compte IG sur `/admin/clients` ou `/admin/accounts` → `ConfirmDialog` "irréversible" → `POST /api/admin/accounts/[id]/cursors/reset` → tous les `AccountLibraryCursor` du compte passent à `cursor=0, lastAdvancedAt=null`.
 
@@ -109,6 +111,46 @@ if (!ctx?.effectiveUser.id || !ctx.canAdminBypass) return 403;
 - Pas de partial reset (impossible de reset juste une library) — c'est tout ou rien
 - Si le compte n'a pas encore de cursor (row pas créée), `updateMany` n'a rien à faire → 200 ok sans erreur
 - N'affecte pas la rotation `shared` (qui utilise `MediaAsset.usageCount`, pas `AccountLibraryCursor`)
+
+## /admin/cursors — UI ajustement manuel (Phase 5, commit `060564a`)
+
+### Surface
+
+Page top-level dans la nav admin. Sélecteur `type` (media|data) + `libraryId`. Liste les comptes ayant accès à la lib (ou un cursor existant) avec leur état actuel.
+
+### Composants
+
+| Composant | Fichier:Ligne | Rôle |
+|---|---|---|
+| Page server | `app/(app)/admin/cursors/page.tsx` | SSR : load libs disponibles |
+| CursorManagementClient | `components/admin/cursors/CursorManagementClient.tsx` | State management, fetch, layout |
+| CursorAccountList | `components/admin/cursors/CursorAccountList.tsx` | Table compte × état + bouton "Ajuster" |
+| CursorAdjustModal | `components/admin/cursors/CursorAdjustModal.tsx` | Modal édition (cursor int, setTag/category strings) |
+
+### Routes API
+
+| Méthode | Path | Fichier | Auth | Effets |
+|---|---|---|---|---|
+| GET | `/api/admin/cursors?type=media\|data&libraryId=X` | `route.ts:35` | canAdminBypass | Liste rows avec scope info |
+| PATCH | `/api/admin/cursors/media/[libraryId]/[accountId]` | `route.ts` | canAdminBypass | UPDATE `AccountLibraryCursor` |
+| PATCH | `/api/admin/cursors/data/[libraryId]/[accountId]` | `route.ts` | canAdminBypass | UPDATE `AccountDataLibraryCursor` |
+
+### Cas d'usage
+
+- **Désaxage** : avancer manuellement le cursor de 2 pour skip un asset en pause.
+- **Sync 2 comptes** : aligner `lastUsedSetTag` de 2 comptes pour leur faire jouer le même thème.
+- **Debug post-incident** : après un revert qui a partiellement échoué, set un état stable connu.
+- **Demo / test** : revenir à une configuration figée pour reproduire un scenario.
+
+### Garde-fous
+
+- Auth strict `canAdminBypass` (impersonation perd l'accès).
+- Validation Zod sur `cursor` (≥ 0).
+- Pas de log activity (action admin technique).
+
+### Préview simulation
+
+Possible de coupler avec `/api/admin/libraries/media/[id]/simulate-rotation?accountId=X` pour vérifier la prochaine sélection AVANT submit du PATCH.
 
 ## Lien avec asset-rotation-engine
 

@@ -1,7 +1,7 @@
 ---
 slug: medialib-admin-crud
-name: MediaLibrary admin — CRUD assets, upload R2, rotation, autocut
-generatedAt: 2026-06-01T00:00:00Z
+name: MediaLibrary admin — CRUD assets, upload R2, rotation, autocut, duration probe
+generatedAt: 2026-06-04T00:00:00Z
 ---
 
 # MediaLibrary admin — CRUD
@@ -79,6 +79,13 @@ flowchart LR
 | POST | `/.../[id]/autocut-packs` | Batch submit Whisper (MediaAutocutBatch) |
 | DELETE | `/.../[id]/autocut-jobs` | Cancel autocut jobs |
 
+### Duration backfill admin (commit `16ab8e1`, 2026-06-04)
+| Méthode | Path | Effets |
+|---|---|---|
+| POST | `/api/admin/libraries/media/backfill-duration` | Probe `duration` pour tous les assets vidéo/audio avec `duration=NULL` (one-shot, optionnel `{ libraryId }`). Délègue à render-engine `/api/probe-duration`. Retour : `{ processed, succeeded, failed }` |
+
+Use case : assets legacy uploadés avant 2026-06-04 (vidéos non probées) restent NULL en DB. La nouvelle validation `block.minDuration` au submit reject ces assets (bug-hunter B10). Le backfill admin permet de tous probéer en masse.
+
 ## Helpers / triggers
 
 - `web/src/lib/r2.ts:105` — `createPresignedUploadUrl` (PUT, contentLength binding)
@@ -105,7 +112,7 @@ flowchart LR
 - DELETE asset : R2 before DB row
 - Phantom cleanup : DB row si presign fail OU si R2 upload jamais completé
 - Edit job blocking : refuse DELETE asset si MediaEditJob pending/processing
-- Duration probe : fire-and-forget ffprobe + render-engine fallback audio
+- Duration probe : fire-and-forget ffprobe + render-engine fallback **pour audio ET vidéo** (depuis commit `16ab8e1` 2026-06-04). Avant : seul l'audio était probé → les vidéos legacy avec `duration=NULL` bypassaient silencieusement le filtre `minDuration`
 - Per-account usage reset : deleteMany MediaAssetUsage pour account spécifique ou tous
 
 ## Variants par rôle

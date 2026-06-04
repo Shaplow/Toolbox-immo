@@ -1,7 +1,7 @@
 ---
 slug: datalib-admin-crud
-name: DataLibrary admin — CRUD fiches, campaigns, CSV import, reset cycle
-generatedAt: 2026-06-01T00:00:00Z
+name: DataLibrary admin — CRUD fiches, campaigns, CSV import, reset cycle, bulk access
+generatedAt: 2026-06-04T00:00:00Z
 ---
 
 # DataLibrary admin — CRUD
@@ -77,6 +77,18 @@ flowchart LR
 | POST | `/.../campaigns/[id]/reset` | Reset global OU per-account |
 | GET | `/.../libraries/[libraryId]/export` | ZIP export (includeFiles, includeUsage) |
 | POST | `/.../libraries/import` | Import ZIP mode "new" ou "merge" |
+
+### Bulk edit access comptes IG (Phase 3.C, commit `9913bb1`)
+| Méthode | Path | Effets |
+|---|---|---|
+| POST | `/.../campaigns/[campaignId]/entries/bulk` | `{ entryIds[], accessAction: "add"\|"remove_all", accountId?, accountIds?[], setTag?, category? }` — mirror exact MediaAsset bulk. createMany skipDuplicates pour add, deleteMany pour remove_all |
+
+UI : `DataEntriesBulkActionBar.tsx` (mirror `MediaAssetsBulkActionBar`) + hook `useBulkEditDataEntries`. Multi-select via checkbox dans `DataEntriesSpreadsheet`, bar sticky bottom avec actions :
+- Ajouter compte(s) IG (multi-select via `Combobox`)
+- Retirer tous les accès (back to global)
+- Bulk setTag / category (alignement thématique d'un lot)
+
+Pas de log activity (action admin technique). Pas d'effet rotation immédiat (les claims existants restent).
 
 ## Helpers / validators
 

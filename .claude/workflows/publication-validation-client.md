@@ -1,7 +1,7 @@
 ---
 slug: publication-validation-client
 name: Publication — validation client (magic link + ping-pong)
-generatedAt: 2026-06-01T00:00:00Z
+generatedAt: 2026-06-04T00:00:00Z
 ---
 
 # Publication — validation client
@@ -86,6 +86,11 @@ Référence : `web/src/lib/services/slot/transitions.ts:44-48`.
   - `triggerAutoDescriptionForTranscription` si description autoGenerate + transcription COMPLETED
   - `triggerAutoCoverPackForRender` si render DONE + autoPack
 - `ActivityTimeline.tsx:158-169` affiche "Client : validé / modifications demandées / annulé (round N)"
+
+## Fixes UI récents (2026-06-04)
+
+- **Bouton "Valider" invisible** (commit `02ad93f`) : `ValidationActions.tsx` utilisait `bg-sage-600`/`hover:bg-sage-700` mais la palette `sage` dans `globals.css` ne définissait que 50/100/200/500/700 → `sage-600` tombait sur var CSS inexistante. Fix : ajout `sage-300/400/600/800/900` dans `globals.css`.
+- **Page 404 dédiée flow validation** (commit `11f5866`) : `web/src/app/validate/[token]/not-found.tsx` affiche un message clair si le token est invalide/expiré au lieu de la 404 globale.
 
 ## Garde-fous métier (V8.10)
 

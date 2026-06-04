@@ -1,7 +1,7 @@
 ---
 slug: generation-render-template
 name: Génération vidéo / image depuis un template
-generatedAt: 2026-06-01T12:30:00Z
+generatedAt: 2026-06-04T00:00:00Z
 ---
 
 # Génération render template
@@ -82,6 +82,15 @@ if (activeSequenceSlots.length > 0) {
 ```
 
 **Symétrie** : `getActiveSequenceSlots` est le miroir de `getActiveVideoBlocks` côté `videoSequence`. Tout slot dont le binding pointe vers un champ schema déclaré mais non visible (showIf=false), ou vers un block masqué par conditionalRules, est filtré — sauf s'il a un `libraryId` de secours (binding library independant).
+
+## Length validation media + music (Phase 4, commit `86dbc2e`)
+
+- **Types** : `VideoBlock.minDuration?: number`, `MusicBlock.minDuration?: number` (`types/template.ts`).
+- **Auto-select** : `generateRender.ts` passe `minDur = block.minDuration ?? slot.maxDuration` à `selectAndClaimMediaAsset`. `buildBurnFilter` combine `maxUsageCount` + duration en un seul SQL fragment.
+- **Manual picker** : `/api/libraries/[libraryId]/assets?minDuration=X` filtre côté API. `LibraryPicker.tsx` grise les assets dont `duration < minDuration` avec tooltip explicatif.
+- **Submit re-validation** (`/api/renders` lines 285-348) : revérifie côté serveur pour défendre contre payload tampered.
+- **Bug-hunter B10** (commit `fa8d931`) : reject explicite si `MediaAsset.duration == null` et `block.minDuration` explicite → message "re-uploadez ou backfill admin".
+- **UI builder** : input "Durée minimale (s)" sur VideoBlock + MusicBlock dans PropertiesPanel.
 
 ## Asset rotation (préfill + advance)
 
