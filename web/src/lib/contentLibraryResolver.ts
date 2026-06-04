@@ -2314,7 +2314,22 @@ export async function selectDataEntry(
               FOR UPDATE OF de SKIP LOCKED
               LIMIT 1`);
             entry = fallback[0] ?? null;
-            // No claim for fallback — it's a cycle restart, DONE will just increment usageCount
+            // Bug-hunter B4 : poser un claim soft (update lastUsedAt=now) pour
+            // que les submits concurrents au cycle restart voient un ordering
+            // mis à jour et choisissent une autre entry. Sans ce claim, plusieurs
+            // submits simultanés peuvent re-sélectionner la même entry au restart
+            // (drift mineur sur usageCount). Comme la condition garantit que
+            // DataEntryUsage existe déjà avec usageCount>=1, l'upsert update
+            // ne touche que lastUsedAt — recordLibraryUsage au DONE incrémentera
+            // normalement, et un revert via DELETE WHERE usageCount=0 sera no-op.
+            if (entry && !readOnly) {
+              await tx.dataEntryUsage.upsert({
+                where: { entryId_accountId: { entryId: entry.id, accountId } },
+                update: { lastUsedAt: new Date() },
+                create: { entryId: entry.id, accountId, usageCount: 0, lastUsedAt: new Date() },
+              });
+              claimState = { entryId: entry.id, campaignId, usagePolicy, claimType: "perAccountUsage", accountId };
+            }
           }
         });
       } else {

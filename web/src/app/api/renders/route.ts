@@ -427,6 +427,30 @@ export async function POST(req: NextRequest) {
     // This replaces the prefill-time advance so abandoning the generate page no longer
     // wastes a rotation slot.
     if (sanitizedUsedAssets.setSequencedLibraryIds?.length && validatedAccountId) {
+      // Bug-hunter B3 : avant, on trust les hints client `usedSetTagByLibrary`
+      // / `usedCategoryByLibrary` pour avancer le cursor `lastUsedSetTag` /
+      // `lastUsedCategory`. Un payload tampered pouvait polluer l'anti-répétition
+      // du run suivant. On re-dérive depuis les assets effectivement choisis
+      // (MediaAsset.setTag/category côté DB), qui sont la source de vérité.
+      // Fallback sur les hints client UNIQUEMENT si aucun assetId n'a été choisi
+      // pour cette lib (cas auto-mode sans manual override).
+      if (sanitizedUsedAssets.videoAssets && Object.keys(sanitizedUsedAssets.videoAssets).length > 0) {
+        const chosenAssetIds = Array.from(new Set(Object.values(sanitizedUsedAssets.videoAssets)));
+        const sequencedSet = new Set(sanitizedUsedAssets.setSequencedLibraryIds);
+        const assets = await prisma.mediaAsset.findMany({
+          where: { id: { in: chosenAssetIds }, libraryId: { in: sanitizedUsedAssets.setSequencedLibraryIds } },
+          select: { libraryId: true, setTag: true, category: true },
+        });
+        const derivedSetTag: Record<string, string> = { ...(sanitizedUsedAssets.usedSetTagByLibrary ?? {}) };
+        const derivedCategory: Record<string, string> = { ...(sanitizedUsedAssets.usedCategoryByLibrary ?? {}) };
+        for (const asset of assets) {
+          if (!sequencedSet.has(asset.libraryId)) continue;
+          if (asset.setTag) derivedSetTag[asset.libraryId] = asset.setTag;
+          if (asset.category) derivedCategory[asset.libraryId] = asset.category;
+        }
+        sanitizedUsedAssets.usedSetTagByLibrary = derivedSetTag;
+        sanitizedUsedAssets.usedCategoryByLibrary = derivedCategory;
+      }
       const advance = await advanceLibraryCursorsOnSubmit(
         sanitizedUsedAssets.setSequencedLibraryIds,
         sanitizedUsedAssets.usedSetTagByLibrary ?? {},
