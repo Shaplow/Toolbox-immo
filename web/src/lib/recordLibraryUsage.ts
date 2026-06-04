@@ -9,7 +9,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
-import { SHARED_CURSOR_ACCOUNT_ID } from "@/lib/contentLibraryResolver";
+import { SHARED_CURSOR_ACCOUNT_ID, SHARED_DATA_CURSOR_ACCOUNT_ID } from "@/lib/contentLibraryResolver";
 
 interface UsedAssets {
   /** blockId → assetId */
@@ -162,6 +162,30 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
           create: { entryId: dataEntryId, accountId, usageCount: 1, lastUsedAt: now },
         })
         .catch((err: unknown) => console.error("[recordLibraryUsage] data entry usage upsert failed:", err));
+    }
+
+    // Bugfix : pour les DataLibrary en `shared` scope, mirror exactement
+    // le pattern MediaAsset (ligne ~210) — on écrit AUSSI une DataEntryUsage
+    // row keyed par SHARED_DATA_CURSOR_ACCOUNT_ID. Sans ça, `selectDataEntry`
+    // qui ordonne par LEFT JOIN DataEntryUsage avec effectiveCursorId =
+    // SHARED_DATA_CURSOR_ACCOUNT_ID (en shared) ne voit JAMAIS d'usage et
+    // re-pioche toujours les mêmes entries (ordre `createdAt` par défaut).
+    // Conséquence observée : l'user reçoit des datas déjà postées.
+    try {
+      const entry = await prisma.dataEntry.findUnique({
+        where: { id: dataEntryId },
+        select: { campaign: { select: { library: { select: { rotationScope: true } } } } },
+      });
+      const isShared = entry?.campaign?.library?.rotationScope === "shared";
+      if (isShared) {
+        await prisma.dataEntryUsage.upsert({
+          where: { entryId_accountId: { entryId: dataEntryId, accountId: SHARED_DATA_CURSOR_ACCOUNT_ID } },
+          update: { usageCount: { increment: 1 }, lastUsedAt: now },
+          create: { entryId: dataEntryId, accountId: SHARED_DATA_CURSOR_ACCOUNT_ID, usageCount: 1, lastUsedAt: now },
+        });
+      }
+    } catch (err) {
+      console.error("[recordLibraryUsage] shared data entry usage upsert failed:", err);
     }
   }
 
