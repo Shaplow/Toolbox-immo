@@ -578,6 +578,7 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
             selectedKeys={bulk.selectedIds}
             onSelectionChange={bulk.setSelectedIds}
             focusBottomSignal={focusBottomSignal}
+            accounts={accounts}
           />
           {/* Sticky bar accès bulk — affichée uniquement si comptes disponibles et sélection active. */}
           {accounts.length > 0 && bulk.selectedIds.size > 0 && (

@@ -487,7 +487,7 @@ const SCENARIOS: Scenario[] = [
       {
         label: "03-detail-data-library",
         action: { type: "goto", path: "/admin/libraries/data/test-data-lib" },
-        settleMs: 800,
+        settleMs: 2200,
       },
     ],
   },
@@ -1019,6 +1019,21 @@ async function seedAdminFixtures(): Promise<void> {
         },
       });
     }
+    // Access fixtures pour audit visuel colonne Accès :
+    //  - Marais : restreint au compte principal (1 avatar)
+    //  - Belleville : restreint au compte principal + 2e compte (2 avatars)
+    //  - Montparnasse : global (no DataEntryAccess row → icône globe)
+    await prisma.dataEntryAccess.deleteMany({
+      where: { entryId: { in: ["test-data-entry-0", "test-data-entry-1"] } },
+    });
+    await prisma.dataEntryAccess.createMany({
+      data: [
+        { entryId: "test-data-entry-0", accountId: account.id },
+        { entryId: "test-data-entry-1", accountId: account.id },
+        { entryId: "test-data-entry-1", accountId: secondAccount.id },
+      ],
+      skipDuplicates: true,
+    });
     console.log(`  ↳ Admin fixtures : medialib usages + data lib seedés (+ 2e compte ${secondAccount.id.slice(0, 8)}…)`);
   } finally {
     await prisma.$disconnect();

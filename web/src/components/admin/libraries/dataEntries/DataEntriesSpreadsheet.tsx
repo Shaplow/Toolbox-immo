@@ -20,12 +20,13 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, Globe2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Chip } from "@/components/ui/Chip";
+import { AvatarGroup } from "@/components/ui/Avatar";
 import { useConfirm } from "@/components/ui/useConfirm";
 import { toast } from "@/components/ui/Toast";
-import type { DataEntry } from "@/components/admin/libraries/DataEntriesPanel";
+import type { DataEntry, InstagramAccount } from "@/components/admin/libraries/DataEntriesPanel";
 
 export type FieldType = "text" | "number" | "url" | "textarea";
 
@@ -47,6 +48,8 @@ interface Props {
   onSelectionChange: (keys: Set<string>) => void;
   /** Quand le panel crée une row vide, il bump ce numéro → on focus la cellule Set de la dernière row. */
   focusBottomSignal: number;
+  /** Liste des comptes IG du client — sert à résoudre les ids dans accessAccountIds. */
+  accounts: InstagramAccount[];
 }
 
 // Widths fixes des cols sticky + schema. table-layout: fixed + colgroup garantit
@@ -55,11 +58,15 @@ interface Props {
 const WIDTH_CHECKBOX = 44;
 const WIDTH_STICKY_CHIP = 140;   // Set & Catégorie
 const WIDTH_FIELD = 180;
+const WIDTH_ACCESS = 110;        // Avatar group (3 max + "+N") OU icône Global
 const WIDTH_ACTIONS = 44;
 
 const OFFSET_CHECKBOX = 0;
 const OFFSET_SET = WIDTH_CHECKBOX;
 const OFFSET_CATEGORY = WIDTH_CHECKBOX + WIDTH_STICKY_CHIP;
+/** Sticky-right offsets (cumulés depuis la droite). */
+const RIGHT_ACTIONS = 0;
+const RIGHT_ACCESS = WIDTH_ACTIONS;
 
 function safeParse(json: string): Record<string, string> {
   try {
@@ -78,7 +85,13 @@ export function DataEntriesSpreadsheet({
   selectedKeys,
   onSelectionChange,
   focusBottomSignal,
+  accounts,
 }: Props) {
+  // Map id → account pour résoudre rapidement les accessAccountIds.
+  const accountsById = useMemo(
+    () => new Map(accounts.map((a) => [a.id, a])),
+    [accounts],
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const { confirm, dialog: confirmDialog } = useConfirm();
@@ -230,6 +243,7 @@ export function DataEntriesSpreadsheet({
               WIDTH_CHECKBOX +
               WIDTH_STICKY_CHIP * 2 +
               WIDTH_FIELD * schema.length +
+              WIDTH_ACCESS +
               WIDTH_ACTIONS,
           }}
         >
@@ -242,6 +256,7 @@ export function DataEntriesSpreadsheet({
             {schema.map((f) => (
               <col key={f.key} style={{ width: WIDTH_FIELD }} />
             ))}
+            <col style={{ width: WIDTH_ACCESS }} />
             <col style={{ width: WIDTH_ACTIONS }} />
           </colgroup>
           <thead className="sticky top-0 z-30">
@@ -280,7 +295,14 @@ export function DataEntriesSpreadsheet({
                 </th>
               ))}
               <th
-                style={{ right: 0 }}
+                style={{ right: RIGHT_ACCESS }}
+                className="sticky z-40 bg-gray-50/95 backdrop-blur-[10px] backdrop-saturate-150 border-b border-l border-gray-200/60 px-2.5 py-2 text-left text-[10px] uppercase tracking-widest font-semibold text-gray-600"
+                title="Comptes IG ayant accès à cette fiche (vide = accessible à tous)"
+              >
+                Accès
+              </th>
+              <th
+                style={{ right: RIGHT_ACTIONS }}
                 className="sticky z-40 bg-gray-50/95 backdrop-blur-[10px] backdrop-saturate-150 border-b border-l border-gray-200/60 px-2 py-2"
                 aria-label="Actions"
               />
@@ -350,7 +372,42 @@ export function DataEntriesSpreadsheet({
                     </td>
                   ))}
                   <td
-                    style={{ right: 0 }}
+                    style={{ right: RIGHT_ACCESS }}
+                    className={[
+                      "sticky z-20 border-b border-l border-gray-200/40 px-2 py-1",
+                      isSelected ? "bg-sky-50/95" : "bg-white/90 group-hover/row:bg-white/95",
+                    ].join(" ")}
+                  >
+                    {r.accessAccountIds.length === 0 ? (
+                      <div
+                        className="inline-flex items-center gap-1 text-gray-400"
+                        title="Accessible à tous les comptes IG"
+                      >
+                        <Globe2 size={12} />
+                        <span className="text-[10px] uppercase tracking-widest font-medium">Global</span>
+                      </div>
+                    ) : (
+                      <div
+                        title={r.accessAccountIds
+                          .map((id) => {
+                            const acc = accountsById.get(id);
+                            return acc ? `@${acc.handle}` : id;
+                          })
+                          .join(" · ")}
+                      >
+                        <AvatarGroup
+                          avatars={r.accessAccountIds.map((id) => {
+                            const acc = accountsById.get(id);
+                            return { id, name: acc?.name ?? acc?.handle ?? id };
+                          })}
+                          max={3}
+                          size="xs"
+                        />
+                      </div>
+                    )}
+                  </td>
+                  <td
+                    style={{ right: RIGHT_ACTIONS }}
                     className={[
                       "sticky z-20 border-b border-l border-gray-200/40 px-1 py-1 text-center",
                       isSelected ? "bg-sky-50/95" : "bg-white/90 group-hover/row:bg-white/95",
