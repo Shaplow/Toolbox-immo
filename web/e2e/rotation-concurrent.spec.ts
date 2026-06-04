@@ -309,17 +309,15 @@ test.describe("Rotation concurrence — FOR UPDATE SKIP LOCKED (Phase 10)", () =
         expect(usages[0].usageCount).toBeLessThanOrEqual(CONCURRENT_COUNT);
       }
 
-      // Cleanup renders
-      for (const id of createdIds) {
-        await prismaTest.render.update({
-          where: { id },
-          data: { status: "ERROR", finishedAt: new Date() },
-        }).catch(() => {});
-      }
+      // Cleanup renders — DELETE (pas update) sinon FK Render.listingId bloque
+      // le delete du listing en finally.
+      await prismaTest.render.deleteMany({ where: { id: { in: createdIds } } }).catch(() => {});
     } finally {
-      await prismaTest.listing.delete({ where: { id: listing2.id } });
-      await prismaTest.template.delete({ where: { id: tpl2.id } });
-      await prismaTest.mediaLibrary.delete({ where: { id: mediaLib.id } });
+      // Ordre : Render (FK listingId) → Listing → Template → MediaLibrary.
+      await prismaTest.render.deleteMany({ where: { listingId: listing2.id } }).catch(() => {});
+      await prismaTest.listing.delete({ where: { id: listing2.id } }).catch(() => {});
+      await prismaTest.template.delete({ where: { id: tpl2.id } }).catch(() => {});
+      await prismaTest.mediaLibrary.delete({ where: { id: mediaLib.id } }).catch(() => {});
     }
   });
 

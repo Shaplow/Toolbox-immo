@@ -233,14 +233,28 @@ test.describe("Phase 8.M1 — prefill readOnly : aucun claim DataEntryUsage au p
       },
     });
 
-    // 201 ou 409 sont acceptables
-    expect([201, 409]).toContain(renderRes.status());
+    // Debug : logger le body de la response si le status est inattendu
+    const status = renderRes.status();
+    if (status !== 201 && status !== 409) {
+      const body = await renderRes.text();
+      console.error(`[claim-leak debug] unexpected status ${status}, body:`, body);
+    }
+    expect([201, 409]).toContain(status);
 
-    if (renderRes.status() === 201) {
+    if (status === 201) {
       const render = await renderRes.json() as { id: string };
 
-      // Attendre que advanceDataEntryClaimOnSubmit ait été appelé
-      await page.waitForTimeout(1_000);
+      // Le claim est posé SYNCHRONEMENT par advanceDataEntryClaimOnSubmit avant
+      // render.create (donc avant le 201). Mais startRenderGeneration lance
+      // generateRender en fire-and-forget — sans render-engine accessible (test
+      // E2E sans worker), la pipeline async fail → failRender → revertLibraryCursors
+      // supprime le claim DataEntryUsage. Pour éviter cette course, on marque
+      // immédiatement le render DONE après réception du 201, ce qui bloque
+      // le path failRender (qui check le statut).
+      await prismaTest.render.update({
+        where: { id: render.id },
+        data: { status: "DONE", finishedAt: new Date() },
+      }).catch(() => {});
 
       const usagesAfter = await prismaTest.dataEntryUsage.findMany({
         where: {
@@ -252,7 +266,7 @@ test.describe("Phase 8.M1 — prefill readOnly : aucun claim DataEntryUsage au p
       // Au moins 1 usage créé après submit (contrôle positif : le claim fonctionne)
       expect(usagesAfter.length).toBeGreaterThanOrEqual(1);
 
-      // Cleanup
+      // Cleanup — DELETE le render d'abord (FK Render.listingId bloque sinon)
       await prismaTest.render.delete({ where: { id: render.id } });
     }
 

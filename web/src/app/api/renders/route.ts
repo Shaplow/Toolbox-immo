@@ -290,11 +290,11 @@ export async function POST(req: NextRequest) {
     if (sanitizedUsedAssets.videoAssets || sanitizedUsedAssets.audioAssetId) {
       const templateRow = await prisma.template.findUnique({
         where: { id: templateId },
-        select: { content: true },
+        select: { jsonData: true },
       });
-      if (templateRow?.content) {
+      if (templateRow?.jsonData) {
         try {
-          const tplJson = JSON.parse(templateRow.content) as {
+          const tplJson = JSON.parse(templateRow.jsonData) as {
             blocks?: Array<{ id: string; type: string; minDuration?: number; name?: string; libraryId?: string }>;
           };
           const blocks = tplJson.blocks ?? [];

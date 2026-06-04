@@ -280,7 +280,12 @@ test.describe("Rotation flow — curseurs per_account + anti-répétition", () =
       request, cookieHeader, fixture.lolaAccountId, fixture.mediaLibraryId, "media",
     );
 
-    // Lancer 1 render supplémentaire
+    // Pour que advanceLibraryCursorsOnSubmit soit appelé, il faut envoyer :
+    //  - videoAssets[blockId] = assetId (mappe le block vers un asset choisi)
+    //  - setSequencedLibraryIds: [libId] (active le branch advance dans /api/renders)
+    // Avec mon B3 fix, le serveur re-dérive setTag/category depuis l'asset choisi.
+    // Le cursor est avancé en auto mode (la lib a setSequence: [] → no override).
+    const chosenAssetId = fixture.assetIds[0];
     const renderRes = await request.post(`http://localhost:3100/api/renders`, {
       headers: { "Content-Type": "application/json", Cookie: cookieHeader },
       data: {
@@ -288,7 +293,8 @@ test.describe("Rotation flow — curseurs per_account + anti-répétition", () =
         listingId: fixture.listingId,
         accountId: fixture.lolaAccountId,
         usedAssets: {
-          setSequencedLibraryIds: [],
+          videoAssets: { "video-block-1": chosenAssetId },
+          setSequencedLibraryIds: [fixture.mediaLibraryId],
         },
       },
     });
@@ -297,27 +303,27 @@ test.describe("Rotation flow — curseurs per_account + anti-répétition", () =
       const render = await renderRes.json() as { id: string };
       fixture.renderIds.push(render.id);
 
-      // Simuler DONE pour déclencher recordLibraryUsage
-      // FIXME: simulateWebhook nécessite un runpodJobId valide sur le render.
-      // On update directement en DB pour déclencher le cursor advance.
-      // recordLibraryUsage est normalement appelé par le webhook DONE.
-      // Pour ce test, on vérifie juste que le render a bien avancé après
-      // un submit (advanceLibraryCursorsOnSubmit).
-
       // Snapshot cursor après submit
       const cursorAfter = await readCursorForAccount(
         request, cookieHeader, fixture.lolaAccountId, fixture.mediaLibraryId, "media",
       );
 
-      // Si la lib a des setSequenced assets, le cursor devrait avoir avancé
-      // Sinon lastUsedCategory devrait avoir changé
-      if (cursorBefore !== null && cursorAfter !== null) {
-        // Au moins l'un des champs doit avoir évolué OU un curseur doit avoir été créé
-        const cursorCreated = cursorBefore === null && cursorAfter !== null;
-        const categoryChanged = cursorBefore.lastUsedCategory !== cursorAfter.lastUsedCategory;
-        const setTagChanged = cursorBefore.lastUsedSetTag !== cursorAfter.lastUsedSetTag;
-        const timestampChanged = cursorBefore.lastAdvancedAt !== cursorAfter.lastAdvancedAt;
-        expect(cursorCreated || categoryChanged || setTagChanged || timestampChanged).toBe(true);
+      // Le cursor doit exister (créé ou avancé) et lastUsedCategory/SetTag doivent
+      // refléter l'asset choisi.
+      expect(cursorAfter).not.toBeNull();
+      const chosenAsset = await prismaTest.mediaAsset.findUnique({
+        where: { id: chosenAssetId },
+        select: { setTag: true, category: true },
+      });
+      // Auto mode : lastUsedCategory et lastUsedSetTag = ceux de l'asset choisi.
+      expect(cursorAfter!.lastUsedCategory).toBe(chosenAsset?.category ?? null);
+      expect(cursorAfter!.lastUsedSetTag).toBe(chosenAsset?.setTag ?? null);
+      // Au moins un champ doit avoir évolué (sauf si tous étaient déjà == valeur cible)
+      if (cursorBefore !== null) {
+        const categoryChanged = cursorBefore.lastUsedCategory !== cursorAfter!.lastUsedCategory;
+        const setTagChanged = cursorBefore.lastUsedSetTag !== cursorAfter!.lastUsedSetTag;
+        const timestampChanged = cursorBefore.lastAdvancedAt !== cursorAfter!.lastAdvancedAt;
+        expect(categoryChanged || setTagChanged || timestampChanged).toBe(true);
       }
 
       await prismaTest.render.update({
