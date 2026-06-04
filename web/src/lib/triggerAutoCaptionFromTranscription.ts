@@ -198,25 +198,75 @@ export function resolveSlotExcludeZones(
 }
 
 /**
- * Filter segments to remove those that overlap with any excluded zone.
- * A segment is excluded if it overlaps with the zone (any overlap triggers exclusion).
+ * Filter & trim segments against excluded zones.
+ *
+ * Before : tout segment qui overlap MÊME PARTIELLEMENT une zone excluse
+ * était éliminé. Cas observé : transcription qui dépasse de 1-2s sur le
+ * slot content → segment "intro" entier supprimé → 0 caption produit.
+ *
+ * Maintenant : on rogne le segment au boundary de chaque zone qu'il
+ * intersecte. Le segment ne disparaît que s'il est ENTIÈREMENT dans
+ * une zone excluse (ou si l'intersection cumulée laisse une durée
+ * < MIN_SEG_DUR_AFTER_TRIM, pour éviter les bouts de 50ms inutilisables).
+ *
+ * Note : on garde le texte intact (on n'essaie pas de couper le texte
+ * proportionnellement au trim) — c'est une approximation acceptable
+ * en pratique, l'utilisateur voit le caption juste un peu plus court.
  */
+const MIN_SEG_DUR_AFTER_TRIM = 0.15; // 150ms — en dessous, segment inutilisable
+
 export function applyExcludeZones(
   segments: Segment[],
   zones: Array<{ startSec: number; endSec: number | null }>,
   videoDuration?: number | null,
 ): Segment[] {
   if (zones.length === 0) return segments;
-  return segments.filter((seg) => {
-    for (const zone of zones) {
-      const zoneEnd = zone.endSec ?? videoDuration ?? Infinity;
-      // Overlap: seg.start < zoneEnd && seg.end > zone.startSec
-      if (seg.start < zoneEnd && seg.end > zone.startSec) {
-        return false;
+
+  // Normalise les zones (résout endSec=null avec videoDuration) et trie par start.
+  const normZones = zones
+    .map((z) => ({ start: z.startSec, end: z.endSec ?? videoDuration ?? Infinity }))
+    .filter((z) => z.end > z.start)
+    .sort((a, b) => a.start - b.start);
+
+  const result: Segment[] = [];
+
+  for (const seg of segments) {
+    let pieces: { start: number; end: number }[] = [{ start: seg.start, end: seg.end }];
+
+    // Pour chaque zone, soustrait la zone de chaque pièce restante.
+    for (const zone of normZones) {
+      const nextPieces: { start: number; end: number }[] = [];
+      for (const p of pieces) {
+        // pas d'overlap → garde tel quel
+        if (p.end <= zone.start || p.start >= zone.end) {
+          nextPieces.push(p);
+          continue;
+        }
+        // overlap partiel gauche : [p.start, zone.start) reste
+        if (p.start < zone.start) {
+          nextPieces.push({ start: p.start, end: zone.start });
+        }
+        // overlap partiel droit : [zone.end, p.end) reste
+        if (p.end > zone.end) {
+          nextPieces.push({ start: zone.end, end: p.end });
+        }
+        // sinon : pièce entièrement absorbée → ignorée
+      }
+      pieces = nextPieces;
+      if (pieces.length === 0) break;
+    }
+
+    // Pour chaque pièce restante de durée suffisante, on émet un segment
+    // avec le texte d'origine (texte non-trimmé volontairement — on ne sait
+    // pas où couper sémantiquement).
+    for (const p of pieces) {
+      if (p.end - p.start >= MIN_SEG_DUR_AFTER_TRIM) {
+        result.push({ ...seg, start: p.start, end: p.end });
       }
     }
-    return true;
-  });
+  }
+
+  return result;
 }
 
 // ─── Font asset attachment ────────────────────────────────────────────────────
