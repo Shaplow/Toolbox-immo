@@ -20,13 +20,21 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Trash2, Globe2 } from "lucide-react";
+import { Trash2, Globe2, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Chip } from "@/components/ui/Chip";
 import { AvatarGroup } from "@/components/ui/Avatar";
 import { useConfirm } from "@/components/ui/useConfirm";
 import { toast } from "@/components/ui/Toast";
 import type { DataEntry, InstagramAccount } from "@/components/admin/libraries/DataEntriesPanel";
+
+type SortKey = "setTag" | "category" | { fieldKey: string };
+type SortDir = "asc" | "desc";
+
+function sortKeyEqual(a: SortKey, b: SortKey): boolean {
+  if (typeof a === "string" || typeof b === "string") return a === b;
+  return a.fieldKey === b.fieldKey;
+}
 
 export type FieldType = "text" | "number" | "url" | "textarea";
 
@@ -92,15 +100,54 @@ export function DataEntriesSpreadsheet({
     () => new Map(accounts.map((a) => [a.id, a])),
     [accounts],
   );
+
+  // ── Tri click-sort sur en-têtes ─────────────────────────────────────────────
+  // sort = null → ordre d'origine. Click cycle : null → asc → desc → null.
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>(null);
+  const toggleSort = (key: SortKey) => {
+    setSort((prev) => {
+      if (!prev || !sortKeyEqual(prev.key, key)) return { key, dir: "asc" };
+      if (prev.dir === "asc") return { key, dir: "desc" };
+      return null;
+    });
+  };
   const scrollRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const { confirm, dialog: confirmDialog } = useConfirm();
 
   // Parsing JSON une seule fois par entry (recalculé quand entries change).
-  const rows = useMemo(
-    () => entries.map((e) => ({ ...e, _fields: safeParse(e.fields) })),
-    [entries],
-  );
+  // Puis applique le tri si actif (sinon ordre d'origine).
+  const rows = useMemo(() => {
+    const parsed = entries.map((e) => ({ ...e, _fields: safeParse(e.fields) }));
+    if (!sort) return parsed;
+    const { key, dir } = sort;
+    const isNumeric = typeof key !== "string"
+      ? schema.find((f) => f.key === key.fieldKey)?.type === "number"
+      : false;
+    const valueOf = (r: typeof parsed[number]): string | number | null => {
+      if (key === "setTag") return r.setTag;
+      if (key === "category") return r.category;
+      const raw = r._fields[key.fieldKey] ?? "";
+      if (isNumeric) {
+        const n = parseFloat(raw.replace(/[^\d.,-]/g, "").replace(",", "."));
+        return isNaN(n) ? null : n;
+      }
+      return raw;
+    };
+    const factor = dir === "asc" ? 1 : -1;
+    return [...parsed].sort((a, b) => {
+      const va = valueOf(a);
+      const vb = valueOf(b);
+      // null/empty toujours en bas, peu importe la direction.
+      const aEmpty = va === null || va === "";
+      const bEmpty = vb === null || vb === "";
+      if (aEmpty && bEmpty) return 0;
+      if (aEmpty) return 1;
+      if (bEmpty) return -1;
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * factor;
+      return String(va).localeCompare(String(vb), "fr", { numeric: true }) * factor;
+    });
+  }, [entries, sort, schema]);
 
   // Réagit au signal "row ajoutée" → scroll bottom + focus la cellule Set de la dernière row.
   useEffect(() => {
@@ -274,24 +321,36 @@ export function DataEntriesSpreadsheet({
               </th>
               <th
                 style={{ left: OFFSET_SET }}
-                className="sticky z-40 bg-gray-50/95 backdrop-blur-[10px] backdrop-saturate-150 border-b border-r border-gray-200/60 px-2.5 py-2 text-left text-[10px] uppercase tracking-widest font-semibold text-gray-600"
+                className="sticky z-40 bg-gray-50/95 backdrop-blur-[10px] backdrop-saturate-150 border-b border-r border-gray-200/60 p-0"
               >
-                Set
+                <SortableHeader
+                  label="Set"
+                  sortDir={sort && sortKeyEqual(sort.key, "setTag") ? sort.dir : null}
+                  onClick={() => toggleSort("setTag")}
+                />
               </th>
               <th
                 style={{ left: OFFSET_CATEGORY }}
-                className="sticky z-40 bg-gray-50/95 backdrop-blur-[10px] backdrop-saturate-150 border-b border-r border-gray-200/60 px-2.5 py-2 text-left text-[10px] uppercase tracking-widest font-semibold text-gray-600"
+                className="sticky z-40 bg-gray-50/95 backdrop-blur-[10px] backdrop-saturate-150 border-b border-r border-gray-200/60 p-0"
               >
-                Catégorie
+                <SortableHeader
+                  label="Catégorie"
+                  sortDir={sort && sortKeyEqual(sort.key, "category") ? sort.dir : null}
+                  onClick={() => toggleSort("category")}
+                />
               </th>
               {schema.map((f) => (
                 <th
                   key={f.key}
-                  className="bg-gray-50/95 backdrop-blur-[10px] backdrop-saturate-150 border-b border-r border-gray-200/60 px-2.5 py-2 text-left text-[10px] uppercase tracking-widest font-semibold text-gray-600 truncate"
+                  className="bg-gray-50/95 backdrop-blur-[10px] backdrop-saturate-150 border-b border-r border-gray-200/60 p-0"
                   title={f.label}
                 >
-                  {f.label}
-                  {f.required && <span className="text-rose-600 ml-0.5">*</span>}
+                  <SortableHeader
+                    label={f.label}
+                    required={f.required}
+                    sortDir={sort && sortKeyEqual(sort.key, { fieldKey: f.key }) ? sort.dir : null}
+                    onClick={() => toggleSort({ fieldKey: f.key })}
+                  />
                 </th>
               ))}
               <th
@@ -535,6 +594,41 @@ function SpreadsheetCell({ value, onCommit, type = "text", placeholder, chipVari
         </Chip>
       ) : (
         <span className="text-gray-950 truncate">{value}</span>
+      )}
+    </button>
+  );
+}
+
+// ─── En-tête click-sort ─────────────────────────────────────────────────────
+
+function SortableHeader({
+  label,
+  required,
+  sortDir,
+  onClick,
+}: {
+  label: string;
+  required?: boolean;
+  sortDir: SortDir | null;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center justify-between gap-1.5 px-2.5 py-2 text-left text-[10px] uppercase tracking-widest font-semibold text-gray-600 hover:bg-white/40 transition-colors truncate"
+      title={`Trier par ${label}`}
+    >
+      <span className="truncate">
+        {label}
+        {required && <span className="text-rose-600 ml-0.5">*</span>}
+      </span>
+      {sortDir === "asc" ? (
+        <ChevronUp size={11} className="text-sky-600 shrink-0" />
+      ) : sortDir === "desc" ? (
+        <ChevronDown size={11} className="text-sky-600 shrink-0" />
+      ) : (
+        <ChevronsUpDown size={11} className="text-gray-300 shrink-0" />
       )}
     </button>
   );

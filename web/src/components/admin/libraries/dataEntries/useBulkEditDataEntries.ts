@@ -98,15 +98,17 @@ export function useBulkEditDataEntries({
           toast.success(`Accès réinitialisé (global) — ${d.updated} ligne${d.updated !== 1 ? "s" : ""} retirée${d.updated !== 1 ? "s" : ""}`);
         }
 
+        // Garde la sélection pour permettre d'enchaîner plusieurs bulk
+        // (ex: ajouter accès compte A puis compte B sur les mêmes lignes).
+        // L'user peut clearSelection manuellement via "Tout désélectionner".
         reload();
-        clearSelection();
       } catch {
         toast.error("Erreur réseau — opération annulée");
       } finally {
         setBulkApplying(false);
       }
     },
-    [accounts, campaignId, clearSelection, reload, selectedIds],
+    [accounts, campaignId, reload, selectedIds],
   );
 
   return {
