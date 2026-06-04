@@ -19,8 +19,9 @@ export async function GET(_req: Request, { params }: Params) {
 
   const { id: libraryId } = await params;
 
-  // Récupère tous les handles des comptes IG actifs
+  // Récupère tous les handles des comptes IG actifs (exclut les sentinels shared)
   const accounts = await prisma.instagramAccount.findMany({
+    where: { id: { notIn: ["__shared__", "__shared__data__"] } },
     select: { id: true, handle: true, name: true },
     orderBy: { name: "asc" },
   });

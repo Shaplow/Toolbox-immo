@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import { SHARED_CURSOR_ACCOUNT_ID, SHARED_DATA_CURSOR_ACCOUNT_ID } from "@/lib/contentLibraryResolver";
+
+// Sentinels de curseur partagé (rotationScope="shared") — exclus des listings UI.
+const SENTINEL_ACCOUNT_IDS = [SHARED_CURSOR_ACCOUNT_ID, SHARED_DATA_CURSOR_ACCOUNT_ID];
 
 // GET /api/admin/accounts — liste les comptes Instagram
 // Accepte ?clientId=<id> pour filtrer par client
@@ -15,7 +19,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const accounts = await prisma.instagramAccount.findMany({
-      where: clientIdFilter ? { clientId: clientIdFilter } : undefined,
+      where: {
+        id: { notIn: SENTINEL_ACCOUNT_IDS },
+        ...(clientIdFilter ? { clientId: clientIdFilter } : {}),
+      },
       orderBy: { name: "asc" },
       include: {
         _count: { select: { renders: true } },
