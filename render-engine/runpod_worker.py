@@ -1110,14 +1110,22 @@ def _handle_render_sequence(inp: dict) -> dict[str, Any]:
                         seg_dur = min(seg_dur, max_dur - seg["start"])
                     seg_out = tmp_path / f"slot_{i}_seg{seg_i}_{stamp}.mp4"
 
-                    # Trim source video to the segment window
+                    # Trim source video to the segment window.
+                    # Bugfix : avant on utilisait `-ss X -c copy` qui sautait au
+                    # keyframe le plus proche → segment vide ou tronqué quand
+                    # seg.start tombe entre 2 keyframes (cas observé : segment
+                    # [5.5, 6] sur un clip 6.48s avec GOP ~2s → keyframe 6s
+                    # → segment vide → overlay du state correspondant jamais
+                    # appliqué → bloc invisible dans la vidéo finale).
+                    # Fix : re-encode au trim pour précision frame-exact.
                     trim_path = tmp_path / f"slot_{i}_seg{seg_i}_trim_{stamp}.mp4"
                     trim_cmd = [
                         "ffmpeg", "-y",
                         "-ss", str(seg["start"]),
                         *(["-t", str(seg_dur)] if seg_dur is not None else []),
                         "-i", str(video_path),
-                        "-c", "copy",
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                        "-c:a", "aac",
                         str(trim_path),
                     ]
                     subprocess.run(trim_cmd, capture_output=True, check=True, timeout=2 * 60)

@@ -653,13 +653,18 @@ async def render_sequence_local(request: Request):
                         seg_dur = min(seg_dur, max_dur - seg["start"])
                     seg_out = work_dir / f"seq_{stamp}_slot{i}_seg{seg_i}.mp4"
 
+                    # Bugfix : `-ss X -c copy` sautait au keyframe le plus
+                    # proche → segment vide/tronqué quand seg.start tombe
+                    # entre 2 keyframes. Re-encode pour précision frame-exact.
                     trim_path = work_dir / f"seq_{stamp}_slot{i}_seg{seg_i}_trim.mp4"
                     trim_cmd = [
                         "ffmpeg", "-y",
                         "-ss", str(seg["start"]),
                         *(["-t", str(seg_dur)] if seg_dur is not None else []),
                         "-i", str(video_path),
-                        "-c", "copy", str(trim_path),
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                        "-c:a", "aac",
+                        str(trim_path),
                     ]
                     await asyncio.to_thread(_sp.run, trim_cmd, capture_output=True, check=True, timeout=2 * 60)
 
