@@ -1457,17 +1457,50 @@ function BlockPreview({
     const step = Math.max(0.5, styleScale * 0.5);
     let nextFontSize = baseFontSize;
 
-    // En per-line mode, le ref pointe sur un span inline → scrollHeight/scrollWidth
-    // sont peu fiables. On utilise getBoundingClientRect qui mesure les "line boxes"
-    // visuelles du span (incluant decoration-break clone).
-    const isInlineSpan = backgroundEnabled && backgroundMode === "per-line";
+    // Mesure robuste : on union toutes les line boxes via getClientRects().
+    // - Pour un span inline (per-line background), getBoundingClientRect ne
+    //   retourne que UNE line box → toujours OK → pas de shrink.
+    // - Pour un div bloc, scrollHeight/scrollWidth marche mais peut être
+    //   tronqué par maxLines (-webkit-line-clamp + overflow:hidden) qui clampe
+    //   AVANT le shrink → mesure ment, pas de shrink.
+    // getClientRects().forEach + union donne la taille RÉELLE du contenu rendu
+    // (incluant les lignes wrappées et le débordement éventuel).
     const measure = (): { width: number; height: number } => {
-      if (isInlineSpan) {
-        const rect = contentNode.getBoundingClientRect();
-        return { width: rect.width, height: rect.height };
+      const rects = contentNode.getClientRects();
+      if (rects.length === 0) {
+        // Fallback si le span est temporairement empty (e.g. avant fonts ready)
+        return { width: contentNode.scrollWidth, height: contentNode.scrollHeight };
       }
-      return { width: contentNode.scrollWidth, height: contentNode.scrollHeight };
+      let minTop = Infinity, maxBottom = -Infinity, maxRight = -Infinity, minLeft = Infinity;
+      for (const r of rects) {
+        if (r.top < minTop) minTop = r.top;
+        if (r.bottom > maxBottom) maxBottom = r.bottom;
+        if (r.left < minLeft) minLeft = r.left;
+        if (r.right > maxRight) maxRight = r.right;
+      }
+      const widthFromRects = maxRight - minLeft;
+      const heightFromRects = maxBottom - minTop;
+      // On garde le max avec scrollWidth/scrollHeight pour capter aussi
+      // l'overflow caché (maxLines avec overflow:hidden tronque la box
+      // visible, mais scrollHeight reflète la hauteur "naturelle" si display:flow
+      // — pour -webkit-box ça reste partiel, d'où l'union).
+      return {
+        width: Math.max(widthFromRects, contentNode.scrollWidth),
+        height: Math.max(heightFromRects, contentNode.scrollHeight),
+      };
     };
+
+    // Si maxLines est actif, le webkit-line-clamp + overflow:hidden cache le
+    // débordement → la mesure ne voit que la box clampée et croit que ça rentre.
+    // On désactive ces props pendant la boucle de fit, puis on restaure.
+    const prevDisplay = contentNode.style.display;
+    const prevWebkitLineClamp = contentNode.style.webkitLineClamp;
+    const prevOverflow = contentNode.style.overflow;
+    if (block.rules.maxLines) {
+      contentNode.style.display = "block";
+      contentNode.style.webkitLineClamp = "unset";
+      contentNode.style.overflow = "visible";
+    }
 
     contentNode.style.fontSize = `${baseFontSize}px`;
     while (nextFontSize > minFontSizePx) {
@@ -1478,6 +1511,14 @@ function BlockPreview({
 
       nextFontSize = Math.max(minFontSizePx, nextFontSize - step);
       contentNode.style.fontSize = `${nextFontSize}px`;
+    }
+
+    // Restaure maxLines/overflow → React va re-set la fontSize via fittedFontSizePx
+    // au prochain commit, donc on n'a pas à toucher au style.fontSize ici.
+    if (block.rules.maxLines) {
+      contentNode.style.display = prevDisplay;
+      contentNode.style.webkitLineClamp = prevWebkitLineClamp;
+      contentNode.style.overflow = prevOverflow;
     }
 
     const frameId = window.requestAnimationFrame(() => {
