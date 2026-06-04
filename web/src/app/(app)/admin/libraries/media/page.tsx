@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { MediaLibrariesPanel } from "@/components/admin/libraries/MediaLibrariesPanel";
+import { BackfillDurationButton } from "@/components/admin/libraries/BackfillDurationButton";
 
 export default async function MediaLibrariesPage() {
   const userContext = await getUserContext();
@@ -46,11 +47,14 @@ export default async function MediaLibrariesPage() {
                 </h1>
               </div>
 
-              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-                <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sky-500 shadow-[0_0_6px_rgba(125,180,210,0.6)]" />
-                <span className="text-[11px] font-mono text-gray-700 tabular-nums">
-                  {libCount} libs · {assetCount} vidéos
-                </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <BackfillDurationButton />
+                <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+                  <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sky-500 shadow-[0_0_6px_rgba(125,180,210,0.6)]" />
+                  <span className="text-[11px] font-mono text-gray-700 tabular-nums">
+                    {libCount} libs · {assetCount} vidéos
+                  </span>
+                </div>
               </div>
             </div>
           </div>
