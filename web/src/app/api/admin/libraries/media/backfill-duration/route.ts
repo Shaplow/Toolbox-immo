@@ -20,12 +20,15 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 
+const execFileAsync = promisify(execFile);
 const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
 
-async function probeDuration(url: string): Promise<number | null> {
+async function probeDurationFromRenderEngine(url: string): Promise<number | null> {
   try {
     const res = await fetch(`${CAPTIONS_API}/api/probe-duration`, {
       method: "POST",
@@ -37,9 +40,23 @@ async function probeDuration(url: string): Promise<number | null> {
     const data = await res.json() as { duration?: number | null };
     return typeof data.duration === "number" && data.duration > 0 ? data.duration : null;
   } catch (err) {
-    console.warn(`[backfill-duration] probe failed for ${url}:`, err);
+    console.warn(`[backfill-duration] render-engine probe failed for ${url}:`, err);
     return null;
   }
+}
+
+async function probeDuration(url: string): Promise<number | null> {
+  // ffprobe local first (works on prod server with ffmpeg installed)
+  try {
+    const { stdout } = await execFileAsync(
+      "ffprobe",
+      ["-v", "error", "-show_entries", "format=duration", "-of", "json", url],
+      { timeout: 30_000 },
+    );
+    const d = parseFloat((JSON.parse(stdout) as { format?: { duration?: string } }).format?.duration ?? "");
+    if (!isNaN(d) && d > 0) return d;
+  } catch { /* fall through to render-engine */ }
+  return probeDurationFromRenderEngine(url);
 }
 
 export async function POST(req: NextRequest) {
