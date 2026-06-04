@@ -30,6 +30,11 @@ import { prisma } from "@/lib/prisma";
 const execFileAsync = promisify(execFile);
 const CAPTIONS_API = process.env.CAPTIONS_API_URL ?? "http://localhost:8000";
 
+/** Base URL atteignable par le render-engine pour les fichiers /uploads/ en dev.
+ *  Par défaut `http://web:3000` (hostname du service web dans docker-compose).
+ *  Override possible via INTERNAL_BASE_URL si setup différent. */
+const INTERNAL_BASE_URL = process.env.INTERNAL_BASE_URL ?? "http://web:3000";
+
 /**
  * Résout une URL d'asset en target probeable par ffprobe :
  *  - "/uploads/xyz.mp4" (dev sans R2) → chemin filesystem absolu vers
@@ -43,6 +48,15 @@ function resolveProbeTarget(url: string): string {
     const localPath = path.join(process.cwd(), "public", url);
     if (existsSync(localPath)) return localPath;
   }
+  return url;
+}
+
+/** Construit l'URL HTTP absolue qu'un service externe (render-engine) peut
+ *  fetch pour récupérer ce fichier. Utilisé quand ffprobe local n'est pas
+ *  installé dans le container web. */
+function toExternalUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith("/uploads/")) return `${INTERNAL_BASE_URL}${url}`;
   return url;
 }
 
@@ -74,19 +88,11 @@ async function probeDuration(url: string): Promise<number | null> {
     );
     const d = parseFloat((JSON.parse(stdout) as { format?: { duration?: string } }).format?.duration ?? "");
     if (!isNaN(d) && d > 0) return d;
-  } catch { /* fall through */ }
+  } catch { /* fall through — ffprobe non installé OU fichier illisible */ }
 
-  // Si le target était un path local /uploads/ qui n'existe pas, render-engine
-  // ne pourra pas le récupérer non plus → on skip le fallback.
-  if (target !== url && !target.startsWith("/")) {
-    // target a été résolu en path filesystem → on a déjà tenté localement.
-    return null;
-  }
-  if (target.startsWith("/uploads/")) {
-    // Path relatif non résolu en local → render-engine ne pourra pas le download.
-    return null;
-  }
-  return probeDurationFromRenderEngine(target);
+  // Fallback render-engine : on lui passe une URL HTTP qu'il sait fetch.
+  // Pour les /uploads/ en dev, on construit l'URL interne docker-compose.
+  return probeDurationFromRenderEngine(toExternalUrl(url));
 }
 
 export async function POST(req: NextRequest) {
