@@ -10,8 +10,11 @@
 
 import JSZip from "jszip";
 import { prisma } from "@/lib/prisma";
-import { r2Configured } from "@/lib/r2";
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { r2Configured, getFromR2 } from "@/lib/r2";
+// W5 — S3Client custom retiré au profit de getFromR2 (helper centralisé dans
+// lib/r2.ts qui partage le singleton + retry). Avant la consolidation,
+// libraryExport rebuildait son propre client et dupliquait la lecture des
+// env vars R2_ — surface d'erreur si les keys de config changent.
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,34 +97,6 @@ interface ExportedDataEntry {
   accessAccountHandles: string[];
 }
 
-// ─── R2 stream helper ─────────────────────────────────────────────────────────
-
-function getR2Client(): S3Client {
-  const accountId = process.env.R2_ACCOUNT_ID!;
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID!;
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY!;
-  return new S3Client({
-    region: "auto",
-    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-    credentials: { accessKeyId, secretAccessKey },
-  });
-}
-
-async function downloadR2Object(r2Key: string): Promise<Buffer> {
-  const bucket = process.env.R2_BUCKET!;
-  const client = getR2Client();
-  const cmd = new GetObjectCommand({ Bucket: bucket, Key: r2Key });
-  const response = await client.send(cmd);
-  if (!response.Body) throw new Error(`Aucun body pour la clé R2 : ${r2Key}`);
-  // Body is a ReadableStream (Node.js web stream or Readable depending on env)
-  const chunks: Uint8Array[] = [];
-  // @ts-expect-error — S3 SDK Body type varies between web/node. We iterate the stream.
-  for await (const chunk of response.Body) {
-    chunks.push(chunk as Uint8Array);
-  }
-  return Buffer.concat(chunks);
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function safeJsonParse<T>(raw: string, fallback: T): T {
@@ -165,10 +140,14 @@ async function buildMediaExport(
     let fileEntry = "";
 
     if (options.includeFiles && r2Configured()) {
+      // W5.2 : préfixe par asset.id pour garantir unicité — sans ça, 2 assets
+      // avec même filename (ex: 2 uploads "intro.mp4") écrasaient le 1er dans
+      // le ZIP (JSZip override silencieux) → corruption silencieuse à l'import
+      // car le manifest référence 2 assets avec même fileEntry.
       const basename = sanitizeFilename(asset.filename) || `${asset.id}.bin`;
-      const zipPath = `files/${basename}`;
+      const zipPath = `files/${asset.id}_${basename}`;
       try {
-        const buf = await downloadR2Object(asset.r2Key);
+        const buf = await getFromR2(asset.r2Key);
         zip.file(zipPath, buf);
         fileEntry = zipPath;
       } catch (err) {

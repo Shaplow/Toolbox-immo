@@ -90,12 +90,13 @@ describe("selectEligibleDataGroups", () => {
     expect(result).toEqual([makeGroup("s2", "A")]);
   });
 
-  it("1 category, 1 setTag → returns [] (caller falls back to allGroups)", () => {
-    // When there's only one group and it matches the last setTag, selectEligibleDataGroups
-    // returns []. The call site handles this with: eligible.length > 0 ? eligible : allGroups.
+  it("1 category, 1 setTag → returns allGroups (fallback explicit après W3.2)", () => {
+    // Avant W3.2 : la fonction renvoyait [] et le caller faisait le fallback
+    // sur allGroups. Maintenant le fallback est intégré dans la fonction pour
+    // protéger tous les consumers (notamment ceux qui ne le faisaient pas).
     const groups = [makeGroup("s1", "A")];
     const result = selectEligibleDataGroups(groups, "A", "s1", true);
-    expect(result).toEqual([]);
+    expect(result).toEqual(groups);
   });
 
   it("null category treated correctly in ≥2 category path", () => {

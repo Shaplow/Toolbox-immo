@@ -550,10 +550,50 @@ async function resolveMusicConfig(
 }
 
 /**
- * Best-effort: merge audioAssetId into a render's stored usedAssets JSON.
- * Called when server-side library resolution picked the audio URL (no form binding).
+ * Charge `Render.usedAssets` et extrait videoAssets + audioAssetId — utilisé
+ * pour préserver les choix prefill (POST /api/renders) lors du processing
+ * effectif. Avant W3.6 ce bloc était dupliqué 4× dans generateRender.ts (sequence
+ * RunPod, sequence Local, video RunPod, video Local) avec dérive silencieuse.
+ *
+ * Best-effort : un JSON corrompu ou un render absent retourne des maps vides
+ * (la library selection downstream reprendra la main).
  */
-async function mergeAudioAssetId(renderId: string, assetId: string): Promise<void> {
+async function loadPrefillAssets(
+  renderId: string,
+): Promise<{ videoAssets: Record<string, string>; audioAssetId: string | null }> {
+  try {
+    const renderRow = await prisma.render.findUnique({
+      where: { id: renderId },
+      select: { usedAssets: true },
+    });
+    const ua = JSON.parse(renderRow?.usedAssets ?? "{}") as {
+      videoAssets?: Record<string, string>;
+      audioAssetId?: string;
+    };
+    return {
+      videoAssets: ua.videoAssets ?? {},
+      audioAssetId: ua.audioAssetId ?? null,
+    };
+  } catch {
+    return { videoAssets: {}, audioAssetId: null };
+  }
+}
+
+/**
+ * Merge `patch` dans `Render.usedAssets` en préservant les autres champs.
+ * Avant W3.6 ce read-modify-write était inline 4-6× (mergeAudioAssetId,
+ * mergeVideoAsset, et 2 blocs sequence inline). Sans helper, ajouter un
+ * nouveau champ (ex: dataResolvedSetTag) imposait 4 éditions parallèles.
+ *
+ * Note : pas de transaction — c'est best-effort. Deux merges concurrents
+ * peuvent silencieusement se marcher dessus, mais en pratique chaque merge
+ * vient d'un site de pipeline distinct (audio / video / sequence) qui ne
+ * tape pas les mêmes clés.
+ */
+async function mergeUsedAssets(
+  renderId: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
   try {
     const render = await prisma.render.findUnique({
       where: { id: renderId },
@@ -561,11 +601,22 @@ async function mergeAudioAssetId(renderId: string, assetId: string): Promise<voi
     });
     let stored: Record<string, unknown> = {};
     try { stored = JSON.parse(render?.usedAssets ?? "{}") as Record<string, unknown>; } catch { /* ignore */ }
-    stored.audioAssetId = assetId;
-    await prisma.render.update({ where: { id: renderId }, data: { usedAssets: JSON.stringify(stored) } });
+    const merged = { ...stored, ...patch };
+    await prisma.render.update({
+      where: { id: renderId },
+      data: { usedAssets: JSON.stringify(merged) },
+    });
   } catch (err) {
-    console.warn(`[mergeAudioAssetId] failed for render ${renderId}:`, err);
+    console.warn(`[mergeUsedAssets] failed for render ${renderId}:`, err);
   }
+}
+
+/**
+ * Best-effort: merge audioAssetId into a render's stored usedAssets JSON.
+ * Délègue à mergeUsedAssets (helper unifié W3.6).
+ */
+async function mergeAudioAssetId(renderId: string, assetId: string): Promise<void> {
+  await mergeUsedAssets(renderId, { audioAssetId: assetId });
 }
 
 /**
@@ -663,6 +714,10 @@ async function findAssetIdByUrl(libraryId: string, url: string): Promise<{ id: s
  * Called when a single VideoBlock.libraryId was used instead of a form binding.
  */
 async function mergeVideoAsset(renderId: string, blockId: string, assetId: string): Promise<void> {
+  // Délègue à mergeUsedAssets mais en préservant les autres clés de videoAssets.
+  // Note : best-effort race avec un autre mergeVideoAsset concurrent — le 2e
+  // patch écrase le 1er pour la même clé blockId. En pratique chaque block
+  // génère un seul appel séquentiel.
   try {
     const render = await prisma.render.findUnique({
       where: { id: renderId },
@@ -672,8 +727,7 @@ async function mergeVideoAsset(renderId: string, blockId: string, assetId: strin
     try { stored = JSON.parse(render?.usedAssets ?? "{}") as Record<string, unknown>; } catch { /* ignore */ }
     const videoAssets = ((stored.videoAssets ?? {}) as Record<string, string>);
     videoAssets[blockId] = assetId;
-    stored.videoAssets = videoAssets;
-    await prisma.render.update({ where: { id: renderId }, data: { usedAssets: JSON.stringify(stored) } });
+    await mergeUsedAssets(renderId, { videoAssets });
   } catch (err) {
     console.warn(`[mergeVideoAsset] failed for render ${renderId}:`, err);
   }
@@ -756,16 +810,8 @@ async function generateVideoRender(
     // Load prefill asset IDs written at POST /api/renders from resolveLibraryPrefill.
     // Using these prevents re-querying the library at render time, which would
     // double-advance the rotation cursor and render different content than shown in the form.
-    let prefillVideoAssets: Record<string, string> = {};
-    let prefillAudioAssetId: string | null = null;
-    {
-      const renderRow = await prisma.render.findUnique({ where: { id: renderId }, select: { usedAssets: true } });
-      try {
-        const ua = JSON.parse(renderRow?.usedAssets ?? "{}") as { videoAssets?: Record<string, string>; audioAssetId?: string };
-        prefillVideoAssets = ua.videoAssets ?? {};
-        prefillAudioAssetId = ua.audioAssetId ?? null;
-      } catch { /* malformed JSON — fall through to library selection */ }
-    }
+    const { videoAssets: prefillVideoAssets, audioAssetId: prefillAudioAssetId } =
+      await loadPrefillAssets(renderId);
 
     // 0. Résoudre l'URL vidéo en premier — nécessaire pour injecter les métadonnées dans l'overlay
     const videoBlock = videoBlocks[0];
@@ -836,7 +882,14 @@ async function generateVideoRender(
       progress: 0.12,
     });
 
-    const overlayPlan = computeOverlayPlan(patchedTemplate.blocks);
+    // W5.4 : pré-filtre les blocs conditionally-hidden (isBlockVisibleForListing)
+    // avant computeOverlayPlan. Sans ce filtre, un bloc avec timing fields qui
+    // est aussi caché par condition contribuait des breakpoints et des states
+    // overlay → PNG inutiles uploadés sur R2 (cost + bandwidth).
+    const visibleBlocksForPlan = patchedTemplate.blocks.filter((b) =>
+      isBlockVisibleForListing(b, enrichedListingData)
+    );
+    const overlayPlan = computeOverlayPlan(visibleBlocksForPlan);
 
     let overlayBuffers: Buffer[];
     if (overlayPlan === null) {
@@ -989,16 +1042,8 @@ async function generateVideoRenderLocal(
     // Load prefill asset IDs written at POST /api/renders from resolveLibraryPrefill.
     // Using these prevents re-querying the library at render time, which would
     // double-advance the rotation cursor and render different content than shown in the form.
-    let prefillVideoAssets: Record<string, string> = {};
-    let prefillAudioAssetId: string | null = null;
-    {
-      const renderRow = await prisma.render.findUnique({ where: { id: renderId }, select: { usedAssets: true } });
-      try {
-        const ua = JSON.parse(renderRow?.usedAssets ?? "{}") as { videoAssets?: Record<string, string>; audioAssetId?: string };
-        prefillVideoAssets = ua.videoAssets ?? {};
-        prefillAudioAssetId = ua.audioAssetId ?? null;
-      } catch { /* malformed JSON — fall through to library selection */ }
-    }
+    const { videoAssets: prefillVideoAssets, audioAssetId: prefillAudioAssetId } =
+      await loadPrefillAssets(renderId);
 
     // 0. Résoudre l'URL vidéo en premier — nécessaire pour injecter les métadonnées dans l'overlay
     const videoBlock = videoBlocks[0];
@@ -1070,7 +1115,11 @@ async function generateVideoRenderLocal(
     });
     console.log(`[videoLocal] ${renderId} — step 1: buildHTML overlayMode`);
 
-    const overlayPlan = computeOverlayPlan(patchedTemplate.blocks);
+    // W5.4 : pré-filtre conditional-hidden blocks (cf. videoRender RunPod).
+    const visibleBlocksForPlan = patchedTemplate.blocks.filter((b) =>
+      isBlockVisibleForListing(b, enrichedListingData)
+    );
+    const overlayPlan = computeOverlayPlan(visibleBlocksForPlan);
 
     let overlayBuffers: Buffer[];
     if (overlayPlan === null) {
@@ -1569,16 +1618,8 @@ async function generateSequenceRender(
     // Load prefill asset IDs written at POST /api/renders from resolveLibraryPrefill.
     // Using these prevents re-querying the library at render time, which would
     // double-advance the rotation cursor and render different content than shown in the form.
-    let prefillVideoAssets: Record<string, string> = {};
-    let prefillAudioAssetId: string | null = null;
-    {
-      const renderRow = await prisma.render.findUnique({ where: { id: renderId }, select: { usedAssets: true } });
-      try {
-        const ua = JSON.parse(renderRow?.usedAssets ?? "{}") as { videoAssets?: Record<string, string>; audioAssetId?: string };
-        prefillVideoAssets = ua.videoAssets ?? {};
-        prefillAudioAssetId = ua.audioAssetId ?? null;
-      } catch { /* malformed JSON — fall through to library selection */ }
-    }
+    const { videoAssets: prefillVideoAssets, audioAssetId: prefillAudioAssetId } =
+      await loadPrefillAssets(renderId);
 
     // 1. Résoudre les URLs vidéo de chaque slot
     await updateRenderTracking(renderId, {
@@ -1741,21 +1782,13 @@ async function generateSequenceRender(
     // and must not be lost. Merge sequenceSlotAssets on top of existing videoAssets
     // so prefill entries for slots not re-resolved here are preserved.
     {
-      const existingRender = await prisma.render.findUnique({ where: { id: renderId }, select: { usedAssets: true } });
-      let existingUsedAssets: Record<string, unknown> = {};
-      try { existingUsedAssets = JSON.parse(existingRender?.usedAssets ?? "{}") as Record<string, unknown>; } catch { /* ignore */ }
-      await prisma.render.update({
-        where: { id: renderId },
-        data: {
-          usedAssets: JSON.stringify({
-            ...existingUsedAssets,
-            videoAssets: { ...(existingUsedAssets.videoAssets as Record<string, string> ?? {}), ...sequenceSlotAssets },
-            ...(music?.assetId ? { audioAssetId: music.assetId } : {}),
-            setSequencedLibraryIds,
-            usedSetTagByLibrary,
-            usedCategoryByLibrary,
-          }),
-        },
+      const { videoAssets: existingVideoAssets } = await loadPrefillAssets(renderId);
+      await mergeUsedAssets(renderId, {
+        videoAssets: { ...existingVideoAssets, ...sequenceSlotAssets },
+        ...(music?.assetId ? { audioAssetId: music.assetId } : {}),
+        setSequencedLibraryIds,
+        usedSetTagByLibrary,
+        usedCategoryByLibrary,
       });
     }
 
@@ -1806,16 +1839,8 @@ async function generateSequenceRenderLocal(
     // Load prefill asset IDs written at POST /api/renders from resolveLibraryPrefill.
     // Using these prevents re-querying the library at render time, which would
     // double-advance the rotation cursor and render different content than shown in the form.
-    let prefillVideoAssets: Record<string, string> = {};
-    let prefillAudioAssetId: string | null = null;
-    {
-      const renderRow = await prisma.render.findUnique({ where: { id: renderId }, select: { usedAssets: true } });
-      try {
-        const ua = JSON.parse(renderRow?.usedAssets ?? "{}") as { videoAssets?: Record<string, string>; audioAssetId?: string };
-        prefillVideoAssets = ua.videoAssets ?? {};
-        prefillAudioAssetId = ua.audioAssetId ?? null;
-      } catch { /* malformed JSON — fall through to library selection */ }
-    }
+    const { videoAssets: prefillVideoAssets, audioAssetId: prefillAudioAssetId } =
+      await loadPrefillAssets(renderId);
 
     // Resolve slots
     await updateRenderTracking(renderId, {
@@ -1954,24 +1979,15 @@ async function generateSequenceRenderLocal(
     // and must not be lost. Merge sequenceSlotAssets on top of existing videoAssets
     // so prefill entries for slots not re-resolved here are preserved.
     {
-      const existingRender = await prisma.render.findUnique({ where: { id: renderId }, select: { usedAssets: true } });
-      let existingUsedAssets: Record<string, unknown> = {};
-      try { existingUsedAssets = JSON.parse(existingRender?.usedAssets ?? "{}") as Record<string, unknown>; } catch { /* ignore */ }
-      await prisma.render.update({
-        where: { id: renderId },
-        data: {
-          usedAssets: JSON.stringify({
-            ...existingUsedAssets,
-            videoAssets: { ...(existingUsedAssets.videoAssets as Record<string, string> ?? {}), ...sequenceSlotAssets },
-            ...(music?.assetId ? { audioAssetId: music.assetId } : {}),
-            setSequencedLibraryIds,
-            usedSetTagByLibrary,
-            usedCategoryByLibrary,
-          }),
-        },
+      const { videoAssets: existingVideoAssets } = await loadPrefillAssets(renderId);
+      await mergeUsedAssets(renderId, {
+        videoAssets: { ...existingVideoAssets, ...sequenceSlotAssets },
+        ...(music?.assetId ? { audioAssetId: music.assetId } : {}),
+        setSequencedLibraryIds,
+        usedSetTagByLibrary,
+        usedCategoryByLibrary,
       });
     }
-
     await updateRenderTracking(renderId, {
       status: "DONE",
       pipeline: RENDER_PIPELINE.SEQUENCE_LOCAL,

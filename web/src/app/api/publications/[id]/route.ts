@@ -20,16 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { computePublicationSteps } from "@/lib/publications/steps";
 import { toUserRole } from "@/lib/permissions/role";
-
-/** Safely parse a JSON string. Returns `fallback` if falsy or invalid. */
-function safeJSON<T>(str: string | null | undefined, fallback: T): T {
-  if (!str) return fallback;
-  try {
-    return JSON.parse(str) as T;
-  } catch {
-    return fallback;
-  }
-}
+import { safeJSON } from "@/lib/utils/json";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -94,6 +85,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
         take: 1,
         select: { status: true, result: true },
       },
+      // W5.3 : versionsCount via _count pour pouvoir l'injecter dans
+      // computePublicationSteps. Avant : versionsCount hardcoded à 0 →
+      // l'étape "edit" affichait toujours todo, même pour les slots avec
+      // versions livrées (finding slot-13).
+      _count: { select: { versions: { where: { deletedAt: null } } } },
     },
   });
 
@@ -110,7 +106,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     coverPack: slot.render?.coverFramePack ?? null,
     captionJob: slot.captionJobs[0] ?? null,
     descriptionJob: slot.descriptionJobs[0] ?? null,
-    versionsCount: 0,
+    versionsCount: slot._count.versions,
     currentVersionId: slot.currentVersionId ?? null,
   });
 

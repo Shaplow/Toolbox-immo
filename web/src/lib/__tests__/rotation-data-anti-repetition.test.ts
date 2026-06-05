@@ -211,14 +211,14 @@ describe("Fix C3 — Orphan group (null/null) et hasHistory", () => {
     expect(eligible).toEqual(orphanGroup);
   });
 
-  it("hasHistory=true + lastCategory=null → exclut le groupe null dans le path ≥2cat ? Non : 1 seule cat", () => {
+  it("hasHistory=true + lastCategory=null → fallback retourne allGroups (W3.2)", () => {
     // Une lib 100% orphelins a 1 catégorie unique (null). L'anti-rep exclut
-    // le dernier setTag (null). Il reste [] → candidats = allGroups (fallback).
+    // le dernier setTag (null). filtered=[] → fallback explicite vers
+    // allGroups (intégré dans la fn depuis W3.2 — avant, c'était le caller
+    // qui faisait le fallback).
     const eligible = selectEligibleDataGroups(orphanGroup, null, null, true);
-    // 1 catégorie → path setTag exclusion → exclut setTag=null → []
-    expect(eligible).toEqual([]);
-    // Le caller utilise eligible.length > 0 ? eligible : allGroups → allGroups
-    // Donc la rotation ne se bloque pas même si eligible est vide.
+    expect(eligible).toEqual(orphanGroup);
+    // La rotation ne se bloque jamais — le caller n'a plus besoin de wrapper.
   });
 
   it("simulation 3 générations consecutives orphelins: sélection ne se bloque pas", () => {

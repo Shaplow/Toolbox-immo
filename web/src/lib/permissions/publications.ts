@@ -177,11 +177,15 @@ export function canCommentOnPublication(
     assigneeVideasteId?: string | null;
   }
 ): boolean {
-  if (user.role === "ADMIN") return true;
-  if (user.role === "MONTEUR") return slot.assigneeMonteurId === user.id;
-  if (user.role === "CM") return slot.assigneeCmId === user.id;
-  if (user.role === "VIDEASTE") return slot.assigneeVideasteId === user.id;
-  return false;
+  // W5.8 : délégation à canSeePublication — la règle de commentaire est par
+  // définition équivalente à "peut voir le slot". Source unique pour éviter
+  // qu'un nouveau champ assignee (ex: assigneeExternalId) introduise une
+  // divergence (slot-11 dup 3 sites).
+  return canSeePublication(user, {
+    assigneeMonteurId: slot.assigneeMonteurId,
+    assigneeCmId: slot.assigneeCmId,
+    assigneeVideasteId: slot.assigneeVideasteId ?? null,
+  });
 }
 
 /**

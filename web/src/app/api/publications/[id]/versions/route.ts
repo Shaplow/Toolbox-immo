@@ -9,35 +9,19 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
-import { canUserAccessSlot } from "@/lib/permissions/slotScope";
-import { toUserRole } from "@/lib/permissions/role";
+import { resolveSlotContext } from "@/lib/services/slot/resolveSlotContext";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params) {
-  // 1. Auth
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
-
-  const role = toUserRole(userContext.effectiveUser.role);
-  const userId = userContext.effectiveUser.id;
   const { id: slotId } = await params;
+  const r = await resolveSlotContext(slotId);
+  if (r.status === 401) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  if (r.status === 404) return NextResponse.json({ error: "Publication introuvable" }, { status: 404 });
+  const { role } = r.ctx;
 
-  // 2. Vérifier accès au slot
-  const slot = await prisma.publicationSlot.findUnique({
-    where: { id: slotId },
-    select: { id: true, status: true, assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
-  });
-
-  if (!slot || !canUserAccessSlot(slot, role, userId)) {
-    return NextResponse.json({ error: "Publication introuvable" }, { status: 404 });
-  }
-
-  // 3. Charger les versions (ADMIN voit tout, autres voient only non-deleted)
+  // Charger les versions (ADMIN voit tout, autres voient only non-deleted)
   const isAdmin = role === "ADMIN";
 
   const versions = await prisma.publicationVersion.findMany({

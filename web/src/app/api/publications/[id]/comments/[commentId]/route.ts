@@ -15,36 +15,24 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
-import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canEditComment } from "@/lib/permissions/publications";
-import { toUserRole } from "@/lib/permissions/role";
-import type { UserRole } from "@/types/roles";
+import { resolveSlotContext } from "@/lib/services/slot/resolveSlotContext";
 
 const MAX_COMMENT_LENGTH = 5000;
 
 type Params = { params: Promise<{ id: string; commentId: string }> };
 
 // ---------------------------------------------------------------------------
-// Shared: résoudre le slot + le commentaire et vérifier les accès
+// Shared: load comment + perm check après resolveSlotContext
 // ---------------------------------------------------------------------------
 
-async function resolveCommentOrError(
+async function loadCommentOrError(
   slotId: string,
   commentId: string,
-  role: UserRole,
-  userId: string
+  role: import("@/types/roles").UserRole,
+  userId: string,
 ) {
-  const slot = await prisma.publicationSlot.findUnique({
-    where: { id: slotId },
-    select: { id: true, assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
-  });
-
-  if (!slot || !canUserAccessSlot(slot, role, userId)) {
-    return { error: NextResponse.json({ error: "Slot introuvable" }, { status: 404 }) };
-  }
-
   const comment = await prisma.publicationComment.findUnique({
     where: { id: commentId },
     select: { id: true, slotId: true, authorId: true, deletedAt: true },
@@ -58,7 +46,7 @@ async function resolveCommentOrError(
     return { error: NextResponse.json({ error: "Accès refusé" }, { status: 403 }) };
   }
 
-  return { slot, comment };
+  return { comment };
 }
 
 // ---------------------------------------------------------------------------
@@ -66,16 +54,13 @@ async function resolveCommentOrError(
 // ---------------------------------------------------------------------------
 
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
-
-  const role = toUserRole(userContext.effectiveUser.role);
-  const userId = userContext.effectiveUser.id;
   const { id: slotId, commentId } = await params;
+  const r = await resolveSlotContext(slotId);
+  if (r.status === 401) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  if (r.status === 404) return NextResponse.json({ error: "Slot introuvable" }, { status: 404 });
+  const { role, userId } = r.ctx;
 
-  const resolved = await resolveCommentOrError(slotId, commentId, role, userId);
+  const resolved = await loadCommentOrError(slotId, commentId, role, userId);
   if ("error" in resolved) return resolved.error;
   const { comment } = resolved;
 
@@ -120,16 +105,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 // ---------------------------------------------------------------------------
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
-
-  const role = toUserRole(userContext.effectiveUser.role);
-  const userId = userContext.effectiveUser.id;
   const { id: slotId, commentId } = await params;
+  const r = await resolveSlotContext(slotId);
+  if (r.status === 401) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  if (r.status === 404) return NextResponse.json({ error: "Slot introuvable" }, { status: 404 });
+  const { role, userId } = r.ctx;
 
-  const resolved = await resolveCommentOrError(slotId, commentId, role, userId);
+  const resolved = await loadCommentOrError(slotId, commentId, role, userId);
   if ("error" in resolved) return resolved.error;
   const { comment } = resolved;
 

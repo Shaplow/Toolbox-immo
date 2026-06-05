@@ -26,8 +26,13 @@ import { SLOT_STATUSES, type SlotStatus } from "@/types/roles";
  * encore migrées. Elles doivent rester acceptées en PATCH le temps du backfill.
  *
  * @see feedback_publication_strategy_decisions.md Q12
+ *
+ * Source unique : transitions.ts. Sans ce re-export, l'ajout d'un nouveau
+ * statut legacy aurait dû être propagé dans 2 fichiers — divergence aurait
+ * causé un PATCH accepté par slotScope mais rejeté par canTransition.
  */
-const LEGACY_SLOT_STATUSES = ["TO_DO", "IN_PROGRESS", "READY", "CHECKING", "DONE"] as const;
+import { LEGACY_STATUSES as LEGACY_SLOT_STATUSES_REEXPORT } from "@/lib/services/slot/transitions";
+const LEGACY_SLOT_STATUSES = LEGACY_SLOT_STATUSES_REEXPORT;
 
 /**
  * Valide qu'une valeur est un statut de slot acceptable.

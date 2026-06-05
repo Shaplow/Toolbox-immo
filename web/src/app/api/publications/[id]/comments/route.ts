@@ -15,13 +15,11 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
-import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { canCommentOnPublication } from "@/lib/permissions/publications";
 import { logActivity } from "@/lib/services/slot/activity";
-import { toUserRole } from "@/lib/permissions/role";
 import { publicationCommentSchema, validateBody } from "@/lib/validation/apiSchemas";
+import { resolveSlotContext } from "@/lib/services/slot/resolveSlotContext";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -30,23 +28,11 @@ type Params = { params: Promise<{ id: string }> };
 // ---------------------------------------------------------------------------
 
 export async function GET(_req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
-
-  const role = toUserRole(userContext.effectiveUser.role);
-  const userId = userContext.effectiveUser.id;
   const { id: slotId } = await params;
-
-  const slot = await prisma.publicationSlot.findUnique({
-    where: { id: slotId },
-    select: { id: true, assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
-  });
-
-  if (!slot || !canUserAccessSlot(slot, role, userId)) {
-    return NextResponse.json({ error: "Slot introuvable" }, { status: 404 });
-  }
+  const r = await resolveSlotContext(slotId);
+  if (r.status === 401) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  if (r.status === 404) return NextResponse.json({ error: "Slot introuvable" }, { status: 404 });
+  const { slot, role, userId } = r.ctx;
 
   if (!canCommentOnPublication({ id: userId, role }, slot)) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
@@ -68,23 +54,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // ---------------------------------------------------------------------------
 
 export async function POST(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
-
-  const role = toUserRole(userContext.effectiveUser.role);
-  const userId = userContext.effectiveUser.id;
   const { id: slotId } = await params;
-
-  const slot = await prisma.publicationSlot.findUnique({
-    where: { id: slotId },
-    select: { id: true, assigneeMonteurId: true, assigneeCmId: true, assigneeVideasteId: true },
-  });
-
-  if (!slot || !canUserAccessSlot(slot, role, userId)) {
-    return NextResponse.json({ error: "Slot introuvable" }, { status: 404 });
-  }
+  const r = await resolveSlotContext(slotId);
+  if (r.status === 401) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  if (r.status === 404) return NextResponse.json({ error: "Slot introuvable" }, { status: 404 });
+  const { userContext, slot, role, userId } = r.ctx;
 
   if (!canCommentOnPublication({ id: userId, role }, slot)) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
