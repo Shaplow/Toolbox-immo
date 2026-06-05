@@ -46,7 +46,9 @@ npm run db:backup
 # ── 2b. Prisma (sans seed auto) ────────────────────────────────────────────
 echo ""
 echo "▶ 2/4  Prisma — migrations PostgreSQL (sans seed)..."
-./node_modules/.bin/prisma migrate deploy
+# Re-stamp les checksums des 2 migrations historiques drifty avant deploy.
+# Idempotent : si déjà OK, le script no-op et enchaîne sur migrate deploy.
+bash scripts/repair-prisma-drift.sh
 ./node_modules/.bin/prisma generate
 
 # ── 3. Import des données (si demandé) ─────────────────────────────────────
