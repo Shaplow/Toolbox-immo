@@ -162,7 +162,13 @@ export async function POST(req: NextRequest, { params }: Params) {
       const fields: Record<string, string> = {};
       for (let i = 0; i < sanitizedHeaders.length; i++) {
         if (RESERVED.has(sanitizedHeaders[i])) continue;
-        fields[sanitizedHeaders[i]] = sanitizeValue(row[i] ?? "");
+        // W5.2 : skip les valeurs vides après sanitize. Avant, une colonne
+        // optionnelle (ex: tip3) absente du CSV mais déclarée dans le header
+        // produisait `{ tip3: "" }` qui s'injectait dans le template — l'user
+        // voyait des champs vides dans la vidéo finale.
+        const value = sanitizeValue(row[i] ?? "");
+        if (value === "") continue;
+        fields[sanitizedHeaders[i]] = value;
       }
 
       // setTag : colonne set_tag si présente, sinon slug de la première colonne de données

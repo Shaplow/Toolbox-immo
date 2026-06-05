@@ -565,6 +565,14 @@ export interface VideoSequenceSlot {
 
 // ─── Template JSON (structure complète) ────────────────────────────────────────
 export interface TemplateJSON {
+  /**
+   * Version du schéma TemplateJSON — bumpée à chaque modification structurelle
+   * qui nécessite une normalize/migration (orphan group cleanup, default
+   * videoSequence, etc.). Permet à normalizeTemplateJSON de skip le travail
+   * si le template est déjà à la version courante. Absent = template legacy
+   * (pré-W5.17), normalisation complète à la prochaine lecture.
+   */
+  schemaVersion?: number;
   canvas: TemplateCanvas;
   theme: TemplateTheme;
   blocks: AnyBlock[];

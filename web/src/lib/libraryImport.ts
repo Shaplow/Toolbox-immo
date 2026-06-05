@@ -53,6 +53,15 @@ function isValidManifest(obj: unknown): obj is LibraryExportManifest {
   if (m.version !== 1) return false;
   if (m.libraryType !== "media" && m.libraryType !== "data") return false;
   if (!m.library || typeof m.library !== "object") return false;
+  // W5.6 : validation explicite Array.isArray sur assets/campaigns selon le
+  // libraryType. Sans ça, un manifest avec `assets: "not-an-array"` passait
+  // ce guard et faisait crasher l'import au premier forEach (500 silencieux,
+  // rows partiellement créées sans rollback).
+  if (m.libraryType === "media") {
+    if (!Array.isArray(m.assets)) return false;
+  } else if (m.libraryType === "data") {
+    if (!Array.isArray(m.campaigns)) return false;
+  }
   return true;
 }
 
@@ -290,12 +299,24 @@ async function importDataLibrary(
   }
 
   // 2. Traiter chaque campaign
+  // W5.6 : invariant "1 seule campaign active par lib" enforce ici. Avant,
+  // un ZIP avec plusieurs campaigns isActive=true (état invalide producible
+  // si la contrainte a été contournée) importait toutes actives → resolver
+  // retournait la 1ère arbitrairement (non déterministe).
+  let firstActiveImported = false;
   for (const campaign of manifest.campaigns) {
+    const isActiveForce = campaign.isActive && !firstActiveImported;
+    if (isActiveForce) firstActiveImported = true;
+    else if (campaign.isActive) {
+      warnings.push(
+        `Campaign "${campaign.name}" était marquée active dans le ZIP mais une autre est déjà active : importée comme inactive.`,
+      );
+    }
     const newCampaign = await prisma.dataCampaign.create({
       data: {
         libraryId: targetLibraryId,
         name: campaign.name,
-        isActive: campaign.isActive,
+        isActive: isActiveForce,
         usagePolicy: campaign.usagePolicy ?? "cycle",
         cycleResetAt: campaign.cycleResetAt ? new Date(campaign.cycleResetAt) : null,
       },

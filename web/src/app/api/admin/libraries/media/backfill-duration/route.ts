@@ -112,21 +112,36 @@ export async function POST(req: NextRequest) {
     select: { id: true, url: true, mimeType: true, filename: true },
   });
 
+  // W5.13 : Promise.allSettled par batches de 5. Sans ça, la boucle for
+  // séquentielle avec 30s timeout ffprobe + 60s render-engine prenait
+  // jusqu'à 100min sur 100 assets — bien au-delà du timeout Vercel/Next.
+  // 5 concurrents reste raisonnable pour R2/render-engine (pas de saturation).
+  const BATCH_SIZE = 5;
   let succeeded = 0;
   let failed = 0;
 
-  for (const asset of assets) {
-    const duration = await probeDuration(asset.url);
-    if (duration != null) {
-      try {
+  for (let i = 0; i < assets.length; i += BATCH_SIZE) {
+    const batch = assets.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (asset) => {
+        const duration = await probeDuration(asset.url);
+        if (duration == null) {
+          throw new Error("no_duration");
+        }
         await prisma.mediaAsset.update({ where: { id: asset.id }, data: { duration } });
+        return asset.id;
+      }),
+    );
+    for (const [idx, r] of results.entries()) {
+      if (r.status === "fulfilled") {
         succeeded++;
-      } catch (err) {
-        console.error(`[backfill-duration] update failed for asset ${asset.id}:`, err);
+      } else {
+        const err = (r as PromiseRejectedResult).reason;
+        if (err instanceof Error && err.message !== "no_duration") {
+          console.error(`[backfill-duration] failed for asset ${batch[idx].id}:`, err);
+        }
         failed++;
       }
-    } else {
-      failed++;
     }
   }
 

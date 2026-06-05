@@ -104,6 +104,15 @@ function normalizeLayerGroup(group: LayerGroup): LayerGroup {
   };
 }
 
+/**
+ * W5.17 — Version courante du schéma TemplateJSON. Bumpée à chaque
+ * modification structurelle qui nécessite une migration des données existantes.
+ * normalizeTemplateJSON applique les transformations puis stamp ce numéro,
+ * permettant aux lectures suivantes de skip le travail (et de tracer les
+ * templates jamais ré-écrits depuis l'ajout d'une nouvelle règle).
+ */
+export const CURRENT_TEMPLATE_SCHEMA_VERSION = 1;
+
 export function normalizeTemplateJSON(template: TemplateJSON): TemplateJSON {
   const normalizedSections = (template.formSections ?? [])
     .map((section) => normalizeFormSection(section))
@@ -170,7 +179,11 @@ export function normalizeTemplateJSON(template: TemplateJSON): TemplateJSON {
   // videoSequence (mode séquence unifié). No-op si videoSequence est déjà
   // non-vide. Idempotent tant que la séquence reste non-vide entre deux
   // normalisations (les IDs aléatoires ne sont générés qu'une fois).
-  return ensureVideoSequence(baseNormalized);
+  const withSequence = ensureVideoSequence(baseNormalized);
+  // W5.17 : stamp la version après application complète. Ceux qui n'ont pas
+  // bumpé via PUT depuis l'introduction du field auront ce champ rempli au
+  // prochain serialize (lecture-prochaine-écriture).
+  return { ...withSequence, schemaVersion: CURRENT_TEMPLATE_SCHEMA_VERSION };
 }
 
 export function serializeTemplateJSON(template: TemplateJSON): TemplateJSON {

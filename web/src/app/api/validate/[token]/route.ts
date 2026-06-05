@@ -40,23 +40,30 @@ type Action = (typeof VALID_ACTIONS)[number];
 
 const MAX_COMMENT_LENGTH = 2000;
 
-// ─── Rate-limit basique en mémoire ────────────────────────────────────────────
-// Best-effort : reset à chaque redémarrage du process. Acceptable pour MVP ;
-// pour la prod on remplacera par Redis ou un middleware dédié.
+// ─── Rate-limit sliding window in-memory ──────────────────────────────────────
+// Best-effort : reset à chaque redémarrage du process. Acceptable pour MVP
+// car le token magic-link a 256 bits d'entropie (brute-force impractical
+// même sans rate-limit). Sur déploiements multi-instance ou si analytics
+// remontent > 100 req/min, migrer vers Upstash Redis (TODO).
+//
+// W5.16 : passage à sliding window (timestamps array) plutôt que fixed
+// window — évite le burst possible au reset (jusqu'à 2× MAX dans la même
+// seconde à cheval sur la fenêtre).
 
-const rateLimits = new Map<string, { count: number; resetAt: number }>();
+const rateLimits = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 10;
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
-  const entry = rateLimits.get(ip);
-  if (!entry || entry.resetAt < now) {
-    rateLimits.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
+  const cutoff = now - RATE_LIMIT_WINDOW_MS;
+  const timestamps = (rateLimits.get(ip) ?? []).filter((t) => t > cutoff);
+  if (timestamps.length >= RATE_LIMIT_MAX) {
+    rateLimits.set(ip, timestamps); // garde l'historique pour les prochains checks
+    return false;
   }
-  if (entry.count >= RATE_LIMIT_MAX) return false;
-  entry.count++;
+  timestamps.push(now);
+  rateLimits.set(ip, timestamps);
   return true;
 }
 
