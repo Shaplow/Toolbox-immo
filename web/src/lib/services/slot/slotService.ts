@@ -32,7 +32,6 @@ import {
 } from "@/lib/services/slot/transitions";
 import { mapSourceToInitialStatus } from "@/lib/calendarEngine";
 import { deleteFromR2 } from "@/lib/r2";
-import { getCoverPresetIdFromConfig } from "@/lib/publications/coverMode";
 import { safeJSON } from "@/lib/utils/json";
 
 // ─── Types I/O ────────────────────────────────────────────────────────────────
@@ -220,14 +219,15 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
       "Description auto activée mais aucun prompt IA défini (ni au slot, ni au pattern)",
     );
   }
-  const resolvedCoverMode = input.coverModeOverride ?? resolvedPattern?.coverMode ?? "none";
-  const patternCoverPresetId = getCoverPresetIdFromConfig(resolvedPattern?.coverConfig);
-  const resolvedCoverPresetId = input.coverPresetIdOverride ?? patternCoverPresetId;
-  if (resolvedCoverMode === "autoPack" && !resolvedCoverPresetId) {
-    throw new ValidationError(
-      "Cover mode autoPack activé mais aucun preset cover défini (ni au slot, ni au pattern)",
-    );
-  }
+  // Guard cover-mode retiré (fix regression post-QW1) : le runtime
+  // (lib/coverAuto.ts:761-767) a un fallback gracieux qui prend le preset
+  // par défaut du template (sortOrder min) quand coverConfig n'a ni
+  // coverPresetId ni coverPresetName. Bloquer ici empêchait la création
+  // de slots valides où le pattern a coverMode="autoPack" sans preset
+  // explicite dans coverConfig (le runtime se serait débrouillé). En cas
+  // de template sans presets, coverAuto.ts log COVER_CONFIG_ERROR avec
+  // un message clair pointant vers le builder — pas besoin de doubler la
+  // validation ici.
 
   const slot = await prisma.publicationSlot.create({
     data: {
@@ -619,22 +619,12 @@ export async function patchSlot(
     );
   }
 
-  const postUpdateCoverMode =
-    coverModeOverride !== undefined
-      ? (coverModeOverride as string | null)
-      : slot.coverModeOverride;
-  const postUpdateCoverPresetId =
-    coverPresetIdOverride !== undefined
-      ? (coverPresetIdOverride as string | null)
-      : slot.coverPresetIdOverride;
-  const resolvedCoverMode = postUpdateCoverMode ?? effectivePattern?.coverMode ?? "none";
-  const patternCoverPresetId = getCoverPresetIdFromConfig(effectivePattern?.coverConfig);
-  const resolvedCoverPresetId = postUpdateCoverPresetId ?? patternCoverPresetId;
-  if (resolvedCoverMode === "autoPack" && !resolvedCoverPresetId) {
-    throw new ValidationError(
-      "Cover mode autoPack activé mais aucun preset cover défini (ni au slot, ni au pattern)",
-    );
-  }
+  // Guard cover-mode retiré (idem createSlot ci-dessus) : le runtime
+  // coverAuto.ts a un fallback gracieux preset par défaut du template
+  // (sortOrder min). Pas besoin de bloquer le PATCH si le pattern a
+  // coverMode="autoPack" sans coverPresetId dans coverConfig — le moteur
+  // se débrouille au moment du render et log COVER_CONFIG_ERROR si
+  // vraiment rien n'est résolvable.
 
   // Update + logActivity (STATUS_CHANGED, ASSIGNEE_CHANGED) dans une seule
   // transaction. Sans ça, un crash entre l'update et l'un des logActivity

@@ -435,7 +435,12 @@ describe("createSlot — cross-field validation", () => {
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
-  it("coverModeOverride=autoPack + pattern sans coverPresetId → rejet", async () => {
+  it("coverModeOverride=autoPack sans coverPresetId sur le pattern → accepté (fallback runtime)", async () => {
+    // Phase 2.6 : pattern.coverConfig n'a plus à porter coverPresetId — le
+    // preset vit sur le template (1 preset par défaut auto-créé dans le
+    // builder). Le runtime coverAuto.ts résout via template.coverPresets en
+    // fallback. createSlot ne doit donc PAS bloquer ce cas (le guard a été
+    // retiré post-regression user 2026-06-05).
     mockPatternFindUnique.mockResolvedValueOnce({
       id: "pattern-A",
       accountId: "account-A",
@@ -445,23 +450,22 @@ describe("createSlot — cross-field validation", () => {
       needsCaptions: false,
       needsDescription: "none",
       coverMode: "none",
-      coverConfig: null, // ← rien
+      coverConfig: null,
       defaultAssigneeMonteurId: null,
       defaultAssigneeCmId: null,
       defaultAssigneeVideasteId: null,
     });
 
-    await expect(
-      createSlot(
-        {
-          accountId: "account-A",
-          scheduledAt: "2026-06-01T10:00:00Z",
-          patternId: "pattern-A",
-          coverModeOverride: "autoPack",
-        },
-        makeAdminCtx(),
-      ),
-    ).rejects.toBeInstanceOf(ValidationError);
+    const result = await createSlot(
+      {
+        accountId: "account-A",
+        scheduledAt: "2026-06-01T10:00:00Z",
+        patternId: "pattern-A",
+        coverModeOverride: "autoPack",
+      },
+      makeAdminCtx(),
+    );
+    expect(result).toBeDefined();
   });
 
   it("Overrides cohérents → création OK", async () => {
