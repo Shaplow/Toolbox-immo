@@ -48,8 +48,15 @@ export type PublicationSlotForPermission = {
  * - USER   → false (les USER n'ont pas accès à la pipeline éditoriale).
  */
 export function canSeePublication(
-  user: AppUserIdentity,
-  slot: PublicationSlotForPermission
+  // W5.8 : narrower type — la fn ne lit que id + role. Permet à
+  // canCommentOnPublication (qui reçoit { id, role: UserRole } sans
+  // permissions/name) de déléguer ici sans cast.
+  user: Pick<AppUserIdentity, "id" | "role">,
+  // slot.id est rendu optionnel ici (utilisé seulement par
+  // assertCanSeePublication pour le message d'erreur). Permet la délégation
+  // depuis canCommentOnPublication qui ne reçoit pas l'id, tout en gardant
+  // la compat des callers qui passent l'id.
+  slot: Omit<PublicationSlotForPermission, "id"> & { id?: string }
 ): boolean {
   const role = user.role;
 

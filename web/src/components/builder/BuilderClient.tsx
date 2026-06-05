@@ -367,17 +367,17 @@ export function BuilderClient({
         {/* Undo / Redo — ButtonIcon variant ghost (cohérent UI primitives) */}
         <ButtonIcon
           icon={Undo2}
+          label="Annuler (Ctrl+Z)"
           onClick={undo}
           disabled={past.length === 0}
-          title="Annuler (Ctrl+Z)"
           variant="ghost"
           size="sm"
         />
         <ButtonIcon
           icon={Redo2}
+          label="Rétablir (Ctrl+Y)"
           onClick={redo}
           disabled={future.length === 0}
-          title="Rétablir (Ctrl+Y)"
           variant="ghost"
           size="sm"
         />
