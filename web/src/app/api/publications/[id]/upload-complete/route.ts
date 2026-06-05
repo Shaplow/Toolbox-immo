@@ -372,6 +372,22 @@ async function handleVersionComplete(args: {
           reason: "needsAdminValidation_disabled",
         },
       });
+      // W5.5 : symétrie audit avec promote/route.ts — sans ça, l'activity
+      // timeline montre 2 events distincts pour la même action sémantique
+      // (manual promote = VERSION_PROMOTED + CURRENT_VERSION_CHANGED ;
+      // auto-promote = VERSION_PROMOTED seul). Support/audit ne peut pas
+      // reconstituer un historique homogène.
+      await logActivity(tx as typeof args.prisma, {
+        slotId,
+        actorId,
+        type: "CURRENT_VERSION_CHANGED",
+        payload: {
+          versionId: version.id,
+          versionNumber: version.versionNumber,
+          previousVersionId: null,
+          autoPromoted: true,
+        },
+      });
       if (version.versionNumber === 1) {
         await applyAutoTransition(tx as typeof args.prisma, slotId, freshStatus, "VERSION_PROMOTED", actorId);
       }

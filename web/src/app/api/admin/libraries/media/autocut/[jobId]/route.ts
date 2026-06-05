@@ -92,6 +92,25 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     updateData.confirmedEnd = job.confirmedEnd ?? job.proposedEnd;
   }
 
+  // Guard explicite : un accept sans timings exploitables (Whisper failed,
+  // job processing pas encore parvenu) générait un job "accepted" sans
+  // confirmedStart/End → batch-apply throw silencieusement plus tard sans
+  // remonter l'erreur à l'admin (finding library-6).
+  if (
+    updateData.confirmedStart === null ||
+    updateData.confirmedStart === undefined ||
+    updateData.confirmedEnd === null ||
+    updateData.confirmedEnd === undefined
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Impossible d'accepter ce job : confirmedStart/confirmedEnd manquants (proposedStart/End nuls — Whisper n'a rien trouvé ou job encore en traitement).",
+      },
+      { status: 400 },
+    );
+  }
+
   const updated = await prisma.mediaAutocutJob.update({
     where: { id: jobId },
     data: updateData,

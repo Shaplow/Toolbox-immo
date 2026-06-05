@@ -40,62 +40,56 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Entrée introuvable" }, { status: 404 });
   }
 
+  // Toutes les sous-opérations (fields, reset global+per-account, reset par
+  // compte, remplacement access) dans une seule transaction. Sans ça, un
+  // succès partiel laissait l'entry à moitié mise à jour (ex: fields écrits
+  // mais ancienne access-list conservée, ou usage reset sans access update)
+  // sans rollback — finding library-10.
   try {
-    const ops: Promise<unknown>[] = [];
+    await prisma.$transaction(async (tx) => {
+      if (hasFieldsUpdate) {
+        const dataUpdate: { fields?: string; setTag?: string | null; category?: string | null } = {};
+        if (body.fields !== undefined) {
+          dataUpdate.fields = JSON.stringify(body.fields);
+        }
+        if (body.setTag !== undefined) {
+          dataUpdate.setTag = body.setTag ?? null;
+        }
+        if (body.category !== undefined) {
+          dataUpdate.category = body.category ?? null;
+        }
+        await tx.dataEntry.update({ where: { id: entryId }, data: dataUpdate });
+      }
 
-    if (hasFieldsUpdate) {
-      const dataUpdate: { fields?: string; setTag?: string | null; category?: string | null } = {};
-      if (body.fields !== undefined) {
-        dataUpdate.fields = JSON.stringify(body.fields);
-      }
-      if (body.setTag !== undefined) {
-        dataUpdate.setTag = body.setTag ?? null;
-      }
-      if (body.category !== undefined) {
-        dataUpdate.category = body.category ?? null;
-      }
-      ops.push(prisma.dataEntry.update({ where: { id: entryId }, data: dataUpdate }));
-    }
-
-    if (hasReset) {
-      // Reset global counters + cycle flag
-      ops.push(
-        prisma.dataEntry.update({
+      if (hasReset) {
+        // Reset global counters + cycle flag
+        await tx.dataEntry.update({
           where: { id: entryId },
           data: { usageCount: 0, lastUsedAt: null, usedInCycle: false },
-        }),
-      );
-      // Wipe all per-account usage records
-      ops.push(prisma.dataEntryUsage.deleteMany({ where: { entryId } }));
-    }
+        });
+        // Wipe all per-account usage records
+        await tx.dataEntryUsage.deleteMany({ where: { entryId } });
+      }
 
-    if (hasResetForAccount) {
-      // Wipe only the specified account's usage record
-      ops.push(
-        prisma.dataEntryUsage.deleteMany({
+      if (hasResetForAccount) {
+        // Wipe only the specified account's usage record
+        await tx.dataEntryUsage.deleteMany({
           where: { entryId, accountId: body.resetUsageForAccount },
-        }),
-      );
-    }
+        });
+      }
 
-    if (hasAccessUpdate) {
-      // Replace all access entries atomically
-      ops.push(
-        prisma.$transaction([
-          prisma.dataEntryAccess.deleteMany({ where: { entryId } }),
-          ...(body.accessAccountIds!.length > 0
-            ? [
-                prisma.dataEntryAccess.createMany({
-                  data: body.accessAccountIds!.map((accountId) => ({ entryId, accountId })),
-                  skipDuplicates: true,
-                }),
-              ]
-            : []),
-        ]),
-      );
-    }
-
-    await Promise.all(ops);
+      if (hasAccessUpdate) {
+        // Replace all access entries dans la même tx — pas de $transaction
+        // imbriqué (anti-pattern interactive tx Prisma).
+        await tx.dataEntryAccess.deleteMany({ where: { entryId } });
+        if (body.accessAccountIds && body.accessAccountIds.length > 0) {
+          await tx.dataEntryAccess.createMany({
+            data: body.accessAccountIds.map((accountId) => ({ entryId, accountId })),
+            skipDuplicates: true,
+          });
+        }
+      }
+    });
 
     const updated = await prisma.dataEntry.findUnique({
       where: { id: entryId },

@@ -26,7 +26,18 @@ import { importLibraryFromZip } from "@/lib/libraryImport";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MAX_ZIP_SIZE_BYTES = parseInt(process.env.LIBRARY_IMPORT_MAX_SIZE ?? "") || 10 * 1024 * 1024 * 1024;
+// Hard cap server-side à 1 GB par défaut (env var override). Le cap precedent
+// de 10 GB permettait un déni de service trivial (un admin compromis charge un
+// fichier géant en mémoire). 1 GB reste très permissif pour des assets vidéo.
+const HARD_MAX_ZIP_SIZE_BYTES = 1024 * 1024 * 1024;
+const envMax = parseInt(process.env.LIBRARY_IMPORT_MAX_SIZE ?? "") || HARD_MAX_ZIP_SIZE_BYTES;
+const MAX_ZIP_SIZE_BYTES = Math.min(envMax, HARD_MAX_ZIP_SIZE_BYTES);
+
+// Bytes magic ZIP : "PK\003\004" (local file header) — couvre 99% des ZIP
+// valides. Refuser tout fichier qui ne commence pas par ces 4 bytes évite de
+// buffer en mémoire un payload arbitraire (ex: un .mp4 renommé en .zip) qui
+// échouerait au parse mais aurait déjà consommé la RAM.
+const ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 
 export async function POST(req: NextRequest) {
   const userContext = await getUserContext();
@@ -73,13 +84,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Lire le buffer du ZIP
+  // Lire le buffer du ZIP. On vérifie d'abord les magic bytes pour ne pas
+  // buffer un payload non-ZIP en mémoire (un .mp4 renommé en .zip arriverait
+  // jusqu'au parser qui lancerait une exception 422 — trop tard).
   let zipBuffer: Buffer;
   try {
     const arrayBuffer = await f.arrayBuffer();
     zipBuffer = Buffer.from(arrayBuffer);
   } catch {
     return NextResponse.json({ error: "Impossible de lire le fichier ZIP" }, { status: 400 });
+  }
+  if (zipBuffer.length < ZIP_MAGIC.length || !zipBuffer.subarray(0, ZIP_MAGIC.length).equals(ZIP_MAGIC)) {
+    return NextResponse.json(
+      { error: "Le fichier ne semble pas être un ZIP valide (signature absente)" },
+      { status: 400 },
+    );
   }
 
   try {

@@ -71,6 +71,22 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ error: "Aucun rush à zipper." }, { status: 404 });
   }
 
+  // Si > 50% des rushes ont sizeBytes null (uploads legacy ou clients qui
+  // omettaient le champ), le guard MAX_TOTAL_BYTES devient inutilisable :
+  // chaque null contribue 0 et le cap est silencieusement contourné, ce qui
+  // permet d'exploser la mémoire du process Next en chargeant N rushes en
+  // RAM. On refuse plutôt que tenter — mieux vaut explicite que crash.
+  const nullSizeCount = rushes.filter((r) => r.sizeBytes == null).length;
+  if (nullSizeCount > rushes.length / 2) {
+    return NextResponse.json(
+      {
+        error:
+          "Impossible d'estimer la taille totale (trop de rushes sans sizeBytes). Téléchargez les rushes individuellement.",
+      },
+      { status: 409 },
+    );
+  }
+
   const totalBytes = rushes.reduce((acc, r) => acc + (r.sizeBytes ?? 0), 0);
   if (totalBytes > MAX_TOTAL_BYTES) {
     return NextResponse.json(

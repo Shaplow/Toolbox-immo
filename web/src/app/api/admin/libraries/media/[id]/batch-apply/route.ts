@@ -113,6 +113,16 @@ export async function POST(req: NextRequest, { params }: Params) {
       }
 
       try {
+        // webhookUrl peut être null si NEXTAUTH_URL n'est pas défini (cf.
+        // getRunpodWebhookUrl). Le `!` non-null assertion masquait ce cas et
+        // poussait `webhook: null` à RunPod → job submitted mais sans
+        // callback, reste indéfiniment en "processing" côté DB. Spread
+        // conditionnel pour ne rien envoyer si pas d'URL valide.
+        if (webhookUrl == null) {
+          console.warn(
+            `[batch-apply] webhook URL absente (NEXTAUTH_URL manquant ?) — editJob ${editJob.id} démarré sans callback`,
+          );
+        }
         const runpodResp = await submitRunpodJob<{ id: string }>(
           RUNPOD_ENDPOINT_ID,
           RUNPOD_API_KEY,
@@ -124,7 +134,7 @@ export async function POST(req: NextRequest, { params }: Params) {
               r2_key: asset.r2Key,
               params: editParams,
             },
-            webhook: webhookUrl!,
+            ...(webhookUrl ? { webhook: webhookUrl } : {}),
           }
         );
         await prisma.mediaEditJob.update({

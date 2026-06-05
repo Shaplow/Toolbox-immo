@@ -435,7 +435,7 @@ describe("createSlot — cross-field validation", () => {
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
-  it("coverModeOverride=auto + pattern sans coverPresetId → rejet", async () => {
+  it("coverModeOverride=autoPack + pattern sans coverPresetId → rejet", async () => {
     mockPatternFindUnique.mockResolvedValueOnce({
       id: "pattern-A",
       accountId: "account-A",
@@ -457,7 +457,7 @@ describe("createSlot — cross-field validation", () => {
           accountId: "account-A",
           scheduledAt: "2026-06-01T10:00:00Z",
           patternId: "pattern-A",
-          coverModeOverride: "auto",
+          coverModeOverride: "autoPack",
         },
         makeAdminCtx(),
       ),

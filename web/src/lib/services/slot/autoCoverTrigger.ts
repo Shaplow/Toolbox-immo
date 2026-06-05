@@ -16,6 +16,7 @@ import type { PrismaClient } from "@prisma/client";
 import { resolveSlotConfig } from "@/lib/services/slot/config";
 import { logActivity } from "@/lib/services/slot/activity";
 import { queueCoverFramePackPreparation } from "@/lib/coverAuto";
+import { getCoverPresetIdFromConfig } from "@/lib/publications/coverMode";
 
 export type AutoCoverResult =
   | { status: "queued"; packId: string; presetName: string }
@@ -79,12 +80,7 @@ export async function tryAutoTriggerCover(
     if (!slot.currentVersion?.fileUrl) return { status: "skipped", reason: "no_current_version" };
 
     // coverConfig.coverPresetId (Phase 3) — extrait pour le résolveur
-    const patternCoverPresetId =
-      slot.pattern?.coverConfig &&
-      typeof slot.pattern.coverConfig === "object" &&
-      "coverPresetId" in (slot.pattern.coverConfig as Record<string, unknown>)
-        ? ((slot.pattern.coverConfig as { coverPresetId?: string }).coverPresetId ?? null)
-        : null;
+    const patternCoverPresetId = getCoverPresetIdFromConfig(slot.pattern?.coverConfig);
 
     const resolved = resolveSlotConfig(
       slot,

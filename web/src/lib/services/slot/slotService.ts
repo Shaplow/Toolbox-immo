@@ -10,6 +10,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import type { UserContext } from "@/lib/userContext";
 import {
   ForbiddenError,
@@ -31,6 +32,8 @@ import {
 } from "@/lib/services/slot/transitions";
 import { mapSourceToInitialStatus } from "@/lib/calendarEngine";
 import { deleteFromR2 } from "@/lib/r2";
+import { getCoverPresetIdFromConfig } from "@/lib/publications/coverMode";
+import { safeJSON } from "@/lib/utils/json";
 
 // ─── Types I/O ────────────────────────────────────────────────────────────────
 
@@ -63,14 +66,8 @@ export interface CreateSlotInput {
 
 // ─── Helpers privés ───────────────────────────────────────────────────────────
 
-function safeJSON<T>(str: string | null | undefined, fallback: T): T {
-  if (!str) return fallback;
-  try {
-    return JSON.parse(str) as T;
-  } catch {
-    return fallback;
-  }
-}
+// safeJSON déplacé dans lib/utils/json.ts pour éviter la duplication avec
+// publications/[id]/route.ts (cf. W3.5).
 
 /**
  * Vérifie qu'un user assignee existe ET a le rôle attendu. Partagé par
@@ -222,17 +219,11 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
     );
   }
   const resolvedCoverMode = input.coverModeOverride ?? resolvedPattern?.coverMode ?? "none";
-  const patternCoverPresetIdRaw = resolvedPattern?.coverConfig;
-  const patternCoverPresetId =
-    patternCoverPresetIdRaw &&
-    typeof patternCoverPresetIdRaw === "object" &&
-    !Array.isArray(patternCoverPresetIdRaw)
-      ? (patternCoverPresetIdRaw as { coverPresetId?: string }).coverPresetId ?? null
-      : null;
+  const patternCoverPresetId = getCoverPresetIdFromConfig(resolvedPattern?.coverConfig);
   const resolvedCoverPresetId = input.coverPresetIdOverride ?? patternCoverPresetId;
-  if (resolvedCoverMode === "auto" && !resolvedCoverPresetId) {
+  if (resolvedCoverMode === "autoPack" && !resolvedCoverPresetId) {
     throw new ValidationError(
-      "Cover mode auto activé mais aucun preset cover défini (ni au slot, ni au pattern)",
+      "Cover mode autoPack activé mais aucun preset cover défini (ni au slot, ni au pattern)",
     );
   }
 
@@ -610,92 +601,122 @@ export async function patchSlot(
       ? (coverPresetIdOverride as string | null)
       : slot.coverPresetIdOverride;
   const resolvedCoverMode = postUpdateCoverMode ?? effectivePattern?.coverMode ?? "none";
-  const patternCoverPresetIdRaw = effectivePattern?.coverConfig;
-  const patternCoverPresetId =
-    patternCoverPresetIdRaw &&
-    typeof patternCoverPresetIdRaw === "object" &&
-    !Array.isArray(patternCoverPresetIdRaw)
-      ? (patternCoverPresetIdRaw as { coverPresetId?: string }).coverPresetId ?? null
-      : null;
+  const patternCoverPresetId = getCoverPresetIdFromConfig(effectivePattern?.coverConfig);
   const resolvedCoverPresetId = postUpdateCoverPresetId ?? patternCoverPresetId;
-  if (resolvedCoverMode === "auto" && !resolvedCoverPresetId) {
+  if (resolvedCoverMode === "autoPack" && !resolvedCoverPresetId) {
     throw new ValidationError(
-      "Cover mode auto activé mais aucun preset cover défini (ni au slot, ni au pattern)",
+      "Cover mode autoPack activé mais aucun preset cover défini (ni au slot, ni au pattern)",
     );
   }
 
-  // Update + log activity. On wrap l'update Prisma pour préserver le 500 explicite
-  // avec le message d'erreur (comportement de l'ancienne route — utile au client
-  // UI qui affiche le détail). mapServiceError ajoutera juste un code "INTERNAL".
+  // Update + logActivity (STATUS_CHANGED, ASSIGNEE_CHANGED) dans une seule
+  // transaction. Sans ça, un crash entre l'update et l'un des logActivity
+  // laissait le slot modifié avec un audit-trail partiel (gap silencieux,
+  // finding slot-11). cancelPendingJobsForSlot reste hors-tx car best-effort
+  // (cascade peut échouer sans devoir rollback la transition).
+  const statusChanged =
+    status !== undefined && typeof status === "string" && status !== slot.status;
+  const monteurChanged =
+    assigneeMonteurId !== undefined && assigneeMonteurId !== slot.assigneeMonteurId;
+  const cmChanged = assigneeCmId !== undefined && assigneeCmId !== slot.assigneeCmId;
+  const videasteChanged =
+    assigneeVideasteId !== undefined && assigneeVideasteId !== slot.assigneeVideasteId;
+  const anyAssigneeChanged = monteurChanged || cmChanged || videasteChanged;
+
   let updated: Awaited<ReturnType<typeof prisma.publicationSlot.update>>;
   try {
-    updated = await prisma.publicationSlot.update({
-      where: { id },
-      data: {
-        ...(status !== undefined ? { status: status as string } : {}),
-        ...(title !== undefined ? { title: title as string | null } : {}),
-        ...(description !== undefined ? { description: description as string | null } : {}),
-        ...(notes !== undefined ? { notes: notes as string | null } : {}),
-        ...(templateId !== undefined ? { templateId: templateId as string | null } : {}),
-        ...(scheduledAt !== undefined ? { scheduledAt: new Date(scheduledAt as string) } : {}),
-        ...(fields !== undefined ? { fields: JSON.stringify(fields) } : {}),
-        ...(fieldSchema !== undefined ? { fieldSchema: JSON.stringify(fieldSchema) } : {}),
-        ...(assigneeMonteurId !== undefined
-          ? { assigneeMonteurId: assigneeMonteurId as string | null }
-          : {}),
-        ...(assigneeCmId !== undefined
-          ? { assigneeCmId: assigneeCmId as string | null }
-          : {}),
-        ...(patternId !== undefined ? { patternId: patternId as string | null } : {}),
-        ...(currentVersionId !== undefined
-          ? { currentVersionId: currentVersionId as string | null }
-          : {}),
-        ...(isAuto !== undefined ? { isAuto: isAuto as boolean } : {}),
-        // W2 + Cohérence Workflows Phase 4 + Phase 2.3 — overrides per-slot.
-        // null = hérite du pattern, true/false = écrase. needsDescription est un enum (string).
-        ...(needsAdminValidationOverride !== undefined
-          ? { needsAdminValidationOverride: needsAdminValidationOverride as boolean | null }
-          : {}),
-        ...(needsClientValidationOverride !== undefined
-          ? { needsClientValidationOverride: needsClientValidationOverride as boolean | null }
-          : {}),
-        ...(allowsClientRevisionOverride !== undefined
-          ? { allowsClientRevisionOverride: allowsClientRevisionOverride as boolean | null }
-          : {}),
-        ...(needsCaptionsOverride !== undefined
-          ? { needsCaptionsOverride: needsCaptionsOverride as boolean | null }
-          : {}),
-        ...(needsDescriptionOverride !== undefined
-          ? { needsDescriptionOverride: needsDescriptionOverride as string | null }
-          : {}),
-        ...(needsRushesOverride !== undefined
-          ? { needsRushesOverride: needsRushesOverride as boolean | null }
-          : {}),
-        ...(needsBriefOverride !== undefined
-          ? { needsBriefOverride: needsBriefOverride as boolean | null }
-          : {}),
-        // Phase 5 slots one-off — ressources (preset/prompt) overrides
-        ...(coverModeOverride !== undefined
-          ? { coverModeOverride: coverModeOverride as string | null }
-          : {}),
-        ...(coverPresetIdOverride !== undefined
-          ? { coverPresetIdOverride: coverPresetIdOverride as string | null }
-          : {}),
-        ...(captionPresetIdOverride !== undefined
-          ? { captionPresetIdOverride: captionPresetIdOverride as string | null }
-          : {}),
-        ...(descriptionPromptIdOverride !== undefined
-          ? { descriptionPromptIdOverride: descriptionPromptIdOverride as string | null }
-          : {}),
-        ...(assigneeVideasteId !== undefined
-          ? { assigneeVideasteId: assigneeVideasteId as string | null }
-          : {}),
-      },
-      include: {
-        account: { select: { id: true, name: true, handle: true } },
-        template: { select: { id: true, name: true } },
-        render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
-      },
+    updated = await prisma.$transaction(async (tx) => {
+      // W5.14 : construction iterative de la data — chaque field passe par
+      // un transformer typé. Avant : 60 LOC de spreads conditionnels où
+      // ajouter un nouveau patchable demandait 3 éditions (ALLOWED_PATCH_
+      // FIELDS_BY_ROLE + destructure + spread). Maintenant : 1 entrée dans
+      // FIELD_TRANSFORMERS suffit.
+      const FIELD_TRANSFORMERS: Record<string, (v: unknown) => unknown> = {
+        status: (v) => v as string,
+        title: (v) => v as string | null,
+        description: (v) => v as string | null,
+        notes: (v) => v as string | null,
+        templateId: (v) => v as string | null,
+        scheduledAt: (v) => new Date(v as string),
+        fields: (v) => JSON.stringify(v),
+        fieldSchema: (v) => JSON.stringify(v),
+        assigneeMonteurId: (v) => v as string | null,
+        assigneeCmId: (v) => v as string | null,
+        assigneeVideasteId: (v) => v as string | null,
+        patternId: (v) => v as string | null,
+        currentVersionId: (v) => v as string | null,
+        isAuto: (v) => v as boolean,
+        // Phase 5/6 — overrides per-slot (null = hérite, true/false = écrase)
+        needsAdminValidationOverride: (v) => v as boolean | null,
+        needsClientValidationOverride: (v) => v as boolean | null,
+        allowsClientRevisionOverride: (v) => v as boolean | null,
+        needsCaptionsOverride: (v) => v as boolean | null,
+        needsDescriptionOverride: (v) => v as string | null, // enum string
+        needsRushesOverride: (v) => v as boolean | null,
+        needsBriefOverride: (v) => v as boolean | null,
+        coverModeOverride: (v) => v as string | null,
+        coverPresetIdOverride: (v) => v as string | null,
+        captionPresetIdOverride: (v) => v as string | null,
+        descriptionPromptIdOverride: (v) => v as string | null,
+      };
+
+      const FIELD_VALUES: Record<string, unknown> = {
+        status, title, description, notes, templateId, scheduledAt,
+        fields, fieldSchema,
+        assigneeMonteurId, assigneeCmId, assigneeVideasteId,
+        patternId, currentVersionId, isAuto,
+        needsAdminValidationOverride, needsClientValidationOverride,
+        allowsClientRevisionOverride, needsCaptionsOverride,
+        needsDescriptionOverride, needsRushesOverride, needsBriefOverride,
+        coverModeOverride, coverPresetIdOverride,
+        captionPresetIdOverride, descriptionPromptIdOverride,
+      };
+
+      const updateData: Record<string, unknown> = {};
+      for (const [field, transformer] of Object.entries(FIELD_TRANSFORMERS)) {
+        const raw = FIELD_VALUES[field];
+        if (raw !== undefined) updateData[field] = transformer(raw);
+      }
+
+      const u = await tx.publicationSlot.update({
+        where: { id },
+        data: updateData as Prisma.PublicationSlotUpdateInput,
+        include: {
+          account: { select: { id: true, name: true, handle: true } },
+          template: { select: { id: true, name: true } },
+          render: { select: { id: true, status: true, pngUrl: true, videoUrl: true } },
+        },
+      });
+
+      if (statusChanged) {
+        await logActivity(tx as typeof prisma, {
+          slotId: id,
+          actorId,
+          type: "STATUS_CHANGED",
+          payload: { from: slot.status, to: status as string },
+        });
+      }
+
+      if (anyAssigneeChanged) {
+        await logActivity(tx as typeof prisma, {
+          slotId: id,
+          actorId,
+          type: "ASSIGNEE_CHANGED",
+          payload: {
+            ...(monteurChanged
+              ? { monteur: { from: slot.assigneeMonteurId, to: assigneeMonteurId ?? null } }
+              : {}),
+            ...(cmChanged
+              ? { cm: { from: slot.assigneeCmId, to: assigneeCmId ?? null } }
+              : {}),
+            ...(videasteChanged
+              ? { videaste: { from: slot.assigneeVideasteId, to: assigneeVideasteId ?? null } }
+              : {}),
+          },
+        });
+      }
+
+      return u;
     });
   } catch (err) {
     console.error("[slotService.patchSlot] prisma update failed:", err);
@@ -706,60 +727,19 @@ export async function patchSlot(
     );
   }
 
-  // Log d'activité — STATUS_CHANGED si le statut a effectivement changé.
-  if (status !== undefined && typeof status === "string" && status !== slot.status) {
-    await logActivity(prisma, {
-      slotId: id,
-      actorId, // actualUser.id pour audit trail correct sous impersonation
-      type: "STATUS_CHANGED",
-      payload: { from: slot.status, to: status },
-    });
-
-    // Cancel cascade : si on passe à CANCELLED, marquer les jobs en cours
-    // comme FAILED (Render, CaptionJob) pour qu'ils :
-    //  1. Disparaissent des worklists "en cours"
-    //  2. Bloquent les webhooks RunPod qui arriveraient après (idempotence
-    //     côté webhook = ne pas écraser un terminal status)
-    //  3. Soient nettoyés par le sweep périodique sans confusion
-    // Best-effort : ces updates ne doivent pas faire échouer la transition.
-    if (status === "CANCELLED") {
-      try {
-        await cancelPendingJobsForSlot(id);
-      } catch (err) {
-        console.error(
-          `[patchSlot] cancel cascade failed for slot=${id}:`,
-          err,
-        );
-      }
+  // Cancel cascade : si on passe à CANCELLED, marquer les jobs en cours comme
+  // FAILED (Render, CaptionJob, DescriptionJob). Best-effort hors-tx : un
+  // échec ici ne doit pas rollback la transition (le slot EST cancelled, on
+  // signale l'échec dans les logs mais on confirme l'update).
+  if (statusChanged && status === "CANCELLED") {
+    try {
+      await cancelPendingJobsForSlot(id);
+    } catch (err) {
+      console.error(
+        `[patchSlot] cancel cascade failed for slot=${id}:`,
+        err,
+      );
     }
-  }
-
-  // Log d'activité — ASSIGNEE_CHANGED si l'un des assignees a changé.
-  // VIDEASTE inclus depuis le fix P3 — le vidéaste fait partie de
-  // l'équipe pipeline et son ré-assignement doit être traçable comme les
-  // deux autres rôles.
-  const monteurChanged =
-    assigneeMonteurId !== undefined && assigneeMonteurId !== slot.assigneeMonteurId;
-  const cmChanged = assigneeCmId !== undefined && assigneeCmId !== slot.assigneeCmId;
-  const videasteChanged =
-    assigneeVideasteId !== undefined && assigneeVideasteId !== slot.assigneeVideasteId;
-  if (monteurChanged || cmChanged || videasteChanged) {
-    await logActivity(prisma, {
-      slotId: id,
-      actorId, // actualUser.id pour audit trail correct sous impersonation
-      type: "ASSIGNEE_CHANGED",
-      payload: {
-        ...(monteurChanged
-          ? { monteur: { from: slot.assigneeMonteurId, to: assigneeMonteurId ?? null } }
-          : {}),
-        ...(cmChanged
-          ? { cm: { from: slot.assigneeCmId, to: assigneeCmId ?? null } }
-          : {}),
-        ...(videasteChanged
-          ? { videaste: { from: slot.assigneeVideasteId, to: assigneeVideasteId ?? null } }
-          : {}),
-      },
-    });
   }
 
   return {
@@ -863,6 +843,7 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
           label: true,
           source: true,
           needsCaptions: true,
+          needsCaptionsMode: true,
           needsAdminValidation: true,
           needsClientValidation: true,
           allowsClientRevision: true,
@@ -875,10 +856,13 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
       },
       // Dernier job captions/description pour alimenter PipelineDots avec
       // les vraies données (au lieu de déduire depuis slot.status).
+      // take:5 + staleSince exposé : syncSlotsPipelineStatuses applique
+      // un guard `!c.staleSince` qui sinon évalue !undefined === true et
+      // traite chaque job stale comme frais (bug post-promote).
       captionJobs: {
         orderBy: { createdAt: "desc" },
-        take: 1,
-        select: { status: true },
+        take: 5,
+        select: { status: true, staleSince: true },
       },
       descriptionJobs: {
         orderBy: { createdAt: "desc" },
@@ -894,10 +878,14 @@ export async function listSlots(filters: ListSlotsFilters, ctx: UserContext) {
       id: s.id,
       status: s.status,
       pattern: s.pattern
-        ? { source: s.pattern.source, needsCaptions: s.pattern.needsCaptions }
+        ? {
+            source: s.pattern.source,
+            needsCaptions: s.pattern.needsCaptions,
+            needsCaptionsMode: s.pattern.needsCaptionsMode,
+          }
         : null,
       render: s.render ? { status: s.render.status } : null,
-      captionJobs: s.captionJobs.map((c) => ({ status: c.status })),
+      captionJobs: s.captionJobs.map((c) => ({ status: c.status, staleSince: c.staleSince })),
     })),
   );
 
@@ -1001,6 +989,26 @@ async function cancelPendingJobsForSlot(slotId: string): Promise<void> {
   } catch (err) {
     console.error(`[cancelPendingJobsForSlot] captionJob update failed slot=${slotId}:`, err);
   }
+
+  // DescriptionJob — sans ce block, un slot annulé pouvait recevoir un
+  // webhook DESCRIPTION_COMPLETED qui écrasait la description manuelle ou
+  // déclenchait des transitions silencieuses.
+  try {
+    const updated = await prisma.descriptionJob.updateMany({
+      where: {
+        slotId,
+        status: { in: ["QUEUED", "PROCESSING"] },
+      },
+      data: { status: "FAILED", errorMsg: cancelMsg },
+    });
+    if (updated.count > 0) {
+      console.info(
+        `[cancelPendingJobsForSlot] slot=${slotId} marked ${updated.count} description job(s) as FAILED`,
+      );
+    }
+  } catch (err) {
+    console.error(`[cancelPendingJobsForSlot] descriptionJob update failed slot=${slotId}:`, err);
+  }
 }
 
 // ─── deleteSlot ───────────────────────────────────────────────────────────────
@@ -1033,28 +1041,35 @@ export async function deleteSlot(id: string, ctx: UserContext) {
   }
 
   // Charge le slot + tous les enfants qui détiennent des R2 keys avant
-  // que Prisma cascade ne les supprime de la DB.
-  const slot = await prisma.publicationSlot.findUnique({
-    where: { id },
-    include: {
-      versions: { select: { r2Key: true } },
-      rushes: { select: { r2Key: true } },
-      brief: { include: { attachments: { select: { r2Key: true } } } },
-    },
+  // que Prisma cascade ne les supprime de la DB. La lecture et le delete
+  // doivent vivre dans la même transaction — sans ça, un upload-complete
+  // concurrent peut insérer un PublicationRush ou une PublicationVersion
+  // entre la lecture et le delete. La cascade les supprime mais leurs
+  // r2Key n'ont pas été collectés → fuite R2 silencieuse.
+  const r2KeysToDelete: string[] = await prisma.$transaction(async (tx) => {
+    const slot = await tx.publicationSlot.findUnique({
+      where: { id },
+      include: {
+        versions: { select: { r2Key: true } },
+        rushes: { select: { r2Key: true } },
+        brief: { include: { attachments: { select: { r2Key: true } } } },
+      },
+    });
+    if (!slot) {
+      throw new NotFoundError("Slot");
+    }
+
+    const keys: string[] = [
+      ...slot.versions.map((v) => v.r2Key),
+      ...slot.rushes.map((r) => r.r2Key),
+      ...(slot.brief?.attachments.map((a) => a.r2Key) ?? []),
+    ];
+
+    // Delete dans la même tx : cascade supprime les rows enfants.
+    await tx.publicationSlot.delete({ where: { id } });
+
+    return keys;
   });
-  if (!slot) {
-    throw new NotFoundError("Slot");
-  }
-
-  // Collecte toutes les R2 keys orphelines après la cascade.
-  const r2KeysToDelete: string[] = [
-    ...slot.versions.map((v) => v.r2Key),
-    ...slot.rushes.map((r) => r.r2Key),
-    ...(slot.brief?.attachments.map((a) => a.r2Key) ?? []),
-  ];
-
-  // DB delete (cascade supprime les rows enfants).
-  await prisma.publicationSlot.delete({ where: { id } });
 
   // Cleanup R2 — best-effort. On itère séquentiellement pour ne pas
   // saturer le bucket en cas de slot avec beaucoup de versions/rushes.

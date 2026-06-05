@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockSlotFindUnique = vi.fn();
 const mockSlotDelete = vi.fn();
 const mockDeleteFromR2 = vi.fn();
+const mockTransaction = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -20,6 +21,7 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...args: unknown[]) => mockSlotFindUnique(...args),
       delete: (...args: unknown[]) => mockSlotDelete(...args),
     },
+    $transaction: (cb: unknown) => mockTransaction(cb),
   },
 }));
 
@@ -68,8 +70,23 @@ beforeEach(() => {
   mockSlotFindUnique.mockReset();
   mockSlotDelete.mockReset();
   mockDeleteFromR2.mockReset();
+  mockTransaction.mockReset();
   mockSlotDelete.mockResolvedValue({ id: "slot-1" });
   mockDeleteFromR2.mockResolvedValue(undefined);
+
+  // $transaction default : proxie le callback avec un tx qui appelle les
+  // mêmes mocks que prisma. Sans ça, les nouvelles écritures wrappées dans
+  // $transaction (cf. W2.1) retournent undefined et cassent les assertions.
+  mockTransaction.mockImplementation((cb: unknown) => {
+    if (typeof cb !== "function") return Promise.resolve(undefined);
+    const tx = {
+      publicationSlot: {
+        findUnique: (...args: unknown[]) => mockSlotFindUnique(...args),
+        delete: (...args: unknown[]) => mockSlotDelete(...args),
+      },
+    };
+    return Promise.resolve((cb as (tx: unknown) => Promise<unknown>)(tx));
+  });
 });
 
 // ─── Invariant 1 : ADMIN only ──────────────────────────────────────────────

@@ -58,11 +58,15 @@ async function revertAdvancesOnFailure(usedAssets: {
       const cursorAccountId = state.cursorAccountId;
       if (!cursorAccountId) continue;
       try {
+        // Phase W2.6 : on remet aussi lastAdvancedAt=NULL pour que la prochaine
+        // génération ne pense pas que ce compte a "déjà joué" (hasHistory=true)
+        // et n'applique pas une exclusion catégorie fantôme — finding rotation-10.
         await prisma.$executeRaw(Prisma.sql`
           UPDATE "AccountLibraryCursor"
           SET cursor = ${state.prevCursor},
               "lastUsedCategory" = ${state.prevLastUsedCategory},
-              "lastUsedSetTag"   = ${state.prevLastUsedSetTag}
+              "lastUsedSetTag"   = ${state.prevLastUsedSetTag},
+              "lastAdvancedAt"   = NULL
           WHERE "accountId" = ${cursorAccountId}
             AND "libraryId" = ${libraryId}
             AND cursor IS NOT DISTINCT FROM ${state.claimedCursor}
@@ -427,13 +431,16 @@ export async function POST(req: NextRequest) {
     // This replaces the prefill-time advance so abandoning the generate page no longer
     // wastes a rotation slot.
     if (sanitizedUsedAssets.setSequencedLibraryIds?.length && validatedAccountId) {
-      // Bug-hunter B3 : avant, on trust les hints client `usedSetTagByLibrary`
-      // / `usedCategoryByLibrary` pour avancer le cursor `lastUsedSetTag` /
-      // `lastUsedCategory`. Un payload tampered pouvait polluer l'anti-répétition
-      // du run suivant. On re-dérive depuis les assets effectivement choisis
-      // (MediaAsset.setTag/category côté DB), qui sont la source de vérité.
-      // Fallback sur les hints client UNIQUEMENT si aucun assetId n'a été choisi
-      // pour cette lib (cas auto-mode sans manual override).
+      // Bug-hunter B3 + Phase W2.8 : on ne trust JAMAIS les hints client
+      // `usedSetTagByLibrary` / `usedCategoryByLibrary`. Deux cas :
+      //  - manual-mode (videoAssets non-vide) : on re-dérive depuis les assets
+      //    effectivement choisis (MediaAsset.setTag/category côté DB).
+      //  - auto-mode (videoAssets vide) : on n'a pas la source de vérité au
+      //    submit. On STRIP les hints client pour ne pas écrire de valeurs
+      //    tampered. Le cursor sera juste re-stampé `lastAdvancedAt`
+      //    (cf. early return dans la fonction si setTag+category nulls).
+      const derivedSetTag: Record<string, string> = {};
+      const derivedCategory: Record<string, string> = {};
       if (sanitizedUsedAssets.videoAssets && Object.keys(sanitizedUsedAssets.videoAssets).length > 0) {
         const chosenAssetIds = Array.from(new Set(Object.values(sanitizedUsedAssets.videoAssets)));
         const sequencedSet = new Set(sanitizedUsedAssets.setSequencedLibraryIds);
@@ -441,20 +448,21 @@ export async function POST(req: NextRequest) {
           where: { id: { in: chosenAssetIds }, libraryId: { in: sanitizedUsedAssets.setSequencedLibraryIds } },
           select: { libraryId: true, setTag: true, category: true },
         });
-        const derivedSetTag: Record<string, string> = { ...(sanitizedUsedAssets.usedSetTagByLibrary ?? {}) };
-        const derivedCategory: Record<string, string> = { ...(sanitizedUsedAssets.usedCategoryByLibrary ?? {}) };
         for (const asset of assets) {
           if (!sequencedSet.has(asset.libraryId)) continue;
           if (asset.setTag) derivedSetTag[asset.libraryId] = asset.setTag;
           if (asset.category) derivedCategory[asset.libraryId] = asset.category;
         }
-        sanitizedUsedAssets.usedSetTagByLibrary = derivedSetTag;
-        sanitizedUsedAssets.usedCategoryByLibrary = derivedCategory;
       }
+      // Note : on garde les hints client UNIQUEMENT pour les libs où on a
+      // dérivé du serveur (déjà validés DB). Pour les autres, on n'écrit pas.
+      sanitizedUsedAssets.usedSetTagByLibrary = derivedSetTag;
+      sanitizedUsedAssets.usedCategoryByLibrary = derivedCategory;
+
       const advance = await advanceLibraryCursorsOnSubmit(
         sanitizedUsedAssets.setSequencedLibraryIds,
-        sanitizedUsedAssets.usedSetTagByLibrary ?? {},
-        sanitizedUsedAssets.usedCategoryByLibrary ?? {},
+        derivedSetTag,
+        derivedCategory,
         validatedAccountId,
       );
       if (Object.keys(advance.prevCursorStateByLibrary).length > 0) {
@@ -552,21 +560,28 @@ export async function POST(req: NextRequest) {
             (sanitizedUsedAssets.dataResolvedSetTag !== undefined || sanitizedUsedAssets.dataResolvedCategory !== undefined)) {
           let finalLibraryId = initialEntry.campaign?.libraryId;
           const repickHappened = dataClaim != null && dataClaim.claimState.entryId !== originalDataEntryId;
+          // W5.15 (rotation-13) : sur re-pick, utilise les resolvedSetTag/
+          // Category retournés par advanceDataEntryClaimOnSubmit plutôt que
+          // les hints client qui réfèrent à l'entry originale.
+          const finalSetTag = repickHappened
+            ? dataClaim?.claimState.resolvedSetTag ?? null
+            : sanitizedUsedAssets.dataResolvedSetTag ?? null;
+          const finalCategory = repickHappened
+            ? dataClaim?.claimState.resolvedCategory ?? null
+            : sanitizedUsedAssets.dataResolvedCategory ?? null;
           if (repickHappened) {
             // L'entry a changé suite à re-pick. Re-fetch pour récupérer le bon libraryId.
             const refetched = await prisma.dataEntry.findUnique({
               where: { id: sanitizedUsedAssets.dataEntryId },
               select: { campaign: { select: { libraryId: true } } },
             });
-            // Si l'entry a été supprimée entre temps (très rare), garde le finalLibraryId
-            // de l'entry initiale plutôt que tomber sur undefined → cursor jamais advancé.
             if (refetched?.campaign?.libraryId) finalLibraryId = refetched.campaign.libraryId;
           }
           if (finalLibraryId) {
             const dataAdvance = await advanceDataLibraryCursorOnSubmit(
               finalLibraryId,
-              sanitizedUsedAssets.dataResolvedSetTag ?? null,
-              sanitizedUsedAssets.dataResolvedCategory ?? null,
+              finalSetTag,
+              finalCategory,
               validatedAccountId,
             );
             if (dataAdvance.prevState !== null && dataAdvance.effectiveCursorId !== null) {
@@ -575,8 +590,8 @@ export async function POST(req: NextRequest) {
                 accountId: dataAdvance.effectiveCursorId,
                 prevLastUsedSetTag: dataAdvance.prevState.lastUsedSetTag,
                 prevLastUsedCategory: dataAdvance.prevState.lastUsedCategory,
-                claimedSetTag: sanitizedUsedAssets.dataResolvedSetTag ?? null,
-                claimedCategory: sanitizedUsedAssets.dataResolvedCategory ?? null,
+                claimedSetTag: finalSetTag,
+                claimedCategory: finalCategory,
               };
             }
           }

@@ -483,47 +483,63 @@ export async function applyAutoTransitionFromPipeline(
           select: { source: true, needsCaptions: true, needsCaptionsMode: true, needsClientValidation: true },
         },
         render: { select: { status: true } },
+        // Aligné sur computeAutoTransitionTarget : take:5 + staleSince pour
+        // pouvoir prioriser le COMPLETED non-stale. Sans ça, un vieux job
+        // COMPLETED stale (post-promote V2) faisait basculer le slot en
+        // AWAITING_CLIENT alors que la nouvelle captions chain tournait encore.
         captionJobs: {
           orderBy: { createdAt: "desc" },
-          take: 1,
-          select: { status: true },
+          take: 5,
+          select: { status: true, staleSince: true },
         },
       },
     });
     if (!slot) return null;
+
+    const latestCompletedFresh = slot.captionJobs.find(
+      (j) => j.status === "COMPLETED" && !j.staleSince,
+    );
+    const effectiveCaptionStatus =
+      latestCompletedFresh?.status ?? slot.captionJobs[0]?.status ?? null;
 
     const target = computeAutoTransitionTargetPure({
       status: slot.status,
       pattern: slot.pattern,
       needsClientValidationOverride: slot.needsClientValidationOverride,
       render: slot.render,
-      latestCaptionJobStatus: slot.captionJobs[0]?.status ?? null,
+      latestCaptionJobStatus: effectiveCaptionStatus,
     });
     if (!target) return null;
 
-    const updated = await prisma.publicationSlot.updateMany({
-      // Conditionné sur le status LU (slot.status), pas sur une re-lecture
-      // ultérieure. Si un autre process a changé le statut entre la lecture
-      // et l'update, count=0 et on abandonne (sans régression).
-      where: { id: slotId, status: slot.status },
-      data: { status: target },
+    // Update + logActivity dans une seule transaction : sans ça, un échec du
+    // logActivity post-update laissait le statut changé sans trace d'audit
+    // (audit-gap). Pattern miroir de syncSlotsPipelineStatuses ci-dessus.
+    let didTransition = false;
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.publicationSlot.updateMany({
+        // Conditionné sur le status LU (slot.status), pas sur une re-lecture
+        // ultérieure. Si un autre process a changé le statut entre la lecture
+        // et l'update, count=0 et on abandonne (sans régression).
+        where: { id: slotId, status: slot.status },
+        data: { status: target },
+      });
+      if (updated.count === 0) {
+        console.info(
+          `[applyAutoTransitionFromPipeline] race détectée (slot=${slotId} trigger=${trigger}) : ` +
+            `status "${slot.status}" déjà changé par un autre process — transition ignorée.`,
+        );
+        return;
+      }
+      await logActivity(tx as typeof prisma, {
+        slotId,
+        actorId: null, // déclenché par un webhook serveur, pas un utilisateur
+        type: "STATUS_CHANGED",
+        payload: { from: slot.status, to: target, trigger },
+      });
+      didTransition = true;
     });
-    if (updated.count === 0) {
-      console.info(
-        `[applyAutoTransitionFromPipeline] race détectée (slot=${slotId} trigger=${trigger}) : ` +
-          `status "${slot.status}" déjà changé par un autre process — transition ignorée.`,
-      );
-      return null;
-    }
 
-    await logActivity(prisma, {
-      slotId,
-      actorId: null, // déclenché par un webhook serveur, pas un utilisateur
-      type: "STATUS_CHANGED",
-      payload: { from: slot.status, to: target, trigger },
-    });
-
-    return target;
+    return didTransition ? target : null;
   } catch (err) {
     console.warn(
       `[applyAutoTransitionFromPipeline] échec pour slot=${slotId} trigger=${trigger}:`,

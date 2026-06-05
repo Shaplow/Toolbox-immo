@@ -37,14 +37,24 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Corps JSON invalide" }, { status: 400 });
   }
 
-  const { cursor, lastUsedSetTag, lastUsedCategory } = body as {
+  const { cursor, lastUsedSetTag, lastUsedCategory, resetHistory } = body as {
     cursor?: number;
     lastUsedSetTag?: string | null;
     lastUsedCategory?: string | null;
+    /** Si true, remet lastAdvancedAt à NULL (= compte "jamais joué" pour
+     *  l'anti-repetition). Sans ce flag explicite, on préserve la valeur
+     *  actuelle pour ne pas piéger un cursor fraîchement créé avec un
+     *  hasHistory=true factice. */
+    resetHistory?: boolean;
   };
 
   // Validate that at least one field is provided
-  if (cursor === undefined && lastUsedSetTag === undefined && lastUsedCategory === undefined) {
+  if (
+    cursor === undefined &&
+    lastUsedSetTag === undefined &&
+    lastUsedCategory === undefined &&
+    resetHistory === undefined
+  ) {
     return NextResponse.json({ error: "Aucun champ à mettre à jour" }, { status: 400 });
   }
 
@@ -85,16 +95,21 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       }
     }
 
+    // Préserve lastAdvancedAt par défaut. Sans ça, un PATCH qui touche juste
+    // au cursor/category écrasait lastAdvancedAt=NULL avec now → le prochain
+    // prefill voyait hasHistory=true à tort et appliquait une exclusion
+    // catégorie sur un compte fraîchement créé (finding rotation-6).
     const data: {
       cursor?: number;
       lastUsedSetTag?: string | null;
       lastUsedCategory?: string | null;
-      lastAdvancedAt: Date;
-    } = { lastAdvancedAt: new Date() };
+      lastAdvancedAt?: Date | null;
+    } = {};
 
     if (clampedCursor !== undefined) data.cursor = clampedCursor;
     if (lastUsedSetTag !== undefined) data.lastUsedSetTag = lastUsedSetTag;
     if (lastUsedCategory !== undefined) data.lastUsedCategory = lastUsedCategory;
+    if (resetHistory === true) data.lastAdvancedAt = null;
 
     const updated = await prisma.accountLibraryCursor.upsert({
       where: {
@@ -107,7 +122,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         cursor: clampedCursor ?? 0,
         lastUsedSetTag: lastUsedSetTag ?? null,
         lastUsedCategory: lastUsedCategory ?? null,
-        lastAdvancedAt: new Date(),
+        // Création initiale : aucune history → lastAdvancedAt=null pour que
+        // la prochaine prefill compte ça comme "premier passage".
+        lastAdvancedAt: null,
       },
     });
 

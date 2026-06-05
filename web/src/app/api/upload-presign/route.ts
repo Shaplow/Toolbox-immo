@@ -11,6 +11,30 @@ const MAX_IMAGE_SIZE = 50 * 1024 * 1024;
 const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024;
 const MAX_AUDIO_SIZE = 200 * 1024 * 1024;
 
+/**
+ * Extensions de fichier autorisées par MIME type — utilisées pour bloquer les
+ * combinaisons aberrantes (ex: contentType=video/mp4 + filename=malware.php).
+ * Sans ce check, l'extension du R2 key peut polluer downstream (CDN qui infère
+ * le Content-Type depuis l'extension, scripts qui matchent par extension).
+ */
+const ALLOWED_EXTENSIONS_BY_TYPE: Record<string, readonly string[]> = {
+  "image/jpeg": ["jpg", "jpeg"],
+  "image/png": ["png"],
+  "image/webp": ["webp"],
+  "image/gif": ["gif"],
+  "video/mp4": ["mp4", "m4v"],
+  "video/quicktime": ["mov", "qt"],
+  "video/x-m4v": ["m4v", "mp4"],
+  "video/webm": ["webm"],
+  "audio/mpeg": ["mp3"],
+  "audio/wav": ["wav"],
+  "audio/aac": ["aac"],
+  "audio/mp4": ["m4a", "mp4"],
+  "audio/ogg": ["ogg", "oga"],
+  "audio/x-m4a": ["m4a"],
+  "audio/flac": ["flac"],
+};
+
 export async function POST(req: NextRequest) {
   const userContext = await getUserContext();
   if (!userContext?.effectiveUser.id) {
@@ -46,7 +70,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const ext = path.extname(filename ?? "").replace(/^\./, "") || "bin";
+  const rawExt = path.extname(filename ?? "").replace(/^\./, "").toLowerCase();
+  const allowedExtensions = ALLOWED_EXTENSIONS_BY_TYPE[contentType] ?? [];
+  if (rawExt && !allowedExtensions.includes(rawExt)) {
+    return NextResponse.json(
+      { error: `Extension "${rawExt}" non autorisée pour le type "${contentType}"` },
+      { status: 400 },
+    );
+  }
+  // Si filename absent ou extension manquante, on retombe sur la 1ère extension
+  // canonique de la MIME (jamais "bin" qui pouvait piéger downstream).
+  const ext = rawExt || allowedExtensions[0] || "bin";
   const key = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
   // ── Local dev fallback (R2 non configuré) ──────────────────────────────────

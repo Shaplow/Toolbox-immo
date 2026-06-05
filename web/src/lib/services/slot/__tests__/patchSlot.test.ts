@@ -134,6 +134,24 @@ beforeEach(() => {
       fieldSchema: "[]",
     });
   });
+
+  // Default : $transaction proxie le callback avec un tx object identique
+  // au prisma mocké. Sans ça, mockTransaction renvoie undefined et patchSlot
+  // throw quand il accède aux propriétés du résultat.
+  mockTransaction.mockImplementation((cb: unknown) => {
+    if (typeof cb !== "function") return Promise.resolve(undefined);
+    const tx = {
+      publicationSlot: {
+        findUnique: (...args: unknown[]) => mockSlotFindUnique(...args),
+        update: (...args: unknown[]) => mockSlotUpdate(...args),
+        updateMany: (...args: unknown[]) => mockSlotUpdateMany(...args),
+      },
+      publicationActivity: {
+        create: (...args: unknown[]) => mockActivityCreate(...args),
+      },
+    };
+    return Promise.resolve((cb as (tx: unknown) => Promise<unknown>)(tx));
+  });
 });
 
 // ─── Invariant 1 : canTransition enforced côté service ─────────────────────

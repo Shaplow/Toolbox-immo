@@ -184,17 +184,46 @@ export async function DELETE(_req: NextRequest, ctxParams: Params) {
     return NextResponse.json({ error: "Permission refusée" }, { status: 403 });
   }
 
-  await prisma.publicationVersion.update({
-    where: { id: versionId },
-    data: { deletedAt: new Date() },
-  });
-
-  await logActivity(prisma, {
-    slotId,
-    actorId: userContext.actualUser.id,
-    type: "VERSION_DELETED",
-    payload: { versionId, versionNumber: version.versionNumber, fileName: version.fileName },
-  });
+  // Soft-delete + audit log dans une seule transaction, avec re-check du
+  // currentVersionId au sein de la tx pour bloquer le cas où un /promote
+  // concurrent a fait pointer le slot vers cette version entre la lecture
+  // initiale et le commit. Sans ce guard, le slot peut se retrouver avec un
+  // currentVersionId qui pointe vers une row soft-deleted (404 sur les flows
+  // downstream : trigger-cover, validation, etc.).
+  try {
+    await prisma.$transaction(async (tx) => {
+      const fresh = await tx.publicationSlot.findUnique({
+        where: { id: slotId },
+        select: { currentVersionId: true },
+      });
+      if (fresh?.currentVersionId === versionId) {
+        throw Object.assign(new Error("race_current_version"), {
+          isRaceError: true,
+        });
+      }
+      await tx.publicationVersion.update({
+        where: { id: versionId },
+        data: { deletedAt: new Date() },
+      });
+      await logActivity(tx as typeof prisma, {
+        slotId,
+        actorId: userContext.actualUser.id,
+        type: "VERSION_DELETED",
+        payload: { versionId, versionNumber: version.versionNumber, fileName: version.fileName },
+      });
+    });
+  } catch (err) {
+    if (err instanceof Error && (err as Error & { isRaceError?: boolean }).isRaceError) {
+      return NextResponse.json(
+        {
+          error:
+            "Cette version vient d'être promue par un autre processus — suppression annulée.",
+        },
+        { status: 409 },
+      );
+    }
+    throw err;
+  }
 
   return NextResponse.json({ ok: true });
 }

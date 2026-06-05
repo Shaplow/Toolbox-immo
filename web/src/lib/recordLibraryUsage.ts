@@ -11,7 +11,13 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { SHARED_CURSOR_ACCOUNT_ID, SHARED_DATA_CURSOR_ACCOUNT_ID } from "@/lib/contentLibraryResolver";
 
-interface UsedAssets {
+/**
+ * Forme du JSON stocké dans `Render.usedAssets`. Exportée pour permettre aux
+ * routes /api/renders et helpers de generateRender de partager le type
+ * exactement (avant W3.6 il était redéclaré inline avec 3 variantes
+ * divergentes — finding rotation-5).
+ */
+export interface UsedAssets {
   /** blockId → assetId */
   videoAssets?: Record<string, string>;
   audioAssetId?: string;
@@ -23,16 +29,7 @@ interface UsedAssets {
   /** libraryId → resolved category used during this generation */
   usedCategoryByLibrary?: Record<string, string>;
   /** libraryId → cursor snapshot for failure-recovery revert */
-  prevCursorStateByLibrary?: Record<string, {
-    prevCursor: number;
-    claimedCursor: number;
-    prevLastUsedCategory: string | null;
-    claimedLastUsedCategory: string | null;
-    /** Phase 6 — snapshot lastUsedSetTag so the CAS revert covers concurrent setTag-only changes. */
-    prevLastUsedSetTag: string | null;
-    claimedLastUsedSetTag: string | null;
-    cursorAccountId?: string;
-  }>;
+  prevCursorStateByLibrary?: Record<string, CursorRevertState>;
   /** DataEntry claim state for failure-recovery revert */
   prevDataEntryState?: {
     entryId: string;
@@ -57,6 +54,17 @@ interface UsedAssets {
     claimedSetTag: string | null;
     claimedCategory: string | null;
   };
+}
+
+export interface CursorRevertState {
+  prevCursor: number;
+  claimedCursor: number;
+  prevLastUsedCategory: string | null;
+  claimedLastUsedCategory: string | null;
+  /** Phase 6 — snapshot lastUsedSetTag so the CAS revert covers concurrent setTag-only changes. */
+  prevLastUsedSetTag: string | null;
+  claimedLastUsedSetTag: string | null;
+  cursorAccountId?: string;
 }
 
 export async function recordLibraryUsage(renderId: string): Promise<void> {
@@ -84,24 +92,30 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
   const now = new Date();
 
   // --- Video assets ---
+  // Chaque (mediaAsset.update + mediaAssetUsage.upsert) est wrappé dans une
+  // transaction par assetId. Sans ça, deux webhooks DONE concurrents sur le
+  // même asset pouvaient sous-compter : la branche `create` des deux upserts
+  // voyait un état no-row, l'une gagnait à 1, l'autre patchait avec un
+  // increment incorrect → usageCount=2 alors qu'un seul render avait consommé
+  // l'asset (finding library-11). La tx sérialise la paire.
   const videoAssetIds = Object.values(usedAssets.videoAssets ?? {});
   if (videoAssetIds.length > 0) {
     const accountId = render.accountId;
     const videoResults = await Promise.allSettled(
       videoAssetIds.map(async (assetId) => {
-        // Always update global aggregate
-        await prisma.mediaAsset.update({
-          where: { id: assetId },
-          data: { usageCount: { increment: 1 }, lastUsedAt: now },
-        });
-        // Upsert per-account usage when accountId is present
-        if (accountId) {
-          await prisma.mediaAssetUsage.upsert({
-            where: { assetId_accountId: { assetId, accountId } },
-            update: { usageCount: { increment: 1 }, lastUsedAt: now },
-            create: { assetId, accountId, usageCount: 1, lastUsedAt: now },
+        await prisma.$transaction(async (tx) => {
+          await tx.mediaAsset.update({
+            where: { id: assetId },
+            data: { usageCount: { increment: 1 }, lastUsedAt: now },
           });
-        }
+          if (accountId) {
+            await tx.mediaAssetUsage.upsert({
+              where: { assetId_accountId: { assetId, accountId } },
+              update: { usageCount: { increment: 1 }, lastUsedAt: now },
+              create: { assetId, accountId, usageCount: 1, lastUsedAt: now },
+            });
+          }
+        });
       }),
     );
     for (const [i, result] of videoResults.entries()) {
@@ -118,74 +132,79 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
   if (usedAssets.audioAssetId) {
     const audioAssetId = usedAssets.audioAssetId;
     const accountId = render.accountId;
-    await prisma.mediaAsset
-      .update({
-        where: { id: audioAssetId },
-        data: { usageCount: { increment: 1 }, lastUsedAt: now },
-      })
-      .catch((err: unknown) => console.error("[recordLibraryUsage] audio asset update failed:", err));
-    if (accountId) {
-      await prisma.mediaAssetUsage
-        .upsert({
-          where: { assetId_accountId: { assetId: audioAssetId, accountId } },
-          update: { usageCount: { increment: 1 }, lastUsedAt: now },
-          create: { assetId: audioAssetId, accountId, usageCount: 1, lastUsedAt: now },
-        })
-        .catch((err: unknown) => console.error("[recordLibraryUsage] audio asset usage upsert failed:", err));
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.mediaAsset.update({
+          where: { id: audioAssetId },
+          data: { usageCount: { increment: 1 }, lastUsedAt: now },
+        });
+        if (accountId) {
+          await tx.mediaAssetUsage.upsert({
+            where: { assetId_accountId: { assetId: audioAssetId, accountId } },
+            update: { usageCount: { increment: 1 }, lastUsedAt: now },
+            create: { assetId: audioAssetId, accountId, usageCount: 1, lastUsedAt: now },
+          });
+        }
+      });
+    } catch (err) {
+      console.error("[recordLibraryUsage] audio asset update/upsert failed:", err);
     }
   }
 
   // --- Data entry ---
+  // Tous les writes liés à l'entry (global update + per-account upsert +
+  // shared sentinel upsert) dans une seule tx pour cohérence atomique : un
+  // crash en milieu de chemin laissait un état inconsistant (ex: global
+  // incrémenté mais per-account ou shared manquants → ordonnancement biaisé).
   if (usedAssets.dataEntryId) {
     const dataEntryId = usedAssets.dataEntryId;
     const accountId = render.accountId;
     const claimType = usedAssets.prevDataEntryState?.claimType;
-    await prisma.dataEntry
-      .update({
-        where: { id: dataEntryId },
-        data: {
-          usageCount: { increment: 1 },
-          lastUsedAt: now,
-          // usedInCycle was already set at prefill for "usedInCycle" claim types.
-          // For "perAccountUsage" and fallback (no claim), set it here on DONE.
-          ...(claimType === "usedInCycle" ? {} : { usedInCycle: true }),
-        },
-      })
-      .catch((err: unknown) => console.error("[recordLibraryUsage] data entry update failed:", err));
-    if (accountId) {
-      await prisma.dataEntryUsage
-        .upsert({
-          where: { entryId_accountId: { entryId: dataEntryId, accountId } },
-          // For perAccountUsage claim: row exists with usageCount=0 — increment to 1.
-          // For no claim: create with usageCount=1.
-          update: { usageCount: { increment: 1 }, lastUsedAt: now },
-          create: { entryId: dataEntryId, accountId, usageCount: 1, lastUsedAt: now },
-        })
-        .catch((err: unknown) => console.error("[recordLibraryUsage] data entry usage upsert failed:", err));
-    }
-
-    // Bugfix : pour les DataLibrary en `shared` scope, mirror exactement
-    // le pattern MediaAsset (ligne ~210) — on écrit AUSSI une DataEntryUsage
-    // row keyed par SHARED_DATA_CURSOR_ACCOUNT_ID. Sans ça, `selectDataEntry`
-    // qui ordonne par LEFT JOIN DataEntryUsage avec effectiveCursorId =
-    // SHARED_DATA_CURSOR_ACCOUNT_ID (en shared) ne voit JAMAIS d'usage et
-    // re-pioche toujours les mêmes entries (ordre `createdAt` par défaut).
-    // Conséquence observée : l'user reçoit des datas déjà postées.
     try {
+      // Lecture rotationScope avant la tx pour éviter une lecture+write
+      // entrelacée dans la tx interactive (Prisma ne supporte pas le
+      // pattern findUnique dans la même tx que les upserts qui suivent).
       const entry = await prisma.dataEntry.findUnique({
         where: { id: dataEntryId },
         select: { campaign: { select: { library: { select: { rotationScope: true } } } } },
       });
       const isShared = entry?.campaign?.library?.rotationScope === "shared";
-      if (isShared) {
-        await prisma.dataEntryUsage.upsert({
-          where: { entryId_accountId: { entryId: dataEntryId, accountId: SHARED_DATA_CURSOR_ACCOUNT_ID } },
-          update: { usageCount: { increment: 1 }, lastUsedAt: now },
-          create: { entryId: dataEntryId, accountId: SHARED_DATA_CURSOR_ACCOUNT_ID, usageCount: 1, lastUsedAt: now },
+
+      await prisma.$transaction(async (tx) => {
+        await tx.dataEntry.update({
+          where: { id: dataEntryId },
+          data: {
+            usageCount: { increment: 1 },
+            lastUsedAt: now,
+            // usedInCycle was already set at prefill for "usedInCycle" claim types.
+            // For "perAccountUsage" and fallback (no claim), set it here on DONE.
+            ...(claimType === "usedInCycle" ? {} : { usedInCycle: true }),
+          },
         });
-      }
+        if (accountId) {
+          await tx.dataEntryUsage.upsert({
+            where: { entryId_accountId: { entryId: dataEntryId, accountId } },
+            // For perAccountUsage claim: row exists with usageCount=0 — increment to 1.
+            // For no claim: create with usageCount=1.
+            update: { usageCount: { increment: 1 }, lastUsedAt: now },
+            create: { entryId: dataEntryId, accountId, usageCount: 1, lastUsedAt: now },
+          });
+        }
+        // Pour les DataLibrary en `shared` scope, mirror exactement le pattern
+        // MediaAsset — on écrit AUSSI une DataEntryUsage row keyed par
+        // SHARED_DATA_CURSOR_ACCOUNT_ID. Sans ça, selectDataEntry qui ordonne
+        // par LEFT JOIN DataEntryUsage avec effectiveCursorId = sentinel ne
+        // voit jamais d'usage et re-pioche toujours les mêmes entries.
+        if (isShared) {
+          await tx.dataEntryUsage.upsert({
+            where: { entryId_accountId: { entryId: dataEntryId, accountId: SHARED_DATA_CURSOR_ACCOUNT_ID } },
+            update: { usageCount: { increment: 1 }, lastUsedAt: now },
+            create: { entryId: dataEntryId, accountId: SHARED_DATA_CURSOR_ACCOUNT_ID, usageCount: 1, lastUsedAt: now },
+          });
+        }
+      });
     } catch (err) {
-      console.error("[recordLibraryUsage] shared data entry usage upsert failed:", err);
+      console.error("[recordLibraryUsage] data entry usage update/upsert failed:", err);
     }
   }
 
@@ -247,6 +266,14 @@ export async function recordLibraryUsage(renderId: string): Promise<void> {
       }
     }
   }
+
+  // W5.12 — log de synthèse à la fin pour observability. Avant : aucun signal
+  // explicite que recordLibraryUsage a fini ; si une partie a échoué dans une
+  // section .catch silencieuse, l'admin ne savait pas que les counters
+  // étaient inconsistants. Le log inclut le renderId pour correlation.
+  console.info(
+    `[recordLibraryUsage] render=${renderId} done — videoAssets=${videoAssetIds.length} audio=${usedAssets.audioAssetId ? 1 : 0} dataEntry=${usedAssets.dataEntryId ? 1 : 0} setSeqLibs=${seqLibraryIds.length}`,
+  );
 }
 
 // ─── Admin revert ─────────────────────────────────────────────────────────────
@@ -411,6 +438,42 @@ export async function revertRenderUsage(renderId: string): Promise<RevertSummary
             });
           }
         }
+
+        // Phase W2.7 — Pour les DataLibrary en scope `shared`, recordLibraryUsage
+        // écrit une ligne supplémentaire DataEntryUsage keyed par SHARED_DATA_
+        // CURSOR_ACCOUNT_ID. Sans ce revert miroir, la sentinel restait avec
+        // usageCount > 0 → l'ordering shared continuait à dé-prioriser cette
+        // entry malgré le rollback admin (finding library-8 / rotation-10).
+        try {
+          const lib = await prisma.dataEntry.findUnique({
+            where: { id: entryId },
+            select: { campaign: { select: { library: { select: { rotationScope: true } } } } },
+          });
+          if (lib?.campaign?.library?.rotationScope === "shared") {
+            const sharedUsage = await prisma.dataEntryUsage.findUnique({
+              where: {
+                entryId_accountId: { entryId, accountId: SHARED_DATA_CURSOR_ACCOUNT_ID },
+              },
+              select: { usageCount: true },
+            });
+            if (sharedUsage) {
+              const newSharedCount = Math.max(0, sharedUsage.usageCount - 1);
+              await prisma.dataEntryUsage.update({
+                where: {
+                  entryId_accountId: { entryId, accountId: SHARED_DATA_CURSOR_ACCOUNT_ID },
+                },
+                data: {
+                  usageCount: newSharedCount,
+                  ...(newSharedCount === 0 ? { lastUsedAt: null } : {}),
+                },
+              });
+            }
+          }
+        } catch (sharedErr) {
+          summary.warnings.push(
+            `Échec du revert shared sentinel DataEntry ${entryId}: ${String(sharedErr)}`,
+          );
+        }
       }
     } catch (err) {
       summary.warnings.push(`Échec du revert pour la DataEntry ${entryId}: ${String(err)}`);
@@ -521,12 +584,18 @@ export async function revertLibraryCursors(renderId: string): Promise<void> {
           // this generation wrote.  If a concurrent or later generation has since advanced
           // the cursor, the WHERE won't match and the update is a no-op.
           // Phase 6 : ajout lastUsedSetTag dans SET + condition CAS.
+          // Phase W2.6 : on remet aussi lastAdvancedAt=NULL pour annuler la
+          // "history" du compte. Sans ça, après un ERROR + revert, le prochain
+          // prefill voyait hasHistory=true (lastAdvancedAt non-null) et
+          // appliquait une exclusion catégorie comme si une gen avait
+          // réellement abouti — finding rotation-10.
           const updated = await prisma.$executeRaw(Prisma.sql`
             UPDATE "AccountLibraryCursor"
             SET
               cursor               = ${state.prevCursor},
               "lastUsedCategory"   = ${state.prevLastUsedCategory},
-              "lastUsedSetTag"     = ${state.prevLastUsedSetTag}
+              "lastUsedSetTag"     = ${state.prevLastUsedSetTag},
+              "lastAdvancedAt"     = NULL
             WHERE "accountId"  = ${cursorAccountId}
               AND "libraryId"  = ${libraryId}
               AND cursor IS NOT DISTINCT FROM ${state.claimedCursor}
@@ -535,6 +604,11 @@ export async function revertLibraryCursors(renderId: string): Promise<void> {
           `);
           if (updated > 0) {
             console.info(`[revertLibraryCursors] render=${renderId} library=${libraryId} cursor reverted ${state.claimedCursor}→${state.prevCursor}`);
+          } else {
+            // No-op : un autre process a déjà avancé le cursor entre-temps.
+            // On log explicitement pour ne pas confondre avec un succès en
+            // post-mortem (finding rotation-5).
+            console.info(`[revertLibraryCursors] render=${renderId} library=${libraryId} cursor NOT reverted (already advanced by a later generation)`);
           }
         } catch (err) {
           console.error(`[revertLibraryCursors] revert failed for render=${renderId} library=${libraryId}:`, err);
