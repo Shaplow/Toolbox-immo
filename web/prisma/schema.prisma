@@ -829,6 +829,12 @@ model PublicationSlot {
   /// Override per-slot de l'ID du preset captions utilisé. null = hérite.
   captionPresetIdOverride       String?
   captionPresetOverride         CaptionPreset?          @relation("SlotCaptionPresetOverride", fields: [captionPresetIdOverride], references: [id], onDelete: SetNull)
+  /// Override per-slot du décalage vertical des captions (fraction de la
+  /// hauteur vidéo, range [-0.5, 0.5]). null = utilise la valeur du preset
+  /// (typiquement 0 = centré sur l'anchor). Permet au monteur de décaler
+  /// ponctuellement sans modifier le preset partagé. Le change cascade
+  /// stale-mark le CaptionJob courant (re-trigger nécessaire pour appliquer).
+  captionVerticalOffsetOverride Float?
   /// Override per-slot de l'ID du prompt description IA. null = hérite.
   descriptionPromptIdOverride   String?
   descriptionPromptOverride     DescriptionPrompt?      @relation("SlotDescriptionPromptOverride", fields: [descriptionPromptIdOverride], references: [id], onDelete: SetNull)

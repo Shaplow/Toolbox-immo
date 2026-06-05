@@ -385,6 +385,27 @@ export async function triggerAutoCaptionForTranscription(transcriptionJobId: str
     configData = {};
   }
 
+  // CaptionOffset-3 : override per-slot du décalage vertical des captions.
+  // Si le slot lié a captionVerticalOffsetOverride non-null, on écrase
+  // configData.layout.vertical_offset (sémantique REMPLACE, pas additive —
+  // le baseline preset reste consultable mais l'override fait foi).
+  if (render.publicationSlotId) {
+    const slot = await prisma.publicationSlot.findUnique({
+      where: { id: render.publicationSlotId },
+      select: { captionVerticalOffsetOverride: true },
+    });
+    if (slot?.captionVerticalOffsetOverride !== undefined && slot?.captionVerticalOffsetOverride !== null) {
+      const layout = (configData.layout ?? {}) as Record<string, unknown>;
+      configData = {
+        ...configData,
+        layout: { ...layout, vertical_offset: slot.captionVerticalOffsetOverride },
+      };
+      console.info(
+        `[autoCaption] slot=${render.publicationSlotId} captionVerticalOffsetOverride=${slot.captionVerticalOffsetOverride} appliqué`,
+      );
+    }
+  }
+
   // Download the transcription segments from R2
   let segments: Segment[];
   try {

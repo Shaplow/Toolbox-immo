@@ -106,7 +106,7 @@ export function resolveActiveDescriptionJob<T extends WithStale>(slot: {
 
 // ── Cascade d'invalidation ─────────────────────────────────────────────────
 
-export type StaleReason = "version_promoted" | "render_replaced" | "pattern_changed";
+export type StaleReason = "version_promoted" | "render_replaced" | "pattern_changed" | "caption_offset_changed";
 
 interface MarkStaleResult {
   captionJobsMarkedCount: number;

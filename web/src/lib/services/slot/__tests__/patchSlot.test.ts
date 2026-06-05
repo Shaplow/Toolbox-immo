@@ -409,3 +409,72 @@ describe("patchSlot — scoping", () => {
     ).rejects.toMatchObject({ message: expect.stringMatching(/introuvable/i) });
   });
 });
+
+// ─── Invariant 7 : bornes captionVerticalOffsetOverride ────────────────────
+
+describe("patchSlot — captionVerticalOffsetOverride bornes", () => {
+  it("offset > 0.5 → ValidationError", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(makeSlot());
+    await expect(
+      patchSlot(
+        "slot-1",
+        { captionVerticalOffsetOverride: 0.6 },
+        makeUserCtx("ADMIN"),
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("offset < -0.5 → ValidationError", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(makeSlot());
+    await expect(
+      patchSlot(
+        "slot-1",
+        { captionVerticalOffsetOverride: -0.7 },
+        makeUserCtx("ADMIN"),
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("offset NaN → ValidationError", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(makeSlot());
+    await expect(
+      patchSlot(
+        "slot-1",
+        { captionVerticalOffsetOverride: Number.NaN },
+        makeUserCtx("ADMIN"),
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("offset = null (reset) → accepté", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(makeSlot());
+    const result = await patchSlot(
+      "slot-1",
+      { captionVerticalOffsetOverride: null },
+      makeUserCtx("ADMIN"),
+    );
+    expect(result).toBeDefined();
+  });
+
+  it("offset = 0.3 (valide) → accepté", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(makeSlot());
+    const result = await patchSlot(
+      "slot-1",
+      { captionVerticalOffsetOverride: 0.3 },
+      makeUserCtx("ADMIN"),
+    );
+    expect(result).toBeDefined();
+  });
+
+  it("MONTEUR assigné peut patcher l'offset (whitelist explicite)", async () => {
+    mockSlotFindUnique.mockResolvedValueOnce(
+      makeSlot({ assigneeMonteurId: "user-monteur" }),
+    );
+    const result = await patchSlot(
+      "slot-1",
+      { captionVerticalOffsetOverride: 0.15 },
+      makeUserCtx("MONTEUR", "user-monteur"),
+    );
+    expect(result).toBeDefined();
+  });
+});

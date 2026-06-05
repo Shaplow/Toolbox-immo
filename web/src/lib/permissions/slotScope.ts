@@ -198,8 +198,18 @@ export const ALLOWED_PATCH_FIELDS_BY_ROLE: Record<UserRole, readonly string[]> =
       "coverPresetIdOverride",
       "captionPresetIdOverride",
       "descriptionPromptIdOverride",
+      // Décalage vertical des captions per-slot — le monteur peut décaler
+      // ponctuellement sans modifier le preset partagé.
+      "captionVerticalOffsetOverride",
     ],
-    MONTEUR: ["status", "notes", "description"],
+    MONTEUR: [
+      "status",
+      "notes",
+      "description",
+      // MONTEUR a aussi le droit de décaler les captions (use case explicite :
+      // ajustement post-rush en fonction de la composition de la vidéo).
+      "captionVerticalOffsetOverride",
+    ],
     // CM édite la légende IG (champ `description` depuis la fusion Phase 2.1)
     // en plus de notes.
     CM: ["status", "title", "notes", "description"],

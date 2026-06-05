@@ -48,6 +48,12 @@ interface Props {
   } | null;
   /** true pour CM, MONTEUR, et ADMIN */
   canEdit: boolean;
+  /** Override per-slot du décalage vertical des captions [-0.5, 0.5].
+   *  null = utilise la valeur du preset (typiquement 0). */
+  captionVerticalOffsetOverride?: number | null;
+  /** true si le rôle courant peut PATCH captionVerticalOffsetOverride
+   *  (ADMIN + MONTEUR). */
+  canEditCaptionOffset?: boolean;
   /** ADMIN strict — utilisé pour exposer le filet de sécurité "relancer la
    *  chaîne sous-titres" quand le pipeline auto a silencieusement échoué. */
   isAdmin?: boolean;
@@ -75,6 +81,8 @@ export function CaptionsSection({
   currentVersion,
   latestCaptionJob,
   effectiveCaptionPresetId,
+  captionVerticalOffsetOverride,
+  canEditCaptionOffset = false,
   sectionId = "captions",
   storageKey,
   defaultOpen = true,
@@ -83,6 +91,41 @@ export function CaptionsSection({
   const router = useRouter();
   const [isRetriggering, setIsRetriggering] = useState(false);
   const [isForceRetranscribing, setIsForceRetranscribing] = useState(false);
+  // Décalage vertical caption — state local pour le slider, persisté au PATCH.
+  // `null` = baseline preset. Range [-0.4, 0.4] (le preset est strictement
+  // borné à [-0.5, 0.5] côté Pydantic engine, on garde la même range UX).
+  const [offsetDraft, setOffsetDraft] = useState<number | null>(
+    captionVerticalOffsetOverride ?? null,
+  );
+  const [isSavingOffset, setIsSavingOffset] = useState(false);
+  useEffect(() => {
+    setOffsetDraft(captionVerticalOffsetOverride ?? null);
+  }, [captionVerticalOffsetOverride]);
+
+  const persistOffset = async (next: number | null) => {
+    setIsSavingOffset(true);
+    try {
+      const res = await fetch(`/api/calendar/slots/${slot.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ captionVerticalOffsetOverride: next }),
+      });
+      if (!res.ok) {
+        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(d.error ?? "Erreur lors de l'enregistrement");
+        // Revert UI à la valeur serveur connue
+        setOffsetDraft(captionVerticalOffsetOverride ?? null);
+        return;
+      }
+      toast.success(next === null ? "Décalage réinitialisé" : "Décalage enregistré");
+      router.refresh();
+    } catch {
+      toast.error("Erreur réseau — décalage non sauvegardé");
+      setOffsetDraft(captionVerticalOffsetOverride ?? null);
+    } finally {
+      setIsSavingOffset(false);
+    }
+  };
 
   const callRetriggerEndpoint = async (force: boolean): Promise<void> => {
     const setLoading = force ? setIsForceRetranscribing : setIsRetriggering;
@@ -335,6 +378,66 @@ export function CaptionsSection({
                 {isForceRetranscribing ? "Re-transcription…" : "Re-transcrire"}
               </Button>
             </div>
+          </div>
+        )}
+
+        {/* Décalage vertical per-slot — ADMIN + MONTEUR. Permet d'ajuster la
+            position des captions sans modifier le preset partagé. Le change
+            stale-mark le caption job courant côté serveur → "Régénérer"
+            applique le nouvel offset. */}
+        {canEditCaptionOffset && (
+          <div className="pt-2 border-t border-gray-200/60 space-y-1.5">
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-[11px] font-medium text-gray-700">
+                Décalage vertical
+                <span className="ml-2 text-[10px] font-mono text-gray-500 tabular-nums">
+                  {offsetDraft === null
+                    ? "Baseline preset"
+                    : offsetDraft === 0
+                      ? "0%"
+                      : `${offsetDraft > 0 ? "+" : ""}${Math.round(offsetDraft * 100)}%`}
+                </span>
+              </label>
+              {offsetDraft !== null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOffsetDraft(null);
+                    void persistOffset(null);
+                  }}
+                  disabled={isSavingOffset}
+                  className="text-[11px] text-gray-500 hover:text-gray-800 disabled:opacity-50"
+                >
+                  Réinitialiser
+                </button>
+              )}
+            </div>
+            <input
+              type="range"
+              min={-0.4}
+              max={0.4}
+              step={0.01}
+              value={offsetDraft ?? 0}
+              disabled={isSavingOffset}
+              onChange={(e) => setOffsetDraft(Number(e.target.value))}
+              onPointerUp={(e) => {
+                const val = Number((e.target as HTMLInputElement).value);
+                void persistOffset(val);
+              }}
+              onKeyUp={(e) => {
+                if (e.key.startsWith("Arrow")) {
+                  const val = Number((e.target as HTMLInputElement).value);
+                  void persistOffset(val);
+                }
+              }}
+              className="w-full accent-sage-600 disabled:opacity-50"
+              aria-label="Décalage vertical des sous-titres"
+            />
+            <p className="text-[10.5px] text-gray-500 leading-snug">
+              Négatif = remonte, positif = descend. Le caption job actuel sera
+              marqué obsolète à l&apos;enregistrement — clique « Régénérer »
+              ci-dessous pour appliquer.
+            </p>
           </div>
         )}
 
