@@ -70,16 +70,34 @@ export async function POST(req: NextRequest) {
   return response;
 }
 
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
   }
 
-  // Audit log — Phase 1.9 B4
+  // Lire le cookie AVANT de le clear pour pouvoir logger qui était impersoné.
+  // Sans ça (W4.2), le stop event n'incluait que l'actor — impossible de
+  // reconstituer "ADMIN X impersonant USER Y a fait Z entre tT1 et tT2".
+  const impersonatedUserId = req.cookies.get(IMPERSONATION_COOKIE_NAME)?.value;
+  let target: { id: string; email: string | null } | null = null;
+  if (impersonatedUserId) {
+    try {
+      target = await prisma.user.findUnique({
+        where: { id: impersonatedUserId },
+        select: { id: true, email: true },
+      });
+    } catch (err) {
+      console.warn("[impersonation] stop : fetch target user failed", err);
+    }
+  }
+
+  // Audit log — Phase 1.9 B4 + W4.2 (target included)
   console.info("[impersonation] stop", {
     actorId: session.user.id,
     actorEmail: session.user.email,
+    targetUserId: target?.id ?? impersonatedUserId ?? null,
+    targetUserEmail: target?.email ?? null,
     timestamp: new Date().toISOString(),
   });
 

@@ -31,8 +31,6 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
     bulkCategoryInput,
     setBulkCategoryInput,
     bulkApplying,
-    bulkError,
-    bulkSuccess,
     exitSelectMode,
     handleBulkApplySetTag,
     handleBulkApplyTags,
@@ -70,6 +68,8 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
       {/* Center: actions (only when items are selected) */}
       {selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 flex-1">
+          {/* W5.11 : couleurs alignées sur Coastal Studio (sage pour
+              category/pack actions non-destructives — rose réservé au danger). */}
           {/* Bulk category */}
           <div className="flex items-center gap-1">
             <input
@@ -77,7 +77,7 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               onChange={(e) => setBulkCategoryInput(e.target.value)}
               list="group-list"
               placeholder="Catégorie…"
-              className="w-28 text-xs border border-rose-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-rose-400"
+              className="w-28 text-xs border border-sage-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sage-400"
               onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplyCategory(); } }}
             />
             <button
@@ -98,14 +98,14 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               onChange={(e) => setBulkSetTagInput(e.target.value)}
               list="bulk-set-tags-list"
               placeholder="Pack…"
-              className="w-28 text-xs border border-rose-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-pink-400"
+              className="w-28 text-xs border border-sage-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sage-400"
               onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplySetTag(); } }}
             />
             <button
               onClick={() => { void handleBulkApplySetTag(); }}
               disabled={bulkApplying}
               className={`px-2.5 py-1 text-white text-xs rounded disabled:opacity-50 ${
-                bulkSetTagInput.trim() ? "bg-rose-600 hover:bg-rose-700" : "bg-gray-400 hover:bg-gray-500"
+                bulkSetTagInput.trim() ? "bg-gray-900 hover:bg-gray-700" : "bg-gray-400 hover:bg-gray-500"
               }`}
               title={bulkSetTagInput.trim() ? "Appliquer le pack" : "Retirer le pack"}
             >
@@ -145,7 +145,7 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
                   else { void handleBulkApplyAccess("add", val); }
                 }}
                 disabled={bulkApplying}
-                className="text-xs border border-blue-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 text-gray-600 disabled:opacity-50 max-w-[130px]"
+                className="text-xs border border-sky-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sky-400 text-gray-600 disabled:opacity-50 max-w-[130px]"
               >
                 <option value="">Compte IG…</option>
                 <option value="__global__">🌍 Global (tous)</option>
@@ -163,8 +163,9 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
           >
             <Trash2 size={11} /> Supprimer
           </button>
-          {bulkError && <p className="text-xs text-red-500">{bulkError}</p>}
-          {bulkSuccess && <p className="text-xs text-green-600">{bulkSuccess}</p>}
+          {/* W4.5 : bulkError/bulkSuccess remplacés par toast.error/success
+              côté useBulkEdit — feedback en overlay cohérent avec le reste
+              de l'app au lieu d'un texte inline dans une barre déjà dense. */}
         </div>
       )}
 

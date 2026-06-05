@@ -25,6 +25,8 @@ import { MediaAssetDetailDrawer } from "./mediaAssets/MediaAssetDetailDrawer";
 import { MediaAssetsNextGenPreview } from "./mediaAssets/MediaAssetsNextGenPreview";
 import { MediaAssetsKpiRow } from "./mediaAssets/MediaAssetsKpiRow";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
 import { MediaAssetsCategoriesSidebar, type CategoryFilter } from "./mediaAssets/MediaAssetsCategoriesSidebar";
 import { useAssetSequence } from "./mediaAssets/useAssetSequence";
 import { useAdvancedMode } from "@/hooks/useAdvancedMode";
@@ -734,13 +736,19 @@ export function MediaAssetsPanel({ library }: Props) {
         )}
         <div className={showSidebar ? "min-w-0" : ""}>
 
-      {/* Error */}
+      {/* Error — Alert primitive Coastal Studio (W4) */}
       {loadError && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          <p className="font-medium">Impossible de charger les assets</p>
-          <p className="font-mono text-xs mt-1">{loadError}</p>
-          <button onClick={() => { void load(); }} className="text-xs underline mt-2">Réessayer</button>
-        </div>
+        <Alert
+          variant="danger"
+          title="Impossible de charger les assets"
+          actions={
+            <Button variant="secondary" size="sm" onClick={() => { void load(); }}>
+              Réessayer
+            </Button>
+          }
+        >
+          {loadError}
+        </Alert>
       )}
 
       {/* Loading */}

@@ -33,6 +33,7 @@ import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { toast } from "@/components/ui/Toast";
 import { SlotQuickEditButton } from "@/components/publications/SlotQuickEditButton";
+import { StatusBadge } from "@/components/ui/molecules/StatusBadge";
 
 export interface PublicationHeaderProps {
   slot: {
@@ -149,9 +150,16 @@ export function PublicationHeader({
               <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
                 {title}
               </h1>
-              <p className="mt-2 text-[13px] text-gray-500">
-                {formatDateFR(scheduledAt)} · {formatTimeFR(scheduledAt)}
-              </p>
+              {/* Status badge — visible pour tous les rôles. Avant W4.4 le
+                  statut n'était accessible qu'aux ADMIN via SlotQuickEditButton ;
+                  les MONTEUR/CM/VIDEASTE devaient scroller jusqu'à la
+                  ProductionChain pour le voir. */}
+              <div className="mt-3 flex items-center gap-2">
+                <StatusBadge domain="slot" status={slot.status} size="sm" />
+                <p className="text-[13px] text-gray-500">
+                  {formatDateFR(scheduledAt)} · {formatTimeFR(scheduledAt)}
+                </p>
+              </div>
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">

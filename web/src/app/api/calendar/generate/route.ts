@@ -55,11 +55,18 @@ export async function POST(req: NextRequest) {
   }
   const effectiveFrom = from > now ? from : now;
 
+  // Dry-run : query param ?dry=true → engine retourne created/skipped sans
+  // créer en base. Permet à l'UI d'afficher un résumé avant confirmation
+  // (W4.9, finding cross-ux-3).
+  const url = new URL(req.url);
+  const dryRun = url.searchParams.get("dry") === "true";
+
   const result = await generateCalendarSlots({
     accountIds: Array.isArray(accountIds) ? accountIds : undefined,
     dateFrom: effectiveFrom,
     dateTo: to,
+    dryRun,
   });
 
-  return NextResponse.json(result);
+  return NextResponse.json({ ...result, dryRun });
 }

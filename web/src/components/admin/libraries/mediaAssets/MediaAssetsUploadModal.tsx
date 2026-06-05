@@ -27,6 +27,7 @@ import { Upload, X, FolderOpen, Layers, Tag, CheckCircle2, Info, Sparkles, Globe
 import { Tooltip } from "@/components/ui/Tooltip";
 import { Combobox } from "@/components/ui/Combobox";
 import { Chip } from "@/components/ui/Chip";
+import { Modal } from "@/components/ui/Modal";
 import type { InstagramAccount, MediaLibrary } from "./types";
 
 /**
@@ -134,6 +135,10 @@ export function MediaAssetsUploadModal({
   // ou la fermeture de la modal — l'upload bulk meta s'applique APRÈS l'upload
   // R2, donc l'user a le temps de cliquer un chip suggestion même upload en cours.
   const [recentFilenames, setRecentFilenames] = useState<string[]>([]);
+  // W4 : queue de fichiers en attente d'upload — populée par le drop page-level.
+  // L'upload ne démarre qu'au clic "Lancer l'upload" pour que l'admin ait le
+  // temps de configurer catégorie/pack/comptes/tags avant le lancement.
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const suggestion = useMemo(
@@ -187,14 +192,19 @@ export function MediaAssetsUploadModal({
     return () => { cancelled = true; };
   }, [open, library.id]);
 
-  // Auto-upload de fichiers passés via initialFiles (page-level drop-zone).
+  // W4 : drop page-level → on PRÉ-REMPLIT la queue (recentFilenames + dropped
+  // state) sans lancer l'upload. L'admin voit les fichiers + sa config
+  // (catégorie/pack/comptes) et clique "Lancer l'upload" pour démarrer.
+  // Avant : l'upload partait immédiatement → assets orphelins sans tag/pack
+  // si l'user fermait la modal avant de configurer.
   useEffect(() => {
     if (!open || !initialFiles || initialFiles.length === 0) return;
     const filtered = initialFiles.filter((f) =>
       isVideo ? f.type.startsWith("video/") : f.type.startsWith("audio/"),
     );
     if (filtered.length > 0) {
-      void uploadFiles(filtered);
+      setPendingFiles(filtered);
+      setRecentFilenames(filtered.map((f) => f.name));
     }
     onInitialFilesConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -356,15 +366,14 @@ export function MediaAssetsUploadModal({
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-      onClick={() => {
-        if (!modalUploading) onClose();
-      }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="lg"
+      dismissOnBackdrop={!modalUploading}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+        className="flex flex-col"
         onDragOver={(e) => {
           e.preventDefault();
           setModalDragOver(true);
@@ -419,6 +428,24 @@ export function MediaAssetsUploadModal({
               onChange={handleFileChange}
               className="hidden"
             />
+            {/* W4 : queue page-level drop — l'admin configure puis lance. */}
+            {pendingFiles.length > 0 && !modalUploading && (
+              <div className="mt-2 w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white border border-sky-200">
+                <span className="text-xs text-gray-700">
+                  {pendingFiles.length} fichier{pendingFiles.length > 1 ? "s" : ""} prêt{pendingFiles.length > 1 ? "s" : ""} à uploader
+                </span>
+                <button
+                  onClick={() => {
+                    const files = pendingFiles;
+                    setPendingFiles([]);
+                    void uploadFiles(files);
+                  }}
+                  className="px-3 py-1 bg-gray-900 hover:bg-gray-800 text-white text-xs font-medium rounded-md"
+                >
+                  Lancer l&apos;upload
+                </button>
+              </div>
+            )}
           </div>
           {/* Config fields */}
           <div className="flex flex-col gap-3.5">
@@ -617,6 +644,6 @@ export function MediaAssetsUploadModal({
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

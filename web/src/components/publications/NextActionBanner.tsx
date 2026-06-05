@@ -21,6 +21,7 @@ import {
 } from "@/types/calendar";
 import { resolveSlotOwner } from "@/lib/slots/statusLabels";
 import type { UserRole } from "@/types/roles";
+import { Tooltip } from "@/components/ui/Tooltip";
 
 interface Props {
   slotStatus: string;
@@ -58,21 +59,33 @@ function isCurrentUserOwner(args: {
   return false;
 }
 
+// Mapping statut → section à scroller au clic. Quand un statut n'est pas
+// dans cette map, la pill devient non-cliquable (sectionId undefined ⇒
+// isClickable false dans la fn).
+//
+// Fix W4.1 : CLIENT_REVISION pointait vers "render" alors que le CM doit
+// voir l'historique de validation client (commentaires de refus, magic
+// link expiré) — donc bonne destination = "client-validation".
 const STATUS_TO_SECTION: Record<string, string> = {
   RUSHES_EXPECTED: "rushes",
   RUSHES_RECEIVED: "render",
   IN_EDIT: "render",
   EDIT_APPROVED: "render",
   CAPTIONS_PENDING: "captions",
-  CLIENT_REVISION: "render",
+  CAPTIONS_GENERATING: "captions",
+  CLIENT_REVISION: "client-validation",
   EDIT_REVIEW: "render",
   READY_FOR_CM: "description",
   AWAITING_CLIENT: "client-validation",
   SCHEDULED: "publish",
   DRAFT: "render",
   PLANNED: "brief",
+  IN_PROGRESS: "render",
+  RENDER_PROCESSING: "render",
   BLOCKED: "render",
   REJECTED: "render",
+  // PUBLISHED + CANCELLED + DONE = états terminaux — pas de section à
+  // scroller, la pill reste non-cliquable.
 };
 
 function goToSection(sectionId: string) {
@@ -133,9 +146,13 @@ export function NextActionBanner({
       <span className="text-[10.5px] uppercase tracking-widest font-semibold text-sage-700">
         À toi
       </span>
-      <span className="text-[12px] text-sage-900 max-w-[260px] truncate" title={action}>
-        {action}
-      </span>
+      {/* W4.9 : Tooltip primitive (style cohérent design system) en plus du
+          native title — utile pour les actions longues qui sont tronquées. */}
+      <Tooltip content={action} delay={400}>
+        <span className="text-[12px] text-sage-900 max-w-[260px] truncate" title={action}>
+          {action}
+        </span>
+      </Tooltip>
       {isClickable && (
         <ArrowRight
           size={11}

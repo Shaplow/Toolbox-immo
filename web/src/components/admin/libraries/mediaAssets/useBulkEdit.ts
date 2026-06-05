@@ -10,11 +10,12 @@
  * parent (qui vient lui-même de useMediaAssetsLoader).
  *
  * Les 5 handlers async retournent void et signalent leur état via
- * bulkApplying / bulkError / bulkSuccess (auto-clear après 2.5s).
+ * bulkApplying + toast.success/error (cohérence Coastal Studio).
  */
 
 import { useCallback, useState } from "react";
 import type { MediaAsset, InstagramAccount } from "./types";
+import { toast } from "@/components/ui/Toast";
 
 /**
  * Fonction de confirmation asynchrone fournie par le composant parent
@@ -50,8 +51,6 @@ export interface UseBulkEditResult {
   bulkCategoryInput: string;
   setBulkCategoryInput: React.Dispatch<React.SetStateAction<string>>;
   bulkApplying: boolean;
-  bulkError: string | null;
-  bulkSuccess: string | null;
   // Actions
   toggleSelect: (id: string) => void;
   exitSelectMode: () => void;
@@ -69,8 +68,9 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
   const [bulkTagsInput, setBulkTagsInput] = useState("");
   const [bulkCategoryInput, setBulkCategoryInput] = useState("");
   const [bulkApplying, setBulkApplying] = useState(false);
-  const [bulkError, setBulkError] = useState<string | null>(null);
-  const [bulkSuccess, setBulkSuccess] = useState<string | null>(null);
+  // W4.5 : bulkError/bulkSuccess state remplacé par toast.error/success — la
+  // UI feedback est désormais cohérente avec le reste du design system (Toast
+  // overlay) au lieu de rendus inline ad-hoc dans la BulkActionBar.
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -90,15 +90,13 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     setSelectedIds(new Set());
     setBulkSetTagInput("");
     setBulkTagsInput("");
-    setBulkError(null);
+    
   }, []);
 
   const handleBulkApplySetTag = useCallback(async () => {
     if (selectedIds.size === 0) return;
     const value = bulkSetTagInput.trim() || null;
     setBulkApplying(true);
-    setBulkError(null);
-    setBulkSuccess(null);
     const res = await fetch(`/api/admin/libraries/media/${libraryId}/assets/bulk`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -107,20 +105,17 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     setBulkApplying(false);
     if (!res.ok) {
       const d = (await res.json().catch(() => ({}))) as { error?: string };
-      setBulkError(d.error ?? "Erreur lors de l'application");
+      toast.error(d.error ?? "Erreur lors de l'application");
       return;
     }
     setAssets((prev) => prev.map((a) => (selectedIds.has(a.id) ? { ...a, setTag: value } : a)));
-    setBulkSuccess(value ? `Pack « ${value} » appliqué` : "Pack retiré");
-    setTimeout(() => setBulkSuccess(null), 2500);
+    toast.success(value ? `Pack « ${value} » appliqué` : "Pack retiré");
   }, [bulkSetTagInput, libraryId, selectedIds, setAssets]);
 
   const handleBulkApplyTags = useCallback(async () => {
     if (selectedIds.size === 0) return;
     const newTags = bulkTagsInput.split(",").map((t) => t.trim()).filter(Boolean);
     setBulkApplying(true);
-    setBulkError(null);
-    setBulkSuccess(null);
     const res = await fetch(`/api/admin/libraries/media/${libraryId}/assets/bulk`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -129,20 +124,19 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     setBulkApplying(false);
     if (!res.ok) {
       const d = (await res.json().catch(() => ({}))) as { error?: string };
-      setBulkError(d.error ?? "Erreur lors de l'application");
+      toast.error(d.error ?? "Erreur lors de l'application");
       return;
     }
     setAssets((prev) => prev.map((a) => (selectedIds.has(a.id) ? { ...a, tags: newTags } : a)));
-    setBulkSuccess(newTags.length > 0 ? "Tags appliqués" : "Tags retirés");
-    setTimeout(() => setBulkSuccess(null), 2500);
+    toast.success(newTags.length > 0 ? "Tags appliqués" : "Tags retirés");
   }, [bulkTagsInput, libraryId, selectedIds, setAssets]);
 
   const handleBulkApplyAccess = useCallback(
     async (action: "add" | "remove_all", accountId?: string) => {
       if (selectedIds.size === 0) return;
       setBulkApplying(true);
-      setBulkError(null);
-      setBulkSuccess(null);
+      
+      
       const body: Record<string, unknown> = { assetIds: Array.from(selectedIds), accessAction: action };
       if (accountId) body.accountId = accountId;
       const res = await fetch(`/api/admin/libraries/media/${libraryId}/assets/bulk`, {
@@ -153,7 +147,7 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
       setBulkApplying(false);
       if (!res.ok) {
         const d = (await res.json().catch(() => ({}))) as { error?: string };
-        setBulkError(d.error ?? "Erreur lors de l'application");
+        toast.error(d.error ?? "Erreur lors de l'application");
         return;
       }
       if (action === "add" && accountId) {
@@ -165,12 +159,11 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
           ),
         );
         const acc = accounts.find((a) => a.id === accountId);
-        setBulkSuccess(`Accès ajouté : @${acc?.handle ?? accountId}`);
+        toast.success(`Accès ajouté : @${acc?.handle ?? accountId}`);
       } else {
         setAssets((prev) => prev.map((a) => (selectedIds.has(a.id) ? { ...a, accessAccountIds: [] } : a)));
-        setBulkSuccess("Accès réinitialisé (global)");
+        toast.success("Accès réinitialisé (global)");
       }
-      setTimeout(() => setBulkSuccess(null), 2500);
     },
     [accounts, libraryId, selectedIds, setAssets],
   );
@@ -179,8 +172,6 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     if (selectedIds.size === 0) return;
     const value = bulkCategoryInput.trim() || null;
     setBulkApplying(true);
-    setBulkError(null);
-    setBulkSuccess(null);
     const res = await fetch(`/api/admin/libraries/media/${libraryId}/assets/bulk`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -189,12 +180,11 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     setBulkApplying(false);
     if (!res.ok) {
       const d = (await res.json().catch(() => ({}))) as { error?: string };
-      setBulkError(d.error ?? "Erreur lors de l'application");
+      toast.error(d.error ?? "Erreur lors de l'application");
       return;
     }
     setAssets((prev) => prev.map((a) => (selectedIds.has(a.id) ? { ...a, category: value } : a)));
-    setBulkSuccess(value ? `Catégorie « ${value} » appliquée` : "Catégorie retirée");
-    setTimeout(() => setBulkSuccess(null), 2500);
+    toast.success(value ? `Catégorie « ${value} » appliquée` : "Catégorie retirée");
   }, [bulkCategoryInput, libraryId, selectedIds, setAssets]);
 
   const handleBulkDelete = useCallback(async () => {
@@ -207,7 +197,7 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     });
     if (!ok) return;
     setBulkApplying(true);
-    setBulkError(null);
+    
     const res = await fetch(`/api/admin/libraries/media/${libraryId}/assets/bulk`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -216,7 +206,7 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     setBulkApplying(false);
     if (!res.ok) {
       const d = (await res.json().catch(() => ({}))) as { error?: string };
-      setBulkError(d.error ?? "Erreur lors de la suppression");
+      toast.error(d.error ?? "Erreur lors de la suppression");
       return;
     }
     setAssets((prev) => prev.filter((a) => !selectedIds.has(a.id)));
@@ -235,8 +225,6 @@ export function useBulkEdit({ libraryId, setAssets, accounts, confirm }: UseBulk
     bulkCategoryInput,
     setBulkCategoryInput,
     bulkApplying,
-    bulkError,
-    bulkSuccess,
     toggleSelect,
     exitSelectMode,
     handleBulkApplySetTag,

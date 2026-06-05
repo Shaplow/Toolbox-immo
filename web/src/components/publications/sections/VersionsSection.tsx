@@ -20,6 +20,7 @@ import { DeleteButton } from "@/components/ui/DeleteButton";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Textarea";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { toast } from "@/components/ui/Toast";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -522,9 +523,14 @@ export function VersionsSection({
         )}
 
         {!hasVersions && !canUploadVersion && (
-          <p className="text-[12px] text-gray-400 italic py-2">
-            Le monteur uploadera sa V1 ici une fois le montage terminé.
-          </p>
+          // W4 : EmptyState primitive avec icon Film. Texte recadré pour ne
+          // plus parler "à la place" du monteur — le CM voit juste qu'on
+          // attend la V1, libre d'aller relancer si besoin.
+          <EmptyState
+            icon={Film}
+            title="Aucune version livrée"
+            description="La V1 du monteur apparaîtra ici une fois la première coupe finalisée."
+          />
         )}
       </div>
     </Section>

@@ -32,6 +32,83 @@ const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.1;
 const KEYBOARD_SCROLL_STEP = 120;
 
+/**
+ * W5.10 — Helper partagé pour render bounds + 8 resize handles. Avant
+ * l'extraction, le code était dupliqué pour group bounds + multi-select bounds
+ * (~130 LOC quasi-identiques). Toute correction (cursor mapping, handle size,
+ * z-index) devait être appliquée en 2 endroits.
+ */
+const HANDLE_SIZE = 8;
+const HANDLE_HALF = HANDLE_SIZE / 2;
+const RESIZE_DIRECTIONS = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
+const RESIZE_CURSOR_MAP: Record<string, string> = {
+  n: "n-resize", ne: "ne-resize", e: "e-resize", se: "se-resize",
+  s: "s-resize", sw: "sw-resize", w: "w-resize", nw: "nw-resize",
+};
+
+type ResizeDirection = (typeof RESIZE_DIRECTIONS)[number];
+
+function renderSelectionBounds(args: {
+  bounds: { x: number; y: number; w: number; h: number };
+  zoom: number;
+  borderColor: string;
+  handleBorder: string;
+  keyPrefix: string;
+  onHandleMouseDown: (e: React.MouseEvent, dir: ResizeDirection) => void;
+}) {
+  const { bounds, zoom, borderColor, handleBorder, keyPrefix, onHandleMouseDown } = args;
+  const sx = bounds.x * zoom;
+  const sy = bounds.y * zoom;
+  const sw = bounds.w * zoom;
+  const sh = bounds.h * zoom;
+  return (
+    <>
+      <div style={{
+        position: "absolute",
+        left: sx,
+        top: sy,
+        width: sw,
+        height: sh,
+        border: `1.5px dashed ${borderColor}`,
+        boxSizing: "border-box",
+        pointerEvents: "none",
+        zIndex: 9998,
+      }} />
+      {RESIZE_DIRECTIONS.map((dir) => {
+        let left = 0, top = 0;
+        if (dir.includes("w")) left = sx - HANDLE_HALF;
+        else if (dir.includes("e")) left = sx + sw - HANDLE_HALF;
+        else left = sx + sw / 2 - HANDLE_HALF;
+        if (dir.includes("n")) top = sy - HANDLE_HALF;
+        else if (dir.includes("s")) top = sy + sh - HANDLE_HALF;
+        else top = sy + sh / 2 - HANDLE_HALF;
+        return (
+          <div
+            key={`${keyPrefix}-${dir}`}
+            style={{
+              position: "absolute",
+              left,
+              top,
+              width: HANDLE_SIZE,
+              height: HANDLE_SIZE,
+              background: "white",
+              border: `1.5px solid ${handleBorder}`,
+              borderRadius: 2,
+              cursor: RESIZE_CURSOR_MAP[dir],
+              zIndex: 9999,
+              boxSizing: "border-box",
+            }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              onHandleMouseDown(e, dir);
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 export function Canvas({
   fontRefreshKey,
   onLayoutDebugSnapshotChange,
@@ -853,6 +930,9 @@ export function Canvas({
       {/* Toolbar Canvas : uniquement contrôles de VUE (zoom, ajuster, grille, snap).
           Undo/Redo restent dans le header global du builder (BuilderClient) — pas de
           doublon ici, sinon l'user ne sait plus quelle version est canonique. */}
+      {/* Toolbar — boutons denses (px-2 py-0.5) — le composant Button du
+          design system est plus haut (h-7). On garde des micro-boutons custom
+          mais sans la couleur indigo bannie (W4 / Coastal Studio palette). */}
       <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 border-b border-gray-200 shrink-0 flex-wrap">
         <button onClick={zoomOut} title="Dézoomer" className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">−</button>
         <span className="text-xs text-gray-600 w-12 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
@@ -861,33 +941,35 @@ export function Canvas({
 
         <span className="text-gray-300 mx-1">|</span>
 
-        {/* Grid toggle */}
+        {/* Grid toggle — pressed = sage (Coastal Studio active state) */}
         <button
           onClick={() => setShowGrid((v) => !v)}
           title="Afficher/masquer la grille"
+          aria-pressed={showGrid}
           className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded transition-colors ${
-            showGrid ? "bg-indigo-100 border-indigo-300 text-indigo-700" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+            showGrid ? "bg-sage-100 border-sage-300 text-sage-700" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
           }`}
         >
           <Grid3x3 size={12} />
           Grille
         </button>
 
-        {/* Snap toggle */}
+        {/* Snap toggle — pressed = sage */}
         <button
           onClick={() => setSnapToGrid((v) => !v)}
           title={`Snap to grid (${effectiveGridSize}px canvas units at current zoom)`}
+          aria-pressed={snapToGrid}
           className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded transition-colors ${
-            snapToGrid ? "bg-indigo-100 border-indigo-300 text-indigo-700" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+            snapToGrid ? "bg-sage-100 border-sage-300 text-sage-700" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
           }`}
         >
           <Magnet size={12} />
           Snap{snapToGrid ? ` (${effectiveGridSize})` : ""}
         </button>
 
-        {/* Multi-select hint */}
+        {/* Multi-select hint — sky (info accent Coastal Studio) */}
         {multiSelected.size > 1 && (
-          <span className="text-xs text-indigo-600 ml-2">{multiSelected.size} blocs sélectionnés</span>
+          <span className="text-xs text-sky-700 ml-2">{multiSelected.size} blocs sélectionnés</span>
         )}
       </div>
 
@@ -1201,130 +1283,36 @@ export function Canvas({
               </Resizable>
             );
           })}
-          {/* Group bounding-box border + proportional resize handles */}
+          {/* W5.10 : SelectionBoundsOverlay extrait (Canvas.tsx avait 130 LOC
+              dupliqués entre group bounds + multi-select). Le helper renderSelectionBounds
+              prend bounds + couleurs + key prefix + handler et factorise les 8
+              directions/handles. */}
+          {/* eslint-disable react-hooks/refs -- les handlers passent par
+              useCallback et accèdent à un ref interne au resize gesture
+              (groupResizing.current). Ce ref est volontairement muté pendant
+              la session de drag — c'est l'usage canonique d'un useRef. */}
           {groupBounds && selectedGroupId && (() => {
             const sg = groupMap.get(selectedGroupId);
             if (!sg || isAutoLayoutGroup(sg)) return null;
-            const HANDLE_SIZE = 8;
-            const half = HANDLE_SIZE / 2;
-            const sx = groupBounds.x * zoom;
-            const sy = groupBounds.y * zoom;
-            const sw = groupBounds.w * zoom;
-            const sh = groupBounds.h * zoom;
-            const DIRECTIONS = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
-            const cursorMap: Record<string, string> = {
-              n: "n-resize", ne: "ne-resize", e: "e-resize", se: "se-resize",
-              s: "s-resize", sw: "sw-resize", w: "w-resize", nw: "nw-resize",
-            };
-            return (
-              <>
-                {/* Dashed border overlay — pointer-events:none so clicks reach blocks */}
-                <div style={{
-                  position: "absolute",
-                  left: sx,
-                  top: sy,
-                  width: sw,
-                  height: sh,
-                  border: "1.5px dashed rgba(37,99,235,0.55)",
-                  boxSizing: "border-box",
-                  pointerEvents: "none",
-                  zIndex: 9998,
-                }} />
-                {/* Resize handles */}
-                {DIRECTIONS.map((dir) => {
-                  let left = 0, top = 0;
-                  if (dir.includes("w")) left = sx - half;
-                  else if (dir.includes("e")) left = sx + sw - half;
-                  else left = sx + sw / 2 - half;
-                  if (dir.includes("n")) top = sy - half;
-                  else if (dir.includes("s")) top = sy + sh - half;
-                  else top = sy + sh / 2 - half;
-                  return (
-                    <div
-                      key={`gh-${dir}`}
-                      style={{
-                        position: "absolute",
-                        left,
-                        top,
-                        width: HANDLE_SIZE,
-                        height: HANDLE_SIZE,
-                        background: "white",
-                        border: "1.5px solid #2563EB",
-                        borderRadius: 2,
-                        cursor: cursorMap[dir],
-                        zIndex: 9999,
-                        boxSizing: "border-box",
-                      }}
-                      onMouseDown={(e) => {
-                        e.stopPropagation();
-                        handleGroupResizeMouseDown(e, dir);
-                      }}
-                    />
-                  );
-                })}
-              </>
-            );
+            return renderSelectionBounds({
+              bounds: groupBounds,
+              zoom,
+              borderColor: "rgba(37,99,235,0.55)",
+              handleBorder: "#2563EB",
+              keyPrefix: "gh",
+              onHandleMouseDown: (e, dir) => handleGroupResizeMouseDown(e, dir),
+            });
           })()}
-          {/* Multi-select bounding-box border + proportional resize handles */}
-          {multiSelectBounds && (() => {
-            const HANDLE_SIZE = 8;
-            const half = HANDLE_SIZE / 2;
-            const sx = multiSelectBounds.x * zoom;
-            const sy = multiSelectBounds.y * zoom;
-            const sw = multiSelectBounds.w * zoom;
-            const sh = multiSelectBounds.h * zoom;
-            const DIRECTIONS = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
-            const cursorMap: Record<string, string> = {
-              n: "n-resize", ne: "ne-resize", e: "e-resize", se: "se-resize",
-              s: "s-resize", sw: "sw-resize", w: "w-resize", nw: "nw-resize",
-            };
-            return (
-              <>
-                <div style={{
-                  position: "absolute",
-                  left: sx,
-                  top: sy,
-                  width: sw,
-                  height: sh,
-                  border: "1.5px dashed rgba(129,140,248,0.7)",
-                  boxSizing: "border-box",
-                  pointerEvents: "none",
-                  zIndex: 9998,
-                }} />
-                {DIRECTIONS.map((dir) => {
-                  let left = 0, top = 0;
-                  if (dir.includes("w")) left = sx - half;
-                  else if (dir.includes("e")) left = sx + sw - half;
-                  else left = sx + sw / 2 - half;
-                  if (dir.includes("n")) top = sy - half;
-                  else if (dir.includes("s")) top = sy + sh - half;
-                  else top = sy + sh / 2 - half;
-                  return (
-                    <div
-                      key={`msh-${dir}`}
-                      style={{
-                        position: "absolute",
-                        left,
-                        top,
-                        width: HANDLE_SIZE,
-                        height: HANDLE_SIZE,
-                        background: "white",
-                        border: "1.5px solid #818CF8",
-                        borderRadius: 2,
-                        cursor: cursorMap[dir],
-                        zIndex: 9999,
-                        boxSizing: "border-box",
-                      }}
-                      onMouseDown={(e) => {
-                        e.stopPropagation();
-                        handleBoundsResizeMouseDown(e, dir, multiSelectedBlockIds, multiSelectBounds);
-                      }}
-                    />
-                  );
-                })}
-              </>
-            );
-          })()}
+          {multiSelectBounds && renderSelectionBounds({
+            bounds: multiSelectBounds,
+            zoom,
+            borderColor: "rgba(129,140,248,0.7)",
+            handleBorder: "#818CF8",
+            keyPrefix: "msh",
+            onHandleMouseDown: (e, dir) =>
+              handleBoundsResizeMouseDown(e, dir, multiSelectedBlockIds, multiSelectBounds),
+          })}
+          {/* eslint-enable react-hooks/refs */}
         </div>
         </div>
       </div>

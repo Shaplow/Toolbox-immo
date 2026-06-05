@@ -72,9 +72,9 @@ function toMondayUTC(d: Date): Date {
  * Performance : 2 requêtes DB au total (findMany existing + createMany) au lieu de 2N.
  */
 export async function generateCalendarSlots(
-  options: GenerateCalendarOptions
+  options: GenerateCalendarOptions & { dryRun?: boolean }
 ): Promise<GenerateCalendarResult> {
-  const { accountIds, dateFrom, dateTo } = options;
+  const { accountIds, dateFrom, dateTo, dryRun = false } = options;
 
   // 1. Récupérer tous les patterns actifs (filtrés par compte si précisé)
   const patterns = await prisma.accountPattern.findMany({
@@ -179,8 +179,9 @@ export async function generateCalendarSlots(
     return !existingKeys.has(key);
   });
 
-  // 5. Bulk insert
-  if (toCreate.length > 0) {
+  // 5. Bulk insert — skippé en mode dry-run (W4.9 : permet à l'UI d'afficher
+  // un résumé avant confirmation).
+  if (toCreate.length > 0 && !dryRun) {
     await prisma.publicationSlot.createMany({
       data: toCreate.map(({ pattern, scheduledAt }) => ({
         accountId: pattern.accountId,

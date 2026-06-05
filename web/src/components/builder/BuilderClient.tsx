@@ -2,10 +2,13 @@
 
 import { useEffect, useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Layers, AlignLeft, Film, Music, Settings, Undo2, Redo2, X, ChevronLeft, Camera, Captions, Database, Loader2 } from "lucide-react";
+import { Layers, AlignLeft, Film, Music, Settings, Undo2, Redo2, X, ChevronLeft, Camera, Captions, Database } from "lucide-react";
 import { useBuilderStore } from "@/lib/store/builderStore";
 import { collectBuilderFontsFromSources, type BuilderFontEntry } from "@/lib/builderFonts";
 import { toast } from "@/components/ui/Toast";
+import { useConfirm } from "@/components/ui/useConfirm";
+import { Button } from "@/components/ui/Button";
+import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import type { TemplateJSON } from "@/types/template";
 import { serializeTemplateJSON } from "@/lib/templateNormalization";
 import { createLayoutDebugStorageKey, stringifyLayoutDebugSnapshot, type LayoutDebugSnapshot } from "@/lib/layoutDebug";
@@ -74,6 +77,7 @@ export function BuilderClient({
   const { template, setTemplate, isSaving, isDirty, setSaving, markSaved, undo, redo, past, future } =
     useBuilderStore();
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [activePanel, setActivePanel] = useState<PanelId | null>("layers");
   const [globalFonts, setGlobalFonts] = useState<BuilderFontEntry[]>([]);
   const [videoLibraries, setVideoLibraries] = useState<{ id: string; name: string }[]>([]);
@@ -93,9 +97,30 @@ export function BuilderClient({
     }, globalFonts),
     [blockFontFamilies, globalFonts, template.theme.customFonts, template.theme.fonts.body, template.theme.fonts.heading]
   );
+  // W5 (builder-13) : la clé inclut désormais les weight/fontStyle de chaque
+  // bloc text. Sans ça, switcher un block de weight 400→700 gardait l'ancienne
+  // mesure (measuredAutoLayoutSizes) car family+url reste identique pour les
+  // polices Google (URL multi-weight) ou les customFonts par family. On dépend
+  // explicitement de la liste des styles présents dans le template.
+  const blockStyleSignature = useMemo(
+    () =>
+      template.blocks
+        .map((block) => {
+          const s = (block as {
+            style?: { fontFamily?: string; fontWeight?: number | string; fontStyle?: string };
+          }).style;
+          if (!s) return "";
+          return `${s.fontFamily ?? ""}|${s.fontWeight ?? ""}|${s.fontStyle ?? ""}`;
+        })
+        .join("~"),
+    [template.blocks],
+  );
   const fontRefreshKey = useMemo(
-    () => builderFonts.map((font) => `${font.family}:${font.url ?? ""}`).join("|"),
-    [builderFonts]
+    () =>
+      builderFonts.map((font) => `${font.family}:${font.url ?? ""}`).join("|") +
+      "::" +
+      blockStyleSignature,
+    [builderFonts, blockStyleSignature],
   );
 
   // Init
@@ -253,17 +278,24 @@ export function BuilderClient({
 
   // Confirm sur clic du lien "Retour" — Link de Next.js fait une navigation
   // soft, beforeunload ne se déclenche pas. On intercepte le clic et on
-  // demande confirmation si dirty.
+  // demande confirmation si dirty via le ConfirmDialog du design system
+  // (cohérence visuelle vs window.confirm natif).
   const handleBackClick = useCallback(
     (e: React.MouseEvent<HTMLAnchorElement>) => {
       if (!isDirty || !backUrl) return;
       e.preventDefault();
-      const ok = window.confirm(
-        "Tu as des modifications non sauvegardées. Quitter sans sauvegarder ?",
-      );
-      if (ok) router.push(backUrl);
+      void (async () => {
+        const ok = await confirm({
+          title: "Modifications non sauvegardées",
+          description: "Tu as des modifications non sauvegardées. Quitter sans sauvegarder ?",
+          confirmLabel: "Quitter",
+          cancelLabel: "Rester ici",
+          variant: "danger",
+        });
+        if (ok) router.push(backUrl);
+      })();
     },
-    [isDirty, backUrl, router],
+    [isDirty, backUrl, router, confirm],
   );
 
   // Layout debug
@@ -332,51 +364,54 @@ export function BuilderClient({
 
         <div className="w-px h-5 bg-gray-200 mx-1.5 shrink-0" />
 
-        {/* Undo / Redo */}
-        <button
+        {/* Undo / Redo — ButtonIcon variant ghost (cohérent UI primitives) */}
+        <ButtonIcon
+          icon={Undo2}
           onClick={undo}
           disabled={past.length === 0}
           title="Annuler (Ctrl+Z)"
-          className="p-1.5 rounded text-gray-500 hover:bg-gray-100 disabled:opacity-30 transition-colors"
-        >
-          <Undo2 size={14} />
-        </button>
-        <button
+          variant="ghost"
+          size="sm"
+        />
+        <ButtonIcon
+          icon={Redo2}
           onClick={redo}
           disabled={future.length === 0}
           title="Rétablir (Ctrl+Y)"
-          className="p-1.5 rounded text-gray-500 hover:bg-gray-100 disabled:opacity-30 transition-colors"
-        >
-          <Redo2 size={14} />
-        </button>
+          variant="ghost"
+          size="sm"
+        />
 
         <div className="flex-1" />
 
-        {/* Actions */}
-        <button
+        {/* Actions — Button primitives (W4 : drop indigo banni Coastal Studio) */}
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={() => void handleOpenPreview(`/preview/${templateId}`)}
           disabled={isSaving}
-          className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
         >
           Aperçu
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={() => void handleOpenGenerate()}
           disabled={isSaving}
-          className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
         >
           Générer →
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          loading={isSaving}
           onClick={handleSave}
           disabled={isSaving}
-          className="text-xs px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium disabled:opacity-60 transition-colors inline-flex items-center gap-1.5"
         >
-          {isSaving && <Loader2 size={12} className="animate-spin" />}
           Sauvegarder
-        </button>
+        </Button>
       </header>
 
       {/* ── Main area ───────────────────────────────────────────────────────── */}
@@ -395,7 +430,7 @@ export function BuilderClient({
                 title={label}
                 className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
                   activePanel === id
-                    ? "bg-indigo-50 text-indigo-700"
+                    ? "bg-sky-50 text-sky-700"
                     : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"
                 }`}
               >
@@ -405,7 +440,7 @@ export function BuilderClient({
 
             {/* Sequence indicator dot */}
             {hasMediaSources && activePanel !== "sequence" && (
-              <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 -mt-0.5" aria-hidden />
+              <div className="w-1.5 h-1.5 rounded-full bg-sky-400 -mt-0.5" aria-hidden />
             )}
 
             <div className="flex-1" />
@@ -428,13 +463,13 @@ export function BuilderClient({
                   title={label}
                   className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors relative ${
                     activePanel === id
-                      ? "bg-indigo-50 text-indigo-700"
+                      ? "bg-sky-50 text-sky-700"
                       : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"
                   }`}
                 >
                   <Icon size={18} />
                   {showDot && (
-                    <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-indigo-400" aria-hidden />
+                    <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-sky-400" aria-hidden />
                   )}
                 </button>
               );
@@ -490,6 +525,7 @@ export function BuilderClient({
           onShowResolvedTextPreviewChange={setShowResolvedTextPreview}
         />
       </div>
+      {confirmDialog}
     </div>
   );
 }

@@ -19,6 +19,7 @@
 import { NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import { logActivity } from "@/lib/services/slot/activity";
 
 // Fix bug 2026-05-30 : seuils réduits — l'UI alerte déjà dès 30min, et les
 // jobs PROCESSING > 30min sont en pratique morts (Next hot-reload, render-engine
@@ -43,14 +44,37 @@ export async function POST() {
   const processingCutoff = new Date(now.getTime() - PROCESSING_STALL_MS);
   const queuedCutoff     = new Date(now.getTime() - QUEUED_STALL_MS);
 
+  // Collecte des slotIds affectés pour audit per-slot — sans ça (W4.3),
+  // l'admin qui déclenche un sweep ne pouvait pas identifier les slots
+  // touchés sans requête DB manuelle. On garde une `Set` partagée pour
+  // dédupliquer entre tables (un slot peut avoir un caption + render sweepés).
+  const sweepAffectedSlotIds = new Set<string>();
+  async function captureSlotIds(slotIds: Array<string | null | undefined>) {
+    for (const id of slotIds) if (id) sweepAffectedSlotIds.add(id);
+  }
+
   // ── CaptionJob ────────────────────────────────────────────────────────────
+  // select avant update pour capturer les slotIds — updateMany de Prisma
+  // ne supporte pas RETURNING (sauf en Postgres via $executeRaw).
+  const captionsToFailProcessing = await prisma.captionJob.findMany({
+    where: { status: "PROCESSING", updatedAt: { lt: processingCutoff } },
+    select: { id: true, slotId: true },
+  });
+  const captionsToFailQueued = await prisma.captionJob.findMany({
+    where: { status: "QUEUED", updatedAt: { lt: queuedCutoff } },
+    select: { id: true, slotId: true },
+  });
+  await captureSlotIds([
+    ...captionsToFailProcessing.map((j) => j.slotId),
+    ...captionsToFailQueued.map((j) => j.slotId),
+  ]);
   const [captionProcessing, captionQueued] = await Promise.all([
     prisma.captionJob.updateMany({
-      where: { status: "PROCESSING", updatedAt: { lt: processingCutoff } },
+      where: { id: { in: captionsToFailProcessing.map((j) => j.id) } },
       data:  { status: "FAILED", errorMsg: "Job bloqué en PROCESSING — webhook RunPod jamais reçu (sweep automatique)" },
     }),
     prisma.captionJob.updateMany({
-      where: { status: "QUEUED", updatedAt: { lt: queuedCutoff } },
+      where: { id: { in: captionsToFailQueued.map((j) => j.id) } },
       data:  { status: "FAILED", errorMsg: "Job bloqué en QUEUED — upload ou submit jamais finalisé (sweep automatique)" },
     }),
   ]);
@@ -67,6 +91,20 @@ export async function POST() {
     }),
   ]);
 
+  // ── Render — capture slotIds avant updateMany pour audit per-slot ────────
+  const rendersToFailProcessing = await prisma.render.findMany({
+    where: { status: "PROCESSING", createdAt: { lt: processingCutoff } },
+    select: { id: true, publicationSlotId: true },
+  });
+  const rendersToFailPending = await prisma.render.findMany({
+    where: { status: "PENDING", createdAt: { lt: queuedCutoff } },
+    select: { id: true, publicationSlotId: true },
+  });
+  await captureSlotIds([
+    ...rendersToFailProcessing.map((r) => r.publicationSlotId),
+    ...rendersToFailPending.map((r) => r.publicationSlotId),
+  ]);
+
   // ── Render ────────────────────────────────────────────────────────────────
   // Un render qui reste en PROCESSING ou PENDING après le seuil signifie
   // que le webhook RunPod n'est jamais arrivé (NEXTAUTH_URL mal configuré,
@@ -80,11 +118,11 @@ export async function POST() {
   // définition).
   const [renderProcessing, renderPending] = await Promise.all([
     prisma.render.updateMany({
-      where: { status: "PROCESSING", createdAt: { lt: processingCutoff } },
+      where: { id: { in: rendersToFailProcessing.map((r) => r.id) } },
       data:  { status: "ERROR", errorMsg: "Render bloqué en PROCESSING — webhook RunPod jamais reçu (sweep automatique)" },
     }),
     prisma.render.updateMany({
-      where: { status: "PENDING", createdAt: { lt: queuedCutoff } },
+      where: { id: { in: rendersToFailPending.map((r) => r.id) } },
       data:  { status: "ERROR", errorMsg: "Render bloqué en PENDING — soumission RunPod jamais finalisée (sweep automatique)" },
     }),
   ]);
@@ -201,7 +239,33 @@ export async function POST() {
       coverProcessing.count + coverQueued.count,
   };
 
-  console.info("[admin/jobs/sweep] Sweep terminé par", userContext.actualUser.id, "—", JSON.stringify(summary));
+  // Per-slot audit log : pour chaque slot affecté, une entrée STATUS_CHANGED
+  // avec trigger=SWEEP. Best-effort hors-tx — un échec individuel ne doit pas
+  // bloquer le retour de la réponse au caller.
+  if (sweepAffectedSlotIds.size > 0) {
+    await Promise.allSettled(
+      Array.from(sweepAffectedSlotIds).map((slotId) =>
+        logActivity(prisma, {
+          slotId,
+          actorId: userContext.actualUser.id,
+          type: "STATUS_CHANGED",
+          payload: {
+            trigger: "SWEEP",
+            note: "Jobs stale marqués FAILED par le sweep admin",
+          },
+        }).catch((err) => {
+          console.warn(`[admin/jobs/sweep] audit log failed for slot=${slotId}:`, err);
+        }),
+      ),
+    );
+  }
 
-  return NextResponse.json({ ok: true, swept: summary });
+  console.info(
+    "[admin/jobs/sweep] Sweep terminé par",
+    userContext.actualUser.id,
+    "—",
+    JSON.stringify({ ...summary, affectedSlots: sweepAffectedSlotIds.size }),
+  );
+
+  return NextResponse.json({ ok: true, swept: summary, affectedSlots: sweepAffectedSlotIds.size });
 }

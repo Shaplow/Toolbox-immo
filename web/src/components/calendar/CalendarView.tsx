@@ -24,6 +24,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { Chip } from "@/components/ui/Chip";
+import { Alert } from "@/components/ui/Alert";
 
 interface Account {
   id: string;
@@ -127,6 +128,9 @@ export function CalendarView({
   const [addDefaultDate, setAddDefaultDate] = useState<string | undefined>(undefined);
   const [generating, setGenerating] = useState(false);
   const [confirmGenOpen, setConfirmGenOpen] = useState(false);
+  // W4.9 : preview dry-run avant confirmation (created/skipped sans insert DB).
+  const [genPreview, setGenPreview] = useState<{ created: number; skipped: number } | null>(null);
+  const [genPreviewLoading, setGenPreviewLoading] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<CalendarFiltersState>({
     accountId: initialAccountId,
@@ -426,7 +430,34 @@ export function CalendarView({
                       variant="secondary"
                       size="sm"
                       icon={Sparkles}
-                      onClick={() => setConfirmGenOpen(true)}
+                      onClick={() => {
+                        // Pré-charge le résumé dry-run avant d'ouvrir le confirm.
+                        // Sans ça (avant W4.9), l'admin acceptait à l'aveugle et
+                        // découvrait après-coup combien de slots étaient créés.
+                        setConfirmGenOpen(true);
+                        setGenPreview(null);
+                        setGenPreviewLoading(true);
+                        void (async () => {
+                          try {
+                            const dateToEnd = addDays(weekStart, 6);
+                            dateToEnd.setHours(23, 59, 59, 999);
+                            const res = await fetch("/api/calendar/generate?dry=true", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                dateFrom: dateFrom.toISOString(),
+                                dateTo: dateToEnd.toISOString(),
+                              }),
+                            });
+                            if (res.ok) {
+                              const d = (await res.json()) as { created: number; skipped: number };
+                              setGenPreview({ created: d.created, skipped: d.skipped });
+                            }
+                          } finally {
+                            setGenPreviewLoading(false);
+                          }
+                        })();
+                      }}
                       loading={generating}
                       title="Générer les slots auto pour la semaine"
                     >
@@ -567,9 +598,17 @@ export function CalendarView({
 
             {/* Error */}
             {loadError && (
-              <div className="text-sm text-rose-700 bg-rose-50/80 backdrop-blur-[8px] rounded-2xl px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.18)]">
+              <Alert
+                variant="danger"
+                title="Impossible de charger les slots"
+                actions={
+                  <Button variant="secondary" size="sm" onClick={() => void load()}>
+                    Réessayer
+                  </Button>
+                }
+              >
                 {loadError}
-              </div>
+              </Alert>
             )}
 
             {/* Grille 7 colonnes — colonnes transparentes, SlotCards portent la matière */}
@@ -630,15 +669,22 @@ export function CalendarView({
       <ConfirmDialog
         open={confirmGenOpen}
         title="Générer les slots de la semaine ?"
-        description={`Générer les slots auto pour la semaine du ${weekStart.toLocaleDateString(
-          "fr-FR",
-        )} ? Les slots existants ne seront pas écrasés.`}
-        confirmLabel="Générer"
+        description={
+          genPreviewLoading
+            ? `Analyse de la semaine du ${weekStart.toLocaleDateString("fr-FR")}…`
+            : genPreview
+              ? `Semaine du ${weekStart.toLocaleDateString("fr-FR")} — ${genPreview.created} slot${genPreview.created !== 1 ? "s" : ""} à créer, ${genPreview.skipped} déjà présent${genPreview.skipped !== 1 ? "s" : ""} (ignoré${genPreview.skipped !== 1 ? "s" : ""}).`
+              : `Générer les slots auto pour la semaine du ${weekStart.toLocaleDateString("fr-FR")} ? Les slots existants ne seront pas écrasés.`
+        }
+        confirmLabel={genPreview && genPreview.created > 0 ? `Créer ${genPreview.created} slot${genPreview.created !== 1 ? "s" : ""}` : "Générer"}
         loading={generating}
         onConfirm={() => {
           void handleGenerateConfirmed();
         }}
-        onCancel={() => setConfirmGenOpen(false)}
+        onCancel={() => {
+          setConfirmGenOpen(false);
+          setGenPreview(null);
+        }}
       />
     </div>
   );

@@ -16,6 +16,7 @@ import { Section } from "@/components/ui/molecules/Section";
 import type { UploadResult } from "@/components/ui/MediaDropzone";
 import { DeleteButton } from "@/components/ui/DeleteButton";
 import { toast } from "@/components/ui/Toast";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -284,9 +285,13 @@ export function RushesSection({
         )}
 
         {!hasRushes && !canUploadRushes && (
-          <p className="text-[12px] text-gray-400 italic py-2">
-            Aucun rush pour l&apos;instant.
-          </p>
+          // W4 : EmptyState primitive avec icône Clapperboard + description
+          // contextuelle. Avant : un <p> italic gris-400 sans icône ni guidance.
+          <EmptyState
+            icon={Clapperboard}
+            title="Aucun rush pour l'instant"
+            description="Les rushes vidéo apparaîtront ici dès que le vidéaste les aura téléversés."
+          />
         )}
       </div>
     </Section>
