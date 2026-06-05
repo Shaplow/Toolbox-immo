@@ -8,7 +8,7 @@ import { notifyAll } from "@/lib/sseStore";
  *
  * Reçoit la callback RunPod quand un job media_autocut_batch termine.
  * Résout chaque MediaAutocutJob individuellement depuis le tableau de résultats.
- * Sécurité : voir verifyRunpodWebhook (RUNPOD_WEBHOOK_SECRET).
+ * Sécurité : voir verifyAndParseRunpodWebhook (RUNPOD_WEBHOOK_SECRET).
  */
 
 type AutocutJobResult = {

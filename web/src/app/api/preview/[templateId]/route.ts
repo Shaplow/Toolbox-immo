@@ -4,12 +4,17 @@ import { prisma } from "@/lib/prisma";
 import { buildHTML } from "@/lib/renderer/buildHTML";
 import { buildSchemaPreviewData } from "@/lib/schemaFields";
 import { normalizeTemplateJSON } from "@/lib/templateNormalization";
+import { canAccessTemplate } from "@/lib/permissions";
 import type { TemplateJSON } from "@/types/template";
 import type { ListingData } from "@/types/listing";
 
 /**
  * GET  /api/preview/[templateId]  — preview with schema defaults (builder)
  * POST /api/preview/[templateId]  — preview with provided data (listing form)
+ *
+ * Permission : canAccessTemplate côté serveur — sinon n'importe quel utilisateur
+ * authentifié (y compris EXTERNAL_GENERATOR) pourrait énumérer les templateIds
+ * et obtenir le HTML rendu de templates auxquels il n'a pas accès via TemplateAccess.
  */
 export async function GET(
   _req: NextRequest,
@@ -21,6 +26,15 @@ export async function GET(
   }
 
   const { templateId } = await params;
+  const ok = await canAccessTemplate(
+    userContext.effectiveUser.id,
+    templateId,
+    userContext.effectiveUser.role ?? undefined,
+  );
+  if (!ok) {
+    return NextResponse.json({ error: "Template not found" }, { status: 404 });
+  }
+
   try {
     const template = await prisma.template.findUniqueOrThrow({
       where: { id: templateId },
@@ -46,6 +60,15 @@ export async function POST(
   }
 
   const { templateId } = await params;
+  const ok = await canAccessTemplate(
+    userContext.effectiveUser.id,
+    templateId,
+    userContext.effectiveUser.role ?? undefined,
+  );
+  if (!ok) {
+    return NextResponse.json({ error: "Template not found" }, { status: 404 });
+  }
+
   try {
     const body = await req.json() as { data?: Record<string, unknown> };
     const template = await prisma.template.findUniqueOrThrow({

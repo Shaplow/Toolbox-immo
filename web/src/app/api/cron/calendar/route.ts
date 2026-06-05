@@ -5,6 +5,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { generateCalendarSlots, nextWeekRange } from "@/lib/calendarEngine";
+import { timingSafeEqualStrings } from "@/lib/utils";
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
@@ -15,7 +16,7 @@ export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
-  if (token !== cronSecret) {
+  if (!timingSafeEqualStrings(token, cronSecret)) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 

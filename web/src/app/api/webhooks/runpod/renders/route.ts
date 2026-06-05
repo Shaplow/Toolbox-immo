@@ -3,7 +3,7 @@
  *
  * Reçoit la callback RunPod quand un job render_template termine.
  * Met à jour Render, enregistre l'usage bibliothèque, et pousse un event SSE.
- * Sécurité : voir verifyRunpodWebhook (RUNPOD_WEBHOOK_SECRET).
+ * Sécurité : voir verifyAndParseRunpodWebhook (RUNPOD_WEBHOOK_SECRET).
  */
 
 import { NextRequest, NextResponse } from "next/server";

@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import {
+  isBulkParseError,
+  parseBulkAccessBody,
+} from "@/lib/admin/libraryBulkHelpers";
 
 type Params = { params: Promise<{ campaignId: string }> };
 
-// POST /api/admin/libraries/data/campaigns/[campaignId]/entries/bulk
+// PATCH /api/admin/libraries/data/campaigns/[campaignId]/entries/bulk
 // Applique en masse le contrôle d'accès sur plusieurs DataEntry.
 // Body : { entryIds: string[], accessAction: "add" | "remove_all", accountId?: string, accountIds?: string[] }
-export async function POST(req: NextRequest, { params }: Params) {
+//
+// Note : la méthode HTTP a été migrée POST → PATCH (alignement avec la route
+// bulk media qui utilise déjà PATCH pour la même sémantique partial-update).
+export async function PATCH(req: NextRequest, { params }: Params) {
   const userContext = await getUserContext();
   if (!userContext?.effectiveUser.id || !userContext.canAdminBypass) {
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });
@@ -15,50 +22,13 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { campaignId } = await params;
 
-  const body = await req.json() as {
-    entryIds?: unknown;
-    accessAction?: unknown;
-    accountId?: unknown;
-    accountIds?: unknown;
-  };
+  const body = (await req.json()) as Record<string, unknown>;
 
-  if (!Array.isArray(body.entryIds) || body.entryIds.length === 0) {
-    return NextResponse.json({ error: "entryIds est requis et doit être un tableau non vide" }, { status: 400 });
+  const parsed = parseBulkAccessBody(body, "entryIds", { requireAction: true });
+  if (isBulkParseError(parsed)) {
+    return NextResponse.json({ error: parsed.message }, { status: parsed.status });
   }
-
-  const rawIds = body.entryIds as unknown[];
-  const entryIds = rawIds.filter((id): id is string => typeof id === "string");
-  if (entryIds.length === 0) {
-    return NextResponse.json({ error: "entryIds invalides" }, { status: 400 });
-  }
-  if (entryIds.length !== rawIds.length) {
-    return NextResponse.json(
-      { error: `entryIds invalides : ${rawIds.length - entryIds.length} entrée(s) ne sont pas des chaînes de caractères` },
-      { status: 400 },
-    );
-  }
-
-  const accessAction = typeof body.accessAction === "string" ? body.accessAction : null;
-
-  // Supporte soit accountId (legacy, 1 compte) soit accountIds (multi).
-  const accessAccountIds: string[] = (() => {
-    if (Array.isArray(body.accountIds)) {
-      return body.accountIds.filter((s): s is string => typeof s === "string");
-    }
-    if (typeof body.accountId === "string") return [body.accountId];
-    return [];
-  })();
-
-  if (accessAction !== "add" && accessAction !== "remove_all") {
-    return NextResponse.json(
-      { error: "accessAction doit être \"add\" ou \"remove_all\"" },
-      { status: 400 },
-    );
-  }
-
-  if (accessAction === "add" && accessAccountIds.length === 0) {
-    return NextResponse.json({ error: "accountId (ou accountIds[]) requis pour l'action add" }, { status: 400 });
-  }
+  const { ids: entryIds, action: accessAction, accountIds: accessAccountIds } = parsed;
 
   try {
     // Vérifier que les entries appartiennent bien à cette campagne.
@@ -100,7 +70,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     return NextResponse.json({ updated });
   } catch (err) {
-    console.error(`[admin/libraries/data/campaigns/${campaignId}/entries/bulk] POST error:`, err);
+    console.error(`[admin/libraries/data/campaigns/${campaignId}/entries/bulk] PATCH error:`, err);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }

@@ -3,13 +3,16 @@
  *
  * Usage in a webhook route:
  *
- *   const authError = verifyRunpodWebhook(req);
- *   if (authError) return authError;
- *
- *   const parsed = await parseRunpodWebhookBody<MyOutput>(req);
+ *   const parsed = await verifyAndParseRunpodWebhook<MyOutput>(req);
  *   if (!parsed.ok) return parsed.response;
  *
  *   const { id: runpodJobId, status, output, error } = parsed.body;
+ *
+ * Sécurité : `verifyAndParseRunpodWebhook` priorise la signature HMAC posée
+ * par le worker render-engine (`X-Toolbox-Signature` / `X-Toolbox-Timestamp`)
+ * et retombe sur le `?secret=` query-param tant que la migration n'est pas
+ * confirmée en prod. Ne JAMAIS introduire d'autre primitive de verify ici —
+ * une seule fonction = pas de drift sur les sentinels d'auth.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -90,72 +93,10 @@ if (!process.env.NEXTAUTH_URL && process.env.NODE_ENV === "production") {
 }
 
 /**
- * Verifies the ?secret= query parameter against RUNPOD_WEBHOOK_SECRET.
- * RunPod does not support custom request headers in webhooks — the secret is
- * embedded in the webhook URL as a query parameter by getRunpodWebhookUrl and
- * forwarded verbatim by RunPod when it POSTs the callback.
- * Returns a NextResponse 4xx/5xx if verification fails, null if OK.
- *
- * Fix bug audit 2026-05-30 (M3) : si RUNPOD_WEBHOOK_SECRET absent en prod,
- * on retourne 503 au lieu d'accepter aveuglément. En dev (NODE_ENV !== "production"),
- * on tolère l'absence du secret (log warning) pour faciliter le développement local.
- */
-export function verifyRunpodWebhook(req: NextRequest): NextResponse | null {
-  if (!WEBHOOK_SECRET) {
-    if (process.env.NODE_ENV === "production") {
-      console.error("[verifyRunpodWebhook] RUNPOD_WEBHOOK_SECRET non défini en PROD — webhook refusé.");
-      return NextResponse.json(
-        { error: "Webhook secret not configured on server" },
-        { status: 503 },
-      );
-    }
-    console.warn(
-      "[verifyRunpodWebhook] RUNPOD_WEBHOOK_SECRET non défini — vérification désactivée (dev only).",
-    );
-    return null;
-  }
-
-  // Phase 1 (header HMAC, prefer) — Security-auditor Critical-1 fix.
-  // Worker render-engine doit signer body avec HMAC-SHA256 + timestamp.
-  // Si headers présents et valides → accepter sans recourir au query param.
-  const sigHeader = req.headers.get("x-toolbox-signature");
-  const tsHeader = req.headers.get("x-toolbox-timestamp");
-  if (sigHeader && tsHeader) {
-    // Note : on ne peut pas re-read le body ici (déjà consommé par le caller).
-    // À implémenter : la verify HMAC nécessite que le caller passe le rawBody.
-    // En attendant la migration worker, le query param reste accepté ci-dessous.
-    // TODO : refactor `parseRunpodWebhookBody` pour clone le body et fournir
-    // une variante `verifyRunpodWebhookWithBody(req, rawBody)`.
-    console.info("[verifyRunpodWebhook] HMAC headers detected but verify pending body-clone refactor — fallback query param.");
-  }
-
-  // Phase 2 (legacy query param, deprecated) — toujours accepté pendant la
-  // transition pour ne pas casser les jobs en vol. À retirer une fois que
-  // le worker render-engine est migré.
-  const provided = req.nextUrl.searchParams.get("secret");
-  if (!provided) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  // Comparaison timing-safe : un `provided !== WEBHOOK_SECRET` court-circuite
-  // au premier byte qui diffère, ce qui permet à un attaquant qui mesure
-  // précisément la latence de reconstruire le secret caractère par caractère.
-  // Buffer length doit être identique sinon timingSafeEqual throw — d'où le
-  // guard de longueur avant.
-  const providedBuf = Buffer.from(provided, "utf8");
-  const secretBuf = Buffer.from(WEBHOOK_SECRET, "utf8");
-  if (providedBuf.length !== secretBuf.length) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!timingSafeEqual(providedBuf, secretBuf)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  return null;
-}
-
-/**
- * Variante de `verifyRunpodWebhook` qui vérifie en priorité une signature
- * HMAC body-signed. Le caller doit fournir le rawBody (avant parse JSON).
- * À utiliser dans les nouveaux webhooks ou après refactor des existants.
+ * Vérifie en priorité une signature HMAC body-signed du webhook RunPod.
+ * Le caller doit fournir le rawBody (avant parse JSON). Toutes les routes
+ * webhook RunPod doivent utiliser `verifyAndParseRunpodWebhook` qui s'en
+ * occupe automatiquement.
  *
  * Migration recommandée :
  * 1. Worker render-engine signe `X-Toolbox-Signature: sha256=hex(hmac(SECRET, ts.body))`
@@ -204,14 +145,9 @@ export interface RunpodWebhookBody<TOutput = Record<string, unknown>> {
 }
 
 /**
- * One-shot helper : lit le body, vérifie l'auth (HMAC OU query secret legacy),
- * parse le JSON. Remplace l'enchaînement `verifyRunpodWebhook` +
- * `parseRunpodWebhookBody` qui consommait le body deux fois — incompatible
- * avec la verify HMAC qui a besoin du rawBody avant le JSON.parse.
- *
- * Security-auditor Critical-1 (2026-06-01) : usage prioritaire pour les
- * nouvelles routes webhook. Les routes existantes peuvent continuer à utiliser
- * le double-appel mais perdront l'option HMAC (fallback query secret only).
+ * One-shot helper : lit le body, vérifie l'auth (HMAC priorité, fallback query
+ * secret legacy), parse le JSON. Tous les webhook routes RunPod doivent passer
+ * par ici — c'est la seule fonction de verify exportée.
  */
 export async function verifyAndParseRunpodWebhook<TOutput = Record<string, unknown>>(
   req: NextRequest,
@@ -316,8 +252,10 @@ export async function parseRunpodWebhookBody<TOutput = Record<string, unknown>>(
  * reach the endpoint. NEXTAUTH_URL_INTERNAL is intentionally NOT used here —
  * it is a Docker-internal hostname unreachable from the internet.
  *
- * If RUNPOD_WEBHOOK_SECRET is set it is appended as ?secret=<value> so
- * verifyRunpodWebhook can validate it (RunPod forwards query params verbatim).
+ * Le worker render-engine pose désormais une signature HMAC dans les headers
+ * (`X-Toolbox-Signature` + `X-Toolbox-Timestamp`) — le query-param `?secret=`
+ * reste appendé pour couvrir les workers non-migrés. À retirer une fois la
+ * télémetrie prod confirme 100% des callbacks en HMAC sur ~7 jours.
  *
  * Returns an empty string if NEXTAUTH_URL is not set — callers must skip
  * attaching the webhook field in that case (dev without tunnel, etc.).

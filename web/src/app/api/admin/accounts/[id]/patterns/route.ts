@@ -11,9 +11,10 @@ import {
   type PatternValidationError,
   type TemplateValidationContext,
 } from "@/lib/publications/patternValidation";
+import { COVER_MODE_VALUES } from "@/lib/publications/coverMode";
 
 const VALID_SOURCES = ["auto_template", "manual_rushes", "external_upload"] as const;
-const VALID_COVER_MODES = ["none", "manualSelect", "autoPack", "monteurUpload"] as const;
+const VALID_COVER_MODES = COVER_MODE_VALUES;
 const VALID_NEEDS_DESCRIPTION = ["preFilled", "autoGenerate", "manualWrite", "none"] as const;
 const PUBLISH_TIME_RE = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
 

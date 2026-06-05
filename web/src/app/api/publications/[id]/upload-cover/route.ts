@@ -17,13 +17,11 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
-import { canUserAccessSlot } from "@/lib/permissions/slotScope";
-import { toUserRole } from "@/lib/permissions/role";
 import { uploadToR2, r2Configured } from "@/lib/r2";
 import { isLocalStorage, writeLocalObject, getPublicUrl } from "@/lib/storage";
 import { logActivity } from "@/lib/services/slot/activity";
+import { resolveSlotContext } from "@/lib/services/slot/resolveSlotContext";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -31,15 +29,15 @@ const MAX_BYTES = 20 * 1024 * 1024; // 20 Mo
 const ALLOWED_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 export async function POST(req: NextRequest, { params }: Params) {
-  const userContext = await getUserContext();
-  if (!userContext?.effectiveUser.id) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
-
-  const role = toUserRole(userContext.effectiveUser.role);
-  const userId = userContext.effectiveUser.id;
   const { id: slotId } = await params;
+  const r = await resolveSlotContext(slotId);
+  if (r.status === 401) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  if (r.status === 404) return NextResponse.json({ error: "Publication introuvable" }, { status: 404 });
+  const { userContext, role, userId } = r.ctx;
 
+  // resolveSlotContext renvoie un slot minimal — on charge les champs
+  // supplémentaires nécessaires à cette route (currentVersionId + override
+  // cover + pattern.coverMode) avec une 2ème query.
   const slot = await prisma.publicationSlot.findUnique({
     where: { id: slotId },
     select: {
@@ -52,7 +50,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       pattern: { select: { coverMode: true } },
     },
   });
-  if (!slot || !canUserAccessSlot(slot, role, userId)) {
+  if (!slot) {
     return NextResponse.json({ error: "Publication introuvable" }, { status: 404 });
   }
 
@@ -133,6 +131,11 @@ export async function POST(req: NextRequest, { params }: Params) {
           finalCoverUrl,
           finalCoverKey: r2Key,
           errorMsg: null,
+          // Clear stale marker : un upload-cover qui ré-utilise un pack
+          // stale-marqué (post-promote V2) doit le considérer comme actif,
+          // sinon resolveActiveCoverPack skip et l'image fraîche reste invisible.
+          staleSince: null,
+          staleReason: null,
         },
       });
       coverPackId = existing.id;

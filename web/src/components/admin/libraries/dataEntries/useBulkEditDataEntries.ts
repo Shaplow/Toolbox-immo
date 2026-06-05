@@ -77,7 +77,7 @@ export function useBulkEditDataEntries({
         const res = await fetch(
           `/api/admin/libraries/data/campaigns/${campaignId}/entries/bulk`,
           {
-            method: "POST",
+            method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
           },

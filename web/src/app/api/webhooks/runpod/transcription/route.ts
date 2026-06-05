@@ -3,7 +3,7 @@
  *
  * Reçoit la callback RunPod quand un job transcription termine.
  * Met à jour TranscriptionJob et nettoie le fichier audio source en R2.
- * Sécurité : voir verifyRunpodWebhook (RUNPOD_WEBHOOK_SECRET).
+ * Sécurité : voir verifyAndParseRunpodWebhook (RUNPOD_WEBHOOK_SECRET).
  */
 
 import { NextRequest, NextResponse } from "next/server";

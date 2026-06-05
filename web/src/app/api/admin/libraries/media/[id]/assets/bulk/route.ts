@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import { deleteFromR2, r2Configured } from "@/lib/r2";
+import {
+  isBulkParseError,
+  parseBulkAccessBody,
+} from "@/lib/admin/libraryBulkHelpers";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -16,32 +21,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const { id: libraryId } = await params;
 
-  const body = await req.json() as {
-    assetIds?: unknown;
-    tags?: unknown;
-    setTag?: unknown;
-    category?: unknown;
-    accessAction?: unknown;
-    accountId?: unknown;
-    accountIds?: unknown; // Phase γ — multi-select comptes pour add
-    metadata?: unknown; // Phase rotation=none — bulk set metadata (remplace le JSON existant)
-  };
+  const body = (await req.json()) as Record<string, unknown>;
 
-  if (!Array.isArray(body.assetIds) || body.assetIds.length === 0) {
-    return NextResponse.json({ error: "assetIds est requis et doit être un tableau non vide" }, { status: 400 });
+  const parsed = parseBulkAccessBody(body, "assetIds");
+  if (isBulkParseError(parsed)) {
+    return NextResponse.json({ error: parsed.message }, { status: parsed.status });
   }
-
-  const rawIds = body.assetIds as unknown[];
-  const assetIds = rawIds.filter((id): id is string => typeof id === "string");
-  if (assetIds.length === 0) {
-    return NextResponse.json({ error: "assetIds invalides" }, { status: 400 });
-  }
-  if (assetIds.length !== rawIds.length) {
-    return NextResponse.json(
-      { error: `assetIds invalides : ${rawIds.length - assetIds.length} entrée(s) ne sont pas des chaînes de caractères` },
-      { status: 400 },
-    );
-  }
+  const { ids: assetIds, action: accessAction, accountIds: accessAccountIds } = parsed;
 
   const data: Record<string, unknown> = {};
   if (Array.isArray(body.tags)) data.tags = JSON.stringify(body.tags);
@@ -51,25 +37,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     data.metadata = JSON.stringify(body.metadata);
   }
 
-  const accessAction = typeof body.accessAction === "string" ? body.accessAction : null;
-  // Phase γ — supporte soit accountId (legacy, 1 compte) soit accountIds (multi).
-  const accessAccountIds: string[] = (() => {
-    if (Array.isArray(body.accountIds)) {
-      return body.accountIds.filter((s): s is string => typeof s === "string");
-    }
-    if (typeof body.accountId === "string") return [body.accountId];
-    return [];
-  })();
-
   const hasFieldUpdate = Object.keys(data).length > 0;
   const hasAccessUpdate = accessAction === "add" || accessAction === "remove_all";
 
   if (!hasFieldUpdate && !hasAccessUpdate) {
     return NextResponse.json({ error: "Aucun champ à mettre à jour" }, { status: 400 });
-  }
-
-  if (accessAction === "add" && accessAccountIds.length === 0) {
-    return NextResponse.json({ error: "accountId (ou accountIds[]) requis pour l'action add" }, { status: 400 });
   }
 
   try {
@@ -124,11 +96,61 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "assetIds invalides" }, { status: 400 });
   }
 
+  // Refuse si un MediaEditJob actif existe sur l'un des assets — alignement
+  // avec la DELETE single-asset (évite FK violations + zombies RunPod).
+  const activeEditJob = await prisma.mediaEditJob.findFirst({
+    where: { assetId: { in: assetIds }, status: { in: ["pending", "processing"] } },
+    select: { assetId: true },
+  });
+  if (activeEditJob) {
+    return NextResponse.json(
+      {
+        error:
+          "Un job d'édition est en cours sur au moins un des assets. Attendez la fin du traitement avant de supprimer en masse.",
+      },
+      { status: 409 },
+    );
+  }
+
+  // Charger les r2Key avant la suppression DB pour pouvoir nettoyer R2.
+  // Sans ça, la suppression DB rendait les fichiers R2 orphelins (fuite permanente).
+  let assets: { id: string; r2Key: string }[];
   try {
-    await prisma.mediaAsset.deleteMany({
+    assets = await prisma.mediaAsset.findMany({
+      where: { id: { in: assetIds }, libraryId },
+      select: { id: true, r2Key: true },
+    });
+  } catch (err) {
+    console.error(`[admin/libraries/media/${libraryId}/assets/bulk] findMany error:`, err);
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  }
+
+  // Supprimer les fichiers R2 en premier (idempotent côté S3 sur NoSuchKey).
+  // En cas d'échec partiel : on abort sans toucher la DB pour que l'admin puisse
+  // retry. Pattern miroir de /api/admin/libraries/media/[id]/route.ts.
+  if (r2Configured() && assets.length > 0) {
+    const results = await Promise.allSettled(assets.map((a) => deleteFromR2(a.r2Key)));
+    const r2Errors = results
+      .map((r, i) => (r.status === "rejected" ? assets[i].r2Key : null))
+      .filter((k): k is string => k !== null);
+    if (r2Errors.length > 0) {
+      r2Errors.forEach((key) =>
+        console.error(`[admin/libraries/media/${libraryId}/assets/bulk] R2 delete failed for ${key}`),
+      );
+      return NextResponse.json(
+        {
+          error: `Échec suppression R2 pour ${r2Errors.length} fichier(s) sur ${assets.length}. Réessayez (les suppressions déjà réalisées sont idempotentes).`,
+        },
+        { status: 500 },
+      );
+    }
+  }
+
+  try {
+    const result = await prisma.mediaAsset.deleteMany({
       where: { id: { in: assetIds }, libraryId },
     });
-    return NextResponse.json({ deleted: assetIds.length });
+    return NextResponse.json({ deleted: result.count });
   } catch (err) {
     console.error(`[admin/libraries/media/${libraryId}/assets/bulk] DELETE error:`, err);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });

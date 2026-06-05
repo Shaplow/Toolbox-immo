@@ -19,8 +19,37 @@ function isAllowedPath(targetPath: string): boolean {
   // Exact match or allow /api/status/<id> sub-paths
   if (ALLOWED_PATHS.has(targetPath)) return true;
   if (targetPath.startsWith("/api/status/")) return true;
+  // /outputs/ doit aussi passer le gate ownership (isOutputAccessibleToUser).
   if (targetPath.startsWith("/outputs/")) return true;
   return false;
+}
+
+/**
+ * Vérifie qu'un path `/outputs/...` est accessible à l'utilisateur courant.
+ *
+ * Le render-engine produit les outputs avec une convention `userId-scoped` :
+ *   /outputs/captions/<userId>/<timestamp>/<suffix>.mp4
+ *   /outputs/<feature>/<userId>/...
+ *
+ * Sans ce check, n'importe quel user authentifié pouvait énumérer et télécharger
+ * les outputs d'autres users (CMs/MONTEURS/ADMINS verrouillés à leur scope DB,
+ * mais pas au scope render-engine). Admin garde un bypass complet.
+ *
+ * Les outputs server-side (ex: /outputs/temp/...) ne contiennent pas de userId
+ * exploitable → restreint admin uniquement.
+ */
+function isOutputAccessibleToUser(
+  targetPath: string,
+  effectiveUserId: string,
+  canAdminBypass: boolean,
+): boolean {
+  if (canAdminBypass) return true;
+  if (!targetPath.startsWith("/outputs/")) return true;
+  const segments = targetPath.slice("/outputs/".length).split("/").filter(Boolean);
+  // Layout connus : ["captions", "<userId>", "...", "..."] OU ["<feature>", "<userId>", ...]
+  // On exige au minimum 2 segments dont le 2ème est l'userId du caller.
+  if (segments.length < 2) return false;
+  return segments[1] === effectiveUserId;
 }
 
 /**
@@ -43,6 +72,16 @@ async function proxyRequest(req: NextRequest, path: string[]): Promise<NextRespo
   const targetPath = "/" + path.join("/");
 
   if (!isAllowedPath(targetPath)) {
+    return NextResponse.json({ error: "Chemin non autorisé" }, { status: 404 });
+  }
+
+  if (
+    !isOutputAccessibleToUser(
+      targetPath,
+      userContext.effectiveUser.id,
+      userContext.canAdminBypass,
+    )
+  ) {
     return NextResponse.json({ error: "Chemin non autorisé" }, { status: 404 });
   }
 
@@ -128,9 +167,12 @@ async function proxyRequest(req: NextRequest, path: string[]): Promise<NextRespo
       headers: responseHeaders,
     });
   } catch (err) {
+    // Le détail de l'erreur (raw fetch error, peut contenir hostname interne
+    // du render-engine et autres infos d'infra) reste server-side via console.error.
+    // Côté client on ne retourne qu'un message générique.
     console.error("[captions-proxy] Erreur connexion upstream:", err);
     return NextResponse.json(
-      { error: "Service captions indisponible", detail: String(err) },
+      { error: "Service captions indisponible" },
       { status: 503 }
     );
   }

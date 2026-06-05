@@ -212,14 +212,59 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; mode?: "free"
         const step = 0.5;
         let nextFontSize = initialFontSizePx;
 
+        // Mesure robuste alignée sur Canvas.fitTextBlock — union des line boxes
+        // via getClientRects(). scrollHeight/scrollWidth seul est :
+        //  - 0 ou hauteur d'une seule ligne sur span inline (per-line bg)
+        //  - clampé par -webkit-line-clamp + overflow:hidden quand maxLines actif
+        // L'union des rects + max avec scrollHeight/Width donne la taille réelle.
+        function measure() {
+          const rects = content.getClientRects();
+          if (rects.length === 0) {
+            return { width: content.scrollWidth, height: content.scrollHeight };
+          }
+          let minTop = Infinity, maxBottom = -Infinity, minLeft = Infinity, maxRight = -Infinity;
+          for (let i = 0; i < rects.length; i++) {
+            const r = rects[i];
+            if (r.top < minTop) minTop = r.top;
+            if (r.bottom > maxBottom) maxBottom = r.bottom;
+            if (r.left < minLeft) minLeft = r.left;
+            if (r.right > maxRight) maxRight = r.right;
+          }
+          return {
+            width: Math.max(maxRight - minLeft, content.scrollWidth),
+            height: Math.max(maxBottom - minTop, content.scrollHeight),
+          };
+        }
+
+        // Détecte maxLines actif via le webkit-line-clamp inline (rendu par
+        // renderTextBlock). Si actif, on désactive temporairement clamp +
+        // display + overflow pour que la mesure voie le contenu complet.
+        const prevDisplay = content.style.display;
+        const prevWebkitLineClamp = content.style.webkitLineClamp;
+        const prevOverflow = content.style.overflow;
+        const hasMaxLines = !!(content.style.webkitLineClamp || window.getComputedStyle(content).webkitLineClamp);
+        if (hasMaxLines) {
+          content.style.display = 'block';
+          content.style.webkitLineClamp = 'unset';
+          content.style.overflow = 'visible';
+        }
+
         content.style.fontSize = initialFontSizePx + 'px';
         while (nextFontSize > minFontSizePx) {
-          const overflowsHeight = content.scrollHeight - 0.5 > availableHeight;
-          const overflowsWidth = content.scrollWidth - 0.5 > availableWidth;
+          const m = measure();
+          const overflowsHeight = m.height - 0.5 > availableHeight;
+          const overflowsWidth = m.width - 0.5 > availableWidth;
           if (!overflowsHeight && !overflowsWidth) break;
 
           nextFontSize = Math.max(minFontSizePx, nextFontSize - step);
           content.style.fontSize = nextFontSize + 'px';
+        }
+
+        // Restaure clamp + display + overflow — la fontSize fittée reste posée.
+        if (hasMaxLines) {
+          content.style.display = prevDisplay;
+          content.style.webkitLineClamp = prevWebkitLineClamp;
+          content.style.overflow = prevOverflow;
         }
       }
 

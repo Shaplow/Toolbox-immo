@@ -3,7 +3,7 @@
  *
  * Reçoit la callback RunPod quand un job captions termine.
  * Met à jour CaptionJob et nettoie la vidéo source en R2.
- * Sécurité : voir verifyRunpodWebhook (RUNPOD_WEBHOOK_SECRET).
+ * Sécurité : voir verifyAndParseRunpodWebhook (RUNPOD_WEBHOOK_SECRET).
  */
 
 import { NextRequest, NextResponse } from "next/server";

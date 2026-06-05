@@ -7,7 +7,7 @@ import { isR2PublicUrl } from "@/lib/r2";
  * POST /api/webhooks/runpod/media-edit
  *
  * Reçoit la callback RunPod quand un job media_edit termine.
- * Sécurité : voir verifyRunpodWebhook (RUNPOD_WEBHOOK_SECRET).
+ * Sécurité : voir verifyAndParseRunpodWebhook (RUNPOD_WEBHOOK_SECRET).
  */
 
 type MediaEditOutput = {

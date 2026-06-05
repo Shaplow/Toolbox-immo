@@ -109,11 +109,15 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
     );
   }
 
-  // Idempotence : skip si un job actif existe déjà pour ce slot
+  // Idempotence : skip si un job actif (et non stale) existe déjà pour ce slot.
+  // staleSince:null est crucial — après un promote, les anciens jobs QUEUED
+  // sont stale-marqués mais leur status reste QUEUED. Sans ce filtre, le retry
+  // post-promote était bloqué par le vieux job stale.
   const existingActive = await prisma.captionJob.findFirst({
     where: {
       slotId,
       status: { in: ["QUEUED", "PROCESSING"] },
+      staleSince: null,
     },
     select: { id: true },
   });

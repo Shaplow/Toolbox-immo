@@ -27,6 +27,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { cleanupOrphanR2Objects } from "@/lib/r2Cleanup";
+import { timingSafeEqualStrings } from "@/lib/utils";
 
 export async function POST(req: NextRequest) {
   // 1. Vérification de la configuration du secret
@@ -39,9 +40,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 2. Vérification du header d'authentification
+  // 2. Vérification du header d'authentification (timing-safe pour éviter les
+  //    attaques side-channel sur la longueur/contenu du secret).
   const providedSecret = req.headers.get("x-cron-secret");
-  if (!providedSecret || providedSecret !== cronSecret) {
+  if (!timingSafeEqualStrings(providedSecret, cronSecret)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
