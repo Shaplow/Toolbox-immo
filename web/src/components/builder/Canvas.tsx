@@ -610,9 +610,9 @@ export function Canvas({
   const zoomIn = () => applyZoom(zoom + ZOOM_STEP);
   const zoomOut = () => applyZoom(zoom - ZOOM_STEP);
 
-  const sorted = [...blocks].sort((a, b) => a.z - b.z);
   const visibleResolvedBlocks = useMemo(() => {
-    return sorted
+    return [...blocks]
+      .sort((a, b) => a.z - b.z)
       .filter((block) => block.type !== "music")
       .filter((block) => resolveBlockState(block, previewListing, block.groupId ? groupMap.get(block.groupId) : undefined).visible)
       .map((block) => {
@@ -623,7 +623,7 @@ export function Canvas({
           displayBlock: resolveBlockForListing(block, previewListing, group),
         };
       });
-  }, [groupMap, previewListing, sorted]);
+  }, [blocks, groupMap, previewListing]);
 
   const activeAnchorGroup = useMemo(() => {
     if (selectedGroupId) {
