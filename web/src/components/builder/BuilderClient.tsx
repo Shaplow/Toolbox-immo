@@ -97,30 +97,9 @@ export function BuilderClient({
     }, globalFonts),
     [blockFontFamilies, globalFonts, template.theme.customFonts, template.theme.fonts.body, template.theme.fonts.heading]
   );
-  // W5 (builder-13) : la clé inclut désormais les weight/fontStyle de chaque
-  // bloc text. Sans ça, switcher un block de weight 400→700 gardait l'ancienne
-  // mesure (measuredAutoLayoutSizes) car family+url reste identique pour les
-  // polices Google (URL multi-weight) ou les customFonts par family. On dépend
-  // explicitement de la liste des styles présents dans le template.
-  const blockStyleSignature = useMemo(
-    () =>
-      template.blocks
-        .map((block) => {
-          const s = (block as {
-            style?: { fontFamily?: string; fontWeight?: number | string; fontStyle?: string };
-          }).style;
-          if (!s) return "";
-          return `${s.fontFamily ?? ""}|${s.fontWeight ?? ""}|${s.fontStyle ?? ""}`;
-        })
-        .join("~"),
-    [template.blocks],
-  );
   const fontRefreshKey = useMemo(
-    () =>
-      builderFonts.map((font) => `${font.family}:${font.url ?? ""}`).join("|") +
-      "::" +
-      blockStyleSignature,
-    [builderFonts, blockStyleSignature],
+    () => builderFonts.map((font) => `${font.family}:${font.url ?? ""}`).join("|"),
+    [builderFonts],
   );
 
   // Init
