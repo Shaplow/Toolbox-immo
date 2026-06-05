@@ -61,8 +61,6 @@ export interface CreateSlotInput {
   coverPresetIdOverride?: string | null;
   captionPresetIdOverride?: string | null;
   descriptionPromptIdOverride?: string | null;
-  /** Décalage vertical caption [-0.5, 0.5] (fraction hauteur vidéo). null = preset. */
-  captionVerticalOffsetOverride?: number | null;
 }
 
 // ─── Helpers privés ───────────────────────────────────────────────────────────
@@ -273,9 +271,6 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
       ...(input.descriptionPromptIdOverride !== undefined
         ? { descriptionPromptIdOverride: input.descriptionPromptIdOverride }
         : {}),
-      ...(input.captionVerticalOffsetOverride !== undefined
-        ? { captionVerticalOffsetOverride: input.captionVerticalOffsetOverride }
-        : {}),
     },
     include: {
       account: { select: { id: true, name: true, handle: true } },
@@ -351,7 +346,6 @@ export async function patchSlot(
       descriptionPromptIdOverride: true,
       coverModeOverride: true,
       coverPresetIdOverride: true,
-      captionVerticalOffsetOverride: true,
       pattern: {
         select: {
           captionPresetId: true,
@@ -400,7 +394,6 @@ export async function patchSlot(
     coverPresetIdOverride,
     captionPresetIdOverride,
     descriptionPromptIdOverride,
-    captionVerticalOffsetOverride,
   } = body as Record<string, unknown>;
   // notes mutable car sanitisé avant l'update (H2).
   let { notes } = body as Record<string, unknown>;
@@ -419,26 +412,6 @@ export async function patchSlot(
 
   if (status !== undefined && !isValidSlotStatus(status)) {
     throw new ValidationError("Statut invalide.");
-  }
-
-  // Bornes captionVerticalOffsetOverride : [-0.5, 0.5] fraction hauteur vidéo.
-  // null autorisé (= retour au baseline preset). Match la contrainte Pydantic
-  // côté render-engine (engine/models.py:46 LayoutConfig.vertical_offset).
-  if (
-    captionVerticalOffsetOverride !== undefined &&
-    captionVerticalOffsetOverride !== null
-  ) {
-    const v = captionVerticalOffsetOverride;
-    if (
-      typeof v !== "number" ||
-      !Number.isFinite(v) ||
-      v < -0.5 ||
-      v > 0.5
-    ) {
-      throw new ValidationError(
-        "captionVerticalOffsetOverride doit être un nombre dans [-0.5, 0.5] ou null.",
-      );
-    }
   }
 
   // Garde anti-bypass : un ADMIN peut techniquement PATCH status="PUBLISHED"
@@ -675,7 +648,6 @@ export async function patchSlot(
         coverPresetIdOverride: (v) => v as string | null,
         captionPresetIdOverride: (v) => v as string | null,
         descriptionPromptIdOverride: (v) => v as string | null,
-        captionVerticalOffsetOverride: (v) => (v === null ? null : Number(v)),
       };
 
       const FIELD_VALUES: Record<string, unknown> = {
@@ -688,7 +660,6 @@ export async function patchSlot(
         needsDescriptionOverride, needsRushesOverride, needsBriefOverride,
         coverModeOverride, coverPresetIdOverride,
         captionPresetIdOverride, descriptionPromptIdOverride,
-        captionVerticalOffsetOverride,
       };
 
       const updateData: Record<string, unknown> = {};
@@ -756,36 +727,6 @@ export async function patchSlot(
     } catch (err) {
       console.error(
         `[patchSlot] cancel cascade failed for slot=${id}:`,
-        err,
-      );
-    }
-  }
-
-  // Caption offset change → stale-mark le caption job courant pour signaler
-  // qu'il ne reflète plus l'offset en vigueur. Le slot reste actif (la cover,
-  // les rushes etc. ne sont pas affectés — c'est juste le rendu captions à
-  // refaire). Best-effort hors-tx pour ne pas bloquer la réponse.
-  const offsetChanged =
-    captionVerticalOffsetOverride !== undefined &&
-    (captionVerticalOffsetOverride === null
-      ? slot.captionVerticalOffsetOverride !== null
-      : slot.captionVerticalOffsetOverride !== captionVerticalOffsetOverride);
-  if (offsetChanged) {
-    try {
-      const now = new Date();
-      const marked = await prisma.captionJob.updateMany({
-        where: { slotId: id, staleSince: null },
-        data: { staleSince: now, staleReason: "caption_offset_changed" },
-      });
-      if (marked.count > 0) {
-        await prisma.publicationSlot.update({
-          where: { id },
-          data: { activeCaptionJobId: null },
-        });
-      }
-    } catch (err) {
-      console.error(
-        `[patchSlot] caption-offset stale cascade failed slot=${id}:`,
         err,
       );
     }

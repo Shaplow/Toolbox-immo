@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import { toast } from "@/components/ui/Toast";
@@ -157,6 +157,17 @@ export default function CaptionsGenerateForm({
   const selectedPromptNeedsHighlight2 =
     selectedPromptAutoHighlight.enabled &&
     (selectedPromptAutoHighlight.mode === "highlight2" || selectedPromptAutoHighlight.mode === "both");
+
+  // Baseline du preset pour le slider override "Décalage vertical". Range
+  // [-0.4, 0.4] côté UX, [-0.5, 0.5] côté Pydantic engine. null = on garde
+  // la valeur du preset ; sinon on écrase configData.layout.vertical_offset
+  // au moment de POST /api/render/captions (sémantique REMPLACE).
+  const presetVerticalOffset = useMemo(() => {
+    const raw = nested(preset.config, "layout", "vertical_offset");
+    return typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
+  }, [preset.config]);
+  const [verticalOffsetOverride, setVerticalOffsetOverride] = useState<number | null>(null);
+  const effectiveVerticalOffset = verticalOffsetOverride ?? presetVerticalOffset;
 
   // Pre-load SRT from a previous job (bypasses TrimEditor — regen flow)
   useEffect(() => {
@@ -569,7 +580,14 @@ export default function CaptionsGenerateForm({
       : await subsFile!.text();
     const srtBlob = new Blob([subsContent], { type: "text/plain" });
     const srtFileName = hasWordData ? "captions.json" : (subsFile?.name ?? "captions.srt");
-    const configWithProfile = { ...preset.config, export_profile: "final" };
+    const presetLayout = (typeof preset.config.layout === "object" && preset.config.layout !== null)
+      ? (preset.config.layout as Record<string, unknown>)
+      : {};
+    const configWithProfile = {
+      ...preset.config,
+      export_profile: "final",
+      layout: { ...presetLayout, vertical_offset: effectiveVerticalOffset },
+    };
 
     let fakeVal = 0.05;
     const fakeTimer = setInterval(() => {
@@ -885,6 +903,46 @@ export default function CaptionsGenerateForm({
                 highlight2Enabled={highlight2Enabled}
               />
             </div>
+          </div>
+        )}
+
+        {/* Décalage vertical — override per-génération du preset (sans modifier
+            le preset partagé). Visible dès qu'un SRT est chargé. */}
+        {!showTrimEditor && captions.length > 0 && (
+          <div className="bg-white/60 backdrop-blur-[6px] border border-white/50 rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] p-4 mb-3">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <label className="text-sm font-medium text-gray-900">
+                Décalage vertical
+                <span className="ml-2 text-[11px] font-mono text-gray-500 tabular-nums">
+                  {effectiveVerticalOffset === 0
+                    ? "Centre"
+                    : `${effectiveVerticalOffset > 0 ? "+" : ""}${Math.round(effectiveVerticalOffset * 100)}%`}
+                </span>
+              </label>
+              {verticalOffsetOverride !== null && (
+                <button
+                  type="button"
+                  onClick={() => setVerticalOffsetOverride(null)}
+                  className="text-[11px] text-gray-500 hover:text-gray-800"
+                >
+                  Réinitialiser (preset : {presetVerticalOffset === 0 ? "centre" : `${presetVerticalOffset > 0 ? "+" : ""}${Math.round(presetVerticalOffset * 100)}%`})
+                </button>
+              )}
+            </div>
+            <input
+              type="range"
+              min={-0.4}
+              max={0.4}
+              step={0.01}
+              value={effectiveVerticalOffset}
+              onChange={(e) => setVerticalOffsetOverride(Number(e.target.value))}
+              className="w-full accent-sage-600"
+              aria-label="Décalage vertical des sous-titres"
+            />
+            <p className="text-[11px] text-gray-500 leading-snug mt-1">
+              Négatif = remonte, positif = descend. Override appliqué uniquement
+              à cette génération (le preset reste inchangé).
+            </p>
           </div>
         )}
 

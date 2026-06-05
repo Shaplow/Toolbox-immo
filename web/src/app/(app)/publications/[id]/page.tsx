@@ -501,7 +501,6 @@ export default async function PublicationPage({ params }: PageProps) {
         notes: slot.notes,
         captionPresetIdOverride: slot.captionPresetIdOverride,
         descriptionPromptIdOverride: slot.descriptionPromptIdOverride,
-        captionVerticalOffsetOverride: slot.captionVerticalOffsetOverride,
       }}
       account={{
         id: slot.account.id,

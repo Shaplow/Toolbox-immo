@@ -131,8 +131,6 @@ interface SlotInfo {
   // Phase 5 — overrides ressources (per-slot, ont priorité sur pattern)
   captionPresetIdOverride?: string | null;
   descriptionPromptIdOverride?: string | null;
-  /** CaptionOffset : décalage vertical per-slot des captions [-0.5, 0.5]. null = baseline preset. */
-  captionVerticalOffsetOverride?: number | null;
 }
 
 interface AccountInfo {
@@ -702,10 +700,6 @@ export function PublicationFiche({
                     slot.captionPresetIdOverride ??
                     pattern?.captionPresetId ??
                     null
-                  }
-                  captionVerticalOffsetOverride={slot.captionVerticalOffsetOverride ?? null}
-                  canEditCaptionOffset={
-                    currentUserRole === "ADMIN" || currentUserRole === "MONTEUR"
                   }
                 />
               )}
