@@ -368,6 +368,19 @@ export function CoverSection({
           icon={AlertTriangle}
           title="Extraction des frames échouée"
           className="mb-3"
+          actions={
+            viewerRole === "ADMIN" ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={RefreshCw}
+                onClick={() => void handleRegeneratePack()}
+                disabled={regenerating}
+              >
+                {regenerating ? "Relance en cours…" : "Relancer l'extraction"}
+              </Button>
+            ) : undefined
+          }
         >
           {coverPack.errorMsg && <p>{coverPack.errorMsg}</p>}
           <p className="text-xs opacity-80 mt-1">
