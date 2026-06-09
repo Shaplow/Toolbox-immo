@@ -21,6 +21,58 @@ function downloadCSVFromColumns(columns: string[], campaignName: string) {
   URL.revokeObjectURL(url);
 }
 
+function csvEscape(value: string): string {
+  if (/[",\n\r]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+  return value;
+}
+
+/**
+ * Exporte les entries actuelles en CSV (vérification visuelle de l'état BDD).
+ * Format identique à celui attendu par l'import : `set_tag,category,<champs>`.
+ * Filename : `data-{campaignName}-{YYYY-MM-DD}.csv`.
+ */
+function downloadCSVFromEntries(
+  entries: DataEntry[],
+  columns: string[],
+  campaignName: string,
+) {
+  const headers = ["set_tag", "category", ...columns];
+  const lines = [headers.map(csvEscape).join(",")];
+  for (const entry of entries) {
+    let fields: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(entry.fields);
+      if (parsed && typeof parsed === "object") fields = parsed as Record<string, unknown>;
+    } catch {
+      // entry.fields corrompu — on émet une ligne avec colonnes vides
+    }
+    const row = [
+      entry.setTag ?? "",
+      entry.category ?? "",
+      ...columns.map((col) => {
+        const v = fields[col];
+        if (v == null) return "";
+        return String(v);
+      }),
+    ];
+    lines.push(row.map(csvEscape).join(","));
+  }
+  const csv = lines.join("\n");
+  // Pas de BOM UTF-8 : parseCSV de l'import ne le strip pas et casserait
+  // le ré-import (la 1ʳᵉ colonne deviendrait "﻿set_tag").
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const today = new Date().toISOString().slice(0, 10);
+  const safeName = campaignName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  a.href = url;
+  a.download = `data-${safeName}-${today}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export interface DataEntry {
   id: string;
   fields: string;
@@ -438,6 +490,18 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
               Reset cycle
             </Button>
           ))}
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={Download}
+            onClick={() =>
+              downloadCSVFromEntries(entries, columns, campaign?.name ?? "campagne")
+            }
+            disabled={entries.length === 0}
+            title="Télécharger les entrées actuelles au format CSV"
+          >
+            Exporter CSV
+          </Button>
           <Button
             variant="secondary"
             size="sm"
