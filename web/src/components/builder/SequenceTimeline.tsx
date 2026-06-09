@@ -2,6 +2,10 @@
 
 import { useMemo } from "react";
 import { useBuilderStore } from "@/lib/store/builderStore";
+import {
+  isBlockVisibleInSlot as visibleInSlot,
+  resolveBlockTimingInSlot as effectiveTiming,
+} from "@/lib/videoSequenceUtils";
 import type { AnyBlock, MusicBlock, VideoSequenceSlot } from "@/types/template";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -38,22 +42,6 @@ interface BlockTrack {
   blockId: string;
   label: string;
   spans: TrackSpan[];
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function visibleInSlot(block: AnyBlock, slot: VideoSequenceSlot): boolean {
-  if (slot.overlayGroupIds === undefined) return true;
-  if (slot.overlayGroupIds.length === 0) return false;
-  return block.groupId != null && slot.overlayGroupIds.includes(block.groupId);
-}
-
-function effectiveTiming(block: AnyBlock, slotId: string, slotDuration: number) {
-  const ov = block.slotTimings?.[slotId];
-  return {
-    appearAt: ov?.appearAt ?? block.appearAt ?? 0,
-    hideAt: ov?.hideAt ?? block.hideAt ?? slotDuration,
-  };
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
