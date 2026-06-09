@@ -1,14 +1,8 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useRef } from "react";
 import { extractTemplateVars } from "@/lib/textTemplate";
 import { useBuilderStore } from "@/lib/store/builderStore";
-import {
-  computeEffectiveDisplayDuration,
-  distributeDisplayDuration,
-  getVisibleSlotsForBlock,
-  SLOT_AUTO_DURATION,
-} from "@/lib/videoSequenceUtils";
 import type {
   AnyBlock, TextBlock, ImageBlock, VideoBlock, DPEBlock,
   ShapeBlock, SchemaField,
@@ -300,13 +294,13 @@ export function BlockBasePropertiesSection({
 }
 
 /**
- * Section "Affichage" — durée d'affichage cumulée + début global d'un bloc.
+ * Section "Timing vidéo" — bornes globales du bloc dans la timeline vidéo.
  *
- * Deux modes :
- * - Si `videoSequence` existe : durée distribuée sur les slots où le bloc est
- *   visible (via `distributeDisplayDuration`). UI "Durée d'affichage (s)" qui
- *   pré-rempli depuis l'état effectif courant (`computeEffectiveDisplayDuration`).
- * - Si single video (legacy, pas de séquence) : champs raw appearAt/hideAt.
+ * `appearAt` / `hideAt` s'appliquent à TOUS les slots où le bloc est visible
+ * (en l'absence d'override per-slot). Pour un override sur un clip précis,
+ * l'utilisateur passe par la timeline en sélectionnant à la fois le bloc
+ * et le clip (deux inputs Apparaît/Disparaît s'affichent dans la cellule
+ * croisée — voir SequenceTimeline.tsx).
  *
  * VideoBlock + MusicBlock exclus (leur timing est géré par le slot lui-même).
  */
@@ -316,105 +310,17 @@ function BlockTimingSection({ block }: { block: AnyBlock }) {
 
   const hasSequence = (template.videoSequence?.length ?? 0) > 0;
   const hasSingleVideo = template.blocks.some((b) => b.type === "video");
-
-  // Hooks doivent être appelés inconditionnellement — on calcule toujours.
-  const visibleSlots = useMemo(
-    () => getVisibleSlotsForBlock(block, template.videoSequence),
-    [block, template.videoSequence],
-  );
-  const visibleSummary = useMemo(() => {
-    if (visibleSlots.length === 0) return null;
-    return visibleSlots
-      .map((s, i) => {
-        const dur = s.maxDuration ?? SLOT_AUTO_DURATION;
-        return `${s.label ?? `Clip ${i + 1}`} (${dur}s)`;
-      })
-      .join(" + ");
-  }, [visibleSlots]);
-  const totalAvailable = useMemo(
-    () => visibleSlots.reduce((sum, s) => sum + (s.maxDuration ?? SLOT_AUTO_DURATION), 0),
-    [visibleSlots],
-  );
-
   if (!hasSequence && !hasSingleVideo) return null;
   if (block.type === "video" || block.type === "music") return null;
 
-  if (!hasSequence) {
-    // Mode legacy : single video → garde l'UI raw appearAt/hideAt.
-    return (
-      <Section label="Timing vidéo">
-        <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-600">Apparaît à (s)</span>
-              <input
-                type="number" min={0} step={0.5} placeholder="0"
-                value={block.appearAt ?? ""}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  updateBlock(block.id, {
-                    appearAt: raw === "" ? undefined : Math.max(0, Number(raw)),
-                  } as Partial<AnyBlock>);
-                }}
-                className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-600">Disparaît à (s)</span>
-              <input
-                type="number" min={0} step={0.5} placeholder="fin"
-                value={block.hideAt ?? ""}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  updateBlock(block.id, {
-                    hideAt: raw === "" ? undefined : Math.max(0, Number(raw)),
-                  } as Partial<AnyBlock>);
-                }}
-                className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
-              />
-            </label>
-          </div>
-          <p className="text-[10px] text-gray-400">
-            Vide = valeur par défaut (0 s / fin de vidéo). Pas d&apos;effet sur les renders image.
-          </p>
-        </div>
-      </Section>
-    );
-  }
-
-  // Mode séquence : Début + Durée d'affichage cumulée.
-  const effectiveDuration = computeEffectiveDisplayDuration(block, visibleSlots);
-
-  const applyDuration = (next: number | undefined) => {
-    if (next === undefined || Number.isNaN(next)) {
-      // "Jusqu'à fin" → reset slotTimings + hideAt
-      updateBlock(block.id, {
-        hideAt: undefined,
-        slotTimings: undefined,
-      } as Partial<AnyBlock>);
-      return;
-    }
-    const clamped = Math.max(0, next);
-    const { slotTimings } = distributeDisplayDuration(block, clamped, visibleSlots);
-    // On garde appearAt (block.appearAt) ; on remplace entièrement slotTimings
-    // par la distribution calculée + on supprime hideAt global pour ne pas
-    // qu'il rentre en conflit avec la distribution per-slot.
-    updateBlock(block.id, {
-      hideAt: undefined,
-      slotTimings: Object.keys(slotTimings).length > 0 ? slotTimings : undefined,
-    } as Partial<AnyBlock>);
-  };
-
-  const isCapped = effectiveDuration !== undefined && effectiveDuration >= totalAvailable - 0.01;
-
   return (
-    <Section label="Affichage">
+    <Section label="Timing vidéo">
       <div className="space-y-2">
         <div className="grid grid-cols-2 gap-2">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Début (s)</span>
+            <span className="text-xs font-medium text-gray-600">Apparaît à (s)</span>
             <input
-              type="number" min={0} step={0.1} placeholder="0"
+              type="number" min={0} step={0.5} placeholder="0"
               value={block.appearAt ?? ""}
               onChange={(e) => {
                 const raw = e.target.value;
@@ -423,45 +329,33 @@ function BlockTimingSection({ block }: { block: AnyBlock }) {
                 } as Partial<AnyBlock>);
               }}
               className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
-              disabled={visibleSlots.length === 0}
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Durée (s)</span>
+            <span className="text-xs font-medium text-gray-600">Disparaît à (s)</span>
             <input
-              type="number" min={0} step={0.1} placeholder="auto"
-              value={effectiveDuration ?? ""}
+              type="number" min={0} step={0.5} placeholder="fin"
+              value={block.hideAt ?? ""}
               onChange={(e) => {
                 const raw = e.target.value;
-                applyDuration(raw === "" ? undefined : Number(raw));
+                updateBlock(block.id, {
+                  hideAt: raw === "" ? undefined : Math.max(0, Number(raw)),
+                } as Partial<AnyBlock>);
               }}
               className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
-              disabled={visibleSlots.length === 0}
             />
           </label>
         </div>
-        {visibleSlots.length === 0 ? (
-          <p className="text-[10px] text-gray-500 leading-snug">
-            Bloc non visible dans la séquence. Ajoute-le via le panel Séquence d&apos;un clip
-            (« Quoi afficher sur le clip » → Groupes spécifiques).
+        <p className="text-[10px] text-gray-400 leading-snug">
+          Vide = valeur par défaut (0 s / fin de chaque clip). S&apos;applique à
+          tous les clips où le bloc est visible.
+        </p>
+        {hasSequence && (
+          <p className="text-[10px] text-sky-600 leading-snug">
+            Pour limiter sur un clip précis (ex : « Prix visible 2s sur CONTENT ») :
+            sélectionne le bloc + le clip dans la timeline ci-dessous — deux inputs
+            <span className="font-mono"> Apparaît → Disparaît</span> apparaissent dans la cellule.
           </p>
-        ) : (
-          <>
-            <p className="text-[10px] text-gray-500 leading-snug">
-              Visible sur : {visibleSummary} — zone totale {totalAvailable}s.
-              {effectiveDuration === undefined && " Durée actuelle = auto (jusqu'à fin)."}
-            </p>
-            {isCapped && effectiveDuration !== undefined && (
-              <p className="text-[10px] text-sky-600 leading-snug">
-                Plafonné à {totalAvailable}s — pour étendre, ajoute le bloc à un clip suivant
-                via le panel Séquence.
-              </p>
-            )}
-            <p className="text-[10px] text-gray-400 leading-snug">
-              Durée vide = jusqu&apos;à fin de la zone visible. Réglage par clip individuel
-              possible via la timeline (bloc + clip sélectionnés).
-            </p>
-          </>
         )}
       </div>
     </Section>
