@@ -89,26 +89,40 @@ export async function POST(
     );
     const modelSize = (job.model ?? "turbo") === "turbo" ? "large-v3-turbo" : (job.model ?? "large-v3-turbo");
     localForm.append("model_size", modelSize);
-    localForm.append("language", job.language ?? "fr");
+    const isMultilingual = Array.isArray(job.languages) && job.languages.length >= 2;
+    if (isMultilingual) {
+      // L'endpoint local multilingue prend les langues en CSV — cf. api.py.
+      localForm.append("languages", job.languages.join(","));
+    } else {
+      localForm.append("language", job.language ?? "fr");
+    }
     localForm.append("enable_diarization", String(job.enableDiarization));
     if (job.enableDiarization && HF_TOKEN) {
       localForm.append("hf_token", HF_TOKEN);
     }
 
     try {
-      const localRes = await fetch(`${CAPTIONS_API_URL}/api/transcribe`, {
+      const localEndpoint = isMultilingual ? "/api/transcribe-multilingual" : "/api/transcribe";
+      // ⚠ Node 20 fetch a un headersTimeout undici interne câblé à 5 min.
+      // Whisper local met plusieurs minutes (×N en mode multi) avant de
+      // renvoyer un byte — au-delà de 5 min ce fetch lèvera
+      // UND_ERR_HEADERS_TIMEOUT. Pour absorber les vidéos longues il faudra
+      // refacto en async polling (cf. plan dewdrop "Hors scope").
+      const localRes = await fetch(`${CAPTIONS_API_URL}${localEndpoint}`, {
         method: "POST",
         body: localForm,
-        signal: AbortSignal.timeout(60 * 60 * 1000), // 1 h max
+        signal: AbortSignal.timeout(60 * 60 * 1000), // garde-fou abort global
       });
       if (!localRes.ok) {
         throw new Error(`render-engine ${localRes.status}: ${await localRes.text()}`);
       }
       const data = await localRes.json() as {
-        segments: Array<{ start: number; end: number; text: string; speaker?: string }>;
+        segments: Array<{ start: number; end: number; text: string; speaker?: string; language?: string }>;
         segment_count: number;
         duration: number;
-        language: string;
+        // mono → `language`, multi → `languages`
+        language?: string;
+        languages?: string[];
         has_diarization: boolean;
       };
 
@@ -198,14 +212,17 @@ export async function POST(
   const modelSize   = job.model === "turbo" ? "large-v3-turbo" : job.model;
   const webhookUrl  = getRunpodWebhookUrl("/api/webhooks/runpod/transcription");
 
+  // Mode multi-langue : chemin séparé côté worker (N passes Whisper forcées +
+  // fusion par avg_confidence). Si languages vide, comportement historique.
+  const isMultilingual = Array.isArray(job.languages) && job.languages.length >= 2;
   const payload = {
     input: {
-      job_type: "transcribe",
+      job_type: isMultilingual ? "transcribe-multilingual" : "transcribe",
       audio_url: audioUrl,
       output_key: outputKey,
       job_id: job.id,
       model_size: modelSize,
-      language: job.language,
+      ...(isMultilingual ? { languages: job.languages } : { language: job.language }),
       enable_diarization: job.enableDiarization,
       hf_token: job.enableDiarization ? (HF_TOKEN ?? null) : null,
     },

@@ -16,6 +16,7 @@ import {
   RefreshCw,
   X,
   ArrowLeft,
+  Languages,
 } from "lucide-react";
 import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
 import { RefreshButton } from "@/components/ui/RefreshButton";
@@ -30,6 +31,8 @@ type Job = {
   inputFilename: string | null;
   model: string;
   language: string;
+  /// Mode multi-langue : list de codes ISO (≥2). Vide pour mono. */
+  languages?: string[];
   enableDiarization: boolean;
   hasDiarization: boolean;
   segmentCount: number | null;
@@ -66,6 +69,24 @@ const LANGUAGE_OPTIONS = [
   { value: "it", label: "Italien" },
   { value: "auto", label: "Détection auto" },
 ];
+
+/** Catalogue pour le multi-select multi-langue. Aucune option "auto" : chaque
+ *  passe Whisper doit forcer un code ISO explicite. */
+const MULTILINGUAL_OPTIONS = [
+  { value: "fr", label: "Français" },
+  { value: "zh", label: "Chinois" },
+  { value: "en", label: "Anglais" },
+  { value: "es", label: "Espagnol" },
+  { value: "de", label: "Allemand" },
+  { value: "it", label: "Italien" },
+  { value: "pt", label: "Portugais" },
+  { value: "ru", label: "Russe" },
+  { value: "ja", label: "Japonais" },
+  { value: "ko", label: "Coréen" },
+  { value: "ar", label: "Arabe" },
+];
+
+const DEFAULT_MULTILINGUAL_LANGUAGES = ["fr", "zh"];
 
 const STATUS_ICON: Record<Job["status"], React.ReactNode> = {
   QUEUED: <Clock className="h-4 w-4 text-peach-700" />,
@@ -119,6 +140,11 @@ export function TranscriptionList({
   const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [dragging, setDragging] = useState(false);
   const defaultConfig = DEFAULT_JOB_CONFIG;
+  // Mode multi-langue (bêta) : appliqué uniquement aux nouveaux uploads.
+  // Quand activé, ignore la langue par défaut et envoie `languages: [...]`
+  // qui déclenche job_type="transcribe-multilingual" côté worker.
+  const [multilingualMode, setMultilingualMode] = useState(false);
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(DEFAULT_MULTILINGUAL_LANGUAGES);
   const [queuedDrafts, setQueuedDrafts] = useState<Record<string, JobDraft>>({});
   const [dirtyJobIds, setDirtyJobIds] = useState<Record<string, boolean>>({});
   const [savingJobIds, setSavingJobIds] = useState<Record<string, boolean>>({});
@@ -291,6 +317,12 @@ export function TranscriptionList({
             ext,
             model: "turbo",
             language: defaultConfig.language,
+            // Multi-langue (bêta) : envoyé uniquement si le toggle est ON et
+            // qu'au moins 2 langues sont sélectionnées. Sinon comportement
+            // mono-langue inchangé.
+            ...(multilingualMode && selectedLanguages.length >= 2
+              ? { languages: selectedLanguages }
+              : {}),
             enable_diarization: defaultConfig.enableDiarization,
             // V2 friction MED-2/MED-6 : si on est dans le contexte d'un slot,
             // on rattache la transcription au slot pour qu'elle apparaisse
@@ -350,7 +382,7 @@ export function TranscriptionList({
       type: "error",
       message: errors[0] ?? "Impossible de préparer les rushs pour la transcription.",
     });
-  }, [defaultConfig, refreshJobs, uploadToPresignedUrl, slotContext]);
+  }, [defaultConfig, refreshJobs, uploadToPresignedUrl, slotContext, multilingualMode, selectedLanguages]);
 
   const handleFiles = useCallback(async (fileList: FileList | null) => {
     const files = Array.from(fileList ?? []).filter((file) => file.size > 0);
@@ -625,6 +657,71 @@ export function TranscriptionList({
         </div>
       </div>
 
+      {/* Toggle Mode multi-langue (bêta) — appliqué à tous les uploads suivants */}
+      <div className="rounded-2xl border border-white/50 bg-white/60 backdrop-blur-[6px] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={multilingualMode}
+            onChange={(event) => setMultilingualMode(event.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-sky-700 focus:ring-sky-500"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <Languages className="h-4 w-4 text-sky-700" />
+              <span className="text-sm font-semibold text-gray-900">
+                Mode multi-langue <span className="text-[10px] uppercase tracking-widest text-sky-700 font-bold">bêta</span>
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Lance plusieurs passes Whisper (une par langue forcée) et fusionne les segments selon la confiance la plus haute. Temps de transcription ≈ × nombre de langues sélectionnées.
+            </p>
+          </div>
+        </label>
+
+        {multilingualMode && (
+          <div className="mt-3 pl-7 space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">
+              Langues à transcrire ({selectedLanguages.length} sélectionnées)
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {MULTILINGUAL_OPTIONS.map((option) => {
+                const checked = selectedLanguages.includes(option.value);
+                return (
+                  <label
+                    key={option.value}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium cursor-pointer transition-colors ${
+                      checked
+                        ? "bg-sky-100 border-sky-300 text-sky-900"
+                        : "bg-white border-gray-200 text-gray-600 hover:border-sky-300"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) => {
+                        setSelectedLanguages((current) =>
+                          event.target.checked
+                            ? [...current, option.value]
+                            : current.filter((code) => code !== option.value)
+                        );
+                      }}
+                      className="hidden"
+                    />
+                    {option.label}
+                  </label>
+                );
+              })}
+            </div>
+            {selectedLanguages.length < 2 && (
+              <p className="text-[11px] text-rose-700">
+                Sélectionnez au moins 2 langues — sinon le mode multi-langue n&apos;est pas activé.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
       <div
         role="button"
         tabIndex={0}
@@ -784,18 +881,32 @@ export function TranscriptionList({
                   {job.status === "QUEUED" ? (
                     <div className="mt-4 space-y-3">
                       <div className="flex flex-wrap gap-4 items-end">
-                        <label className="space-y-1 min-w-[150px]">
-                          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Langue</span>
-                          <select
-                            value={draft.language}
-                            onChange={(event) => updateQueuedDraft(job, { language: event.target.value })}
-                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                          >
-                            {LANGUAGE_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                          </select>
-                        </label>
+                        {job.languages && job.languages.length >= 2 ? (
+                          <div className="space-y-1 min-w-[200px]">
+                            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">
+                              Langues (mode multi)
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-900">
+                                <Languages className="h-3 w-3" />
+                                {job.languages.join(" · ").toUpperCase()}
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <label className="space-y-1 min-w-[150px]">
+                            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Langue</span>
+                            <select
+                              value={draft.language}
+                              onChange={(event) => updateQueuedDraft(job, { language: event.target.value })}
+                              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                            >
+                              {LANGUAGE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
 
                         <label className="flex items-center gap-2.5 cursor-pointer pb-0.5">
                           <input
@@ -858,7 +969,14 @@ export function TranscriptionList({
                   ) : (
                     <div className="mt-4 flex flex-col gap-4 border-t border-white/40 pt-4 md:flex-row md:items-center md:justify-between">
                       <div className="flex flex-wrap gap-2 text-xs font-medium text-gray-500">
-                        <span className="rounded-full bg-gray-100 px-3 py-1">{job.language.toUpperCase()}</span>
+                        {job.languages && job.languages.length >= 2 ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-3 py-1 text-sky-900">
+                            <Languages className="h-3 w-3" />
+                            {job.languages.join(" · ").toUpperCase()}
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-gray-100 px-3 py-1">{job.language.toUpperCase()}</span>
+                        )}
                         {job.enableDiarization && (
                           <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-800">Intervenants identifiés</span>
                         )}
@@ -906,6 +1024,7 @@ export function TranscriptionList({
                         {fmtDate(job.createdAt)}
                         {job.duration != null && ` · ${fmtDuration(job.duration)}`}
                         {job.hasDiarization && " · Intervenants identifiés"}
+                        {job.languages && job.languages.length >= 2 && ` · Multi (${job.languages.join("/").toUpperCase()})`}
                       </p>
                       {job.status === "FAILED" && job.errorMsg && (
                         <p className="text-xs text-red-500">{job.errorMsg}</p>

@@ -449,6 +449,8 @@ def handler(job: dict) -> dict[str, Any]:
         return _handle_render_sequence(inp)
     if job_type == "transcribe":
         return _handle_transcribe(inp)
+    if job_type == "transcribe-multilingual":
+        return _handle_transcribe_multilingual(inp)
     if job_type == "media_edit":
         return _handle_media_edit(inp)
     if job_type == "media_autocut_batch":
@@ -1396,6 +1398,85 @@ def _handle_transcribe(inp: dict) -> dict[str, Any]:
         "segment_count": len(segments),
         "duration": duration,
         "language": language,
+        "has_diarization": has_diarization,
+        "job_id": job_id,
+    }
+
+
+def _handle_transcribe_multilingual(inp: dict) -> dict[str, Any]:
+    """
+    Transcription multilingue avec WhisperX — N passes Whisper avec langues
+    forcées + fusion par avg_confidence. Chemin séparé de _handle_transcribe.
+
+    Input:
+      audio_url          : URL publique ou pré-signée du fichier audio/vidéo
+      output_key         : clé R2 de destination pour le JSON segments
+      job_id             : ID du TranscriptionJob en DB (pour logs)
+      model_size         : "turbo" (défaut) | "large-v3" | ...
+      languages          : list[str] des codes langue à transcrire (ex: ["fr", "zh"]).
+                           Au moins 2 codes ISO explicites. Pas d'"auto".
+      enable_diarization : bool (défaut False)
+      hf_token           : token HuggingFace pour pyannote (opt)
+    """
+    import json as _json
+
+    from engine.transcribe import transcribe_multilingual_with_word_timestamps
+
+    _require_fields(inp, ("audio_url", "output_key", "languages"), "transcribe-multilingual")
+    audio_url: str = inp["audio_url"]
+    output_key: str = inp["output_key"]
+    job_id: str = inp.get("job_id", "unknown")
+    model_size: str = str(inp.get("model_size", "turbo") or "turbo")
+
+    languages_raw = inp.get("languages") or []
+    if not isinstance(languages_raw, list):
+        raise ValueError(f"languages doit être une liste, reçu : {type(languages_raw).__name__}")
+    languages: list[str] = [str(l).strip().lower() for l in languages_raw if str(l).strip()]
+    if len(languages) < 2:
+        raise ValueError(f"languages doit contenir au moins 2 codes ISO, reçu : {languages_raw}")
+
+    enable_diarization: bool = _to_bool(inp.get("enable_diarization", False), False)
+    hf_token: str | None = inp.get("hf_token") or os.environ.get("HF_TOKEN") or None
+
+    print(
+        f"[worker/transcribe-multi] job={job_id} model={model_size} "
+        f"langues={languages} diarize={enable_diarization}"
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        stamp = int(time.time() * 1000)
+
+        audio_ext = Path(audio_url.split("?")[0]).suffix or ".mp4"
+        audio_path = tmp_path / f"audio_{stamp}{audio_ext}"
+        print(f"[worker/transcribe-multi] Download audio: {audio_url}")
+        _download_file(audio_url, audio_path)
+
+        segments = transcribe_multilingual_with_word_timestamps(
+            audio_path=audio_path,
+            languages=languages,
+            model_size=model_size,
+            enable_diarization=enable_diarization,
+            hf_token=hf_token,
+        )
+
+        json_path = tmp_path / f"segments_{stamp}.json"
+        json_path.write_text(_json.dumps(segments, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"[worker/transcribe-multi] Uploading JSON to R2: {output_key}")
+        _upload_to_r2(output_key, json_path, "application/json")
+
+    duration = segments[-1]["end"] if segments else 0.0
+    has_diarization = any("speaker" in s for s in segments)
+
+    print(
+        f"[worker/transcribe-multi] Done — {len(segments)} segments, "
+        f"duration={duration:.1f}s, diarization={has_diarization}, languages={languages}"
+    )
+    return {
+        "output_key": output_key,
+        "segment_count": len(segments),
+        "duration": duration,
+        "languages": languages,
         "has_diarization": has_diarization,
         "job_id": job_id,
     }

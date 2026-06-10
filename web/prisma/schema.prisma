@@ -252,6 +252,11 @@ model TranscriptionJob {
   inputFilename        String? // nom original pour l'affichage
   model                String              @default("turbo") // ex: "turbo", "large-v3"
   language             String              @default("fr")
+  /// Mode multi-langue (chemin séparé du mono). Si non vide (≥2 codes ISO),
+  /// déclenche `job_type: "transcribe-multilingual"` côté worker : N passes
+  /// Whisper avec langues forcées + fusion par avg_confidence. Si vide, le
+  /// champ `language` ci-dessus est utilisé (comportement historique).
+  languages            String[]            @default([])
   enableDiarization    Boolean             @default(false) // demande de segmentation par speaker
   hasDiarization       Boolean             @default(false) // résultat effectif (false si pas de HF_TOKEN)
   runpodJobId          String?             @unique // ID job RunPod pour polling

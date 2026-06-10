@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import { toast } from "@/components/ui/Toast";
-import { X } from "lucide-react";
+import { X, Languages, Loader2 } from "lucide-react";
 import {
   Caption,
   applyHighlightMarkersToCaptions,
@@ -65,6 +65,58 @@ type QueuedJob = {
 // F3-step1 : formatDate, srtTimeToSeconds, formatAutoHighlightModeLabel,
 // formatAutoHighlightPlacementLabel, nested extraits dans ./utils.ts.
 
+// ── Mode bilingue (chemin séparé du mono) ────────────────────────────────────
+// Quand les segments source contiennent un `translation` non vide, on bypass
+// le découpage word-level `buildSubtitlesFromWords` (calibré pour le français)
+// et on produit directement un sub-caption par segment en remplaçant `text`
+// par la traduction. Les words[] sont reconstruits soit en découpant la
+// traduction par espaces (langues latines), soit en gardant un seul "mot" =
+// la traduction complète (chinois, japonais — pas d'espaces). Le word-pop est
+// neutralisé dans le second cas par construction (un seul mot).
+
+function isBilingualSegments(segments: Segment[]): boolean {
+  return segments.some((s) => typeof s.translation === "string" && s.translation.trim().length > 0);
+}
+
+function applyBilingualTranslation(segment: Segment): Segment {
+  // Fallback gracieux : si Claude n'a pas pu produire de traduction (segment
+  // halluciné, charabia phonétique, ou batch partiellement répondu), on garde
+  // le texte original. L'utilisateur peut corriger dans CaptionEditor avant le
+  // rendu — c'est préféré à supprimer le segment (perte de timeline) ou à
+  // injecter un placeholder visible (pollution du rendu vidéo).
+  const translation = segment.translation?.trim();
+  if (!translation) return segment;
+  const start = segment.start;
+  const end = segment.end;
+  const duration = Math.max(0.1, end - start);
+  const hasSpaces = /\s/.test(translation);
+  const words = hasSpaces
+    ? translation
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((token, i, arr) => {
+          const tokenDuration = duration / arr.length;
+          return {
+            word: token,
+            start: start + i * tokenDuration,
+            end: start + (i + 1) * tokenDuration,
+          };
+        })
+    : [{ word: translation, start, end }];
+  return {
+    ...segment,
+    text: translation,
+    words,
+  };
+}
+
+function prepareSegmentsForEditor(segments: Segment[]): Segment[] {
+  if (!isBilingualSegments(segments)) {
+    return buildSubtitlesFromWords(segments);
+  }
+  return segments.map(applyBilingualTranslation);
+}
+
 export default function CaptionsGenerateForm({
   preset,
   initialSrt,
@@ -104,7 +156,7 @@ export default function CaptionsGenerateForm({
   const [subsFile, setSubsFile] = useState<File | null>(null);
   const [pendingSegments, setPendingSegments] = useState<Segment[] | null>(
     initialSegments && initialSegments.length > 0
-      ? buildSubtitlesFromWords(initialSegments)
+      ? prepareSegmentsForEditor(initialSegments)
       : null
   );
   const [showTrimEditor, setShowTrimEditor] = useState<boolean>(
@@ -124,6 +176,12 @@ export default function CaptionsGenerateForm({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [renderProgress, setRenderProgress] = useState(-1);
+  // Mode bilingue : indique si on est en train d'appeler /translate.
+  const [translating, setTranslating] = useState(false);
+  const [translateError, setTranslateError] = useState<string | null>(null);
+  // Ref synchrone pour bloquer le double-click — un setState n'est pas commit
+  // assez vite si l'utilisateur clique deux fois en quelques ms.
+  const translatingRef = useRef(false);
 
   // Queue of submitted jobs
   const [jobs, setJobs] = useState<QueuedJob[]>([]);
@@ -339,6 +397,17 @@ export default function CaptionsGenerateForm({
     if (!selectedTranscriptionId) return;
     setLoadingSource(true);
     setTranscriptionLoadError(null);
+    setTranslateError(null);
+    // Reset des états dérivés AVANT le fetch — sinon bilingualStatus
+    // continuerait à dériver de l'ancienne transcription pendant la fenêtre
+    // de chargement (UX confuse : le bouton "Traduire" peut s'afficher pour
+    // une mauvaise transcription, et un clic dans cette fenêtre POSTerait
+    // sur un job non pertinent).
+    setPendingSegments(null);
+    setTimedSegments(null);
+    setTimingStatuses(null);
+    setCaptions([]);
+    setHighlighted(new Map());
     fetch(`/api/transcription/${selectedTranscriptionId}/download?format=json`)
       .then((r) => {
         if (!r.ok) throw new Error("HTTP error");
@@ -346,12 +415,25 @@ export default function CaptionsGenerateForm({
       })
       .then((segs) => {
         if (!Array.isArray(segs) || segs.length === 0) throw new Error("Données invalides");
-        setPendingSegments(segs);
-        setShowTrimEditor(true);
-        setCaptions([]);
-        setHighlighted(new Map());
-        setTimedSegments(null);
-        setTimingStatuses(null);
+        if (isBilingualSegments(segs)) {
+          // Mode bilingue : on bypass le TrimEditor (le texte affiché c'est
+          // la traduction, pas l'original — pas de découpage word-level FR).
+          const prepared = segs.map(applyBilingualTranslation);
+          const timed = buildTimedSegmentsFromSegments(prepared);
+          setPendingSegments(prepared);
+          setShowTrimEditor(false);
+          setTimedSegments(timed);
+          setTimingStatuses(buildTimingStatuses(timed.length, "estimated"));
+          setCaptions(timedSegmentsToCaptions(timed));
+          setHighlighted(new Map());
+        } else {
+          setPendingSegments(segs);
+          setShowTrimEditor(true);
+          setCaptions([]);
+          setHighlighted(new Map());
+          setTimedSegments(null);
+          setTimingStatuses(null);
+        }
         setSubsFile(null);
       })
       .catch(() => {
@@ -360,6 +442,63 @@ export default function CaptionsGenerateForm({
       })
       .finally(() => setLoadingSource(false));
   }, [selectedTranscriptionId]);
+
+  // Mode bilingue : statut détecté à partir des segments en cours.
+  // Une transcription multilingue est éligible à la traduction si elle a au
+  // moins un segment avec `language` détecté mais pas encore de `translation`.
+  const bilingualStatus = useMemo((): "none" | "translatable" | "translated" => {
+    const source = pendingSegments ?? timedSegments;
+    if (!source || source.length === 0) return "none";
+    const hasLanguage = source.some((s) => typeof s.language === "string" && s.language.length > 0);
+    if (!hasLanguage) return "none";
+    const hasTranslation = source.some((s) => typeof s.translation === "string" && s.translation.trim().length > 0);
+    return hasTranslation ? "translated" : "translatable";
+  }, [pendingSegments, timedSegments]);
+
+  const triggerBilingualTranslation = async () => {
+    if (!selectedTranscriptionId) return;
+    // Guard synchrone : empêche un double-click pendant que setTranslating(true)
+    // est encore en attente de commit. Sans cette ref, deux clicks rapides
+    // peuvent enclencher deux requêtes Claude concurrentes (cf. bug-hunter).
+    if (translatingRef.current) return;
+    translatingRef.current = true;
+    setTranslating(true);
+    setTranslateError(null);
+    try {
+      const res = await fetch(`/api/transcription/${selectedTranscriptionId}/translate`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const errPayload = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(errPayload?.error ?? `HTTP ${res.status}`);
+      }
+      const payload = (await res.json()) as { segments?: Segment[]; translated?: number; alreadyTranslated?: boolean };
+      const fresh = payload.segments ?? [];
+      if (!Array.isArray(fresh) || fresh.length === 0) {
+        throw new Error("Réponse invalide du serveur");
+      }
+      const prepared = fresh.map(applyBilingualTranslation);
+      const timed = buildTimedSegmentsFromSegments(prepared);
+      setPendingSegments(prepared);
+      setShowTrimEditor(false);
+      setTimedSegments(timed);
+      setTimingStatuses(buildTimingStatuses(timed.length, "estimated"));
+      setCaptions(timedSegmentsToCaptions(timed));
+      setHighlighted(new Map());
+      if (payload.alreadyTranslated) {
+        toast.success("Traductions déjà disponibles — rechargées.");
+      } else {
+        toast.success(`${payload.translated ?? prepared.length} segments traduits.`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setTranslateError(msg);
+      toast.error(`Traduction impossible : ${msg}`);
+    } finally {
+      translatingRef.current = false;
+      setTranslating(false);
+    }
+  };
 
   const toggleWord = (key: string) => {
     setHighlighted((prev) => {
@@ -823,6 +962,59 @@ export default function CaptionsGenerateForm({
             pendingSegmentsCount={pendingSegments?.length ?? 0}
           />
         </div>
+
+        {/* Mode bilingue — banner après chargement d'une transcription multi-langue */}
+        {bilingualStatus !== "none" && selectedTranscriptionId && (
+          <div className={`mb-3 rounded-2xl backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1)] ${
+            bilingualStatus === "translated"
+              ? "bg-gradient-to-b from-emerald-50/85 to-emerald-50/55 shadow-[inset_0_0_0_1px_rgba(110,231,183,0.40)]"
+              : "bg-gradient-to-b from-sky-50/85 to-sky-50/55 shadow-[inset_0_0_0_1px_rgba(125,180,210,0.32)]"
+          }`}>
+            <div className="flex items-start gap-3">
+              <Languages className={`h-5 w-5 mt-0.5 shrink-0 ${
+                bilingualStatus === "translated" ? "text-emerald-700" : "text-sky-700"
+              }`} />
+              <div className="flex-1 min-w-0">
+                {bilingualStatus === "translated" ? (
+                  <>
+                    <p className="text-[13px] font-semibold text-emerald-900">
+                      Mode bilingue — traductions chargées
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-emerald-700/80">
+                      Chaque segment affiche la traduction inverse de la langue parlée.
+                      Vous pouvez éditer les textes traduits ci-dessous avant le rendu.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[13px] font-semibold text-sky-900">
+                      Transcription multi-langue détectée
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-sky-700/80">
+                      Cette transcription contient plusieurs langues. Lancez la traduction
+                      inverse pour que chaque segment affiche le texte dans la langue opposée
+                      à celle parlée.
+                    </p>
+                    {translateError && (
+                      <p className="mt-1 text-[11px] text-rose-700">{translateError}</p>
+                    )}
+                  </>
+                )}
+              </div>
+              {bilingualStatus === "translatable" && (
+                <button
+                  type="button"
+                  onClick={() => void triggerBilingualTranslation()}
+                  disabled={translating}
+                  className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-sky-900 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {translating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
+                  {translating ? "Traduction…" : "Lancer la traduction"}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Segment trim editor — shown after SRT or JSON import */}
         {showTrimEditor && pendingSegments && pendingSegments.length > 0 && (

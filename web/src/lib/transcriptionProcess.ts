@@ -20,6 +20,12 @@ export interface Segment {
   text: string;
   speaker?: string;
   words?: Word[];
+  /// Code langue ISO de la passe gagnante (mode multi-langue uniquement).
+  /// Absent en mode mono-langue.
+  language?: string;
+  /// Traduction du `text` vers la langue opposée (mode bilingue).
+  /// Absent tant que /api/transcription/[id]/translate n'a pas été appelée.
+  translation?: string;
 }
 
 export interface TaggedSegment extends Segment {

@@ -17,6 +17,7 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { deleteFromR2, r2Configured } from "@/lib/r2";
 import { resolveRunpodJobPhase, isPodJobId } from "@/lib/runpod";
+import { sanitizeLanguage, sanitizeLanguages } from "@/lib/transcriptionLanguages";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -31,16 +32,9 @@ const ALLOWED_MODELS = new Set([
   "turbo", "large-v3", "large-v3-turbo", "medium", "small", "base", "tiny",
 ]);
 
-const ALLOWED_LANGUAGE_RE = /^[a-z]{2,3}$|^auto$/;
-
 function sanitizeModel(value: unknown): string {
   const sanitizedValue = String(value ?? "turbo").trim().toLowerCase();
   return ALLOWED_MODELS.has(sanitizedValue) ? sanitizedValue : "turbo";
-}
-
-function sanitizeLanguage(value: unknown): string {
-  const sanitizedValue = String(value ?? "fr").trim().toLowerCase();
-  return ALLOWED_LANGUAGE_RE.test(sanitizedValue) ? sanitizedValue : "fr";
 }
 
 function toBoolean(value: unknown, defaultValue = false): boolean {
@@ -183,7 +177,7 @@ export async function PATCH(
     );
   }
 
-  let body: { model?: unknown; language?: unknown; enable_diarization?: unknown };
+  let body: { model?: unknown; language?: unknown; languages?: unknown; enable_diarization?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -191,8 +185,17 @@ export async function PATCH(
   }
 
   const model = sanitizeModel(body.model);
-  const language = sanitizeLanguage(body.language);
   const enableDiarization = toBoolean(body.enable_diarization);
+
+  // Le PATCH ne doit JAMAIS écraser silencieusement le champ `languages` :
+  // l'UI saveQueuedJobConfig n'envoie que { language, enable_diarization }
+  // (cf. TranscriptionList.tsx). Sans ce sentinel, un job multi-langue serait
+  // repassé en mono à chaque save de la config (bug critique data-loss).
+  const hasLanguagesField = Object.prototype.hasOwnProperty.call(body, "languages");
+  const languages = hasLanguagesField ? sanitizeLanguages(body.languages) : null;
+  const language = languages && languages.length > 0
+    ? languages[0]
+    : sanitizeLanguage(body.language ?? job.language);
 
   if (enableDiarization && !HF_TOKEN) {
     return NextResponse.json(
@@ -203,7 +206,13 @@ export async function PATCH(
 
   const patchResult = await prisma.transcriptionJob.updateMany({
     where: { id: job.id, status: "QUEUED" },
-    data: { model, language, enableDiarization, errorMsg: null },
+    data: {
+      model,
+      language,
+      enableDiarization,
+      errorMsg: null,
+      ...(languages !== null ? { languages } : {}),
+    },
   });
 
   if (patchResult.count === 0) {
@@ -267,6 +276,7 @@ function formatJob(job: {
   inputFilename: string | null;
   model: string;
   language: string;
+  languages?: string[];
   enableDiarization: boolean;
   hasDiarization: boolean;
   segmentCount: number | null;
@@ -281,6 +291,7 @@ function formatJob(job: {
     inputFilename: job.inputFilename,
     model: job.model,
     language: job.language,
+    languages: job.languages ?? [],
     enableDiarization: job.enableDiarization,
     hasDiarization: job.hasDiarization,
     segmentCount: job.segmentCount,

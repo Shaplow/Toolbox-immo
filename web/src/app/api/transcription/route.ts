@@ -9,6 +9,10 @@
  *   audio              : File (mp3/wav/m4a/mp4/mov/flac/ogg/aac)
  *   model              : "turbo" (défaut) | "large-v3" | "medium" | ...
  *   language           : "fr" (défaut) | "en" | "auto" | ...
+ *   languages          : list[str] optionnel — mode multi-langue (≥2 codes ISO,
+ *                        ex: ["fr","zh"]). Si présent, prend le pas sur `language`
+ *                        et active job_type="transcribe-multilingual" (N passes
+ *                        Whisper forcées + fusion). Pas d'"auto" autorisé ici.
  *   enable_diarization : "true" | "false" (défaut: "false")
  *
  * Réponse 202 :
@@ -27,6 +31,7 @@ import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
+import { sanitizeLanguage, sanitizeLanguages } from "@/lib/transcriptionLanguages";
 
 const RUNPOD_API_KEY    = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -44,16 +49,9 @@ const ALLOWED_MODELS = new Set([
   "turbo", "large-v3", "large-v3-turbo", "medium", "small", "base", "tiny",
 ]);
 
-const ALLOWED_LANGUAGE_RE = /^[a-z]{2,3}$|^auto$/;
-
 function sanitizeModel(value: unknown): string {
   const s = String(value ?? "turbo").trim().toLowerCase();
   return ALLOWED_MODELS.has(s) ? s : "turbo";
-}
-
-function sanitizeLanguage(value: unknown): string {
-  const s = String(value ?? "fr").trim().toLowerCase();
-  return ALLOWED_LANGUAGE_RE.test(s) ? s : "fr";
 }
 
 function toBoolean(value: FormDataEntryValue | null, def = false): boolean {
@@ -78,7 +76,7 @@ export async function POST(req: NextRequest) {
   // ─── Mode RunPod via JSON (presigned URL — pas de fichier dans Next.js) ──
   const contentType = req.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
-    let body: { filename?: unknown; ext?: unknown; model?: unknown; language?: unknown; enable_diarization?: unknown; slotId?: unknown };
+    let body: { filename?: unknown; ext?: unknown; model?: unknown; language?: unknown; languages?: unknown; enable_diarization?: unknown; slotId?: unknown };
     try {
       body = await req.json();
     } catch {
@@ -95,7 +93,8 @@ export async function POST(req: NextRequest) {
     }
 
     const model            = sanitizeModel(body.model);
-    const language         = sanitizeLanguage(body.language);
+    const languages        = sanitizeLanguages(body.languages);
+    const language         = languages.length > 0 ? languages[0] : sanitizeLanguage(body.language);
     const enableDiarization = String(body.enable_diarization ?? "false").toLowerCase() === "true";
 
     // V2 friction MED-2 du audit 2026-05-31 : si un slotId est fourni, on
@@ -137,6 +136,7 @@ export async function POST(req: NextRequest) {
           inputFilename: filename,
           model,
           language,
+          languages,
           enableDiarization,
           outputJsonKey,
           slotId: resolvedSlotId,
@@ -181,6 +181,7 @@ export async function POST(req: NextRequest) {
         inputFilename: filename,
         model,
         language,
+        languages,
         enableDiarization,
         outputJsonKey,
         slotId: resolvedSlotId,
@@ -212,7 +213,8 @@ export async function POST(req: NextRequest) {
   }
 
   const model            = sanitizeModel(formData.get("model"));
-  const language         = sanitizeLanguage(formData.get("language"));
+  const languages        = sanitizeLanguages(formData.getAll("languages").length > 0 ? formData.getAll("languages") : formData.get("languages"));
+  const language         = languages.length > 0 ? languages[0] : sanitizeLanguage(formData.get("language"));
   const enableDiarization = toBoolean(formData.get("enable_diarization"));
   if (enableDiarization && !HF_TOKEN) {
     return NextResponse.json(
@@ -249,6 +251,7 @@ export async function POST(req: NextRequest) {
 
   // ─── Mode local (USE_RUNPOD=false) ────────────────────────────────────────
   if (!USE_RUNPOD) {
+    const isMultilingual = languages.length >= 2;
     const job = await prisma.transcriptionJob.create({
       data: {
         userId,
@@ -256,6 +259,7 @@ export async function POST(req: NextRequest) {
         inputFilename: audioFile.name,
         model,
         language,
+        languages,
         enableDiarization,
         slotId: formResolvedSlotId,
       },
@@ -265,16 +269,28 @@ export async function POST(req: NextRequest) {
       const localForm = new FormData();
       localForm.append("audio", audioFile, audioFile.name);
       localForm.append("model_size", model === "turbo" ? "large-v3-turbo" : model);
-      localForm.append("language", language);
+      if (isMultilingual) {
+        // L'endpoint local multilingue prend les langues en CSV
+        // (FastAPI Form ne reçoit pas proprement les List[str] cross-clients).
+        localForm.append("languages", languages.join(","));
+      } else {
+        localForm.append("language", language);
+      }
       localForm.append("enable_diarization", String(enableDiarization));
       if (enableDiarization && HF_TOKEN) {
         localForm.append("hf_token", HF_TOKEN);
       }
 
-      const localRes = await fetch(`${CAPTIONS_API_URL}/api/transcribe`, {
+      const localEndpoint = isMultilingual ? "/api/transcribe-multilingual" : "/api/transcribe";
+      // ⚠ Node 20 fetch a un headersTimeout undici interne câblé à 5 min.
+      // Sur des audios qui demandent >5 min de transcription Whisper, ce
+      // fetch lèvera UND_ERR_HEADERS_TIMEOUT alors que FastAPI continue à
+      // travailler. Pour des vidéos longues il faudra refacto l'API en
+      // async polling (comme RunPod) — cf. plan dewdrop "Hors scope".
+      const localRes = await fetch(`${CAPTIONS_API_URL}${localEndpoint}`, {
         method: "POST",
         body: localForm,
-        signal: AbortSignal.timeout(60 * 60 * 1000), // 1h max
+        signal: AbortSignal.timeout(60 * 60 * 1000), // garde-fou abort global
       });
 
       if (!localRes.ok) {
@@ -283,10 +299,12 @@ export async function POST(req: NextRequest) {
       }
 
       const data = await localRes.json() as {
-        segments: Array<{ start: number; end: number; text: string; speaker?: string }>;
+        segments: Array<{ start: number; end: number; text: string; speaker?: string; language?: string }>;
         segment_count: number;
         duration: number;
-        language: string;
+        // L'endpoint mono renvoie `language`, le multi renvoie `languages`.
+        language?: string;
+        languages?: string[];
         has_diarization: boolean;
       };
 
@@ -358,6 +376,7 @@ export async function POST(req: NextRequest) {
       inputFilename: audioFile.name,
       model,
       language,
+      languages,
       enableDiarization,
       outputJsonKey,
       slotId: formResolvedSlotId,
@@ -366,14 +385,15 @@ export async function POST(req: NextRequest) {
 
   // ─── Soumettre à RunPod ───────────────────────────────────────────────────
   const webhookUrl = getRunpodWebhookUrl("/api/webhooks/runpod/transcription");
+  const isMultilingual = languages.length >= 2;
   const runpodPayload = {
     input: {
-      job_type: "transcribe",
+      job_type: isMultilingual ? "transcribe-multilingual" : "transcribe",
       audio_url: audioUrl,
       output_key: outputJsonKey,
       job_id: job.id,
       model_size: model === "turbo" ? "large-v3-turbo" : model,
-      language,
+      ...(isMultilingual ? { languages } : { language }),
       enable_diarization: enableDiarization,
       hf_token: enableDiarization ? (HF_TOKEN ?? null) : null,
     },
@@ -429,6 +449,7 @@ export async function GET(req: NextRequest) {
       inputFilename: true,
       model: true,
       language: true,
+      languages: true,
       enableDiarization: true,
       hasDiarization: true,
       segmentCount: true,

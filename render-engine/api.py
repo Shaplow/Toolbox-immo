@@ -860,8 +860,12 @@ async def transcribe_local(
     """
     Mode local (USE_RUNPOD=false) : transcription directe sans RunPod.
     Retourne le JSON des segments directement dans la réponse.
+
+    Whisper est intégralement synchrone (CPU/GPU sans yield). On l'exécute
+    dans asyncio.to_thread pour libérer l'event loop FastAPI pendant les
+    minutes que dure la transcription — sinon TOUTES les autres requêtes
+    (y compris /api/health et les jobs concurrents) seraient bloquées.
     """
-    import json as _json
     from engine.transcribe import transcribe_with_word_timestamps
 
     work_dir = OUTPUTS_DIR / "temp" / "api"
@@ -873,7 +877,8 @@ async def transcribe_local(
     audio_path.write_bytes(await audio.read())
 
     try:
-        segments = transcribe_with_word_timestamps(
+        segments = await asyncio.to_thread(
+            transcribe_with_word_timestamps,
             audio_path=audio_path,
             model_size=str(model_size or "turbo"),
             language=str(language or "fr"),
@@ -891,6 +896,71 @@ async def transcribe_local(
         "segment_count": len(segments),
         "duration": duration,
         "language": language,
+        "has_diarization": has_diarization,
+    }
+
+
+@app.post("/api/transcribe-multilingual")
+async def transcribe_multilingual_local(
+    audio: UploadFile = File(...),
+    model_size: str = Form("turbo"),
+    # Form-data n'accepte pas proprement un List[str] sur tous les clients ;
+    # on prend une chaîne CSV "fr,zh" et on parse côté serveur. Le caller TS
+    # doit envoyer `formData.append("languages", "fr,zh")`.
+    languages: str = Form(...),
+    enable_diarization: str = Form("false"),
+    hf_token: Optional[str] = Form(None),
+):
+    """
+    Mode local (USE_RUNPOD=false ou R2 non configuré) : transcription
+    multi-langue directe via le worker Python sans RunPod. N passes Whisper
+    avec langues forcées + fusion par avg_confidence (cf.
+    transcribe_multilingual_with_word_timestamps).
+    """
+    from engine.transcribe import transcribe_multilingual_with_word_timestamps
+
+    parsed_languages = [
+        code.strip().lower()
+        for code in (languages or "").split(",")
+        if code.strip()
+    ]
+    if len(parsed_languages) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Le mode multi-langue exige au moins 2 codes ISO (reçu : '{languages}').",
+        )
+
+    work_dir = OUTPUTS_DIR / "temp" / "api"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    stamp = int(time.time() * 1000)
+    suffix = Path(audio.filename or "audio.mp3").suffix.lower() or ".mp3"
+    audio_path = work_dir / f"audio_{stamp}{suffix}"
+    audio_path.write_bytes(await audio.read())
+
+    try:
+        # Idem transcribe_local : on libère l'event loop pendant les N passes
+        # Whisper (très long en multi). Sans ça /api/health et les autres jobs
+        # restent muets le temps de la transcription.
+        segments = await asyncio.to_thread(
+            transcribe_multilingual_with_word_timestamps,
+            audio_path=audio_path,
+            languages=parsed_languages,
+            model_size=str(model_size or "turbo"),
+            enable_diarization=_to_bool(enable_diarization, False),
+            hf_token=hf_token or os.environ.get("HF_TOKEN") or None,
+        )
+    finally:
+        audio_path.unlink(missing_ok=True)
+
+    duration = segments[-1]["end"] if segments else 0.0
+    has_diarization = any("speaker" in s for s in segments)
+
+    return {
+        "segments": segments,
+        "segment_count": len(segments),
+        "duration": duration,
+        "languages": parsed_languages,
         "has_diarization": has_diarization,
     }
 

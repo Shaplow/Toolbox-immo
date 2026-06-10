@@ -15,6 +15,8 @@ type JobDetail = {
   inputFilename: string | null;
   model: string;
   language: string;
+  /** Mode multi-langue (≥2 codes ISO). Vide pour les jobs mono historiques. */
+  languages?: string[];
   enableDiarization: boolean;
   hasDiarization: boolean;
   segmentCount: number | null;
@@ -35,7 +37,15 @@ function fmtDuration(seconds: number | null): string {
 
 const LANG_LABELS: Record<string, string> = {
   fr: "Français", en: "Anglais", es: "Espagnol", de: "Allemand", it: "Italien",
+  zh: "Chinois", pt: "Portugais", ru: "Russe", ja: "Japonais", ko: "Coréen", ar: "Arabe",
 };
+
+function languageBadgeLabel(job: { language: string; languages?: string[] }): string {
+  if (job.languages && job.languages.length >= 2) {
+    return "Multi · " + job.languages.map((c) => c.toUpperCase()).join(" / ");
+  }
+  return LANG_LABELS[job.language] ?? job.language;
+}
 
 const MODEL_LABELS: Record<string, string> = {
   turbo: "Rapide",
@@ -182,8 +192,12 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
           <span className="px-2.5 py-1 rounded-full bg-gray-50 text-gray-600 text-xs">
             {MODEL_LABELS[job.model] ?? job.model}
           </span>
-          <span className="px-2.5 py-1 rounded-full bg-gray-50 text-gray-600 text-xs">
-            {LANG_LABELS[job.language] ?? job.language}
+          <span className={`px-2.5 py-1 rounded-full text-xs ${
+            job.languages && job.languages.length >= 2
+              ? "bg-sky-100 text-sky-900 font-semibold"
+              : "bg-gray-50 text-gray-600"
+          }`}>
+            {languageBadgeLabel(job)}
           </span>
           {job.hasDiarization && (
             <span className="px-2.5 py-1 rounded-full bg-sky-50 text-sky-700 text-xs">

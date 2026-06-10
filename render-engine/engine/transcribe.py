@@ -309,3 +309,296 @@ def transcribe_with_word_timestamps(
     )
     return segments
 
+
+# ─── Mode multi-langue (chemin séparé du mono) ────────────────────────────────
+#
+# Sépare strictement le flux mono-langue (fonction historique ci-dessus) du flux
+# multi-langue. Aucune modification de transcribe_with_word_timestamps : tout le
+# code multi vit ici. Cf. plan dewdrop pour les invariants.
+
+
+def _overlap_ratio(a: dict[str, Any], b: dict[str, Any]) -> float:
+    a_start, a_end = a.get("start", 0.0), a.get("end", 0.0)
+    b_start, b_end = b.get("start", 0.0), b.get("end", 0.0)
+    if a_end <= b_start or b_end <= a_start:
+        return 0.0
+    overlap = min(a_end, b_end) - max(a_start, b_start)
+    shorter = min(a_end - a_start, b_end - b_start)
+    if shorter <= 0:
+        return 0.0
+    return overlap / shorter
+
+
+def _merge_multilingual_segments_by_confidence(
+    passes_by_language: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """
+    Fusionne les segments produits par N passes Whisper (une par langue forcée)
+    en gardant, pour chaque tranche temporelle, le segment avec la meilleure
+    avg_confidence WhisperX.
+
+    Algorithme :
+      1. Collecte tous les segments de toutes les passes dans une liste unique.
+      2. Trie par (start, end).
+      3. Itère : si un segment chevauche un segment déjà retenu à ≥50% de la
+         durée du plus court, on garde celui avec la confiance la plus haute.
+         Sinon on l'ajoute aux retenus.
+      4. Re-trie la liste finale par start.
+
+    Compromis : algo glouton simple — peut produire des résultats sous-optimaux
+    sur des chaînes de chevauchements croisés. Suffisant pour le MVP "récurrent
+    léger" sur du code-switching par blocs >5s.
+    """
+    if not passes_by_language:
+        return []
+
+    all_segments: list[dict[str, Any]] = []
+    for lang_segs in passes_by_language.values():
+        all_segments.extend(lang_segs)
+
+    if not all_segments:
+        return []
+
+    all_segments.sort(key=lambda s: (s.get("start", 0.0), s.get("end", 0.0)))
+
+    retained: list[dict[str, Any]] = []
+    multi_overlap_count = 0
+
+    for seg in all_segments:
+        # Collecte TOUS les conflits (≥1) — un long segment d'une passe peut
+        # chevaucher plusieurs segments courts déjà retenus d'une autre passe.
+        # Le code initial ne gérait que le premier conflict trouvé, ce qui
+        # laissait passer des duplicats. On retient ici le seg uniquement si
+        # son avg_confidence dépasse celle du conflit le plus confiant ; on
+        # log un warning quand >1 conflits sont rencontrés pour faciliter le
+        # debug sur des fusions atypiques.
+        conflict_indices: list[int] = []
+        for idx, kept in enumerate(retained):
+            if _overlap_ratio(seg, kept) >= 0.5:
+                conflict_indices.append(idx)
+
+        if not conflict_indices:
+            retained.append(seg)
+            continue
+
+        if len(conflict_indices) > 1:
+            multi_overlap_count += 1
+            print(
+                f"[transcribe-multi] fusion : segment {seg.get('language')} "
+                f"[{seg.get('start', 0):.2f}-{seg.get('end', 0):.2f}] chevauche "
+                f"{len(conflict_indices)} segments retenus — résolu en "
+                f"comparant à la meilleure confidence",
+                flush=True,
+            )
+
+        best_conflict_idx = max(
+            conflict_indices,
+            key=lambda i: retained[i].get("avg_confidence", 0.0),
+        )
+        best_kept = retained[best_conflict_idx]
+        if seg.get("avg_confidence", 0.0) > best_kept.get("avg_confidence", 0.0):
+            retained[best_conflict_idx] = seg
+
+    if multi_overlap_count > 0:
+        print(
+            f"[transcribe-multi] fusion : {multi_overlap_count} conflits multi-overlap "
+            f"résolus (cas atypiques — vérifier la transcription si bizarre).",
+            flush=True,
+        )
+
+    retained.sort(key=lambda s: s.get("start", 0.0))
+    return retained
+
+
+def transcribe_multilingual_with_word_timestamps(
+    audio_path: str | Path,
+    languages: list[str],
+    model_size: str = "large-v3-turbo",
+    enable_diarization: bool = False,
+    hf_token: str | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Transcrit un fichier audio multilingue (typiquement bilingue FR↔ZH) en
+    lançant N passes Whisper avec une langue FORCÉE différente à chaque passe,
+    puis fusionne par segment selon la meilleure avg_confidence WhisperX.
+
+    Principe fondamental : `language=lang_code` est explicitement forcé pour
+    chaque passe (jamais `None`). Sans ce forçage, Whisper détecterait la même
+    langue dominante à chaque appel et produirait le même résultat dégradé. En
+    forçant des langues différentes, on garantit que :
+      - sur les segments de la "vraie" langue, la passe correspondante produit
+        une transcription propre avec une confiance haute,
+      - sur les segments de l'autre langue, cette même passe hallucine en
+        phonétique avec une confiance basse — qui perd la fusion face à la
+        passe de la "bonne" langue.
+
+    Args:
+        audio_path: Chemin vers le fichier audio/vidéo.
+        languages: Liste de codes langue ISO à transcrire (ex: ["fr", "zh"]).
+                   Au moins 2 entrées, toutes uniques et explicites (jamais "auto").
+        model_size: Modèle Whisper (turbo / large-v3 / ...).
+        enable_diarization: Appliquée une seule fois sur le résultat fusionné.
+        hf_token: Token HuggingFace pour pyannote.
+
+    Returns:
+        Liste de dicts { start, end, text, words, avg_confidence, language, speaker? }.
+        Chaque segment porte le code langue de la passe gagnante.
+    """
+    import whisperx
+
+    if not isinstance(languages, list) or len(languages) < 2:
+        raise ValueError(
+            f"transcribe_multilingual_with_word_timestamps exige au moins 2 langues, reçu : {languages}"
+        )
+
+    normalized_languages: list[str] = []
+    seen: set[str] = set()
+    for raw in languages:
+        code = str(raw).strip().lower()
+        if not code:
+            continue
+        if code == "auto":
+            raise ValueError("'auto' n'est pas autorisé : chaque passe doit forcer une langue ISO explicite.")
+        if code not in seen:
+            normalized_languages.append(code)
+            seen.add(code)
+
+    if len(normalized_languages) < 2:
+        raise ValueError(f"Après normalisation, moins de 2 langues distinctes : {languages}")
+
+    audio_path = str(audio_path)
+    device, compute_type = _resolve_device()
+    whisper_device = device if device == "cuda" else "cpu"
+
+    if model_size == "turbo":
+        model_size = "large-v3-turbo"
+
+    t0 = time.time()
+    print(
+        f"[transcribe-multi] device={whisper_device} ({compute_type}) "
+        f"model={model_size} langues={normalized_languages}",
+        flush=True,
+    )
+
+    audio = whisperx.load_audio(audio_path)
+    total_minutes = len(audio) / 16000 / 60
+    print(f"[transcribe-multi] audio chargé — {total_minutes:.1f} min", flush=True)
+
+    model = _get_whisper_model(model_size, whisper_device, compute_type)
+    batch_size = _optimal_batch_size(whisper_device)
+    print(f"[transcribe-multi] batch_size={batch_size}", flush=True)
+
+    passes_by_language: dict[str, list[dict[str, Any]]] = {}
+    failed_languages: list[tuple[str, str]] = []
+
+    for lang in normalized_languages:
+        print(f"[transcribe-multi] === Passe langue={lang} (forcée) ===", flush=True)
+        t_pass = time.time()
+
+        try:
+            result = model.transcribe(audio, batch_size=batch_size, language=lang)
+            print(
+                f"[transcribe-multi] {lang}: {len(result['segments'])} segments bruts — "
+                f"{time.time()-t_pass:.0f}s",
+                flush=True,
+            )
+
+            # _get_align_model peut échouer si WhisperX ne fournit pas d'aligneur
+            # pour cette langue (ar, ko, et autres ISO peu courants peuvent ne
+            # pas avoir de modèle d'alignement par défaut côté HuggingFace).
+            # On isole l'erreur de cette passe — les autres langues continuent.
+            align_model, align_metadata = _get_align_model(lang, whisper_device)
+            result = whisperx.align(
+                result["segments"], align_model, align_metadata, audio, whisper_device,
+                return_char_alignments=False,
+            )
+            print(f"[transcribe-multi] {lang}: alignement OK — {time.time()-t_pass:.0f}s", flush=True)
+
+            result["segments"] = _apply_vad_trim(audio, result["segments"])
+
+            lang_segments: list[dict[str, Any]] = []
+            for seg in result.get("segments", []):
+                words = [
+                    {
+                        "word": str(w["word"]).strip(),
+                        "start": float(w["start"]),
+                        "end": float(w["end"]),
+                        "score": float(w.get("score", 1.0)),
+                    }
+                    for w in seg.get("words", [])
+                    if "word" in w and "start" in w and "end" in w
+                ]
+                # Fallback 0.0 (et non 1.0) pour ne PAS gagner la fusion : un
+                # segment sans words alignés ne porte aucune information utile,
+                # il doit s'effacer devant les passes qui en ont produit.
+                avg_confidence = (
+                    sum(ww["score"] for ww in words) / len(words)
+                    if words else 0.0
+                )
+                lang_segments.append({
+                    "start": float(seg.get("start", 0)),
+                    "end": float(seg.get("end", 0)),
+                    "text": seg.get("text", "").strip(),
+                    "words": words,
+                    "avg_confidence": round(avg_confidence, 3),
+                    "language": lang,
+                })
+
+            passes_by_language[lang] = lang_segments
+            print(
+                f"[transcribe-multi] {lang}: passe terminée — {len(lang_segments)} segments, "
+                f"{time.time()-t_pass:.0f}s",
+                flush=True,
+            )
+        except Exception as exc:
+            # Cas type : aligneur WhisperX absent pour cette langue, modèle ASR
+            # cassé sur cette langue, OOM CUDA sur la passe. On dégrade au lieu
+            # de tuer toute la transcription multi (les autres langues peuvent
+            # encore produire un résultat utile).
+            err_msg = f"{type(exc).__name__}: {exc}"
+            failed_languages.append((lang, err_msg))
+            print(
+                f"[transcribe-multi] {lang}: passe ÉCHOUÉE (non bloquant pour les autres "
+                f"langues) — {err_msg}",
+                flush=True,
+            )
+
+    # Si AUCUNE langue n'a produit de segments, on remonte une erreur globale
+    # (sinon le worker uploaderait un JSON vide en R2 et marquerait le job OK).
+    if not passes_by_language:
+        raise RuntimeError(
+            f"Toutes les passes multi-langue ont échoué : "
+            + "; ".join(f"{l}={e}" for l, e in failed_languages)
+        )
+
+    merged = _merge_multilingual_segments_by_confidence(passes_by_language)
+    print(
+        f"[transcribe-multi] fusion : {len(merged)} segments retenus sur "
+        f"{sum(len(v) for v in passes_by_language.values())} total — {time.time()-t0:.0f}s",
+        flush=True,
+    )
+
+    has_diarization = False
+    if enable_diarization and hf_token:
+        try:
+            print(f"[transcribe-multi] diarisation...", flush=True)
+            from whisperx.diarize import DiarizationPipeline
+            diarize_model = DiarizationPipeline(token=hf_token, device=device)
+            diarize_segments = diarize_model(audio)
+            pseudo_result = {"segments": merged}
+            pseudo_result = whisperx.assign_word_speakers(diarize_segments, pseudo_result)
+            merged = pseudo_result["segments"]
+            has_diarization = True
+            print(f"[transcribe-multi] diarisation terminée — {time.time()-t0:.0f}s", flush=True)
+        except Exception as exc:
+            print(f"[transcribe-multi] diarisation échouée (non bloquant) : {exc}", flush=True)
+    elif enable_diarization and not hf_token:
+        print("[transcribe-multi] diarisation demandée mais HF_TOKEN absent — ignorée", flush=True)
+
+    print(
+        f"[transcribe-multi] terminé — {len(merged)} segments, "
+        f"diarisation={has_diarization}, durée_totale={time.time()-t0:.0f}s",
+        flush=True,
+    )
+    return merged
+
