@@ -256,6 +256,8 @@ model TranscriptionJob {
   /// déclenche `job_type: "transcribe-multilingual"` côté worker : N passes
   /// Whisper avec langues forcées + fusion par avg_confidence. Si vide, le
   /// champ `language` ci-dessus est utilisé (comportement historique).
+  /// En mode multi, la traduction inverse Claude est déclenchée auto au
+  /// COMPLETED — la cible est dérivée par inversion segment par segment.
   languages            String[]            @default([])
   enableDiarization    Boolean             @default(false) // demande de segmentation par speaker
   hasDiarization       Boolean             @default(false) // résultat effectif (false si pas de HF_TOKEN)

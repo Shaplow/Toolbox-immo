@@ -15,10 +15,7 @@
 
 import { AlertCircle, ChevronDown, ChevronUp, Wand2 } from "lucide-react";
 import type { CaptionPromptRow } from "@/lib/captionPrompt";
-import {
-  formatAutoHighlightModeLabel,
-  formatAutoHighlightPlacementLabel,
-} from "./utils";
+import { formatAutoHighlightModeLabel } from "./utils";
 
 type AIModel = "claude" | "gpt";
 
@@ -34,7 +31,6 @@ interface Props {
   customPrompts: CaptionPromptRow[];
   selectedPromptId: string | null;
   setSelectedPromptId: (id: string | null) => void;
-  selectedPrompt: CaptionPromptRow | null;
   // Highlight 2 warning
   selectedPromptNeedsHighlight2: boolean;
   highlight2Enabled: boolean;
@@ -56,7 +52,6 @@ export function CaptionsAIPanel({
   customPrompts,
   selectedPromptId,
   setSelectedPromptId,
-  selectedPrompt,
   selectedPromptNeedsHighlight2,
   highlight2Enabled,
   promptStorageAvailable,
@@ -138,11 +133,6 @@ export function CaptionsAIPanel({
                         </span>
                       )}
                     </div>
-                    {p.autoHighlight.enabled && (
-                      <p className="mt-1 text-[10px] text-rose-400">
-                        Auto-highlight {formatAutoHighlightPlacementLabel(p.autoHighlight.placement)}
-                      </p>
-                    )}
                   </button>
                 </div>
               ))}
@@ -152,20 +142,6 @@ export function CaptionsAIPanel({
               <p className="text-[11px] text-rose-500">
                 Aucun prompt disponible pour le moment. Contactez votre administrateur.
               </p>
-            </div>
-          )}
-
-          {selectedPrompt?.autoHighlight.enabled && (
-            <div className="mb-3 rounded-xl border border-rose-200 bg-white px-3 py-2.5">
-              <p className="text-[11px] font-semibold text-rose-800">Auto-highlight actif</p>
-              <p className="mt-0.5 text-[11px] text-rose-700">
-                {formatAutoHighlightModeLabel(selectedPrompt.autoHighlight.mode)} · consigne insérée {formatAutoHighlightPlacementLabel(selectedPrompt.autoHighlight.placement)}
-              </p>
-              {selectedPrompt.autoHighlight.prompt && (
-                <p className="mt-1 text-[11px] text-rose-500">
-                  {selectedPrompt.autoHighlight.prompt}
-                </p>
-              )}
             </div>
           )}
 

@@ -39,7 +39,7 @@ type SegmentJSON = {
 };
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const userContext = await getUserContext();
@@ -106,6 +106,9 @@ export async function POST(
     );
   }
 
+  // Le bouton "Retraduire" passe ?force=1 pour bypass le guard idempotent.
+  const forceRetranslate = new URL(req.url).searchParams.get("force") === "1";
+
   // Guard idempotence : si la majorité des segments ont déjà une traduction,
   // on considère que /translate a déjà tourné — on retourne le résultat
   // existant sans rappeler Claude. Évite la race condition d'un double-click
@@ -117,7 +120,7 @@ export async function POST(
   const eligibleCount = segments.filter(
     (s) => typeof s.text === "string" && s.text.trim().length > 0
   ).length;
-  if (eligibleCount > 0 && alreadyTranslatedCount >= eligibleCount) {
+  if (!forceRetranslate && eligibleCount > 0 && alreadyTranslatedCount >= eligibleCount) {
     return NextResponse.json({
       segmentCount: segments.length,
       translated: alreadyTranslatedCount,

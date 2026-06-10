@@ -183,7 +183,7 @@ function wrapSubtitleText(text: string, maxPerLine = SRT_MAX_CHARS_PER_LINE): st
   return words.slice(0, bestIdx + 1).join(" ") + "\n" + words.slice(bestIdx + 1).join(" ");
 }
 
-type WorkWord = Word & { speaker?: string };
+type WorkWord = Word & { speaker?: string; language?: string };
 
 function cleanWords(words: WorkWord[]): WorkWord[] {
   const HESITATION = /^(euh+|hm+|mh+|bah|pfff+|ah+|oh+|eh+)\.?$/i;
@@ -299,6 +299,12 @@ function flushBuffer(buffer: WorkWord[]): Segment {
   };
   const speaker = buffer[0].speaker;
   if (speaker) seg.speaker = speaker;
+  // Propage la langue du segment d'origine (mode multi-langue) — sans ça, le
+  // bilingualStatus côté CaptionsGenerateForm ne détecte plus le mode multi
+  // après le grouping word-level, et le banner "Lancer la traduction" ne
+  // s'affiche jamais.
+  const language = buffer[0].language;
+  if (language) seg.language = language;
   return seg;
 }
 
@@ -308,11 +314,11 @@ export function buildSubtitlesFromWords(segments: Segment[]): Segment[] {
   for (const seg of segments) {
     if (seg.words && seg.words.length > 0) {
       for (const w of seg.words) {
-        allWords.push({ ...w, speaker: seg.speaker });
+        allWords.push({ ...w, speaker: seg.speaker, language: seg.language });
       }
     } else {
       // Segment without word timestamps: treat as a single synthetic word
-      allWords.push({ word: seg.text.trim(), start: seg.start, end: seg.end, speaker: seg.speaker });
+      allWords.push({ word: seg.text.trim(), start: seg.start, end: seg.end, speaker: seg.speaker, language: seg.language });
     }
   }
 

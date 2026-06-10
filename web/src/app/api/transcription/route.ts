@@ -322,11 +322,26 @@ export async function POST(req: NextRequest) {
         data: {
           status: "COMPLETED",
           outputJsonKey,
+          // Si pas de R2, on persiste les segments inline en DB pour que la
+          // chaîne auto trouve quoi charger. Sinon (R2 configuré), les
+          // triggers chargeront depuis outputJsonKey.
+          ...(outputJsonKey ? {} : { segmentsJson: JSON.stringify(data.segments) }),
           segmentCount: data.segment_count,
           duration: data.duration,
           hasDiarization: data.has_diarization,
         },
       });
+
+      // Mode multi : déclenche la traduction inverse auto sur les segments
+      // (gating interne au trigger — skip pour les jobs mono).
+      void (async () => {
+        try {
+          const { triggerAutoTranslationForTranscription } = await import("@/lib/triggerAutoTranslationFromTranscription");
+          await triggerAutoTranslationForTranscription(job.id);
+        } catch (err) {
+          console.error(`[transcription/local] triggerAutoTranslation threw: ${String(err)}`);
+        }
+      })();
 
       return NextResponse.json({ jobId: job.id }, { status: 202 });
     } catch (err) {

@@ -138,11 +138,27 @@ export async function POST(
         where: { id: job.id },
         data: {
           status: "COMPLETED",
+          // Persiste en inline pour que la chaîne auto puisse charger les
+          // segments (pas de R2 en mode local). Coûteux pour de gros JSON
+          // mais c'est un path dev/test uniquement.
+          segmentsJson: JSON.stringify(data.segments),
           segmentCount: data.segment_count,
           duration: data.duration,
           hasDiarization: data.has_diarization,
         },
       });
+
+      // Mode multi : déclenche la traduction inverse auto sur les segments
+      // (gating interne au trigger — skip pour les jobs mono).
+      void (async () => {
+        try {
+          const { triggerAutoTranslationForTranscription } = await import("@/lib/triggerAutoTranslationFromTranscription");
+          await triggerAutoTranslationForTranscription(job.id);
+        } catch (err) {
+          console.error(`[transcription/submit] triggerAutoTranslation threw: ${String(err)}`);
+        }
+      })();
+
       return NextResponse.json({ jobId: job.id });
     } catch (err) {
       await prisma.transcriptionJob.update({

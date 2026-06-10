@@ -177,7 +177,12 @@ export async function PATCH(
     );
   }
 
-  let body: { model?: unknown; language?: unknown; languages?: unknown; enable_diarization?: unknown };
+  let body: {
+    model?: unknown;
+    language?: unknown;
+    languages?: unknown;
+    enable_diarization?: unknown;
+  };
   try {
     body = await req.json();
   } catch {

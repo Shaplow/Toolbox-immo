@@ -70,9 +70,9 @@ const LANGUAGE_OPTIONS = [
   { value: "auto", label: "Détection auto" },
 ];
 
-/** Catalogue pour le multi-select multi-langue. Aucune option "auto" : chaque
- *  passe Whisper doit forcer un code ISO explicite. */
-const MULTILINGUAL_OPTIONS = [
+/** Catalogue des langues Whisper. Toujours affiché en multi-select badges.
+ *  Une seule langue cochée → mode mono. Plusieurs → mode multi (bêta) auto. */
+const LANGUAGE_BADGES = [
   { value: "fr", label: "Français" },
   { value: "zh", label: "Chinois" },
   { value: "en", label: "Anglais" },
@@ -86,7 +86,10 @@ const MULTILINGUAL_OPTIONS = [
   { value: "ar", label: "Arabe" },
 ];
 
-const DEFAULT_MULTILINGUAL_LANGUAGES = ["fr", "zh"];
+const DEFAULT_LANGUAGES = ["fr"];
+
+/** localStorage key — persiste les langues entre uploads. */
+const LANGUAGES_LOCALSTORAGE_KEY = "transcription_languages_v1";
 
 const STATUS_ICON: Record<Job["status"], React.ReactNode> = {
   QUEUED: <Clock className="h-4 w-4 text-peach-700" />,
@@ -140,11 +143,10 @@ export function TranscriptionList({
   const [jobs, setJobs] = useState<Job[]>(initialJobs);
   const [dragging, setDragging] = useState(false);
   const defaultConfig = DEFAULT_JOB_CONFIG;
-  // Mode multi-langue (bêta) : appliqué uniquement aux nouveaux uploads.
-  // Quand activé, ignore la langue par défaut et envoie `languages: [...]`
-  // qui déclenche job_type="transcribe-multilingual" côté worker.
-  const [multilingualMode, setMultilingualMode] = useState(false);
-  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(DEFAULT_MULTILINGUAL_LANGUAGES);
+  // Langues sélectionnées (1 = mono, 2+ = multi auto). Restauré depuis
+  // localStorage au mount, FR pré-coché par défaut.
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(DEFAULT_LANGUAGES);
+  const isMultilingual = selectedLanguages.length >= 2;
   const [queuedDrafts, setQueuedDrafts] = useState<Record<string, JobDraft>>({});
   const [dirtyJobIds, setDirtyJobIds] = useState<Record<string, boolean>>({});
   const [savingJobIds, setSavingJobIds] = useState<Record<string, boolean>>({});
@@ -214,6 +216,33 @@ export function TranscriptionList({
       // Ignore background polling errors. The manual refresh remains available.
     }
   }, [processingJobs]);
+
+  // Restaure les langues sélectionnées depuis localStorage au mount.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(LANGUAGES_LOCALSTORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const validCodes = new Set(LANGUAGE_BADGES.map((b) => b.value));
+        const filtered = parsed.filter((c): c is string => typeof c === "string" && validCodes.has(c));
+        if (filtered.length > 0) setSelectedLanguages(filtered);
+      }
+    } catch {
+      // Ignore corrupted state
+    }
+  }, []);
+
+  // Persiste les langues sélectionnées à chaque changement.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(LANGUAGES_LOCALSTORAGE_KEY, JSON.stringify(selectedLanguages));
+    } catch {
+      // localStorage quota / SSR — silent fail.
+    }
+  }, [selectedLanguages]);
 
   // SSE fast path — transcription jobs updated immediately when webhook fires
   useAllJobEvents((event) => {
@@ -316,13 +345,12 @@ export function TranscriptionList({
             filename: file.name,
             ext,
             model: "turbo",
-            language: defaultConfig.language,
-            // Multi-langue (bêta) : envoyé uniquement si le toggle est ON et
-            // qu'au moins 2 langues sont sélectionnées. Sinon comportement
-            // mono-langue inchangé.
-            ...(multilingualMode && selectedLanguages.length >= 2
+            // 1 langue cochée = mode mono, on envoie `language`.
+            // 2+ langues = mode multi auto, on envoie `languages` qui déclenche
+            // job_type="transcribe-multilingual" + traduction inverse auto.
+            ...(isMultilingual
               ? { languages: selectedLanguages }
-              : {}),
+              : { language: selectedLanguages[0] ?? defaultConfig.language }),
             enable_diarization: defaultConfig.enableDiarization,
             // V2 friction MED-2/MED-6 : si on est dans le contexte d'un slot,
             // on rattache la transcription au slot pour qu'elle apparaisse
@@ -382,7 +410,7 @@ export function TranscriptionList({
       type: "error",
       message: errors[0] ?? "Impossible de préparer les rushs pour la transcription.",
     });
-  }, [defaultConfig, refreshJobs, uploadToPresignedUrl, slotContext, multilingualMode, selectedLanguages]);
+  }, [defaultConfig, refreshJobs, uploadToPresignedUrl, slotContext, selectedLanguages, isMultilingual]);
 
   const handleFiles = useCallback(async (fileList: FileList | null) => {
     const files = Array.from(fileList ?? []).filter((file) => file.size > 0);
@@ -657,68 +685,55 @@ export function TranscriptionList({
         </div>
       </div>
 
-      {/* Toggle Mode multi-langue (bêta) — appliqué à tous les uploads suivants */}
+      {/* Section Langues — toujours visible, FR coché par défaut.
+          1 langue = mode mono. 2+ = mode multi auto (traduction inverse). */}
       <div className="rounded-2xl border border-white/50 bg-white/60 backdrop-blur-[6px] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={multilingualMode}
-            onChange={(event) => setMultilingualMode(event.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-sky-700 focus:ring-sky-500"
-          />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <Languages className="h-4 w-4 text-sky-700" />
-              <span className="text-sm font-semibold text-gray-900">
-                Mode multi-langue <span className="text-[10px] uppercase tracking-widest text-sky-700 font-bold">bêta</span>
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-gray-500">
-              Lance plusieurs passes Whisper (une par langue forcée) et fusionne les segments selon la confiance la plus haute. Temps de transcription ≈ × nombre de langues sélectionnées.
-            </p>
-          </div>
-        </label>
-
-        {multilingualMode && (
-          <div className="mt-3 pl-7 space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">
-              Langues à transcrire ({selectedLanguages.length} sélectionnées)
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {MULTILINGUAL_OPTIONS.map((option) => {
-                const checked = selectedLanguages.includes(option.value);
-                return (
-                  <label
-                    key={option.value}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium cursor-pointer transition-colors ${
-                      checked
-                        ? "bg-sky-100 border-sky-300 text-sky-900"
-                        : "bg-white border-gray-200 text-gray-600 hover:border-sky-300"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(event) => {
-                        setSelectedLanguages((current) =>
-                          event.target.checked
-                            ? [...current, option.value]
-                            : current.filter((code) => code !== option.value)
-                        );
-                      }}
-                      className="hidden"
-                    />
-                    {option.label}
-                  </label>
-                );
-              })}
-            </div>
-            {selectedLanguages.length < 2 && (
-              <p className="text-[11px] text-rose-700">
-                Sélectionnez au moins 2 langues — sinon le mode multi-langue n&apos;est pas activé.
-              </p>
-            )}
-          </div>
+        <div className="flex items-center gap-2 mb-2">
+          <Languages className="h-4 w-4 text-sky-700" />
+          <span className="text-sm font-semibold text-gray-900">Langues</span>
+          {isMultilingual && (
+            <span className="text-[10px] uppercase tracking-widest font-bold text-sky-700">
+              Multi · bêta
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {LANGUAGE_BADGES.map((option) => {
+            const checked = selectedLanguages.includes(option.value);
+            return (
+              <label
+                key={option.value}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium cursor-pointer transition-colors ${
+                  checked
+                    ? "bg-sky-100 border-sky-300 text-sky-900"
+                    : "bg-white border-gray-200 text-gray-600 hover:border-sky-300"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(event) => {
+                    setSelectedLanguages((current) => {
+                      if (event.target.checked) {
+                        if (current.includes(option.value)) return current;
+                        return [...current, option.value];
+                      }
+                      // Ne jamais retomber à 0 langue — au moins une obligatoire.
+                      const next = current.filter((code) => code !== option.value);
+                      return next.length === 0 ? current : next;
+                    });
+                  }}
+                  className="hidden"
+                />
+                {option.label}
+              </label>
+            );
+          })}
+        </div>
+        {isMultilingual && (
+          <p className="mt-2 text-[11px] text-sky-700/80">
+            Mode multi : {selectedLanguages.length} passes Whisper en séquence + traduction inverse auto. Temps de transcription ≈ × nombre de langues.
+          </p>
         )}
       </div>
 

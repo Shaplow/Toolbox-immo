@@ -192,10 +192,10 @@ export default function CaptionsGenerateForm({
   const [timedSegments, setTimedSegments] = useState<Segment[] | null>(null);
   const [timingStatuses, setTimingStatuses] = useState<CaptionTimingStatus[] | null>(null);
 
-  // AI corrector state
+  // AI corrector state — GPT préféré par défaut quand les deux sont dispos.
   const [showAI, setShowAI] = useState(false);
   const [aiModel, setAiModel] = useState<AIModel>(
-    aiConfig.hasClaude ? "claude" : "gpt"
+    aiConfig.hasGpt ? "gpt" : "claude"
   );
   const [customPrompts] = useState<CaptionPromptRow[]>(initialPrompts);
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
@@ -464,8 +464,11 @@ export default function CaptionsGenerateForm({
     translatingRef.current = true;
     setTranslating(true);
     setTranslateError(null);
+    // Si on est en mode "translated", c'est un retradaction explicite — bypass
+    // le guard idempotent du serveur via ?force=1.
+    const forceQuery = bilingualStatus === "translated" ? "?force=1" : "";
     try {
-      const res = await fetch(`/api/transcription/${selectedTranscriptionId}/translate`, {
+      const res = await fetch(`/api/transcription/${selectedTranscriptionId}/translate${forceQuery}`, {
         method: "POST",
       });
       if (!res.ok) {
@@ -963,7 +966,10 @@ export default function CaptionsGenerateForm({
           />
         </div>
 
-        {/* Mode bilingue — banner après chargement d'une transcription multi-langue */}
+        {/* Mode bilingue — banner après chargement d'une transcription traduite/à traduire.
+            La chaîne auto post-transcription (cf. /transcriptions) traduit normalement
+            sans intervention. Le bouton ici reste un fallback manuel si l'auto-config
+            n'était pas activée à l'upload, ou pour retraduire après édition manuelle. */}
         {bilingualStatus !== "none" && selectedTranscriptionId && (
           <div className={`mb-3 rounded-2xl backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1)] ${
             bilingualStatus === "translated"
@@ -978,22 +984,25 @@ export default function CaptionsGenerateForm({
                 {bilingualStatus === "translated" ? (
                   <>
                     <p className="text-[13px] font-semibold text-emerald-900">
-                      Mode bilingue — traductions chargées
+                      Traductions chargées
                     </p>
                     <p className="mt-0.5 text-[11px] text-emerald-700/80">
-                      Chaque segment affiche la traduction inverse de la langue parlée.
-                      Vous pouvez éditer les textes traduits ci-dessous avant le rendu.
+                      Les segments traduits sont prêts. Vous pouvez les éditer ci-dessous,
+                      ou relancer la traduction si nécessaire.
                     </p>
+                    {translateError && (
+                      <p className="mt-1 text-[11px] text-rose-700">{translateError}</p>
+                    )}
                   </>
                 ) : (
                   <>
                     <p className="text-[13px] font-semibold text-sky-900">
-                      Transcription multi-langue détectée
+                      Traductions absentes
                     </p>
                     <p className="mt-0.5 text-[11px] text-sky-700/80">
-                      Cette transcription contient plusieurs langues. Lancez la traduction
-                      inverse pour que chaque segment affiche le texte dans la langue opposée
-                      à celle parlée.
+                      Cette transcription n&apos;a pas été traduite automatiquement
+                      (vous pouvez activer la chaîne auto depuis /transcriptions).
+                      Lancez-la manuellement ci-contre.
                     </p>
                     {translateError && (
                       <p className="mt-1 text-[11px] text-rose-700">{translateError}</p>
@@ -1001,17 +1010,23 @@ export default function CaptionsGenerateForm({
                   </>
                 )}
               </div>
-              {bilingualStatus === "translatable" && (
-                <button
-                  type="button"
-                  onClick={() => void triggerBilingualTranslation()}
-                  disabled={translating}
-                  className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-sky-900 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {translating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
-                  {translating ? "Traduction…" : "Lancer la traduction"}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => void triggerBilingualTranslation()}
+                disabled={translating}
+                className={`shrink-0 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  bilingualStatus === "translated"
+                    ? "border border-emerald-300 bg-white text-emerald-900 hover:bg-emerald-50"
+                    : "bg-sky-900 text-white hover:bg-sky-800"
+                }`}
+              >
+                {translating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
+                {translating
+                  ? "Traduction…"
+                  : bilingualStatus === "translated"
+                    ? "Retraduire"
+                    : "Lancer la traduction"}
+              </button>
             </div>
           </div>
         )}
@@ -1067,7 +1082,6 @@ export default function CaptionsGenerateForm({
                   customPrompts={customPrompts}
                   selectedPromptId={selectedPromptId}
                   setSelectedPromptId={setSelectedPromptId}
-                  selectedPrompt={selectedPrompt}
                   selectedPromptNeedsHighlight2={selectedPromptNeedsHighlight2}
                   highlight2Enabled={highlight2Enabled}
                   promptStorageAvailable={promptStorageAvailable}

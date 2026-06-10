@@ -13,6 +13,7 @@ import { verifyAndParseRunpodWebhook } from "@/lib/webhooks/runpod";
 import { notifyUser } from "@/lib/sseStore";
 import { triggerAutoCaptionForTranscription } from "@/lib/triggerAutoCaptionFromTranscription";
 import { triggerAutoDescriptionForTranscription } from "@/lib/triggerAutoDescriptionFromTranscription";
+import { triggerAutoTranslationForTranscription } from "@/lib/triggerAutoTranslationFromTranscription";
 
 type TranscriptionOutput = {
   output_key?: string;
@@ -84,17 +85,24 @@ export async function POST(req: NextRequest) {
     });
     console.info(`[webhook/transcription] job=${job.id} done`);
 
-    // ── Pipeline sous-titres automatique ─────────────────────────────────
-    // Captions auto : nécessite un template avec captionAutoConfig.enabled,
-    // donc uniquement pour les transcriptions liées à un render (auto_template).
-    // Pour les transcriptions liées à une PublicationVersion (manual_rushes),
-    // le trigger return early de toute façon (no renderId). La CM peut
-    // toujours lancer les captions manuellement via la fiche.
-    if (job.renderId) {
-      void triggerAutoCaptionForTranscription(job.id).catch((err) =>
-        console.error(`[webhook/transcription] triggerAutoCaption threw: ${String(err)}`),
-      );
-    }
+    // Mode multi-langue : déclenche la traduction inverse auto sur les
+    // segments (gating interne — skip pour les jobs mono). Doit s'exécuter
+    // AVANT triggerAutoCaptionForTranscription pour que les CaptionJob auto
+    // voient les segments déjà enrichis avec `translation`.
+    void (async () => {
+      try {
+        await triggerAutoTranslationForTranscription(job.id);
+      } catch (err) {
+        console.error(`[webhook/transcription] triggerAutoTranslation threw: ${String(err)}`);
+      }
+      if (job.renderId) {
+        try {
+          await triggerAutoCaptionForTranscription(job.id);
+        } catch (err) {
+          console.error(`[webhook/transcription] triggerAutoCaption threw: ${String(err)}`);
+        }
+      }
+    })();
 
     // ── Pipeline description IA automatique ────────────────────────────────
     // Marche pour les deux paths : render-based ET version-based. Le trigger
