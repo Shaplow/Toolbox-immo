@@ -75,6 +75,7 @@ export default async function MediaLibraryDetailPage({ params }: Props) {
                 metadataSchema: library.metadataSchema,
                 rotationMode: library.rotationMode,
                 rotationScope: library.rotationScope,
+                maxUsageCount: library.maxUsageCount,
               }}
             />
           </div>

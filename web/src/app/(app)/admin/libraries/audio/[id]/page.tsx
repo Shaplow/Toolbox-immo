@@ -73,6 +73,7 @@ export default async function AudioLibraryDetailPage({ params }: Props) {
                 metadataSchema: library.metadataSchema,
                 rotationMode: library.rotationMode,
                 rotationScope: library.rotationScope,
+                maxUsageCount: library.maxUsageCount,
               }}
             />
           </div>

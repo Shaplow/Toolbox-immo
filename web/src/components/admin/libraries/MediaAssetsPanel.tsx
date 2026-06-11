@@ -92,6 +92,11 @@ export function MediaAssetsPanel({ library }: Props) {
     libraryId: library.id,
     initialSequence: library.setSequence,
   });
+  // ── Ordre de rotation (source serveur — applique buildBurnFilter / maxUsageCount) ──
+  // La simulation côté client (avant le fix 2026-06-11) ignorait `maxUsageCount`
+  // de MediaLibrary → preview désynchronisée. On délègue maintenant au resolver
+  // via /simulate-rotation pour avoir une source unique de vérité.
+  const [rotationOrder, setRotationOrder] = useState<Map<string, { autoRank: number; cycleSize: number }> | null>(null);
   // ── Infinite scroll ──
   const [visibleCount, setVisibleCount] = useState(48);
   const [visibleGroupCount, setVisibleGroupCount] = useState(20);
@@ -371,6 +376,50 @@ export function MediaAssetsPanel({ library }: Props) {
     return { category: cat, setTag: st };
   };
 
+  // Fetch l'ordre de rotation depuis /simulate-rotation \u00e0 chaque changement
+  // de compte filtr\u00e9, s\u00e9quence ou rotationScope. Le serveur applique le
+  // resolver r\u00e9el (avec buildBurnFilter) \u2192 preview fid\u00e8le au prod, y compris
+  // pour maxUsageCount. Sans compte s\u00e9lectionnable on d\u00e9grade \u00e0 null (la UI
+  // affiche un placeholder neutre via NextGenPreview).
+  useEffect(() => {
+    const shouldSkip =
+      isManualMode ||
+      (!accountFilter && library.rotationScope !== "shared");
+    const accountParam = accountFilter ?? accounts[0]?.id; // shared : n'importe quel compte
+    const ctrl = new AbortController();
+    void (async () => {
+      if (shouldSkip || !accountParam) {
+        setRotationOrder(null);
+        return;
+      }
+      try {
+        const res = await fetch(
+          `/api/admin/libraries/media/${library.id}/simulate-rotation?accountId=${encodeURIComponent(accountParam)}`,
+          { cache: "no-store", signal: ctrl.signal }
+        );
+        if (!res.ok) { setRotationOrder(null); return; }
+        const payload = (await res.json()) as {
+          ordered?: Array<{ rank: number; setTag: string | null; category: string | null }>;
+          cycleSize?: number;
+        };
+        const ordered = Array.isArray(payload.ordered) ? payload.ordered : [];
+        const cycleSize = typeof payload.cycleSize === "number" ? payload.cycleSize : ordered.length;
+        const map = new Map<string, { autoRank: number; cycleSize: number }>();
+        for (const item of ordered) {
+          if (typeof item.rank !== "number") continue;
+          map.set(toGroupKey(item.category, item.setTag), { autoRank: item.rank, cycleSize });
+        }
+        setRotationOrder(map);
+      } catch {
+        // Aborted (component unmount / d\u00e9ps chang\u00e9es) ou erreur r\u00e9seau \u2014 on
+        // d\u00e9grade gracieusement vers "pas d'ordre disponible". L'UI affichera
+        // les groupes sans badge autoRank, ce qui reste lisible.
+        setRotationOrder(null);
+      }
+    })();
+    return () => ctrl.abort();
+  }, [library.id, library.rotationScope, library.maxUsageCount, accountFilter, seqState, accounts, isManualMode]);
+
   const groupedBySetTag = useMemo(() => {
     const groups = new Map<string, MediaAsset[]>();
     filtered.forEach((a) => {
@@ -409,110 +458,65 @@ export function MediaAssetsPanel({ library }: Props) {
     };
 
     type GroupItem = { key: string; setTag: string | null; category: string | null; groupAssets: MediaAsset[]; accessibleCount: number; lastUsed: string | null; groupCreatedAt: string | null; autoRank: number | null; cycleSize: number | null; isAccessible: boolean };
-    const isAutoMode = seqState.length === 0;
 
+    // L'ordre + autoRank/cycleSize sont fournis par /simulate-rotation (le
+    // resolver serveur). Ici on se contente de regrouper et d'attacher le
+    // rank par lookup. Plus de simulation locale — voir useEffect ci-dessus.
     const allEntries: GroupItem[] = Array.from(groups.entries()).map(([key, groupAssets]) => {
       const { category, setTag } = fromGroupKey(key);
-      // Accessible when no accountFilter, or at least one non-disabled asset is global / allows this account
       const isAccessible = !accountFilter || groupAssets.some(
         (a) => !a.disabled && (a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))
       );
       const accessibleCount = accountFilter
         ? groupAssets.filter((a) => !a.disabled && (a.accessAccountIds.length === 0 || a.accessAccountIds.includes(accountFilter))).length
         : groupAssets.filter((a) => !a.disabled).length;
-      return { key, setTag, category, groupAssets, accessibleCount, lastUsed: getLastUsed(groupAssets), groupCreatedAt: getGroupCreatedAt(groupAssets), autoRank: null, cycleSize: null, isAccessible };
+      const ranked = rotationOrder?.get(key) ?? null;
+      return {
+        key,
+        setTag,
+        category,
+        groupAssets,
+        accessibleCount,
+        lastUsed: getLastUsed(groupAssets),
+        groupCreatedAt: getGroupCreatedAt(groupAssets),
+        autoRank: ranked?.autoRank ?? null,
+        cycleSize: ranked?.cycleSize ?? null,
+        isAccessible,
+      };
     });
 
     const named = allEntries.filter((g) => g.setTag || g.category);
     const unnamed = allEntries.filter((g) => !g.setTag && !g.category);
 
-    if (isAutoMode) {
-      // Simulate rotation: only groups with at least one non-disabled accessible asset participate.
-      const accessibleNamed = named.filter((g) => g.accessibleCount > 0 && (!accountFilter || g.isAccessible));
-      const inaccessibleNamed = named.filter((g) => g.accessibleCount === 0 || (accountFilter && !g.isAccessible));
-      // Category-level staleness: MAX(lastUsed) across all sets in the category.
-      // This is the primary sort key — mirrors the SQL ORDER BY cat_last_used in the resolver.
-      const catLastUsed = new Map<string | null, string | null>();
-      for (const g of accessibleNamed) {
-        const prev = catLastUsed.get(g.category) ?? null;
-        if (!prev || (g.lastUsed && g.lastUsed > prev)) {
-          catLastUsed.set(g.category, g.lastUsed);
-        }
-      }
-      const ordered: GroupItem[] = [];
-      // virtualCatLastUsed tracks simulated "time" per category as the loop advances.
-      // Each pick updates the picked category to a virtual counter so that subsequent
-      // iterations re-rank categories correctly — mirroring what the real resolver does
-      // because it re-reads catLastUsed from DB on every generation.
-      const virtualCatLastUsed = new Map<string | null, string | null>(catLastUsed);
-      let virtualTick = 0;
-      let remaining = [...accessibleNamed]; // re-sort dynamically each iteration
-      let lastCategory: string | null = null;
-      while (remaining.length > 0) {
-        // Re-sort remaining using the current virtual catLastUsed
-        remaining.sort((a, b) => {
-          const catA = virtualCatLastUsed.get(a.category) ?? null;
-          const catB = virtualCatLastUsed.get(b.category) ?? null;
-          if (!catA && catB) return -1;
-          if (catA && !catB) return 1;
-          if (catA && catB && catA !== catB) return catA < catB ? -1 : 1;
-          if (!a.lastUsed && b.lastUsed) return -1;
-          if (a.lastUsed && !b.lastUsed) return 1;
-          if (a.lastUsed && b.lastUsed && a.lastUsed !== b.lastUsed)
-            return a.lastUsed < b.lastUsed ? -1 : 1;
-          // Tiebreaker: group creation date (oldest uploaded first).
-          // Mirrors the SQL ORDER BY sub2.group_created_at ASC NULLS LAST in the resolver.
-          if (a.groupCreatedAt && b.groupCreatedAt && a.groupCreatedAt !== b.groupCreatedAt)
-            return a.groupCreatedAt < b.groupCreatedAt ? -1 : 1;
-          if (a.groupCreatedAt && !b.groupCreatedAt) return -1;
-          if (!a.groupCreatedAt && b.groupCreatedAt) return 1;
-          // Final deterministic fallback: numeric-aware setTag, then category.
-          const na = parseInt(a.setTag ?? "", 10);
-          const nb = parseInt(b.setTag ?? "", 10);
-          if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
-          const setTagCmp = (a.setTag ?? "").localeCompare(b.setTag ?? "");
-          if (setTagCmp !== 0) return setTagCmp;
-          return (a.category ?? "").localeCompare(b.category ?? "");
-        });
-        let eligible: GroupItem[] = lastCategory ? remaining.filter((g) => g.category !== lastCategory) : remaining;
-        if (eligible.length === 0) eligible = remaining;
-        const pick: GroupItem = eligible[0]!;
-        ordered.push({ ...pick, autoRank: ordered.length + 1, cycleSize: -1 }); // cycleSize filled after loop
-        lastCategory = pick.category;
-        remaining = remaining.filter((g) => g.key !== pick.key);
-        // Advance virtual catLastUsed for the picked category so it sorts to the back
-        virtualTick += 1;
-        virtualCatLastUsed.set(pick.category, `__sim_${String(virtualTick).padStart(10, "0")}`);
-      }
-      const cycleSize = ordered.length;
-      const orderedWithCycle = ordered.map((g) => ({ ...g, cycleSize }));
-      // When a specific account is selected, hide inaccessible groups entirely.
-      const visibleUnnamed = accountFilter ? unnamed.filter((g) => g.isAccessible) : unnamed;
-      return [...orderedWithCycle, ...(accountFilter ? [] : inaccessibleNamed.map((g) => ({ ...g, cycleSize: null }))), ...visibleUnnamed.map((g) => ({ ...g, cycleSize: null }))];
-    } else {
-      // Override mode: accessible groups first (in seqState order), inaccessible at end
-      const sortFn = ({ setTag: ka }: GroupItem, { setTag: kb }: GroupItem): number => {
-        if (!ka && !kb) return 0;
-        if (!ka) return 1;
-        if (!kb) return -1;
-        const ia = seqState.indexOf(ka);
-        const ib = seqState.indexOf(kb);
-        if (ia !== -1 && ib !== -1) return ia - ib;
-        if (ia !== -1) return -1;
-        if (ib !== -1) return 1;
-        return ka.localeCompare(kb);
-      };
-      if (accountFilter) {
-        const accessible = named.filter((g) => g.isAccessible).sort(sortFn);
-        // Show inaccessible/disabled groups that are in the sequence — they occupy cursor
-        // positions and must be visible so the admin can remove them.
-        const blockedInSeq = named.filter((g) => !g.isAccessible && g.setTag && seqState.includes(g.setTag)).sort(sortFn);
-        const accessibleUnnamed = unnamed.filter((g) => g.isAccessible);
-        return [...accessible, ...blockedInSeq, ...accessibleUnnamed];
-      }
-      return [...named.sort(sortFn), ...unnamed];
+    // Tri : groupes avec autoRank (= participent à la rotation côté serveur)
+    // en tête, ordonnés par rank ASC. Le reste suit, named puis unnamed,
+    // avec tiebreak alphabétique numeric-aware sur setTag (parité avec le
+    // SQL LPAD du resolver).
+    const tiebreakSetTag = (a: GroupItem, b: GroupItem): number => {
+      const na = parseInt(a.setTag ?? "", 10);
+      const nb = parseInt(b.setTag ?? "", 10);
+      if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+      return (a.setTag ?? "").localeCompare(b.setTag ?? "");
+    };
+    const sortedNamed = [...named].sort((a, b) => {
+      if (a.autoRank != null && b.autoRank != null) return a.autoRank - b.autoRank;
+      if (a.autoRank != null) return -1;
+      if (b.autoRank != null) return 1;
+      return tiebreakSetTag(a, b);
+    });
+
+    // En filtre par compte, on masque les groupes inaccessibles sauf ceux
+    // qui occupent un slot du setSequence (mode override) — l'admin doit
+    // pouvoir les retirer de la séquence depuis l'UI.
+    if (accountFilter) {
+      const visibleNamed = sortedNamed.filter(
+        (g) => g.isAccessible || (g.setTag != null && seqState.includes(g.setTag))
+      );
+      const visibleUnnamed = unnamed.filter((g) => g.isAccessible);
+      return [...visibleNamed, ...visibleUnnamed];
     }
-  }, [filtered, seqState, accountFilter]);
+    return [...sortedNamed, ...unnamed];
+  }, [filtered, accountFilter, rotationOrder, seqState]);
 
   // Mise à jour des refs groupes après render via useEffect.
   useEffect(() => {

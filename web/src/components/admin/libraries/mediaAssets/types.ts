@@ -49,6 +49,9 @@ export interface MediaLibrary {
   rotationMode?: string | null;
   /** "per_account" (defaut) | "shared". Détermine si le cursor est par compte ou global. */
   rotationScope?: string | null;
+  /** Cap d'utilisation par asset (null = infini). Lu par le panel pour refetch
+   *  l'ordre de rotation serveur quand ce champ est modifié dans le drawer. */
+  maxUsageCount?: number | null;
 }
 
 export type SortKey =

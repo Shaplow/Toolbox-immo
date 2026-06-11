@@ -42,7 +42,7 @@ type PrismaQueryClient = Pick<typeof prisma, '$queryRaw'>;
  *   - `ma` est l'alias attendu pour MediaAsset dans la query appelante.
  *   - Le helper retourne du SQL préfixé `AND` — à concaténer après un WHERE.
  */
-function buildAccessFilter(accountId: string | undefined): Prisma.Sql {
+export function buildAccessFilter(accountId: string | undefined): Prisma.Sql {
   return accountId
     ? Prisma.sql`AND ma."disabled" = false
         AND (NOT EXISTS (SELECT 1 FROM "MediaAssetAccess" acc WHERE acc."assetId" = ma.id)
@@ -62,7 +62,7 @@ function buildAccessFilter(accountId: string | undefined): Prisma.Sql {
  * devait être propagé 7×. Le LPAD numérique a été aligné Media↔Data en W3.1 ;
  * cette constante prévient toute future divergence.
  */
-const GROUP_DISCOVERY_ORDER_BY = Prisma.sql`
+export const GROUP_DISCOVERY_ORDER_BY = Prisma.sql`
   ORDER BY sub2.cat_last_used ASC NULLS FIRST, sub2.last_used ASC NULLS FIRST,
            sub2.group_created_at ASC NULLS LAST,
            CASE WHEN sub2."setTag" ~ '^[0-9]+$' THEN LPAD(sub2."setTag", 20, '0') ELSE sub2."setTag" END ASC NULLS LAST,
@@ -303,7 +303,7 @@ function buildTagFragment(
  * - global (no accountId) : COUNT depuis MediaAsset.usageCount.
  * - maxUsageCount null/<=0 : pas de filtre (rotation infinie).
  */
-function buildBurnFilter(maxUsageCount: number | null, accountId?: string, minDuration?: number): Prisma.Sql {
+export function buildBurnFilter(maxUsageCount: number | null, accountId?: string, minDuration?: number): Prisma.Sql {
   // Phase 4 gap fix : combine burn + duration en un seul fragment pour économiser
   // 13 injections séparées dans selectMediaAssetBySetSequence. NULL duration permise
   // (tolérance pour les assets non probés).
