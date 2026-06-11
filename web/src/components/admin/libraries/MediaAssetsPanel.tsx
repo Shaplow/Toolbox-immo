@@ -376,8 +376,24 @@ export function MediaAssetsPanel({ library }: Props) {
     return { category: cat, setTag: st };
   };
 
+  // Hash compact des champs qui affectent la rotation c\u00f4t\u00e9 serveur. Sert de
+  // dep au useEffect ci-dessous \u2192 refetch automatiquement apr\u00e8s toute mutation
+  // locale (cr\u00e9ation, suppression, changement de setTag/category, toggle
+  // disabled, modif d'acc\u00e8s, reset usage). \u00c9vite \u00e0 l'admin de recharger la
+  // page apr\u00e8s chaque \u00e9dition. Ordre stable (assets est tri\u00e9 en amont par
+  // useMediaAssetsLoader) \u2014 pas besoin de re-trier ici.
+  const assetsRotationHash = useMemo(() => {
+    return assets
+      .map(
+        (a) =>
+          `${a.id}:${a.setTag ?? ""}:${a.category ?? ""}:${a.disabled ? 1 : 0}:${a.accessAccountIds.join(",")}:${a.usageCount}`,
+      )
+      .join("|");
+  }, [assets]);
+
   // Fetch l'ordre de rotation depuis /simulate-rotation \u00e0 chaque changement
-  // de compte filtr\u00e9, s\u00e9quence ou rotationScope. Le serveur applique le
+  // de compte filtr\u00e9, s\u00e9quence, rotationScope, maxUsageCount, OU mutation
+  // d'assets pertinente (via assetsRotationHash). Le serveur applique le
   // resolver r\u00e9el (avec buildBurnFilter) \u2192 preview fid\u00e8le au prod, y compris
   // pour maxUsageCount. Sans compte s\u00e9lectionnable on d\u00e9grade \u00e0 null (la UI
   // affiche un placeholder neutre via NextGenPreview).
@@ -418,7 +434,7 @@ export function MediaAssetsPanel({ library }: Props) {
       }
     })();
     return () => ctrl.abort();
-  }, [library.id, library.rotationScope, library.maxUsageCount, accountFilter, seqState, accounts, isManualMode]);
+  }, [library.id, library.rotationScope, library.maxUsageCount, accountFilter, seqState, accounts, isManualMode, assetsRotationHash]);
 
   const groupedBySetTag = useMemo(() => {
     const groups = new Map<string, MediaAsset[]>();
