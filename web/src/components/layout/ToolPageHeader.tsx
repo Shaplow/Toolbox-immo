@@ -54,6 +54,13 @@ export interface ToolPageHeaderProps {
    * amber→peach · rose→rose. Toute autre valeur tombe sur "neutral".
    */
   iconColor?: string;
+  /** V2 (15/06) — Breadcrumb au-dessus du titre (ReactNode pour souplesse :
+   *  on peut y mettre des <Link> Next + ChevronRight au choix). */
+  breadcrumb?: ReactNode;
+  /** V2 (15/06) — Row de KPIPills sous le titre (rendu inline-flex gap-2). */
+  kpis?: ReactNode;
+  /** V2 (15/06) — Tabs (ou autre nav contextuelle) sous header, hors padding. */
+  tabs?: ReactNode;
 }
 
 export function ToolPageHeader({
@@ -63,33 +70,45 @@ export function ToolPageHeader({
   actions,
   iconTint,
   iconColor,
+  breadcrumb,
+  kpis,
+  tabs,
 }: ToolPageHeaderProps) {
   // Résolution : iconTint explicite > iconColor legacy mappé > "neutral".
   const tint: IconTint =
     iconTint ?? (iconColor ? LEGACY_COLOR_MAP[iconColor] ?? "neutral" : "neutral");
 
   return (
-    <div className="flex items-center justify-between mb-8 gap-3">
-      <div className="flex items-center gap-3 min-w-0">
-        <div
-          className={[
-            "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 backdrop-blur-[10px]",
-            "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.06)]",
-            TINT_WRAPPER[tint],
-          ].join(" ")}
-        >
-          <Icon size={20} strokeWidth={1.8} />
-        </div>
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight text-gray-950 truncate">{title}</h1>
-          {subtitle && (
-            <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>
-          )}
-        </div>
-      </div>
-      {actions && (
-        <div className="flex items-center gap-2 shrink-0">{actions}</div>
+    <div className="mb-8">
+      {breadcrumb && (
+        <nav className="mb-3 flex items-center gap-1.5 text-[11px] text-gray-500">
+          {breadcrumb}
+        </nav>
       )}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div
+            className={[
+              "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 backdrop-blur-[10px]",
+              "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.4),inset_0_-1px_0_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.06)]",
+              TINT_WRAPPER[tint],
+            ].join(" ")}
+          >
+            <Icon size={20} strokeWidth={1.8} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold tracking-tight text-gray-950 truncate">{title}</h1>
+            {subtitle && (
+              <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>
+            )}
+          </div>
+        </div>
+        {actions && (
+          <div className="flex items-center gap-2 shrink-0">{actions}</div>
+        )}
+      </div>
+      {kpis && <div className="mt-4 inline-flex flex-wrap items-center gap-2">{kpis}</div>}
+      {tabs && <div className="mt-4 border-t border-white/40 pt-3">{tabs}</div>}
     </div>
   );
 }

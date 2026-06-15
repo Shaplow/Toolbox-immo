@@ -4,6 +4,7 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { Video, Music2, Database, Type, Sparkles, ArrowRight } from "lucide-react";
 import { Hub, type HubItem } from "@/components/ui/molecules/Hub";
+import { PageShell } from "@/components/ui/PageShell";
 
 export default async function LibrariesHubPage() {
   const userContext = await getUserContext();
@@ -58,7 +59,7 @@ export default async function LibrariesHubPage() {
   ];
 
   return (
-    <div>
+    <PageShell variant="narrow">
       <Hub
         eyebrow="Configuration"
         title="Médiathèque"
@@ -66,7 +67,7 @@ export default async function LibrariesHubPage() {
         cols={3}
       />
       {/* V8 Phase 9 — Ressources avancées en lien discret (rare usage). */}
-      <div className="mt-6 mx-auto max-w-3xl px-6 sm:px-8">
+      <div className="mt-6 mx-auto max-w-3xl px-6 sm:px-8 pb-12">
         <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-2">
           Plus de ressources
         </p>
@@ -97,6 +98,6 @@ export default async function LibrariesHubPage() {
           </Link>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

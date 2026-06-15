@@ -1,8 +1,12 @@
 import { redirect } from "next/navigation";
+import { Instagram } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
 import { AccountsListAdmin } from "@/components/admin/AccountsListAdmin";
+import { PageShell } from "@/components/ui/PageShell";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { KPIPill } from "@/components/ui/molecules/KPIPill";
 
 export const dynamic = "force-dynamic";
 
@@ -44,5 +48,25 @@ export default async function AdminAccountsPage() {
     client: a.client,
   }));
 
-  return <AccountsListAdmin accounts={accountItems} />;
+  const totalBindings = accountItems.reduce((acc, a) => acc + a.activePatternCount, 0);
+
+  return (
+    <PageShell variant="wide">
+      <div className="px-6 sm:px-8 pt-6 pb-12">
+        <ToolPageHeader
+          icon={Instagram}
+          title="Comptes Instagram"
+          subtitle="Tous les comptes IG et leurs recettes appliquées."
+          iconTint="peach"
+          kpis={
+            <>
+              <KPIPill label="Comptes" value={accountItems.length} tint="peach" />
+              <KPIPill label="Recettes actives" value={totalBindings} tint="sky" />
+            </>
+          }
+        />
+        <AccountsListAdmin accounts={accountItems} />
+      </div>
+    </PageShell>
+  );
 }

@@ -1,7 +1,11 @@
 import { redirect } from "next/navigation";
+import { Building2 } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { ClientsListAdmin, type ClientItem } from "@/components/admin/ClientsListAdmin";
+import { PageShell } from "@/components/ui/PageShell";
+import { ToolPageHeader } from "@/components/layout/ToolPageHeader";
+import { KPIPill } from "@/components/ui/molecules/KPIPill";
 
 export const dynamic = "force-dynamic";
 
@@ -37,5 +41,25 @@ export default async function AdminClientsPage() {
     accounts: c.accounts,
   }));
 
-  return <ClientsListAdmin initialClients={items} />;
+  const totalAccounts = items.reduce((acc, c) => acc + c.accounts.length, 0);
+
+  return (
+    <PageShell variant="wide">
+      <div className="px-6 sm:px-8 pt-6 pb-12">
+        <ToolPageHeader
+          icon={Building2}
+          title="Clients"
+          subtitle="Annuaire commercial — un client porte N comptes Instagram."
+          iconTint="sky"
+          kpis={
+            <>
+              <KPIPill label="Clients" value={items.length} tint="sky" />
+              <KPIPill label="Comptes IG" value={totalAccounts} tint="sage" />
+            </>
+          }
+        />
+        <ClientsListAdmin initialClients={items} />
+      </div>
+    </PageShell>
+  );
 }
