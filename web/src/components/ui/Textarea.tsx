@@ -18,23 +18,15 @@ interface TextareaProps extends Omit<TextareaHTMLAttributes<HTMLTextAreaElement>
 }
 
 export function Textarea({ value, onChange, error, variant = "default", className, disabled, ...rest }: TextareaProps) {
-  const base =
-    "w-full rounded-md px-2.5 py-2 text-[13px] text-gray-950 placeholder:text-gray-400 resize-y outline-none transition-colors";
+  // v3 big bang DA — flat shadcn. Variant glass mappé vers default.
+  void variant;
 
-  // Default = semi-verre. Glass = transparent + halo sky.
-  // Default = glass tinté sky (aligné Input).
-  const variantBase =
-    variant === "glass"
-      ? "bg-[var(--surface-glass-medium)] backdrop-blur-[8px] backdrop-saturate-150 border border-white/40"
-      : "bg-sky-50/40 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.08)]";
+  const base =
+    "w-full rounded-md px-2.5 py-2 text-[13px] text-foreground placeholder:text-muted-foreground resize-y outline-none transition-colors bg-card border";
 
   const stateClass = error
-    ? variant === "glass"
-      ? "border-danger-600 focus:shadow-[var(--shadow-focus-ring-danger)]"
-      : "shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(220,38,38,0.55),0_1px_2px_rgba(220,38,38,0.1)] focus:shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(220,38,38,0.7),0_0_0_3px_rgba(220,38,38,0.2)]"
-    : variant === "glass"
-      ? "hover:border-sky-200 focus:border-sky-300 focus:shadow-[0_0_0_3px_rgba(169,209,230,0.32)]"
-      : "hover:bg-sky-50/55 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.12)] focus:bg-sky-50/65 focus:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.45),0_0_0_3px_rgba(169,209,230,0.4)]";
+    ? "border-danger-600 focus:ring-2 focus:ring-danger-600/30"
+    : "border-input hover:border-zinc-300 focus:border-primary focus:ring-2 focus:ring-primary/30";
 
   const disabledClass = disabled ? "opacity-60 cursor-not-allowed" : "";
 
@@ -44,7 +36,7 @@ export function Textarea({ value, onChange, error, variant = "default", classNam
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
       aria-invalid={error ? true : undefined}
-      className={[base, variantBase, stateClass, disabledClass, className ?? ""].filter(Boolean).join(" ")}
+      className={[base, stateClass, disabledClass, className ?? ""].filter(Boolean).join(" ")}
       {...rest}
     />
   );

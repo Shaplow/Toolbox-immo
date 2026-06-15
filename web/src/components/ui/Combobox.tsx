@@ -154,23 +154,22 @@ export function Combobox({
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
         className={[
-          "group/cmb flex items-center gap-2 w-full h-8 rounded-md px-2.5 text-[13px] text-left transition-colors",
-          "bg-white/65 backdrop-blur-[10px] backdrop-saturate-150",
-          "shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.08)]",
-          "hover:bg-white/80 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_0_0_1px_rgba(15,23,42,0.12)]",
-          open ? "bg-white/95 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.45),0_0_0_3px_rgba(169,209,230,0.4)]" : "",
-          "focus-ring disabled:opacity-50 disabled:cursor-not-allowed",
+          "group/cmb flex items-center gap-2 w-full h-8 rounded-md px-2.5 text-[13px] text-left transition-colors bg-card border",
+          open
+            ? "border-primary ring-2 ring-primary/30"
+            : "border-input hover:border-zinc-300 focus:border-primary focus:ring-2 focus:ring-primary/30",
+          "disabled:opacity-50 disabled:cursor-not-allowed",
         ].join(" ")}
       >
-        <span className={selectedLabel ? "flex-1 text-gray-950 truncate" : "flex-1 text-gray-400 truncate"}>
+        <span className={selectedLabel ? "flex-1 text-foreground truncate" : "flex-1 text-muted-foreground truncate"}>
           {selectedLabel || placeholder}
         </span>
         {loading ? (
-          <Loader2 size={14} className="shrink-0 text-gray-400 animate-spin" />
+          <Loader2 size={14} className="shrink-0 text-muted-foreground animate-spin" />
         ) : (
           <ChevronDown
             size={14}
-            className={`shrink-0 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
+            className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
           />
         )}
       </button>
@@ -187,24 +186,20 @@ export function Combobox({
             width: popoverPos.width,
             zIndex: 9999,
           }}
-          className={[
-            "rounded-md overflow-hidden",
-            "bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150",
-            "shadow-[var(--shadow-glass-popover),var(--ring-glass-inset)]",
-          ].join(" ")}
+          className="rounded-md overflow-hidden bg-popover text-popover-foreground border border-border shadow-lg"
         >
           <Command shouldFilter={true}>
-            <div className="flex items-center gap-2 border-b border-white/30 px-2.5 py-2">
-              <Search size={14} className="shrink-0 text-gray-400" />
+            <div className="flex items-center gap-2 border-b border-border px-2.5 py-2">
+              <Search size={14} className="shrink-0 text-muted-foreground" />
               <Command.Input
                 value={search}
                 onValueChange={setSearch}
                 placeholder="Rechercher…"
-                className="flex-1 bg-transparent text-[13px] text-gray-950 placeholder:text-gray-400 outline-none"
+                className="flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground outline-none"
               />
             </div>
             <Command.List className="max-h-60 overflow-y-auto py-1">
-              <Command.Empty className="px-3 py-3 text-[12px] text-gray-500">
+              <Command.Empty className="px-3 py-3 text-[12px] text-muted-foreground">
                 {emptyMessage}
               </Command.Empty>
               {allowCustom && search && !options.some((o) => o.value === search) && (
@@ -215,7 +210,7 @@ export function Combobox({
                     setOpen(false);
                     setSearch("");
                   }}
-                  className="cursor-pointer px-3 py-1.5 text-[13px] text-gray-700 data-[selected=true]:bg-white/70 data-[selected=true]:backdrop-blur-[8px] data-[selected=true]:text-gray-950 data-[selected=true]:shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+                  className="cursor-pointer px-3 py-1.5 text-[13px] text-foreground data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground"
                 >
                   <span>Utiliser « {search} »</span>
                 </Command.Item>
@@ -224,7 +219,7 @@ export function Combobox({
                 <Command.Group
                   key={groupName || "_default"}
                   heading={groupName || undefined}
-                  className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-widest [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-gray-500"
+                  className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-widest [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground"
                 >
                   {items.map((opt) => {
                     const isSelected = opt.value === value;
@@ -241,11 +236,11 @@ export function Combobox({
                           setOpen(false);
                           setSearch("");
                         }}
-                        className="cursor-pointer inline-flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-gray-700 transition-colors data-[selected=true]:bg-white/70 data-[selected=true]:backdrop-blur-[8px] data-[selected=true]:text-gray-950 data-[selected=true]:shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] data-[disabled=true]:opacity-50 data-[disabled=true]:cursor-not-allowed"
+                        className="cursor-pointer inline-flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground transition-colors data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground data-[disabled=true]:opacity-50 data-[disabled=true]:cursor-not-allowed"
                       >
-                        {Icon && <Icon size={14} className="shrink-0 text-gray-400" />}
+                        {Icon && <Icon size={14} className="shrink-0 text-muted-foreground" />}
                         <span className="flex-1">{opt.label}</span>
-                        {isSelected && <Check size={14} className="shrink-0 text-gray-700" />}
+                        {isSelected && <Check size={14} className="shrink-0 text-foreground" />}
                       </Command.Item>
                     );
                   })}

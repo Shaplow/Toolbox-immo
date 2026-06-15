@@ -22,7 +22,7 @@ interface FormFieldProps {
 export function FormField({ label, required = false, help, error, children }: FormFieldProps) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest font-medium text-gray-500">
+      <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
         {label}
         {required && (
           <span
@@ -33,7 +33,7 @@ export function FormField({ label, required = false, help, error, children }: Fo
         )}
       </span>
       {children}
-      {help && !error && <span className="text-[11px] text-gray-500">{help}</span>}
+      {help && !error && <span className="text-[11px] text-muted-foreground">{help}</span>}
       {error && (
         <span className="text-[11px] text-danger-600" role="alert">
           {error}

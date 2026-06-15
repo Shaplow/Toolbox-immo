@@ -89,20 +89,17 @@ export function Select({
     triggerRef.current?.focus();
   }
 
-  // ─── Styling cohérent avec Input/Combobox ────────────────────────────────
+  // v3 big bang DA — flat shadcn. Variant glass mappé vers default.
+  void variant;
 
   const triggerBase =
-    "group/select flex items-center gap-2 w-full h-8 rounded-md transition-colors text-left";
-  const triggerVariantBase =
-    variant === "glass"
-      ? "bg-[var(--surface-glass-medium)] backdrop-blur-[8px] backdrop-saturate-150 border border-white/40"
-      : "bg-sky-50/40 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.08)]";
+    "group/select flex items-center gap-2 w-full h-8 rounded-md transition-colors text-left bg-card border";
 
   const triggerState = error
-    ? "shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(220,38,38,0.55),0_1px_2px_rgba(220,38,38,0.1)] focus:shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(220,38,38,0.7),0_0_0_3px_rgba(220,38,38,0.2)]"
+    ? "border-danger-600 focus:ring-2 focus:ring-danger-600/30"
     : open
-      ? "bg-sky-50/65 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.45),0_0_0_3px_rgba(169,209,230,0.4)]"
-      : "hover:bg-sky-50/55 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.12)] focus:bg-sky-50/65 focus:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.45),0_0_0_3px_rgba(169,209,230,0.4)]";
+      ? "border-primary ring-2 ring-primary/30"
+      : "border-input hover:border-zinc-300 focus:border-primary focus:ring-2 focus:ring-primary/30";
 
   const triggerDisabled = disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer";
 
@@ -117,29 +114,29 @@ export function Select({
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-invalid={error ? true : undefined}
-        className={[triggerBase, triggerVariantBase, triggerState, triggerDisabled].filter(Boolean).join(" ")}
+        className={[triggerBase, triggerState, triggerDisabled].filter(Boolean).join(" ")}
       >
         {Icon && (
           <Icon
             size={14}
-            className="shrink-0 ml-2.5 text-gray-400 group-focus/select:text-gray-700 transition-colors"
+            className="shrink-0 ml-2.5 text-muted-foreground group-focus/select:text-foreground transition-colors"
           />
         )}
         <span
           className={[
             "flex-1 min-w-0 truncate text-[13px]",
             Icon ? "pl-0" : "pl-2.5",
-            selected ? "text-gray-950" : "text-gray-400",
+            selected ? "text-foreground" : "text-muted-foreground",
           ].join(" ")}
         >
           {selected ? selected.label : placeholder ?? ""}
         </span>
         {trailing ? (
-          <span className="shrink-0 pr-2 text-[11px] text-gray-400">{trailing}</span>
+          <span className="shrink-0 pr-2 text-[11px] text-muted-foreground">{trailing}</span>
         ) : (
           <ChevronDown
             size={14}
-            className={`shrink-0 mr-2 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
+            className={`shrink-0 mr-2 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
           />
         )}
       </button>
@@ -148,11 +145,7 @@ export function Select({
         <ul
           role="listbox"
           aria-labelledby={id}
-          className={[
-            "absolute top-full left-0 right-0 mt-1.5 z-50 max-h-72 overflow-y-auto rounded-md py-1",
-            "bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150",
-            "shadow-[var(--shadow-glass-popover),var(--ring-glass-inset)]",
-          ].join(" ")}
+          className="absolute top-full left-0 right-0 mt-1.5 z-50 max-h-72 overflow-y-auto rounded-md py-1 bg-popover text-popover-foreground border border-border shadow-lg"
         >
           {options.map((opt) => {
             const isSelected = opt.value === value;
@@ -167,12 +160,12 @@ export function Select({
                   className={[
                     "w-full inline-flex items-center gap-2 px-3 py-1.5 text-[13px] text-left transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
                     isSelected
-                      ? "bg-white/70 backdrop-blur-[8px] text-gray-950 font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]"
-                      : "text-gray-700 hover:bg-white/60 hover:text-gray-950",
+                      ? "bg-accent text-accent-foreground font-medium"
+                      : "text-foreground hover:bg-accent",
                   ].join(" ")}
                 >
                   <span className="flex-1 truncate">{opt.label}</span>
-                  {isSelected && <Check size={14} className="shrink-0 text-gray-700" />}
+                  {isSelected && <Check size={14} className="shrink-0 text-foreground" />}
                 </button>
               </li>
             );

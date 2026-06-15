@@ -55,13 +55,12 @@ export const Checkbox = forwardRef<HTMLButtonElement, CheckboxProps>(function Ch
         onChange(!isChecked);
       }}
       className={[
-        "inline-flex items-center justify-center rounded-md transition-all focus-ring shrink-0",
+        "inline-flex items-center justify-center rounded-md transition-colors focus-ring shrink-0",
         sizeCls,
+        // v3 big bang DA — flat shadcn.
         isActive
-          ? // Checked / indeterminate : gradient liquid graphite (Button primary).
-            "bg-gradient-to-b from-gray-700 to-gray-900 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),inset_0_0_0_1px_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.12),0_4px_8px_-4px_rgba(15,23,42,0.18)] hover:from-gray-600 hover:to-gray-800 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),inset_0_-1px_0_rgba(0,0,0,0.2),0_2px_4px_rgba(15,23,42,0.14),0_6px_12px_-4px_rgba(15,23,42,0.22)]"
-          : // Unchecked : glass blanc subtil.
-            "bg-gradient-to-b from-white/90 to-white/65 backdrop-blur-[8px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.14),inset_0_-1px_0_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.22),0_2px_4px_rgba(15,23,42,0.06)]",
+          ? "bg-primary text-primary-foreground border border-primary"
+          : "bg-card border border-input hover:border-primary",
         disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
         className ?? "",
       ].filter(Boolean).join(" ")}

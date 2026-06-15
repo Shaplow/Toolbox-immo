@@ -41,15 +41,12 @@ export function Switch({
   const thumbSize = size === "sm" ? "h-3 w-3" : "h-4 w-4";
   const thumbTranslate = size === "sm" ? "translate-x-3" : "translate-x-4";
 
-  // ON = aligné avec Button primary (liquid graphite) ou accent sage.
-  const onClass =
-    accent === "sage"
-      ? "bg-gradient-to-b from-sage-500 to-sage-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.32),inset_0_0_0_1px_rgba(255,255,255,0.08),inset_0_-1px_0_rgba(0,0,0,0.12),0_1px_2px_rgba(47,95,63,0.18)]"
-      : "bg-gradient-to-b from-gray-700 to-gray-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),inset_0_0_0_1px_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.18)]";
+  // v3 big bang DA — flat shadcn. La prop `accent` est ignorée (mappée
+  // vers primary). Le comportement reste cohérent partout dans l'app.
+  void accent;
 
-  // OFF = semi-verre : track gradient blanc avec ring inset signature.
-  const offClass =
-    "bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1),inset_0_-1px_0_rgba(15,23,42,0.06)] hover:from-white hover:to-white/70 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.14),inset_0_-1px_0_rgba(15,23,42,0.08)]";
+  const onClass = "bg-primary";
+  const offClass = "bg-input hover:bg-zinc-300";
 
   const toggle = (
     <button
@@ -62,10 +59,9 @@ export function Switch({
         checked ? onClass : offClass
       }`}
     >
-      {/* Thumb : gradient blanc + ring inset spéculaire + ombre proche
-          forte (relief tactile). */}
+      {/* Thumb : white + shadow simple */}
       <span
-        className={`absolute left-0.5 inline-block rounded-full bg-gradient-to-b from-white to-white/85 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),inset_0_-1px_0_rgba(15,23,42,0.1),0_1px_2px_rgba(15,23,42,0.18),0_2px_4px_rgba(15,23,42,0.1)] transition-transform ${thumbSize} ${
+        className={`absolute left-0.5 inline-block rounded-full bg-white shadow-sm transition-transform ${thumbSize} ${
           checked ? thumbTranslate : "translate-x-0"
         }`}
       />
@@ -87,7 +83,7 @@ export function Switch({
         } ${className ?? ""}`}
       >
         {toggle}
-        <span className="text-[13px] text-gray-950 font-medium leading-none">{label}</span>
+        <span className="text-[13px] text-foreground font-medium leading-none">{label}</span>
       </label>
     );
   }
@@ -100,8 +96,8 @@ export function Switch({
     >
       <span className="mt-0.5">{toggle}</span>
       <span className="flex flex-col">
-        <span className="text-[13px] text-gray-950 font-medium leading-tight">{label}</span>
-        <span className="text-[11px] text-gray-500 leading-tight mt-0.5">{description}</span>
+        <span className="text-[13px] text-foreground font-medium leading-tight">{label}</span>
+        <span className="text-[11px] text-muted-foreground leading-tight mt-0.5">{description}</span>
       </span>
     </label>
   );
