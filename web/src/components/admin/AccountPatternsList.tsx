@@ -25,7 +25,7 @@ import {
   SOURCE_LABELS_FR as SOURCE_LABELS,
   COVER_MODE_LABELS_FR as COVER_MODE_LABELS,
   NEEDS_DESCRIPTION_LABELS_FR as NEEDS_DESCRIPTION_LABELS,
-} from "@/lib/ui/domainLabels";
+} from "@/lib/i18n/entityLabels";
 
 // ─── Labels FR ────────────────────────────────────────────────────────────────
 

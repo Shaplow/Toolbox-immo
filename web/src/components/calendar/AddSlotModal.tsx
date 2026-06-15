@@ -1,11 +1,18 @@
 "use client";
 
 /**
- * AddSlotModal — création de slot (Phase 8 refonte Liquid Glass MID).
+ * AddSlotModal — création de slot.
+ *
+ * Flux unique progressif (V1, 15/06) : compte requis → Recette optionnelle.
+ * - Recette sélectionnée → planning et équipe pré-remplis (override possible via
+ *   l'unlock heure existant ; reste à étendre en V3).
+ * - Aucune recette → saisie libre avec champs override (cover/captions/desc).
+ *
+ * `selectedPatternId` est l'unique source de vérité du mode ; pas de `mode`
+ * dupliqué côté state (anti-pattern qui avait causé Tabs "pattern"/"manual").
  *
  * Wrappers :
  * - Modal molecule (au lieu de fixed div)
- * - Tabs primitive pour "Depuis un pattern" vs "Manuel one-off"
  * - Combobox pour compte / preset / prompt
  * - DatePicker / TimePicker (zero-dep) pour planning
  * - FormField + Input pour le titre
@@ -25,6 +32,7 @@ import { TimePicker } from "@/components/ui/TimePicker";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { toast } from "@/components/ui/Toast";
 import { formatNextActionLine } from "@/lib/publications/nextActionLabel";
+import { SOURCE_LABELS_FR } from "@/lib/i18n/entityLabels";
 
 interface Account {
   id: string;
@@ -58,15 +66,7 @@ interface AddSlotModalProps {
   onClose: () => void;
 }
 
-type Mode = "pattern" | "manual";
-
 const DAYS = ["", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-
-const SOURCE_LABEL: Record<string, string> = {
-  auto_template: "Template auto",
-  manual_rushes: "Montage rushes",
-  external_upload: "Upload externe",
-};
 
 const COVER_MODE_OPTIONS = [
   { value: "", label: "Hérite du pattern" },
@@ -94,8 +94,6 @@ export function AddSlotModal({
   onClose,
 }: AddSlotModalProps) {
   const today = defaultDate ?? new Date().toISOString().slice(0, 10);
-
-  const [mode, setMode] = useState<Mode>("pattern");
 
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [date, setDate] = useState(today);
@@ -231,9 +229,9 @@ export function AddSlotModal({
           setAssigneeCmId(first.defaultAssigneeCm?.id ?? "");
           setAssigneeVideasteId(first.defaultAssigneeVideaste?.id ?? "");
           if (first.publishTime) setTime(first.publishTime);
-        } else if (mode === "pattern") {
-          setMode("manual");
         }
+        // Si aucune recette pour ce compte, selectedPatternId reste "" →
+        // formulaire en mode libre automatiquement (pas besoin de mode).
       })
       .catch(() => {})
       .finally(() => {
@@ -297,7 +295,8 @@ export function AddSlotModal({
   );
 
   const hasNoPatterns = !loadingPatterns && patterns.length === 0 && !!accountId;
-  const isPatternMode = mode === "pattern" && !hasNoPatterns;
+  // Mode dérivé : recette sélectionnée = mode pattern, sinon mode libre.
+  const isPatternMode = !!selectedPatternId;
 
   const canSubmit = useCallback(() => {
     if (!accountId) return false;
@@ -444,17 +443,30 @@ export function AddSlotModal({
             />
           </FormField>
 
-          {/* Toggle "Sans recette" — permet de switcher en mode manuel
-              quand des patterns existent, mais qu'on veut créer un slot
-              one-off différent. Discret par défaut, visible si nécessaire. */}
-          {!hasNoPatterns && (
+          {/* Toggle "Sans recette" — bascule entre flux pattern (recette
+              sélectionnée + champs pré-remplis verrouillés) et flux libre
+              (saisie complète avec overrides). Discret par défaut. */}
+          {!hasNoPatterns && patterns.length > 0 && (
             <div className="flex items-center justify-end -mt-1">
               <button
                 type="button"
-                onClick={() => setMode(mode === "pattern" ? "manual" : "pattern")}
+                onClick={() => {
+                  if (selectedPatternId) {
+                    // Mode pattern → mode libre : on clear la sélection ; les
+                    // overrides restent à leur défaut neutre (l'admin saisit).
+                    setSelectedPatternId("");
+                    setAssigneeMonteurId("");
+                    setAssigneeCmId("");
+                    setAssigneeVideasteId("");
+                    setTimeUnlocked(true);
+                  } else if (patterns[0]) {
+                    // Mode libre → mode pattern : re-sélectionne la première.
+                    handlePatternSelect(patterns[0].id);
+                  }
+                }}
                 className="text-[11px] text-gray-500 hover:text-gray-800 hover:underline"
               >
-                {mode === "pattern" ? "Créer sans recette →" : "← Utiliser une recette"}
+                {selectedPatternId ? "Créer sans recette →" : "← Utiliser une recette"}
               </button>
             </div>
           )}
@@ -494,7 +506,7 @@ export function AddSlotModal({
                           </span>
                           {p.source && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50/70 text-rose-700 shadow-[inset_0_0_0_1px_rgba(201,113,133,0.18)]">
-                              {SOURCE_LABEL[p.source] ?? p.source}
+                              {SOURCE_LABELS_FR[p.source] ?? p.source}
                             </span>
                           )}
                         </div>

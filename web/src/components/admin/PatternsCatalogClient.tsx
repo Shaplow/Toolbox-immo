@@ -4,8 +4,9 @@
  * PatternsCatalogClient — UI du catalogue /admin/patterns.
  *
  * Liste glass des PatternTemplate avec compteur de liaisons par recette.
- * Click sur une card → ouvre PatternTemplateForm en Drawer pour édition.
- * Bouton "Nouvelle recette" → même drawer en mode création.
+ * Click sur une card → page SSR `/admin/patterns/[id]/edit` (édition).
+ * Bouton "Nouvelle recette" → Drawer PatternTemplateForm en mode création
+ * (le drawer ne fait QUE la création vierge ; aucune édition n'y vit).
  */
 
 import { useMemo, useState } from "react";
@@ -32,6 +33,7 @@ import { toast } from "@/components/ui/Toast";
 import { DeployTemplateModal } from "./DeployTemplateModal";
 import { PatternTemplateForm, type PatternTemplateFormValues } from "./PatternTemplateForm";
 import { PatternPeekDrawer } from "./PatternPeekDrawer";
+import { SOURCE_LABELS_FR, SOURCE_VARIANT } from "@/lib/i18n/entityLabels";
 
 export interface CatalogItem {
   id: string;
@@ -59,18 +61,6 @@ interface PatternsCatalogClientProps {
   descriptionPrompts: { id: string; name: string }[];
 }
 
-const SOURCE_LABEL: Record<string, string> = {
-  auto_template: "Template auto",
-  manual_rushes: "Montage rushes",
-  external_upload: "Upload externe",
-};
-
-const SOURCE_VARIANT: Record<string, "default" | "sky" | "peach" | "sage"> = {
-  auto_template: "sky",
-  manual_rushes: "peach",
-  external_upload: "sage",
-};
-
 export function PatternsCatalogClient({
   initialTemplates,
   builderTemplates,
@@ -81,7 +71,6 @@ export function PatternsCatalogClient({
   const [items, setItems] = useState<CatalogItem[]>(initialTemplates);
   const [query, setQuery] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editing, setEditing] = useState<CatalogItem | null>(null);
   const [saving, setSaving] = useState(false);
   // Phase 10 V2 — aperçu rapide d'une recette avant édition.
   const [peekTemplateId, setPeekTemplateId] = useState<string | null>(null);
@@ -96,37 +85,30 @@ export function PatternsCatalogClient({
     return items.filter(
       (i) =>
         i.label.toLowerCase().includes(q) ||
-        SOURCE_LABEL[i.source]?.toLowerCase().includes(q) ||
+        SOURCE_LABELS_FR[i.source]?.toLowerCase().includes(q) ||
         i.templateName?.toLowerCase().includes(q),
     );
   }, [items, query]);
 
   function openCreate() {
-    setEditing(null);
     setDrawerOpen(true);
   }
 
-  // Phase 9 V2 — l'édition vit désormais sur une page SSR dédiée
-  // (/admin/patterns/[id]/edit) plutôt qu'un drawer modal. Le drawer reste
-  // utilisé pour la création rapide (nouvelle recette).
+  // V1 (15/06) — édition sur page SSR dédiée (/admin/patterns/[id]/edit).
+  // Le drawer ci-dessous reste pour la création vierge uniquement.
   function navigateToEdit(item: CatalogItem) {
     router.push(`/admin/patterns/${item.id}/edit`);
   }
 
   function closeDrawer() {
     setDrawerOpen(false);
-    setEditing(null);
   }
 
-  async function handleSave(values: PatternTemplateFormValues) {
+  async function handleCreate(values: PatternTemplateFormValues) {
     setSaving(true);
     try {
-      const url = editing
-        ? `/api/admin/patterns/${editing.id}`
-        : "/api/admin/patterns";
-      const method = editing ? "PATCH" : "POST";
-      const res = await fetch(url, {
-        method,
+      const res = await fetch("/api/admin/patterns", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
       });
@@ -134,7 +116,7 @@ export function PatternsCatalogClient({
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? `Erreur ${res.status}`);
       }
-      toast.success(editing ? "Recette mise à jour" : "Recette créée");
+      toast.success("Recette créée");
       closeDrawer();
       router.refresh();
     } catch (err) {
@@ -281,7 +263,7 @@ export function PatternsCatalogClient({
                         {item.label}
                       </h2>
                       <Chip variant={SOURCE_VARIANT[item.source] ?? "default"} size="sm">
-                        {SOURCE_LABEL[item.source] ?? item.source}
+                        {SOURCE_LABELS_FR[item.source] ?? item.source}
                       </Chip>
                     </div>
                     <div className="space-y-1 text-[11.5px] text-gray-600">
@@ -369,34 +351,13 @@ export function PatternsCatalogClient({
       {drawerOpen && (
         <Drawer open onClose={closeDrawer} side="right" size="lg">
           <PatternTemplateForm
-            initial={
-              editing
-                ? {
-                    id: editing.id,
-                    label: editing.label,
-                    source: editing.source,
-                    templateId: null,
-                    captionPresetId: null,
-                    descriptionPromptId: null,
-                    coverMode: editing.coverMode,
-                    needsDescription: editing.needsDescription,
-                    needsCaptionsMode: editing.needsCaptionsMode,
-                    needsAdminValidation: editing.needsAdminValidation,
-                    needsClientValidation: editing.needsClientValidation,
-                    allowsClientRevision: editing.allowsClientRevision,
-                    needsBrief: editing.needsBrief,
-                    notes: editing.notes,
-                    bindingCount: editing.bindingCount,
-                  }
-                : null
-            }
-            templateId={editing?.id ?? null}
+            initial={null}
+            templateId={null}
             builderTemplates={builderTemplates}
             captionPresets={captionPresets}
             descriptionPrompts={descriptionPrompts}
             saving={saving}
-            onSave={handleSave}
-            onArchive={editing ? () => void handleArchive(editing) : undefined}
+            onSave={handleCreate}
             onClose={closeDrawer}
           />
         </Drawer>

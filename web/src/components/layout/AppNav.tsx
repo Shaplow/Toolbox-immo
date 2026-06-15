@@ -25,6 +25,8 @@ import {
   Hammer,
   History,
   MoreHorizontal,
+  Video,
+  Database,
 } from "lucide-react";
 import { KbdChord } from "@/components/ui/Kbd";
 import type { AppUserIdentity } from "@/lib/userContext";
@@ -176,6 +178,11 @@ export function AppNav({
           { href: "/admin/patterns", label: "Recettes", icon: <Sparkles size={14} /> },
           { href: "/admin/accounts", label: "Comptes Instagram", icon: <Instagram size={14} /> },
           { href: "/admin/libraries", label: "Médiathèque", icon: <Library size={14} /> },
+          // V1 (15/06) — raccourcis directs vers les 2 sous-systèmes les plus
+          // utilisés (Vidéo + Données). Le hub Médiathèque reste pour la vue
+          // d'ensemble + les ressources rares (audio, polices, prompts IA).
+          { href: "/admin/libraries/media", label: "Vidéo", icon: <Video size={14} /> },
+          { href: "/admin/libraries/data", label: "Données", icon: <Database size={14} /> },
           // "Curseurs rotation" retiré : géré désormais en section sur les
           // fiches MediaLibrary/DataLibrary (contexte naturel).
         ],

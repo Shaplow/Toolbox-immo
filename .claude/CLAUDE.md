@@ -64,13 +64,21 @@ Exceptions : `/api/admin/impersonation` (cookie set/destroy) + `/api/webhooks/ru
 ## Modèles Prisma centraux
 
 - `PublicationSlot` (assigneeMonteurId, assigneeCmId, patternId, currentVersionId, publishedUrl, description)
-- `AccountPattern` — pattern de publication par compte IG + planning (`dayOfWeek`, `publishTime`) + source (`auto_template | manual_rushes | external_upload`) + coverConfig + needs* flags + assignations défaut
-- `Client` → N `InstagramAccount` → N `AccountPattern`
+- `PatternTemplate` — recette éditoriale réutilisable (label, source `auto_template | manual_rushes | external_upload`, coverConfig, needs* flags, captionPreset, descriptionPrompt, templateId).
+- `PatternBinding` — application d'une recette à un `InstagramAccount` (planning `dayOfWeek` + `publishTime`, assignées défaut, isActive, overrides ponctuels).
+- `AccountPattern` — legacy (toujours présent en DB pour compat, mais l'UI tape sur PatternTemplate+PatternBinding).
+- `Client` → N `InstagramAccount` → N `PatternBinding` → 1 `PatternTemplate`.
 - `PublicationVersion` (versions monteur, soft-delete)
 - `PublicationComment`, `PublicationActivity` (fil + audit log)
 - `TemplateCoverPreset` (presets cover définis dans le builder, référencés par nom par `Pattern.coverConfig.coverPresetName`)
 
 `logActivity` (`web/src/lib/services/slot/activity.ts`) à appeler après chaque action métier significative (mark-published, comment, status change, assignee change, job promote).
+
+## Glossaire UI (Pattern → Recette)
+
+**DB = Pattern, UI = Recette.** Le code (Prisma, types, services) garde les noms originaux `PatternTemplate` / `PatternBinding` / `PublicationSlot`. L'UI affiche "Recette" / "Application" / "Publication".
+
+Source unique : `web/src/lib/i18n/entityLabels.ts` (`ENTITY_LABELS` + `entityLabel()` + `SOURCE_LABELS_FR` + `SOURCE_VARIANT` + helps contextuels). **Pas de SOURCE_LABEL redéclaré localement** dans un composant, sinon dérive garantie (5 versions différentes ont coexisté avant unification du 15 juin).
 
 ## Surfaces UI — contrat
 

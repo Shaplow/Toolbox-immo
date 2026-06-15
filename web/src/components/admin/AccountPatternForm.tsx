@@ -35,7 +35,7 @@ import {
   NEEDS_DESCRIPTION_HELP,
   CAPTIONS_MODE_LABELS_FR,
   CAPTIONS_MODE_HELP,
-} from "@/lib/ui/domainLabels";
+} from "@/lib/i18n/entityLabels";
 
 function parseCoverConfig(json: string): object | null {
   if (!json.trim()) return null;

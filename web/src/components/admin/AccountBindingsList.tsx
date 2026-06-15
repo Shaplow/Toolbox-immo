@@ -35,18 +35,9 @@ import {
 } from "./PatternTemplateForm";
 import { BulkReplaceAssigneeModal } from "./BulkReplaceAssigneeModal";
 import { PatternPeekDrawer } from "./PatternPeekDrawer";
+import { SOURCE_LABELS_FR, SOURCE_VARIANT } from "@/lib/i18n/entityLabels";
 
 const DAYS = ["", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-const SOURCE_LABEL: Record<string, string> = {
-  auto_template: "Template auto",
-  manual_rushes: "Montage rushes",
-  external_upload: "Upload externe",
-};
-const SOURCE_VARIANT: Record<string, "default" | "sky" | "peach" | "sage"> = {
-  auto_template: "sky",
-  manual_rushes: "peach",
-  external_upload: "sage",
-};
 
 export interface BindingItem {
   id: string;
@@ -374,7 +365,7 @@ export function AccountBindingsList({
                   {b.customLabel ?? b.templateLabel}
                 </h3>
                 <Chip variant={SOURCE_VARIANT[b.templateSource] ?? "default"} size="sm">
-                  {SOURCE_LABEL[b.templateSource] ?? b.templateSource}
+                  {SOURCE_LABELS_FR[b.templateSource] ?? b.templateSource}
                 </Chip>
               </div>
               <div className="space-y-1 text-[11.5px] text-gray-600">
@@ -460,7 +451,7 @@ export function AccountBindingsList({
                   { value: "", label: "— Choisir une recette —" },
                   ...catalogTemplates.map((t) => ({
                     value: t.id,
-                    label: `${t.label} · ${SOURCE_LABEL[t.source] ?? t.source}`,
+                    label: `${t.label} · ${SOURCE_LABELS_FR[t.source] ?? t.source}`,
                   })),
                   {
                     value: CREATE_NEW_TEMPLATE_VALUE,

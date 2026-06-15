@@ -15,7 +15,7 @@ import {
   COVER_MODE_LABELS_FR,
   NEEDS_DESCRIPTION_LABELS_FR,
   CAPTIONS_MODE_LABELS_FR,
-} from "@/lib/ui/domainLabels";
+} from "@/lib/i18n/entityLabels";
 
 export interface PatternPeekData {
   id: string;

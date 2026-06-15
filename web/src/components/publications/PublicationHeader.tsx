@@ -34,6 +34,8 @@ import { DropdownMenu } from "@/components/ui/DropdownMenu";
 import { toast } from "@/components/ui/Toast";
 import { SlotQuickEditButton } from "@/components/publications/SlotQuickEditButton";
 import { StatusBadge } from "@/components/ui/molecules/StatusBadge";
+import { SlotStatusTimeline } from "@/components/ui/molecules/SlotStatusTimeline";
+import type { SlotStatus } from "@/types/calendar";
 
 export interface PublicationHeaderProps {
   slot: {
@@ -168,6 +170,12 @@ export function PublicationHeader({
                     </span>
                   )}
                 </p>
+              </div>
+              {/* V1 (15/06) — timeline narrative 5 étapes pour scanner d'un
+                  coup d'œil où en est la publication (au-delà du badge
+                  statut technique). Source : lib/slots/macroStep.ts */}
+              <div className="mt-3">
+                <SlotStatusTimeline status={slot.status as SlotStatus} size="md" />
               </div>
             </div>
 
