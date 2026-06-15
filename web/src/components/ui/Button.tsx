@@ -6,30 +6,38 @@ import type { LucideIcon } from "lucide-react";
 import { Loader2 } from "lucide-react";
 
 /**
- * Bouton primaire — doctrine SaaS d'équipe : Vercel · Linear · Apple.
+ * Button — flat shadcn-style (v3 big bang DA 2026-06-15).
  *
- * Variants :
- * - `primary`     — `bg-gray-800` graphite poli. Le CTA principal de chaque
- *                    page. Sobre, lisible, intemporel.
- * - `secondary`   — border gray-300. Action secondaire.
- * - `ghost`       — transparent hover gray-100. Action discrète.
- * - `danger`      — danger-600. Action destructive.
- * - `glass`       — Liquid Glass v2. Transparent + backdrop-blur + ring
- *                    intérieur. Pour actions secondaires sur surfaces glass.
- *                    Jamais en CTA primary.
- * - `softPrimary` — Liquid Glass v2. Graphite tinted warm (peach mix subtile).
- *                    Variante chaleureuse du primary, utile sur surfaces
- *                    pastel.
+ * Variants vivants :
+ * - `default` (recommandé)  — primary indigo. CTA principal.
+ * - `secondary`             — zinc-100 background. Action secondaire.
+ * - `outline`               — border zinc-200 + transparent. Action tertiaire.
+ * - `ghost`                 — transparent, hover muted. Discret.
+ * - `destructive`           — danger red. Action destructive.
+ * - `link`                  — texte underline only.
  *
- * Sizes : `sm` (toolbars compactes, h-7) | `md` (default, h-8) |
- * `lg` (CTA standout, h-9). Densité serrée Linear-style.
+ * Backward compat : les anciens variants `primary`/`softPrimary` → `default`,
+ * `glass` → `secondary`, `danger` → `destructive`. Aucun call site externe à
+ * mettre à jour en urgence ; le sweep Phase D nettoiera.
  *
- * Convention icon : toute action significative DEVRAIT porter une
- * `icon`. C'est ce qui distingue l'app dense d'une app à label.
+ * Sizes : `sm` (h-7) | `md` (default, h-8) | `lg` (h-9). Densité serrée.
+ *
+ * Convention icon : toute action significative DEVRAIT porter une `icon`.
  * Voir `ButtonIcon` pour l'icon-only carré.
  */
 
-type Variant = "primary" | "secondary" | "ghost" | "danger" | "glass" | "softPrimary";
+type Variant =
+  | "default"
+  | "secondary"
+  | "outline"
+  | "ghost"
+  | "destructive"
+  | "link"
+  // Legacy aliases — mappés en interne, conservés pour compat call sites V1/V2.
+  | "primary"
+  | "softPrimary"
+  | "glass"
+  | "danger";
 type Size = "sm" | "md" | "lg";
 
 interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "size"> {
@@ -42,9 +50,40 @@ interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "siz
   children: ReactNode;
 }
 
+type ResolvedVariant = "default" | "secondary" | "outline" | "ghost" | "destructive" | "link";
+
+function resolveVariant(v: Variant): ResolvedVariant {
+  switch (v) {
+    case "primary":
+    case "softPrimary":
+      return "default";
+    case "glass":
+      return "secondary";
+    case "danger":
+      return "destructive";
+    default:
+      return v;
+  }
+}
+
+const VARIANT_CLS: Record<ResolvedVariant, string> = {
+  default:
+    "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 focus-ring",
+  secondary:
+    "bg-secondary text-secondary-foreground border border-border hover:bg-muted focus-ring",
+  outline:
+    "bg-transparent text-foreground border border-border hover:bg-muted focus-ring",
+  ghost:
+    "bg-transparent text-foreground hover:bg-muted focus-ring",
+  destructive:
+    "bg-danger-600 text-white shadow-sm hover:bg-danger-700 focus-ring-danger",
+  link:
+    "bg-transparent text-primary underline-offset-4 hover:underline px-0 h-auto focus-ring",
+};
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {
-    variant = "primary",
+    variant = "default",
     size = "md",
     loading = false,
     disabled,
@@ -57,7 +96,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   ref,
 ) {
   const base =
-    "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+    "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
 
   const sizeClasses =
     size === "sm"
@@ -66,37 +105,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         ? "h-9 px-4 text-sm"
         : "h-8 px-3 text-[13px]";
 
-  const variantClasses = {
-    // Primary "liquid graphite" — gradient gray-700 → gray-900 + ring inset
-    // top blanc 0.18 visible (highlight signature), edge subtle, ombre
-    // intérieure bottom + ombre proche + halo extérieur diffus. Le primary
-    // gagne lui aussi la signature liquide sans renier la doctrine mono dark.
-    primary:
-      "bg-gradient-to-b from-gray-700 to-gray-900 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_0_0_1px_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.12),0_4px_12px_-4px_rgba(15,23,42,0.22)] hover:from-gray-600 hover:to-gray-800 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.24),inset_0_0_0_1px_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(0,0,0,0.2),0_2px_4px_rgba(15,23,42,0.16),0_8px_20px_-4px_rgba(15,23,42,0.28)] focus-ring",
-    // Secondary "semi-verre" — gradient white + ring inset signature
-    // (top blanc + edge subtle) + halo extérieur diffus. Garde le poids
-    // d'un bouton secondaire sans la sécheresse du bord plat.
-    secondary:
-      "bg-gradient-to-b from-white/90 to-white/70 text-gray-800 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.08),0_1px_2px_rgba(15,23,42,0.05),0_4px_12px_-4px_rgba(15,23,42,0.12)] hover:from-white hover:to-white/85 hover:text-gray-950 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.6),inset_0_-1px_0_rgba(15,23,42,0.1),0_2px_4px_rgba(15,23,42,0.08),0_8px_20px_-4px_rgba(15,23,42,0.18)] focus-ring",
-    // Ghost — transparent au repos, verre soft au hover. Subtle ring inset
-    // edge même au repos pour signaler que c'est un bouton actionnable.
-    ghost:
-      "bg-transparent text-gray-700 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.04)] hover:bg-[var(--surface-glass-medium)] hover:backdrop-blur-[8px] hover:text-gray-950 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.7),inset_0_0_0_1px_rgba(255,255,255,0.3)] focus-ring",
-    // Danger — rouge sémantique + signature glass : ring inset top blanc
-    // 0.18α + halo extérieur teinté rouge.
-    danger:
-      "bg-gradient-to-b from-danger-600 to-danger-700 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),inset_0_0_0_1px_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(0,0,0,0.12),0_1px_2px_rgba(220,38,38,0.18),0_6px_16px_-6px_rgba(220,38,38,0.32)] hover:from-danger-500 hover:to-danger-600 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.28),inset_0_0_0_1px_rgba(255,255,255,0.08),inset_0_-1px_0_rgba(0,0,0,0.14),0_2px_4px_rgba(220,38,38,0.22),0_10px_24px_-6px_rgba(220,38,38,0.42)] focus-ring-danger",
-    // Liquid Glass v2 — vrai verre macOS Tahoe / iOS 18 :
-    // ring intérieur top blanc prononcé (highlight spéculaire) + ring edge
-    // subtle + halo extérieur diffus. Background gradient frosted blanc
-    // top → translucide bottom donne l'impression d'épaisseur réelle.
-    glass:
-      "bg-gradient-to-b from-white/70 to-white/40 text-gray-900 backdrop-blur-[18px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(255,255,255,0.35),inset_0_-1px_0_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_-8px_rgba(15,23,42,0.18)] hover:from-white/85 hover:to-white/55 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.5),inset_0_-1px_0_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.06),0_12px_32px_-8px_rgba(15,23,42,0.22)] focus-ring",
-    // Liquid Glass v2 — graphite tinted warm peach (signature "chaleur").
-    // Highlight intérieur teinté + halo extérieur peach diffus au hover.
-    softPrimary:
-      "bg-gradient-to-b from-gray-700 to-gray-900 text-white shadow-[inset_0_1px_0_rgba(255,200,170,0.28),inset_0_0_0_1px_rgba(255,200,170,0.08),0_1px_2px_rgba(15,23,42,0.12),0_6px_20px_-8px_rgba(245,158,107,0.45)] hover:from-gray-600 hover:to-gray-800 hover:shadow-[inset_0_1px_0_rgba(255,200,170,0.42),inset_0_0_0_1px_rgba(255,200,170,0.12),0_2px_4px_rgba(15,23,42,0.16),0_10px_28px_-8px_rgba(245,158,107,0.6)] focus-ring",
-  }[variant];
+  const v = resolveVariant(variant);
+  const variantClasses = VARIANT_CLS[v];
 
   const iconSize = size === "sm" ? 12 : size === "lg" ? 15 : 14;
 

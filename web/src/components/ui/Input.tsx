@@ -40,33 +40,26 @@ export function Input({
   disabled,
   ...rest
 }: InputProps) {
-  const wrapperBase =
-    "group/input flex items-center gap-2 w-full h-8 rounded-md transition-colors";
+  // v3 big bang DA — flat shadcn : input white avec border zinc-200, focus
+  // ring primary, error border red. La prop `variant` (default/glass) reste
+  // typée pour compat mais les 2 produisent maintenant le même rendu flat.
+  void variant;
 
-  // Background + état focus selon variant.
-  // Default = glass blanc neutre (pas teinté). Le focus utilise un ring sky
-  // pour signaler l'activité sans saturer la teinte au repos.
-  const wrapperVariantBase =
-    variant === "glass"
-      ? "bg-[var(--surface-glass-medium)] backdrop-blur-[8px] backdrop-saturate-150 border border-white/40"
-      : "bg-white/65 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.08)]";
+  const wrapperBase =
+    "group/input flex items-center gap-2 w-full h-8 rounded-md transition-colors bg-card border";
 
   const wrapperState = error
-    ? variant === "glass"
-      ? "border-danger-600 focus-within:shadow-[var(--shadow-focus-ring-danger)]"
-      : "shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(220,38,38,0.55),0_1px_2px_rgba(220,38,38,0.1)] focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(220,38,38,0.7),0_0_0_3px_rgba(220,38,38,0.2)]"
-    : variant === "glass"
-      ? "hover:border-sky-200 focus-within:border-sky-300 focus-within:shadow-[0_0_0_3px_rgba(169,209,230,0.32)]"
-      : "hover:bg-white/80 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.95),inset_0_0_0_1px_rgba(15,23,42,0.12)] focus-within:bg-white/95 focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.45),0_0_0_3px_rgba(169,209,230,0.4)]";
+    ? "border-danger-600 focus-within:ring-2 focus-within:ring-danger-600/30"
+    : "border-input hover:border-zinc-300 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30";
 
   const wrapperDisabled = disabled ? "opacity-60 cursor-not-allowed" : "";
 
   return (
-    <div className={[wrapperBase, wrapperVariantBase, wrapperState, wrapperDisabled, className ?? ""].filter(Boolean).join(" ")}>
+    <div className={[wrapperBase, wrapperState, wrapperDisabled, className ?? ""].filter(Boolean).join(" ")}>
       {Icon && (
         <Icon
           size={14}
-          className="shrink-0 ml-2.5 text-gray-400 group-focus-within/input:text-gray-700 transition-colors"
+          className="shrink-0 ml-2.5 text-muted-foreground group-focus-within/input:text-foreground transition-colors"
         />
       )}
       <input
@@ -74,12 +67,12 @@ export function Input({
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
         aria-invalid={error ? true : undefined}
-        className={`flex-1 min-w-0 bg-transparent text-[13px] text-gray-950 placeholder:text-gray-400 outline-none ${
+        className={`flex-1 min-w-0 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground outline-none ${
           Icon ? "pl-0" : "pl-2.5"
         } ${trailing ? "pr-0" : "pr-2.5"}`}
         {...rest}
       />
-      {trailing && <span className="shrink-0 pr-2 text-[11px] text-gray-400">{trailing}</span>}
+      {trailing && <span className="shrink-0 pr-2 text-[11px] text-muted-foreground">{trailing}</span>}
     </div>
   );
 }

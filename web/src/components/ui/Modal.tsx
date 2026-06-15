@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * Modal — dialogue centré, focus-trap, ESC, click-backdrop, body scroll lock.
+ * Modal — dialogue centré (v3 big bang DA flat shadcn 2026-06-15).
  *
- * Doctrine Liquid Glass v2 :
- * - Backdrop = scrim-dark + backdrop-blur 4px (cohérent ConfirmDialog).
- * - Panel default = surface-glass-strong + shadow-glass-lg + ring inset.
- * - Variant `default` (glass) ou `solid` (white + shadow-modal) au choix.
+ * - Backdrop = scrim zinc-950 @ 50% (solid, plus de backdrop-blur).
+ * - Panel = bg-card + border zinc-200 + shadow-lg + rounded-xl.
+ * - Variant default et solid produisent maintenant le même rendu (l'ancien
+ *   `default` glass est mappé en solid pour rétrocompat).
  * - Z-index via useDialogStack — gère l'empilement avec Drawer / Sheet /
  *   ConfirmDialog sans collision.
  *
@@ -31,6 +31,7 @@ interface ModalProps {
   open: boolean;
   onClose: () => void;
   size?: Size;
+  /** @deprecated v3 — toujours flat solid désormais. Conservé pour compat. */
   variant?: Variant;
   /** Désactive la fermeture au click sur le backdrop. */
   dismissOnBackdrop?: boolean;
@@ -50,7 +51,6 @@ export function Modal({
   open,
   onClose,
   size = "md",
-  variant = "default",
   dismissOnBackdrop = true,
   className,
   children,
@@ -63,7 +63,6 @@ export function Modal({
     setMounted(true);
   }, []);
 
-  // Auto-focus panel à l'ouverture (focus-trap basique).
   useEffect(() => {
     if (!open) return;
     panelRef.current?.focus();
@@ -71,21 +70,12 @@ export function Modal({
 
   if (!open || !mounted) return null;
 
-  // Panel : signature glass forte (gradient blanc + ring spéculaire + halo
-  // extérieur large) pour qu'il ressorte sans avoir besoin d'un scrim dim.
-  const panelCls =
-    variant === "solid"
-      ? "bg-white shadow-[var(--shadow-modal),0_24px_64px_-16px_rgba(15,23,42,0.18)] border border-gray-200"
-      : "bg-gradient-to-b from-white to-white/85 backdrop-blur-[24px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_8px_24px_-4px_rgba(15,23,42,0.12),0_32px_72px_-12px_rgba(15,23,42,0.22)]";
+  const panelCls = "bg-card text-card-foreground border border-border shadow-lg";
 
-  // Portail vers document.body (échappe au containing block des ancêtres
-  // avec backdrop-filter / transform / filter).
   return createPortal(
     <>
-      {/* Backdrop : juste backdrop-blur sans dim gris. Le contenu reste
-          visible derrière, juste flouté. Le panel ressort par son halo. */}
       <div
-        className="fixed inset-0 backdrop-blur-[12px] backdrop-saturate-110"
+        className="fixed inset-0 bg-zinc-950/50"
         style={{ zIndex }}
         onClick={dismissOnBackdrop ? onClose : undefined}
         aria-hidden
@@ -116,8 +106,8 @@ export function Modal({
 
 function ModalHeader({ children, onClose }: { children?: ReactNode; onClose?: () => void }) {
   return (
-    <div className="flex items-center justify-between px-5 py-4 border-b border-white/30">
-      <h2 className="text-[15px] font-semibold tracking-tight text-gray-950">{children}</h2>
+    <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+      <h2 className="text-[15px] font-semibold tracking-tight text-foreground">{children}</h2>
       {onClose && (
         <ButtonIcon icon={X} label="Fermer" variant="ghost" size="sm" onClick={onClose} />
       )}
@@ -131,7 +121,7 @@ function ModalBody({ children, className }: { children: ReactNode; className?: s
 
 function ModalFooter({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={["flex items-center justify-end gap-2 px-5 py-3 bg-white/30 border-t border-white/30", className ?? ""].filter(Boolean).join(" ")}>
+    <div className={["flex items-center justify-end gap-2 px-5 py-3 bg-muted/40 border-t border-border", className ?? ""].filter(Boolean).join(" ")}>
       {children}
     </div>
   );

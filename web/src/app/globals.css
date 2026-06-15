@@ -1,14 +1,34 @@
 @import "tailwindcss";
 
+/**
+ * Doctrine DA Toolbox Immo — v3 (2026-06-15, big bang Vercel/shadcn).
+ *
+ * Light only, flat shadcn-style. Neutral palette zinc + accent indigo
+ * Linear (#5e6ad2). Plus de Liquid Glass, plus de pastels Coastal Studio.
+ *
+ * Règles dures :
+ * - Pas de gradient décoratif sur les surfaces UI (pages, cards, banners).
+ * - Pas de backdrop-blur. Si le designer veut profondeur, c'est shadow
+ *   sobre + border zinc-200, pas du verre.
+ * - Pas de couleur d'accent autre que primary (indigo). Le brand orange
+ *   reste strictement logo-only.
+ * - Statuts via colors semantic (success / danger / info) uniquement.
+ * - Fonts : Geist Sans (UI), Geist Mono (chiffres/code). Display serif
+ *   et Caveat MARKETING ONLY (landing pages futures), jamais en UI.
+ *
+ * Voir CLAUDE.md section "UI-first" + plan refonte
+ * /Users/mathis/.claude/plans/hashed-munching-alpaca.md (Phase A).
+ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #0a0a0a;
+  --background: #fafafa;
+  --foreground: #09090b;
   color-scheme: light;
 }
 
 html {
   color-scheme: light;
-  background: #ffffff;
+  background: var(--background);
 }
 
 @theme inline {
@@ -20,10 +40,53 @@ html {
   --font-serif: var(--font-display-serif);
   --font-hand: var(--font-caveat);
 
-  /* ── Couleurs sémantiques ──────────────────────────────────────────────── */
+  /* ── Foreground / Background ──────────────────────────────────────────── */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
 
+  /* ── Palette neutre zinc 50→950 (10 nuances shadcn) ───────────────────── */
+  --color-zinc-50:  #fafafa;
+  --color-zinc-100: #f4f4f5;
+  --color-zinc-200: #e4e4e7;
+  --color-zinc-300: #d4d4d8;
+  --color-zinc-400: #a1a1aa;
+  --color-zinc-500: #71717a;
+  --color-zinc-600: #52525b;
+  --color-zinc-700: #3f3f46;
+  --color-zinc-800: #27272a;
+  --color-zinc-900: #18181b;
+  --color-zinc-950: #09090b;
+
+  /* ── Primary accent — indigo Linear ───────────────────────────────────── */
+  --color-primary-50:  #eef2ff;
+  --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-300: #a5b4fc;
+  --color-primary-400: #818cf8;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #5e6ad2;
+  --color-primary-700: #4f46e5;
+  --color-primary-800: #3730a3;
+  --color-primary-900: #312e81;
+  --color-primary:            var(--color-primary-600);
+  --color-primary-foreground: #ffffff;
+
+  /* ── Tokens sémantiques shadcn ────────────────────────────────────────── */
+  --color-card:                  #ffffff;
+  --color-card-foreground:       var(--color-zinc-950);
+  --color-popover:               #ffffff;
+  --color-popover-foreground:    var(--color-zinc-950);
+  --color-secondary:             var(--color-zinc-100);
+  --color-secondary-foreground:  var(--color-zinc-900);
+  --color-muted:                 var(--color-zinc-100);
+  --color-muted-foreground:      var(--color-zinc-500);
+  --color-accent:                var(--color-zinc-100);
+  --color-accent-foreground:     var(--color-zinc-900);
+  --color-border:                var(--color-zinc-200);
+  --color-input:                 var(--color-zinc-200);
+  --color-ring:                  var(--color-primary);
+
+  /* ── Couleurs sémantiques (statuts) ───────────────────────────────────── */
   /* Succès : validations, statuts OK */
   --color-success-50:  #f0fdf4;
   --color-success-100: #dcfce7;
@@ -65,14 +128,21 @@ html {
   --default-transition-duration: 200ms;
   --default-transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* ── Ombres UI ──────────────────────────────────────────────────────────
-     Sobres, dédiées aux overlays. Pas de glow coloré ni de halo brand. */
-  --shadow-overlay: 0 1px 0 rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
-  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.08);
-  --shadow-card-elevated: 0 4px 20px rgba(0, 0, 0, 0.04), 0 2px 6px rgba(0, 0, 0, 0.04);
+  /* ── Ombres sobres shadcn-style ─────────────────────────────────────────
+     Pas de glow coloré, pas de halo brand. Élévation par shadow neutral
+     gris + opacité basse. */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.07), 0 1px 2px -1px rgba(0, 0, 0, 0.07);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.08);
 
-  /* Focus rings — mono dark partout dans l'UI. */
-  --shadow-focus-ring: 0 0 0 3px rgba(10, 10, 10, 0.14);
+  /* Aliases sémantiques */
+  --shadow-overlay:       var(--shadow-sm);
+  --shadow-modal:         var(--shadow-lg);
+  --shadow-card-elevated: var(--shadow-md);
+
+  /* Focus rings — primary par défaut, danger pour les erreurs */
+  --shadow-focus-ring:        0 0 0 3px rgba(94, 106, 210, 0.30);
   --shadow-focus-ring-danger: 0 0 0 3px rgba(220, 38, 38, 0.22);
 
   /* ── Radius — sharp, peu de rondeur ─────────────────────────────────────
@@ -82,120 +152,6 @@ html {
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-xl: 10px;
-
-  /* ── Tokens MARKETING ONLY ──────────────────────────────────────────────
-     Réservés aux landing pages futures et aux hero éditoriaux. JAMAIS
-     en UI d'équipe courante. Documenté dans `/playground/marketing`. */
-  --gradient-hero: linear-gradient(135deg, rgba(255, 90, 31, 0.06) 0%, rgba(255, 122, 60, 0.02) 100%);
-  --gradient-subtle: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
-
-  /* ── Token PAGE SHELL ───────────────────────────────────────────────────
-     Gradient de fond de toutes les pages app (`page.tsx` wrapper rounded-3xl).
-     Changer cette valeur ICI met à jour TOUTES les pages d'un coup.
-     Valeurs atténuées ~35% (mix blanc) vs landing v0 pour rester sobre en UI courante. */
-  --gradient-page-shell: linear-gradient(135deg, #ffeede 0%, #faeaed 35%, #e3f0f7 70%, #e8f3ea 100%);
-  --texture-grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='1'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.18 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-
-  /* ════════════════════════════════════════════════════════════════════════
-     LIQUID GLASS — extension v2 (matière de surface opt-in)
-     ════════════════════════════════════════════════════════════════════════
-
-     Doctrine : extension, pas remplacement. L'ossature structurelle Linear
-     (density, mono CTA, accents sémantiques success/danger/info) reste la
-     base. Glass + Coastal Studio s'ajoutent comme matière opt-in via
-     variants (Phase 2+) — aucune surface existante n'est altérée tant
-     qu'on ne migre pas son call site.
-
-     Règle perf : limiter `backdrop-filter` aux surfaces flottantes (popovers,
-     modals, headers sticky, drawers). Pas en grille dense (Safari iPad).
-
-     Règle contraste : si fond variable (image, vidéo), empiler scrim opaque
-     sous le glass pour garantir WCAG. */
-
-  /* ── Surfaces glass (white-based, préfigure dark) ──────────────────── */
-  --surface-glass-strong: rgba(255, 255, 255, 0.85);
-  --surface-glass-medium: rgba(255, 255, 255, 0.65);
-  --surface-glass-soft:   rgba(255, 255, 255, 0.45);
-  --surface-glass-faint:  rgba(255, 255, 255, 0.25);
-
-  /* ── Backdrop filters ──────────────────────────────────────────────── */
-  --backdrop-blur-xs: blur(8px);
-  --backdrop-blur-sm: blur(12px);
-  --backdrop-blur-md: blur(20px);
-  --backdrop-blur-lg: blur(32px);
-  --backdrop-saturate: saturate(140%);
-
-  /* ── Scrims (modal/drawer backdrops) ───────────────────────────────── */
-  --scrim-light: rgba(255, 255, 255, 0.65);
-  --scrim-dark:  rgba(10, 10, 10, 0.45);
-  --scrim-deep:  rgba(10, 10, 10, 0.65);
-
-  /* ── Shadows verrerie (diffuses + ring intérieur) ──────────────────── */
-  --shadow-glass-sm: 0 1px 0 rgba(255, 255, 255, 0.4) inset, 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.04);
-  --shadow-glass-md: 0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 2px 8px rgba(15, 23, 42, 0.06), 0 12px 32px rgba(15, 23, 42, 0.08);
-  --shadow-glass-lg: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 8px 24px rgba(15, 23, 42, 0.08), 0 24px 64px rgba(15, 23, 42, 0.12);
-  --shadow-glass-popover: 0 0 0 1px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.08), 0 32px 64px rgba(15, 23, 42, 0.12);
-
-  /* ── Ring inset (le détail signature verre) ────────────────────────── */
-  --ring-glass-inset:  inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  --ring-glass-edge:   inset 0 0 0 1px rgba(255, 255, 255, 0.4);
-  --ring-glass-bottom: inset 0 -1px 0 rgba(15, 23, 42, 0.04);
-
-  /* ── Palette Coastal Studio — pastels orchestrés ───────────────────── */
-  /* Peach — chaleur, statuts "à faire". */
-  --color-peach-50:  #fff5ed;
-  --color-peach-100: #ffe6d0;
-  --color-peach-200: #ffd0a8;
-  --color-peach-300: #ffb87f;
-  --color-peach-400: #fda775;
-  --color-peach-500: #f59e6b;
-  --color-peach-600: #d57834;
-  --color-peach-700: #b9560a;
-  --color-peach-800: #874207;
-  --color-peach-900: #582d05;
-
-  /* Sage — calme, statuts "ok" doux. */
-  --color-sage-50:  #f1f7f2;
-  --color-sage-100: #dceee0;
-  --color-sage-200: #b9dcc1;
-  --color-sage-300: #a0d0aa;
-  --color-sage-400: #87b994;
-  --color-sage-500: #6fa280;
-  --color-sage-600: #4f815f;
-  --color-sage-700: #2f5f3f;
-  --color-sage-800: #234a30;
-  --color-sage-900: #17341f;
-
-  /* Sky — info, planning, programmé. */
-  --color-sky-50:  #eff6fb;
-  --color-sky-100: #d4e8f3;
-  --color-sky-200: #a9d1e6;
-  --color-sky-300: #88c0d8;
-  --color-sky-400: #6aacca;
-  --color-sky-500: #4d96bf;
-  --color-sky-600: #36789e;
-  --color-sky-700: #1f5d7d;
-  --color-sky-800: #16465e;
-  --color-sky-900: #0d2f40;
-
-  /* Rose-dust — accent rare, signature. */
-  --color-rose-50:  #fdf2f4;
-  --color-rose-100: #f7dde2;
-  --color-rose-200: #ecbac4;
-  --color-rose-300: #e2a0ad;
-  --color-rose-400: #d68595;
-  --color-rose-500: #c97185;
-  --color-rose-600: #a85165;
-  --color-rose-700: #863346;
-  --color-rose-800: #602334;
-  --color-rose-900: #3f1623;
-
-  /* ── Gradients signature (washes, JAMAIS en CTA) ───────────────────── */
-  --gradient-peach-soft: linear-gradient(135deg, rgba(255, 230, 208, 0.45), rgba(255, 245, 237, 0.15));
-  --gradient-sage-soft:  linear-gradient(135deg, rgba(220, 238, 224, 0.45), rgba(241, 247, 242, 0.15));
-  --gradient-sky-soft:   linear-gradient(135deg, rgba(212, 232, 243, 0.45), rgba(239, 246, 251, 0.15));
-  --gradient-frosted:    linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.45));
-  --gradient-aurora:     linear-gradient(135deg, rgba(255, 230, 208, 0.35), rgba(220, 238, 224, 0.25) 50%, rgba(212, 232, 243, 0.35));
 }
 
 body {
@@ -206,12 +162,12 @@ body {
 input,
 textarea,
 select {
-  color: #111827;
+  color: var(--foreground);
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: #9ca3af;
+  color: var(--color-zinc-400);
   opacity: 1;
 }
 
@@ -222,7 +178,7 @@ textarea::placeholder {
 }
 
 /* ── Focus ring utilities ────────────────────────────────────────────────
-   `focus-ring`         — mono dark (default partout dans l'UI).
+   `focus-ring`         — primary indigo (default partout dans l'UI).
    `focus-ring-danger`  — variant erreur (input invalide). */
 .focus-ring:focus-visible {
   outline: none;
@@ -231,28 +187,4 @@ textarea::placeholder {
 .focus-ring-danger:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus-ring-danger);
-}
-
-/* ── Liquid Glass — surfaces utilitaires ─────────────────────────────────
-   Classes pour appliquer la matière verre sur n'importe quelle surface.
-   Préférer ces classes à du `bg-white/80 backdrop-blur-md` ad hoc — c'est
-   centralisé via tokens et conserve la signature ring intérieur.
-
-   Usage :
-   - `.surface-glass`       — popovers, modals, headers sticky (strong + ring inset)
-   - `.surface-glass-soft`  — sections internes, panneaux secondaires (medium + edge)
-
-   Composer avec `bg-peach-50/40`, `bg-sage-50/40` etc. pour la version tinted. */
-.surface-glass {
-  background: var(--surface-glass-strong);
-  backdrop-filter: var(--backdrop-blur-md) var(--backdrop-saturate);
-  -webkit-backdrop-filter: var(--backdrop-blur-md) var(--backdrop-saturate);
-  box-shadow: var(--shadow-glass-md), var(--ring-glass-inset);
-}
-
-.surface-glass-soft {
-  background: var(--surface-glass-medium);
-  backdrop-filter: var(--backdrop-blur-sm) var(--backdrop-saturate);
-  -webkit-backdrop-filter: var(--backdrop-blur-sm) var(--backdrop-saturate);
-  box-shadow: var(--shadow-glass-sm), var(--ring-glass-edge);
 }

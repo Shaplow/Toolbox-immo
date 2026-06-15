@@ -1,18 +1,13 @@
 "use client";
 
 /**
- * Drawer — panel ancré sur un bord. Idéal pour édition de slots, navigation
- * secondaire, filtres compacts.
+ * Drawer — panel ancré sur un bord (v3 big bang DA flat shadcn 2026-06-15).
  *
- * Doctrine Liquid Glass v2 :
- * - Backdrop scrim-dark + backdrop-blur 4px.
- * - Panel surface-glass-strong + shadow-glass-lg + ring inset (default)
- *   ou solid white + shadow-modal.
- * - Slide animation respect du `--ease-out-soft` + `--duration-slow`.
+ * - Backdrop scrim zinc-950 @ 50% (solid).
+ * - Panel = bg-card + border zinc-200 + shadow-lg + rounded selon side.
+ * - Sides : right (default) | left | bottom.
+ * - Sizes : sm (320) | md (448, default) | lg (640) | xl (768) | full.
  * - Z-index via useDialogStack.
- *
- * Sides : right (default, panel droite) | left | bottom.
- * Sizes : sm (320) | md (448, default) | lg (640) | xl (768) | full.
  *
  * Sous-composants :
  * - <Drawer.Header onClose?> — titre + bouton fermer
@@ -35,6 +30,7 @@ interface DrawerProps {
   onClose: () => void;
   side?: Side;
   size?: Size;
+  /** @deprecated v3 — toujours flat solid désormais. Conservé pour compat. */
   variant?: Variant;
   dismissOnBackdrop?: boolean;
   className?: string;
@@ -62,7 +58,6 @@ export function Drawer({
   onClose,
   side = "right",
   size = "md",
-  variant = "default",
   dismissOnBackdrop = true,
   className,
   children,
@@ -82,28 +77,21 @@ export function Drawer({
 
   if (!open || !mounted) return null;
 
-  const panelCls =
-    variant === "solid"
-      ? "bg-white shadow-[var(--shadow-modal),0_24px_64px_-16px_rgba(15,23,42,0.18)] border border-gray-200"
-      : "bg-gradient-to-b from-white to-white/85 backdrop-blur-[24px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_8px_24px_-4px_rgba(15,23,42,0.12),0_32px_72px_-12px_rgba(15,23,42,0.22)]";
+  const panelCls = "bg-card text-card-foreground border border-border shadow-lg";
 
   // Positionnement + sizing + radius selon le side.
-  // h-screen (100vh) au lieu de h-full (100%) : un ancêtre avec backdrop-filter
-  // peut devenir le containing block d'un fixed element, ce qui rend h-full
-  // relatif à ce parent et non au viewport → drawer tronqué.
+  // h-screen (100vh) au lieu de h-full (100%) : robustesse vis-à-vis du
+  // containing block ancêtre.
   const positionCls = {
     right:  `fixed top-0 right-0 h-screen ${SIZE_PX[size]} rounded-l-2xl`,
     left:   `fixed top-0 left-0 h-screen ${SIZE_PX[size]} rounded-r-2xl`,
     bottom: `fixed bottom-0 left-0 right-0 ${SIZE_PX_BOTTOM[size]} rounded-t-2xl`,
   }[side];
 
-  // Portail vers document.body → échappe au containing block d'un ancêtre
-  // avec backdrop-filter / transform / filter, qui sinon casse le
-  // positionnement fixed top-0/right-0/h-screen.
   return createPortal(
     <>
       <div
-        className="fixed inset-0 backdrop-blur-[12px] backdrop-saturate-110"
+        className="fixed inset-0 bg-zinc-950/50"
         style={{ zIndex }}
         onClick={dismissOnBackdrop ? onClose : undefined}
         aria-hidden
@@ -130,8 +118,8 @@ export function Drawer({
 
 function DrawerHeader({ children, onClose }: { children?: ReactNode; onClose?: () => void }) {
   return (
-    <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-white/30">
-      <h2 className="text-[15px] font-semibold tracking-tight text-gray-950">{children}</h2>
+    <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
+      <h2 className="text-[15px] font-semibold tracking-tight text-foreground">{children}</h2>
       {onClose && (
         <ButtonIcon icon={X} label="Fermer" variant="ghost" size="sm" onClick={onClose} />
       )}
@@ -155,7 +143,7 @@ function DrawerBody({ children, className, scrollable = true }: { children: Reac
 
 function DrawerFooter({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={["shrink-0 flex items-center justify-end gap-2 px-5 py-3 bg-white/30 border-t border-white/30", className ?? ""].filter(Boolean).join(" ")}>
+    <div className={["shrink-0 flex items-center justify-end gap-2 px-5 py-3 bg-muted/40 border-t border-border", className ?? ""].filter(Boolean).join(" ")}>
       {children}
     </div>
   );

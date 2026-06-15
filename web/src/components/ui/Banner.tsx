@@ -40,45 +40,42 @@ interface BannerProps {
 
 const VARIANT_STYLES: Record<Variant, {
   container: string;
-  accent: string;
   text: string;
   icon: string;
   button: string;
 }> = {
+  // v3 big bang DA — flat shadcn : zinc-50 background + border zinc-200 +
+  // accent gauche border-l-4 par variant. Plus de backdrop-blur, plus de
+  // gradient pastel Coastal Studio.
   info: {
-    container: "bg-sky-50/55 backdrop-blur-[12px] backdrop-saturate-150",
-    accent:    "shadow-[inset_4px_0_0_0_rgba(77,150,191,1),inset_0_1px_0_rgba(255,255,255,0.85),inset_0_-1px_0_rgba(15,23,42,0.04)]",
-    text:      "text-sky-700",
-    icon:      "text-sky-700",
-    button:    "text-sky-700 hover:text-sky-700",
+    container: "bg-info-50 border border-info-200 border-l-4 border-l-info-600",
+    text:      "text-info-700",
+    icon:      "text-info-600",
+    button:    "text-info-700 hover:text-info-600",
   },
   success: {
-    container: "bg-sage-50/55 backdrop-blur-[12px] backdrop-saturate-150",
-    accent:    "shadow-[inset_4px_0_0_0_rgba(111,162,128,1),inset_0_1px_0_rgba(255,255,255,0.85),inset_0_-1px_0_rgba(15,23,42,0.04)]",
-    text:      "text-sage-700",
-    icon:      "text-sage-700",
-    button:    "text-sage-700 hover:text-sage-700",
+    container: "bg-success-50 border border-success-200 border-l-4 border-l-success-600",
+    text:      "text-success-700",
+    icon:      "text-success-600",
+    button:    "text-success-700 hover:text-success-600",
   },
   warning: {
-    container: "bg-peach-50/55 backdrop-blur-[12px] backdrop-saturate-150",
-    accent:    "shadow-[inset_4px_0_0_0_rgba(245,158,107,1),inset_0_1px_0_rgba(255,255,255,0.85),inset_0_-1px_0_rgba(15,23,42,0.04)]",
-    text:      "text-peach-700",
-    icon:      "text-peach-700",
-    button:    "text-peach-700 hover:text-peach-700",
+    container: "bg-amber-50 border border-amber-200 border-l-4 border-l-amber-500",
+    text:      "text-amber-700",
+    icon:      "text-amber-600",
+    button:    "text-amber-700 hover:text-amber-600",
   },
   danger: {
-    container: "bg-rose-50/55 backdrop-blur-[12px] backdrop-saturate-150",
-    accent:    "shadow-[inset_4px_0_0_0_rgba(201,113,133,1),inset_0_1px_0_rgba(255,255,255,0.85),inset_0_-1px_0_rgba(15,23,42,0.04)]",
-    text:      "text-rose-700",
-    icon:      "text-rose-700",
-    button:    "text-rose-700 hover:text-rose-700",
+    container: "bg-danger-50 border border-danger-200 border-l-4 border-l-danger-600",
+    text:      "text-danger-700",
+    icon:      "text-danger-600",
+    button:    "text-danger-700 hover:text-danger-600",
   },
   neutral: {
-    container: "bg-white/50 backdrop-blur-[12px] backdrop-saturate-150",
-    accent:    "shadow-[inset_4px_0_0_0_rgba(107,114,128,0.6),inset_0_1px_0_rgba(255,255,255,0.85),inset_0_-1px_0_rgba(15,23,42,0.04)]",
-    text:      "text-gray-700",
-    icon:      "text-gray-500",
-    button:    "text-gray-700 hover:text-gray-950",
+    container: "bg-muted border border-border border-l-4 border-l-zinc-400",
+    text:      "text-foreground",
+    icon:      "text-muted-foreground",
+    button:    "text-foreground hover:text-primary",
   },
 };
 
@@ -106,9 +103,8 @@ export function Banner({
     <div
       role="status"
       className={[
-        "flex items-center justify-between gap-4 px-4 py-2 text-[13px]",
+        "flex items-center justify-between gap-4 px-4 py-2 text-[13px] rounded-md",
         styles.container,
-        styles.accent,
         className ?? "",
       ].filter(Boolean).join(" ")}
     >
