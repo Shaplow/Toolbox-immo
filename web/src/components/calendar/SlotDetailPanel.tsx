@@ -25,12 +25,14 @@ import {
   Trash2,
   Save,
   ListChecks,
-  Users,
   SlidersHorizontal,
-  CalendarClock,
   Clapperboard,
   MoreHorizontal,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
+import { useKeybindings } from "@/hooks/useKeybindings";
+import { useAutoSave } from "@/hooks/useAutoSave";
 import {
   STATUS_LABELS,
   type SlotStatus,
@@ -41,6 +43,8 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Drawer } from "@/components/ui/Drawer";
 import { Tabs } from "@/components/ui/Tabs";
 import { Button } from "@/components/ui/Button";
+import { ButtonIcon } from "@/components/ui/ButtonIcon";
+import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { FormField } from "@/components/ui/FormField";
 import { Textarea } from "@/components/ui/Textarea";
 import { Combobox } from "@/components/ui/Combobox";
@@ -60,6 +64,14 @@ interface SlotDetailPanelProps {
   onDeleted: (id: string) => void;
   onClose: () => void;
   mode?: SlotDetailPanelMode;
+  /**
+   * V8 Phase 5 — Navigation cursor entre slots de la liste filtrée.
+   * Optionnels : si pas fournis, les boutons ↑↓ ne s'affichent pas.
+   */
+  onPrev?: () => void;
+  onNext?: () => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
 }
 
 const STATUSES = Object.keys(STATUS_LABELS) as SlotStatus[];
@@ -71,7 +83,7 @@ const RESERVED_TERMINAL_FOR_SELECT = new Set<SlotStatus>([
   "REJECTED",
 ]);
 
-type TabKey = "status" | "assignees" | "overrides" | "planning";
+type TabKey = "status" | "config";
 
 interface UserOpt {
   id: string;
@@ -101,9 +113,45 @@ export function SlotDetailPanel({
   onDeleted,
   onClose,
   mode = "admin",
+  onPrev,
+  onNext,
+  hasPrev,
+  hasNext,
 }: SlotDetailPanelProps) {
   const isRestricted = mode !== "admin";
   const router = useRouter();
+
+  // V8 Phase 5 — Auto-save sur le textarea Notes (cas le plus fréquent).
+  // Patch partiel "notes only" via debounce 800ms. Les autres champs
+  // (planning, équipe, overrides) gardent le bouton Sauvegarder global
+  // pour cette phase MVP. Phase 10 étendra l'auto-save aux autres champs.
+  const autoSaveNotes = useAutoSave<{ notes: string | null }>(
+    async (patch) => {
+      const res = await fetch(`/api/calendar/slots/${slot.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `Erreur ${res.status}`);
+      }
+      const parsed = (await res.json()) as PublicationSlot;
+      onUpdated(parsed);
+    },
+  );
+
+  // V8 Phase 5 — Raccourcis nav cursor + ⌘O.
+  useKeybindings([
+    { key: "ArrowDown", handler: () => onNext?.(), when: () => !!hasNext },
+    { key: "j", handler: () => onNext?.(), when: () => !!hasNext },
+    { key: "ArrowUp", handler: () => onPrev?.(), when: () => !!hasPrev },
+    { key: "k", handler: () => onPrev?.(), when: () => !!hasPrev },
+    {
+      key: "o+Meta",
+      handler: () => router.push(`/publications/${slot.id}`),
+    },
+  ]);
 
   const [tab, setTab] = useState<TabKey>("status");
 
@@ -122,7 +170,10 @@ export function SlotDetailPanel({
   const [needsDescriptionOverride, setNeedsDescriptionOverride] = useState<string | null>(
     slot.needsDescriptionOverride ?? null,
   );
-  const [needsRushesOverride, setNeedsRushesOverride] = useState<boolean | null>(
+  // P0 — OverrideControl "Rushes attendus" retiré de l'UI (dérivé de source).
+  // Le state lit la valeur DB existante pour la repropager au save sans la
+  // modifier — préserve la rétro-compatibilité des slots déjà overridés.
+  const [needsRushesOverride] = useState<boolean | null>(
     slot.needsRushesOverride ?? null,
   );
   const [needsBriefOverride, setNeedsBriefOverride] = useState<boolean | null>(
@@ -139,12 +190,18 @@ export function SlotDetailPanel({
   );
 
   // ─── Planning (admin only) ──────────────────────────────────────────────
-  const scheduledDate = useMemo(() => new Date(slot.scheduledAt), [slot.scheduledAt]);
+  // slot.scheduledAt peut être null pour les slots en banque — on initialise
+  // les inputs vides dans ce cas (l'admin remplit pour sortir de la banque).
+  const scheduledDate = useMemo(
+    () => (slot.scheduledAt ? new Date(slot.scheduledAt) : null),
+    [slot.scheduledAt],
+  );
   const initialDateStr = useMemo(
-    () => scheduledDate.toISOString().slice(0, 10),
+    () => (scheduledDate ? scheduledDate.toISOString().slice(0, 10) : ""),
     [scheduledDate],
   );
   const initialTimeStr = useMemo(() => {
+    if (!scheduledDate) return "";
     const hh = String(scheduledDate.getHours()).padStart(2, "0");
     const mm = String(scheduledDate.getMinutes()).padStart(2, "0");
     return `${hh}:${mm}`;
@@ -403,24 +460,31 @@ export function SlotDetailPanel({
   }
 
   // ─── Tabs configuration ────────────────────────────────────────────────
+  // P1 — 4 tabs → 2 tabs. "Configuration" regroupe Planning + Équipe +
+  // Ajustements via des CollapsibleSection internes (planning en haut car
+  // action fréquente, ajustements en bas replié car action rare).
+  // V8 Phase 5 — Renommé "Équipe & Planning" → "Configuration" (plus court,
+  // plus stable visuellement avec auto-save persistant en header).
   const tabItems = isRestricted
     ? [{ id: "status", label: "Statut", icon: ListChecks }]
     : [
         { id: "status", label: "Statut", icon: ListChecks },
-        { id: "assignees", label: "Équipe", icon: Users },
-        { id: "overrides", label: "Ajustements", icon: SlidersHorizontal },
-        { id: "planning", label: "Planning", icon: CalendarClock },
+        { id: "config", label: "Configuration", icon: SlidersHorizontal },
       ];
 
-  const dateLabel = scheduledDate.toLocaleDateString("fr-FR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
-  const timeLabel = scheduledDate.toLocaleTimeString("fr-FR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const dateLabel = scheduledDate
+    ? scheduledDate.toLocaleDateString("fr-FR", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      })
+    : "En banque · non programmé";
+  const timeLabel = scheduledDate
+    ? scheduledDate.toLocaleTimeString("fr-FR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
 
   const title = slot.pattern?.label ?? slot.title ?? "Publication";
 
@@ -429,7 +493,7 @@ export function SlotDetailPanel({
       <ConfirmDialog
         open={confirmCancel}
         title="Annuler cette mission ?"
-        description="Le slot passera au statut « Annulé ». Aucune donnée n'est supprimée — l'historique reste consultable."
+        description="La publication passera au statut « Annulée ». Aucune donnée n'est supprimée — l'historique reste consultable."
         confirmLabel="Annuler la mission"
         variant="danger"
         loading={saving}
@@ -441,8 +505,8 @@ export function SlotDetailPanel({
 
       <ConfirmDialog
         open={confirmDeleteOpen}
-        title="Supprimer ce slot ?"
-        description="Cette action est irréversible. Le slot et toutes ses données associées seront supprimés."
+        title="Supprimer cette publication ?"
+        description="Cette action est irréversible. La publication et toutes ses données associées seront supprimées."
         confirmLabel="Supprimer"
         variant="danger"
         loading={deleting}
@@ -469,6 +533,48 @@ export function SlotDetailPanel({
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
+              {/* V8 Phase 5 — Cursor prev/next (si onPrev/onNext fournis).
+                  Raccourcis : ↑/↓ ou K/J. */}
+              {(onPrev || onNext) && (
+                <div className="inline-flex items-center gap-0.5 mr-1">
+                  <ButtonIcon
+                    icon={ChevronUp}
+                    label="Publication précédente (↑ ou K)"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onPrev?.()}
+                    disabled={!hasPrev}
+                  />
+                  <ButtonIcon
+                    icon={ChevronDown}
+                    label="Publication suivante (↓ ou J)"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onNext?.()}
+                    disabled={!hasNext}
+                  />
+                </div>
+              )}
+              {/* V8 Phase 5 — Indicateur auto-save (notes) discret. */}
+              {autoSaveNotes.status !== "idle" && (
+                <span
+                  className={[
+                    "inline-flex items-center px-2 h-7 rounded-md text-[11px] font-medium mr-1",
+                    autoSaveNotes.status === "saving"
+                      ? "text-gray-500 bg-gray-100/70"
+                      : autoSaveNotes.status === "saved"
+                        ? "text-sage-700 bg-sage-100/70"
+                        : "text-rose-700 bg-rose-100/70",
+                  ].join(" ")}
+                  title={autoSaveNotes.error ?? undefined}
+                >
+                  {autoSaveNotes.status === "saving"
+                    ? "Sauvegarde…"
+                    : autoSaveNotes.status === "saved"
+                      ? "Sauvegardé"
+                      : "Erreur"}
+                </span>
+              )}
               <Button
                 variant="secondary"
                 size="sm"
@@ -579,10 +685,13 @@ export function SlotDetailPanel({
                 />
               </FormField>
 
-              <FormField label="Notes internes" help="Visible uniquement par l'équipe interne.">
+              <FormField label="Notes internes" help="Visible uniquement par l'équipe interne. Auto-sauvegardé.">
                 <Textarea
                   value={notes}
-                  onChange={setNotes}
+                  onChange={(v) => {
+                    setNotes(v);
+                    autoSaveNotes.enqueue({ notes: v || null });
+                  }}
                   rows={4}
                   placeholder="Notes privées, instructions…"
                 />
@@ -625,68 +734,97 @@ export function SlotDetailPanel({
             </>
           )}
 
-          {/* Tab Assignations */}
-          {tab === "assignees" && !isRestricted && (
+          {/* Tab Configuration — fusion de Planning + Équipe + Ajustements
+              en CollapsibleSection. Planning ouvert (date = action fréquente),
+              Équipe ouverte, Ajustements replié (action rare per-slot). */}
+          {tab === "config" && !isRestricted && (
             <>
-              <FormField label="Vidéaste">
-                <AssigneePicker
-                  value={assigneeVideasteId || null}
-                  onChange={(id) => setAssigneeVideasteId(id ?? "")}
-                  users={videasteUsers.map((u) => ({
-                    id: u.id,
-                    name: u.name ?? u.id,
-                    email: u.email ?? undefined,
-                    role: u.role,
-                  }))}
-                  allowedRoles={["VIDEASTE", "ADMIN"]}
-                  placeholder="Aucun vidéaste"
-                  groupByRole={false}
-                />
-              </FormField>
-              <FormField label="Monteur">
-                <AssigneePicker
-                  value={assigneeMonteurId || null}
-                  onChange={(id) => setAssigneeMonteurId(id ?? "")}
-                  users={monteurUsers.map((u) => ({
-                    id: u.id,
-                    name: u.name ?? u.id,
-                    email: u.email ?? undefined,
-                    role: u.role,
-                  }))}
-                  allowedRoles={["MONTEUR", "ADMIN"]}
-                  placeholder="Aucun monteur"
-                  groupByRole={false}
-                />
-              </FormField>
-              <FormField label="CM">
-                <AssigneePicker
-                  value={assigneeCmId || null}
-                  onChange={(id) => setAssigneeCmId(id ?? "")}
-                  users={cmUsers.map((u) => ({
-                    id: u.id,
-                    name: u.name ?? u.id,
-                    email: u.email ?? undefined,
-                    role: u.role,
-                  }))}
-                  allowedRoles={["CM", "ADMIN"]}
-                  placeholder="Aucun CM"
-                  groupByRole={false}
-                />
-              </FormField>
-            </>
-          )}
-
-          {/* Tab Ajustements (ex-Overrides) */}
-          {tab === "overrides" && !isRestricted && (
-            <>
-              <div className="rounded-lg bg-white/40 backdrop-blur-[8px] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-                <p className="text-[11px] text-gray-700 leading-relaxed">
-                  Ajuste pour ce slot uniquement les valeurs héritées du
-                  pattern. Tant qu&apos;un champ reste « hérité », il suivra le
-                  pattern à chaque modification. La validation client se gère
-                  dans la fiche publication.
+              <CollapsibleSection
+                title="Planning"
+                defaultOpen
+                storageKey="slot-panel:planning"
+              >
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <FormField label="Date">
+                    <DatePicker value={planDate} onChange={setPlanDate} />
+                  </FormField>
+                  <FormField label="Heure">
+                    <TimePicker value={planTime} onChange={setPlanTime} />
+                  </FormField>
+                </div>
+                <p className="mt-2 text-[11px] text-gray-500">
+                  Modifier la date/heure replanifie le slot. Les jobs déjà déclenchés
+                  ne sont pas affectés.
                 </p>
-              </div>
+              </CollapsibleSection>
+
+              <CollapsibleSection
+                title="Équipe assignée"
+                defaultOpen
+                storageKey="slot-panel:team"
+              >
+                <div className="space-y-3 pt-1">
+                  <FormField label="Vidéaste">
+                    <AssigneePicker
+                      value={assigneeVideasteId || null}
+                      onChange={(id) => setAssigneeVideasteId(id ?? "")}
+                      users={videasteUsers.map((u) => ({
+                        id: u.id,
+                        name: u.name ?? u.id,
+                        email: u.email ?? undefined,
+                        role: u.role,
+                      }))}
+                      allowedRoles={["VIDEASTE", "ADMIN"]}
+                      placeholder="Aucun vidéaste"
+                      groupByRole={false}
+                    />
+                  </FormField>
+                  <FormField label="Monteur">
+                    <AssigneePicker
+                      value={assigneeMonteurId || null}
+                      onChange={(id) => setAssigneeMonteurId(id ?? "")}
+                      users={monteurUsers.map((u) => ({
+                        id: u.id,
+                        name: u.name ?? u.id,
+                        email: u.email ?? undefined,
+                        role: u.role,
+                      }))}
+                      allowedRoles={["MONTEUR", "ADMIN"]}
+                      placeholder="Aucun monteur"
+                      groupByRole={false}
+                    />
+                  </FormField>
+                  <FormField label="CM">
+                    <AssigneePicker
+                      value={assigneeCmId || null}
+                      onChange={(id) => setAssigneeCmId(id ?? "")}
+                      users={cmUsers.map((u) => ({
+                        id: u.id,
+                        name: u.name ?? u.id,
+                        email: u.email ?? undefined,
+                        role: u.role,
+                      }))}
+                      allowedRoles={["CM", "ADMIN"]}
+                      placeholder="Aucun CM"
+                      groupByRole={false}
+                    />
+                  </FormField>
+                </div>
+              </CollapsibleSection>
+
+              <CollapsibleSection
+                title="Ajustements · overrides du pattern"
+                defaultOpen={false}
+                storageKey="slot-panel:overrides"
+              >
+                <div className="rounded-lg bg-white/40 backdrop-blur-[8px] px-4 py-3 mt-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+                  <p className="text-[11px] text-gray-700 leading-relaxed">
+                    Ajuste pour ce slot uniquement les valeurs héritées du
+                    pattern. Tant qu&apos;un champ reste « hérité », il suivra le
+                    pattern à chaque modification. La validation client se gère
+                    dans la fiche publication.
+                  </p>
+                </div>
 
               <OverrideControl
                 label="Validation admin du montage"
@@ -795,23 +933,10 @@ export function SlotDetailPanel({
                 />
               </OverrideControl>
 
-              <OverrideControl
-                label="Rushes attendus"
-                inheritedValue={slot.pattern?.needsRushes ? "Oui" : "Non"}
-                isOverriden={needsRushesOverride !== null}
-                onToggleOverride={(v) =>
-                  setNeedsRushesOverride(v ? !slot.pattern?.needsRushes : null)
-                }
-              >
-                <Combobox
-                  value={String(needsRushesOverride ?? false)}
-                  onChange={(v) => setNeedsRushesOverride(v === "true")}
-                  options={[
-                    { value: "true", label: "Forcer : Oui" },
-                    { value: "false", label: "Forcer : Non" },
-                  ]}
-                />
-              </OverrideControl>
+              {/* P0 — "Rushes attendus" retiré de l'UI : la valeur est
+                  dérivée automatiquement de pattern.source (manual_rushes →
+                  true, sinon false). Le champ Prisma reste pour rétrocompat
+                  et l'override exceptionnel via API. */}
 
               <OverrideControl
                 label="Brief éditorial"
@@ -830,22 +955,7 @@ export function SlotDetailPanel({
                   ]}
                 />
               </OverrideControl>
-            </>
-          )}
-
-          {/* Tab Planning */}
-          {tab === "planning" && !isRestricted && (
-            <>
-              <FormField label="Date">
-                <DatePicker value={planDate} onChange={setPlanDate} />
-              </FormField>
-              <FormField label="Heure">
-                <TimePicker value={planTime} onChange={setPlanTime} />
-              </FormField>
-              <p className="text-[11px] text-gray-500">
-                Modifier la date/heure replanifie le slot. Les jobs déjà déclenchés
-                ne sont pas affectés.
-              </p>
+              </CollapsibleSection>
             </>
           )}
 

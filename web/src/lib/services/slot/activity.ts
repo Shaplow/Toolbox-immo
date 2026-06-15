@@ -43,7 +43,12 @@ export type ActivityType =
   | "COVER_QUEUED"
   | "COVER_READY"
   | "COVER_FAILED"
-  | "COVER_CONFIG_ERROR";
+  | "COVER_CONFIG_ERROR"
+  // ── Banque de contenus (slots stockés sans date programmée) ───────────────
+  /** Slot créé en lot dans la banque (sans date programmée). */
+  | "BANK_SLOT_CREATED"
+  /** Slot banque promu en publication datée (transition scheduledAt null → date). */
+  | "BANK_SLOT_SCHEDULED";
 
 export interface LogActivityInput {
   slotId: string;

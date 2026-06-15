@@ -10,7 +10,7 @@
  */
 
 import { redirect } from "next/navigation";
-import { Subtitles, Image as ImageIcon, FileText, Mic, Wrench } from "lucide-react";
+import { Subtitles, FileText, Mic, Wrench } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { parsePermissions } from "@/lib/permissions/parsePermissions";
 import { Hub, type HubItem } from "@/components/ui/molecules/Hub";
@@ -29,14 +29,10 @@ const TOOLS: ToolEntry[] = [
     icon: Subtitles,
     tint: "sky",
   },
-  {
-    perm: "covers",
-    href: "/covers",
-    label: "Covers",
-    description: "Sélectionner les images de couverture Instagram.",
-    icon: ImageIcon,
-    tint: "sage",
-  },
+  // Covers retirée du hub : la route `/covers` n'existe pas (bug pré-existant)
+  // et les covers ne sont accessibles que dans le contexte d'une publication
+  // (`/publications/[id]/cover`). La permission `covers` reste utilisée pour
+  // gater la section Cover dans la fiche publication.
   {
     perm: "description",
     href: "/descriptions",

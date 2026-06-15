@@ -114,10 +114,16 @@ export function AdminCommandPalette() {
   }, [open]);
 
   // Listener custom : permet l'ouverture depuis la nav (bouton ⌘K).
+  // "admin:open-palette" : event legacy (rétrocompat).
+  // "palette:open" : event Phase 3 unifié multi-rôle.
   useEffect(() => {
     const handler = () => setOpen(true);
     window.addEventListener("admin:open-palette", handler);
-    return () => window.removeEventListener("admin:open-palette", handler);
+    window.addEventListener("palette:open", handler);
+    return () => {
+      window.removeEventListener("admin:open-palette", handler);
+      window.removeEventListener("palette:open", handler);
+    };
   }, []);
 
   // Focus input à l'ouverture.

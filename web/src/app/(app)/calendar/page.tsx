@@ -2,7 +2,26 @@ import { redirect } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { toUserRole } from "@/lib/permissions/role";
+import { whereClauseForUser } from "@/lib/permissions/slotScope";
+import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
 import { CalendarView } from "@/components/calendar/CalendarView";
+
+// Statuts considérés comme "actifs" (non-terminaux) pour le compteur backlog.
+const BACKLOG_ACTIVE_STATUSES = [
+  "DRAFT",
+  "PLANNED",
+  "RUSHES_EXPECTED",
+  "RUSHES_RECEIVED",
+  "IN_EDIT",
+  "EDIT_REVIEW",
+  "EDIT_APPROVED",
+  "CAPTIONS_PENDING",
+  "READY_FOR_CM",
+  "TO_DO",
+  "IN_PROGRESS",
+];
+
+const BACKLOG_READY_STATUSES = ["EDIT_APPROVED", "READY_FOR_CM", "CAPTIONS_PENDING"];
 
 /** Returns the ISO string of Monday for the week containing `date` (server-side). */
 function getMondayISOOf(date: Date): string {
@@ -32,15 +51,20 @@ export default async function CalendarPage() {
     CM: { assigneeCmId: userId },
     VIDEASTE: { assigneeVideasteId: userId },
   };
+  // Exclut les comptes sentinels (curseurs partagés) de tous les pickers
+  // calendar. La logique de rotation interne lit/écrit directement sur ces
+  // sentinelles via leur accountId — la liste UI n'a pas à les exposer.
   const accounts = await prisma.instagramAccount.findMany({
-    where:
-      role === "ADMIN"
-        ? undefined
+    where: {
+      id: { notIn: [...SHARED_SENTINEL_IDS] },
+      ...(role === "ADMIN"
+        ? {}
         : {
             publicationSlots: {
               some: assigneeFilterByRole[role] ?? { assigneeCmId: userId },
             },
-          },
+          }),
+    },
     orderBy: { name: "asc" },
     select: { id: true, name: true, handle: true },
   });
@@ -77,6 +101,33 @@ export default async function CalendarPage() {
   // preventing React hydration mismatches caused by timezone differences.
   const initialWeekStart = getMondayISOOf(new Date());
 
+  // Compteurs backlog (scoped par rôle) — affichés en pastille sur le tab "Backlog"
+  // pour que l'admin voie en permanence la pression du backlog sans devoir
+  // basculer de vue. ReadyCount sépare les contenus pour lesquels il manque
+  // juste une date des autres en production.
+  const roleScope = whereClauseForUser(role, userId);
+  const [backlogTotal, backlogReadyCount] = await Promise.all([
+    prisma.publicationSlot.count({
+      where: {
+        AND: [
+          roleScope,
+          { scheduledAt: null },
+          { status: { in: BACKLOG_ACTIVE_STATUSES } },
+        ],
+      },
+    }),
+    prisma.publicationSlot.count({
+      where: {
+        AND: [
+          roleScope,
+          { scheduledAt: null },
+          { currentVersionId: { not: null } },
+          { status: { in: BACKLOG_READY_STATUSES } },
+        ],
+      },
+    }),
+  ]);
+
   // Liste des vidéastes — pour le filtre admin. Inclut les ADMIN
   // (ils peuvent endosser le rôle de vidéaste).
   const videastes =
@@ -98,6 +149,8 @@ export default async function CalendarPage() {
         monteurs={monteurs.map(formatAssignee)}
         cms={cms.map(formatAssignee)}
         videastes={videastes.map(formatAssignee)}
+        initialBacklogTotal={backlogTotal}
+        initialBacklogReadyCount={backlogReadyCount}
       />
     </div>
   );

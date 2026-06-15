@@ -403,10 +403,10 @@ export function AccountPatternsList({ account, patterns, lastRendersByTemplateId
         <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
           <EmptyState
             icon={Sparkles}
-            title="Aucun pattern de publication"
-            description="Crée un pattern pour automatiser la création de slots dans le calendrier."
+            title="Aucune recette de publication"
+            description="Crée une recette pour automatiser la création de publications dans le calendrier."
             cta={{
-              label: "Ajouter un pattern",
+              label: "Ajouter une recette",
               onClick: openCreate,
             }}
           />

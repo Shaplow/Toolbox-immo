@@ -76,29 +76,40 @@ export async function generateCalendarSlots(
 ): Promise<GenerateCalendarResult> {
   const { accountIds, dateFrom, dateTo, dryRun = false } = options;
 
-  // 1. Récupérer tous les patterns actifs (filtrés par compte si précisé)
-  const patterns = await prisma.accountPattern.findMany({
+  // 1. Récupérer toutes les liaisons actives (PatternBinding). Chaque binding
+  //    expose le planning du compte + référence la recette globale
+  //    (PatternTemplate) qu'il applique. On résout les valeurs effectives
+  //    (incluant les overrides per-account) au moment de matérialiser le slot.
+  const bindings = await prisma.patternBinding.findMany({
     where: {
       isActive: true,
       ...(accountIds && accountIds.length > 0 ? { accountId: { in: accountIds } } : {}),
     },
-    select: {
-      id: true,
-      accountId: true,
-      label: true,
-      source: true,
-      dayOfWeek: true,
-      publishTime: true,
-      templateId: true,
-      defaultAssigneeMonteurId: true,
-      defaultAssigneeCmId: true,
-      defaultAssigneeVideasteId: true,
+    include: {
+      patternTemplate: true,
     },
   });
 
-  if (patterns.length === 0) {
+  if (bindings.length === 0) {
     return { created: 0, skipped: 0 };
   }
+
+  // Adapte la shape des bindings sur l'ancien contrat utilisé plus bas.
+  // Les valeurs sont déjà résolues (binding override > template). On laisse
+  // les champs avec les mêmes noms qu'AccountPattern pour ne pas casser la
+  // suite — le bloc "targets" reste agnostique du nouveau modèle.
+  const patterns = bindings.map((b) => ({
+    id: b.id,
+    accountId: b.accountId,
+    label: b.customLabel ?? b.patternTemplate.label,
+    source: b.patternTemplate.source,
+    dayOfWeek: b.dayOfWeek,
+    publishTime: b.publishTime,
+    templateId: b.templateIdOverride ?? b.patternTemplate.templateId,
+    defaultAssigneeMonteurId: b.defaultAssigneeMonteurId,
+    defaultAssigneeCmId: b.defaultAssigneeCmId,
+    defaultAssigneeVideasteId: b.defaultAssigneeVideasteId,
+  }));
 
   // 2. Calculer toutes les dates cibles sur l'ensemble des semaines de la plage
   type TargetSlot = {
@@ -155,22 +166,27 @@ export async function generateCalendarSlots(
     return { created: 0, skipped: 0 };
   }
 
-  // 3. Bulk fetch des slots existants pour ces patterns sur la plage
-  const patternIds = patterns.map((p) => p.id);
+  // 3. Bulk fetch des slots existants pour ces bindings sur la plage.
+  //    La clé d'idempotence est maintenant (accountId, scheduledAt,
+  //    patternBindingId) — équivalent au triple précédent puisque le
+  //    backfill P2 a injecté patternBindingId sur tous les slots historiques.
+  const bindingIds = patterns.map((p) => p.id);
   const existing = await prisma.publicationSlot.findMany({
     where: {
-      patternId: { in: patternIds },
+      patternBindingId: { in: bindingIds },
       scheduledAt: { gte: dateFrom, lte: dateTo },
     },
-    select: { accountId: true, scheduledAt: true, patternId: true },
+    select: { accountId: true, scheduledAt: true, patternBindingId: true },
   });
 
-  // Index : "accountId|scheduledAtISO|patternId" — utiliser toISOString plutôt
-  // que getTime() pour ne pas dépendre d'une éventuelle conversion timezone
-  // côté driver (Postgres timestamptz est fiable, mais SQLite/MySQL peuvent
-  // renvoyer un Date dans le fuseau local). L'ISO UTC est neutre.
+  // Index : "accountId|scheduledAtISO|patternBindingId".
   const existingKeys = new Set(
-    existing.map((s) => `${s.accountId}|${s.scheduledAt.toISOString()}|${s.patternId}`)
+    existing
+      .filter((s) => s.scheduledAt != null)
+      .map(
+        (s) =>
+          `${s.accountId}|${s.scheduledAt!.toISOString()}|${s.patternBindingId}`,
+      ),
   );
 
   // 4. Filtrer les cibles qui n'existent pas encore
@@ -186,7 +202,7 @@ export async function generateCalendarSlots(
       data: toCreate.map(({ pattern, scheduledAt }) => ({
         accountId: pattern.accountId,
         scheduledAt,
-        patternId: pattern.id,
+        patternBindingId: pattern.id,
         // Statut initial dérivé de la source (voir mapSourceToInitialStatus)
         // — garantit que le slot apparaît immédiatement dans la worklist du bon rôle.
         status: mapSourceToInitialStatus(pattern.source),

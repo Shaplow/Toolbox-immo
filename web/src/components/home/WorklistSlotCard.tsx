@@ -133,7 +133,13 @@ export function WorklistSlotCard({ slot, monteurBadges, cmBadges }: WorklistSlot
               overdue ? "text-rose-700 font-medium" : "text-gray-400"
             }`}
           >
-            {formatScheduledAt(slot.scheduledAt)}
+            {slot.scheduledAt ? (
+              formatScheduledAt(slot.scheduledAt)
+            ) : (
+              <span className="uppercase tracking-widest text-[10px] font-semibold text-stone-500">
+                En banque · sans date
+              </span>
+            )}
             {overdue && (
               <span className="ml-1.5 font-semibold uppercase text-rose-700 text-[10px] tracking-widest">
                 En retard

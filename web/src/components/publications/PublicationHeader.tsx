@@ -40,7 +40,8 @@ export interface PublicationHeaderProps {
     id: string;
     title: string | null;
     status: string;
-    scheduledAt: Date;
+    /** null = slot stocké en banque (sans date programmée). */
+    scheduledAt: Date | null;
   };
   account: { id: string; handle: string; name: string };
   /** Listing lié — gardé dans les props pour compat appelant, non utilisé visuellement. */
@@ -79,7 +80,7 @@ export function PublicationHeader({
   const router = useRouter();
 
 
-  const scheduledAt = new Date(slot.scheduledAt);
+  const scheduledAt = slot.scheduledAt ? new Date(slot.scheduledAt) : null;
   const title = slot.title ?? pattern?.label ?? "Publication sans titre";
 
   async function handleDeleteConfirmed() {
@@ -157,19 +158,29 @@ export function PublicationHeader({
               <div className="mt-3 flex items-center gap-2">
                 <StatusBadge domain="slot" status={slot.status} size="sm" />
                 <p className="text-[13px] text-gray-500">
-                  {formatDateFR(scheduledAt)} · {formatTimeFR(scheduledAt)}
+                  {scheduledAt ? (
+                    <>
+                      {formatDateFR(scheduledAt)} · {formatTimeFR(scheduledAt)}
+                    </>
+                  ) : (
+                    <span className="uppercase tracking-widest text-[11px] font-semibold text-stone-500">
+                      En banque · non programmé
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
               {/* Live status pill glass signature ControlCenter */}
-              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-                <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
-                <span className="text-[11px] font-mono text-gray-700 tabular-nums">
-                  {formatTimeFR(scheduledAt)}
-                </span>
-              </div>
+              {scheduledAt && (
+                <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+                  <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
+                  <span className="text-[11px] font-mono text-gray-700 tabular-nums">
+                    {formatTimeFR(scheduledAt)}
+                  </span>
+                </div>
+              )}
 
               {/* Édition rapide (drawer) — admin only. Ouvre le SlotDetailPanel
                   qui pilote statut, assignations, overrides en surface unique. */}

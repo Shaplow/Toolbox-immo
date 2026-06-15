@@ -29,6 +29,9 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
 
+  const bankParam = searchParams.get("bank");
+  const bank: "only" | undefined = bankParam === "only" ? "only" : undefined;
+
   try {
     const result = await listSlots(
       {
@@ -40,6 +43,7 @@ export async function GET(req: NextRequest) {
         videasteId: searchParams.get("videasteId") ?? undefined,
         dateFrom: searchParams.get("dateFrom") ?? undefined,
         dateTo: searchParams.get("dateTo") ?? undefined,
+        bank,
       },
       userContext,
     );

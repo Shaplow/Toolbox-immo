@@ -185,13 +185,59 @@ const COVER_MODE_OPTIONS = (
   ["none", "manualSelect", "autoPack", "monteurUpload"] as const
 ).map((value) => ({ value, label: COVER_MODE_LABELS_FR[value] }));
 
-const DESCRIPTION_OPTIONS = (
-  ["none", "preFilled", "autoGenerate", "manualWrite"] as const
-).map((value) => ({ value, label: NEEDS_DESCRIPTION_LABELS_FR[value] }));
+// ─── Encodage des selects fusionnés (captions + description) ──────────────
+//
+// Pour éviter d'avoir 2 contrôles couplés (mode + preset), on fusionne dans un
+// seul Combobox avec des valeurs encodées en string :
+// - Captions : "none" | "manual" | "auto:<presetId>"
+// - Description : "none" | "preFilled" | "manualWrite" | "autoGenerate:<promptId>"
+//
+// Le state Form continue de stocker mode et presetId/promptId séparément
+// (compatible API), mais l'UI n'expose qu'une sélection unifiée.
 
-const CAPTIONS_MODE_OPTIONS = (
-  ["none", "auto", "manual"] as const
-).map((value) => ({ value, label: CAPTIONS_MODE_LABELS_FR[value] }));
+function encodeCaptions(mode: string, presetId: string): string {
+  if (mode === "auto") return presetId ? `auto:${presetId}` : "auto:";
+  return mode || "none";
+}
+
+function decodeCaptions(v: string): { mode: string; presetId: string } {
+  if (v.startsWith("auto:")) return { mode: "auto", presetId: v.slice(5) };
+  return { mode: v || "none", presetId: "" };
+}
+
+function buildCaptionsOptions(
+  presets: { value: string; label: string }[],
+): { value: string; label: string }[] {
+  return [
+    { value: "none", label: CAPTIONS_MODE_LABELS_FR.none },
+    ...presets.map((p) => ({ value: `auto:${p.value}`, label: `Auto · ${p.label}` })),
+    { value: "manual", label: CAPTIONS_MODE_LABELS_FR.manual },
+  ];
+}
+
+function encodeDescription(mode: string, promptId: string): string {
+  if (mode === "autoGenerate") return promptId ? `autoGenerate:${promptId}` : "autoGenerate:";
+  return mode || "none";
+}
+
+function decodeDescription(v: string): { mode: string; promptId: string } {
+  if (v.startsWith("autoGenerate:")) return { mode: "autoGenerate", promptId: v.slice(13) };
+  return { mode: v || "none", promptId: "" };
+}
+
+function buildDescriptionOptions(
+  prompts: { value: string; label: string }[],
+): { value: string; label: string }[] {
+  return [
+    { value: "none", label: NEEDS_DESCRIPTION_LABELS_FR.none },
+    { value: "preFilled", label: NEEDS_DESCRIPTION_LABELS_FR.preFilled },
+    ...prompts.map((p) => ({
+      value: `autoGenerate:${p.value}`,
+      label: `Auto IA · ${p.label}`,
+    })),
+    { value: "manualWrite", label: NEEDS_DESCRIPTION_LABELS_FR.manualWrite },
+  ];
+}
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
@@ -495,10 +541,10 @@ export function AccountPatternForm({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
-              {isEdit ? "Édition pattern" : "Nouveau pattern"}
+              {isEdit ? "Édition recette" : "Nouvelle recette"}
             </p>
             <h2 className="mt-1 text-[18px] font-semibold tracking-tight text-gray-950 truncate leading-tight">
-              {values.label || (isEdit ? "Sans titre" : "Pattern de publication")}
+              {values.label || (isEdit ? "Sans titre" : "Recette de publication")}
             </h2>
             <div className="mt-2 inline-flex items-center gap-2">
               <Switch
@@ -658,7 +704,7 @@ export function AccountPatternForm({
               <Textarea
                 value={values.notes}
                 onChange={(v) => set("notes", v)}
-                placeholder="Notes internes sur ce pattern…"
+                placeholder="Notes internes sur cette recette…"
                 rows={3}
                 maxLength={1000}
               />
@@ -706,15 +752,24 @@ export function AccountPatternForm({
             </section>
 
             {/* ─── Bloc 2 : Sous-titres ───────────────────────────────────── */}
+            {/* P0 — Mode + preset fusionnés en 1 sélection unique. Chaque
+                preset disponible apparaît comme option "Auto · {nom}" ;
+                impossible de choisir "Auto" sans preset → la xfield error
+                MISSING_CAPTION_PRESET ne peut plus se produire par UI. */}
             <section className="space-y-3 pt-4 border-t border-white/40">
               <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-700">
                 Sous-titres
               </h3>
-              <FormField label="Mode sous-titres">
+              <FormField label="Sous-titres">
                 <Combobox
-                  value={values.needsCaptionsMode}
-                  onChange={(v) => set("needsCaptionsMode", v)}
-                  options={CAPTIONS_MODE_OPTIONS}
+                  value={encodeCaptions(values.needsCaptionsMode, values.captionPresetId)}
+                  onChange={(v) => {
+                    const { mode, presetId } = decodeCaptions(v);
+                    set("needsCaptionsMode", mode);
+                    set("captionPresetId", presetId);
+                  }}
+                  options={buildCaptionsOptions(captionPresetOptions)}
+                  placeholder="— Choisir —"
                 />
                 {CAPTIONS_MODE_HELP[values.needsCaptionsMode] && (
                   <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500">
@@ -722,34 +777,24 @@ export function AccountPatternForm({
                   </p>
                 )}
               </FormField>
-
-              {values.needsCaptionsMode === "auto" && (
-                <FormField
-                  label="Preset captions par défaut"
-                  required
-                  error={xfieldErrorsByField.captionPresetId}
-                >
-                  <Combobox
-                    value={values.captionPresetId}
-                    onChange={(v) => set("captionPresetId", v)}
-                    options={captionPresetOptions}
-                    placeholder="— Choisir un preset —"
-                    emptyMessage="Aucun preset"
-                  />
-                </FormField>
-              )}
             </section>
 
             {/* ─── Bloc 3 : Description ───────────────────────────────────── */}
+            {/* P0 — Mode + prompt fusionnés en 1 sélection unique. */}
             <section className="space-y-3 pt-4 border-t border-white/40">
               <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-700">
                 Description Instagram
               </h3>
-              <FormField label="Mode description">
+              <FormField label="Description">
                 <Combobox
-                  value={values.needsDescription}
-                  onChange={(v) => set("needsDescription", v)}
-                  options={DESCRIPTION_OPTIONS}
+                  value={encodeDescription(values.needsDescription, values.descriptionPromptId)}
+                  onChange={(v) => {
+                    const { mode, promptId } = decodeDescription(v);
+                    set("needsDescription", mode);
+                    set("descriptionPromptId", promptId);
+                  }}
+                  options={buildDescriptionOptions(descriptionPromptOptions)}
+                  placeholder="— Choisir —"
                 />
                 {NEEDS_DESCRIPTION_HELP[values.needsDescription] && (
                   <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500">
@@ -757,22 +802,6 @@ export function AccountPatternForm({
                   </p>
                 )}
               </FormField>
-
-              {values.needsDescription !== "none" && (
-                <FormField
-                  label="Prompt description"
-                  required={values.needsDescription === "autoGenerate"}
-                  error={xfieldErrorsByField.descriptionPromptId}
-                >
-                  <Combobox
-                    value={values.descriptionPromptId}
-                    onChange={(v) => set("descriptionPromptId", v)}
-                    options={descriptionPromptOptions}
-                    placeholder="— Choisir un prompt —"
-                    emptyMessage="Aucun prompt"
-                  />
-                </FormField>
-              )}
             </section>
           </div>
         )}

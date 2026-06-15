@@ -14,32 +14,35 @@ import type { SlotStatus } from "@/types/calendar";
 // Labels
 // ---------------------------------------------------------------------------
 
+// Glossaire FR — labels harmonisés au feminin (« la publication ») dans le
+// cadre du refactor UX global. Court et actif (« À valider » plutôt que
+// « Montage à valider ») pour scanner d'un coup d'œil sur Inbox/SlotCard.
 export const STATUS_LABELS: Record<SlotStatus, string> = {
   // ── New pipeline statuses ──────────────────────────────────────────────
   DRAFT: "Brouillon",
-  PLANNED: "Planifié",
+  PLANNED: "Planifiée",
   RUSHES_EXPECTED: "Rushes attendus",
   RUSHES_RECEIVED: "Rushes reçus",
   IN_EDIT: "En montage",
-  EDIT_REVIEW: "Montage à valider",
-  EDIT_APPROVED: "Montage validé",
-  CAPTIONS_PENDING: "Sous-titres à faire",
-  READY_FOR_CM: "Prêt pour CM",
-  AWAITING_CLIENT: "Validation client en attente",
-  CLIENT_REVISION: "Modifications client demandées",
-  SCHEDULED: "Programmé",
-  PUBLISHED: "Publié",
-  REJECTED: "Refusé",
-  CANCELLED: "Annulé",
-  BLOCKED: "Bloqué",
-  ARCHIVED: "Archivé",
+  EDIT_REVIEW: "À valider",
+  EDIT_APPROVED: "Validée",
+  CAPTIONS_PENDING: "Sous-titres en cours",
+  READY_FOR_CM: "Prête à publier",
+  AWAITING_CLIENT: "Validation client",
+  CLIENT_REVISION: "Modifications à appliquer",
+  SCHEDULED: "Programmée",
+  PUBLISHED: "Publiée",
+  REJECTED: "Rejetée",
+  CANCELLED: "Annulée",
+  BLOCKED: "Bloquée",
+  ARCHIVED: "Archivée",
 
   // ── Legacy aliases (mapped until DB backfill — Phase 1.2) ─────────────
   TO_DO: "À faire",
   IN_PROGRESS: "En cours",
-  READY: "Prêt",
+  READY: "Prête",
   CHECKING: "Vérification",
-  DONE: "Publié",
+  DONE: "Publiée",
 };
 
 // ---------------------------------------------------------------------------

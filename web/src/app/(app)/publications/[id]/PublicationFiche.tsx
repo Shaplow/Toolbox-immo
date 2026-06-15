@@ -29,7 +29,7 @@ import { BriefSection } from "@/components/publications/sections/BriefSection";
 import { VersionsSection } from "@/components/publications/sections/VersionsSection";
 import type { VersionItem } from "@/components/publications/sections/VersionsSection";
 import { CommentsSection } from "@/components/publications/CommentsSection";
-import { ActivityTimeline } from "@/components/publications/ActivityTimeline";
+import { ActivityToggleButton } from "@/components/publications/ActivityToggleButton";
 import { cloneElement } from "react";
 import type { ReactElement } from "react";
 import type { PublicationStep } from "@/lib/publications/steps";
@@ -65,10 +65,25 @@ type SectionKey =
  * - USER : tout replié par défaut (accès minimal, rôle legacy).
  */
 function isPrimaryForRole(section: SectionKey, role: UserRole): boolean {
-  if (role === "ADMIN") return true;
+  if (role === "ADMIN") {
+    // P1 — Pour l'admin, on ne déplie plus toutes les sections par défaut :
+    // captions / description / cover sont des sections de finalisation
+    // qu'il consulte ponctuellement. Le state est persisté via localStorage
+    // (`pub-section:<slotId>:<key>`), donc l'admin garde la main.
+    return ADMIN_PRIMARY_SECTIONS.includes(section);
+  }
   const list = PRIMARY_SECTIONS_BY_ROLE[role as Exclude<UserRole, "ADMIN">];
   return list?.includes(section) ?? true;
 }
+
+const ADMIN_PRIMARY_SECTIONS: SectionKey[] = [
+  "brief",
+  "rushes",
+  "render",
+  "versions",
+  "clientValidation",
+  "publish",
+];
 
 /**
  * Sections RENDUES (vs simplement repliées) pour un rôle donné. Les
@@ -122,7 +137,8 @@ interface SlotInfo {
   id: string;
   title: string | null;
   status: string;
-  scheduledAt: Date;
+  /** null = slot stocké en banque (sans date programmée). */
+  scheduledAt: Date | null;
   /** Légende Instagram (Phase 2.1 : fusion ancien caption + description). */
   description: string | null;
   publishedUrl: string | null;
@@ -417,8 +433,22 @@ export function PublicationFiche({
   // Section (icon + title + actions + collapsible). wrap() injecte les props
   // de collapse/storage via cloneElement et retourne null si le rôle ne doit
   // pas voir la section.
-  const wrap = (key: SectionKey, node: ReactElement): ReactElement | null => {
+  //
+  // Phase 8 V2 — `permanent: true` retire le pli/dépli pour les sections
+  // critiques (Render, Captions) qui doivent rester toujours visibles. Aucun
+  // localStorage, pas de chevron, le contenu est ancré.
+  const wrap = (
+    key: SectionKey,
+    node: ReactElement,
+    permanent?: boolean,
+  ): ReactElement | null => {
     if (!shouldRenderForRole(key, currentUserRole)) return null;
+    if (permanent) {
+      return cloneElement(node, {
+        sectionId: key,
+        collapsible: false,
+      } as Record<string, unknown>);
+    }
     return cloneElement(node, {
       sectionId: key,
       storageKey: `pub-section:${slot.id}:${key}`,
@@ -605,6 +635,7 @@ export function PublicationFiche({
                   canPromoteVersion={canPromoteVersion}
                   isAdmin={currentUserRole === "ADMIN"}
                   currentUserId={currentUserId}
+                  displayMode="preview"
                   promoteCoherenceWarning={promoteVersionWarning({
                     pattern: pattern
                       ? {
@@ -642,7 +673,8 @@ export function PublicationFiche({
                 validation pour que le client reçoive la vidéo finale (avec
                 sous-titres si requis). */}
 
-            {/* 1. Rendu vidéo — version finale (avec captions incrustées si dispo) */}
+            {/* 1. Rendu vidéo — version finale (avec captions incrustées si dispo).
+                Phase 8 V2 — section permanente (toujours ouverte, pas de pli). */}
             {wrap(
               "render",
               <RenderSection
@@ -671,11 +703,13 @@ export function PublicationFiche({
                 }
                 listingId={listing?.id ?? null}
                 canEdit={canEditRender}
-              />
+              />,
+              true,
             )}
             {shouldRenderForRole("render", currentUserRole) && renderNextStepHint("render")}
 
-            {/* 2. Sous-titres — visible si mode auto OU manual (V8). */}
+            {/* 2. Sous-titres — visible si mode auto OU manual (V8).
+                Phase 8 V2 — section permanente (toujours ouverte, pas de pli). */}
             {captionsActive &&
               wrap(
                 "captions",
@@ -701,7 +735,8 @@ export function PublicationFiche({
                     pattern?.captionPresetId ??
                     null
                   }
-                />
+                />,
+                true,
               )}
             {captionsActive && shouldRenderForRole("captions", currentUserRole) &&
               renderNextStepHint("captions")}
@@ -870,12 +905,16 @@ export function PublicationFiche({
                   initialHasMore={commentsHasMore}
                   currentUserId={currentUserId}
                   currentUserRole={currentUserRole}
+                  displayMode="preview"
                 />
               )}
 
-              {wrap(
-                "activity",
-                <ActivityTimeline
+              {/* V8 Phase 8 — Activity timeline en bouton + modale.
+                  La timeline n'est plus rendue inline (gain ~25% viewport).
+                  Le bouton expose le count comme signal et ouvre la modale
+                  uniquement quand l'admin en a besoin. */}
+              {shouldRenderForRole("activity", currentUserRole) && (
+                <ActivityToggleButton
                   slotId={slot.id}
                   initialActivities={activities}
                   initialHasMore={activityHasMore}

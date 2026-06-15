@@ -13,16 +13,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, Sparkles, PenLine, Clock, Users, Plus } from "lucide-react";
+import { AlertCircle, Clock, Users, Plus, Lock, Pencil } from "lucide-react";
 import type { PublicationSlot } from "@/types/calendar";
 import { Button } from "@/components/ui/Button";
 import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
-import { Tabs } from "@/components/ui/Tabs";
 import { Combobox } from "@/components/ui/Combobox";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { TimePicker } from "@/components/ui/TimePicker";
+import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { toast } from "@/components/ui/Toast";
 import { formatNextActionLine } from "@/lib/publications/nextActionLabel";
 
@@ -84,11 +84,8 @@ const DESCRIPTION_OPTIONS = [
   { value: "manualWrite", label: "Manuelle" },
 ];
 
-const BOOL_OVERRIDE_OPTIONS = [
-  { value: "default", label: "Défaut (non)" },
-  { value: "true", label: "Forcer : Oui" },
-  { value: "false", label: "Forcer : Non" },
-];
+// P0 — BOOL_OVERRIDE_OPTIONS retiré : OneOffToggle utilise maintenant un
+// segmented tri-état natif (Défaut / Oui / Non) au lieu d'un Combobox.
 
 export function AddSlotModal({
   accounts,
@@ -113,8 +110,16 @@ export function AddSlotModal({
   const [assigneeCmId, setAssigneeCmId] = useState<string>("");
   const [assigneeVideasteId, setAssigneeVideasteId] = useState<string>("");
 
+  // P1 — En mode pattern, l'heure est verrouillée sur pattern.publishTime
+  // par défaut. Cliquer "Modifier" déverrouille le TimePicker et affiche le
+  // warning F1 (slot off-pattern). Évite la friction du picker libre tout en
+  // gardant l'override possible.
+  const [timeUnlocked, setTimeUnlocked] = useState(false);
+
   const [oneOffNeedsCaptions, setOneOffNeedsCaptions] = useState<boolean | null>(null);
-  const [oneOffNeedsRushes, setOneOffNeedsRushes] = useState<boolean | null>(null);
+  // P0 — toggle "Rushes attendus" retiré de l'UI (dérivé de source). On garde
+  // le state à null pour ne jamais envoyer needsRushesOverride côté API.
+  const [oneOffNeedsRushes] = useState<boolean | null>(null);
   const [oneOffNeedsBrief, setOneOffNeedsBrief] = useState<boolean | null>(null);
   const [oneOffCoverMode, setOneOffCoverMode] = useState<string>("");
   const [oneOffCaptionPresetId, setOneOffCaptionPresetId] = useState<string>("");
@@ -177,11 +182,47 @@ export function AddSlotModal({
     setAssigneeCmId("");
     setAssigneeVideasteId("");
 
-    void fetch(`/api/admin/accounts/${accountId}/patterns`)
-      .then((r) => (r.ok ? (r.json() as Promise<PatternOption[]>) : []))
+    // P2 — Fetch bindings au lieu de AccountPattern legacy. Le shim de compat
+    // côté createSlot accepte encore patternId, mais l'UI envoie maintenant
+    // l'id du binding (canonique) → moins de résolution implicite côté serveur.
+    type BindingResponse = {
+      id: string;
+      customLabel: string | null;
+      dayOfWeek: number[];
+      publishTime: string;
+      isActive: boolean;
+      templateIdOverride: string | null;
+      defaultAssigneeMonteur: { id: string; name: string } | null;
+      defaultAssigneeCm: { id: string; name: string } | null;
+      defaultAssigneeVideaste: { id: string; name: string } | null;
+      patternTemplate: {
+        id: string;
+        label: string;
+        source: string;
+        templateId: string | null;
+      };
+    };
+    // Au changement de compte, re-lock l'heure : on charge un nouveau pattern
+    // par défaut, son publishTime devient la valeur affichée verrouillée.
+    setTimeUnlocked(false);
+    void fetch(`/api/admin/accounts/${accountId}/bindings`)
+      .then((r) => (r.ok ? (r.json() as Promise<BindingResponse[]>) : []))
       .then((data) => {
         if (cancelled) return;
-        const active = data.filter((p) => p.isActive);
+        const active: PatternOption[] = data
+          .filter((b) => b.isActive)
+          .map((b) => ({
+            id: b.id,
+            label: b.customLabel ?? b.patternTemplate.label,
+            templateId: b.templateIdOverride ?? b.patternTemplate.templateId,
+            dayOfWeek: b.dayOfWeek,
+            publishTime: b.publishTime,
+            isActive: b.isActive,
+            source: b.patternTemplate.source,
+            defaultAssigneeMonteur: b.defaultAssigneeMonteur,
+            defaultAssigneeCm: b.defaultAssigneeCm,
+            defaultAssigneeVideaste: b.defaultAssigneeVideaste,
+          }));
         setPatterns(active);
         if (active.length > 0) {
           const first = active[0];
@@ -233,7 +274,12 @@ export function AddSlotModal({
       setAssigneeMonteurId(pattern.defaultAssigneeMonteur?.id ?? "");
       setAssigneeCmId(pattern.defaultAssigneeCm?.id ?? "");
       setAssigneeVideasteId(pattern.defaultAssigneeVideaste?.id ?? "");
-      if (pattern.publishTime) setTime(pattern.publishTime);
+      if (pattern.publishTime) {
+        setTime(pattern.publishTime);
+        // Re-locker l'heure quand on change de pattern : la valeur revient à
+        // celle du pattern, l'admin doit re-cliquer "Modifier" pour la dévier.
+        setTimeUnlocked(false);
+      }
     }
   }
 
@@ -296,7 +342,9 @@ export function AddSlotModal({
         assigneeMonteurId: assigneeMonteurId || null,
         assigneeCmId: assigneeCmId || null,
         assigneeVideasteId: assigneeVideasteId || null,
-        patternId: isPatternMode ? selectedPatternId : null,
+        // P2 — selectedPatternId est désormais un id de PatternBinding.
+        // createSlot l'accepte directement via patternBindingId.
+        patternBindingId: isPatternMode ? selectedPatternId : null,
       };
 
       if (!isPatternMode) {
@@ -366,10 +414,15 @@ export function AddSlotModal({
     ...cms.map((u) => ({ value: u.id, label: u.name })),
   ];
 
-  const tabItems: { id: Mode; label: string; icon: typeof Sparkles; disabled?: boolean }[] = [
-    { id: "pattern", label: "Depuis un pattern", icon: Sparkles, disabled: hasNoPatterns },
-    { id: "manual", label: "Manuel (one-off)", icon: PenLine },
-  ];
+  // P1 — Les assignations sont-elles déjà pré-remplies depuis le pattern ?
+  // Si oui, la section "Équipe" peut rester repliée par défaut (modifier
+  // assignation = action rare). Si non (mode manuel), section ouverte.
+  const teamPrefilledFromPattern =
+    isPatternMode &&
+    !!selectedPattern &&
+    ((!!selectedPattern.defaultAssigneeMonteur && !!assigneeMonteurId) ||
+      (!!selectedPattern.defaultAssigneeCm && !!assigneeCmId) ||
+      (!!selectedPattern.defaultAssigneeVideaste && !!assigneeVideasteId));
 
   return (
     <Modal open onClose={onClose} size="lg">
@@ -382,14 +435,6 @@ export function AddSlotModal({
         className="contents"
       >
         <div className="px-5 py-4 max-h-[70vh] overflow-y-auto space-y-4">
-          <Tabs
-            items={tabItems}
-            value={mode}
-            onChange={(v) => setMode(v as Mode)}
-            variant="glass"
-            size="sm"
-          />
-
           <FormField label="Compte Instagram" required>
             <Combobox
               value={accountId}
@@ -399,12 +444,27 @@ export function AddSlotModal({
             />
           </FormField>
 
+          {/* Toggle "Sans recette" — permet de switcher en mode manuel
+              quand des patterns existent, mais qu'on veut créer un slot
+              one-off différent. Discret par défaut, visible si nécessaire. */}
+          {!hasNoPatterns && (
+            <div className="flex items-center justify-end -mt-1">
+              <button
+                type="button"
+                onClick={() => setMode(mode === "pattern" ? "manual" : "pattern")}
+                className="text-[11px] text-gray-500 hover:text-gray-800 hover:underline"
+              >
+                {mode === "pattern" ? "Créer sans recette →" : "← Utiliser une recette"}
+              </button>
+            </div>
+          )}
+
           {/* Mode PATTERN — picker visuel */}
           {isPatternMode && (
             <FormField
-              label="Pattern"
+              label="Recette"
               required
-              help="Le pattern fixe le template, les sous-titres et la cover par défaut."
+              help="La recette fixe le template, les sous-titres et la cover par défaut."
             >
               {loadingPatterns ? (
                 <div className="flex items-center gap-2 text-[12px] text-gray-400 py-2">
@@ -486,27 +546,51 @@ export function AddSlotModal({
             </div>
           )}
 
-          {/* Date + Heure */}
+          {/* Date + Heure — en mode pattern l'heure est lockée sur
+              pattern.publishTime ; un clic "Modifier" déverrouille le picker. */}
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Date" required>
               <DatePicker value={date} onChange={setDate} />
             </FormField>
             <FormField label="Heure" required>
-              <TimePicker value={time} onChange={setTime} />
+              {isPatternMode && selectedPattern?.publishTime && !timeUnlocked ? (
+                <div className="flex items-center gap-2 h-9 rounded-md px-3 bg-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.08)]">
+                  <Lock size={11} className="text-gray-400" />
+                  <span className="text-[13px] font-mono tabular-nums text-gray-800">
+                    {selectedPattern.publishTime}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setTimeUnlocked(true)}
+                    className="ml-auto inline-flex items-center gap-1 text-[10.5px] text-sky-700 hover:text-sky-900 hover:underline"
+                  >
+                    <Pencil size={10} />
+                    Modifier
+                  </button>
+                </div>
+              ) : (
+                <TimePicker value={time} onChange={setTime} />
+              )}
             </FormField>
           </div>
 
-          {/* F1 — Warning si scheduledAt off-pattern : la clé d'idempotence
-              de generateCalendarSlots inclut scheduledAt, donc un slot one-off
-              à une heure différente coexistera avec celui auto-généré. */}
-          {isPatternMode && selectedPattern?.publishTime && time !== selectedPattern.publishTime && (
-            <div className="rounded-xl bg-gradient-to-b from-peach-50/85 to-peach-50/55 backdrop-blur-[10px] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(245,158,107,0.30)]">
-              <p className="text-[12px] text-peach-900">
-                <span className="font-semibold">Heure différente du pattern</span> ({selectedPattern.publishTime}).
-                Le slot sera créé à {time}. Si tu génères la semaine plus tard, un autre slot pourrait être ajouté à {selectedPattern.publishTime}.
-              </p>
-            </div>
-          )}
+          {/* F1 — Warning si l'admin a déverrouillé l'heure et choisi une
+              valeur off-pattern : la clé d'idempotence de generateCalendarSlots
+              inclut scheduledAt, donc un slot one-off à une heure différente
+              coexistera avec celui auto-généré. */}
+          {isPatternMode &&
+            timeUnlocked &&
+            selectedPattern?.publishTime &&
+            time !== selectedPattern.publishTime && (
+              <div className="rounded-xl bg-gradient-to-b from-peach-50/85 to-peach-50/55 backdrop-blur-[10px] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(245,158,107,0.30)]">
+                <p className="text-[12px] text-peach-900">
+                  <span className="font-semibold">Heure différente du pattern</span>{" "}
+                  ({selectedPattern.publishTime}). Le slot sera créé à {time}. Si tu génères
+                  la semaine plus tard, un autre slot pourrait être ajouté à{" "}
+                  {selectedPattern.publishTime}.
+                </p>
+              </div>
+            )}
 
           {/* Titre */}
           <FormField
@@ -529,18 +613,27 @@ export function AddSlotModal({
             />
           </FormField>
 
-          {/* Assignés (commun) */}
-          <div className="rounded-xl bg-white/40 backdrop-blur-[8px] p-3 space-y-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-            <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-widest font-medium text-gray-500">
-              <Users size={11} />
-              Équipe assignée
-              {isPatternMode && (
-                <span className="ml-1 normal-case tracking-normal text-[10px] text-gray-400 font-normal">
-                  pré-remplie depuis le pattern · modifiable
-                </span>
-              )}
+          {/* Équipe assignée — repliée par défaut quand pré-remplie depuis
+              le pattern (action rare). Ouverte en mode manuel ou si aucun
+              défaut. Le warning "sans monteur" reste visible hors collapse
+              car bloquant (slot non assigné = invisible côté monteur). */}
+          {!assigneeMonteurId && (
+            <div className="flex items-start gap-2 text-[11px] text-peach-700 bg-peach-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.18)]">
+              <AlertCircle size={12} className="mt-0.5 shrink-0" />
+              Sans monteur assigné, ce slot n&apos;apparaîtra dans la worklist d&apos;aucun
+              monteur.
             </div>
-            <div className="grid grid-cols-2 gap-3">
+          )}
+          <CollapsibleSection
+            title={
+              isPatternMode
+                ? "Équipe assignée · pré-remplie depuis le pattern"
+                : "Équipe assignée"
+            }
+            defaultOpen={!teamPrefilledFromPattern}
+            storageKey="add-slot-modal:team"
+          >
+            <div className="grid grid-cols-2 gap-3 pt-1">
               <FormField label="Vidéaste">
                 <Combobox
                   value={assigneeVideasteId}
@@ -571,35 +664,28 @@ export function AddSlotModal({
                 </FormField>
               </div>
             </div>
-            {!assigneeMonteurId && (
-              <div className="flex items-start gap-2 text-[11px] text-peach-700 bg-peach-50/70 rounded-md px-2 py-1.5 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.18)]">
-                <AlertCircle size={12} className="mt-0.5 shrink-0" />
-                Sans monteur assigné, ce slot n&apos;apparaîtra dans la worklist d&apos;aucun
-                monteur.
-              </div>
-            )}
-          </div>
+          </CollapsibleSection>
 
-          {/* Options de production (manuel only) — remplacé details/summary
-              natif (anti-pattern) par un bloc inline. La section est courte
-              et toujours utile en mode manuel, pas la peine de la masquer. */}
+          {/* Options de production (manuel only) — repliée par défaut,
+              avec defaults raisonnables (tout hérite du pattern si renseigné
+              plus tard). L'admin l'ouvre seulement s'il veut vraiment fixer
+              les choses dès la création. */}
           {!isPatternMode && (
-            <section className="rounded-xl bg-rose-50/40 backdrop-blur-[8px] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.18)] space-y-3">
-              <div>
-                <h3 className="text-[12px] font-semibold text-rose-700">
-                  Options de production
-                </h3>
-                <p className="mt-0.5 text-[11px] text-rose-700/70">
-                  Pré-régler cover, sous-titres, description (laisser vide = héritera du pattern par défaut).
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
+            <CollapsibleSection
+              title="Options de production · cover, sous-titres, description"
+              defaultOpen={false}
+              storageKey="add-slot-modal:options"
+            >
+              <p className="mt-1 text-[11px] text-gray-500">
+                Tout reste modifiable après création depuis la fiche.
+              </p>
+              <div className="grid grid-cols-2 gap-2 pt-2">
                 <FormField label="Cover automatique">
                   <Combobox
                     value={oneOffCoverMode}
                     onChange={setOneOffCoverMode}
                     options={COVER_MODE_OPTIONS}
-                    placeholder="Hérite du pattern"
+                    placeholder="Hérite de la recette"
                   />
                 </FormField>
                 <OneOffToggle
@@ -607,11 +693,9 @@ export function AddSlotModal({
                   value={oneOffNeedsCaptions}
                   onChange={setOneOffNeedsCaptions}
                 />
-                <OneOffToggle
-                  label="Rushes attendus"
-                  value={oneOffNeedsRushes}
-                  onChange={setOneOffNeedsRushes}
-                />
+                {/* P0 — "Rushes attendus" retiré : la valeur est dérivée
+                    de la source du pattern (manual_rushes → true). Pour un
+                    slot one-off sans pattern, par défaut pas de rushs. */}
                 <OneOffToggle
                   label="Brief éditorial"
                   value={oneOffNeedsBrief}
@@ -660,7 +744,7 @@ export function AddSlotModal({
                   </FormField>
                 )}
               </div>
-            </section>
+            </CollapsibleSection>
           )}
 
           {error && (
@@ -689,7 +773,11 @@ export function AddSlotModal({
   );
 }
 
-// ─── OneOffToggle (Combobox version) ────────────────────────────────────────
+// ─── OneOffToggle (segmented tri-état) ────────────────────────────────────
+//
+// Tri-état lisible : Défaut / Oui / Non rendu en boutons segmentés au lieu
+// d'un Combobox 3 options. Le sens "hérité du pattern" (null) reste explicite
+// via le label "Défaut" — choisir Oui ou Non force la valeur sur ce slot.
 
 function OneOffToggle({
   label,
@@ -700,16 +788,40 @@ function OneOffToggle({
   value: boolean | null;
   onChange: (v: boolean | null) => void;
 }) {
-  const selectValue = value === null ? "default" : value ? "true" : "false";
+  const options: { key: "default" | "true" | "false"; label: string; v: boolean | null }[] = [
+    { key: "default", label: "Défaut", v: null },
+    { key: "true", label: "Oui", v: true },
+    { key: "false", label: "Non", v: false },
+  ];
+  const current = value === null ? "default" : value ? "true" : "false";
   return (
     <FormField label={label}>
-      <Combobox
-        value={selectValue}
-        onChange={(v) => {
-          onChange(v === "default" ? null : v === "true");
-        }}
-        options={BOOL_OVERRIDE_OPTIONS}
-      />
+      <div
+        role="radiogroup"
+        aria-label={label}
+        className="inline-flex items-center rounded-lg p-0.5 bg-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)]"
+      >
+        {options.map((opt) => {
+          const active = current === opt.key;
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange(opt.v)}
+              className={[
+                "px-3 h-7 text-[12px] font-medium rounded-md transition-all",
+                active
+                  ? "bg-gray-900 text-white shadow-[0_1px_2px_rgba(15,23,42,0.12)]"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-white/80",
+              ].join(" ")}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
     </FormField>
   );
 }

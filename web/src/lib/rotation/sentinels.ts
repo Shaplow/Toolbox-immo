@@ -16,6 +16,16 @@ export const ROTATION_SENTINELS = {
   SHARED_DATA: SHARED_DATA_CURSOR_ACCOUNT_ID,
 } as const;
 
+/**
+ * Liste prête à brancher sur `where: { id: { notIn: SHARED_SENTINEL_IDS } }`
+ * dans toute query Prisma `instagramAccount.findMany` qui ne doit pas exposer
+ * les comptes virtuels (listings admin, pickers UI, search palette…).
+ */
+export const SHARED_SENTINEL_IDS: readonly string[] = [
+  SHARED_CURSOR_ACCOUNT_ID,
+  SHARED_DATA_CURSOR_ACCOUNT_ID,
+];
+
 export function isSharedSentinel(accountId: string): boolean {
   return accountId === SHARED_CURSOR_ACCOUNT_ID || accountId === SHARED_DATA_CURSOR_ACCOUNT_ID;
 }

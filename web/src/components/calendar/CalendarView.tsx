@@ -11,6 +11,13 @@ import {
   Sparkles,
   Filter,
   X,
+  Inbox,
+  Calendar as CalendarIcon,
+  PackagePlus,
+  CheckSquare,
+  Square,
+  UserCheck,
+  Ban,
 } from "lucide-react";
 import { DAY_LABELS, type PublicationSlot } from "@/types/calendar";
 import { resolveSlotOwner } from "@/lib/slots/statusLabels";
@@ -18,6 +25,12 @@ import type { UserRole } from "@/types/roles";
 import { SlotCard } from "./SlotCard";
 import { SlotDetailPanel, type SlotDetailPanelMode } from "./SlotDetailPanel";
 import { AddSlotModal } from "./AddSlotModal";
+import { BulkStockModal } from "./BulkStockModal";
+import { BankView } from "./BankView";
+import { BulkReassignModal } from "./BulkReassignModal";
+import { BulkShiftDateModal } from "./BulkShiftDateModal";
+import { BulkCancelModal } from "./BulkCancelModal";
+import { ScheduleFromBankModal } from "./ScheduleFromBankModal";
 import { CalendarFilters, type CalendarFiltersState } from "./CalendarFilters";
 import { toast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -25,6 +38,7 @@ import { Button } from "@/components/ui/Button";
 import { ButtonIcon } from "@/components/ui/ButtonIcon";
 import { Chip } from "@/components/ui/Chip";
 import { Alert } from "@/components/ui/Alert";
+import { Tabs } from "@/components/ui/Tabs";
 
 interface Account {
   id: string;
@@ -46,6 +60,10 @@ interface CalendarViewProps {
   monteurs?: AssigneeOption[];
   cms?: AssigneeOption[];
   videastes?: AssigneeOption[];
+  /** Compteur server-side des slots backlog actifs (scopé par rôle). */
+  initialBacklogTotal?: number;
+  /** Compteur server-side des contenus backlog prêts à programmer. */
+  initialBacklogReadyCount?: number;
 }
 
 const ROLE_DETAIL_MODE: Record<UserRole, SlotDetailPanelMode> = {
@@ -102,6 +120,8 @@ export function CalendarView({
   monteurs = [],
   cms = [],
   videastes = [],
+  initialBacklogTotal = 0,
+  initialBacklogReadyCount = 0,
 }: CalendarViewProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -119,13 +139,36 @@ export function CalendarView({
     return new Date(initialWeekStart);
   })();
 
+  const initialView: "week" | "bank" =
+    searchParams?.get("view") === "bank" ? "bank" : "week";
+
+  const [view, setView] = useState<"week" | "bank">(initialView);
+  // Compteurs backlog server-side conservés en state local. Mis à jour
+  // optimistiquement quand l'admin crée/programme/supprime des slots banque
+  // — évite un refetch à chaque action et garde le badge réactif.
+  const [backlogTotal, setBacklogTotal] = useState<number>(initialBacklogTotal);
+  const [backlogReadyCount, setBacklogReadyCount] = useState<number>(
+    initialBacklogReadyCount,
+  );
   const [weekStart, setWeekStart] = useState<Date>(initialWeek);
   const [slots, setSlots] = useState<PublicationSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<PublicationSlot | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [showBulkStock, setShowBulkStock] = useState(false);
+  const [scheduleFromBank, setScheduleFromBank] = useState<PublicationSlot | null>(null);
   const [addDefaultDate, setAddDefaultDate] = useState<string | undefined>(undefined);
+  // Sprint C — multi-select calendrier admin pour bulk-patch
+  // (réassigner monteur/CM/vidéaste, déplacer date, annuler).
+  const [bulkSelectMode, setBulkSelectMode] = useState(false);
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  // Phase 7 V2 — split BulkPatchModal en 3 actions focalisées.
+  const [bulkAction, setBulkAction] = useState<
+    "reassign" | "shift" | "cancel" | null
+  >(null);
   const [generating, setGenerating] = useState(false);
   const [confirmGenOpen, setConfirmGenOpen] = useState(false);
   // W4.9 : preview dry-run avant confirmation (created/skipped sans insert DB).
@@ -158,17 +201,32 @@ export function CalendarView({
     setLoading(true);
     setLoadError(null);
     try {
-      const dateToEnd = new Date(dateTo);
-      dateToEnd.setHours(23, 59, 59, 999);
-      const params = new URLSearchParams({
-        dateFrom: dateFrom.toISOString(),
-        dateTo: dateToEnd.toISOString(),
-        ...(filters.accountId ? { accountId: filters.accountId } : {}),
-        ...(filters.status ? { status: filters.status } : {}),
-        ...(filters.monteurId ? { monteurId: filters.monteurId } : {}),
-        ...(filters.cmId ? { cmId: filters.cmId } : {}),
-        ...(filters.videasteId ? { videasteId: filters.videasteId } : {}),
-      });
+      // En mode "bank" on charge uniquement les slots sans date programmée,
+      // sans aucun filtre date — la banque transcende la semaine.
+      const params = new URLSearchParams(
+        view === "bank"
+          ? {
+              bank: "only",
+              ...(filters.accountId ? { accountId: filters.accountId } : {}),
+              ...(filters.status ? { status: filters.status } : {}),
+              ...(filters.monteurId ? { monteurId: filters.monteurId } : {}),
+              ...(filters.cmId ? { cmId: filters.cmId } : {}),
+              ...(filters.videasteId ? { videasteId: filters.videasteId } : {}),
+            }
+          : (() => {
+              const dateToEnd = new Date(dateTo);
+              dateToEnd.setHours(23, 59, 59, 999);
+              return {
+                dateFrom: dateFrom.toISOString(),
+                dateTo: dateToEnd.toISOString(),
+                ...(filters.accountId ? { accountId: filters.accountId } : {}),
+                ...(filters.status ? { status: filters.status } : {}),
+                ...(filters.monteurId ? { monteurId: filters.monteurId } : {}),
+                ...(filters.cmId ? { cmId: filters.cmId } : {}),
+                ...(filters.videasteId ? { videasteId: filters.videasteId } : {}),
+              };
+            })(),
+      );
       const res = await fetch(`/api/calendar/slots?${params.toString()}`);
       if (!res.ok) throw new Error(`Erreur ${res.status}`);
       const data = (await res.json()) as { slots: PublicationSlot[]; hasMore: boolean };
@@ -182,7 +240,7 @@ export function CalendarView({
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStart, filters]);
+  }, [view, weekStart, filters]);
 
   useEffect(() => {
     void load();
@@ -223,6 +281,38 @@ export function CalendarView({
     url.searchParams.delete("week");
     router.replace(url.pathname + url.search, { scroll: false });
   }, [router]);
+
+  // Switch entre vue semaine et vue banque — persiste dans l'URL pour
+  // que le rechargement (et les liens entrants depuis HomeAdmin KPI) tombent
+  // sur la bonne vue. Reset les filtres au switch pour éviter que le compteur
+  // KPI (banner HomeAdmin = "5 prêts") diverge de la liste filtrée affichée
+  // (= 2 visibles à cause d'un filtre monteur résiduel).
+  const switchView = useCallback(
+    (next: "week" | "bank") => {
+      setView(next);
+      setSlots([]);
+      setFilters({
+        accountId: "",
+        status: "",
+        monteurId: "",
+        cmId: "",
+        videasteId: "",
+        onlyMine: false,
+      });
+      const url = new URL(window.location.href);
+      if (next === "bank") {
+        url.searchParams.set("view", "bank");
+        url.searchParams.delete("week");
+      } else {
+        url.searchParams.delete("view");
+      }
+      // Clear aussi les query params filtres pour cohérence
+      url.searchParams.delete("accountId");
+      url.searchParams.delete("filter");
+      router.replace(url.pathname + url.search, { scroll: false });
+    },
+    [router],
+  );
 
   // Phase 7 — raccourcis clavier globaux du calendrier.
   // ⌘N / Ctrl+N : ouvre AddSlotModal (ADMIN only)
@@ -276,7 +366,11 @@ export function CalendarView({
       slot.status === "REJECTED";
     switch (kpiFilter) {
       case "overdue":
-        return !isTerminal && new Date(slot.scheduledAt).getTime() < now;
+        return (
+          !isTerminal &&
+          slot.scheduledAt != null &&
+          new Date(slot.scheduledAt).getTime() < now
+        );
       case "no-pattern":
         return !slot.patternId;
       case "no-monteur":
@@ -296,8 +390,12 @@ export function CalendarView({
 
   function slotsForDay(day: Date) {
     return visibleSlots
-      .filter((s) => isSameDay(new Date(s.scheduledAt), day))
-      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+      .filter((s) => s.scheduledAt != null && isSameDay(new Date(s.scheduledAt), day))
+      .sort(
+        (a, b) =>
+          new Date(a.scheduledAt as string).getTime() -
+          new Date(b.scheduledAt as string).getTime(),
+      );
   }
 
   async function handleGenerateConfirmed() {
@@ -393,39 +491,98 @@ export function CalendarView({
                   Planning
                 </p>
                 <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
-                  Calendrier
+                  {view === "bank" ? "Banque" : "Calendrier"}
                 </h1>
                 <p className="mt-2 text-[13px] text-gray-500">
-                  {visibleSlots.length} publication{visibleSlots.length > 1 ? "s" : ""}{" "}
-                  {filters.onlyMine ? "à toi" : "cette semaine"}
-                  {mineCount > 0 && !filters.onlyMine && currentUserRole !== "EXTERNAL_GENERATOR" && (
+                  {view === "bank" ? (
                     <>
-                      {" · "}
-                      <button
-                        type="button"
-                        onClick={() => setFilters((f) => ({ ...f, onlyMine: true }))}
-                        className="text-sky-700 hover:underline tabular-nums"
-                      >
-                        {mineCount} pour toi
-                      </button>
+                      {visibleSlots.length} contenu{visibleSlots.length > 1 ? "s" : ""}{" "}
+                      en banque, en attente d&apos;une date de publication
+                    </>
+                  ) : (
+                    <>
+                      {visibleSlots.length} publication{visibleSlots.length > 1 ? "s" : ""}{" "}
+                      {filters.onlyMine ? "à toi" : "cette semaine"}
+                      {mineCount > 0 &&
+                        !filters.onlyMine &&
+                        currentUserRole !== "EXTERNAL_GENERATOR" && (
+                          <>
+                            {" · "}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setFilters((f) => ({ ...f, onlyMine: true }))
+                              }
+                              className="text-sky-700 hover:underline tabular-nums"
+                            >
+                              {mineCount} pour toi
+                            </button>
+                          </>
+                        )}
                     </>
                   )}
                 </p>
               </div>
 
               <div className="flex items-center gap-2 flex-shrink-0">
-                {/* Live pill — semaine courante avec dot pulse sage si on est sur today */}
-                <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-                  {isCurrentWeek && (
-                    <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
-                  )}
-                  <span className="text-[11px] font-mono text-gray-700 tabular-nums">
-                    {weekLabel}
-                  </span>
-                </div>
+                {/* Live pill — visible uniquement en vue calendrier */}
+                {view === "week" && (
+                  <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+                    {isCurrentWeek && (
+                      <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
+                    )}
+                    <span className="text-[11px] font-mono text-gray-700 tabular-nums">
+                      {weekLabel}
+                    </span>
+                  </div>
+                )}
 
-                {isAdmin && (
+                {isAdmin && view === "bank" && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    icon={PackagePlus}
+                    onClick={() => setShowBulkStock(true)}
+                    title="Créer des missions sans date"
+                  >
+                    Nouvelles missions
+                  </Button>
+                )}
+
+                {/* Sprint C — Toggle sélection multiple (vue semaine admin). */}
+                {isAdmin && view === "week" && (
+                  <Chip
+                    variant={bulkSelectMode ? "sky" : "default"}
+                    size="sm"
+                    selected={bulkSelectMode}
+                    icon={bulkSelectMode ? CheckSquare : Square}
+                    onClick={() => {
+                      setBulkSelectMode((v) => !v);
+                      setBulkSelectedIds(new Set());
+                    }}
+                  >
+                    Sélection
+                  </Chip>
+                )}
+
+                {isAdmin && view === "week" && (
                   <>
+                    {/* Nouveau slot = action primaire fréquente (création
+                        ponctuelle). Mise en avant à gauche du groupe. */}
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon={Plus}
+                      onClick={() => {
+                        setAddDefaultDate(undefined);
+                        setShowAdd(true);
+                      }}
+                      title="Nouvelle publication (⌘N)"
+                    >
+                      Nouvelle publication
+                    </Button>
+                    {/* Générer = action récurrente hebdomadaire. Secondaire,
+                        visuellement moins prégnante mais accessible. */}
                     <Button
                       variant="secondary"
                       size="sm"
@@ -459,21 +616,9 @@ export function CalendarView({
                         })();
                       }}
                       loading={generating}
-                      title="Générer les slots auto pour la semaine"
+                      title="Génère les publications automatiques basées sur le planning des recettes liées"
                     >
                       <span className="hidden sm:inline">Générer</span>
-                    </Button>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      icon={Plus}
-                      onClick={() => {
-                        setAddDefaultDate(undefined);
-                        setShowAdd(true);
-                      }}
-                      title="Nouveau slot (⌘N)"
-                    >
-                      Nouveau slot
                     </Button>
                   </>
                 )}
@@ -485,39 +630,87 @@ export function CalendarView({
         {/* Inner content area — cards glass flottantes indépendantes */}
         <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
           <div className="max-w-7xl mx-auto space-y-6">
+            {/* Tabs — Calendrier vs Backlog. Le badge sur "Banque" rend
+                visible la pression du backlog depuis la vue Calendrier
+                (sans devoir basculer). Vert si des contenus sont prêts. */}
+            <div className="flex justify-center">
+              <Tabs
+                variant="glass"
+                value={view}
+                onChange={(v) => switchView(v as "week" | "bank")}
+                items={[
+                  { id: "week", label: "Calendrier", icon: CalendarIcon },
+                  {
+                    id: "bank",
+                    label: "Banque",
+                    icon: Inbox,
+                    badge: backlogTotal > 0 ? (
+                      <span
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold tabular-nums shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)] ${
+                          backlogReadyCount > 0
+                            ? "bg-sky-100 text-sky-800"
+                            : "bg-gray-100 text-gray-700"
+                        }`}
+                        title={
+                          backlogReadyCount > 0
+                            ? `${backlogTotal} en banque · ${backlogReadyCount} prêt${backlogReadyCount > 1 ? "s" : ""} à programmer`
+                            : `${backlogTotal} en banque`
+                        }
+                      >
+                        {backlogReadyCount > 0 ? (
+                          <>
+                            {backlogTotal}
+                            <span className="opacity-60">·</span>
+                            <span className="text-sky-700">{backlogReadyCount}</span>
+                          </>
+                        ) : (
+                          backlogTotal
+                        )}
+                      </span>
+                    ) : undefined,
+                  },
+                ]}
+              />
+            </div>
+
             {/* Card glass — Navigation semaine + Filtres */}
             <div className="p-3 rounded-2xl bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)]">
               <div className="flex items-center gap-3 flex-wrap">
-                {/* Navigation semaine inline */}
-                <div className="inline-flex items-center gap-1">
-                  <ButtonIcon
-                    icon={ChevronLeft}
-                    label="Semaine précédente (←)"
-                    variant="ghost"
-                    size="sm"
-                    onClick={prevWeek}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    icon={CalendarDays}
-                    onClick={goToday}
-                    title="Aujourd'hui (T)"
-                    disabled={isCurrentWeek}
-                  >
-                    Aujourd&apos;hui
-                  </Button>
-                  <ButtonIcon
-                    icon={ChevronRight}
-                    label="Semaine suivante (→)"
-                    variant="ghost"
-                    size="sm"
-                    onClick={nextWeek}
-                  />
-                </div>
-
-                {/* Séparateur */}
-                <span className="h-5 w-px bg-gray-200/70" aria-hidden />
+                {/* Navigation semaine inline — masquée en vue banque (sans dates) */}
+                {view === "week" && (
+                  <>
+                    <div className="inline-flex items-center gap-1">
+                      <ButtonIcon
+                        icon={ChevronLeft}
+                        label="Semaine précédente (←)"
+                        variant="ghost"
+                        size="sm"
+                        onClick={prevWeek}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={CalendarDays}
+                        onClick={goToday}
+                        title="Aujourd'hui (T)"
+                        disabled={isCurrentWeek}
+                      >
+                        Aujourd&apos;hui
+                      </Button>
+                      <ButtonIcon
+                        icon={ChevronRight}
+                        label="Semaine suivante (→)"
+                        variant="ghost"
+                        size="sm"
+                        onClick={nextWeek}
+                      />
+                    </div>
+                    <span className="h-5 w-px bg-gray-200/70" aria-hidden />
+                  </>
+                )}
+                {/* Séparateur (visible uniquement en mode week, déjà dans le block ci-dessus) */}
+                {/* Conservé hors-block pour le reste : aucun séparateur supplémentaire ici. */}
+                <span className="hidden" aria-hidden />
 
                 {/* Toggle filtres avancés */}
                 <Chip
@@ -600,7 +793,7 @@ export function CalendarView({
             {loadError && (
               <Alert
                 variant="danger"
-                title="Impossible de charger les slots"
+                title="Impossible de charger les publications"
                 actions={
                   <Button variant="secondary" size="sm" onClick={() => void load()}>
                     Réessayer
@@ -611,50 +804,90 @@ export function CalendarView({
               </Alert>
             )}
 
-            {/* Grille 7 colonnes — colonnes transparentes, SlotCards portent la matière */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-x-5 gap-y-6">
-              {loading && slots.length === 0
-                ? weekDays.map((_, i) => (
-                    <DayCardSkeleton key={i} />
-                  ))
-                : weekDays.map((day, i) => {
-                    const isToday = isSameDay(day, today);
-                    const daySlots = slotsForDay(day);
-                    return (
-                      <DayCard
-                        key={i}
-                        day={day}
-                        label={DAY_LABELS[i]}
-                        isToday={isToday}
-                        slots={daySlots}
-                        isAdmin={isAdmin}
-                        currentUserRole={currentUserRole}
-                        currentUserId={currentUserId}
-                        onSlotClick={(slot) => router.push(`/publications/${slot.id}`)}
-                        onSlotOpenDrawer={(slot) => setSelectedSlot(slot)}
-                        onAddSlot={() => {
-                          setAddDefaultDate(day.toISOString().slice(0, 10));
-                          setShowAdd(true);
-                        }}
-                      />
-                    );
-                  })}
-            </div>
+            {view === "bank" ? (
+              <BankView
+                slots={visibleSlots}
+                loading={loading}
+                onOpenSlot={(slot) => setSelectedSlot(slot)}
+                onScheduleSlot={(slot) => setScheduleFromBank(slot)}
+                onBulkScheduled={(count) => {
+                  // Mise à jour optimiste : on retire les slots dont la date a
+                  // été posée (refresh complet via load() pour récupérer le
+                  // nouvel état canonique).
+                  setBacklogTotal((prev) => Math.max(0, prev - count));
+                  void load();
+                }}
+              />
+            ) : (
+              /* Grille 7 colonnes — colonnes transparentes, SlotCards portent la matière */
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-x-5 gap-y-6">
+                {loading && slots.length === 0
+                  ? weekDays.map((_, i) => <DayCardSkeleton key={i} />)
+                  : weekDays.map((day, i) => {
+                      const isToday = isSameDay(day, today);
+                      const daySlots = slotsForDay(day);
+                      return (
+                        <DayCard
+                          key={i}
+                          day={day}
+                          label={DAY_LABELS[i]}
+                          isToday={isToday}
+                          slots={daySlots}
+                          isAdmin={isAdmin}
+                          currentUserRole={currentUserRole}
+                          currentUserId={currentUserId}
+                          bulkSelectMode={bulkSelectMode}
+                          bulkSelectedIds={bulkSelectedIds}
+                          onSlotClick={(slot) => {
+                            if (bulkSelectMode) {
+                              setBulkSelectedIds((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(slot.id)) next.delete(slot.id);
+                                else next.add(slot.id);
+                                return next;
+                              });
+                            } else {
+                              router.push(`/publications/${slot.id}`);
+                            }
+                          }}
+                          onSlotOpenDrawer={(slot) => setSelectedSlot(slot)}
+                          onAddSlot={() => {
+                            setAddDefaultDate(day.toISOString().slice(0, 10));
+                            setShowAdd(true);
+                          }}
+                        />
+                      );
+                    })}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Drawer détail slot — key={slot.id} force remontage au switch slot */}
-      {selectedSlot && (
-        <SlotDetailPanel
-          key={selectedSlot.id}
-          slot={selectedSlot}
-          onUpdated={handleSlotUpdated}
-          onDeleted={handleSlotDeleted}
-          onClose={() => setSelectedSlot(null)}
-          mode={detailMode}
-        />
-      )}
+      {/* Drawer détail slot — key={slot.id} force remontage au switch slot.
+          V8 Phase 5 — Nav cursor prev/next via la liste de slots affichés
+          dans la semaine/banque courante (filtres déjà appliqués côté API). */}
+      {selectedSlot && (() => {
+        const currentIdx = slots.findIndex((s) => s.id === selectedSlot.id);
+        const hasPrev = currentIdx > 0;
+        const hasNext = currentIdx >= 0 && currentIdx < slots.length - 1;
+        const goPrev = hasPrev ? () => setSelectedSlot(slots[currentIdx - 1]) : undefined;
+        const goNext = hasNext ? () => setSelectedSlot(slots[currentIdx + 1]) : undefined;
+        return (
+          <SlotDetailPanel
+            key={selectedSlot.id}
+            slot={selectedSlot}
+            onUpdated={handleSlotUpdated}
+            onDeleted={handleSlotDeleted}
+            onClose={() => setSelectedSlot(null)}
+            mode={detailMode}
+            onPrev={goPrev}
+            onNext={goNext}
+            hasPrev={hasPrev}
+            hasNext={hasNext}
+          />
+        );
+      })()}
 
       {/* Modal création slot */}
       {showAdd && (
@@ -666,9 +899,141 @@ export function CalendarView({
         />
       )}
 
+      {/* Modal bulk-stock banque (admin only) */}
+      {showBulkStock && isAdmin && (
+        <BulkStockModal
+          accounts={accounts}
+          monteurs={monteurs}
+          defaultAccountId={filters.accountId || undefined}
+          onCreated={(count) => {
+            // Maj optimiste du compteur banque : N slots créés en RUSHES_EXPECTED
+            // → +N au total, pas de changement sur readyCount.
+            setBacklogTotal((prev) => prev + count);
+            // Bascule sur la vue banque pour voir les missions créées.
+            switchView("bank");
+            void load();
+          }}
+          onClose={() => setShowBulkStock(false)}
+        />
+      )}
+
+      {/* Modal de programmation depuis la banque */}
+      {scheduleFromBank && (
+        <ScheduleFromBankModal
+          slot={scheduleFromBank}
+          onScheduled={(slotId) => {
+            // Le slot quitte la banque — on l'enlève de la liste locale et on
+            // décrémente les compteurs. Si le slot programmé était dans la
+            // catégorie "ready" (currentVersion + status finalisable),
+            // décrémente aussi readyCount.
+            const scheduledSlot = scheduleFromBank;
+            const wasReady =
+              scheduledSlot.currentVersionId != null &&
+              (scheduledSlot.status === "EDIT_APPROVED" ||
+                scheduledSlot.status === "READY_FOR_CM" ||
+                scheduledSlot.status === "CAPTIONS_PENDING");
+            setBacklogTotal((prev) => Math.max(0, prev - 1));
+            if (wasReady) {
+              setBacklogReadyCount((prev) => Math.max(0, prev - 1));
+            }
+            setSlots((prev) => prev.filter((s) => s.id !== slotId));
+          }}
+          onClose={() => setScheduleFromBank(null)}
+        />
+      )}
+
+      {/* Sprint C — Sticky bar multi-select calendrier (vue semaine admin).
+          Phase 7 V2 — split actions de groupe en 3 boutons dédiés (clarté
+          immédiate de l'intention). */}
+      {isAdmin && view === "week" && bulkSelectMode && bulkSelectedIds.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gray-950 text-white shadow-[0_8px_24px_-4px_rgba(15,23,42,0.45)]">
+          <span className="text-[12px] font-medium tabular-nums mr-1">
+            {bulkSelectedIds.size} sélectionnée{bulkSelectedIds.size > 1 ? "s" : ""}
+          </span>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            icon={UserCheck}
+            onClick={() => setBulkAction("reassign")}
+          >
+            Réassigner
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            icon={CalendarDays}
+            onClick={() => setBulkAction("shift")}
+          >
+            Décaler
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            size="sm"
+            icon={Ban}
+            onClick={() => setBulkAction("cancel")}
+          >
+            Annuler
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setBulkSelectedIds(new Set());
+              setBulkSelectMode(false);
+            }}
+            className="text-white hover:bg-white/10 ml-1"
+          >
+            Fermer
+          </Button>
+        </div>
+      )}
+
+      {bulkAction === "reassign" && (
+        <BulkReassignModal
+          slotIds={[...bulkSelectedIds]}
+          monteurs={monteurs}
+          cms={cms}
+          videastes={videastes}
+          onPatched={() => {
+            setBulkSelectedIds(new Set());
+            setBulkSelectMode(false);
+            void load();
+          }}
+          onClose={() => setBulkAction(null)}
+        />
+      )}
+
+      {bulkAction === "shift" && (
+        <BulkShiftDateModal
+          slotIds={[...bulkSelectedIds]}
+          onPatched={() => {
+            setBulkSelectedIds(new Set());
+            setBulkSelectMode(false);
+            void load();
+          }}
+          onClose={() => setBulkAction(null)}
+        />
+      )}
+
+      {bulkAction === "cancel" && (
+        <BulkCancelModal
+          slotIds={[...bulkSelectedIds]}
+          onPatched={() => {
+            setBulkSelectedIds(new Set());
+            setBulkSelectMode(false);
+            void load();
+          }}
+          onClose={() => setBulkAction(null)}
+        />
+      )}
+
       <ConfirmDialog
         open={confirmGenOpen}
-        title="Générer les slots de la semaine ?"
+        title="Générer les publications de la semaine ?"
         description={
           genPreviewLoading
             ? `Analyse de la semaine du ${weekStart.toLocaleDateString("fr-FR")}…`
@@ -700,6 +1065,9 @@ interface DayCardProps {
   isAdmin: boolean;
   currentUserRole: UserRole;
   currentUserId: string;
+  /** Sprint C — mode multi-select global au CalendarView. */
+  bulkSelectMode: boolean;
+  bulkSelectedIds: Set<string>;
   onSlotClick: (slot: PublicationSlot) => void;
   onSlotOpenDrawer: (slot: PublicationSlot) => void;
   onAddSlot: () => void;
@@ -713,6 +1081,8 @@ function DayCard({
   isAdmin,
   currentUserRole,
   currentUserId,
+  bulkSelectMode,
+  bulkSelectedIds,
   onSlotClick,
   onSlotOpenDrawer,
   onAddSlot,
@@ -743,16 +1113,44 @@ function DayCard({
 
       {/* Liste de slots — espacée généreusement */}
       <div className="flex-1 flex flex-col gap-2.5 min-h-[80px]">
-        {slots.map((slot) => (
-          <SlotCard
-            key={slot.id}
-            slot={slot}
-            onClick={() => onSlotClick(slot)}
-            onOpenDrawer={isAdmin ? () => onSlotOpenDrawer(slot) : undefined}
-            currentUserRole={currentUserRole}
-            currentUserId={currentUserId}
-          />
-        ))}
+        {slots.map((slot) => {
+          const isSelected = bulkSelectedIds.has(slot.id);
+          return (
+            <div
+              key={slot.id}
+              className={
+                bulkSelectMode
+                  ? `relative rounded-2xl transition-shadow ${
+                      isSelected
+                        ? "shadow-[0_0_0_2px_rgba(56,148,200,0.7)]"
+                        : "shadow-[0_0_0_1px_rgba(15,23,42,0.05)]"
+                    }`
+                  : "relative"
+              }
+            >
+              <SlotCard
+                slot={slot}
+                onClick={() => onSlotClick(slot)}
+                onOpenDrawer={
+                  isAdmin && !bulkSelectMode ? () => onSlotOpenDrawer(slot) : undefined
+                }
+                currentUserRole={currentUserRole}
+                currentUserId={currentUserId}
+              />
+              {bulkSelectMode && (
+                <span
+                  className={`absolute top-1.5 right-1.5 inline-flex h-5 w-5 items-center justify-center rounded-md pointer-events-none ${
+                    isSelected
+                      ? "bg-sky-600 text-white"
+                      : "bg-white/90 border border-gray-300"
+                  }`}
+                >
+                  {isSelected ? <CheckSquare size={14} /> : null}
+                </span>
+              )}
+            </div>
+          );
+        })}
 
         {/* Bouton "Ajouter" discret — visible si pas de slot ou au hover de la colonne */}
         {isAdmin && (
@@ -765,7 +1163,7 @@ function DayCard({
                 ? "opacity-70"
                 : "opacity-0 group-hover/day:opacity-100",
             ].join(" ")}
-            title="Ajouter un slot ce jour"
+            title="Ajouter une publication ce jour"
           >
             <Plus size={11} />
             <span>Ajouter</span>

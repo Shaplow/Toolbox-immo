@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { DataEntriesPanel } from "@/components/admin/libraries/DataEntriesPanel";
+import { CursorSectionForLibrary } from "@/components/admin/libraries/CursorSectionForLibrary";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -31,6 +32,7 @@ export default async function DataLibraryDetailPage({ params }: Props) {
         take: 1,
       },
       _count: { select: { campaigns: true } },
+      rotationScope: true,
     },
   });
   if (!library) notFound();
@@ -94,7 +96,7 @@ export default async function DataLibraryDetailPage({ params }: Props) {
           </div>
         </div>
 
-        <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
+        <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8 space-y-10">
           {/* Pas de max-w ici : la spreadsheet utilise toute la largeur disponible
               pour pouvoir scroller horizontalement sur les schémas lourds (RPI = 177 cols). */}
           <DataEntriesPanel
@@ -102,6 +104,17 @@ export default async function DataLibraryDetailPage({ params }: Props) {
             libraryId={library.id}
             fieldsSchema={library.fieldsSchema}
           />
+
+          {/* Curseurs de rotation — symétrique fiche MediaLibrary. */}
+          <div className="max-w-6xl mx-auto">
+            <CursorSectionForLibrary
+              libraryId={library.id}
+              libraryType="data"
+              rotationScope={
+                library.rotationScope === "shared" ? "shared" : "per_account"
+              }
+            />
+          </div>
         </div>
       </div>
     </div>

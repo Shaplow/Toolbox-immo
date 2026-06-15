@@ -131,15 +131,21 @@ export default async function ValidatePage({ params }: PageProps) {
               {slot.pattern?.label ?? slot.title ?? "Publication"}
             </h2>
             <p className="text-xs text-gray-500 mb-4">
-              Publication prévue le{" "}
-              {new Date(slot.scheduledAt).toLocaleString("fr-FR", {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+              {slot.scheduledAt ? (
+                <>
+                  Publication prévue le{" "}
+                  {new Date(slot.scheduledAt).toLocaleString("fr-FR", {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </>
+              ) : (
+                "Publication en attente de programmation"
+              )}
             </p>
 
             {finalVideoUrl ? (

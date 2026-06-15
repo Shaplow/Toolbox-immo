@@ -1,0 +1,198 @@
+"use client";
+
+/**
+ * AccountSummaryCard — résumé compact d'un compte Instagram.
+ *
+ * Utilisée dans AccountPeekDrawer pour donner en un coup d'œil l'identité,
+ * le client, le volume de recettes liées, et la prochaine publication
+ * programmée. Pas de CTA — les actions vivent dans le footer du drawer hôte.
+ */
+
+import { Instagram, Layers, Calendar, Clock } from "lucide-react";
+import { STATUS_LABELS } from "@/lib/slots/statusLabels";
+
+export interface AccountPeekData {
+  id: string;
+  handle: string;
+  name: string;
+  client: { id: string; name: string } | null;
+  activeBindingsCount: number;
+  totalBindingsCount: number;
+  lastPublishedAt: string | null;
+  nextScheduled: {
+    id: string;
+    scheduledAt: string;
+    status: string;
+    label: string | null;
+  } | null;
+  statsByStatus: Record<string, number>;
+}
+
+function handleInitials(handle: string): string {
+  return handle.replace(/^@/, "").slice(0, 2).toUpperCase();
+}
+
+function avatarGradient(handle: string): string {
+  const gradients = [
+    "from-peach-200 to-rose-200",
+    "from-sage-200 to-sky-200",
+    "from-sky-200 to-peach-200",
+    "from-rose-200 to-peach-200",
+    "from-sage-200 to-peach-200",
+    "from-sky-200 to-rose-200",
+  ];
+  let h = 0;
+  for (let i = 0; i < handle.length; i++) h = (h * 31 + handle.charCodeAt(i)) >>> 0;
+  return gradients[h % gradients.length];
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString("fr-FR", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+const ACTIVE_PIPELINE_STATUSES = [
+  "DRAFT",
+  "PLANNED",
+  "RUSHES_EXPECTED",
+  "RUSHES_RECEIVED",
+  "IN_EDIT",
+  "EDIT_REVIEW",
+  "EDIT_APPROVED",
+  "CAPTIONS_PENDING",
+  "READY_FOR_CM",
+  "AWAITING_CLIENT",
+  "CLIENT_REVISION",
+  "SCHEDULED",
+  "TO_DO",
+  "IN_PROGRESS",
+  "READY",
+  "CHECKING",
+];
+
+export function AccountSummaryCard({ data }: { data: AccountPeekData }) {
+  const gradient = avatarGradient(data.handle);
+  const inFlight = ACTIVE_PIPELINE_STATUSES.reduce(
+    (acc, status) => acc + (data.statsByStatus[status] ?? 0),
+    0,
+  );
+  const published =
+    (data.statsByStatus.PUBLISHED ?? 0) + (data.statsByStatus.DONE ?? 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Identité */}
+      <div className="flex items-center gap-3">
+        <div
+          className={[
+            "relative h-14 w-14 rounded-full inline-flex items-center justify-center shrink-0 bg-gradient-to-br",
+            gradient,
+            "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),0_1px_2px_rgba(15,23,42,0.06)]",
+          ].join(" ")}
+        >
+          <span className="text-[16px] font-semibold text-gray-800 tracking-tight">
+            {handleInitials(data.handle)}
+          </span>
+          <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-white inline-flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)]">
+            <Instagram size={10} className="text-rose-500" />
+          </span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[15px] font-semibold text-gray-950 truncate">
+            @{data.handle}
+          </p>
+          <p className="text-[12px] text-gray-500 truncate">{data.name}</p>
+          {data.client ? (
+            <p className="text-[10.5px] uppercase tracking-widest font-medium text-gray-400 mt-1">
+              {data.client.name}
+            </p>
+          ) : (
+            <p className="text-[10.5px] uppercase tracking-widest font-medium text-gray-400 mt-1 italic">
+              Sans client
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Stats compactes */}
+      <div className="grid grid-cols-2 gap-2">
+        <StatBlock
+          icon={Layers}
+          label="Recettes actives"
+          value={`${data.activeBindingsCount}/${data.totalBindingsCount}`}
+        />
+        <StatBlock
+          icon={Calendar}
+          label="Dernière publication"
+          value={formatDate(data.lastPublishedAt)}
+        />
+        <StatBlock icon={Clock} label="En cours" value={String(inFlight)} />
+        <StatBlock
+          icon={Calendar}
+          label="Publiées (total)"
+          value={String(published)}
+        />
+      </div>
+
+      {/* Prochaine publication */}
+      <div className="rounded-xl bg-white/55 backdrop-blur-[6px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+          Prochaine publication
+        </p>
+        {data.nextScheduled ? (
+          <>
+            <p className="mt-1 text-[13px] font-medium text-gray-950">
+              {formatDateTime(data.nextScheduled.scheduledAt)}
+            </p>
+            <p className="mt-0.5 text-[11.5px] text-gray-500 truncate">
+              {data.nextScheduled.label ?? "Sans recette"} ·{" "}
+              {STATUS_LABELS[data.nextScheduled.status as keyof typeof STATUS_LABELS] ?? data.nextScheduled.status}
+            </p>
+          </>
+        ) : (
+          <p className="mt-1 text-[12.5px] text-gray-500 italic">
+            Aucune publication programmée
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatBlock({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl bg-white/55 backdrop-blur-[6px] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+      <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 inline-flex items-center gap-1">
+        <Icon size={10} className="text-gray-400" />
+        {label}
+      </p>
+      <p className="mt-1 text-[13px] font-mono tabular-nums font-semibold text-gray-950 truncate">
+        {value}
+      </p>
+    </div>
+  );
+}

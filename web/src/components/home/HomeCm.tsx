@@ -70,10 +70,14 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
   }));
 
   // ── Découpe en sections ────────────────────────────────────────────────
+  // Note : slots en banque (scheduledAt === null) sont exclus des sections
+  // datées du CM. À ce stade ils ne le concernent pas (le monteur les remplit
+  // avant qu'ils n'arrivent en to_prepare).
   const overdue = slots.filter(
     (s) =>
       !(TERMINAL_STATUSES as readonly string[]).includes(s.status) &&
       s.status !== "PUBLISHED" &&
+      s.scheduledAt != null &&
       s.scheduledAt < now,
   );
 
@@ -83,11 +87,13 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
   const toPublishThisWeek = nonOverdue.filter(
     (s) =>
       getCmSection(s.status) === "to_publish" &&
+      s.scheduledAt != null &&
       s.scheduledAt >= weekMonday &&
       s.scheduledAt <= weekSunday,
   );
   const publishedRecently = slots.filter(
-    (s) => s.status === "PUBLISHED" && s.scheduledAt >= publishedSince,
+    (s) =>
+      s.status === "PUBLISHED" && s.scheduledAt != null && s.scheduledAt >= publishedSince,
   );
 
   const totalActive = overdue.length + toPrepare.length + toPublishThisWeek.length;

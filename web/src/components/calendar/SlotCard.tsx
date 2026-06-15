@@ -19,7 +19,6 @@ import { type PublicationSlot } from "@/types/calendar";
 import { resolveSlotOwner } from "@/lib/slots/statusLabels";
 import { getPublicationPhase, PHASE_LABELS, PHASE_BADGE_LABELS, PHASE_COLORS } from "@/lib/slots/phase";
 import type { UserRole } from "@/types/roles";
-import { SOURCE_LABELS_FR } from "@/lib/ui/domainLabels";
 
 interface SlotCardProps {
   slot: PublicationSlot;
@@ -31,10 +30,14 @@ interface SlotCardProps {
 }
 
 export function SlotCard({ slot, onClick, onOpenDrawer, currentUserRole, currentUserId }: SlotCardProps) {
-  const time = new Date(slot.scheduledAt).toLocaleTimeString("fr-FR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  // SlotCard est rendue dans la grille calendar qui ne contient que des slots
+  // datés (banque filtrée en amont) — guard défensif au cas où.
+  const time = slot.scheduledAt
+    ? new Date(slot.scheduledAt).toLocaleTimeString("fr-FR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "—";
   const phase = getPublicationPhase(slot.status);
   const phaseBadgeLabel = PHASE_BADGE_LABELS[phase];
   const phaseBadgeColor = PHASE_COLORS[phase];
@@ -99,9 +102,9 @@ export function SlotCard({ slot, onClick, onOpenDrawer, currentUserRole, current
         <span className="text-[11px] font-mono text-gray-600 tabular-nums font-medium">
           {time}
         </span>
-        {/* Mini roue : visible au hover seulement. Click → open drawer (édition
-            rapide / suppression). e.stopPropagation pour ne pas trigger onClick
-            principal qui ouvre la fiche complète. */}
+        {/* V8 Phase 6 — Mini roue permanente (plus de hover-only) : la
+            découvrabilité du drawer d'édition rapide était trop faible
+            quand l'icône n'apparaissait qu'au hover. */}
         {onOpenDrawer && (
           <button
             type="button"
@@ -110,7 +113,7 @@ export function SlotCard({ slot, onClick, onOpenDrawer, currentUserRole, current
               onOpenDrawer();
             }}
             onKeyDown={(e) => e.stopPropagation()}
-            className="ml-auto p-0.5 text-gray-300 hover:text-gray-700 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity rounded"
+            className="ml-auto p-0.5 text-gray-400 hover:text-gray-800 transition-colors rounded"
             aria-label="Édition rapide"
             title="Édition rapide (statut, assignés, supprimer)"
           >
@@ -124,14 +127,9 @@ export function SlotCard({ slot, onClick, onOpenDrawer, currentUserRole, current
         {title}
       </p>
 
-      {/* Ligne 3 : mode du pattern (FR, discret) — visible que si pattern lié */}
-      {slot.pattern?.source && SOURCE_LABELS_FR[slot.pattern.source] && (
-        <p className="mt-0.5 text-[9.5px] uppercase tracking-widest text-gray-400 truncate">
-          {SOURCE_LABELS_FR[slot.pattern.source]}
-        </p>
-      )}
+      {/* V8 Phase 6 — Ligne "Source" supprimée (info disponible en drawer/fiche). */}
 
-      {/* Ligne 4 : nom du compte + avatars */}
+      {/* Ligne 3 : nom du compte + avatars */}
       <div className="mt-2.5 flex items-center justify-between gap-1.5 min-h-[16px]">
         <span className="text-[11px] text-gray-500 truncate" title={`@${slot.account.handle}`}>
           {slot.account.name}

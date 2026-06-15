@@ -44,9 +44,11 @@ export async function GET() {
   if (role === "ADMIN") {
     // Alerte admin : slots dont la date de publication est dépassée mais qui
     // ne sont pas encore terminés — signal d'attention dans la worklist admin.
+    // Exclut explicitement les slots en banque (scheduledAt: null) — null serait
+    // coerce en 0 (1970) et chaque slot banque serait compté à tort.
     count = await prisma.publicationSlot.count({
       where: {
-        scheduledAt: { lt: new Date() },
+        scheduledAt: { lt: new Date(), not: null },
         status: notInTerminal,
       },
     });

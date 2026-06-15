@@ -15,6 +15,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
 import { ClientDetailClient, type ClientDetailAccountStub, type ClientDetailData } from "./ClientDetailClient";
 
 interface PageProps {
@@ -40,6 +41,8 @@ export default async function AdminClientDetailPage({ params }: PageProps) {
       },
     }),
     prisma.instagramAccount.findMany({
+      // Exclut les comptes sentinels (curseurs partagés) du pool affiché.
+      where: { id: { notIn: [...SHARED_SENTINEL_IDS] } },
       select: {
         id: true,
         name: true,

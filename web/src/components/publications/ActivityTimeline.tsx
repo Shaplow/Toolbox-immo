@@ -29,6 +29,8 @@ import {
   ShieldCheck,
   ShieldX,
   Circle,
+  Inbox,
+  CalendarClock,
 } from "lucide-react";
 import { STATUS_LABELS } from "@/lib/slots/statusLabels";
 import type { SlotStatus } from "@/types/calendar";
@@ -193,6 +195,21 @@ function activityLabel(type: string, payload: Record<string, unknown> | null): s
           : "";
       return `Cover : config invalide${reason}`;
     }
+    // ── Banque de contenus (slots sans date programmée) ───────────────────────
+    case "BANK_SLOT_CREATED": {
+      const size = typeof payload?.batchSize === "number" ? payload.batchSize : null;
+      return size
+        ? `Mission ajoutée à la banque (lot de ${size})`
+        : "Mission ajoutée à la banque";
+    }
+    case "BANK_SLOT_SCHEDULED": {
+      const iso = typeof payload?.scheduledAt === "string" ? payload.scheduledAt : null;
+      if (!iso) return "Sortie de banque · publication programmée";
+      const d = new Date(iso);
+      const date = d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+      const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      return `Sortie de banque · programmée le ${date} à ${time}`;
+    }
     default:
       return type;
   }
@@ -266,6 +283,11 @@ function ActivityIcon({ type }: ActivityIconProps) {
       return <span className={danger} title="Cover échouée"><Trash2 size={12} /></span>;
     case "COVER_CONFIG_ERROR":
       return <span className={warning} title="Cover : config invalide"><Circle size={10} /></span>;
+    // ── Banque ──────────────────────────────────────────────────────────
+    case "BANK_SLOT_CREATED":
+      return <span className={neutral} title="Mission ajoutée à la banque"><Inbox size={12} /></span>;
+    case "BANK_SLOT_SCHEDULED":
+      return <span className={success} title="Programmée depuis la banque"><CalendarClock size={12} /></span>;
     default:
       return <span className={neutral} title={type}><Circle size={10} /></span>;
   }
@@ -329,7 +351,7 @@ export function ActivityTimeline({
         <EmptyState
           icon={Activity}
           title="Aucune activité"
-          description="Les actions sur ce slot apparaîtront ici."
+          description="Les actions sur cette publication apparaîtront ici."
         />
       ) : (
         <ol className="space-y-3">

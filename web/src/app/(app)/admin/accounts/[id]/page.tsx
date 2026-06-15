@@ -4,7 +4,8 @@ import Link from "next/link";
 import { ChevronLeft, Film, Database, ArrowRight, CalendarDays, Instagram } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
-import { AccountPatternsList } from "@/components/admin/AccountPatternsList";
+import { AccountBindingsList } from "@/components/admin/AccountBindingsList";
+import { AccountCursorsButton } from "@/components/admin/AccountCursorsButton";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -25,17 +26,21 @@ export default async function AccountFichePage({ params }: Props) {
 
   const { id } = await params;
 
+  // P2 — la fiche compte n'expose plus AccountPattern legacy (drop net).
+  // Les recettes liées sont gérées via PatternBinding + AccountBindingsList.
+  // Le modèle Prisma AccountPattern reste conservé pour la rétrocompat des
+  // slots historiques (shims dans createSlot/bulkStockSlots).
   const account = await prisma.instagramAccount.findUnique({
     where: { id },
     include: {
       client: { select: { id: true, name: true } },
-      accountPatterns: {
-        orderBy: [{ publishTime: "asc" }, { label: "asc" }],
+      patternBindings: {
+        orderBy: [{ publishTime: "asc" }],
         include: {
-          template: { select: { id: true, name: true } },
+          patternTemplate: { select: { id: true, label: true, source: true } },
           defaultAssigneeMonteur: { select: { id: true, name: true } },
           defaultAssigneeCm: { select: { id: true, name: true } },
-          _count: { select: { publicationSlots: true } },
+          defaultAssigneeVideaste: { select: { id: true, name: true } },
         },
       },
     },
@@ -43,35 +48,55 @@ export default async function AccountFichePage({ params }: Props) {
 
   if (!account) notFound();
 
-  // Pour chaque pattern, fetch la dernière vidéo DONE liée au compte + au template
-  // du pattern. Permet d'afficher une thumbnail "dernière génération" dans la card.
-  // Volumétrie : 5-10 patterns max par compte → 5-10 queries parallèles, OK.
-  const templateIds = account.accountPatterns
-    .map((p) => p.template?.id)
-    .filter((id): id is string => !!id);
-  const lastRendersArr = await Promise.all(
-    templateIds.map((tid) =>
-      prisma.render.findFirst({
-        where: {
-          accountId: account.id,
-          status: "DONE",
-          listing: { templateId: tid },
-        },
-        orderBy: { createdAt: "desc" },
-        select: { pngUrl: true, videoUrl: true, createdAt: true },
-      }),
-    ),
-  );
-  const lastRendersByTemplateId: Record<
-    string,
-    { pngUrl: string | null; videoUrl: string | null; createdAt: string } | null
-  > = {};
-  templateIds.forEach((tid, i) => {
-    const r = lastRendersArr[i];
-    lastRendersByTemplateId[tid] = r
-      ? { pngUrl: r.pngUrl, videoUrl: r.videoUrl, createdAt: r.createdAt.toISOString() }
-      : null;
-  });
+  // P2 — Données pour AccountBindingsList (catalogue + listes d'assignés).
+  // Sprint B — `builderTemplates` ajouté pour permettre la création de
+  // recette inline depuis le picker (cascade PatternTemplateForm).
+  const [
+    catalogTemplates,
+    builderTemplates,
+    monteurUsers,
+    cmUsers,
+    videasteUsers,
+    captionPresets,
+    descriptionPrompts,
+  ] = await Promise.all([
+    prisma.patternTemplate.findMany({
+      where: { isArchived: false },
+      select: { id: true, label: true, source: true },
+      orderBy: [{ source: "asc" }, { label: "asc" }],
+    }),
+    prisma.template.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.user.findMany({
+      where: { role: { in: ["MONTEUR", "ADMIN"] } },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.user.findMany({
+      where: { role: { in: ["CM", "ADMIN"] } },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.user.findMany({
+      where: { role: { in: ["VIDEASTE", "ADMIN"] } },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.captionPreset.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.descriptionPrompt.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
+
+  // Drop net P2 : fetch des dernières vidéos par template retiré
+  // (uniquement utilisé par AccountPatternsList legacy qui a été supprimée).
 
   const mediaLibrariesAccessible = await prisma.mediaLibrary.findMany({
     where: {
@@ -117,11 +142,21 @@ export default async function AccountFichePage({ params }: Props) {
     orderBy: { updatedAt: "desc" },
   });
 
-  const activePatternsCount = account.accountPatterns.filter((p) => p.isActive).length;
-  const backHref = account.client
-    ? `/admin/clients/${account.client.id}?tab=accounts`
-    : "/admin/accounts";
-  const backLabel = account.client?.name ?? "Comptes";
+  // P2 — KPI piloté désormais par patternBindings (recettes liées) au lieu
+  // de l'ancien AccountPattern legacy.
+  const activeRecipesCount = account.patternBindings.filter((b) => b.isActive).length;
+  const totalRecipesCount = account.patternBindings.length;
+  // Phase 9 V2 — breadcrumb hiérarchique (Admin › Comptes/Clients › @handle).
+  // Permet de remonter à l'index amont d'un clic sans repasser par le menu.
+  const breadcrumbTrail: { href: string; label: string }[] = account.client
+    ? [
+        { href: "/admin/clients", label: "Clients" },
+        {
+          href: `/admin/clients/${account.client.id}?tab=accounts`,
+          label: account.client.name,
+        },
+      ]
+    : [{ href: "/admin/accounts", label: "Comptes Instagram" }];
 
   return (
     <div className="min-h-screen">
@@ -134,15 +169,34 @@ export default async function AccountFichePage({ params }: Props) {
         {/* Header Control Center */}
         <div className="rounded-t-3xl overflow-hidden">
           <div className="max-w-6xl mx-auto px-6 sm:px-8 pt-6 pb-2">
-            {/* Breadcrumb minimal */}
-            <nav className="flex items-center gap-1.5 text-[10px] text-gray-400 mb-3 flex-wrap">
+            {/* Phase 9 V2 — breadcrumb hiérarchique (Admin › … › @handle). */}
+            <nav
+              aria-label="Fil d'Ariane"
+              className="flex items-center gap-1.5 text-[11px] text-gray-500 mb-3 flex-wrap"
+            >
               <Link
-                href={backHref}
-                className="inline-flex items-center gap-1 hover:text-gray-700 transition-colors"
+                href="/home"
+                className="inline-flex items-center gap-1 hover:text-gray-800 transition-colors"
               >
-                <ChevronLeft size={10} className="flex-shrink-0" />
-                {backLabel}
+                <ChevronLeft size={11} className="flex-shrink-0" />
+                Admin
               </Link>
+              {breadcrumbTrail.map((step) => (
+                <span
+                  key={step.href}
+                  className="inline-flex items-center gap-1.5"
+                >
+                  <span className="text-gray-300">/</span>
+                  <Link
+                    href={step.href}
+                    className="hover:text-gray-800 transition-colors"
+                  >
+                    {step.label}
+                  </Link>
+                </span>
+              ))}
+              <span className="text-gray-300">/</span>
+              <span className="text-gray-700 font-medium">@{account.handle}</span>
             </nav>
 
             <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -174,9 +228,15 @@ export default async function AccountFichePage({ params }: Props) {
                 <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
                   <span className="inline-flex h-1.5 w-1.5 rounded-full bg-rose-400 shadow-[0_0_6px_rgba(201,113,133,0.6)]" />
                   <span className="text-[11px] font-mono text-gray-700 tabular-nums">
-                    {activePatternsCount}/{account.accountPatterns.length} patterns actifs
+                    {activeRecipesCount}/{totalRecipesCount} recettes actives
                   </span>
                 </div>
+
+                {/* Sprint D — bouton curseurs cross-libs */}
+                <AccountCursorsButton
+                  accountId={account.id}
+                  accountHandle={account.handle}
+                />
 
                 {/* Lien rapide calendar */}
                 <Link
@@ -195,11 +255,30 @@ export default async function AccountFichePage({ params }: Props) {
         {/* Inner content */}
         <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
           <div className="max-w-6xl mx-auto space-y-8">
-            {/* Section Patterns (client) */}
-            <AccountPatternsList
-              account={{ id: account.id, handle: account.handle }}
-              patterns={account.accountPatterns}
-              lastRendersByTemplateId={lastRendersByTemplateId}
+            {/* Section "Recettes liées" (P2 — nouveau modèle) */}
+            <AccountBindingsList
+              accountId={account.id}
+              accountHandle={account.handle}
+              initialBindings={account.patternBindings.map((b) => ({
+                id: b.id,
+                patternTemplateId: b.patternTemplateId,
+                templateLabel: b.patternTemplate.label,
+                templateSource: b.patternTemplate.source,
+                customLabel: b.customLabel,
+                dayOfWeek: b.dayOfWeek,
+                publishTime: b.publishTime,
+                isActive: b.isActive,
+                defaultAssigneeMonteurName: b.defaultAssigneeMonteur?.name ?? null,
+                defaultAssigneeCmName: b.defaultAssigneeCm?.name ?? null,
+                defaultAssigneeVideasteName: b.defaultAssigneeVideaste?.name ?? null,
+              }))}
+              catalogTemplates={catalogTemplates}
+              builderTemplates={builderTemplates}
+              monteurs={monteurUsers.map((u) => ({ id: u.id, name: u.name }))}
+              cms={cmUsers.map((u) => ({ id: u.id, name: u.name }))}
+              videastes={videasteUsers.map((u) => ({ id: u.id, name: u.name }))}
+              captionPresets={captionPresets}
+              descriptionPrompts={descriptionPrompts}
             />
 
             {/* Section Bibliothèques liées */}

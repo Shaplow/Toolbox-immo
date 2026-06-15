@@ -11,8 +11,9 @@
  */
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Film, Download, Star, RotateCcw } from "lucide-react";
+import { Film, Download, Star, RotateCcw, ArrowRight } from "lucide-react";
 import { MediaDropzone } from "@/components/ui/MediaDropzone";
 import { Section } from "@/components/ui/molecules/Section";
 import type { UploadResult } from "@/components/ui/MediaDropzone";
@@ -61,6 +62,10 @@ interface VersionsSectionProps {
   storageKey?: string;
   defaultOpen?: boolean;
   collapsible?: boolean;
+  /** Phase 8 V2 — "preview" tronque l'historique aux 3 dernières versions et
+   *  expose un CTA "Voir toutes" vers /publications/[id]/versions. Mode par
+   *  défaut "full" sur la page dédiée (toutes versions visibles). */
+  displayMode?: "full" | "preview";
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -439,6 +444,7 @@ export function VersionsSection({
   storageKey,
   defaultOpen = true,
   collapsible = false,
+  displayMode = "full",
 }: VersionsSectionProps) {
   const router = useRouter();
   // Les listes sont lues depuis les props serveur — router.refresh() déclenche un re-render
@@ -472,6 +478,24 @@ export function VersionsSection({
 
   const hasVersions = activeVersions.length > 0;
 
+  // Phase 8 V2 — mode preview = top 3 versions sur la fiche, le reste vit sur
+  // /publications/[id]/versions. On garde la version courante en tête si elle
+  // n'est pas dans les 3 plus récentes (priorité éditoriale : "où en est-on").
+  const isPreview = displayMode === "preview";
+  const displayedVersions = !isPreview
+    ? activeVersions
+    : (() => {
+        const top3 = activeVersions.slice(0, 3);
+        const current = activeVersions.find((v) => v.id === currentVersionId);
+        if (current && !top3.some((v) => v.id === current.id)) {
+          return [current, ...top3.slice(0, 2)];
+        }
+        return top3;
+      })();
+  const hiddenCount = isPreview
+    ? Math.max(0, activeVersions.length - displayedVersions.length)
+    : 0;
+
   return (
     <Section
       title="Versions livrées"
@@ -490,7 +514,7 @@ export function VersionsSection({
         {/* Liste compactée — pattern aligné avec RushesSection. */}
         {hasVersions && (
           <ul className="divide-y divide-gray-100">
-            {activeVersions.map((version) => (
+            {displayedVersions.map((version) => (
               <VersionCard
                 key={version.id}
                 version={version}
@@ -504,6 +528,17 @@ export function VersionsSection({
               />
             ))}
           </ul>
+        )}
+
+        {/* Phase 8 V2 — CTA "Voir toutes" si on a tronqué pour le mode preview. */}
+        {hiddenCount > 0 && (
+          <Link
+            href={`/publications/${slotId}/versions`}
+            className="inline-flex items-center gap-1.5 text-[11.5px] text-gray-600 hover:text-gray-900 transition-colors font-medium pt-1"
+          >
+            Voir toutes les {activeVersions.length} versions
+            <ArrowRight size={11} />
+          </Link>
         )}
 
         {/* Dropzone — full si pas de version, compacte sinon. */}

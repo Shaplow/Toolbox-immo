@@ -8,6 +8,7 @@ import { normalizeTemplateJSON } from "@/lib/templateNormalization";
 import type { TemplateJSON, VideoBlock } from "@/types/template";
 import { getUserContext } from "@/lib/userContext";
 import { buildLibraryPrefillContext } from "@/lib/generate/buildLibraryPrefillContext";
+import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
 import { buildMergedSchema } from "@/lib/generate/buildMergedSchema";
 
 function buildMediaFieldAspectRatios(json: TemplateJSON): Record<string, number> {
@@ -150,7 +151,10 @@ export default async function GeneratePage({ params, searchParams }: Props) {
 
   // Charge la liste des comptes IG pour le dropdown du sélecteur (toujours,
   // même si accountId est déjà connu — permet de changer de compte après coup).
+  // Exclut les comptes sentinels (curseurs partagés) qui ne sont pas
+  // sélectionnables manuellement.
   const instagramAccounts = await prisma.instagramAccount.findMany({
+    where: { id: { notIn: [...SHARED_SENTINEL_IDS] } },
     orderBy: { name: "asc" },
     select: { id: true, name: true, handle: true },
   });

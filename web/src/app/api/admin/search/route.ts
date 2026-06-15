@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
+import { SHARED_SENTINEL_IDS } from "@/lib/rotation/sentinels";
 
 export type SearchResultItem = {
   kind:
@@ -66,7 +67,12 @@ export async function GET(req: NextRequest) {
       select: { id: true, name: true },
     }),
     prisma.instagramAccount.findMany({
-      where: { OR: [{ handle: contains }, { name: contains }] },
+      where: {
+        AND: [
+          { id: { notIn: [...SHARED_SENTINEL_IDS] } },
+          { OR: [{ handle: contains }, { name: contains }] },
+        ],
+      },
       orderBy: { handle: "asc" },
       take: TAKE,
       select: {
@@ -161,7 +167,11 @@ export async function GET(req: NextRequest) {
     ...slots.map((s) => ({
       kind: "slot" as const,
       id: s.id,
-      label: s.title ?? `Publication du ${s.scheduledAt.toLocaleDateString("fr-FR")}`,
+      label:
+        s.title ??
+        (s.scheduledAt
+          ? `Publication du ${s.scheduledAt.toLocaleDateString("fr-FR")}`
+          : "Publication en banque"),
       sublabel: `@${s.account.handle}`,
       href: `/publications/${s.id}`,
     })),

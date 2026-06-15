@@ -17,6 +17,10 @@ model User {
   /// JSON array of tool strings — ex: ["templates","captions"]
   permissions                   String                  @default("[]")
   createdAt                     DateTime                @default(now())
+  /// V8 UX — Timestamp de la dernière visite app pour le widget "Depuis votre
+  /// dernière visite" sur /home (HomeAdmin notamment). Mis à jour par
+  /// POST /api/users/touch appelé à chaque chargement de /home.
+  lastSeenAt                    DateTime?
   templates                     Template[]
   listings                      Listing[]
   accesses                      TemplateAccess[]
@@ -28,6 +32,9 @@ model User {
   coverFramePacks               CoverFramePack[]
   defaultMonteurForPatterns     AccountPattern[]        @relation("PatternDefaultMonteur")
   defaultCmForPatterns          AccountPattern[]        @relation("PatternDefaultCm")
+  defaultMonteurForBindings     PatternBinding[]        @relation("BindingDefaultMonteur")
+  defaultCmForBindings          PatternBinding[]        @relation("BindingDefaultCm")
+  defaultVideasteForBindings    PatternBinding[]        @relation("BindingDefaultVideaste")
   uploadedVersions              PublicationVersion[]    @relation("VersionUploader")
   assignedAsMonteur             PublicationSlot[]       @relation("SlotMonteur")
   assignedAsCm                  PublicationSlot[]       @relation("SlotCm")
@@ -38,7 +45,12 @@ model User {
   clientValidationTokensCreated ClientValidationToken[] @relation("ClientValidationTokenCreator")
   assignedAsVideaste            PublicationSlot[]       @relation("SlotVideaste")
   defaultVideasteForPatterns    AccountPattern[]        @relation("PatternDefaultVideaste")
+  patternTemplatesUpdated       PatternTemplate[]       @relation("PatternTemplateUpdatedBy")
 }
+
+// (Les inverses de PatternBinding pour User sont déclarées plus haut dans
+// le modèle User pour préserver la cohérence avec les autres relations
+// d'assignation.)
 
 model CaptionJob {
   id            String           @id @default(cuid())
@@ -75,20 +87,22 @@ model CaptionJob {
 
 /// Preset de sous-titres sauvegardé (config complète + polices)
 model CaptionPreset {
-  id              String                @id @default(cuid())
-  name            String
+  id               String                @id @default(cuid())
+  name             String
   /// null = preset global/builtin (visible par tous), sinon appartient à l'user
-  userId          String?
-  user            User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  isBuiltin       Boolean               @default(false)
+  userId           String?
+  user             User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isBuiltin        Boolean               @default(false)
   /// ConfigState JSON sérialisé (base, highlight, layout, effects, animation...)
-  config          String                @default("{}")
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-  accesses        CaptionPresetAccess[]
-  accountPatterns AccountPattern[]
+  config           String                @default("{}")
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  accesses         CaptionPresetAccess[]
+  accountPatterns  AccountPattern[]
+  patternTemplates PatternTemplate[]     @relation("PatternTemplateCaptionPreset")
+  patternBindings  PatternBinding[]      @relation("BindingCaptionPresetOverride")
   /// Slots one-off référençant ce preset via override (Phase 5 Workflows).
-  slotsOverride   PublicationSlot[]     @relation("SlotCaptionPresetOverride")
+  slotsOverride    PublicationSlot[]     @relation("SlotCaptionPresetOverride")
 }
 
 model CaptionPresetAccess {
@@ -132,6 +146,8 @@ model Template {
   accesses         TemplateAccess[]
   publicationSlots PublicationSlot[]
   accountPatterns  AccountPattern[]
+  patternTemplates PatternTemplate[]     @relation("PatternTemplateTemplate")
+  patternBindings  PatternBinding[]      @relation("BindingTemplateOverride")
   coverPresets     TemplateCoverPreset[]
 }
 
@@ -359,23 +375,25 @@ model CoverFrameCandidate {
 
 /// Prompt personnalisé pour la génération de descriptions (géré par les admins)
 model DescriptionPrompt {
-  id              String            @id @default(cuid())
-  name            String
-  prompt          String // Instructions pour le LLM
-  isActive        Boolean           @default(true)
+  id               String            @id @default(cuid())
+  name             String
+  prompt           String // Instructions pour le LLM
+  isActive         Boolean           @default(true)
   /// Recipe d'exécution bundlée au prompt (P6).
   /// Valeurs : "transcript_only" (défaut, comportement historique) |
   /// "transcript_and_frame" | "transcript_multi_frame" | "two_pass_reformulate" |
   /// "context_enriched". L'executor lit ce champ pour choisir la stratégie.
-  recipeKind      String            @default("transcript_only")
+  recipeKind       String            @default("transcript_only")
   /// Config JSON spécifique à la recipe (frame count, fields à injecter, etc.)
-  recipeConfig    Json?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  jobs            DescriptionJob[]
-  accountPatterns AccountPattern[]
+  recipeConfig     Json?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  jobs             DescriptionJob[]
+  accountPatterns  AccountPattern[]
+  patternTemplates PatternTemplate[] @relation("PatternTemplateDescriptionPrompt")
+  patternBindings  PatternBinding[]  @relation("BindingDescriptionPromptOverride")
   /// Slots one-off référençant ce prompt via override (Phase 5 Workflows).
-  slotsOverride   PublicationSlot[] @relation("SlotDescriptionPromptOverride")
+  slotsOverride    PublicationSlot[] @relation("SlotDescriptionPromptOverride")
 }
 
 /// Résultat d'une génération de description à partir d'un SRT/JSON
@@ -669,6 +687,7 @@ model InstagramAccount {
   entryAccesses    DataEntryAccess[]
   entryUsages      DataEntryUsage[]
   accountPatterns  AccountPattern[]
+  patternBindings  PatternBinding[]
 
   @@index([clientId])
 }
@@ -767,8 +786,8 @@ model PublicationSlot {
   id                 String           @id @default(cuid())
   accountId          String
   account            InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  /// Date et heure cible de publication (UTC)
-  scheduledAt        DateTime
+  /// Date et heure cible de publication (UTC). null = slot stocké en banque (sans date programmée).
+  scheduledAt        DateTime?
   /// "TO_DO" | "IN_PROGRESS" | "READY" | "CHECKING" | "DONE"
   status             String           @default("TO_DO")
   title              String?
@@ -803,9 +822,16 @@ model PublicationSlot {
   /// Vidéaste assigné au shoot (celui qui filme + upload les rushs)
   assigneeVideasteId String?
   assigneeVideaste   User?            @relation("SlotVideaste", fields: [assigneeVideasteId], references: [id], onDelete: SetNull)
-  /// Pattern de contenu associé à ce slot
+  /// @deprecated P2 — remplacé par patternBindingId. Conservé tant que les
+  /// slots historiques n'ont pas été backfillés (backfill fait via script
+  /// migrate-patterns-to-templates puis cleanup release+1).
   patternId          String?
   pattern            AccountPattern?  @relation(fields: [patternId], references: [id], onDelete: SetNull)
+  /// P2 — Liaison vers PatternBinding (recette appliquée au compte). Source
+  /// canonique du pattern effectif. Nullable pour les slots historiques pas
+  /// encore backfillés et les slots créés ad-hoc sans recette.
+  patternBindingId   String?
+  patternBinding     PatternBinding?  @relation("SlotPatternBinding", fields: [patternBindingId], references: [id], onDelete: SetNull)
 
   /// Override per-slot de needsAdminValidation du pattern. null = hérite.
   /// Phase 2.3 : permet d'activer la validation admin du montage (status
@@ -922,8 +948,120 @@ model Client {
   accounts    InstagramAccount[]
 }
 
-// ─── Account Patterns ─────────────────────────────────────────────────────────
+// ─── Pattern Templates (P2 — recettes globales réutilisables) ─────────────
+//
+// PatternTemplate = la recette éditoriale pure (template + presets + flags
+// workflow) sans aucun lien compte / planning. Réutilisable sur plusieurs
+// comptes via PatternBinding.
+//
+// Architecture cible :
+//   PatternTemplate (1) ────< PatternBinding (N) ─── InstagramAccount
+//      ▲ recette                ▲ planning + assignations + overrides
+//
+// Bénéfice : modifier 1 recette globale → propagation immédiate sur tous les
+// comptes liés (sauf override explicite). Avant : chaque AccountPattern avait
+// sa copie, modifier signifiait X10 manipulations.
 
+model PatternTemplate {
+  id    String @id @default(cuid())
+  label String
+
+  /// "auto_template" | "manual_rushes" | "external_upload"
+  source     String
+  templateId String?
+  template   Template? @relation("PatternTemplateTemplate", fields: [templateId], references: [id], onDelete: SetNull)
+
+  /// "none" | "manualSelect" | "autoPack" | "monteurUpload"
+  coverMode   String @default("none")
+  coverConfig Json?
+
+  needsDescription      String  @default("none")
+  /// @deprecated V8 — utiliser needsCaptionsMode.
+  needsCaptions         Boolean @default(false)
+  /// "none" | "auto" | "manual"
+  needsCaptionsMode     String  @default("none")
+  needsAdminValidation  Boolean @default(false)
+  needsClientValidation Boolean @default(false)
+  allowsClientRevision  Boolean @default(false)
+  needsBrief            Boolean @default(false)
+
+  captionPresetId     String?
+  captionPreset       CaptionPreset?     @relation("PatternTemplateCaptionPreset", fields: [captionPresetId], references: [id], onDelete: SetNull)
+  descriptionPromptId String?
+  descriptionPrompt   DescriptionPrompt? @relation("PatternTemplateDescriptionPrompt", fields: [descriptionPromptId], references: [id], onDelete: SetNull)
+
+  /// Recette désactivée : ne s'affiche plus dans le catalogue ni dans les
+  /// pickers de nouvelle liaison. Les bindings existants restent valides.
+  isArchived Boolean @default(false)
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Sprint D — audit log light : qui a été le dernier à éditer cette
+  /// recette. Permet d'afficher « Modifiée par X · il y a Y » dans le
+  /// drawer édition pour assurer la traçabilité minimale en équipe.
+  updatedByUserId String?
+  updatedBy       User?   @relation("PatternTemplateUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  bindings PatternBinding[]
+}
+
+/// PatternBinding = application d'une recette globale à un compte IG.
+/// Porte les champs spécifiques au compte (planning, assignations) +
+/// d'éventuels overrides ponctuels (changer le preset captions pour ce compte
+/// uniquement, etc.). Au moment de générer un slot, la valeur effective est
+/// résolue via binding.X ?? template.X.
+model PatternBinding {
+  id                String           @id @default(cuid())
+  accountId         String
+  account           InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  patternTemplateId String
+  patternTemplate   PatternTemplate  @relation(fields: [patternTemplateId], references: [id], onDelete: Restrict)
+
+  /// Override du label de la recette pour ce compte. null = hérite de template.label.
+  customLabel String?
+
+  // Planning (spécifique au compte)
+  dayOfWeek   Int[]
+  publishTime String
+  isActive    Boolean @default(true)
+
+  // Assignations par défaut (spécifiques au compte)
+  defaultAssigneeMonteurId  String?
+  defaultAssigneeMonteur    User?   @relation("BindingDefaultMonteur", fields: [defaultAssigneeMonteurId], references: [id], onDelete: SetNull)
+  defaultAssigneeCmId       String?
+  defaultAssigneeCm         User?   @relation("BindingDefaultCm", fields: [defaultAssigneeCmId], references: [id], onDelete: SetNull)
+  defaultAssigneeVideasteId String?
+  defaultAssigneeVideaste   User?   @relation("BindingDefaultVideaste", fields: [defaultAssigneeVideasteId], references: [id], onDelete: SetNull)
+
+  // Optional overrides per-account (rare — pour "même recette mais preset captions
+  // différent pour ce compte". null = hérite du template).
+  templateIdOverride          String?
+  templateOverride            Template?          @relation("BindingTemplateOverride", fields: [templateIdOverride], references: [id], onDelete: SetNull)
+  captionPresetIdOverride     String?
+  captionPresetOverride       CaptionPreset?     @relation("BindingCaptionPresetOverride", fields: [captionPresetIdOverride], references: [id], onDelete: SetNull)
+  descriptionPromptIdOverride String?
+  descriptionPromptOverride   DescriptionPrompt? @relation("BindingDescriptionPromptOverride", fields: [descriptionPromptIdOverride], references: [id], onDelete: SetNull)
+  coverModeOverride           String?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  publicationSlots PublicationSlot[] @relation("SlotPatternBinding")
+
+  @@index([accountId])
+  @@index([patternTemplateId])
+  @@index([accountId, isActive])
+}
+
+// ─── Account Patterns (LEGACY — drop différé après backfill complet) ──────
+
+/// @deprecated P2 — remplacé par PatternTemplate + PatternBinding.
+/// Conservé pour rétrocompat des slots historiques (slot.patternId) le temps
+/// d'une release. À droper dans la migration suivante après vérification.
 /// Pattern de publication par compte : combine la config de production (ex-ContentRecipe)
 /// et le planning hebdomadaire (ex-AccountPlan) sous une entité unique liée à un compte IG.
 model AccountPattern {

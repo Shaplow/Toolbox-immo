@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useImpersonation } from "@/hooks/useImpersonation";
 import { type ReactNode } from "react";
@@ -15,14 +15,18 @@ import {
   Clapperboard,
   Instagram,
   RotateCw,
+  Sparkles,
   Eye,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Search,
   Hammer,
   History,
   MoreHorizontal,
 } from "lucide-react";
+import { KbdChord } from "@/components/ui/Kbd";
 import type { AppUserIdentity } from "@/lib/userContext";
 import { parsePermissions } from "@/lib/permissions/parsePermissions";
 import { useWorklistCount } from "@/hooks/useWorklistCount";
@@ -67,6 +71,11 @@ type NavItem = {
 type NavSection = {
   title?: string;
   items: NavItem[];
+  /**
+   * Si défini, la section est repliable. La key sert pour la persistance
+   * localStorage. Par défaut, les sections "rares" (Admin) sont repliées.
+   */
+  collapsible?: { key: string; defaultOpen: boolean };
 };
 
 /**
@@ -93,7 +102,6 @@ export function AppNav({
   isRoleOverride?: boolean;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   // Collapse state persisté en localStorage (Phase 6.1 — avant : useState
   // local perdu au hard refresh, friction quotidienne).
   const [collapsed, setCollapsed] = useState(false);
@@ -107,6 +115,22 @@ export function AppNav({
     if (typeof window === "undefined") return;
     window.localStorage.setItem("toolbox_nav_collapsed", String(collapsed));
   }, [collapsed]);
+  // Section "Admin" repliée par défaut — items rares (utilisateurs, clients,
+  // jobs ops). L'admin peut l'ouvrir et le choix est persisté.
+  const [adminSectionCollapsed, setAdminSectionCollapsed] = useState(true);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("toolbox_nav_admin_collapsed");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (stored === "false") setAdminSectionCollapsed(false);
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      "toolbox_nav_admin_collapsed",
+      String(adminSectionCollapsed),
+    );
+  }, [adminSectionCollapsed]);
   const { count: worklistCount } = useWorklistCount();
   const { setViewAsRole } = useImpersonation();
 
@@ -149,9 +173,11 @@ export function AppNav({
         title: "Planification",
         items: [
           { href: "/calendar", label: "Calendrier", icon: <CalendarDays size={14} /> },
+          { href: "/admin/patterns", label: "Recettes", icon: <Sparkles size={14} /> },
           { href: "/admin/accounts", label: "Comptes Instagram", icon: <Instagram size={14} /> },
           { href: "/admin/libraries", label: "Médiathèque", icon: <Library size={14} /> },
-          { href: "/admin/cursors", label: "Curseurs rotation", icon: <RotateCw size={14} /> },
+          // "Curseurs rotation" retiré : géré désormais en section sur les
+          // fiches MediaLibrary/DataLibrary (contexte naturel).
         ],
       },
       {
@@ -166,10 +192,12 @@ export function AppNav({
         ],
       },
       {
-        title: "Configuration",
+        title: "Admin",
+        collapsible: { key: "admin", defaultOpen: false },
         items: [
           { href: "/admin/users", label: "Utilisateurs", icon: <Users size={14} /> },
           { href: "/admin/clients", label: "Clients", icon: <Building2 size={14} /> },
+          { href: "/admin/jobs", label: "Jobs actifs", icon: <RotateCw size={14} /> },
         ],
       },
     ];
@@ -287,6 +315,32 @@ export function AppNav({
           de la nav, à côté du profil). Plus naturel comme contrôle admin
           attaché au profil, libère l'espace haut. */}
 
+      {/* ── Bouton Rechercher (⌘K) — Refactor UX V8 Phase 3 ─────────────
+          Promu en top de nav et visible pour tous les rôles. Pour ADMIN,
+          ouvre AdminCommandPalette (search entités + commandes). Pour
+          MONTEUR/CM/VIDEASTE, ouvre NavCommandPalette (commandes nav). */}
+      <div className={collapsed ? "px-2 pb-3" : "pl-8 pr-2 pb-3"}>
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event("palette:open"))}
+            className={[
+              "w-full flex items-center gap-2 h-9 rounded-lg text-[13px] transition-all focus-ring",
+              "bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] text-gray-700",
+              "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
+              "hover:from-white/95 hover:to-white/75 hover:text-gray-950",
+              collapsed ? "justify-center px-0" : "justify-between px-2.5",
+            ].join(" ")}
+            aria-label="Rechercher (Cmd+K)"
+            title="Rechercher (⌘K)"
+          >
+            <span className="inline-flex items-center gap-2 min-w-0">
+              <Search size={14} className="shrink-0" />
+              {!collapsed && <span>Rechercher</span>}
+            </span>
+            {!collapsed && <KbdChord keys={["⌘", "K"]} size="sm" />}
+          </button>
+      </div>
+
       {/* ── Navigation principale ────────────────────────────────────
           flex flex-col + wrapper interne `my-auto` : le menu est centré
           verticalement entre le logo et le footer profil quand il rentre
@@ -294,8 +348,15 @@ export function AppNav({
           et le scroll vertical natif prend le relais (overflow-y-auto). */}
       <nav className={`flex-1 min-h-0 overflow-y-auto flex flex-col ${collapsed ? "px-2 py-3" : "px-8 py-3"} [scrollbar-width:thin]`}>
         <div className="my-auto">
-          {navSections.map(({ title, items }, index) => {
+          {navSections.map(({ title, items, collapsible }, index) => {
             if (items.length === 0) return null;
+            // Une section collapsible (ex. Admin) peut être pliée par l'admin.
+            // En mode "collapsed" (sidebar minimale), on ne replie jamais —
+            // tout est visible en icônes.
+            const isCollapsibleAdmin =
+              collapsible?.key === "admin" && !collapsed;
+            const sectionIsCollapsed =
+              isCollapsibleAdmin && adminSectionCollapsed;
             return (
               <div
                 key={title ?? `section-${index}`}
@@ -308,23 +369,44 @@ export function AppNav({
                 }
               >
                 {title && !collapsed && (
-                  <p className="pr-2 pb-1.5 text-right text-[9px] font-semibold uppercase tracking-[0.18em] text-gray-400">
-                    {title}
-                  </p>
+                  isCollapsibleAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAdminSectionCollapsed((v) => !v)
+                      }
+                      className="w-full inline-flex items-center justify-end gap-1 pr-2 pb-1.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-gray-400 hover:text-gray-700 transition-colors focus-ring rounded"
+                      aria-expanded={!sectionIsCollapsed}
+                      title={sectionIsCollapsed ? `Ouvrir ${title}` : `Replier ${title}`}
+                    >
+                      <span>{title}</span>
+                      {sectionIsCollapsed ? (
+                        <ChevronDown size={11} strokeWidth={2.5} />
+                      ) : (
+                        <ChevronUp size={11} strokeWidth={2.5} />
+                      )}
+                    </button>
+                  ) : (
+                    <p className="pr-2 pb-1.5 text-right text-[9px] font-semibold uppercase tracking-[0.18em] text-gray-400">
+                      {title}
+                    </p>
+                  )
                 )}
-                <div className="space-y-0.5">
-                  {items.map((item) => (
-                    <NavItemLink
-                      key={item.href}
-                      item={item}
-                      pathname={pathname ?? ""}
-                      collapsed={collapsed}
-                      // Notifs/badges désactivés temporairement (à réactiver
-                      // plus tard avec inbox / notifications system propre).
-                      worklistCount={0}
-                    />
-                  ))}
-                </div>
+                {!sectionIsCollapsed && (
+                  <div className="space-y-0.5">
+                    {items.map((item) => (
+                      <NavItemLink
+                        key={item.href}
+                        item={item}
+                        pathname={pathname ?? ""}
+                        collapsed={collapsed}
+                        // Notifs/badges désactivés temporairement (à réactiver
+                        // plus tard avec inbox / notifications system propre).
+                        worklistCount={0}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -340,19 +422,13 @@ export function AppNav({
             | "separator";
           const menuItems: MenuItem[] = [];
 
-          // Rechercher (admin only — palette dispo)
-          if (canSeeAdmin) {
-            menuItems.push({
-              label: "Rechercher",
-              icon: Search,
-              kbd: "⌘K",
-              onClick: () => window.dispatchEvent(new Event("admin:open-palette")),
-            });
-          }
+          // V8 Phase 2 — "Rechercher ⌘K" promu en top de nav (bouton dédié).
+          // "Jobs actifs" entré dans la section Admin de la sidebar.
+          // Le dropdown profil n'expose plus que : Vue X (impersonation)
+          // + Se déconnecter — actions strictement liées au profil.
 
           // Vue admin (admin only)
           if (canSeeAdmin && !isImpersonating) {
-            if (menuItems.length > 0) menuItems.push("separator");
             menuItems.push({
               label: isRoleOverride ? "Vue : Admin (revenir)" : "Vue : Admin",
               icon: Eye,
@@ -361,16 +437,6 @@ export function AppNav({
             menuItems.push({ label: "Vue Vidéaste", onClick: () => void setViewAsRole("VIDEASTE") });
             menuItems.push({ label: "Vue Monteur",  onClick: () => void setViewAsRole("MONTEUR") });
             menuItems.push({ label: "Vue CM",       onClick: () => void setViewAsRole("CM") });
-          }
-
-          // Jobs actifs (admin only)
-          if (canSeeAdmin) {
-            if (menuItems.length > 0) menuItems.push("separator");
-            menuItems.push({
-              label: "Jobs actifs",
-              icon: RotateCw,
-              onClick: () => router.push("/admin/jobs"),
-            });
           }
 
           // Se déconnecter (toujours)

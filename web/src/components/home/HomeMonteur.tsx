@@ -45,10 +45,18 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
   const weekMonday = getCurrentWeekMonday();
   const weekSunday = getCurrentWeekSunday();
 
+  // Pour la worklist datée : MONTEUR_STATUSES exclut RUSHES_EXPECTED (le
+  // monteur attend les rushs, rien à faire). Pour la BANQUE en revanche, on
+  // veut afficher RUSHES_EXPECTED sans date afin que le monteur sache qu'une
+  // mission lui est assignée (même s'il doit attendre que les rushs arrivent).
+  // OR permet d'inclure les deux types sans dupliquer le query.
   const rawSlots = await prisma.publicationSlot.findMany({
     where: {
       assigneeMonteurId: userId,
-      status: { in: MONTEUR_STATUSES },
+      OR: [
+        { status: { in: MONTEUR_STATUSES } },
+        { status: "RUSHES_EXPECTED", scheduledAt: null },
+      ],
     },
     include: {
       account: { select: { id: true, handle: true, name: true } },
@@ -103,9 +111,13 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
   }
 
   // ── Découpe en sections ────────────────────────────────────────────────
+  // Note : slots en banque (scheduledAt === null) sont exclus des sections
+  // datées et iront dans une section dédiée "Missions banque" (Phase 5).
   const overdue = slots.filter(
     (s) =>
-      !(TERMINAL_STATUSES as readonly string[]).includes(s.status) && s.scheduledAt < now,
+      !(TERMINAL_STATUSES as readonly string[]).includes(s.status) &&
+      s.scheduledAt != null &&
+      s.scheduledAt < now,
   );
 
   const nonOverdue = slots.filter((s) => !isSlotOverdue(s));
@@ -114,6 +126,7 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
     const section = getMonteurSection(s.status);
     return (
       (section === "todo" || section === "in_progress") &&
+      s.scheduledAt != null &&
       s.scheduledAt >= weekMonday &&
       s.scheduledAt <= weekSunday
     );
@@ -121,12 +134,29 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
 
   const upcoming = nonOverdue.filter((s) => {
     const section = getMonteurSection(s.status);
-    return (section === "todo" || section === "in_progress") && s.scheduledAt > weekSunday;
+    return (
+      (section === "todo" || section === "in_progress") &&
+      s.scheduledAt != null &&
+      s.scheduledAt > weekSunday
+    );
   });
 
   const waiting = slots.filter((s) => getMonteurSection(s.status) === "waiting");
+  // Missions banque (sans date) — surface tous les slots actifs sans date,
+  // y compris RUSHES_EXPECTED (le monteur veut voir la mission attribuée
+  // même s'il attend les rushs). Exclut explicitement les sections "waiting"
+  // (post-montage) qui n'appellent plus aucune action côté monteur.
+  const isBankActiveStatus = (status: SlotStatus): boolean => {
+    if (status === "RUSHES_EXPECTED") return true;
+    const section = getMonteurSection(status);
+    return section === "todo" || section === "in_progress";
+  };
+  const bankMissions = slots.filter(
+    (s) => s.scheduledAt == null && isBankActiveStatus(s.status),
+  );
 
-  const totalActive = overdue.length + thisWeekTodo.length + upcoming.length;
+  const totalActive =
+    overdue.length + thisWeekTodo.length + upcoming.length + bankMissions.length;
   const isFullyEmpty = totalActive === 0 && waiting.length === 0;
 
   return (
@@ -205,6 +235,16 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
                   monteurBadgesMap={monteurBadgesMap}
                 />
 
+                {bankMissions.length > 0 && (
+                  <WorklistSection
+                    title="Missions sans date (banque)"
+                    slots={bankMissions}
+                    mode="monteur"
+                    tone="default"
+                    monteurBadgesMap={monteurBadgesMap}
+                  />
+                )}
+
                 <WorklistSection
                   title="À venir"
                   slots={upcoming}
@@ -245,10 +285,12 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
                               </p>
                             </div>
                             <span className="text-[10.5px] text-gray-400 font-mono tabular-nums shrink-0">
-                              {slot.scheduledAt.toLocaleDateString("fr-FR", {
-                                day: "numeric",
-                                month: "short",
-                              })}
+                              {slot.scheduledAt
+                                ? slot.scheduledAt.toLocaleDateString("fr-FR", {
+                                    day: "numeric",
+                                    month: "short",
+                                  })
+                                : "Banque"}
                             </span>
                           </div>
                         </Link>

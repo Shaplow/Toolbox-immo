@@ -33,7 +33,8 @@ export interface WorklistPattern {
 export interface WorklistSlot {
   id: string;
   title: string | null;
-  scheduledAt: Date;
+  /** null = slot stocké en banque (sans date programmée). */
+  scheduledAt: Date | null;
   status: SlotStatus;
   notes: string | null;
   assigneeMonteurId: string | null;
@@ -199,9 +200,11 @@ export function getVideasteSection(status: SlotStatus): VideasteSection | null {
 /**
  * Retourne true si un slot est en retard :
  * scheduledAt est dans le passé ET le statut n'est pas terminal.
+ * Un slot en banque (scheduledAt null) n'est jamais en retard.
  */
 export function isSlotOverdue(slot: Pick<WorklistSlot, "scheduledAt" | "status">): boolean {
   if ((TERMINAL_STATUSES as readonly string[]).includes(slot.status)) return false;
+  if (slot.scheduledAt == null) return false;
   return slot.scheduledAt < new Date();
 }
 

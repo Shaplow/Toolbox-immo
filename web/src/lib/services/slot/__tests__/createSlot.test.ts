@@ -21,6 +21,11 @@ const mockSlotCreate = vi.fn();
 const mockPatternFindUnique = vi.fn();
 const mockAccountFindUnique = vi.fn();
 const mockUserFindUnique = vi.fn();
+// P2 — compat shim createSlot : on cherche un PatternBinding depuis le
+// legacy patternId pour matérialiser slot.patternBindingId. En test on
+// renvoie null par défaut (le test focus l'AccountPattern legacy path).
+const mockBindingFindUnique = vi.fn().mockResolvedValue(null);
+const mockBindingFindFirst = vi.fn().mockResolvedValue(null);
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -29,6 +34,10 @@ vi.mock("@/lib/prisma", () => ({
     },
     accountPattern: {
       findUnique: (...args: unknown[]) => mockPatternFindUnique(...args),
+    },
+    patternBinding: {
+      findUnique: (...args: unknown[]) => mockBindingFindUnique(...args),
+      findFirst: (...args: unknown[]) => mockBindingFindFirst(...args),
     },
     instagramAccount: {
       findUnique: (...args: unknown[]) => mockAccountFindUnique(...args),
@@ -75,6 +84,8 @@ beforeEach(() => {
   mockPatternFindUnique.mockReset();
   mockAccountFindUnique.mockReset();
   mockUserFindUnique.mockReset();
+  mockBindingFindUnique.mockReset().mockResolvedValue(null);
+  mockBindingFindFirst.mockReset().mockResolvedValue(null);
 
   // Mock par défaut : create renvoie un objet stub plausible
   mockSlotCreate.mockImplementation(({ data }: { data: Record<string, unknown> }) =>

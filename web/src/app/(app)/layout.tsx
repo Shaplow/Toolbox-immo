@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { AppNav } from "@/components/layout/AppNav";
 import { ImpersonationBanner } from "@/components/layout/ImpersonationBanner";
-import { AdminCommandPalette } from "@/components/layout/AdminCommandPalette";
+import { CommandPaletteHost } from "@/components/layout/CommandPaletteHost";
 import { getUserContext } from "@/lib/userContext";
 import { JobEventsProvider } from "@/components/providers/JobEventsProvider";
 
@@ -42,7 +42,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </JobEventsProvider>
         </div>
       </main>
-      {userContext.canAdminBypass && <AdminCommandPalette />}
+      <CommandPaletteHost
+        user={{
+          id: userContext.effectiveUser.id,
+          role: userContext.effectiveUser.role,
+          permissions: userContext.effectiveUser.permissions,
+          // ADMIN réel uniquement — pas en impersonation ni en role-override
+          // (l'admin en "Vue Monteur" voit la palette nav-only, comme s'il
+          // était monteur, pour tester l'expérience).
+          isAdminReal:
+            userContext.actualUser.role === "ADMIN" &&
+            !userContext.isImpersonating &&
+            !userContext.isRoleOverride,
+        }}
+      />
     </div>
   );
 }

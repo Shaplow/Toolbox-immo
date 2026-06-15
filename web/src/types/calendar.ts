@@ -29,7 +29,7 @@ export interface PublicationSlot {
   id: string;
   accountId: string;
   account: { id: string; name: string; handle: string };
-  scheduledAt: string; // ISO
+  scheduledAt: string | null; // ISO ; null = slot stocké en banque
   status: SlotStatus;
   title: string | null;
   /** Légende Instagram (Phase 2.1 : ancien caption fusionné dans description). */

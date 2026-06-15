@@ -68,10 +68,13 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
   }));
 
   // ── Découpe en sections ────────────────────────────────────────────────
+  // Note : slots en banque (scheduledAt === null) ne concernent pas le
+  // vidéaste — le shooting est planifié, pas stocké.
   const overdue = slots.filter(
     (s) =>
       !(TERMINAL_STATUSES as readonly string[]).includes(s.status) &&
       getVideasteSection(s.status) === "to_shoot" &&
+      s.scheduledAt != null &&
       s.scheduledAt < now,
   );
 
@@ -82,13 +85,18 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
   const thisWeekShoots = nonOverdue.filter((s) => {
     const section = getVideasteSection(s.status);
     return (
-      section === "to_shoot" && s.scheduledAt >= weekMonday && s.scheduledAt <= weekSunday
+      section === "to_shoot" &&
+      s.scheduledAt != null &&
+      s.scheduledAt >= weekMonday &&
+      s.scheduledAt <= weekSunday
     );
   });
 
   const upcomingShoots = nonOverdue.filter((s) => {
     const section = getVideasteSection(s.status);
-    return section === "to_shoot" && s.scheduledAt > weekSunday;
+    return (
+      section === "to_shoot" && s.scheduledAt != null && s.scheduledAt > weekSunday
+    );
   });
 
   const delivered = slots.filter((s) => getVideasteSection(s.status) === "shooting_done");

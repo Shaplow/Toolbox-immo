@@ -8,10 +8,13 @@
  * direct au workspace pattern (action principale).
  */
 
+import { useState } from "react";
 import Link from "next/link";
-import { Instagram, Layers, Calendar } from "lucide-react";
+import { Instagram, Layers, Calendar, Eye } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Chip } from "@/components/ui/Chip";
+import { ButtonIcon } from "@/components/ui/ButtonIcon";
+import { AccountPeekDrawer } from "./AccountPeekDrawer";
 
 interface AccountItem {
   id: string;
@@ -66,6 +69,7 @@ export function AccountsListAdmin({ accounts }: Props) {
   // réintégrer si besoin de recherche transverse multi-clients). On affiche
   // la liste brute des comptes triés par leur ordre serveur.
   const filtered = accounts;
+  const [peekAccountId, setPeekAccountId] = useState<string | null>(null);
 
   return (
     <div className="min-h-screen">
@@ -116,13 +120,23 @@ export function AccountsListAdmin({ accounts }: Props) {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
                 {filtered.map((a) => (
-                  <AccountCard key={a.id} account={a} />
+                  <AccountCard
+                    key={a.id}
+                    account={a}
+                    onPeek={() => setPeekAccountId(a.id)}
+                  />
                 ))}
               </div>
             )}
           </div>
         </div>
       </div>
+
+      <AccountPeekDrawer
+        open={peekAccountId !== null}
+        accountId={peekAccountId}
+        onClose={() => setPeekAccountId(null)}
+      />
     </div>
   );
 }
@@ -131,9 +145,10 @@ export function AccountsListAdmin({ accounts }: Props) {
 
 interface AccountCardProps {
   account: AccountItem;
+  onPeek: () => void;
 }
 
-function AccountCard({ account }: AccountCardProps) {
+function AccountCard({ account, onPeek }: AccountCardProps) {
   const isInactive = account.activePatternCount === 0;
   const lastPublished = formatLastPublished(account.lastPublishedAt);
   const gradient = avatarGradient(account.handle);
@@ -149,6 +164,17 @@ function AccountCard({ account }: AccountCardProps) {
         "hover:-translate-y-0.5",
       ].join(" ")}
     >
+      {/* Bouton Aperçu — top-right, opacity hover-only */}
+      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <ButtonIcon
+          icon={Eye}
+          label="Aperçu rapide"
+          variant="ghost"
+          size="sm"
+          onClick={onPeek}
+        />
+      </div>
+
       {/* Avatar profil — gradient pastel + initiales */}
       <div
         className={[

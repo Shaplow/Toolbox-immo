@@ -22,6 +22,10 @@ const mockPatternFindUnique = vi.fn();
 const mockUserFindUnique = vi.fn();
 const mockActivityCreate = vi.fn();
 const mockTransaction = vi.fn();
+// P2 — patchSlot tente d'abord PatternBinding pour résoudre l'effective
+// pattern, puis fallback AccountPattern. En test legacy on retourne null
+// pour forcer le path AccountPattern (les fixtures sont AccountPattern).
+const mockBindingFindUnique = vi.fn().mockResolvedValue(null);
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -32,6 +36,9 @@ vi.mock("@/lib/prisma", () => ({
     },
     accountPattern: {
       findUnique: (...args: unknown[]) => mockPatternFindUnique(...args),
+    },
+    patternBinding: {
+      findUnique: (...args: unknown[]) => mockBindingFindUnique(...args),
     },
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
@@ -118,6 +125,7 @@ beforeEach(() => {
   mockSlotUpdate.mockReset();
   mockSlotUpdateMany.mockReset();
   mockPatternFindUnique.mockReset();
+  mockBindingFindUnique.mockReset().mockResolvedValue(null);
   mockUserFindUnique.mockReset();
   mockActivityCreate.mockReset();
   mockTransaction.mockReset();

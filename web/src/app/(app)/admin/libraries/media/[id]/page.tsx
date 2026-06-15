@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { MediaAssetsPanel } from "@/components/admin/libraries/MediaAssetsPanel";
+import { CursorSectionForLibrary } from "@/components/admin/libraries/CursorSectionForLibrary";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -65,7 +66,7 @@ export default async function MediaLibraryDetailPage({ params }: Props) {
         </div>
 
         <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
-          <div className="max-w-6xl mx-auto">
+          <div className="max-w-6xl mx-auto space-y-10">
             <MediaAssetsPanel
               library={{
                 id: library.id,
@@ -77,6 +78,17 @@ export default async function MediaLibraryDetailPage({ params }: Props) {
                 rotationScope: library.rotationScope,
                 maxUsageCount: library.maxUsageCount,
               }}
+            />
+
+            {/* Curseurs de rotation — déplacé de l'ancienne page top-level
+                /admin/cursors vers la fiche lib (contexte naturel). */}
+            <CursorSectionForLibrary
+              libraryId={library.id}
+              libraryType="media"
+              setSequence={library.setSequence ?? null}
+              rotationScope={
+                library.rotationScope === "shared" ? "shared" : "per_account"
+              }
             />
           </div>
         </div>
