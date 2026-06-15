@@ -10,6 +10,35 @@ from .models import RenderConfig, StyleConfig
 from .probe import VideoInfo
 
 
+# Ranges Unicode CJK pour détecter chinois / japonais / coréen.
+# Si présent dans le texte, on substitue la Font du Style vers "Noto Sans SC"
+# car libass ne fait pas un fallback fiable depuis les fonts custom (Playfair,
+# Geist, etc.) qui n'ont aucun glyph CJK → on retombe sur des tofu carrés.
+# Noto Sans SC contient aussi les latins, donc l'override total est safe.
+_CJK_RE = re.compile(
+    r"[一-鿿"   # CJK Unified Ideographs (le gros du chinois moderne)
+    r"㐀-䶿"    # CJK Extension A
+    r"　-〿"    # CJK Symbols and Punctuation
+    r"＀-￯"    # Halfwidth / Fullwidth Forms
+    r"぀-ゟ"    # Hiragana (JP)
+    r"゠-ヿ"    # Katakana (JP)
+    r"가-힯"    # Hangul Syllables (KR)
+    r"]"
+)
+
+CJK_FALLBACK_FONT = "Noto Sans SC"
+
+
+def _blocks_contain_cjk(blocks: list) -> bool:
+    """True si au moins un mot dans les blocks contient un caractère CJK."""
+    for block in blocks:
+        for line in block.lines:
+            for word in line.words:
+                if _CJK_RE.search(word.word):
+                    return True
+    return False
+
+
 def _ass_time(seconds: float) -> str:
     cs_total = int(round(seconds * 100))
     hours = cs_total // 360000
@@ -634,6 +663,14 @@ def write_ass_file(
     base_size = int(video_info.height * base_style.size_ratio)
     highlight_size = int(video_info.height * config.highlight_style.size_ratio)
 
+    # Détection CJK : si au moins un mot contient des caractères CJK, on force
+    # "Noto Sans SC" comme Fontname sur TOUS les Styles. Sinon les fonts custom
+    # (Playfair, Geist…) renvoient des tofu carrés car elles n'ont aucun glyph
+    # CJK et le fallback automatique libass est trop incertain en pratique.
+    cjk_mode = _blocks_contain_cjk(blocks)
+    base_font = CJK_FALLBACK_FONT if cjk_mode else base_style.font
+    hl_font = CJK_FALLBACK_FONT if cjk_mode else config.highlight_style.font
+
     content: list[str] = []
     content.append("[Script Info]")
     content.append("ScriptType: v4.00+")
@@ -650,7 +687,7 @@ def write_ass_file(
     content.append(
         _style_line(
             name="Base",
-            font=base_style.font,
+            font=base_font,
             size=base_size,
             color=_hex_to_ass_color(base_style.color),
             outline_color=_hex_to_ass_color(base_style.glow_color),
@@ -665,7 +702,7 @@ def write_ass_file(
     content.append(
         _style_line(
             name="Highlight",
-            font=config.highlight_style.font,
+            font=hl_font,
             size=highlight_size,
             color=_hex_to_ass_color(config.highlight_style.color),
             outline_color=_hex_to_ass_color(config.highlight_style.glow_color),
@@ -680,10 +717,11 @@ def write_ass_file(
     if config.highlight_style2 is not None:
         hl2 = config.highlight_style2
         hl2_size = int(video_info.height * hl2.size_ratio)
+        hl2_font = CJK_FALLBACK_FONT if cjk_mode else hl2.font
         content.append(
             _style_line(
                 name="Highlight2",
-                font=hl2.font,
+                font=hl2_font,
                 size=hl2_size,
                 color=_hex_to_ass_color(hl2.color),
                 outline_color=_hex_to_ass_color(hl2.glow_color),
