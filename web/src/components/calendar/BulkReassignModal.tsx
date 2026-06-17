@@ -89,11 +89,11 @@ export function BulkReassignModal({
   return (
     <Modal open onClose={onClose} size="md">
       <form onSubmit={handleSubmit} className="p-5">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 inline-flex items-center gap-1.5">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground inline-flex items-center gap-1.5">
           <UserCheck size={11} />
           Action de groupe · Réassignation
         </p>
-        <h2 className="mt-1 text-[18px] font-semibold text-gray-950">
+        <h2 className="mt-1 text-[18px] font-semibold text-foreground">
           {slotIds.length} publication{slotIds.length > 1 ? "s" : ""} sélectionnée
           {slotIds.length > 1 ? "s" : ""}
         </h2>
@@ -128,7 +128,7 @@ export function BulkReassignModal({
           </FormField>
         </div>
 
-        {error && <p className="mt-3 text-[12px] text-rose-700">{error}</p>}
+        {error && <p className="mt-3 text-[12px] text-danger-700">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <Button

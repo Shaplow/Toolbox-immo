@@ -138,7 +138,7 @@ export function CaptionPromptsPanel({
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted-foreground">
           {prompts.length} prompt{prompts.length !== 1 ? "s" : ""} configuré{prompts.length !== 1 ? "s" : ""}
         </p>
         <Button variant="primary" size="sm" icon={Sparkles} onClick={openCreate}>
@@ -179,7 +179,7 @@ export function CaptionPromptsPanel({
           />
         )}
         {prompts.map((p) => (
-          <div key={p.id} className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+          <div key={p.id} className="bg-white border border-border rounded-xl overflow-hidden">
             {editingId === p.id ? (
               <div className="p-5">
                 <CaptionPromptForm
@@ -207,16 +207,16 @@ export function CaptionPromptsPanel({
                   <div className="flex items-center gap-2 mb-1">
                     <p className="text-sm font-medium text-gray-900">{p.name}</p>
                     {p.autoHighlight.enabled && (
-                      <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-700">
+                      <span className="rounded-full bg-danger-100 px-2 py-0.5 text-[11px] font-medium text-danger-700">
                         {formatAutoHighlightModeLabel(p.autoHighlight.mode)}
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-gray-500 whitespace-pre-line line-clamp-4 leading-relaxed">
+                  <p className="text-sm text-muted-foreground whitespace-pre-line line-clamp-4 leading-relaxed">
                     {p.prompt}
                   </p>
                   {p.autoHighlight.enabled && p.autoHighlight.prompt && (
-                    <p className="text-xs text-rose-400 mt-1.5 line-clamp-2">
+                    <p className="text-xs text-danger-200 mt-1.5 line-clamp-2">
                       Auto-highlight : {p.autoHighlight.prompt}
                     </p>
                   )}
@@ -286,7 +286,7 @@ function CaptionPromptForm({
   const [showAhSection, setShowAhSection] = useState(ahEnabled);
 
   return (
-    <div className="bg-rose-50/50 border border-rose-100 rounded-xl p-5 space-y-4">
+    <div className="bg-danger-50/50 border border-danger-100 rounded-xl p-5 space-y-4">
       {/* Name */}
       <FormField label="Nom du prompt" required>
         <Input
@@ -309,7 +309,7 @@ function CaptionPromptForm({
       </FormField>
 
       {/* Auto-highlight section */}
-      <div className="border border-rose-200 rounded-xl overflow-hidden">
+      <div className="border border-danger-200 rounded-xl overflow-hidden">
         <button
           type="button"
           onClick={() => {
@@ -317,7 +317,7 @@ function CaptionPromptForm({
             setShowAhSection(next);
             if (!next) onAhEnabled(false);
           }}
-          className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors"
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-danger-700 bg-danger-50 hover:bg-danger-100 transition-colors"
         >
           <span>Auto-highlight</span>
           {showAhSection ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
@@ -325,12 +325,12 @@ function CaptionPromptForm({
 
         {showAhSection && (
           <div className="bg-white px-4 py-4 space-y-3">
-            <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+            <label className="inline-flex items-center gap-2 text-sm font-medium text-foreground cursor-pointer">
               <input
                 type="checkbox"
                 checked={ahEnabled}
                 onChange={(e) => onAhEnabled(e.target.checked)}
-                className="h-4 w-4 rounded border-rose-300 text-rose-600 focus:ring-rose-300"
+                className="h-4 w-4 rounded border-danger-200 text-danger-600 focus:ring-danger-200"
               />
               Activer l&apos;auto-highlight pendant la correction IA
             </label>
@@ -339,13 +339,13 @@ function CaptionPromptForm({
               <div className="space-y-3 pl-6">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs font-medium text-gray-600 block mb-1.5">
+                    <label className="text-xs font-medium text-muted-foreground block mb-1.5">
                       Highlights à utiliser
                     </label>
                     <select
                       value={ahMode}
                       onChange={(e) => onAhMode(e.target.value as AutoHighlightMode)}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                      className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-danger-200"
                     >
                       <option value="highlight1">Highlight 1</option>
                       <option value="highlight2">Highlight 2</option>
@@ -353,13 +353,13 @@ function CaptionPromptForm({
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-gray-600 block mb-1.5">
+                    <label className="text-xs font-medium text-muted-foreground block mb-1.5">
                       Position dans le prompt
                     </label>
                     <select
                       value={ahPlacement}
                       onChange={(e) => onAhPlacement(e.target.value as AutoHighlightPlacement)}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                      className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-danger-200"
                     >
                       <option value="before">Avant le prompt</option>
                       <option value="after">Après le prompt</option>

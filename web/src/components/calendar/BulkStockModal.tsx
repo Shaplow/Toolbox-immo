@@ -172,17 +172,17 @@ export function BulkStockModal({
     <Modal open onClose={onClose} size="md">
       <form onSubmit={handleSubmit} className="p-6">
         <div className="flex items-start gap-3">
-          <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-peach-100 text-peach-700 shrink-0">
+          <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-warning-100 text-warning-700 shrink-0">
             <PackagePlus size={18} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
-              Banque de contenus
+            <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
+              Missions
             </p>
-            <h2 className="mt-1 text-[18px] font-semibold text-gray-950">
+            <h2 className="mt-1 text-[18px] font-semibold text-foreground">
               Créer des missions sans date
             </h2>
-            <p className="mt-0.5 text-[12px] text-gray-500">
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
               Le monteur produit, tu programmes plus tard depuis la banque.
             </p>
           </div>
@@ -259,7 +259,7 @@ export function BulkStockModal({
           </FormField>
         </div>
 
-        {error && <p className="mt-4 text-[12px] text-rose-700">{error}</p>}
+        {error && <p className="mt-4 text-[12px] text-danger-700">{error}</p>}
 
         <div className="mt-6 flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>

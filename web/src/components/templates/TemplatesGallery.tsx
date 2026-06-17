@@ -74,12 +74,12 @@ export function TemplatesGallery({ templates, isAdmin }: Props) {
 
   if (templates.length === 0) {
     return (
-      <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] py-16 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] text-center text-gray-500">
+      <div className="rounded-2xl bg-card border border-border py-16  text-center text-muted-foreground">
         <LayoutTemplate size={36} className="mx-auto mb-4 opacity-30" />
-        <p className="text-[14px] font-semibold text-gray-700">
+        <p className="text-[14px] font-semibold text-foreground">
           Aucun template pour l&apos;instant
         </p>
-        <p className="text-[12.5px] text-gray-500 mt-1">
+        <p className="text-[12.5px] text-muted-foreground mt-1">
           Créez votre premier template pour commencer
         </p>
       </div>
@@ -89,7 +89,7 @@ export function TemplatesGallery({ templates, isAdmin }: Props) {
   return (
     <div className="space-y-6">
       {/* Toolbar glass */}
-      <div className="p-3 rounded-2xl bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)]">
+      <div className="p-3 rounded-2xl bg-card border border-border ">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="w-[300px]">
             <Input
@@ -115,14 +115,14 @@ export function TemplatesGallery({ templates, isAdmin }: Props) {
               Récents
             </Chip>
           </div>
-          <span className="ml-auto text-[10.5px] text-gray-500 tabular-nums">
+          <span className="ml-auto text-[10.5px] text-muted-foreground tabular-nums">
             {filtered.length}/{templates.length} templates
           </span>
         </div>
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-[12px] text-gray-500 italic text-center py-12">
+        <p className="text-[12px] text-muted-foreground italic text-center py-12">
           Aucun template ne correspond à la recherche.
         </p>
       ) : (
@@ -131,10 +131,10 @@ export function TemplatesGallery({ templates, isAdmin }: Props) {
             <section key={group.key}>
               {showGroupHeaders && (
                 <div className="flex items-center gap-3 mb-4">
-                  <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                  <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                     {group.label}
                   </p>
-                  <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10.5px] font-medium tabular-nums bg-white/70 text-gray-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.08)]">
+                  <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10.5px] font-medium tabular-nums bg-white/70 text-foreground ">
                     {group.items.length}
                   </span>
                   <div className="flex-1 border-t border-white/40" />
@@ -171,11 +171,11 @@ function TemplateCard({
   showClient: boolean;
 }) {
   return (
-    <div className="group relative flex flex-col gap-3 p-4 rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[14px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.06),inset_0_-1px_0_rgba(15,23,42,0.04),0_2px_8px_-2px_rgba(15,23,42,0.08)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.6),inset_0_0_0_1px_rgba(15,23,42,0.1),inset_0_-1px_0_rgba(15,23,42,0.06),0_4px_12px_rgba(15,23,42,0.08),0_16px_36px_-12px_rgba(15,23,42,0.18)] hover:-translate-y-0.5 transition-all [&:has([data-menu-open=true])]:z-50">
+    <div className="group relative flex flex-col gap-3 p-4 rounded-2xl bg-card border border-border  hover: hover:-translate-y-0.5 transition-all [&:has([data-menu-open=true])]:z-50">
       {/* Header */}
       <div className="flex items-start gap-1.5 min-w-0">
         <div className="min-w-0 flex-1">
-          <p className="text-[14px] font-semibold text-gray-950 truncate leading-tight">
+          <p className="text-[14px] font-semibold text-foreground truncate leading-tight">
             {template.name}
           </p>
           {showClient && template.client && (
@@ -205,7 +205,7 @@ function TemplateCard({
       )}
 
       {/* Date — timeZone forcée pour éviter hydration mismatch (server UTC vs client locale). */}
-      <p className="text-[10.5px] text-gray-500 font-mono tabular-nums mt-auto">
+      <p className="text-[10.5px] text-muted-foreground font-mono tabular-nums mt-auto">
         Mis à jour{" "}
         {new Date(template.updatedAt).toLocaleDateString("fr-FR", {
           day: "numeric",
@@ -220,7 +220,7 @@ function TemplateCard({
         {isAdmin && (
           <Link
             href={`/templates/${template.id}/edit`}
-            className="inline-flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-md text-[11.5px] font-medium text-gray-700 hover:text-gray-950 bg-white/60 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.12),0_2px_4px_rgba(15,23,42,0.04)] transition-all"
+            className="inline-flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-md text-[11.5px] font-medium text-foreground hover:text-foreground bg-card border border-border  hover: transition-all"
           >
             <Edit size={11} />
             Éditer
@@ -228,7 +228,7 @@ function TemplateCard({
         )}
         <Link
           href={`/generate/${template.id}`}
-          className="inline-flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-md text-[11.5px] font-medium text-white bg-gradient-to-b from-gray-700 to-gray-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.12),0_4px_12px_-4px_rgba(15,23,42,0.22)] hover:from-gray-600 hover:to-gray-800 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.24),inset_0_-1px_0_rgba(0,0,0,0.2),0_2px_4px_rgba(15,23,42,0.16),0_8px_20px_-4px_rgba(15,23,42,0.28)] transition-all"
+          className="inline-flex items-center justify-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-md text-[11.5px] font-medium text-white bg-gradient-to-b from-gray-700 to-gray-900  hover:from-gray-600 hover:to-gray-800 hover: transition-all"
         >
           <Wand2 size={11} />
           Générer

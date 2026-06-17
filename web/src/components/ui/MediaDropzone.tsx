@@ -437,10 +437,10 @@ export function MediaDropzone({
           onClick={() => !disabled && inputRef.current?.click()}
           onKeyDown={(e) => e.key === "Enter" && !disabled && inputRef.current?.click()}
           className={[
-            "relative flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-8 text-center transition-all cursor-pointer select-none focus-ring backdrop-blur-[8px]",
+            "relative flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed px-6 py-8 text-center transition-colors cursor-pointer select-none focus-ring",
             isDragOver
-              ? "border-gray-950 bg-[var(--gradient-aurora)] shadow-[var(--shadow-glass-md)]"
-              : "border-gray-300 bg-[var(--surface-glass-soft)] hover:border-gray-400 hover:bg-[var(--gradient-aurora)] hover:shadow-[var(--shadow-glass-sm)]",
+              ? "border-primary bg-primary/5"
+              : "border-border bg-muted/50 hover:border-zinc-300 hover:bg-muted",
             disabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "",
           ]
             .filter(Boolean)
@@ -448,18 +448,18 @@ export function MediaDropzone({
         >
           <UploadCloud
             size={24}
-            className={isDragOver ? "text-gray-950" : "text-gray-400"}
+            className={isDragOver ? "text-primary" : "text-muted-foreground"}
           />
           <div>
-            <p className="text-[13px] font-medium text-gray-950">
+            <p className="text-[13px] font-medium text-foreground">
               {label ?? "Déposer vos fichiers ici"}
             </p>
-            <p className="text-[11px] text-gray-500 mt-0.5">
+            <p className="text-[11px] text-muted-foreground mt-0.5">
               Glissez vos fichiers ici ou cliquez pour parcourir
             </p>
           </div>
           {maxSizeBytes < Infinity && (
-            <p className="text-[11px] text-gray-400">
+            <p className="text-[11px] text-muted-foreground">
               Max {formatBytes(maxSizeBytes)}
             </p>
           )}
@@ -483,9 +483,8 @@ export function MediaDropzone({
           {items.map((item) => (
             <li
               key={item.id}
-              className="flex items-center gap-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-[13px]"
+              className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-[13px]"
             >
-              {/* Icône statut */}
               <div className="shrink-0">
                 {item.status === "done" && (
                   <CheckCircle2 size={15} className="text-success-600" />
@@ -494,22 +493,21 @@ export function MediaDropzone({
                   <AlertCircle size={15} className="text-danger-600" />
                 )}
                 {(item.status === "uploading" || item.status === "pending") && (
-                  <div className="h-3.5 w-3.5 rounded-full border-2 border-gray-300 border-t-gray-950 animate-spin" />
+                  <div className="h-3.5 w-3.5 rounded-full border-2 border-border border-t-primary animate-spin" />
                 )}
               </div>
 
-              {/* Nom + barre de progression */}
               <div className="min-w-0 flex-1">
-                <p className="truncate text-gray-950 font-medium leading-tight">
+                <p className="truncate text-foreground font-medium leading-tight">
                   {item.file.name}
                 </p>
-                <p className="text-[11px] text-gray-500">
+                <p className="text-[11px] text-muted-foreground">
                   {formatBytes(item.file.size)}
                 </p>
                 {item.status === "uploading" && (
-                  <div className="mt-1 h-1 w-full rounded-full bg-gray-100 overflow-hidden">
+                  <div className="mt-1 h-1 w-full rounded-full bg-muted overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-gray-950 transition-all"
+                      className="h-full rounded-full bg-primary transition-all"
                       style={{ width: `${item.progress}%` }}
                     />
                   </div>
@@ -519,7 +517,6 @@ export function MediaDropzone({
                 )}
               </div>
 
-              {/* Actions */}
               <div className="shrink-0">
                 {item.status === "uploading" && (
                   <Button
@@ -535,7 +532,7 @@ export function MediaDropzone({
                   <button
                     type="button"
                     onClick={() => dismissItem(item.id)}
-                    className="text-gray-400 hover:text-gray-700 hover:bg-gray-100 p-1 rounded focus-ring transition-colors"
+                    className="text-muted-foreground hover:text-foreground hover:bg-muted p-1 rounded focus-ring transition-colors"
                     aria-label="Fermer"
                   >
                     <X size={13} />

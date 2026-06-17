@@ -80,7 +80,7 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
   // ── No template ───────────────────────────────────────────────────────────
   if (!templateId) {
     return (
-      <p className="text-sm text-gray-500 italic">
+      <p className="text-sm text-muted-foreground italic">
         Sélectionne d&apos;abord un template dans la section Source pour configurer la cover automatique.
       </p>
     );
@@ -88,7 +88,7 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
 
   // ── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
-    return <p className="text-sm text-gray-400 italic">Vérification de la config template…</p>;
+    return <p className="text-sm text-muted-foreground italic">Vérification de la config template…</p>;
   }
 
   // ── Résolution : on prend le preset par défaut (sortOrder min) ───────────
@@ -110,18 +110,18 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
   return (
     <div className="flex flex-col gap-3">
       {!defaultPreset ? (
-        <div className="rounded-lg border border-peach-200 bg-peach-50 px-3 py-2.5 flex items-start gap-2">
-          <AlertTriangle size={16} className="text-peach-700 shrink-0 mt-0.5" />
-          <div className="text-xs text-peach-800 flex-1">
+        <div className="rounded-lg border border-warning-200 bg-warning-50 px-3 py-2.5 flex items-start gap-2">
+          <AlertTriangle size={16} className="text-warning-700 shrink-0 mt-0.5" />
+          <div className="text-xs text-warning-700 flex-1">
             <p className="font-medium mb-0.5">Cover non configurée dans ce template</p>
-            <p className="text-peach-800">
+            <p className="text-warning-700">
               Active la cover automatique côté template (onglet « Cover auto »).
             </p>
             <Link
               href={`/templates/${templateId}/edit`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-peach-800 underline hover:text-peach-900 mt-1.5"
+              className="inline-flex items-center gap-1 text-warning-700 underline hover:text-warning-700 mt-1.5"
             >
               Ouvrir le builder
               <ExternalLink size={11} />
@@ -129,18 +129,18 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
           </div>
         </div>
       ) : !isEnabled ? (
-        <div className="rounded-lg border border-peach-200 bg-peach-50 px-3 py-2.5 flex items-start gap-2">
-          <AlertTriangle size={16} className="text-peach-700 shrink-0 mt-0.5" />
-          <div className="text-xs text-peach-800 flex-1">
+        <div className="rounded-lg border border-warning-200 bg-warning-50 px-3 py-2.5 flex items-start gap-2">
+          <AlertTriangle size={16} className="text-warning-700 shrink-0 mt-0.5" />
+          <div className="text-xs text-warning-700 flex-1">
             <p className="font-medium mb-0.5">Cover désactivée dans le template</p>
-            <p className="text-peach-800">
+            <p className="text-warning-700">
               La config existe mais le toggle « Activer après chaque render » est off.
             </p>
             <Link
               href={`/templates/${templateId}/edit`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-peach-800 underline hover:text-peach-900 mt-1.5"
+              className="inline-flex items-center gap-1 text-warning-700 underline hover:text-warning-700 mt-1.5"
             >
               Activer dans le builder
               <ExternalLink size={11} />
@@ -148,18 +148,18 @@ export function CoverConfigEditor({ templateId, value, onChange }: Props) {
           </div>
         </div>
       ) : (
-        <div className="rounded-lg border border-sage-200 bg-sage-50 px-3 py-2.5 flex items-start gap-2">
-          <CheckCircle2 size={16} className="text-sage-700 shrink-0 mt-0.5" />
-          <div className="text-xs text-sage-800 flex-1">
+        <div className="rounded-lg border border-success-200 bg-success-50 px-3 py-2.5 flex items-start gap-2">
+          <CheckCircle2 size={16} className="text-success-700 shrink-0 mt-0.5" />
+          <div className="text-xs text-success-700 flex-1">
             <p className="font-medium mb-0.5">Cover automatique configurée</p>
-            <p className="text-sage-800">
+            <p className="text-success-700">
               {frameCount} frames extraites · {overlayCount} overlay{overlayCount > 1 ? "s" : ""} actif{overlayCount > 1 ? "s" : ""}
             </p>
             <Link
               href={`/templates/${templateId}/edit`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-sage-800 underline hover:text-sage-900 mt-1.5"
+              className="inline-flex items-center gap-1 text-success-700 underline hover:text-success-700 mt-1.5"
             >
               Modifier dans le builder
               <ExternalLink size={11} />

@@ -129,29 +129,29 @@ export function AdminFontsPanel() {
     });
   }, [fonts, query]);
 
-  if (loading) return <p className="text-sm text-gray-500">Chargement…</p>;
+  if (loading) return <p className="text-sm text-muted-foreground">Chargement…</p>;
   if (loadError) return <p className="text-sm text-red-500">{loadError}</p>;
 
   return (
     <div className="space-y-6">
       {/* Hero header */}
-      <div className="rounded-[28px] border border-gray-200 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_45%,#ffffff_100%)] p-6 shadow-sm">
+      <div className="rounded-[28px] border border-border bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_45%,#ffffff_100%)] p-6 shadow-sm">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-sky-500">Bibliothèque globale</p>
+            <p className="text-[11px] font-semibold tracking-[0.22em] uppercase text-info-600">Bibliothèque globale</p>
             <h2 className="text-2xl font-semibold text-gray-900 mt-2">Toutes les typographies de l&apos;app au même endroit</h2>
-            <p className="text-sm text-gray-600 mt-2">
+            <p className="text-sm text-muted-foreground mt-2">
               Cette page centralise les polices utilisées par les templates et, pour les formats compatibles, par captions.
               Les anciennes polices détectées dans public/fonts et dans le moteur captions sont rattachées ici automatiquement.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 min-w-36">
-              <p className="text-[11px] uppercase tracking-[0.14em] text-gray-400">Total</p>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Total</p>
               <p className="text-2xl font-semibold text-gray-900 mt-1">{stats.total}</p>
             </div>
             <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 min-w-36">
-              <p className="text-[11px] uppercase tracking-[0.14em] text-gray-400">Captions</p>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Captions</p>
               <p className="text-2xl font-semibold text-gray-900 mt-1">{stats.captions}</p>
             </div>
           </div>
@@ -159,7 +159,7 @@ export function AdminFontsPanel() {
       </div>
 
       {/* Toolbar */}
-      <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+      <div className="bg-white border border-border rounded-2xl p-5 shadow-sm">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div className="flex-1">
             <FormField label="Rechercher">
@@ -192,10 +192,10 @@ export function AdminFontsPanel() {
             </Button>
           </div>
         </div>
-        <p className="text-xs text-gray-400 mt-4">
+        <p className="text-xs text-muted-foreground mt-4">
           Le poids (100–900) est inféré automatiquement depuis le nom du fichier (ex : <em>Oswald-Bold.ttf</em> → 700). Pour les variantes d&apos;une même famille, uploadez un fichier par poids avec le mot-clé correspondant dans le nom.
         </p>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           woff et woff2 restent reservés au web. Pour captions, seules les polices ttf et otf sont utilisables par le moteur Python.
         </p>
       </div>
@@ -208,34 +208,34 @@ export function AdminFontsPanel() {
           description={query ? "Aucune typographie ne correspond à votre recherche." : "Importez votre première typographie pour commencer."}
         />
       ) : (
-        <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-white border border-border rounded-2xl shadow-sm overflow-hidden">
           <div className="divide-y divide-gray-100">
             {filteredFonts.map((font) => {
               const compatible = isCaptionCompatible(font);
               return (
-                <div key={font.id} className="px-5 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between hover:bg-gray-50/70 transition-colors">
+                <div key={font.id} className="px-5 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between hover:bg-muted/70 transition-colors">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-semibold text-gray-900 truncate" style={{ fontFamily: font.family }}>
                         {font.family}
                       </p>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${compatible ? "bg-sage-50 text-sage-700" : "bg-peach-50 text-peach-700"}`}>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${compatible ? "bg-success-50 text-success-700" : "bg-warning-50 text-warning-700"}`}>
                         {compatible ? "Captions + Templates" : "Templates uniquement"}
                       </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 uppercase tracking-wide">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground uppercase tracking-wide">
                         {getExtension(font).replace(".", "") || "n/a"}
                       </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-50 text-sky-600 font-medium">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-info-50 text-info-600 font-medium">
                         {font.weight}w
                       </span>
                       {font.fontStyle === "italic" && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 italic font-medium">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-danger-50 text-danger-600 italic font-medium">
                           italic
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">{font.originalName ?? font.storageKey ?? font.url}</p>
-                    <p className="text-[11px] text-gray-400 mt-1">Mise à jour le {new Date(font.updatedAt).toLocaleDateString("fr-FR")}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{font.originalName ?? font.storageKey ?? font.url}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">Mise à jour le {new Date(font.updatedAt).toLocaleDateString("fr-FR")}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Button
@@ -259,7 +259,7 @@ export function AdminFontsPanel() {
       )}
 
       {syncing ? (
-        <p className="text-xs text-gray-400 px-1">Synchronisation automatique des typographies en cours…</p>
+        <p className="text-xs text-muted-foreground px-1">Synchronisation automatique des typographies en cours…</p>
       ) : null}
     </div>
   );

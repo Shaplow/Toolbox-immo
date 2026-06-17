@@ -111,20 +111,20 @@ export function AssigneeInlineEdit({ slotId, role, current }: Props) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-gray-100 transition-colors cursor-pointer text-left"
+        className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted transition-colors cursor-pointer text-left"
       >
         {currentLabel ? (
-          <span className="text-gray-700">{currentLabel}</span>
+          <span className="text-foreground">{currentLabel}</span>
         ) : (
-          <span className="text-gray-400 italic">Non assigné</span>
+          <span className="text-muted-foreground italic">Non assigné</span>
         )}
-        <ChevronDown size={10} className="text-gray-400" />
+        <ChevronDown size={10} className="text-muted-foreground" />
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-30 w-56 bg-white rounded-lg border border-gray-200 shadow-lg py-1 max-h-60 overflow-y-auto">
+        <div className="absolute left-0 top-full mt-1 z-30 w-56 bg-white rounded-lg border border-border shadow-lg py-1 max-h-60 overflow-y-auto">
           {loading ? (
-            <div className="flex items-center gap-2 px-3 py-2 text-xs text-gray-400">
+            <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
               <Loader2 size={12} className="animate-spin" /> Chargement…
             </div>
           ) : (
@@ -133,19 +133,19 @@ export function AssigneeInlineEdit({ slotId, role, current }: Props) {
                 type="button"
                 onClick={() => void handleSelect(null)}
                 disabled={saving !== null || current === null}
-                className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-gray-500 italic hover:bg-gray-50 transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-muted-foreground italic hover:bg-muted transition-colors disabled:opacity-50"
               >
                 {saving === "__unassign__" ? (
                   <Loader2 size={12} className="animate-spin" />
                 ) : current === null ? (
-                  <Check size={12} className="text-gray-950" />
+                  <Check size={12} className="text-foreground" />
                 ) : (
                   <span className="w-3" />
                 )}
                 Non assigné
               </button>
               {users.length === 0 ? (
-                <div className="px-3 py-2 text-xs text-gray-400">
+                <div className="px-3 py-2 text-xs text-muted-foreground">
                   Aucun utilisateur {role}.
                 </div>
               ) : (
@@ -158,12 +158,12 @@ export function AssigneeInlineEdit({ slotId, role, current }: Props) {
                       type="button"
                       onClick={() => void handleSelect(u.id)}
                       disabled={saving !== null || isCurrent}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 truncate"
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-foreground hover:bg-muted transition-colors disabled:opacity-50 truncate"
                     >
                       {isSaving ? (
                         <Loader2 size={12} className="animate-spin shrink-0" />
                       ) : isCurrent ? (
-                        <Check size={12} className="text-gray-950 shrink-0" />
+                        <Check size={12} className="text-foreground shrink-0" />
                       ) : (
                         <span className="w-3 shrink-0" />
                       )}

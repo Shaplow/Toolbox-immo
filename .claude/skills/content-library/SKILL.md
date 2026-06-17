@@ -34,7 +34,7 @@ Three distinct library types exist:
 ```
 Admin UI
   └── creates/uploads MediaLibrary + MediaAsset (video, audio)
-  └── tags assets: free-form tags[] + setTag (set) + category (family)
+  └── tags assets: free-form tags[] + setTag (UI label « Groupe ») + category (UI label « Catégorie », family for rotation exclusion)
   └── restricts assets per account: MediaAssetAccess (0 rows = global)
   └── views rotation per account: account filter on MediaAssetsPanel
   └── orders MediaLibrary.setSequence: explicit setTag override list (optional)

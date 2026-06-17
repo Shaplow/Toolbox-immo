@@ -57,22 +57,22 @@ export function BulkCancelModal({ slotIds, onPatched, onClose }: Props) {
   return (
     <Modal open onClose={onClose} size="md">
       <div className="p-5">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 inline-flex items-center gap-1.5">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground inline-flex items-center gap-1.5">
           <Ban size={11} />
           Action de groupe · Annuler
         </p>
-        <h2 className="mt-1 text-[18px] font-semibold text-gray-950">
+        <h2 className="mt-1 text-[18px] font-semibold text-foreground">
           Annuler {slotIds.length} publication{slotIds.length > 1 ? "s" : ""} ?
         </h2>
 
-        <div className="mt-4 p-3 rounded-lg bg-rose-50/60 text-[12.5px] text-rose-800 leading-relaxed">
+        <div className="mt-4 p-3 rounded-lg bg-danger-50/60 text-[12.5px] text-danger-700 leading-relaxed">
           Les {slotIds.length} publication{slotIds.length > 1 ? "s" : ""} sélectionnée
           {slotIds.length > 1 ? "s" : ""} passe{slotIds.length > 1 ? "nt" : ""} en
           statut « Annulée ». Cette action n&apos;est pas réversible via cette
           modale (elle reste disponible via l&apos;API ou la fiche individuelle).
         </div>
 
-        {error && <p className="mt-3 text-[12px] text-rose-700">{error}</p>}
+        {error && <p className="mt-3 text-[12px] text-danger-700">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <Button

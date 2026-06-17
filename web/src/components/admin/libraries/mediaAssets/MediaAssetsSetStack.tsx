@@ -43,10 +43,10 @@ export function MediaAssetsSetStack({ group, onClick, accountFilter }: Props) {
       onClick={() => onClick?.(group)}
       className={[
         "group/stack relative w-full rounded-2xl overflow-hidden transition-all text-left",
-        "bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] backdrop-saturate-150",
+        "bg-card border border-border ",
         dimmedByAccount ? "opacity-50" : "",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04)]",
-        "hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.55),inset_0_0_0_1px_rgba(15,23,42,0.1),0_4px_12px_-4px_rgba(15,23,42,0.12)] hover:-translate-y-0.5",
+        "",
+        "hover: hover:-translate-y-0.5",
         "focus-ring",
       ].filter(Boolean).join(" ")}
     >
@@ -61,50 +61,49 @@ export function MediaAssetsSetStack({ group, onClick, accountFilter }: Props) {
             )}
           </>
         )}
-        <LazyVideoThumb url={primary.url} className="w-full h-full object-cover" />
+        <LazyVideoThumb url={primary.url} posterUrl={primary.posterUrl} className="w-full h-full object-cover" />
         {/* Play overlay au hover (lance le 1er asset implicitement). */}
         <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover/stack:bg-black/20 transition-colors pointer-events-none">
-          <span className="opacity-0 group-hover/stack:opacity-100 transition-opacity inline-flex h-9 w-9 rounded-full bg-white/95 backdrop-blur-[6px] items-center justify-center shadow-[0_2px_4px_rgba(15,23,42,0.12),0_8px_24px_-4px_rgba(15,23,42,0.18)]">
+          <span className="opacity-0 group-hover/stack:opacity-100 transition-opacity inline-flex h-9 w-9 rounded-full bg-card border border-border items-center justify-center shadow-[0_2px_4px_rgba(15,23,42,0.12),0_8px_24px_-4px_rgba(15,23,42,0.18)]">
             <Play size={14} className="text-gray-900 ml-0.5" fill="currentColor" />
           </span>
         </div>
         {/* Badge +N en haut-right si plusieurs assets. */}
         {total > 1 && (
-          <span className="absolute top-2 right-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-white/90 backdrop-blur-[6px] text-[10px] font-semibold text-gray-900 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1),0_2px_4px_rgba(15,23,42,0.12)]">
-            <Layers size={9} className="text-gray-500" />+{total - 1}
+          <span className="absolute top-2 right-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-card border border-border text-[10px] font-semibold text-gray-900 ">
+            <Layers size={9} className="text-muted-foreground" />+{total - 1}
           </span>
         )}
         {/* État disabled (tous les assets désactivés). */}
         {allDisabled && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-peach-900/40 gap-1 pointer-events-none z-10">
-            <EyeOff size={18} className="text-peach-100" />
-            <span className="text-[10px] text-peach-50 font-medium">Désactivé</span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-warning-700/40 gap-1 pointer-events-none z-10">
+            <EyeOff size={18} className="text-warning-100" />
+            <span className="text-[10px] text-warning-50 font-medium">Désactivé</span>
           </div>
         )}
         {/* Hors accès pour le compte filtré. */}
         {dimmedByAccount && !allDisabled && (
-          <div className="absolute bottom-2 left-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-white/85 backdrop-blur-[6px] text-[9.5px] text-gray-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+          <div className="absolute bottom-2 left-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-card border border-border text-[9.5px] text-muted-foreground ">
             <AlertTriangle size={9} />Hors accès
           </div>
         )}
       </div>
-      {/* Footer compact : N plans · Pack name. */}
+      {/* Footer compact : N plans · Groupe (si nommé, sinon rien). */}
       <div className="px-2.5 py-2 flex items-center justify-between gap-1.5">
-        <p className="text-[11px] text-gray-600 truncate min-w-0">
+        <p className="text-[11px] text-muted-foreground truncate min-w-0">
           {total === 1 ? "1 plan" : `${total} plans`}
           {accountFilter && accessibleCount !== total && (
-            <span className="text-gray-400"> · {accessibleCount} accessible{accessibleCount !== 1 ? "s" : ""}</span>
+            <span className="text-muted-foreground"> · {accessibleCount} accessible{accessibleCount !== 1 ? "s" : ""}</span>
           )}
         </p>
-        <span
-          className={[
-            "text-[10.5px] truncate shrink min-w-0 max-w-[60%]",
-            isPackAuto ? "text-gray-400 italic" : "text-rose-700 font-medium",
-          ].join(" ")}
-          title={setTag ?? undefined}
-        >
-          {isPackAuto ? "auto" : setTag}
-        </span>
+        {!isPackAuto && setTag && (
+          <span
+            className="text-[10.5px] truncate shrink min-w-0 max-w-[60%] text-foreground font-medium"
+            title={setTag}
+          >
+            {setTag}
+          </span>
+        )}
       </div>
     </button>
   );

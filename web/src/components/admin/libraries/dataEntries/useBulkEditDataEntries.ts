@@ -4,8 +4,9 @@
  * useBulkEditDataEntries — état + handlers pour la sélection multiple et les
  * actions bulk (add account, remove_all) sur les DataEntry.
  *
- * Mirror fonctionnel de useBulkEdit (mediaAssets/) mais scope access-only :
- * les DataEntry n'ont pas de setTag/tags/category bulk (édition inline suffit).
+ * Mirror fonctionnel de useBulkEdit (mediaAssets/) : accès comptes + bulk
+ * Set / catégorie (handleBulkApplyFields). Les tags ne sont pas gérés en bulk
+ * côté data (pas de champ tags sur DataEntry).
  *
  * Le hook isole l'état de sélection + les handlers async qui appellent
  * POST /api/admin/libraries/data/campaigns/[campaignId]/entries/bulk.
@@ -35,6 +36,8 @@ export interface UseBulkEditDataEntriesResult {
   // Bulk apply
   bulkApplying: boolean;
   handleBulkApplyAccess: (action: "add" | "remove_all", accountId?: string) => Promise<void>;
+  /** Bulk Set / catégorie : valeur vide ("") → null (efface le champ). */
+  handleBulkApplyFields: (patch: { setTag?: string | null; category?: string | null }) => Promise<void>;
 }
 
 export function useBulkEditDataEntries({
@@ -111,6 +114,48 @@ export function useBulkEditDataEntries({
     [accounts, campaignId, reload, selectedIds],
   );
 
+  const handleBulkApplyFields = useCallback(
+    async (patch: { setTag?: string | null; category?: string | null }) => {
+      if (selectedIds.size === 0) return;
+      if (patch.setTag === undefined && patch.category === undefined) return;
+      setBulkApplying(true);
+      try {
+        const res = await fetch(
+          `/api/admin/libraries/data/campaigns/${campaignId}/entries/bulk`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              entryIds: Array.from(selectedIds),
+              ...patch,
+            }),
+          },
+        );
+        if (!res.ok) {
+          const d = (await res.json().catch(() => ({}))) as { error?: string };
+          toast.error(d.error ?? "Erreur lors de l'opération");
+          return;
+        }
+        const d = (await res.json()) as { updated: number };
+        const label =
+          patch.setTag !== undefined && patch.category !== undefined
+            ? "Set + catégorie"
+            : patch.setTag !== undefined
+              ? "Set"
+              : "Catégorie";
+        toast.success(
+          `${label} appliqué — ${d.updated} fiche${d.updated !== 1 ? "s" : ""}`,
+        );
+        reload();
+      } catch {
+        toast.error("Erreur réseau — opération annulée");
+      } finally {
+        setBulkApplying(false);
+      }
+    },
+    [campaignId, reload, selectedIds],
+  );
+
   return {
     selectedIds,
     setSelectedIds,
@@ -119,5 +164,6 @@ export function useBulkEditDataEntries({
     clearSelection,
     bulkApplying,
     handleBulkApplyAccess,
+    handleBulkApplyFields,
   };
 }

@@ -196,14 +196,14 @@ export function RushesSection({
       actions={
         <div className="flex items-center gap-2">
           {hasRushes && (
-            <span className="text-[11px] text-gray-400 tabular-nums">{rushes.length}</span>
+            <span className="text-[11px] text-muted-foreground tabular-nums">{rushes.length}</span>
           )}
           {hasRushes && (
             <button
               type="button"
               onClick={() => void downloadAllZip()}
               disabled={downloadingZip}
-              className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-900 disabled:opacity-40 transition-colors"
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-gray-900 disabled:opacity-40 transition-colors"
               title="Télécharger tous les rushes en .zip"
               aria-label="Télécharger tous les rushes en .zip"
             >
@@ -222,10 +222,10 @@ export function RushesSection({
               const canDelete = canManageRushes || rush.uploadedByUserId === currentUserId;
               return (
                 <li key={rush.id} className="flex items-center gap-2 py-1.5 first:pt-0 last:pb-0 group">
-                  <Clapperboard size={12} className="text-gray-400 shrink-0" />
+                  <Clapperboard size={12} className="text-muted-foreground shrink-0" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] text-gray-800 leading-tight">{rush.fileName}</p>
-                    <p className="text-[10.5px] text-gray-400 mt-0.5 truncate">
+                    <p className="text-[10.5px] text-muted-foreground mt-0.5 truncate">
                       {rush.sizeBytes !== null && formatBytes(rush.sizeBytes)}
                       {isVideo(rush.mimeType) && rush.durationSec !== null && ` · ${formatDuration(rush.durationSec)}`}
                       {" · "}
@@ -239,7 +239,7 @@ export function RushesSection({
                       type="button"
                       onClick={() => void downloadRush(rush)}
                       disabled={downloadingId === rush.id}
-                      className="p-1 text-gray-400 hover:text-gray-900 transition-colors"
+                      className="p-1 text-muted-foreground hover:text-gray-900 transition-colors"
                       title="Télécharger"
                       aria-label="Télécharger"
                     >
@@ -290,7 +290,7 @@ export function RushesSection({
           <EmptyState
             icon={Clapperboard}
             title="Aucun rush pour l'instant"
-            description="Les rushes vidéo apparaîtront ici dès que le vidéaste les aura téléversés."
+            description="Aucun rush."
           />
         )}
       </div>

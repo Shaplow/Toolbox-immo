@@ -451,7 +451,7 @@ function DualRangeTrim({
       <div className="absolute inset-y-1/2 left-0 right-0 h-1.5 -translate-y-1/2 rounded-full bg-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]" />
       {/* Selected range */}
       <div
-        className="absolute inset-y-1/2 h-1.5 -translate-y-1/2 rounded-full bg-gradient-to-r from-peach-300 to-peach-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
+        className="absolute inset-y-1/2 h-1.5 -translate-y-1/2 rounded-full bg-gradient-to-r from-primary/70 to-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
         style={{ left: `${startPct}%`, right: `${100 - endPct}%` }}
       />
       {/* Start handle */}

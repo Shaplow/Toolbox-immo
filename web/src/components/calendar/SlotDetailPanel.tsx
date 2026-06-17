@@ -19,8 +19,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Ban,
+  Copy,
   ExternalLink,
   Trash2,
   Save,
@@ -30,6 +32,7 @@ import {
   MoreHorizontal,
   ChevronUp,
   ChevronDown,
+  Sparkles,
 } from "lucide-react";
 import { useKeybindings } from "@/hooks/useKeybindings";
 import { useAutoSave } from "@/hooks/useAutoSave";
@@ -62,6 +65,8 @@ interface SlotDetailPanelProps {
   slot: PublicationSlot;
   onUpdated: (slot: PublicationSlot) => void;
   onDeleted: (id: string) => void;
+  /** Phase 4 — duplication : clone créé via POST, remonté pour insertion locale. */
+  onDuplicated?: (slot: PublicationSlot) => void;
   onClose: () => void;
   mode?: SlotDetailPanelMode;
   /**
@@ -111,6 +116,7 @@ export function SlotDetailPanel({
   slot,
   onUpdated,
   onDeleted,
+  onDuplicated,
   onClose,
   mode = "admin",
   onPrev,
@@ -215,6 +221,7 @@ export function SlotDetailPanel({
 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -459,6 +466,54 @@ export function SlotDetailPanel({
     }
   }
 
+  // Phase 4 — Duplication : clone daté au jour suivant (même heure), en
+  // réutilisant le contrat createSlot (POST /api/calendar/slots). On recopie
+  // compte, recette, équipe et overrides ; pas de status/version (clone vierge,
+  // statut initial recalculé serveur).
+  async function handleDuplicate() {
+    if (!slot.scheduledAt) return;
+    setDuplicating(true);
+    setError(null);
+    try {
+      const next = new Date(slot.scheduledAt);
+      next.setDate(next.getDate() + 1);
+      const res = await fetch("/api/calendar/slots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: slot.accountId,
+          scheduledAt: next.toISOString(),
+          title: slot.title ?? undefined,
+          patternId: slot.patternId ?? undefined,
+          assigneeMonteurId: slot.assigneeMonteurId ?? undefined,
+          assigneeCmId: slot.assigneeCmId ?? undefined,
+          assigneeVideasteId: slot.assigneeVideasteId ?? undefined,
+          needsCaptionsOverride: slot.needsCaptionsOverride ?? undefined,
+          needsDescriptionOverride: slot.needsDescriptionOverride ?? undefined,
+          needsRushesOverride: slot.needsRushesOverride ?? undefined,
+          needsBriefOverride: slot.needsBriefOverride ?? undefined,
+          coverModeOverride: slot.coverModeOverride ?? undefined,
+          coverPresetIdOverride: slot.coverPresetIdOverride ?? undefined,
+          captionPresetIdOverride: slot.captionPresetIdOverride ?? undefined,
+          descriptionPromptIdOverride: slot.descriptionPromptIdOverride ?? undefined,
+        }),
+      });
+      if (!res.ok) {
+        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(d.error ?? `Erreur ${res.status}`);
+      }
+      const created = (await res.json()) as PublicationSlot;
+      onDuplicated?.(created);
+      toast.success("Publication dupliquée au jour suivant");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur inconnue";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setDuplicating(false);
+    }
+  }
+
   // ─── Tabs configuration ────────────────────────────────────────────────
   // P1 — 4 tabs → 2 tabs. "Configuration" regroupe Planning + Équipe +
   // Ajustements via des CollapsibleSection internes (planning en haut car
@@ -517,19 +572,35 @@ export function SlotDetailPanel({
       />
 
       <Drawer open onClose={onClose} side="right" size="lg">
-        {/* Header drawer custom — eyebrow + title + meta + actions */}
-        <header className="shrink-0 px-5 pt-5 pb-3 border-b border-white/30">
+        {/* Header drawer custom — title + meta + héritage recette + actions */}
+        <header className="shrink-0 px-5 pt-5 pb-3 border-b border-border">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
-                Édition rapide
-              </p>
-              <h2 className="mt-1 text-[18px] font-semibold tracking-tight text-gray-950 truncate leading-tight">
+              <h2 className="text-[18px] font-semibold tracking-tight text-foreground truncate leading-tight">
                 {title}
               </h2>
-              <p className="mt-1.5 text-[11px] text-gray-500">
-                {dateLabel} · {timeLabel} · @{slot.account.handle}
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {dateLabel} · {timeLabel} ·{" "}
+                <Link
+                  href={`/admin/accounts/${slot.accountId}`}
+                  className="hover:text-foreground transition-colors"
+                >
+                  @{slot.account.handle}
+                </Link>
               </p>
+              {slot.pattern?.label && (
+                <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <Sparkles size={11} className="shrink-0" />
+                  <span>Recette :</span>
+                  <Link
+                    href={`/admin/accounts/${slot.accountId}`}
+                    className="text-foreground hover:underline truncate max-w-[18ch]"
+                    title={`Éditer la recette « ${slot.pattern.label} » sur @${slot.account.handle}`}
+                  >
+                    {slot.pattern.label}
+                  </Link>
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
@@ -561,10 +632,10 @@ export function SlotDetailPanel({
                   className={[
                     "inline-flex items-center px-2 h-7 rounded-md text-[11px] font-medium mr-1",
                     autoSaveNotes.status === "saving"
-                      ? "text-gray-500 bg-gray-100/70"
+                      ? "text-muted-foreground bg-muted/70"
                       : autoSaveNotes.status === "saved"
-                        ? "text-sage-700 bg-sage-100/70"
-                        : "text-rose-700 bg-rose-100/70",
+                        ? "text-success-700 bg-success-100/70"
+                        : "text-danger-700 bg-danger-100/70",
                   ].join(" ")}
                   title={autoSaveNotes.error ?? undefined}
                 >
@@ -601,6 +672,20 @@ export function SlotDetailPanel({
                     </Button>
                   }
                   items={[
+                    ...(slot.scheduledAt
+                      ? ([
+                          {
+                            label: duplicating
+                              ? "Duplication…"
+                              : "Dupliquer (jour suivant)",
+                            icon: Copy,
+                            onClick: () => {
+                              void handleDuplicate();
+                            },
+                          },
+                          "separator",
+                        ] as const)
+                      : []),
                     ...(slot.status !== "CANCELLED" &&
                     slot.status !== "ARCHIVED" &&
                     slot.status !== "PUBLISHED"
@@ -661,14 +746,14 @@ export function SlotDetailPanel({
                   ? `${info.ownerLabel} ${info.assigneeName}`
                   : info.ownerLabel;
                 return (
-                  <div className="rounded-xl bg-gradient-to-b from-sage-50/80 to-sage-50/40 backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(111,162,128,0.28)]">
-                    <p className="text-[10px] uppercase tracking-widest font-semibold text-sage-700">
+                  <div className="rounded-xl bg-gradient-to-b from-success-50/80 to-success-50/40 px-4 py-3 ">
+                    <p className="text-[10px] uppercase tracking-widest font-semibold text-success-700">
                       Prochaine action attendue
                     </p>
-                    <p className="mt-1 text-[13px] text-sage-900 leading-snug">
+                    <p className="mt-1 text-[13px] text-success-700 leading-snug">
                       {info.action}
                     </p>
-                    <p className="mt-0.5 text-[11px] text-sage-700/80">
+                    <p className="mt-0.5 text-[11px] text-success-700/80">
                       Par {who}
                     </p>
                   </div>
@@ -699,10 +784,10 @@ export function SlotDetailPanel({
 
               {/* Render lien rapide si dispo */}
               {slot.render && (
-                <div className="rounded-xl bg-white/40 backdrop-blur-[8px] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-                  <p className="text-[11px] text-gray-500 mb-1">Rendu final</p>
+                <div className="rounded-xl bg-card border border-border px-4 py-3 ">
+                  <p className="text-[11px] text-muted-foreground mb-1">Rendu final</p>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[12px] text-gray-700">
+                    <span className="text-[12px] text-foreground">
                       Statut : <span className="font-medium">{slot.render.status}</span>
                     </span>
                     {(slot.render.videoUrl || slot.render.pngUrl) && (
@@ -710,7 +795,7 @@ export function SlotDetailPanel({
                         href={slot.render.videoUrl ?? slot.render.pngUrl ?? "#"}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-[11px] text-sky-700 hover:underline"
+                        className="inline-flex items-center gap-1 text-[11px] text-info-700 hover:underline"
                       >
                         Voir <ExternalLink size={10} />
                       </a>
@@ -725,7 +810,7 @@ export function SlotDetailPanel({
                   href={`/generate/${slot.templateId}?accountId=${slot.accountId}&slotId=${slot.id}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-[13px] text-sky-700 rounded-md bg-sky-50/60 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(125,180,210,0.3)] hover:bg-sky-50/85 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-[13px] text-info-700 rounded-md bg-info-50/60  hover:bg-info-50/85 transition-colors"
                 >
                   <Clapperboard size={13} />
                   Ouvrir le formulaire de génération
@@ -752,7 +837,7 @@ export function SlotDetailPanel({
                     <TimePicker value={planTime} onChange={setPlanTime} />
                   </FormField>
                 </div>
-                <p className="mt-2 text-[11px] text-gray-500">
+                <p className="mt-2 text-[11px] text-muted-foreground">
                   Modifier la date/heure replanifie le slot. Les jobs déjà déclenchés
                   ne sont pas affectés.
                 </p>
@@ -817,8 +902,8 @@ export function SlotDetailPanel({
                 defaultOpen={false}
                 storageKey="slot-panel:overrides"
               >
-                <div className="rounded-lg bg-white/40 backdrop-blur-[8px] px-4 py-3 mt-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-                  <p className="text-[11px] text-gray-700 leading-relaxed">
+                <div className="rounded-lg bg-card border border-border px-4 py-3 mt-1 ">
+                  <p className="text-[11px] text-foreground leading-relaxed">
                     Ajuste pour ce slot uniquement les valeurs héritées du
                     pattern. Tant qu&apos;un champ reste « hérité », il suivra le
                     pattern à chaque modification. La validation client se gère
@@ -961,7 +1046,7 @@ export function SlotDetailPanel({
 
           {error && (
             <p
-              className="text-[12px] text-rose-700 bg-rose-50/80 backdrop-blur-[8px] rounded-md px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.18)]"
+              className="text-[12px] text-danger-700 bg-danger-50/80 rounded-md px-3 py-2 "
               role="alert"
             >
               {error}
@@ -972,7 +1057,7 @@ export function SlotDetailPanel({
         {/* Footer — navigation pure : pas d'actions destructives ici. Annuler
             mission + Supprimer ont migré dans le DropdownMenu du header pour
             éviter la confusion "Annuler la mission" ≠ "Annuler la modal". */}
-        <footer className="shrink-0 flex items-center justify-end gap-2 px-5 py-3 bg-white/30 border-t border-white/30">
+        <footer className="shrink-0 flex items-center justify-end gap-2 px-5 py-3 bg-card border-t border-border">
           <Button variant="ghost" size="sm" onClick={onClose}>
             Fermer
           </Button>

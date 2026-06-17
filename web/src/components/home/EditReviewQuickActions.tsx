@@ -123,7 +123,7 @@ export function EditReviewQuickActions({ initialSlots }: Props) {
 
   if (slots.length === 0) {
     return (
-      <p className="text-[12px] text-sky-700/70 italic">
+      <p className="text-[12px] text-info-700/70 italic">
         Toutes les versions sont à jour.
       </p>
     );
@@ -146,13 +146,13 @@ export function EditReviewQuickActions({ initialSlots }: Props) {
           return (
             <div
               key={slot.id}
-              className="flex items-center gap-2 bg-white/70 backdrop-blur-[8px] rounded-xl pl-3 pr-2 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]"
+              className="flex items-center gap-2 bg-card border border-border rounded-md pl-3 pr-2 py-2 "
             >
               <Link
                 href={`/publications/${slot.id}`}
                 className="flex-1 min-w-0 group"
               >
-                <p className="text-[12px] font-medium text-gray-950 truncate group-hover:text-sky-800 transition-colors">
+                <p className="text-[12px] font-medium text-gray-950 truncate group-hover:text-info-700 transition-colors">
                   {slot.patternLabel ?? slot.title ?? "Publication"}
                 </p>
                 <p className="text-[11px] text-gray-500 mt-0.5">
@@ -163,7 +163,7 @@ export function EditReviewQuickActions({ initialSlots }: Props) {
                 </p>
               </Link>
               <div className="shrink-0 flex items-center gap-1.5">
-                <span className="text-[11px] font-medium text-sky-800 bg-sky-100/70 px-1.5 py-0.5 rounded">
+                <span className="text-[11px] font-medium text-info-700 bg-info-100/70 px-1.5 py-0.5 rounded">
                   {versionLabel}
                 </span>
                 {uploadDate && (
@@ -190,7 +190,7 @@ export function EditReviewQuickActions({ initialSlots }: Props) {
                 />
                 <Link
                   href={`/publications/${slot.id}`}
-                  className="text-sky-500 hover:text-sky-700 transition-colors"
+                  className="text-info-600 hover:text-info-700 transition-colors"
                   aria-label="Ouvrir la fiche complète"
                 >
                   <ArrowRight size={12} />

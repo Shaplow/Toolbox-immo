@@ -168,8 +168,8 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
     return (
       <div className="min-h-screen">
         <div
-          className="my-11 ml-[100px] mr-[100px] rounded-3xl"
-          style={{ background: "var(--gradient-page-shell)" }}
+          className="mx-auto max-w-7xl px-6 py-8"
+
         >
           <div className="px-6 sm:px-8 pt-6 pb-12">
             <div className="max-w-5xl mx-auto">
@@ -186,7 +186,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                 {Array.from({ length: 4 }).map((_, i) => (
                   <div
                     key={i}
-                    className="bg-white/55 rounded-xl overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.06)]"
+                    className="bg-white/55 rounded-xl overflow-hidden "
                   >
                     <div className="p-4 space-y-2">
                       <div className="h-5 w-3/4 bg-white/40 rounded animate-pulse" />
@@ -205,8 +205,8 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
   return (
     <div className="min-h-screen">
       <div
-        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
-        style={{ background: "var(--gradient-page-shell)" }}
+        className="mx-auto max-w-7xl px-6 py-8"
+
       >
         <div className="px-6 sm:px-8 pt-6 pb-12">
           <div className="max-w-5xl mx-auto space-y-6">
@@ -215,7 +215,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
         <div className="mb-4">
           <Link
             href={returnTo}
-            className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-950 hover:underline transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm text-foreground hover:text-foreground hover:underline transition-colors"
           >
             <ChevronLeft size={15} />
             {getReturnLabel(returnTo)}
@@ -227,14 +227,14 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
           sur TranscriptionList V2.5). Sans ça, l'admin ouvrait la gallery preset
           sans savoir s'il était toujours dans le contexte d'un slot. */}
       {slotContext && (
-        <div className="mb-4 rounded-xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.32)]">
-          <p className="text-[10px] uppercase tracking-widest font-semibold text-sky-700">
+        <div className="mb-4 rounded-xl bg-gradient-to-b from-info-50/85 to-info-50/55 px-4 py-3 ">
+          <p className="text-[10px] uppercase tracking-widest font-semibold text-info-700">
             Sous-titres pour une publication
           </p>
-          <p className="mt-1 text-[13px] text-sky-900">
+          <p className="mt-1 text-[13px] text-info-700">
             {slotContext.title ?? "Publication"} · @{slotContext.handle}
           </p>
-          <p className="mt-0.5 text-[11px] text-sky-700/80">
+          <p className="mt-0.5 text-[11px] text-info-700/80">
             Choisis un preset pour générer les sous-titres de cette publication.
           </p>
         </div>
@@ -291,11 +291,11 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
               <h2 id="create-preset-title" className="text-base font-semibold text-gray-900 mb-1">
                 Nouveau preset
               </h2>
-              <p className="text-sm text-gray-500 mb-4">
+              <p className="text-sm text-muted-foreground mb-4">
                 Le preset est créé puis ouvert directement dans le builder pour édition.
               </p>
               <label className="block">
-                <span className="block text-xs font-medium text-gray-600 mb-1">
+                <span className="block text-xs font-medium text-muted-foreground mb-1">
                   Nom du preset <span className="text-red-400">*</span>
                 </span>
                 <input
@@ -303,7 +303,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                   value={createName}
                   onChange={(event) => setCreateName(event.target.value)}
                   placeholder="Ex. Premium doré"
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                  className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-500"
                 />
               </label>
               {createError && (
@@ -317,7 +317,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                     setCreateName("");
                     setCreateError("");
                   }}
-                  className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="rounded-lg border border-border bg-white px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
                 >
                   Annuler
                 </button>
@@ -336,16 +336,16 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
 
       {/* Slot context banner — affiché quand on arrive depuis une fiche publication */}
       {slotContext && (
-        <div className="mb-6 flex items-center gap-3 bg-peach-50 border border-peach-200 rounded-xl px-5 py-4">
-          <FileText size={18} className="text-peach-700 shrink-0" />
+        <div className="mb-6 flex items-center gap-3 bg-warning-50 border border-warning-200 rounded-xl px-5 py-4">
+          <FileText size={18} className="text-warning-700 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-peach-900">
+            <p className="text-sm font-semibold text-warning-700">
               Sélectionnez un preset pour la publication{" "}
               <span className="font-bold">
                 {slotContext.title ?? `@${slotContext.handle}`}
               </span>
             </p>
-            <p className="text-xs text-peach-700 mt-0.5">
+            <p className="text-xs text-warning-700 mt-0.5">
               Le preset choisi sera utilisé pour générer les sous-titres de ce slot.
             </p>
           </div>
@@ -354,16 +354,16 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
 
       {/* Transcription pending banner */}
       {transcriptionPendingId && (
-        <div className="mb-6 flex items-center gap-3 bg-sky-50 border border-sky-200 rounded-xl px-5 py-4">
-          <Scissors size={18} className="text-sky-700 shrink-0" />
+        <div className="mb-6 flex items-center gap-3 bg-info-50 border border-info-200 rounded-xl px-5 py-4">
+          <Scissors size={18} className="text-info-700 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-sky-900">Transcription prête</p>
-            <p className="text-xs text-sky-700 mt-0.5">Choisissez un preset ci-dessous pour découper et générer vos captions</p>
+            <p className="text-sm font-semibold text-info-700">Transcription prête</p>
+            <p className="text-xs text-info-700 mt-0.5">Choisissez un preset ci-dessous pour découper et générer vos captions</p>
           </div>
           <button
             type="button"
             onClick={dismissTranscription}
-            className="shrink-0 text-sky-500 hover:text-sky-800 transition-colors"
+            className="shrink-0 text-info-600 hover:text-info-700 transition-colors"
             title="Ignorer"
           >
             <X size={16} />
@@ -372,7 +372,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       {presets.length === 0 ? (
-        <div className="text-center py-24 text-gray-400">
+        <div className="text-center py-24 text-muted-foreground">
           <Film size={40} className="mx-auto mb-4 opacity-30" />
           <p className="font-medium">Aucun preset disponible</p>
           <p className="text-sm mt-1">
@@ -384,7 +384,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
           {presets.map((preset) => (
             <div
               key={preset.id}
-              className="bg-white border border-gray-100 rounded-xl transition-colors hover:border-gray-200 group"
+              className="bg-white border border-border rounded-xl transition-colors hover:border-border group"
             >
               {/* Info */}
               <div className="p-4">
@@ -397,7 +397,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                       autoFocus
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
-                      className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-500 min-w-0"
+                      className="flex-1 border border-border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-500 min-w-0"
                     />
                     <button
                       type="submit"
@@ -409,7 +409,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                     <button
                       type="button"
                       onClick={() => setEditingId(null)}
-                      className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 shrink-0"
+                      className="text-xs px-2 py-1 bg-muted text-muted-foreground rounded-lg hover:bg-gray-200 shrink-0"
                     >
                       ✕
                     </button>
@@ -420,7 +420,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                     {isAdmin && (
                       <button
                         onClick={() => { setEditingId(preset.id); setEditName(preset.name); }}
-                        className="shrink-0 text-gray-300 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100"
+                        className="shrink-0 text-muted-foreground/60 hover:text-muted-foreground transition-colors opacity-0 group-hover:opacity-100"
                         title="Renommer"
                       >
                         <Pencil size={12} />
@@ -428,7 +428,7 @@ export function CaptionsGallery({ isAdmin }: { isAdmin: boolean }) {
                     )}
                   </div>
                 )}
-                <p className="text-xs text-gray-400 mt-1.5">
+                <p className="text-xs text-muted-foreground mt-1.5">
                   {new Date(preset.createdAt).toLocaleDateString("fr-FR")}
                 </p>
               </div>

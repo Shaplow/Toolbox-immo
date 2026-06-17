@@ -421,7 +421,7 @@ function DescriptionSectionInner({
         <button
           type="button"
           onClick={() => setShowAi(true)}
-          className="inline-flex items-center gap-1.5 text-[11px] text-gray-700 hover:text-gray-950 font-medium transition-colors"
+          className="inline-flex items-center gap-1.5 text-[11px] text-foreground hover:text-foreground font-medium transition-colors"
         >
           <Sparkles size={12} />
           Générer avec IA
@@ -429,7 +429,7 @@ function DescriptionSectionInner({
       )}
       {verdict.visible && !verdict.enabled && (
         <span
-          className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-600 bg-white/60 backdrop-blur-[6px] border border-white/50 rounded-full px-2 py-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]"
+          className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground bg-card border border-border border border-white/50 rounded-full px-2 py-0.5 "
           title={verdict.reason}
         >
           <Sparkles size={10} />
@@ -438,7 +438,7 @@ function DescriptionSectionInner({
       )}
       <Link
         href={descriptionToolHref}
-        className="inline-flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+        className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-muted-foreground transition-colors"
         title="Mode avancé : transcription externe, image de référence, choix de modèle"
       >
         <ExternalLink size={12} />
@@ -477,7 +477,7 @@ function DescriptionSectionInner({
                   Une légende a été générée automatiquement mais n&apos;a pas été appliquée
                   (édition manuelle simultanée ou conflit). Tu peux l&apos;appliquer maintenant.
                 </Alert>
-                <div className="rounded-lg border border-white/40 bg-white/70 backdrop-blur-[6px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+                <div className="rounded-lg border border-white/40 bg-card border border-border p-3 ">
                   <p className="text-[12.5px] text-gray-800 whitespace-pre-wrap leading-relaxed font-mono">
                     {pendingJobResult}
                   </p>
@@ -603,18 +603,18 @@ function DescriptionSectionInner({
         ) : isAutoMode && hasContent && !editing ? (
           /* ── Mode auto + contenu : preview + 2 icônes discrètes ──────────── */
           <>
-            <div className="rounded-lg border border-white/40 bg-white/70 backdrop-blur-[6px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+            <div className="rounded-lg border border-white/40 bg-card border border-border p-3 ">
               <p className="text-[12.5px] text-gray-800 whitespace-pre-wrap leading-relaxed font-mono">
                 {value}
               </p>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <p className="text-[11px] text-gray-400">{value.length} / 2 200 caractères</p>
+              <p className="text-[11px] text-muted-foreground">{value.length} / 2 200 caractères</p>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => void handleCopy()}
-                  className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-800 px-2 py-1 rounded transition-colors"
+                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-gray-800 px-2 py-1 rounded transition-colors"
                   title="Copier la légende"
                   aria-label="Copier la légende"
                 >
@@ -625,7 +625,7 @@ function DescriptionSectionInner({
                   <button
                     type="button"
                     onClick={() => setEditing(true)}
-                    className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-800 px-2 py-1 rounded transition-colors"
+                    className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-gray-800 px-2 py-1 rounded transition-colors"
                     title="Modifier la légende"
                     aria-label="Modifier la légende"
                   >
@@ -657,7 +657,7 @@ function DescriptionSectionInner({
             />
 
             <div className="flex items-center justify-between gap-2">
-              <p className="text-[11px] text-gray-400">{value.length} / 2 200 caractères</p>
+              <p className="text-[11px] text-muted-foreground">{value.length} / 2 200 caractères</p>
               {isAutoMode && hasContent && (
                 <button
                   type="button"
@@ -665,7 +665,7 @@ function DescriptionSectionInner({
                     setValue(initialDescription);
                     setEditing(false);
                   }}
-                  className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-800 px-2 py-1 rounded transition-colors"
+                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-gray-800 px-2 py-1 rounded transition-colors"
                   title="Annuler l'édition"
                 >
                   <RefreshCw size={12} />
@@ -700,7 +700,7 @@ function DescriptionSectionInner({
                   <span className="text-xs text-success-700">Légende sauvegardée.</span>
                 )}
                 {jobInFlight && (
-                  <span className="text-xs text-peach-700">
+                  <span className="text-xs text-warning-700">
                     Génération IA en cours &mdash; sauvegarde bloquée le temps d&apos;éviter l&apos;écrasement.
                   </span>
                 )}
@@ -727,17 +727,17 @@ function DescriptionSectionInner({
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg pointer-events-auto overflow-hidden">
               <div className="px-6 pt-6 pb-3">
                 <h2 id="ai-description-title" className="text-base font-semibold text-gray-900 mb-1 flex items-center gap-2">
-                  <Sparkles size={16} className="text-gray-700" />
+                  <Sparkles size={16} className="text-foreground" />
                   Générer avec IA
                 </h2>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-muted-foreground">
                   Génération rapide. Pour utiliser une image de référence ou un
                   contexte de transcription externe, ouvrez la configuration avancée.
                 </p>
                 {/* F1.1 — Avertissement si une description existe déjà : la
                      génération va écraser le texte courant. */}
                 {value.trim().length > 0 && (
-                  <p className="mt-2 text-xs text-peach-700 bg-peach-50 border border-peach-200 rounded-lg px-3 py-2">
+                  <p className="mt-2 text-xs text-warning-700 bg-warning-50 border border-warning-200 rounded-lg px-3 py-2">
                     Une légende existe déjà — la génération va l&apos;écraser.
                     Tu pourras toujours annuler en fermant la modale.
                   </p>
@@ -757,7 +757,7 @@ function DescriptionSectionInner({
                         className={`flex-1 px-3 py-2 text-sm rounded-md border transition-colors ${
                           aiModel === "claude"
                             ? "border-gray-900 bg-gray-900 text-white"
-                            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                            : "border-border bg-white text-foreground hover:bg-muted"
                         }`}
                       >
                         Claude
@@ -768,7 +768,7 @@ function DescriptionSectionInner({
                         className={`flex-1 px-3 py-2 text-sm rounded-md border transition-colors ${
                           aiModel === "gpt"
                             ? "border-gray-900 bg-gray-900 text-white"
-                            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                            : "border-border bg-white text-foreground hover:bg-muted"
                         }`}
                       >
                         GPT
@@ -779,16 +779,16 @@ function DescriptionSectionInner({
 
                 <FormField label="Prompt" required>
                   {promptsLoading ? (
-                    <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
                       <Loader2 size={14} className="animate-spin" /> Chargement…
                     </div>
                   ) : promptsError ? (
                     <p className="text-sm text-danger-700 py-2">{promptsError}</p>
                   ) : prompts.length === 0 ? (
-                    <p className="text-sm text-gray-500 py-2">
+                    <p className="text-sm text-muted-foreground py-2">
                       Aucun prompt actif. Vérifie que tes prompts sont activés (icône œil)
                       depuis{" "}
-                      <Link href="/admin/prompts" className="text-gray-950 underline hover:no-underline">
+                      <Link href="/admin/prompts" className="text-foreground underline hover:no-underline">
                         /admin/prompts
                       </Link>
                       .
@@ -797,7 +797,7 @@ function DescriptionSectionInner({
                     <select
                       value={selectedPromptId}
                       onChange={(e) => setSelectedPromptId(e.target.value)}
-                      className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus-ring"
+                      className="w-full rounded-md border border-border px-3 py-2 text-sm focus-ring"
                     >
                       {prompts.map((p) => (
                         <option key={p.id} value={p.id}>{p.name}</option>
@@ -824,14 +824,14 @@ function DescriptionSectionInner({
                     transcription externe. */}
                 <Link
                   href={descriptionToolHref}
-                  className="inline-flex items-center gap-1.5 text-[11px] text-gray-500 hover:text-gray-900 transition-colors"
+                  className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-gray-900 transition-colors"
                 >
                   <ExternalLink size={11} />
                   Besoin d&apos;image de référence ou transcription externe ?
                   Passer en mode avancé
                 </Link>
               </div>
-              <div className="flex items-center justify-end gap-2 px-6 py-4 bg-gray-50 border-t border-gray-100">
+              <div className="flex items-center justify-end gap-2 px-6 py-4 bg-muted border-t border-border">
                 <Button
                   type="button"
                   variant="secondary"

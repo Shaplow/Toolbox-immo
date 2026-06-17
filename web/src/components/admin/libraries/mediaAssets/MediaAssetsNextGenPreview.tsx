@@ -40,15 +40,15 @@ export function MediaAssetsNextGenPreview({ groupedBySetTag, rotationScope, acco
   const isPerAccountWithoutFilter = rotationScope === "per_account" && !accountFilter;
   if (isPerAccountWithoutFilter) {
     return (
-      <div className="mb-4 rounded-2xl bg-gradient-to-b from-sky-50/70 via-sky-50/45 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(77,150,191,0.18),0_2px_8px_-4px_rgba(77,150,191,0.14)] px-3.5 py-2.5 flex items-center gap-2.5">
-        <span className="shrink-0 h-7 w-7 rounded-full bg-gradient-to-b from-sky-100 to-sky-200/80 inline-flex items-center justify-center text-sky-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),inset_0_0_0_1px_rgba(77,150,191,0.18)]">
+      <div className="mb-4 rounded-2xl bg-gradient-to-b from-info-50/70 via-info-50/45 to-white/55  px-3.5 py-2.5 flex items-center gap-2.5">
+        <span className="shrink-0 h-7 w-7 rounded-full bg-gradient-to-b from-info-100 to-info-200/80 inline-flex items-center justify-center text-info-700 ">
           <Info size={12} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[12.5px] font-semibold text-sky-900 leading-tight">
+          <p className="text-[12.5px] font-semibold text-info-700 leading-tight">
             Rotation indépendante par compte
           </p>
-          <p className="text-[10.5px] text-sky-700/80 leading-tight">
+          <p className="text-[10.5px] text-info-700/80 leading-tight">
             Sélectionne un compte IG ci-dessus pour voir l&apos;ordre de rotation qui le concerne.
           </p>
         </div>
@@ -57,26 +57,26 @@ export function MediaAssetsNextGenPreview({ groupedBySetTag, rotationScope, acco
   }
 
   return (
-    <div className="mb-4 rounded-2xl bg-gradient-to-b from-sage-50/85 via-sage-50/55 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(111,162,128,0.22),inset_0_-1px_0_rgba(15,23,42,0.04),0_2px_8px_-4px_rgba(111,162,128,0.18),0_8px_24px_-12px_rgba(15,23,42,0.12)] overflow-hidden">
+    <div className="mb-4 rounded-2xl bg-gradient-to-b from-success-50/85 via-success-50/55 to-white/55  overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center gap-2.5 px-3.5 py-2.5 hover:bg-white/40 transition-colors text-left"
       >
-        <span className="h-8 w-8 rounded-full bg-gradient-to-b from-sage-100 to-sage-200/80 backdrop-blur-[6px] inline-flex items-center justify-center text-sage-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),inset_0_0_0_1px_rgba(111,162,128,0.18),0_2px_4px_-1px_rgba(111,162,128,0.32)]">
+        <span className="h-8 w-8 rounded-full bg-gradient-to-b from-success-100 to-success-200/80 inline-flex items-center justify-center text-success-700 ">
           <RotateCw size={12} />
         </span>
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-semibold text-sage-900 leading-tight">
+          <p className="text-[13px] font-semibold text-success-700 leading-tight">
             Prochaines générations
           </p>
-          <p className="text-[10.5px] text-sage-700/80 leading-tight">
+          <p className="text-[10.5px] text-success-700/80 leading-tight">
             {next.length} pack{next.length > 1 ? "s" : ""} à sortir en rotation auto
           </p>
         </div>
         <ChevronDown
           size={14}
-          className={`text-sage-700/60 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`text-success-700/60 transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
       {open && (
@@ -84,27 +84,27 @@ export function MediaAssetsNextGenPreview({ groupedBySetTag, rotationScope, acco
           {next.map((g) => (
             <li
               key={g.key}
-              className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.03)]"
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-card border border-border "
             >
-              <span className="shrink-0 w-5 h-5 rounded-full bg-gradient-to-b from-sage-100 to-sage-200/80 text-sage-700 text-[10px] font-bold inline-flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+              <span className="shrink-0 w-5 h-5 rounded-full bg-gradient-to-b from-success-100 to-success-200/80 text-success-700 text-[10px] font-bold inline-flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
                 {g.autoRank}
               </span>
               {g.category && (
-                <span className="inline-flex items-center gap-0.5 text-[10.5px] font-medium px-1.5 py-0.5 rounded-md bg-rose-50/80 text-rose-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(139,92,246,0.14)] shrink-0">
+                <span className="inline-flex items-center gap-0.5 text-[10.5px] font-medium px-1.5 py-0.5 rounded-md bg-danger-50/80 text-danger-700  shrink-0">
                   <FolderOpen size={9} />
                   {g.category}
                 </span>
               )}
-              <span className="text-gray-300 text-[10px]">›</span>
+              <span className="text-muted-foreground/60 text-[10px]">›</span>
               {g.setTag ? (
-                <span className="inline-flex items-center gap-0.5 text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md bg-rose-50/80 text-rose-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(236,72,153,0.14)] truncate">
+                <span className="inline-flex items-center gap-0.5 text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md bg-danger-50/80 text-danger-700  truncate">
                   <Layers size={9} />
                   {g.setTag.startsWith("pack_") ? "pack auto" : g.setTag}
                 </span>
               ) : (
-                <span className="text-[10.5px] italic text-gray-400">pool</span>
+                <span className="text-[10.5px] italic text-muted-foreground">pool</span>
               )}
-              <span className="ml-auto text-[10px] text-gray-500 tabular-nums">
+              <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">
                 {g.accessibleCount} rush{g.accessibleCount !== 1 ? "es" : ""}
               </span>
             </li>

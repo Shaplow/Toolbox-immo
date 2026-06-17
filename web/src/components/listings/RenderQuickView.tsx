@@ -78,7 +78,7 @@ export function RenderQuickView({
       <Modal open={open} onClose={onClose} size="md">
         <Modal.Header onClose={onClose}>{title}</Modal.Header>
         <Modal.Body>
-          <p className="text-[13px] text-gray-500 text-center py-8">
+          <p className="text-[13px] text-muted-foreground text-center py-8">
             Aucun aperçu disponible pour cette génération.
           </p>
         </Modal.Body>
@@ -97,7 +97,7 @@ export function RenderQuickView({
         <span className="inline-flex items-center gap-2">
           <span className="truncate">{title}</span>
           {playable.length > 1 && (
-            <span className="text-[11px] font-medium text-gray-500 tabular-nums shrink-0">
+            <span className="text-[11px] font-medium text-muted-foreground tabular-nums shrink-0">
               {index + 1} / {playable.length}
             </span>
           )}
@@ -106,7 +106,7 @@ export function RenderQuickView({
       <Modal.Body className="px-5 py-4">
         {/* Stage media — fond neutre glass, media object-contain pour respecter
             le format quel qu'il soit (vertical 9:16, carré, paysage). */}
-        <div className="relative rounded-2xl bg-gradient-to-b from-gray-50/80 to-gray-100/60 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] overflow-hidden">
+        <div className="relative rounded-2xl bg-gradient-to-b from-gray-50/80 to-gray-100/60  overflow-hidden">
           <div className="flex items-center justify-center min-h-[40vh] max-h-[55vh]">
             {current.videoUrl ? (
               <video
@@ -195,7 +195,7 @@ export function RenderQuickView({
           <a
             href={dl.url}
             download
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium bg-gradient-to-b from-gray-700 to-gray-900 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_0_0_1px_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.12),0_4px_12px_-4px_rgba(15,23,42,0.22)] hover:from-gray-600 hover:to-gray-800 transition-all focus-ring"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium bg-gradient-to-b from-gray-700 to-gray-900 text-white  hover:from-gray-600 hover:to-gray-800 transition-all focus-ring"
           >
             <Download size={14} />
             Télécharger {dl.ext.toUpperCase()}

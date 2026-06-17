@@ -2,14 +2,11 @@
  * SlotStatusTimeline — 5 étapes narratives pour visualiser l'avancement
  * d'un slot indépendamment des 17 statuts techniques.
  *
- * Use-cases :
- * 1. Header fiche publication — vue d'ensemble cross-rôle.
- * 2. (futur) SlotCard calendrier — version "sm" sans labels.
- * 3. (futur) WorklistSlotCard — version "sm" pour densité tabulaire.
- *
- * Layout : 5 dots connectés. Dot courant en peach, passés en sage, futurs
- * en gray. Statuts "blocked" (REJECTED/CANCELLED/BLOCKED) → bandeau rose à
- * la place de la timeline normale.
+ * Layout : 5 dots connectés.
+ * - Courant : primary
+ * - Passé : success-600 (avec Check)
+ * - Futur : muted
+ * - Blocked : badge danger
  */
 
 import { Check, AlertCircle } from "lucide-react";
@@ -32,7 +29,7 @@ export function SlotStatusTimeline({
   if (current === "blocked") {
     return (
       <div
-        className={`inline-flex items-center gap-2 rounded-full bg-rose-50 text-rose-700 border border-rose-200 px-3 py-1 text-[12px] font-medium ${className}`}
+        className={`inline-flex items-center gap-2 rounded-md bg-danger-50 text-danger-700 border border-danger-200 px-3 py-1 text-[12px] font-medium ${className}`}
       >
         <AlertCircle size={14} />
         <span>Publication bloquée</span>
@@ -43,7 +40,7 @@ export function SlotStatusTimeline({
   const currentOrder = MACRO_STEPS[current].order;
   const isSmall = size === "sm";
   const dotSize = isSmall ? "w-2 h-2" : "w-2.5 h-2.5";
-  const connectorH = isSmall ? "h-px" : "h-px";
+  const connectorH = "h-px";
   const wrapGap = isSmall ? "gap-1" : "gap-1.5";
 
   return (
@@ -55,10 +52,10 @@ export function SlotStatusTimeline({
         const isLast = i === MACRO_STEP_ORDER.length - 1;
 
         const dotCls = isCurrent
-          ? "bg-peach-500 ring-2 ring-peach-200"
+          ? "bg-primary ring-2 ring-primary/30"
           : isPast
-            ? "bg-sage-500"
-            : "bg-gray-200";
+            ? "bg-success-600"
+            : "bg-muted";
 
         return (
           <div key={stepKey} className="flex items-center gap-1">
@@ -81,10 +78,10 @@ export function SlotStatusTimeline({
                 <span
                   className={`text-[10px] font-medium uppercase tracking-wider ${
                     isCurrent
-                      ? "text-peach-700"
+                      ? "text-primary"
                       : isPast
-                        ? "text-sage-700"
-                        : "text-gray-400"
+                        ? "text-foreground"
+                        : "text-muted-foreground"
                   }`}
                 >
                   {step.label}
@@ -94,7 +91,7 @@ export function SlotStatusTimeline({
             {!isLast && (
               <span
                 className={`w-6 ${connectorH} ${
-                  isPast ? "bg-sage-300" : "bg-gray-200"
+                  isPast ? "bg-success-600/60" : "bg-border"
                 }`}
               />
             )}

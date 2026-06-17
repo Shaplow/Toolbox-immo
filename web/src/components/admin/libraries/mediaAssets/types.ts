@@ -11,6 +11,8 @@ export interface MediaAsset {
   id: string;
   filename: string;
   url: string;
+  /** Image poster R2 (frame extraite à l'upload). Null = fallback <video>. */
+  posterUrl?: string | null;
   mimeType: string;
   duration: number | null;
   tags: string[];

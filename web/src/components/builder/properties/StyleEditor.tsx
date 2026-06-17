@@ -21,7 +21,7 @@ import { toUniformPaddingValue } from "./utils";
 /** Reusable section sub-header within StyleEditor */
 function SubSection({ label }: { label: string }) {
   return (
-    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider pt-1">
+    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider pt-1">
       {label}
     </p>
   );
@@ -109,7 +109,7 @@ export function StyleEditor({
       <SubSection label="Typographie" />
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-gray-600">Police</span>
+        <span className="text-xs font-medium text-muted-foreground">Police</span>
         <FontFamilyPicker
           value={style.fontFamily}
           fonts={availableFonts}
@@ -129,11 +129,11 @@ export function StyleEditor({
       {/* Font weight — kept as select; slider step-100 looks odd in practice */}
       <div className="flex items-end gap-2">
         <label className="flex flex-col gap-1 flex-1">
-          <span className="text-xs font-medium text-gray-600">Graisse</span>
+          <span className="text-xs font-medium text-muted-foreground">Graisse</span>
           <select
             value={style.fontWeight ?? 400}
             onChange={(e) => onChange({ fontWeight: Number(e.target.value) })}
-            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+            className="border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
           >
             {[300, 400, 500, 600, 700].map((w) => (
               <option key={w} value={w}>{w}</option>
@@ -148,7 +148,7 @@ export function StyleEditor({
             "h-8 w-9 rounded-lg flex items-center justify-center border text-sm font-bold italic shrink-0 transition-colors",
             style.fontStyle === "italic"
               ? "bg-indigo-100 border-indigo-400 text-indigo-700"
-              : "border-gray-200 text-gray-500 hover:bg-gray-50",
+              : "border-border text-muted-foreground hover:bg-muted",
           ].join(" ")}
         >
           I
@@ -156,7 +156,7 @@ export function StyleEditor({
       </div>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-gray-600">Espacement lettres</span>
+        <span className="text-xs font-medium text-muted-foreground">Espacement lettres</span>
         <div className="flex items-center gap-2">
           <input
             type="range"
@@ -167,7 +167,7 @@ export function StyleEditor({
             onChange={(e) => onChange({ letterSpacing: Number(e.target.value) })}
             className="flex-1 h-1.5 rounded-full appearance-none accent-indigo-600 cursor-pointer"
           />
-          <span className="text-xs font-mono text-gray-700 tabular-nums min-w-[3rem] text-right">
+          <span className="text-xs font-mono text-foreground tabular-nums min-w-[3rem] text-right">
             {(style.letterSpacing ?? 0).toFixed(1)}
           </span>
         </div>
@@ -176,11 +176,11 @@ export function StyleEditor({
       {/* Alignements */}
       <div className="grid grid-cols-2 gap-2">
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-600">Alignement H</span>
+          <span className="text-xs font-medium text-muted-foreground">Alignement H</span>
           <select
             value={style.textAlign ?? "left"}
             onChange={(e) => onChange({ textAlign: e.target.value as BlockStyle["textAlign"] })}
-            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+            className="border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
           >
             <option value="left">Gauche</option>
             <option value="center">Centre</option>
@@ -188,7 +188,7 @@ export function StyleEditor({
           </select>
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-600">Alignement V</span>
+          <span className="text-xs font-medium text-muted-foreground">Alignement V</span>
           <div className="flex gap-1">
             {(["top", "middle", "bottom"] as const).map((v) => (
               <button
@@ -200,7 +200,7 @@ export function StyleEditor({
                   "flex-1 py-1.5 rounded-lg border text-xs transition-colors",
                   (style.verticalAlign ?? "top") === v
                     ? "bg-indigo-600 text-white border-indigo-600"
-                    : "border-gray-200 text-gray-500 hover:border-indigo-300",
+                    : "border-border text-muted-foreground hover:border-indigo-300",
                 ].join(" ")}
               >
                 {v === "top" ? "↑" : v === "middle" ? "↕" : "↓"}
@@ -215,16 +215,16 @@ export function StyleEditor({
 
       <div className="grid grid-cols-2 gap-2">
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-600">Texte</span>
+          <span className="text-xs font-medium text-muted-foreground">Texte</span>
           <input
             type="color"
             value={style.color ?? "#000000"}
             onChange={(e) => onChange({ color: e.target.value })}
-            className="h-8 w-full cursor-pointer rounded-lg border border-gray-200"
+            className="h-8 w-full cursor-pointer rounded-lg border border-border"
           />
         </label>
         <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-600">Fond texte</span>
+          <span className="text-xs font-medium text-muted-foreground">Fond texte</span>
           <ToggleSwitch
             checked={backgroundEnabled}
             onChange={(checked) => {
@@ -245,11 +245,11 @@ export function StyleEditor({
       </div>
 
       {backgroundEnabled && (
-        <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-2.5">
+        <div className="space-y-3 rounded-xl border border-border bg-muted p-2.5">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <p className="text-[11px] font-medium text-gray-700">Fond texte</p>
-              <p className="text-[10px] text-gray-400">
+              <p className="text-[11px] font-medium text-foreground">Fond texte</p>
+              <p className="text-[10px] text-muted-foreground">
                 {backgroundMode === "fit"
                   ? "Le cartouche suit le texte et respecte son alignement."
                   : backgroundMode === "per-line"
@@ -261,10 +261,10 @@ export function StyleEditor({
               type="color"
               value={style.backgroundColor ?? "#FFFFFF"}
               onChange={(e) => onChange({ backgroundColor: e.target.value })}
-              className="h-8 w-10 shrink-0 cursor-pointer rounded-lg border border-gray-200 bg-white"
+              className="h-8 w-10 shrink-0 cursor-pointer rounded-lg border border-border bg-white"
             />
           </div>
-          <div className="grid grid-cols-3 gap-1 rounded-lg border border-gray-200 bg-white p-1">
+          <div className="grid grid-cols-3 gap-1 rounded-lg border border-border bg-white p-1">
             {(["fit", "per-line", "fixed"] as const).map((mode) => (
               <button
                 key={mode}
@@ -282,7 +282,7 @@ export function StyleEditor({
                 }}
                 className={[
                   "rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors",
-                  backgroundMode === mode ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50",
+                  backgroundMode === mode ? "bg-indigo-600 text-white" : "text-muted-foreground hover:bg-muted",
                 ].join(" ")}
               >
                 {mode === "fit" ? "Adaptatif" : mode === "per-line" ? "Par ligne" : "Fixe"}
@@ -292,28 +292,28 @@ export function StyleEditor({
           {backgroundMode === "fixed" ? (
             <div className="grid grid-cols-2 gap-2">
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-600">Largeur fond</span>
+                <span className="text-xs font-medium text-muted-foreground">Largeur fond</span>
                 <input
                   type="number"
                   min={1}
                   value={backgroundSize.width}
                   onChange={(e) => onChange({ textBackgroundWidth: Number(e.target.value) })}
-                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  className="border border-border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-600">Hauteur fond</span>
+                <span className="text-xs font-medium text-muted-foreground">Hauteur fond</span>
                 <input
                   type="number"
                   min={1}
                   value={backgroundSize.height}
                   onChange={(e) => onChange({ textBackgroundHeight: Number(e.target.value) })}
-                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  className="border border-border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 />
               </label>
             </div>
           ) : (
-            <p className="rounded-lg border border-dashed border-gray-200 bg-white px-2 py-1.5 text-[10px] text-gray-400 leading-4">
+            <p className="rounded-lg border border-dashed border-border bg-white px-2 py-1.5 text-[10px] text-muted-foreground leading-4">
               {backgroundMode === "per-line"
                 ? "Chaque ligne obtient son propre fond ajusté. Le padding vertical agit comme espacement entre les lignes."
                 : "Le fond suit automatiquement la largeur du texte et s'ancre selon l'alignement horizontal du bloc."}
@@ -342,13 +342,13 @@ export function StyleEditor({
           />
 
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Arrondi du fond</span>
+            <span className="text-xs font-medium text-muted-foreground">Arrondi du fond</span>
             <input
               type="number"
               min={0}
               value={backgroundRadius}
               onChange={(e) => onChange({ textBackgroundBorderRadius: Number(e.target.value) })}
-              className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="border border-border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
             />
           </label>
         </div>
@@ -384,19 +384,19 @@ export function StyleEditor({
       />
 
       {style.textShadowEnabled && (
-        <div className="space-y-3 rounded-xl border border-gray-100 bg-gray-50 p-2.5">
+        <div className="space-y-3 rounded-xl border border-border bg-muted p-2.5">
           <div className="grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-600">Couleur ombre</span>
+              <span className="text-xs font-medium text-muted-foreground">Couleur ombre</span>
               <input
                 type="color"
                 value={style.textShadowColor ?? "#000000"}
                 onChange={(e) => onChange({ textShadowColor: e.target.value })}
-                className="h-8 w-full cursor-pointer rounded-lg border border-gray-200"
+                className="h-8 w-full cursor-pointer rounded-lg border border-border"
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-600">Opacité ombre</span>
+              <span className="text-xs font-medium text-muted-foreground">Opacité ombre</span>
               <input
                 type="number"
                 min={0}
@@ -404,7 +404,7 @@ export function StyleEditor({
                 step={0.05}
                 value={style.textShadowOpacity ?? 0.35}
                 onChange={(e) => onChange({ textShadowOpacity: Number(e.target.value) })}
-                className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                className="border border-border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
               />
             </label>
           </div>

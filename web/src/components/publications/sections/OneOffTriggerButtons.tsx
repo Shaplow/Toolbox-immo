@@ -109,13 +109,13 @@ export function OneOffTriggerButtons({
   }
 
   return (
-    <section id="oneoff" className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+    <section id="oneoff" className="bg-muted border border-border rounded-xl p-4">
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-gray-950">
+          <h3 className="text-sm font-semibold text-foreground">
             Slot one-off — Lancer la production manuellement
           </h3>
-          <p className="text-xs text-gray-600 mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             La vidéo a été uploadée manuellement (pas de render auto).
             Lance les jobs de production sur la version courante.
           </p>
@@ -150,8 +150,8 @@ export function OneOffTriggerButtons({
         )}
       </div>
       {(coverDisabled && showCoverButton) || (captionsDisabled && showCaptionsButton) ? (
-        <p className="text-[10px] text-peach-700 mt-2 inline-flex items-center gap-1">
-          <AlertTriangle size={10} className="text-peach-600 shrink-0" />
+        <p className="text-[10px] text-warning-700 mt-2 inline-flex items-center gap-1">
+          <AlertTriangle size={10} className="text-warning-600 shrink-0" />
           Configurez le preset manquant dans le SlotDetailPanel ou le pattern parent
           pour activer le bouton.
         </p>

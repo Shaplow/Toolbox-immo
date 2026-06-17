@@ -142,7 +142,7 @@ export function PublishSection({
         <div className="space-y-4">
           {/* URL publiée */}
           <div className="space-y-1">
-            <p className="text-[10px] font-medium text-gray-500 uppercase tracking-widest">
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">
               Lien Instagram
             </p>
             {slot.publishedUrl ? (
@@ -150,29 +150,29 @@ export function PublishSection({
                 href={slot.publishedUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-[13px] text-gray-700 hover:text-gray-950 break-all transition-colors"
+                className="inline-flex items-center gap-1.5 text-[13px] text-foreground hover:text-foreground break-all transition-colors"
               >
                 <ExternalLink size={13} className="flex-shrink-0" />
                 {slot.publishedUrl}
               </a>
             ) : (
-              <p className="text-[13px] text-gray-400">URL non renseignée</p>
+              <p className="text-[13px] text-muted-foreground">URL non renseignée</p>
             )}
           </div>
 
           {/* Date de publication */}
           {slot.publishedAt && (
             <div className="space-y-1">
-              <p className="text-[10px] font-medium text-gray-500 uppercase tracking-widest">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">
                 Date de publication
               </p>
-              <p className="text-[13px] text-gray-700">{formatDateTimeFR(slot.publishedAt)}</p>
+              <p className="text-[13px] text-foreground">{formatDateTimeFR(slot.publishedAt)}</p>
             </div>
           )}
 
           {/* Correction URL (canPublish uniquement) */}
           {canPublish && (
-            <div className="pt-3 border-t border-gray-100">
+            <div className="pt-3 border-t border-border">
               {!editingUrl ? (
                 <Button
                   variant="ghost"
@@ -226,7 +226,7 @@ export function PublishSection({
 
       {/* ── Non publié + rôle sans canPublish (info read-only) ──────── */}
       {!isPublished && !canPublish && (
-        <p className="text-[13px] text-gray-500 leading-relaxed">
+        <p className="text-[13px] text-muted-foreground leading-relaxed">
           La publication sera marquée par le CM assigné une fois le contenu posté
           sur Instagram.
         </p>
@@ -237,8 +237,8 @@ export function PublishSection({
         <div className="space-y-4">
           {/* Warning si étapes amont incomplètes */}
           {incompleteSteps.length > 0 && (
-            <div className="flex items-start gap-2 text-[13px] text-peach-900 bg-peach-50 border border-peach-200 rounded-md px-3 py-2.5">
-              <AlertTriangle size={14} className="text-peach-700 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 text-[13px] text-warning-700 bg-warning-50 border border-warning-200 rounded-md px-3 py-2.5">
+              <AlertTriangle size={14} className="text-warning-700 shrink-0 mt-0.5" />
               <div>
                 <p className="font-medium leading-tight">
                   {incompleteSteps.length === 1
@@ -246,7 +246,7 @@ export function PublishSection({
                     : `${incompleteSteps.length} étapes ne sont pas finalisées`}{" "}
                   : {incompleteSteps.map((s) => s.label).join(", ")}.
                 </p>
-                <p className="text-[12px] text-peach-800/80 mt-0.5 leading-relaxed">
+                <p className="text-[12px] text-warning-700/80 mt-0.5 leading-relaxed">
                   Tu peux quand même marquer publié — vérifie juste que c&apos;est
                   bien le contenu que tu veux figer.
                 </p>

@@ -72,13 +72,13 @@ export default function VibesPage() {
   return (
     <div className="space-y-24">
       <header className="space-y-3">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">
           Phase 5 · Lot 3 · Vibes
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight text-gray-950">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           Showcase brut — wow factor
         </h1>
-        <p className="text-sm text-gray-600 max-w-2xl leading-relaxed">
+        <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
           4 mises en scène extrêmes qui poussent la matière Liquid Glass au
           max. Test ultime : <em>&quot;tu peux montrer ça à un investisseur ?&quot;</em>.
           Si oui → go pour Phase 6 (refonte modules métier).
@@ -110,7 +110,7 @@ export default function VibesPage() {
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500 mb-4">
+    <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground mb-4">
       {children}
     </p>
   );
@@ -140,9 +140,9 @@ function HeroLanding() {
 
       {/* Glass card flottante top-right */}
       <div className="absolute top-8 right-8 hidden md:block">
-        <div className="px-3 py-1.5 rounded-full bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[20px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_8px_24px_-8px_rgba(15,23,42,0.18)] inline-flex items-center gap-2">
-          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
-          <span className="text-[11px] font-medium text-gray-700">12 équipes l&apos;utilisent en production</span>
+        <div className="px-3 py-1.5 rounded-full bg-card border border-border  inline-flex items-center gap-2">
+          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-success-600 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
+          <span className="text-[11px] font-medium text-foreground">12 équipes l&apos;utilisent en production</span>
         </div>
       </div>
 
@@ -150,11 +150,11 @@ function HeroLanding() {
       <div className="relative max-w-3xl">
         <Chip variant="peach" size="md" icon={Sparkles}>Liquid Glass v2 · 2026</Chip>
 
-        <h2 className="mt-6 text-[44px] md:text-[64px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
-          La production sociale, <span className="font-hand text-peach-700">chirurgicale</span> et belle.
+        <h2 className="mt-6 text-[44px] md:text-[64px] font-semibold tracking-tight text-foreground leading-[1.05]">
+          La production sociale, <span className="font-hand text-warning-700">chirurgicale</span> et belle.
         </h2>
 
-        <p className="mt-6 text-[15px] md:text-[17px] text-gray-700 leading-relaxed max-w-xl">
+        <p className="mt-6 text-[15px] md:text-[17px] text-foreground leading-relaxed max-w-xl">
           Toolbox réunit le brief client, le montage, les sous-titres et la
           publication dans un seul pipeline. Glass sobre, density Linear,
           micro-interactions qui s&apos;effacent.
@@ -166,22 +166,22 @@ function HeroLanding() {
         </div>
 
         {/* Floating glass card avec preview job */}
-        <div className="mt-12 max-w-md p-4 rounded-2xl bg-gradient-to-b from-white/80 to-white/50 backdrop-blur-[24px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_8px_24px_-4px_rgba(15,23,42,0.12),0_32px_72px_-12px_rgba(15,23,42,0.22)]">
+        <div className="mt-12 max-w-md p-4 rounded-2xl bg-card border border-border ">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Avatar name="Studio Paris" size="sm" />
               <div>
-                <p className="text-[12px] font-semibold text-gray-950 leading-tight">@studio-paris</p>
-                <p className="text-[10px] text-gray-500 leading-tight">il y a 2 min</p>
+                <p className="text-[12px] font-semibold text-foreground leading-tight">@studio-paris</p>
+                <p className="text-[10px] text-muted-foreground leading-tight">il y a 2 min</p>
               </div>
             </div>
             <StatusBadge domain="render" status="IN_PROGRESS" size="sm" />
           </div>
-          <p className="text-[13px] font-medium text-gray-950 mb-2 leading-tight">
+          <p className="text-[13px] font-medium text-foreground mb-2 leading-tight">
             Story carrousel #18 — Rooftop Paris
           </p>
           <Progress value={73} accent="sky" showValue />
-          <div className="mt-3 flex items-center justify-between text-[10px] text-gray-500">
+          <div className="mt-3 flex items-center justify-between text-[10px] text-muted-foreground">
             <span>Rendu H.265 · 1080×1920</span>
             <span className="tabular-nums">2 min 14 restants</span>
           </div>
@@ -198,10 +198,10 @@ function HeroLanding() {
         ].map((stat) => (
           <div
             key={stat.label}
-            className="px-4 py-3 rounded-xl bg-white/45 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]"
+            className="px-4 py-3 rounded-xl bg-card border border-border "
           >
-            <p className="text-[22px] font-semibold tracking-tight text-gray-950 tabular-nums leading-none">{stat.value}</p>
-            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mt-1">{stat.label}</p>
+            <p className="text-[22px] font-semibold tracking-tight text-foreground tabular-nums leading-none">{stat.value}</p>
+            <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mt-1">{stat.label}</p>
           </div>
         ))}
       </div>
@@ -222,21 +222,18 @@ function ControlCenter() {
   return (
     <div
       className="rounded-3xl p-6 md:p-8"
-      style={{
-        background: "var(--gradient-page-shell)",
-      }}
     >
       {/* Top bar */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Control center</p>
-          <h3 className="text-2xl font-semibold tracking-tight text-gray-950 mt-1">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Control center</p>
+          <h3 className="text-2xl font-semibold tracking-tight text-foreground mt-1">
             Production en temps réel
           </h3>
         </div>
-        <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
-          <span className="text-[11px] font-mono text-gray-700 tabular-nums">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-card border border-border ">
+          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-success-600 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
+          <span className="text-[11px] font-mono text-foreground tabular-nums">
             {time.toLocaleTimeString("fr-FR")}
           </span>
         </div>
@@ -253,24 +250,24 @@ function ControlCenter() {
           return (
             <div
               key={s.label}
-              className="p-5 rounded-2xl bg-gradient-to-b from-white/75 to-white/50 backdrop-blur-[16px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)]"
+              className="p-5 rounded-2xl bg-card border border-border "
             >
               <div className="flex items-start justify-between mb-3">
-                <div className={`inline-flex h-9 w-9 items-center justify-center rounded-lg bg-${s.variant}-100/80 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1)] text-${s.variant}-700`}>
+                <div className={`inline-flex h-9 w-9 items-center justify-center rounded-lg bg-${s.variant}-100/80 shadow-[inset_0_1px_0_rgba(255,255,255,1)] text-${s.variant}-700`}>
                   <I size={16} />
                 </div>
                 <Chip variant={s.variant} size="sm">{s.trend}</Chip>
               </div>
-              <p className="text-[28px] font-semibold tracking-tight text-gray-950 leading-none tabular-nums">{s.value}</p>
-              <p className="text-[11px] uppercase tracking-widest font-medium text-gray-500 mt-1.5">{s.label}</p>
+              <p className="text-[28px] font-semibold tracking-tight text-foreground leading-none tabular-nums">{s.value}</p>
+              <p className="text-[11px] uppercase tracking-widest font-medium text-muted-foreground mt-1.5">{s.label}</p>
             </div>
           );
         })}
 
         {/* Active jobs card */}
-        <div className="md:col-span-2 p-5 rounded-2xl bg-gradient-to-b from-white/75 to-white/50 backdrop-blur-[16px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)]">
+        <div className="md:col-span-2 p-5 rounded-2xl bg-card border border-border ">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[13px] font-semibold tracking-tight text-gray-950">Jobs actifs</p>
+            <p className="text-[13px] font-semibold tracking-tight text-foreground">Jobs actifs</p>
             <Badge variant="info" dot>4 en cours</Badge>
           </div>
           <div className="space-y-2">
@@ -310,9 +307,9 @@ function ControlCenter() {
         </div>
 
         {/* Team online card */}
-        <div className="p-5 rounded-2xl bg-gradient-to-b from-white/75 to-white/50 backdrop-blur-[16px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)]">
+        <div className="p-5 rounded-2xl bg-card border border-border ">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[13px] font-semibold tracking-tight text-gray-950">Équipe</p>
+            <p className="text-[13px] font-semibold tracking-tight text-foreground">Équipe</p>
             <Chip variant="sage" size="sm" icon={Users}>5 en ligne</Chip>
           </div>
           <div className="flex items-center gap-2 mb-4">
@@ -330,28 +327,28 @@ function ControlCenter() {
               size="md"
             />
           </div>
-          <div className="space-y-1.5 text-[11px] text-gray-600">
+          <div className="space-y-1.5 text-[11px] text-muted-foreground">
             <div className="flex justify-between">
               <span>Alice Dubois</span>
-              <span className="text-gray-400">monte #18</span>
+              <span className="text-muted-foreground">monte #18</span>
             </div>
             <div className="flex justify-between">
               <span>Bob Martin</span>
-              <span className="text-gray-400">review @luxe-immo</span>
+              <span className="text-muted-foreground">review @luxe-immo</span>
             </div>
             <div className="flex justify-between">
               <span>Diane Roux</span>
-              <span className="text-gray-400">caption batch</span>
+              <span className="text-muted-foreground">caption batch</span>
             </div>
           </div>
         </div>
 
         {/* Pipeline progression card */}
-        <div className="md:col-span-3 p-5 rounded-2xl bg-gradient-to-b from-white/75 to-white/50 backdrop-blur-[16px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)]">
+        <div className="md:col-span-3 p-5 rounded-2xl bg-card border border-border ">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="text-[13px] font-semibold tracking-tight text-gray-950">Pipeline Story #18</p>
-              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mt-0.5">Suivi temps réel</p>
+              <p className="text-[13px] font-semibold tracking-tight text-foreground">Pipeline Story #18</p>
+              <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mt-0.5">Suivi temps réel</p>
             </div>
             <Button size="sm" variant="ghost" icon={ChevronRight} iconRight>Ouvrir fiche</Button>
           </div>
@@ -381,7 +378,7 @@ function GalleryMasonry() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h3 className="text-2xl font-semibold tracking-tight text-gray-950">
+        <h3 className="text-2xl font-semibold tracking-tight text-foreground">
           Médiathèque · @studio-paris
         </h3>
         <div className="flex items-center gap-2">

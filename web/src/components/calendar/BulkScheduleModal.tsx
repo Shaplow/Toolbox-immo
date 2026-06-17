@@ -90,17 +90,17 @@ export function BulkScheduleModal({ slotIds, onScheduled, onClose }: Props) {
     <Modal open onClose={onClose} size="md">
       <form onSubmit={handleSubmit} className="p-5">
         <div className="flex items-start gap-3">
-          <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-sky-100 text-sky-700 shrink-0">
+          <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-info-100 text-info-700 shrink-0">
             <CalendarClock size={18} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+            <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
               Programmer en lot
             </p>
-            <h2 className="mt-1 text-[18px] font-semibold text-gray-950">
+            <h2 className="mt-1 text-[18px] font-semibold text-foreground">
               {slotIds.length} contenu{slotIds.length > 1 ? "s" : ""} à programmer
             </h2>
-            <p className="mt-0.5 text-[12px] text-gray-500">
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
               Choisis une date de départ. L&apos;heure peut être commune ou
               suivre celle de chaque recette.
             </p>
@@ -130,7 +130,7 @@ export function BulkScheduleModal({ slotIds, onScheduled, onClose }: Props) {
           </FormField>
         </div>
 
-        <div className="mt-4 space-y-3 rounded-xl bg-white/55 backdrop-blur-[8px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+        <div className="mt-4 space-y-3 rounded-xl bg-card border border-border p-3 ">
           <label className="flex items-start gap-3 cursor-pointer">
             <input
               type="checkbox"
@@ -138,18 +138,18 @@ export function BulkScheduleModal({ slotIds, onScheduled, onClose }: Props) {
               onChange={(e) =>
                 setSpreadOverDays(e.target.checked ? Math.max(2, slotIds.length) : 1)
               }
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-sky-600"
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-info-600"
             />
             <div className="min-w-0 flex-1">
               <p className="text-[13px] font-medium text-gray-900">
                 Étaler sur plusieurs jours
               </p>
-              <p className="text-[11px] text-gray-500 mt-0.5">
+              <p className="text-[11px] text-muted-foreground mt-0.5">
                 Programme un slot par jour à partir de la date de départ.
               </p>
               {spreadOverDays > 1 && (
                 <div className="mt-2 inline-flex items-center gap-2">
-                  <span className="text-[11px] text-gray-600">Sur</span>
+                  <span className="text-[11px] text-muted-foreground">Sur</span>
                   <Input
                     id="spread-days"
                     type="number"
@@ -163,7 +163,7 @@ export function BulkScheduleModal({ slotIds, onScheduled, onClose }: Props) {
                     }
                     className="w-16"
                   />
-                  <span className="text-[11px] text-gray-600">jours</span>
+                  <span className="text-[11px] text-muted-foreground">jours</span>
                 </div>
               )}
             </div>
@@ -174,13 +174,13 @@ export function BulkScheduleModal({ slotIds, onScheduled, onClose }: Props) {
               type="checkbox"
               checked={useBindingTime}
               onChange={(e) => setUseBindingTime(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-sky-600"
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-info-600"
             />
             <div className="min-w-0 flex-1">
               <p className="text-[13px] font-medium text-gray-900">
                 Garder l&apos;heure de chaque recette
               </p>
-              <p className="text-[11px] text-gray-500 mt-0.5">
+              <p className="text-[11px] text-muted-foreground mt-0.5">
                 Utilise le publishTime du PatternBinding de chaque slot au
                 lieu de l&apos;heure de base saisie au-dessus.
               </p>
@@ -188,7 +188,7 @@ export function BulkScheduleModal({ slotIds, onScheduled, onClose }: Props) {
           </label>
         </div>
 
-        {error && <p className="mt-3 text-[12px] text-rose-700">{error}</p>}
+        {error && <p className="mt-3 text-[12px] text-danger-700">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <Button

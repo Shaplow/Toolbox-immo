@@ -134,6 +134,9 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
   // (cohérence avec calendarEngine.generateCalendarSlots). Sinon DRAFT.
   let initialStatus: string = "DRAFT";
 
+  // Titre par défaut = label de la recette quand l'admin n'en saisit pas.
+  let patternLabel: string | null = null;
+
   let resolvedPattern: {
     accountId: string;
     source: string;
@@ -167,6 +170,7 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
       );
     }
     const t = binding.patternTemplate;
+    patternLabel = t.label;
     resolvedPattern = {
       accountId: binding.accountId,
       source: t.source,
@@ -207,6 +211,7 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
       );
     }
     resolvedPattern = pattern;
+    patternLabel = pattern.label;
     initialStatus = mapSourceToInitialStatus(pattern.source);
     if (!resolvedAssigneeMonteurId && pattern.defaultAssigneeMonteurId) {
       resolvedAssigneeMonteurId = pattern.defaultAssigneeMonteurId;
@@ -300,7 +305,8 @@ export async function createSlot(input: CreateSlotInput, ctx: UserContext) {
     data: {
       accountId: input.accountId,
       scheduledAt: parsedScheduledAt,
-      title: input.title ?? null,
+      // Fallback titre = nom de la recette si l'admin ne saisit rien.
+      title: (input.title?.trim() || patternLabel) ?? null,
       description: input.description ?? null,
       notes: input.notes ?? null,
       // Status initial dérivé du pattern.source (cohérence calendarEngine

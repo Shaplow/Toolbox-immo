@@ -29,7 +29,7 @@ export function TextBlockPropertiesPanel({
       <Section label="Règles texte">
         <div className="space-y-3">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Max lignes</span>
+            <span className="text-xs font-medium text-muted-foreground">Max lignes</span>
             <input
               type="number"
               min={1}
@@ -38,9 +38,9 @@ export function TextBlockPropertiesPanel({
               onChange={(e) => onUpdateBlock(block.id, {
                 rules: { ...block.rules, maxLines: e.target.value ? Number(e.target.value) : undefined },
               })}
-              className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+              className="border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
             />
-            <span className="text-[10px] text-gray-400">Laisser vide pour autoriser autant de lignes que possible.</span>
+            <span className="text-[10px] text-muted-foreground">Laisser vide pour autoriser autant de lignes que possible.</span>
           </label>
 
           <ToggleSwitch
@@ -59,7 +59,7 @@ export function TextBlockPropertiesPanel({
 
           {block.rules.shrinkToFit && (
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-600">Taille min (pt)</span>
+              <span className="text-xs font-medium text-muted-foreground">Taille min (pt)</span>
               <input
                 type="number"
                 min={1}
@@ -68,9 +68,9 @@ export function TextBlockPropertiesPanel({
                 onChange={(e) => onUpdateBlock(block.id, {
                   rules: { ...block.rules, minFontSize: e.target.value ? Number(e.target.value) : undefined },
                 })}
-                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+                className="border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
               />
-              <span className="text-[10px] text-gray-400">
+              <span className="text-[10px] text-muted-foreground">
                 Le texte réduit jusqu&apos;à cette taille minimale s&apos;il ne rentre pas dans la box.
               </span>
             </label>

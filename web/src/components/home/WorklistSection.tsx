@@ -34,15 +34,15 @@ interface WorklistSectionProps {
 }
 
 const TONE_COUNT_CLS: Record<NonNullable<WorklistSectionProps["tone"]>, string> = {
-  danger: "bg-rose-50/80 text-rose-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.2)]",
-  default: "bg-white/70 text-gray-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.08)]",
-  muted: "bg-gray-100/60 text-gray-500 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.04)]",
+  danger:  "bg-danger-50 text-danger-700 border border-danger-200",
+  default: "bg-muted text-foreground border border-border",
+  muted:   "bg-muted text-muted-foreground border border-border",
 };
 
 const TONE_TITLE_CLS: Record<NonNullable<WorklistSectionProps["tone"]>, string> = {
-  danger: "text-rose-800",
-  default: "text-gray-950",
-  muted: "text-gray-600",
+  danger:  "text-danger-700",
+  default: "text-foreground",
+  muted:   "text-muted-foreground",
 };
 
 export function WorklistSection({
@@ -81,7 +81,7 @@ export function WorklistSection({
         }
       >
         {collapsible && (
-          <span className="text-gray-400 shrink-0">
+          <span className="text-muted-foreground shrink-0">
             {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </span>
         )}
@@ -89,7 +89,7 @@ export function WorklistSection({
           {title}
         </h3>
         <span
-          className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10.5px] font-medium tabular-nums ${TONE_COUNT_CLS[tone]}`}
+          className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-md text-[10.5px] font-medium tabular-nums ${TONE_COUNT_CLS[tone]}`}
         >
           {slots.length}
         </span>
@@ -99,12 +99,12 @@ export function WorklistSection({
         <div className="space-y-2.5">
           {slots.length === 0 ? (
             collapsible ? (
-              <p className="text-[11px] text-gray-400 italic py-2">Aucune publication</p>
+              <p className="text-[11px] text-muted-foreground py-2">Aucune publication</p>
             ) : (
-              <div className="inline-flex items-center gap-2.5 rounded-xl bg-sage-50/70 backdrop-blur-[8px] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(111,162,128,0.22)]">
-                <CheckCircle2 size={16} className="text-sage-600 shrink-0" />
-                <p className="text-[12.5px] text-sage-800">
-                  {emptyMessage ?? "Rien à traiter ici pour le moment."}
+              <div className="inline-flex items-center gap-2.5 rounded-md bg-success-50 border border-success-200 px-4 py-3">
+                <CheckCircle2 size={16} className="text-success-600 shrink-0" />
+                <p className="text-[12.5px] text-success-700">
+                  {emptyMessage ?? "Rien à traiter."}
                 </p>
               </div>
             )

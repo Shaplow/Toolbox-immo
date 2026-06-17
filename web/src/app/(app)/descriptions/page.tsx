@@ -106,19 +106,19 @@ export default async function DescriptionPage({ searchParams }: PageProps) {
   return (
     <div className="min-h-screen">
       <div
-        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
-        style={{ background: "var(--gradient-page-shell)" }}
+        className="mx-auto max-w-7xl px-6 py-8"
+
       >
         <div className="px-6 sm:px-8 pt-6 pb-12">
           <div className="max-w-4xl mx-auto space-y-6">
             {slotForBanner && slotId && (
               // V5.B.3 — Banner peach INTÉRIEUR au wrapper pastel (sinon
               // border-b cassait le rounded-3xl). Palette Coastal Studio.
-              <div className="rounded-xl bg-gradient-to-b from-peach-50/85 to-peach-50/55 backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(245,158,107,0.30)]">
+              <div className="rounded-xl bg-gradient-to-b from-warning-50/85 to-warning-50/55 px-4 py-3 ">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2 min-w-0 text-sm">
-                    <Info size={14} className="text-peach-700 shrink-0" />
-                    <span className="text-peach-900">
+                    <Info size={14} className="text-warning-700 shrink-0" />
+                    <span className="text-warning-700">
                       Vous générez une légende pour{" "}
                       <span className="font-semibold">
                         {slotForBanner.title ?? `@${slotForBanner.handle}`}
@@ -127,7 +127,7 @@ export default async function DescriptionPage({ searchParams }: PageProps) {
                   </div>
                   <Link
                     href={safeReturnTo ?? `/publications/${slotId}`}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-peach-700 hover:text-peach-900 transition-colors shrink-0"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-warning-700 hover:text-warning-700 transition-colors shrink-0"
                   >
                     <ChevronLeft size={12} />
                     Retour à la publication

@@ -78,31 +78,31 @@ export default async function PublicationCoverPage({ params }: Props) {
   return (
     <div className="min-h-screen">
       <div
-        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
-        style={{ background: "var(--gradient-page-shell)" }}
+        className="mx-auto max-w-7xl px-6 py-8"
+
       >
         <div className="px-6 sm:px-8 pt-6 pb-12">
           <div className="max-w-6xl mx-auto space-y-5">
             {/* Header contextuel glass — sticky pour rester visible pendant la
                 sélection. V5.B.5 : aligné au pattern Liquid Glass des autres
                 tools (peach card pour signaler "Cover pour une publication"). */}
-            <div className="sticky top-4 z-10 rounded-xl bg-gradient-to-b from-peach-50/85 to-peach-50/55 backdrop-blur-[12px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(245,158,107,0.30)]">
+            <div className="sticky top-4 z-10 rounded-xl bg-gradient-to-b from-warning-50/85 to-warning-50/55 px-4 py-3 ">
               <Link
                 href={backHref}
-                className="inline-flex items-center gap-1 text-xs text-peach-700 hover:text-peach-900 transition-colors"
+                className="inline-flex items-center gap-1 text-xs text-warning-700 hover:text-warning-700 transition-colors"
               >
                 <ChevronLeft size={13} />
                 Retour à la publication
               </Link>
-              <nav className="mt-1 flex items-center gap-1 text-xs text-peach-700/80 flex-wrap">
+              <nav className="mt-1 flex items-center gap-1 text-xs text-warning-700/80 flex-wrap">
                 <Link
                   href={backHref}
-                  className="hover:text-peach-900 transition-colors truncate max-w-[240px] font-medium"
+                  className="hover:text-warning-700 transition-colors truncate max-w-[240px] font-medium"
                 >
                   {slotLabel}
                 </Link>
-                <ChevronRight size={11} className="text-peach-700/50" />
-                <span className="text-peach-900 font-medium inline-flex items-center gap-1">
+                <ChevronRight size={11} className="text-warning-700/50" />
+                <span className="text-warning-700 font-medium inline-flex items-center gap-1">
                   <ImageIcon size={11} />
                   Cover
                 </span>

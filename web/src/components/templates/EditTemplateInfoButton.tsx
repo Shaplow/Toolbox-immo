@@ -35,7 +35,7 @@ export function EditTemplateInfoButton({
     return (
       <button
         onClick={() => setOpen(true)}
-        className="text-xs text-gray-400 hover:text-sky-700 transition-colors"
+        className="text-xs text-gray-400 hover:text-info-700 transition-colors"
         title="Renommer"
       >
         ✎
@@ -51,14 +51,14 @@ export function EditTemplateInfoButton({
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="Nom"
-        className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-sky-400"
+        className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-info-200"
       />
       <input
         type="text"
         value={client}
         onChange={(e) => setClient(e.target.value)}
         placeholder="Client"
-        className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-sky-400"
+        className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-info-200"
       />
       <div className="flex gap-1">
         <button
@@ -71,7 +71,7 @@ export function EditTemplateInfoButton({
         <button
           type="submit"
           disabled={saving}
-          className="flex-1 text-xs bg-sky-600 text-white rounded-lg py-1 hover:bg-sky-700 disabled:opacity-60"
+          className="flex-1 text-xs bg-info-600 text-white rounded-lg py-1 hover:bg-info-700 disabled:opacity-60"
         >
           {saving ? "..." : "OK"}
         </button>

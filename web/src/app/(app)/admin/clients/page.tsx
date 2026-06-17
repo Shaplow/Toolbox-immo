@@ -49,12 +49,10 @@ export default async function AdminClientsPage() {
         <ToolPageHeader
           icon={Building2}
           title="Clients"
-          subtitle="Annuaire commercial — un client porte N comptes Instagram."
-          iconTint="sky"
           kpis={
             <>
-              <KPIPill label="Clients" value={items.length} tint="sky" />
-              <KPIPill label="Comptes IG" value={totalAccounts} tint="sage" />
+              <KPIPill label="Clients" value={items.length} />
+              <KPIPill label="Comptes IG" value={totalAccounts} />
             </>
           }
         />

@@ -75,7 +75,7 @@ export function MediaAssetsKpiRow({ assets, libType }: Props) {
         tint="sky"
       />
       <KpiCard
-        label="Packs"
+        label="Groupes"
         value={stats.totalPacks}
         icon={Layers}
         tint="sky"
@@ -101,18 +101,18 @@ type Tint = "sky" | "sage" | "peach";
 
 const TINT_CONFIG: Record<Tint, { icon: string; label: string; rgb: string }> = {
   sky: {
-    icon: "bg-gradient-to-b from-sky-100 to-sky-200/80 text-sky-700",
-    label: "text-gray-500",
+    icon: "bg-gradient-to-b from-info-100 to-info-200/80 text-info-700",
+    label: "text-muted-foreground",
     rgb: "77,150,191",
   },
   sage: {
-    icon: "bg-gradient-to-b from-sage-100 to-sage-200/80 text-sage-700",
-    label: "text-gray-500",
+    icon: "bg-gradient-to-b from-success-100 to-success-200/80 text-success-700",
+    label: "text-muted-foreground",
     rgb: "111,162,128",
   },
   peach: {
-    icon: "bg-gradient-to-b from-peach-100 to-peach-200/80 text-peach-700",
-    label: "text-peach-700",
+    icon: "bg-gradient-to-b from-warning-100 to-warning-200/80 text-warning-700",
+    label: "text-warning-700",
     rgb: "221,140,90",
   },
 };
@@ -134,9 +134,9 @@ function KpiCard({
   return (
     <div
       className={[
-        "rounded-2xl p-3.5 bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[10px] backdrop-saturate-150",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)]",
-        "hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.55),inset_0_0_0_1px_rgba(15,23,42,0.1),0_4px_12px_-4px_rgba(15,23,42,0.1)]",
+        "rounded-2xl p-3.5 bg-card border border-border ",
+        "",
+        "hover:",
         "transition-shadow",
         className ?? "",
       ].join(" ")}
@@ -146,7 +146,7 @@ function KpiCard({
           className={[
             "shrink-0 h-8 w-8 rounded-xl inline-flex items-center justify-center",
             cfg.icon,
-            "shadow-[inset_0_1px_0_rgba(255,255,255,0.8),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
+            "",
           ].join(" ")}
         >
           <Icon size={14} />
@@ -155,7 +155,7 @@ function KpiCard({
           <p className={`text-[9.5px] uppercase tracking-widest font-medium ${cfg.label} truncate`}>
             {label}
           </p>
-          <p className="text-[18px] font-semibold text-gray-950 tabular-nums leading-tight">
+          <p className="text-[18px] font-semibold text-foreground tabular-nums leading-tight">
             {value.toLocaleString("fr-FR")}
           </p>
         </div>

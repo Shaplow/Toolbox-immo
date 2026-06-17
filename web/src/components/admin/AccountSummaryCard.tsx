@@ -34,12 +34,12 @@ function handleInitials(handle: string): string {
 
 function avatarGradient(handle: string): string {
   const gradients = [
-    "from-peach-200 to-rose-200",
-    "from-sage-200 to-sky-200",
-    "from-sky-200 to-peach-200",
-    "from-rose-200 to-peach-200",
-    "from-sage-200 to-peach-200",
-    "from-sky-200 to-rose-200",
+    "from-warning-200 to-danger-200",
+    "from-success-200 to-info-200",
+    "from-info-200 to-warning-200",
+    "from-danger-200 to-warning-200",
+    "from-success-200 to-warning-200",
+    "from-info-200 to-danger-200",
   ];
   let h = 0;
   for (let i = 0; i < handle.length; i++) h = (h * 31 + handle.charCodeAt(i)) >>> 0;
@@ -103,27 +103,27 @@ export function AccountSummaryCard({ data }: { data: AccountPeekData }) {
           className={[
             "relative h-14 w-14 rounded-full inline-flex items-center justify-center shrink-0 bg-gradient-to-br",
             gradient,
-            "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),0_1px_2px_rgba(15,23,42,0.06)]",
+            "",
           ].join(" ")}
         >
           <span className="text-[16px] font-semibold text-gray-800 tracking-tight">
             {handleInitials(data.handle)}
           </span>
-          <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-white inline-flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)]">
-            <Instagram size={10} className="text-rose-500" />
+          <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-white inline-flex items-center justify-center ">
+            <Instagram size={10} className="text-danger-600" />
           </span>
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[15px] font-semibold text-gray-950 truncate">
+          <p className="text-[15px] font-semibold text-foreground truncate">
             @{data.handle}
           </p>
-          <p className="text-[12px] text-gray-500 truncate">{data.name}</p>
+          <p className="text-[12px] text-muted-foreground truncate">{data.name}</p>
           {data.client ? (
-            <p className="text-[10.5px] uppercase tracking-widest font-medium text-gray-400 mt-1">
+            <p className="text-[10.5px] uppercase tracking-widest font-medium text-muted-foreground mt-1">
               {data.client.name}
             </p>
           ) : (
-            <p className="text-[10.5px] uppercase tracking-widest font-medium text-gray-400 mt-1 italic">
+            <p className="text-[10.5px] uppercase tracking-widest font-medium text-muted-foreground mt-1 italic">
               Sans client
             </p>
           )}
@@ -151,22 +151,22 @@ export function AccountSummaryCard({ data }: { data: AccountPeekData }) {
       </div>
 
       {/* Prochaine publication */}
-      <div className="rounded-xl bg-white/55 backdrop-blur-[6px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+      <div className="rounded-xl bg-card border border-border p-3 ">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
           Prochaine publication
         </p>
         {data.nextScheduled ? (
           <>
-            <p className="mt-1 text-[13px] font-medium text-gray-950">
+            <p className="mt-1 text-[13px] font-medium text-foreground">
               {formatDateTime(data.nextScheduled.scheduledAt)}
             </p>
-            <p className="mt-0.5 text-[11.5px] text-gray-500 truncate">
+            <p className="mt-0.5 text-[11.5px] text-muted-foreground truncate">
               {data.nextScheduled.label ?? "Sans recette"} ·{" "}
               {STATUS_LABELS[data.nextScheduled.status as keyof typeof STATUS_LABELS] ?? data.nextScheduled.status}
             </p>
           </>
         ) : (
-          <p className="mt-1 text-[12.5px] text-gray-500 italic">
+          <p className="mt-1 text-[12.5px] text-muted-foreground italic">
             Aucune publication programmée
           </p>
         )}
@@ -185,12 +185,12 @@ function StatBlock({
   value: string;
 }) {
   return (
-    <div className="rounded-xl bg-white/55 backdrop-blur-[6px] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-      <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 inline-flex items-center gap-1">
-        <Icon size={10} className="text-gray-400" />
+    <div className="rounded-xl bg-card border border-border p-2.5 ">
+      <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground inline-flex items-center gap-1">
+        <Icon size={10} className="text-muted-foreground" />
         {label}
       </p>
-      <p className="mt-1 text-[13px] font-mono tabular-nums font-semibold text-gray-950 truncate">
+      <p className="mt-1 text-[13px] font-mono tabular-nums font-semibold text-foreground truncate">
         {value}
       </p>
     </div>

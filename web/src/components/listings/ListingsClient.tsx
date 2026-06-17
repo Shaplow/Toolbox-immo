@@ -200,30 +200,30 @@ interface TimelineEntry {
 }
 
 const TONE_ICON_BG: Record<Tone, string> = {
-  peach: "bg-peach-100/70 text-peach-700",
-  sky:   "bg-sky-100/70 text-sky-700",
-  sage:  "bg-sage-100/70 text-sage-700",
-  rose:  "bg-rose-100/70 text-rose-700",
+  peach: "bg-warning-100/70 text-warning-700",
+  sky:   "bg-info-100/70 text-info-700",
+  sage:  "bg-success-100/70 text-success-700",
+  rose:  "bg-danger-100/70 text-danger-700",
   amber: "bg-amber-100/70 text-amber-700",
 };
 
 // Bord gauche signature glass v2 — apparaît en <span> absolute dans TimelineRow
 // (pas en `border-l` classique pour ne pas casser le padding sticky col).
 const TONE_LEFT_BAR: Record<Tone, string> = {
-  peach: "bg-peach-400",
-  sky:   "bg-sky-400",
-  sage:  "bg-sage-400",
-  rose:  "bg-rose-400",
+  peach: "bg-warning-200",
+  sky:   "bg-info-200",
+  sage:  "bg-success-200",
+  rose:  "bg-danger-200",
   amber: "bg-amber-400",
 };
 
 // Tab badge styles — classes statiques explicites (Tailwind purge ne supporte
 // pas les interpolations dynamiques bg-${tone}-100).
 const TAB_BADGE_ACTIVE: Record<Tone, string> = {
-  peach: "bg-peach-100 text-peach-700",
-  sky:   "bg-sky-100 text-sky-700",
-  sage:  "bg-sage-100 text-sage-700",
-  rose:  "bg-rose-100 text-rose-700",
+  peach: "bg-warning-100 text-warning-700",
+  sky:   "bg-info-100 text-info-700",
+  sage:  "bg-success-100 text-success-700",
+  rose:  "bg-danger-100 text-danger-700",
   amber: "bg-amber-100 text-amber-700",
 };
 
@@ -254,17 +254,17 @@ function StatusBadge({ status }: { status: string }) {
   const isError = STATUS_ERROR.has(status);
 
   const Icon = isInProgress ? Loader2 : isDone ? CheckCircle2 : isError ? AlertCircle : Clock;
-  // Glass v2 pastilles — backdrop-blur + ring inset signature au lieu de border solide.
+  // Glass v2 pastilles — + ring inset signature au lieu de border solide.
   const cls = isInProgress
-    ? "bg-peach-50/70 text-peach-700 shadow-[inset_0_0_0_1px_rgba(221,140,90,0.22)]"
+    ? "bg-warning-50/70 text-warning-700 shadow-[inset_0_0_0_1px_rgba(221,140,90,0.22)]"
     : isDone
-    ? "bg-sage-50/70 text-sage-700 shadow-[inset_0_0_0_1px_rgba(111,162,128,0.22)]"
+    ? "bg-success-50/70 text-success-700 shadow-[inset_0_0_0_1px_rgba(111,162,128,0.22)]"
     : isError
-    ? "bg-rose-50/70 text-rose-700 shadow-[inset_0_0_0_1px_rgba(201,113,133,0.28)]"
-    : "bg-white/60 text-gray-600 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]";
+    ? "bg-danger-50/70 text-danger-700 shadow-[inset_0_0_0_1px_rgba(201,113,133,0.28)]"
+    : "bg-white/60 text-muted-foreground shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]";
 
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full backdrop-blur-[6px] px-2 py-0.5 text-[10.5px] font-medium ${cls}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-medium ${cls}`}>
       <Icon size={10} className={isInProgress ? "animate-spin" : ""} />
       {label}
     </span>
@@ -298,36 +298,36 @@ function TimelineRow({
   return (
     <Link
       href={entry.href}
-      className="group relative block rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.10),0_4px_12px_-4px_rgba(15,23,42,0.10),0_12px_28px_-12px_rgba(15,23,42,0.14)] hover:-translate-y-0.5 transition-all overflow-hidden pl-4 pr-3.5 py-3"
+      className="group relative block rounded-2xl bg-card border border-border  hover: hover:-translate-y-0.5 transition-all overflow-hidden pl-4 pr-3.5 py-3"
     >
       {/* Bord gauche signature couleur par type (3px) — span absolute pour ne
           pas perturber le calcul du padding et permettre l'effet hover smooth. */}
       <span className={`absolute inset-y-2.5 left-0 w-[3px] rounded-r-full ${TONE_LEFT_BAR[entry.iconTone]}`} />
       <div className="flex items-center gap-3">
-        <div className={`shrink-0 flex items-center justify-center w-9 h-9 rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.04)] ${TONE_ICON_BG[entry.iconTone]}`}>
+        <div className={`shrink-0 flex items-center justify-center w-9 h-9 rounded-xl  ${TONE_ICON_BG[entry.iconTone]}`}>
           <Icon size={15} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-[13px] font-semibold text-gray-950 truncate">{entry.title}</p>
+            <p className="text-[13px] font-semibold text-foreground truncate">{entry.title}</p>
             <StatusBadge status={entry.status} />
             {actions && actions.renders.length > 1 && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-peach-50/70 text-peach-700 shadow-[inset_0_0_0_1px_rgba(221,140,90,0.22)] tabular-nums">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-warning-50/70 text-warning-700 shadow-[inset_0_0_0_1px_rgba(221,140,90,0.22)] tabular-nums">
                 {actions.renders.length} variantes
               </span>
             )}
           </div>
-          <p className="text-[11.5px] text-gray-500 mt-0.5 truncate">
+          <p className="text-[11.5px] text-muted-foreground mt-0.5 truncate">
             {entry.sublabel ?? "—"}
             {entry.ownerName && (
-              <span className="ml-1.5 inline-flex items-center gap-1 text-gray-400">
-                <span className="text-gray-300">·</span> {entry.ownerName}
+              <span className="ml-1.5 inline-flex items-center gap-1 text-muted-foreground">
+                <span className="text-muted-foreground/60">·</span> {entry.ownerName}
               </span>
             )}
           </p>
         </div>
         {/* Actions inline + date + chevron */}
-        <div className="shrink-0 flex items-center gap-1 text-[11px] text-gray-400">
+        <div className="shrink-0 flex items-center gap-1 text-[11px] text-muted-foreground">
           {(canQuickView || canRegen || canDownload || canDelete) && (
             <div className="flex items-center gap-0.5 mr-1">
               {canQuickView && (
@@ -339,7 +339,7 @@ function TimelineRow({
                   }}
                   title="Vue rapide"
                   aria-label="Vue rapide"
-                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-500 hover:text-gray-900 hover:bg-white/70 transition-all focus-ring"
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-gray-900 hover:bg-white/70 transition-all focus-ring"
                 >
                   <Eye size={13} />
                 </button>
@@ -355,7 +355,7 @@ function TimelineRow({
                   }}
                   title="Régénérer"
                   aria-label="Régénérer"
-                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-500 hover:text-peach-700 hover:bg-white/70 transition-all focus-ring"
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-warning-700 hover:bg-white/70 transition-all focus-ring"
                 >
                   <RotateCw size={13} />
                 </button>
@@ -367,7 +367,7 @@ function TimelineRow({
                   onClick={(e) => e.stopPropagation()}
                   title={`Télécharger ${actions!.downloadExt?.toUpperCase() ?? ""}`}
                   aria-label="Télécharger"
-                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-500 hover:text-gray-900 hover:bg-white/70 transition-all focus-ring"
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-gray-900 hover:bg-white/70 transition-all focus-ring"
                 >
                   <Download size={13} />
                 </a>
@@ -376,11 +376,11 @@ function TimelineRow({
             </div>
           )}
           <span className="hidden sm:inline tabular-nums">{formatDate(entry.createdAt)}</span>
-          <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-700 transition-colors" />
+          <ChevronRight size={14} className="text-muted-foreground/60 group-hover:text-foreground transition-colors" />
         </div>
       </div>
       {showError && (
-        <p className="mt-2 pl-12 text-[11.5px] text-rose-700 line-clamp-2" title={entry.errorMsg ?? undefined}>
+        <p className="mt-2 pl-12 text-[11.5px] text-danger-700 line-clamp-2" title={entry.errorMsg ?? undefined}>
           {entry.errorMsg}
         </p>
       )}
@@ -821,12 +821,12 @@ export function ListingsClient({
   return (
     <div>
       {/* Toolbar glass v2 : tabs + filtres (search / status / user admin) */}
-      <div className="mb-6 rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] p-3 space-y-3">
+      <div className="mb-6 rounded-2xl bg-card border border-border  p-3 space-y-3">
         {/* Tabs */}
         <div className="flex items-center gap-1 flex-wrap">
           {tabs.map((t) => {
             const active = tab === t.id;
-            const badgeBg = active ? TAB_BADGE_ACTIVE[t.tone] : "bg-white/60 text-gray-500";
+            const badgeBg = active ? TAB_BADGE_ACTIVE[t.tone] : "bg-white/60 text-muted-foreground";
             return (
               <button
                 key={t.id}
@@ -834,8 +834,8 @@ export function ListingsClient({
                 onClick={() => setTab(t.id)}
                 className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[12.5px] font-medium transition-all ${
                   active
-                    ? "bg-gradient-to-b from-white/95 to-white/70 backdrop-blur-[8px] text-gray-950 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_-2px_rgba(15,23,42,0.06)]"
-                    : "text-gray-500 hover:text-gray-900 hover:bg-white/50"
+                    ? "bg-card border border-border text-foreground "
+                    : "text-muted-foreground hover:text-gray-900 hover:bg-white/50"
                 }`}
               >
                 {t.label}
@@ -887,20 +887,20 @@ export function ListingsClient({
 
       {/* Empty state */}
       {isEmpty && (
-        <div className="text-center py-20 rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/70 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] text-gray-400 mb-3">
+        <div className="text-center py-20 rounded-2xl bg-card border border-border ">
+          <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-card border border-border  text-muted-foreground mb-3">
             <EmptyIcon size={20} />
           </div>
-          <p className="text-[14px] font-semibold text-gray-700">{empty.label}</p>
-          <p className="mt-1 text-[12.5px] text-gray-500">
+          <p className="text-[14px] font-semibold text-foreground">{empty.label}</p>
+          <p className="mt-1 text-[12.5px] text-muted-foreground">
             {search || statusFilter !== "all" || userFilter ? (
-              <button type="button" onClick={() => { setSearch(""); setStatusFilter("all"); setUserFilter(null); }} className="text-sky-700 hover:text-sky-900 transition-colors">
+              <button type="button" onClick={() => { setSearch(""); setStatusFilter("all"); setUserFilter(null); }} className="text-info-700 hover:text-info-700 transition-colors">
                 Réinitialiser les filtres
               </button>
             ) : (
               <>
                 Rendez-vous dans{" "}
-                <Link href={empty.linkHref} className="text-sky-700 hover:text-sky-900 transition-colors">
+                <Link href={empty.linkHref} className="text-info-700 hover:text-info-700 transition-colors">
                   {empty.linkLabel}
                 </Link>
               </>
@@ -914,9 +914,9 @@ export function ListingsClient({
         {GROUP_ORDER.filter((g) => activeGroups[g]?.length).map((group) => (
           <section key={group}>
             <div className="flex items-center gap-3 mb-3 sticky top-2 z-10">
-              <h2 className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/70 backdrop-blur-[10px] text-[10px] font-semibold text-gray-600 uppercase tracking-widest shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] shrink-0">
+              <h2 className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-card border border-border text-[10px] font-semibold text-muted-foreground uppercase tracking-widest  shrink-0">
                 {group}
-                <span className="tabular-nums text-gray-400">({activeGroups[group]!.length})</span>
+                <span className="tabular-nums text-muted-foreground">({activeGroups[group]!.length})</span>
               </h2>
               <div className="flex-1 border-t border-white/40" />
             </div>

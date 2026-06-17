@@ -20,33 +20,33 @@ export function CycleBadge({
   accountFilter: string | null;
 }) {
   if (usagePolicy === "unlimited") {
-    return <span className="text-[11px] text-gray-300">—</span>;
+    return <span className="text-[11px] text-muted-foreground/60">—</span>;
   }
   if (usagePolicy === "cycle_per_account" || usagePolicy === "once_per_account") {
     if (!accountFilter) {
       return (
-        <span className="text-[10.5px] text-gray-500 bg-white/60 backdrop-blur-[6px] border border-gray-200/60 rounded-full px-2 py-0.5">
+        <span className="text-[10.5px] text-muted-foreground bg-card border border-border border border-border/60 rounded-full px-2 py-0.5">
           Par compte
         </span>
       );
     }
     return entry.usageCount > 0 ? (
-      <span className="text-[10.5px] text-peach-700 bg-peach-50/70 backdrop-blur-[6px] shadow-[inset_0_0_0_1px_rgba(221,140,90,0.22)] rounded-full px-2 py-0.5">
+      <span className="text-[10.5px] text-warning-700 bg-warning-50/70 shadow-[inset_0_0_0_1px_rgba(221,140,90,0.22)] rounded-full px-2 py-0.5">
         Utilisée
       </span>
     ) : (
-      <span className="text-[10.5px] text-sage-700 bg-sage-50/70 backdrop-blur-[6px] shadow-[inset_0_0_0_1px_rgba(111,162,128,0.22)] rounded-full px-2 py-0.5">
+      <span className="text-[10.5px] text-success-700 bg-success-50/70 shadow-[inset_0_0_0_1px_rgba(111,162,128,0.22)] rounded-full px-2 py-0.5">
         Disponible
       </span>
     );
   }
   // "cycle" | "once_global" → global usedInCycle flag
   return entry.usedInCycle ? (
-    <span className="text-[10.5px] text-peach-700 bg-peach-50/70 backdrop-blur-[6px] shadow-[inset_0_0_0_1px_rgba(221,140,90,0.22)] rounded-full px-2 py-0.5">
+    <span className="text-[10.5px] text-warning-700 bg-warning-50/70 shadow-[inset_0_0_0_1px_rgba(221,140,90,0.22)] rounded-full px-2 py-0.5">
       Utilisée
     </span>
   ) : (
-    <span className="text-[10.5px] text-sage-700 bg-sage-50/70 backdrop-blur-[6px] shadow-[inset_0_0_0_1px_rgba(111,162,128,0.22)] rounded-full px-2 py-0.5">
+    <span className="text-[10.5px] text-success-700 bg-success-50/70 shadow-[inset_0_0_0_1px_rgba(111,162,128,0.22)] rounded-full px-2 py-0.5">
       Disponible
     </span>
   );

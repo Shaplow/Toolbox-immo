@@ -25,6 +25,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Chip } from "@/components/ui/Chip";
 import { STATUS_LABELS, type PublicationSlot, type SlotStatus } from "@/types/calendar";
 import { getPublicationPhase, PHASE_COLORS } from "@/lib/slots/phase";
+import { isReadyToSchedule } from "@/lib/slots/bankReady";
 import { BulkScheduleModal } from "./BulkScheduleModal";
 
 interface BankViewProps {
@@ -34,16 +35,6 @@ interface BankViewProps {
   onScheduleSlot: (slot: PublicationSlot) => void;
   /** Sprint B — callback appelé après une programmation en lot. */
   onBulkScheduled?: (scheduledCount: number) => void;
-}
-
-/** Slot considéré "prêt à programmer" : a un montage courant ET status finalisable. */
-function isReadyToSchedule(slot: PublicationSlot): boolean {
-  if (!slot.currentVersionId) return false;
-  return (
-    slot.status === "EDIT_APPROVED" ||
-    slot.status === "READY_FOR_CM" ||
-    slot.status === "CAPTIONS_PENDING"
-  );
 }
 
 interface Group {
@@ -90,11 +81,11 @@ const GROUPS: Group[] = [
 
 const GROUP_BG: Record<Group["variant"], string> = {
   ready:
-    "bg-gradient-to-b from-sky-50/80 to-white/40 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(56,148,200,0.18)]",
+    "bg-gradient-to-b from-info-50/80 to-white/40 ",
   review:
-    "bg-gradient-to-b from-peach-50/80 to-white/40 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(220,140,90,0.18)]",
-  wip: "bg-gradient-to-b from-stone-50/80 to-white/40 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(120,113,108,0.12)]",
-  todo: "bg-gradient-to-b from-white/60 to-white/30 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)]",
+    "bg-gradient-to-b from-warning-50/80 to-white/40 ",
+  wip: "bg-gradient-to-b from-stone-50/80 to-white/40 ",
+  todo: "bg-gradient-to-b from-white/60 to-white/30 ",
 };
 
 interface PartitionedGroups {
@@ -145,7 +136,7 @@ export function BankView({
         {[1, 2].map((i) => (
           <div
             key={i}
-            className="rounded-2xl bg-white/40 p-6 h-32 animate-pulse shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]"
+            className="rounded-2xl bg-white/40 p-6 h-32 animate-pulse "
           />
         ))}
       </div>
@@ -156,7 +147,7 @@ export function BankView({
     return (
       <EmptyState
         icon={Inbox}
-        title="Aucun contenu en banque"
+        title="Aucune mission"
         description="Crée des missions sans date depuis le bouton « Nouvelles missions » — elles apparaîtront ici pendant la production."
       />
     );
@@ -201,7 +192,7 @@ export function BankView({
         return (
           <section
             key={group.key}
-            className={`rounded-2xl backdrop-blur-[8px] p-5 ${GROUP_BG[group.variant]}`}
+            className={`rounded-2xl p-5 ${GROUP_BG[group.variant]}`}
           >
             <header
               className="flex items-baseline justify-between gap-3 mb-4 cursor-pointer select-none"
@@ -218,13 +209,13 @@ export function BankView({
               title={isCollapsed ? "Déplier" : "Replier"}
             >
               <div className="min-w-0">
-                <h2 className="text-[15px] font-semibold text-gray-950 leading-tight inline-flex items-center gap-1.5">
+                <h2 className="text-[15px] font-semibold text-foreground leading-tight inline-flex items-center gap-1.5">
                   {group.label}
-                  <span className={`text-[10px] text-gray-400 transition-transform ${isCollapsed ? "" : "rotate-180"}`}>
+                  <span className={`text-[10px] text-muted-foreground transition-transform ${isCollapsed ? "" : "rotate-180"}`}>
                     ▾
                   </span>
                 </h2>
-                <p className="mt-0.5 text-[11.5px] text-gray-600">{group.hint}</p>
+                <p className="mt-0.5 text-[11.5px] text-muted-foreground">{group.hint}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {isReady && groupSlots.length > 1 && (
@@ -241,7 +232,7 @@ export function BankView({
                     Sélection multiple
                   </Chip>
                 )}
-                <span className="text-[11px] font-mono tabular-nums text-gray-500">
+                <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
                   {groupSlots.length} contenu{groupSlots.length > 1 ? "s" : ""}
                 </span>
               </div>
@@ -343,13 +334,13 @@ function BankCard({
       className={`group relative rounded-xl bg-white px-4 py-3.5 transition-shadow ${
         selected
           ? "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_2px_rgba(56,148,200,0.6),0_4px_12px_rgba(56,148,200,0.18)]"
-          : "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.04),0_8px_20px_-12px_rgba(15,23,42,0.14)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.14),0_4px_8px_rgba(15,23,42,0.06),0_12px_28px_-12px_rgba(15,23,42,0.22)]"
+          : " hover:"
       }`}
     >
       <button
         type="button"
         onClick={selectMode ? onToggleSelect : onOpen}
-        className="absolute inset-0 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+        className="absolute inset-0 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-info-200"
         aria-label={selectMode ? `Sélectionner ${title}` : `Ouvrir ${title}`}
       />
 
@@ -357,7 +348,7 @@ function BankCard({
         <div className="absolute top-2 right-2 pointer-events-none">
           <span
             className={`inline-flex h-5 w-5 items-center justify-center rounded-md ${
-              selected ? "bg-sky-600 text-white" : "bg-white border border-gray-300"
+              selected ? "bg-info-600 text-white" : "bg-white border border-gray-300"
             }`}
           >
             {selected ? <CheckSquare size={14} /> : null}
@@ -368,10 +359,10 @@ function BankCard({
       <div className="relative pointer-events-none">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <p className="text-[13.5px] font-semibold text-gray-950 truncate leading-tight">
+            <p className="text-[13.5px] font-semibold text-foreground truncate leading-tight">
               {title}
             </p>
-            <p className="mt-0.5 text-[11.5px] text-gray-500 truncate">
+            <p className="mt-0.5 text-[11.5px] text-muted-foreground truncate">
               @{slot.account.handle}
             </p>
           </div>
@@ -379,7 +370,7 @@ function BankCard({
             {STATUS_LABELS[slot.status]}
           </Chip>
         </div>
-        <div className="mt-2.5 flex items-center justify-between gap-2 text-[10.5px] text-gray-500">
+        <div className="mt-2.5 flex items-center justify-between gap-2 text-[10.5px] text-muted-foreground">
           <span className="truncate">
             {monteurName ? `Monteur · ${monteurName}` : "Sans monteur"}
           </span>
@@ -403,7 +394,7 @@ function BankCard({
         </div>
       )}
       {!canSchedule && (
-        <div className="relative mt-3 flex items-center justify-end text-[11px] text-gray-400 pointer-events-none">
+        <div className="relative mt-3 flex items-center justify-end text-[11px] text-muted-foreground pointer-events-none">
           <span>Ouvrir la fiche</span>
           <ChevronRight size={12} className="ml-0.5" />
         </div>

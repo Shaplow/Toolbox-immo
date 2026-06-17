@@ -16,15 +16,19 @@ Monorepo Next.js (web/) + Python render engine (render-engine/).
 
 **Tout nouveau code UI passe par les primitives `web/src/components/ui/` et les design tokens.** Pas de duplication de classes Tailwind ad hoc.
 
-- Conteneurs : `Card` (variant `solid | glass | frosted | tinted`)
-- Actions : `Button` (variants `primary | secondary | ghost | danger`)
-- Inputs : `Input`, `Textarea`, `Combobox`, `FormField` (wrapper label/error/help)
-- Layouts : `Drawer`, `Tabs`, `EmptyState`, `ConfirmDialog`, `DeleteButton`
-- Feedback : `Toast` (`toast.success/error/info`) — **jamais** `alert()` ou `confirm()` natifs
-- Pages full-screen : shell standard `<div className="min-h-screen"> <div className="my-11 ml-[100px] mr-[100px] rounded-3xl" style={{ background: "var(--gradient-page-shell)" }}>` (cf. cover/captions/transcription)
-- Surfaces internes : cards glass `bg-white/60 backdrop-blur-[6px] border border-white/50 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]`
+Doctrine DA v3 (15/06) : **flat shadcn-style, light only, accent indigo Linear (`#5e6ad2`)**. La doctrine Liquid Glass v2 + palette Coastal Studio (peach/sage/sky/rose) est jetée.
 
-Si une primitive manque pour un usage récurrent, **ajoute-la** dans `web/src/components/ui/` plutôt que de dupliquer des classes.
+- Tokens sémantiques : `bg-card`, `text-card-foreground`, `bg-popover`, `bg-muted`, `text-muted-foreground`, `text-foreground`, `border-border`, `border-input`, `bg-primary`, `text-primary-foreground`, `bg-accent`, `text-accent-foreground`.
+- Palette zinc 50→950 pour neutres ; success/danger/info/warning 50/100/200/600/700 pour semantic.
+- Conteneurs : `Card` (variant `default | outline`)
+- Actions : `Button` (variants `default | secondary | outline | ghost | danger | link`)
+- Inputs : `Input`, `Textarea`, `Combobox`, `Select`, `FormField`
+- Layouts : `PageShell` (max-w + padding), `Drawer`, `Tabs`, `EmptyState`, `ConfirmDialog`
+- Feedback : `Toast` (`toast.success/error/info`) — **jamais** `alert()` ou `confirm()` natifs
+- Surfaces : `bg-card border border-border rounded-lg` ; pas de `backdrop-blur`, pas de `gradient-page-shell`, pas de pastels Coastal Studio.
+- Shell pages : **toujours `<PageShell variant="default|wide|narrow">`**, jamais de wrapper inline `ml-[Npx] mr-[Npx] rounded-3xl` (banni — pattern Liquid Glass island jeté en DA v3 / Phase F).
+
+Si une primitive manque pour un usage récurrent, **ajoute-la** dans `web/src/components/ui/` plutôt que de dupliquer des classes. ESLint guard `no-restricted-syntax` flag toute réintroduction de `bg-(peach|sage)-*`.
 
 ## UX checkpoint
 
@@ -76,7 +80,21 @@ Exceptions : `/api/admin/impersonation` (cookie set/destroy) + `/api/webhooks/ru
 
 ## Glossaire UI (Pattern → Recette)
 
-**DB = Pattern, UI = Recette.** Le code (Prisma, types, services) garde les noms originaux `PatternTemplate` / `PatternBinding` / `PublicationSlot`. L'UI affiche "Recette" / "Application" / "Publication".
+**DB = Pattern, UI = Recette.** Le code (Prisma, types, services) garde les noms originaux `PatternTemplate` / `PatternBinding` / `PublicationSlot`. L'UI parle uniquement de "Recette" / "Publication".
+
+**G.3 (16/06)** : la "Recette" en UI fusionne PatternTemplate + PatternBinding. Sur la fiche compte (`/admin/accounts/[id]`), chaque carte expose les champs des deux modèles (contenu + planning + équipe) éditables inline via le drawer `RecipeForm` (tabs Contenu / Planning & équipe / Spécifique). Save atomique transaction Prisma : `POST/PATCH /api/admin/accounts/[id]/recipes[/<bindingId>]`. Le catalogue `/admin/patterns` reste accessible (Configuration → Recettes) pour réutiliser une recette sur un autre compte via "Appliquer à des comptes".
+
+**H.1 (16/06)** : médiathèque + data — vocab unifié **« Groupe »** côté UI pour le champ Prisma `setTag` (MediaAsset, DataEntry). Avant : "Pack" en média / "Set" en data ; après : "Groupe" partout. Labels gérés via `MEDIA_LABELS_FR` dans `entityLabels.ts`. Logique métier intacte (rotation, autocut, prefill).
+
+**H.2 (16/06)** : les `setTag` auto-générés à l'upload (préfixe `pack_`) sont **invisibles côté UI admin** — le footer des cards `MediaAssetsSetStack` affiche juste "N plans" sans label, la combobox du detail drawer + la modal upload n'exposent pas les `pack_*` comme options. Côté backend : routes PATCH `/api/admin/libraries/media/assets/[assetId]` + bulk refusent un `setTag` manuel commençant par `pack_` (préfixe réservé). La logique de rotation continue d'utiliser `setTag` comme avant.
+
+**H.3 (16/06)** : sur `MediaAssetDetailDrawer`, le champ `category` est replié sous "Avancé · Catégorie" (`<details>`) par défaut, déplié auto si l'asset a déjà une catégorie. Mode simple : un seul concept "Groupe" visible. Mode avancé : catégorie pilote l'exclusion famille dans la rotation auto.
+
+**I.1 + I.2 + I.3 (16/06) — Densification layout** :
+- **Calendrier** (`/calendar`) : header sticky 48px (drop le big 105px), `SlotCard` compact 56px (drop padding mort + nom compte, garde dot phase + heure + titre + 3 avatars), grille `gap-x-2.5 gap-y-3`, `DayCard` header single-line. Cible ≥10 slots visibles par viewport (vs 4-6).
+- **Médiathèque** (`/admin/libraries/{media,audio}/[id]`) : page SSR minimal, le shell complet (strip 60px + body) est dans `MediaAssetsPanel`. KpiRow + NextGenPreview retirés du flow (counts dans le strip header), bouton "Réglages" en haut ouvre `MediaLibrarySettingsDrawer`. Cards visibles dès le scroll initial.
+- **Data** (`/admin/libraries/data/[id]`) : même strip pattern, spreadsheet plein écran.
+- Composants `MediaAssetsKpiRow.tsx` + `MediaAssetsNextGenPreview.tsx` conservés en repo mais non-rendus (réversible si demande user).
 
 Source unique : `web/src/lib/i18n/entityLabels.ts` (`ENTITY_LABELS` + `entityLabel()` + `SOURCE_LABELS_FR` + `SOURCE_VARIANT` + helps contextuels). **Pas de SOURCE_LABEL redéclaré localement** dans un composant, sinon dérive garantie (5 versions différentes ont coexisté avant unification du 15 juin).
 
@@ -95,13 +113,13 @@ Source unique : `web/src/lib/i18n/entityLabels.ts` (`ENTITY_LABELS` + `entityLab
 ## Navigation admin
 
 ```
-PRODUCTION    — Templates / Calendrier
-CLIENTS       — Clients / Comptes Instagram
-CONFIGURATION — Ressources (hub 4 cards) / Utilisateurs
+PLANIFICATION — Calendrier / Comptes Instagram / Médiathèque / Vidéo / Données
+PRODUCTION    — Studio (templates) / Atelier (outils) / Mes générations
+CONFIGURATION — Recettes (catalogue) / Clients / Utilisateurs / Jobs actifs
 ```
 
-- Templates est un module central (pas dans Outils).
-- Patterns gérés via `/admin/accounts/[id]` (pas de page `/admin/patterns` top-level).
+- Studio (`/templates`) est le builder template central (pas dans Outils).
+- Recettes vivent par défaut sur la fiche compte (`/admin/accounts/[id]`). Le catalogue `/admin/patterns` est secondaire (réutilisation cross-comptes).
 - Presets sous-titres gérés via `/tools/captions` (pas de page admin dédiée).
 
 ## Tests

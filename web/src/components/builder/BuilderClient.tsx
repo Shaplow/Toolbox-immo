@@ -307,15 +307,15 @@ export function BuilderClient({
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-gray-100">
+    <div className="flex flex-col h-screen overflow-hidden bg-muted">
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <header className="flex items-center gap-1.5 bg-white border-b border-gray-200 px-3 h-10 shrink-0">
+      <header className="flex items-center gap-1.5 bg-white border-b border-border px-3 h-10 shrink-0">
         {backUrl && (
           <a
             href={backUrl}
             onClick={handleBackClick}
-            className="inline-flex items-center gap-0.5 text-xs text-gray-400 hover:text-gray-700 transition-colors mr-1 shrink-0"
+            className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors mr-1 shrink-0"
             title={`Retour vers ${backLabel}`}
           >
             <ChevronLeft size={13} />
@@ -400,7 +400,7 @@ export function BuilderClient({
         <aside className="flex shrink-0">
 
           {/* ── Icon rail (always visible, 48px) ─────────────────────────── */}
-          <nav className="w-12 flex flex-col items-center pt-2 pb-3 gap-0.5 bg-white border-r border-gray-100 shrink-0">
+          <nav className="w-12 flex flex-col items-center pt-2 pb-3 gap-0.5 bg-white border-r border-border shrink-0">
             {PANEL_ITEMS_TOP.map(({ id, label, Icon }) => (
               <button
                 key={id}
@@ -409,8 +409,8 @@ export function BuilderClient({
                 title={label}
                 className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
                   activePanel === id
-                    ? "bg-sky-50 text-sky-700"
-                    : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                    ? "bg-info-50 text-info-700"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 }`}
               >
                 <Icon size={18} />
@@ -419,7 +419,7 @@ export function BuilderClient({
 
             {/* Sequence indicator dot */}
             {hasMediaSources && activePanel !== "sequence" && (
-              <div className="w-1.5 h-1.5 rounded-full bg-sky-400 -mt-0.5" aria-hidden />
+              <div className="w-1.5 h-1.5 rounded-full bg-info-200 -mt-0.5" aria-hidden />
             )}
 
             <div className="flex-1" />
@@ -442,13 +442,13 @@ export function BuilderClient({
                   title={label}
                   className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors relative ${
                     activePanel === id
-                      ? "bg-sky-50 text-sky-700"
-                      : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                      ? "bg-info-50 text-info-700"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
                 >
                   <Icon size={18} />
                   {showDot && (
-                    <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-sky-400" aria-hidden />
+                    <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-info-200" aria-hidden />
                   )}
                 </button>
               );
@@ -457,17 +457,17 @@ export function BuilderClient({
 
           {/* ── Fly-out panel (shown when a panel is active) ──────────────── */}
           {activePanel && (
-            <div className="w-[17rem] xl:w-[18rem] flex flex-col bg-white border-r border-gray-200 overflow-hidden">
+            <div className="w-[17rem] xl:w-[18rem] flex flex-col bg-white border-r border-border overflow-hidden">
               {/* Panel header */}
-              <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 shrink-0">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   {PANEL_LABELS[activePanel]}
                 </span>
                 <button
                   type="button"
                   onClick={() => setActivePanel(null)}
                   title="Fermer le panneau"
-                  className="text-gray-400 hover:text-gray-700 rounded p-0.5 transition-colors"
+                  className="text-muted-foreground hover:text-foreground rounded p-0.5 transition-colors"
                 >
                   <X size={14} />
                 </button>

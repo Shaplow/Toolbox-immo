@@ -68,12 +68,12 @@ export function MultiSelectPropertiesPanel() {
   ];
 
   return (
-    <aside className="w-64 bg-white border-l border-gray-200 flex flex-col shrink-0 overflow-y-auto">
-      <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+    <aside className="w-64 bg-white border-l border-border flex flex-col shrink-0 overflow-y-auto">
+      <div className="p-4 border-b border-border flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
           Sélection multiple
         </p>
-        <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
           {count} éléments
         </span>
       </div>
@@ -90,7 +90,7 @@ export function MultiSelectPropertiesPanel() {
                   type="button"
                   title={title}
                   onClick={fn}
-                  className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-colors"
+                  className="flex-1 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-colors"
                 >
                   {label}
                 </button>
@@ -104,14 +104,14 @@ export function MultiSelectPropertiesPanel() {
                   type="button"
                   title={title}
                   onClick={fn}
-                  className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-colors"
+                  className="flex-1 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-colors"
                 >
                   {label}
                 </button>
               ))}
             </div>
           </div>
-          <p className="text-[11px] text-gray-400 leading-4 mt-1.5">
+          <p className="text-[11px] text-muted-foreground leading-4 mt-1.5">
             Ligne 1 : gauche · centre · droite — Ligne 2 : haut · milieu · bas
           </p>
         </Section>
@@ -124,7 +124,7 @@ export function MultiSelectPropertiesPanel() {
               title={canDistribute ? "Distribuer horizontalement" : "Nécessite ≥ 3 éléments"}
               onClick={distributeH}
               disabled={!canDistribute}
-              className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
+              className="flex-1 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
             >
               ↔ H
             </button>
@@ -133,12 +133,12 @@ export function MultiSelectPropertiesPanel() {
               title={canDistribute ? "Distribuer verticalement" : "Nécessite ≥ 3 éléments"}
               onClick={distributeV}
               disabled={!canDistribute}
-              className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
+              className="flex-1 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
             >
               ↕ V
             </button>
           </div>
-          <p className="text-[11px] text-gray-400 leading-4 mt-1.5">
+          <p className="text-[11px] text-muted-foreground leading-4 mt-1.5">
             Espace égal entre les éléments (nécessite ≥ 3).
           </p>
         </Section>

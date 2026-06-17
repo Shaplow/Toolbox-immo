@@ -23,11 +23,12 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Upload, X, FolderOpen, Layers, Tag, CheckCircle2, Info, Sparkles, Globe } from "lucide-react";
+import { Upload, X, FolderOpen, Layers, Tag, CheckCircle2, Info, Sparkles, Globe, ChevronRight } from "lucide-react";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { Combobox } from "@/components/ui/Combobox";
 import { Chip } from "@/components/ui/Chip";
 import { Modal } from "@/components/ui/Modal";
+import { captureVideoPoster } from "./captureVideoPoster";
 import type { InstagramAccount, MediaLibrary } from "./types";
 
 /**
@@ -114,6 +115,10 @@ export function MediaAssetsUploadModal({
   // ─ State local à la modal (extrait de MediaAssetsPanel)
   const [uploadCategory, setUploadCategory] = useState("");
   const [uploadSetTag, setUploadSetTag] = useState("");
+  // Le « Groupe » (setTag) ne sert qu'à rassembler des plans joués ensemble —
+  // besoin de niche. On le replie sous « Options avancées » par défaut, déplié
+  // auto si une valeur est déjà saisie/suggérée.
+  const [showAdvancedUpload, setShowAdvancedUpload] = useState(false);
   // Phase γ — multi-select comptes. Vide = global. Sinon restreint aux comptes listés.
   const [uploadAccountIds, setUploadAccountIds] = useState<string[]>([]);
   // Phase γ.bis — tags multi-select avec Combobox autocomplete.
@@ -235,6 +240,31 @@ export function MediaAssetsUploadModal({
       setModalProgress(overall);
     }
 
+    // Capture une frame côté navigateur et l'upload comme poster (vignette).
+    // Best-effort : toute erreur est avalée par l'appelant (fallback <video>).
+    async function uploadPosterFor(assetId: string, file: File): Promise<void> {
+      const blob = await captureVideoPoster(file);
+      if (!blob) return;
+      const res = await fetch(
+        `/api/admin/libraries/media/${library.id}/assets/${assetId}/poster`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ size: blob.size }),
+        },
+      );
+      if (!res.ok) return;
+      const { uploadUrl } = (await res.json()) as { uploadUrl: string };
+      await new Promise<void>((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", uploadUrl);
+        xhr.setRequestHeader("Content-Type", "image/jpeg");
+        xhr.addEventListener("load", () => resolve());
+        xhr.addEventListener("error", () => resolve());
+        xhr.send(blob);
+      });
+    }
+
     async function uploadOne(idx: number): Promise<void> {
       const file = files[idx]!;
       progressMap.set(idx, 0);
@@ -286,6 +316,12 @@ export function MediaAssetsUploadModal({
           return;
         }
         uploadedIds.push(assetId);
+        // Poster vignette (best-effort, non bloquant) — vidéos uniquement.
+        if (isVideo) {
+          await uploadPosterFor(assetId, file).catch(() => {
+            /* poster échoué → fallback <video> côté grille */
+          });
+        }
       } else {
         failed.push(file.name);
       }
@@ -320,14 +356,11 @@ export function MediaAssetsUploadModal({
       );
       if (Object.keys(filledMeta).length > 0) bulkData.metadata = filledMeta;
     } else {
-      // Phase 2 médiathèque : si l'user n'a pas spécifié de Pack, on en génère un
-      // auto pour cette fournée (1 drop = 1 pack). Cela garantit que l'asset entre
-      // en rotation theme_sequence (qui exclut setTag === null). L'user peut
-      // toujours renommer / fusionner depuis le drawer détail (mode avancé).
-      const packValue =
-        uploadSetTag.trim() ||
-        `pack_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-      bulkData.setTag = packValue;
+      // Pas de pack auto : on n'assigne un Groupe (setTag) QUE si l'user en a
+      // saisi un. Sinon on laisse `null` — l'asset entre quand même en rotation
+      // (le resolver inclut le groupe orphelin null/null).
+      const setTagValue = uploadSetTag.trim();
+      if (setTagValue) bulkData.setTag = setTagValue;
       if (uploadCategory.trim()) bulkData.category = uploadCategory.trim();
     }
     const tagsList = uploadTags.map((t) => t.trim()).filter(Boolean);
@@ -391,14 +424,14 @@ export function MediaAssetsUploadModal({
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <h2 className="text-base font-semibold text-gray-900">Uploader des fichiers</h2>
           <button
             onClick={() => {
               if (!modalUploading) onClose();
             }}
             disabled={modalUploading}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 disabled:opacity-40"
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted text-muted-foreground disabled:opacity-40"
           >
             <X size={16} />
           </button>
@@ -408,15 +441,15 @@ export function MediaAssetsUploadModal({
           {/* Drop zone */}
           <div
             className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center gap-3 transition-colors ${
-              modalDragOver ? "border-sky-400 bg-sky-50" : "border-gray-200 bg-gray-50"
+              modalDragOver ? "border-info-200 bg-info-50" : "border-border bg-muted"
             }`}
           >
-            <Upload size={28} className={modalDragOver ? "text-sky-400" : "text-gray-300"} />
-            <p className="text-sm text-gray-500 text-center">Glissez vos fichiers ici</p>
+            <Upload size={28} className={modalDragOver ? "text-info-200" : "text-muted-foreground/60"} />
+            <p className="text-sm text-muted-foreground text-center">Glissez vos fichiers ici</p>
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={modalUploading}
-              className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              className="px-3 py-1.5 border border-border rounded-lg text-xs text-muted-foreground hover:bg-muted disabled:opacity-50"
             >
               Parcourir…
             </button>
@@ -430,8 +463,8 @@ export function MediaAssetsUploadModal({
             />
             {/* W4 : queue page-level drop — l'admin configure puis lance. */}
             {pendingFiles.length > 0 && !modalUploading && (
-              <div className="mt-2 w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white border border-sky-200">
-                <span className="text-xs text-gray-700">
+              <div className="mt-2 w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-white border border-info-200">
+                <span className="text-xs text-foreground">
                   {pendingFiles.length} fichier{pendingFiles.length > 1 ? "s" : ""} prêt{pendingFiles.length > 1 ? "s" : ""} à uploader
                 </span>
                 <button
@@ -451,11 +484,11 @@ export function MediaAssetsUploadModal({
           <div className="flex flex-col gap-3.5">
             {/* Phase γ — Destination (comptes IG) en haut, visuel et multi-select. */}
             {accounts.length > 0 && (
-              <div className="rounded-xl bg-gradient-to-b from-sky-50/55 to-white/45 backdrop-blur-[8px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(77,150,191,0.18)] space-y-2">
-                <p className="text-[11px] uppercase tracking-widest font-semibold text-sky-700">
+              <div className="rounded-xl bg-gradient-to-b from-info-50/55 to-white/45 p-3  space-y-2">
+                <p className="text-[11px] uppercase tracking-widest font-semibold text-info-700">
                   Destination
                 </p>
-                <p className="text-[11px] text-gray-500 leading-relaxed">
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
                   Par défaut visible par tous les comptes. Clique sur un ou plusieurs comptes pour restreindre.
                 </p>
                 <div className="flex flex-wrap gap-1.5">
@@ -495,17 +528,17 @@ export function MediaAssetsUploadModal({
                 Sinon : Catégorie + Pack en grid 2-cols. */}
             {isManualMode ? (
               metadataFields.length > 0 ? (
-                <div className="rounded-xl bg-gradient-to-b from-white/65 to-white/45 backdrop-blur-[8px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] space-y-2.5">
-                  <p className="text-[11px] uppercase tracking-widest font-semibold text-gray-500">
+                <div className="rounded-xl bg-card border border-border p-3  space-y-2.5">
+                  <p className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground">
                     Champs personnalisés
                   </p>
-                  <p className="text-[11px] text-gray-500 leading-relaxed">
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
                     Ces valeurs identifient les fichiers pour la sélection côté générateur (rotation auto désactivée sur cette bibliothèque).
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     {metadataFields.map((f) => (
                       <div key={f.key}>
-                        <label className="text-[11px] font-medium text-gray-600 block mb-1 truncate" title={f.label || f.key}>
+                        <label className="text-[11px] font-medium text-muted-foreground block mb-1 truncate" title={f.label || f.key}>
                           {f.label || f.key}
                         </label>
                         <input
@@ -513,31 +546,31 @@ export function MediaAssetsUploadModal({
                           value={uploadMetadata[f.key] ?? ""}
                           onChange={(e) => setUploadMetadata((prev) => ({ ...prev, [f.key]: e.target.value }))}
                           placeholder={f.type === "number" ? "0" : "…"}
-                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                          className="w-full rounded-lg border border-border px-3 py-2 text-sm text-gray-900 placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-info-200"
                         />
                       </div>
                     ))}
                   </div>
                 </div>
               ) : (
-                <p className="text-[11px] text-gray-500 italic px-2">
+                <p className="text-[11px] text-muted-foreground italic px-2">
                   Aucun champ personnalisé défini sur cette bibliothèque. Ajoute-en via le drawer Réglages pour remplir les metadata à l&apos;upload.
                 </p>
               )
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-3">
                 <div>
-                  <label className="flex items-center gap-1 text-xs font-medium text-gray-500 mb-1">
+                  <label className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
                     <FolderOpen size={10} /> Catégorie
                     <Tooltip content="Le thème — sert à éviter de répéter le même type d'asset deux fois de suite dans la rotation. Ex : « Tenue 1 », « Intérieur », « Plan large »." side="top">
-                      <Info size={10} className="text-gray-300 hover:text-gray-500 cursor-help" />
+                      <Info size={10} className="text-muted-foreground/60 hover:text-muted-foreground cursor-help" />
                     </Tooltip>
                   </label>
                   {suggestion.category && !uploadCategory && (
                     <button
                       type="button"
                       onClick={() => setUploadCategory(suggestion.category!)}
-                      className="mb-1 inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-sage-50/80 text-sage-700 hover:bg-sage-100 transition-colors"
+                      className="mb-1 inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-success-50/80 text-success-700 hover:bg-success-100 transition-colors"
                     >
                       <Sparkles size={9} /> Suggéré : {suggestion.category}
                     </button>
@@ -551,39 +584,53 @@ export function MediaAssetsUploadModal({
                     emptyMessage="Aucune catégorie pour l'instant. Tapez un nom pour en créer une."
                   />
                 </div>
-                <div>
-                  <label className="flex items-center gap-1 text-xs font-medium text-gray-500 mb-1">
-                    <Layers size={10} /> Pack
-                    <Tooltip content="Un pack de plans qui doivent être joués ensemble dans le même rendu (ex : intro + outro filmés ensemble). Laisse vide si chaque fichier est indépendant — un pack auto sera créé." side="top">
-                      <Info size={10} className="text-gray-300 hover:text-gray-500 cursor-help" />
-                    </Tooltip>
-                  </label>
-                  {suggestion.setTag && !uploadSetTag && (
-                    <button
-                      type="button"
-                      onClick={() => setUploadSetTag(suggestion.setTag!)}
-                      className="mb-1 inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-sage-50/80 text-sage-700 hover:bg-sage-100 transition-colors"
-                    >
-                      <Sparkles size={9} /> Suggéré : {suggestion.setTag}
-                    </button>
-                  )}
-                  <Combobox
-                    value={uploadSetTag}
-                    onChange={setUploadSetTag}
-                    options={existingPacks.map((p) => ({ value: p, label: p, icon: Layers }))}
-                    allowCustom
-                    placeholder="Choisir, créer ou laisser vide…"
-                    emptyMessage="Aucun pack nommé. Tapez un nom ou laissez vide."
-                  />
-                </div>
+
+                {/* Groupe (setTag) — replié sous « Options avancées » (besoin de
+                    niche : rassembler des plans joués ensemble). Déplié auto si
+                    une valeur est déjà saisie ou suggérée. */}
+                {showAdvancedUpload || uploadSetTag || suggestion.setTag ? (
+                  <div>
+                    <label className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
+                      <Layers size={10} /> Groupe
+                      <Tooltip content="Plans qui doivent être joués ensemble dans le même rendu (ex : intro + outro filmés ensemble). Laisse vide si chaque fichier est indépendant." side="top">
+                        <Info size={10} className="text-muted-foreground/60 hover:text-muted-foreground cursor-help" />
+                      </Tooltip>
+                    </label>
+                    {suggestion.setTag && !uploadSetTag && (
+                      <button
+                        type="button"
+                        onClick={() => setUploadSetTag(suggestion.setTag!)}
+                        className="mb-1 inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-success-50/80 text-success-700 hover:bg-success-100 transition-colors"
+                      >
+                        <Sparkles size={9} /> Suggéré : {suggestion.setTag}
+                      </button>
+                    )}
+                    <Combobox
+                      value={uploadSetTag}
+                      onChange={setUploadSetTag}
+                      options={existingPacks.map((p) => ({ value: p, label: p, icon: Layers }))}
+                      allowCustom
+                      placeholder="Choisir, créer ou laisser vide…"
+                      emptyMessage="Aucun groupe. Tapez un nom ou laissez vide."
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedUpload(true)}
+                    className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <ChevronRight size={12} /> Options avancées (Groupe)
+                  </button>
+                )}
               </div>
             )}
 
             <div>
-              <label className="flex items-center gap-1 text-xs font-medium text-gray-500 mb-1">
+              <label className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
                 <Tag size={10} /> Tags (optionnel)
                 <Tooltip content="Étiquettes libres pour filtrer / rechercher tes assets. Click sur un tag existant pour le réutiliser et éviter les doublons (Intro vs intro, etc.)." side="top">
-                  <Info size={10} className="text-gray-300 hover:text-gray-500 cursor-help" />
+                  <Info size={10} className="text-muted-foreground/60 hover:text-muted-foreground cursor-help" />
                 </Tooltip>
               </label>
               {uploadTags.length > 0 && (
@@ -622,13 +669,13 @@ export function MediaAssetsUploadModal({
           {/* Progress */}
           {modalUploading && (
             <div className="space-y-1">
-              <div className="flex justify-between text-xs text-sky-700">
+              <div className="flex justify-between text-xs text-info-700">
                 <span>Upload en cours…</span>
                 <span>{modalProgress ?? 0}%</span>
               </div>
-              <div className="h-1.5 bg-sky-100 rounded-full overflow-hidden">
+              <div className="h-1.5 bg-info-100 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-sky-600 transition-all duration-200"
+                  className="h-full bg-info-600 transition-all duration-200"
                   style={{ width: `${modalProgress ?? 0}%` }}
                 />
               </div>

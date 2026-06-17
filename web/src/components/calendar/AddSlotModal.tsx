@@ -464,7 +464,7 @@ export function AddSlotModal({
                     handlePatternSelect(patterns[0].id);
                   }
                 }}
-                className="text-[11px] text-gray-500 hover:text-gray-800 hover:underline"
+                className="text-[11px] text-muted-foreground hover:text-gray-800 hover:underline"
               >
                 {selectedPatternId ? "Créer sans recette →" : "← Utiliser une recette"}
               </button>
@@ -479,8 +479,8 @@ export function AddSlotModal({
               help="La recette fixe le template, les sous-titres et la cover par défaut."
             >
               {loadingPatterns ? (
-                <div className="flex items-center gap-2 text-[12px] text-gray-400 py-2">
-                  <div className="w-4 h-4 border-2 border-sky-300 border-t-transparent rounded-full animate-spin" />
+                <div className="flex items-center gap-2 text-[12px] text-muted-foreground py-2">
+                  <div className="w-4 h-4 border-2 border-info-200 border-t-transparent rounded-full animate-spin" />
                   Chargement…
                 </div>
               ) : (
@@ -494,23 +494,23 @@ export function AddSlotModal({
                         onClick={() => handlePatternSelect(p.id)}
                         className={[
                           "w-full text-left p-3 rounded-xl transition-all",
-                          "bg-white/60 backdrop-blur-[8px]",
+                          "bg-card border border-border",
                           isSelected
                             ? "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_2px_rgba(77,150,191,0.5),0_4px_12px_-2px_rgba(125,180,210,0.25)]"
-                            : "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.12),0_2px_6px_rgba(15,23,42,0.08)]",
+                            : " hover:",
                         ].join(" ")}
                       >
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[13px] font-semibold text-gray-950">
+                          <span className="text-[13px] font-semibold text-foreground">
                             {p.label}
                           </span>
                           {p.source && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50/70 text-rose-700 shadow-[inset_0_0_0_1px_rgba(201,113,133,0.18)]">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-danger-50/70 text-danger-700 shadow-[inset_0_0_0_1px_rgba(201,113,133,0.18)]">
                               {SOURCE_LABELS_FR[p.source] ?? p.source}
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-3 text-[11px] text-gray-500">
+                        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
                           <span className="inline-flex items-center gap-1">
                             <Clock size={11} />
                             {p.dayOfWeek.length === 0
@@ -542,14 +542,14 @@ export function AddSlotModal({
 
           {/* Info pas de pattern */}
           {hasNoPatterns && (
-            <div className="flex items-start gap-2 rounded-xl bg-peach-50/70 backdrop-blur-[8px] px-3 py-2.5 text-[12px] text-peach-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(245,158,107,0.2)]">
+            <div className="flex items-start gap-2 rounded-xl bg-warning-50/70 px-3 py-2.5 text-[12px] text-warning-700 ">
               <AlertCircle size={14} className="mt-0.5 shrink-0" />
               <span>
                 Pas de pattern actif sur ce compte. Tu peux créer un slot manuel, ou{" "}
                 <Link
                   href={`/admin/accounts/${accountId}`}
                   target="_blank"
-                  className="underline hover:text-peach-900"
+                  className="underline hover:text-warning-700"
                 >
                   configurer un pattern
                 </Link>
@@ -566,15 +566,15 @@ export function AddSlotModal({
             </FormField>
             <FormField label="Heure" required>
               {isPatternMode && selectedPattern?.publishTime && !timeUnlocked ? (
-                <div className="flex items-center gap-2 h-9 rounded-md px-3 bg-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.08)]">
-                  <Lock size={11} className="text-gray-400" />
+                <div className="flex items-center gap-2 h-9 rounded-md px-3 bg-card border border-border ">
+                  <Lock size={11} className="text-muted-foreground" />
                   <span className="text-[13px] font-mono tabular-nums text-gray-800">
                     {selectedPattern.publishTime}
                   </span>
                   <button
                     type="button"
                     onClick={() => setTimeUnlocked(true)}
-                    className="ml-auto inline-flex items-center gap-1 text-[10.5px] text-sky-700 hover:text-sky-900 hover:underline"
+                    className="ml-auto inline-flex items-center gap-1 text-[10.5px] text-info-700 hover:text-info-700 hover:underline"
                   >
                     <Pencil size={10} />
                     Modifier
@@ -594,8 +594,8 @@ export function AddSlotModal({
             timeUnlocked &&
             selectedPattern?.publishTime &&
             time !== selectedPattern.publishTime && (
-              <div className="rounded-xl bg-gradient-to-b from-peach-50/85 to-peach-50/55 backdrop-blur-[10px] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(245,158,107,0.30)]">
-                <p className="text-[12px] text-peach-900">
+              <div className="rounded-xl bg-gradient-to-b from-warning-50/85 to-warning-50/55 px-4 py-3 ">
+                <p className="text-[12px] text-warning-700">
                   <span className="font-semibold">Heure différente du pattern</span>{" "}
                   ({selectedPattern.publishTime}). Le slot sera créé à {time}. Si tu génères
                   la semaine plus tard, un autre slot pourrait être ajouté à{" "}
@@ -630,7 +630,7 @@ export function AddSlotModal({
               défaut. Le warning "sans monteur" reste visible hors collapse
               car bloquant (slot non assigné = invisible côté monteur). */}
           {!assigneeMonteurId && (
-            <div className="flex items-start gap-2 text-[11px] text-peach-700 bg-peach-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.18)]">
+            <div className="flex items-start gap-2 text-[11px] text-warning-700 bg-warning-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.18)]">
               <AlertCircle size={12} className="mt-0.5 shrink-0" />
               Sans monteur assigné, ce slot n&apos;apparaîtra dans la worklist d&apos;aucun
               monteur.
@@ -688,7 +688,7 @@ export function AddSlotModal({
               defaultOpen={false}
               storageKey="add-slot-modal:options"
             >
-              <p className="mt-1 text-[11px] text-gray-500">
+              <p className="mt-1 text-[11px] text-muted-foreground">
                 Tout reste modifiable après création depuis la fiche.
               </p>
               <div className="grid grid-cols-2 gap-2 pt-2">
@@ -716,7 +716,7 @@ export function AddSlotModal({
               </div>
 
               {oneOffCoverMode === "autoPack" && coverPresets.length === 0 && (
-                <p className="text-[11px] text-peach-700 bg-peach-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.2)]">
+                <p className="text-[11px] text-warning-700 bg-warning-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.2)]">
                   Aucune config cover sur ce template. Active-la dans le builder
                   (onglet « Cover auto ») avant de créer ce slot.
                 </p>
@@ -760,7 +760,7 @@ export function AddSlotModal({
           )}
 
           {error && (
-            <p className="text-[12px] text-rose-700 bg-rose-50/80 backdrop-blur-[8px] rounded-md px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.18)]">
+            <p className="text-[12px] text-danger-700 bg-danger-50/80 rounded-md px-3 py-2 ">
               {error}
             </p>
           )}
@@ -811,7 +811,7 @@ function OneOffToggle({
       <div
         role="radiogroup"
         aria-label={label}
-        className="inline-flex items-center rounded-lg p-0.5 bg-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)]"
+        className="inline-flex items-center rounded-lg p-0.5 bg-card border border-border "
       >
         {options.map((opt) => {
           const active = current === opt.key;
@@ -826,7 +826,7 @@ function OneOffToggle({
                 "px-3 h-7 text-[12px] font-medium rounded-md transition-all",
                 active
                   ? "bg-gray-900 text-white shadow-[0_1px_2px_rgba(15,23,42,0.12)]"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-white/80",
+                  : "text-muted-foreground hover:text-gray-900 hover:bg-white/80",
               ].join(" ")}
             >
               {opt.label}

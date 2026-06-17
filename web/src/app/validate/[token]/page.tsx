@@ -112,13 +112,13 @@ export default async function ValidatePage({ params }: PageProps) {
   const isRevision = slot.status === "CLIENT_REVISION";
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-100 px-6 py-4">
+    <div className="min-h-screen bg-muted flex flex-col">
+      <header className="bg-white border-b border-border px-6 py-4">
         <div className="max-w-3xl mx-auto">
-          <p className="text-xs text-gray-500 uppercase tracking-wide">Validation publication</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Validation publication</p>
           <h1 className="text-lg font-semibold text-gray-900 mt-0.5">
             {slot.account.client?.name ?? slot.account.name} ·{" "}
-            <span className="text-gray-500">@{slot.account.handle}</span>
+            <span className="text-muted-foreground">@{slot.account.handle}</span>
           </h1>
         </div>
       </header>
@@ -126,11 +126,11 @@ export default async function ValidatePage({ params }: PageProps) {
       <main className="flex-1 px-6 py-8">
         <div className="max-w-3xl mx-auto space-y-6">
           {/* ── Preview vidéo / image ──────────────────────────────────────── */}
-          <section className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">
+          <section className="bg-white rounded-xl border border-border p-5 shadow-sm">
+            <h2 className="text-sm font-semibold text-foreground mb-3">
               {slot.pattern?.label ?? slot.title ?? "Publication"}
             </h2>
-            <p className="text-xs text-gray-500 mb-4">
+            <p className="text-xs text-muted-foreground mb-4">
               {slot.scheduledAt ? (
                 <>
                   Publication prévue le{" "}
@@ -153,7 +153,7 @@ export default async function ValidatePage({ params }: PageProps) {
                 key={finalVideoUrl}
                 controls
                 playsInline
-                className="w-full max-w-md mx-auto rounded-lg border border-gray-100 bg-black"
+                className="w-full max-w-md mx-auto rounded-lg border border-border bg-black"
                 style={{ maxHeight: 500 }}
               >
                 <source src={finalVideoUrl} />
@@ -164,10 +164,10 @@ export default async function ValidatePage({ params }: PageProps) {
               <img
                 src={slot.render.pngUrl}
                 alt="Aperçu"
-                className="w-full max-w-md mx-auto rounded-lg border border-gray-100"
+                className="w-full max-w-md mx-auto rounded-lg border border-border"
               />
             ) : (
-              <p className="text-sm text-gray-500 italic">
+              <p className="text-sm text-muted-foreground italic">
                 Le contenu visuel n&apos;est pas encore disponible.
               </p>
             )}
@@ -175,24 +175,24 @@ export default async function ValidatePage({ params }: PageProps) {
 
           {/* ── Légende Instagram ──────────────────────────────────────────── */}
           {slot.description && (
-            <section className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            <section className="bg-white rounded-xl border border-border p-5 shadow-sm">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                 Légende Instagram
               </h3>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap">{slot.description}</p>
+              <p className="text-sm text-foreground whitespace-pre-wrap">{slot.description}</p>
             </section>
           )}
 
           {/* ── Historique des rounds (si plusieurs allers-retours) ────────── */}
           {slot.clientValidationRounds.length > 0 && (
-            <section className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            <section className="bg-white rounded-xl border border-border p-5 shadow-sm">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
                 Historique
               </h3>
               <ul className="space-y-3">
                 {slot.clientValidationRounds.map((r) => (
                   <li key={r.roundNumber} className="text-sm">
-                    <span className="text-gray-500 text-xs">
+                    <span className="text-muted-foreground text-xs">
                       Round {r.roundNumber} ·{" "}
                       {new Date(r.respondedAt).toLocaleString("fr-FR", {
                         day: "numeric",
@@ -201,7 +201,7 @@ export default async function ValidatePage({ params }: PageProps) {
                         minute: "2-digit",
                       })}
                     </span>
-                    <p className="text-gray-700 mt-0.5">
+                    <p className="text-foreground mt-0.5">
                       <span className="font-medium">
                         {r.action === "approved"
                           ? "✓ Validé"
@@ -209,7 +209,7 @@ export default async function ValidatePage({ params }: PageProps) {
                             ? "✎ Modifications demandées"
                             : "✕ Annulé"}
                       </span>
-                      {r.comment && <span className="text-gray-500"> · « {r.comment} »</span>}
+                      {r.comment && <span className="text-muted-foreground"> · « {r.comment} »</span>}
                     </p>
                   </li>
                 ))}
@@ -226,8 +226,8 @@ export default async function ValidatePage({ params }: PageProps) {
           )}
 
           {isRevision && (
-            <section className="bg-peach-50 border border-peach-200 rounded-xl p-5">
-              <p className="text-sm text-peach-800">
+            <section className="bg-warning-50 border border-warning-200 rounded-xl p-5">
+              <p className="text-sm text-warning-700">
                 Vous avez demandé des modifications. Le studio les traite et vous
                 renverra un nouveau lien lorsque la nouvelle version sera prête.
               </p>
@@ -235,8 +235,8 @@ export default async function ValidatePage({ params }: PageProps) {
           )}
 
           {isResolved && (
-            <section className="bg-gray-50 border border-gray-200 rounded-xl p-5">
-              <p className="text-sm text-gray-700">
+            <section className="bg-muted border border-border rounded-xl p-5">
+              <p className="text-sm text-foreground">
                 {slot.status === "SCHEDULED" && "Cette publication a été validée. Elle sera publiée à la date prévue."}
                 {slot.status === "PUBLISHED" && "Cette publication est en ligne."}
                 {slot.status === "CANCELLED" && "Cette publication a été annulée."}
@@ -247,7 +247,7 @@ export default async function ValidatePage({ params }: PageProps) {
         </div>
       </main>
 
-      <footer className="px-6 py-4 text-center text-xs text-gray-400">
+      <footer className="px-6 py-4 text-center text-xs text-muted-foreground">
         Lien de validation sécurisé — ne le partagez pas.
       </footer>
     </div>

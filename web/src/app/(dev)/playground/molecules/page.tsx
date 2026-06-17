@@ -49,8 +49,8 @@ function PageSection({ id, title, eyebrow, children }: { id: string; title: stri
   return (
     <section id={id} className="space-y-4 scroll-mt-20">
       <header className="space-y-1">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">{eyebrow}</p>
-        <h2 className="text-xl font-semibold tracking-tight text-gray-950">{title}</h2>
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">{eyebrow}</p>
+        <h2 className="text-xl font-semibold tracking-tight text-foreground">{title}</h2>
       </header>
       <div className="surface-glass-soft rounded-xl p-6">{children}</div>
     </section>
@@ -60,7 +60,7 @@ function PageSection({ id, title, eyebrow, children }: { id: string; title: stri
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-6 py-3 border-b border-white/30 last:border-b-0">
-      <span className="w-32 shrink-0 text-[10px] uppercase tracking-widest font-medium text-gray-500 pt-2">{label}</span>
+      <span className="w-32 shrink-0 text-[10px] uppercase tracking-widest font-medium text-muted-foreground pt-2">{label}</span>
       <div className="flex-1 flex flex-wrap items-center gap-3">{children}</div>
     </div>
   );
@@ -76,17 +76,17 @@ export default function MoleculesPage() {
   return (
     <div className="space-y-14">
       <header className="space-y-3">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">
           Phase 4 · Molécules métier
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight text-gray-950">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           Section · SoftPanel · EmptyHero · StatusBadge
         </h1>
-        <p className="text-sm text-gray-600 max-w-2xl leading-relaxed">
+        <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
           Lot 1 — 5 unités structurelles. Wrappers (Section + SoftPanel) qui
           factorisent les patterns dupliqués dans la fiche pub et les pages
           d&apos;édition. Empty states large format pour pages vides. Status
-          badges centralisés via <code className="text-[12px] font-mono text-gray-700 bg-white/60 px-1 rounded">lib/ui/statusMapping.ts</code> (render / caption /
+          badges centralisés via <code className="text-[12px] font-mono text-foreground bg-white/60 px-1 rounded">lib/ui/statusMapping.ts</code> (render / caption /
           description / cover / slot / transcription).
         </p>
       </header>
@@ -138,7 +138,7 @@ export default function MoleculesPage() {
         </Row>
         <Row label="Statut inconnu">
           <StatusBadge domain="render" status="WEIRD_STATE" />
-          <span className="text-[12px] text-gray-500">Fallback : variant default + label brut</span>
+          <span className="text-[12px] text-muted-foreground">Fallback : variant default + label brut</span>
         </Row>
       </PageSection>
 
@@ -152,7 +152,7 @@ export default function MoleculesPage() {
             description="Solid blanc, ring inset, hover lift subtle. Le défaut pour la fiche pub."
             icon={FileText}
           >
-            <p className="text-[13px] text-gray-700 leading-relaxed">
+            <p className="text-[13px] text-foreground leading-relaxed">
               Corps de la section. Tout type de contenu (form, list, preview).
             </p>
           </Section>
@@ -184,7 +184,7 @@ export default function MoleculesPage() {
             icon={Sparkles}
             actions={<StatusBadge domain="cover" status="READY" />}
           >
-            <p className="text-[13px] text-gray-700 leading-relaxed">
+            <p className="text-[13px] text-foreground leading-relaxed">
               Idéal pour les overlays sur fonds tintés ou les sections "moment" qui doivent ressortir.
             </p>
           </Section>
@@ -192,16 +192,16 @@ export default function MoleculesPage() {
           {/* Section variant tinted × 4 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Section variant="tinted" tint="peach" title="Tinted peach" icon={ImageIcon}>
-              <p className="text-[12px] text-gray-700">Chaleur, statut à faire.</p>
+              <p className="text-[12px] text-foreground">Chaleur, statut à faire.</p>
             </Section>
             <Section variant="tinted" tint="sage" title="Tinted sage" icon={Captions}>
-              <p className="text-[12px] text-gray-700">Calme, statut OK.</p>
+              <p className="text-[12px] text-foreground">Calme, statut OK.</p>
             </Section>
             <Section variant="tinted" tint="sky" title="Tinted sky" icon={Calendar}>
-              <p className="text-[12px] text-gray-700">Info, planning.</p>
+              <p className="text-[12px] text-foreground">Info, planning.</p>
             </Section>
             <Section variant="tinted" tint="rose" title="Tinted rose" icon={Sparkles}>
-              <p className="text-[12px] text-gray-700">Signature rare, accent.</p>
+              <p className="text-[12px] text-foreground">Signature rare, accent.</p>
             </Section>
           </div>
 
@@ -213,7 +213,7 @@ export default function MoleculesPage() {
             collapsible
             defaultOpen
           >
-            <p className="text-[13px] text-gray-700 leading-relaxed">
+            <p className="text-[13px] text-foreground leading-relaxed">
               Le bouton chevron en haut à droite ferme la section (rendu pill glass-faint).
             </p>
           </Section>
@@ -224,7 +224,7 @@ export default function MoleculesPage() {
             collapsible
             defaultOpen={false}
           >
-            <p className="text-[13px] text-gray-700">Click le pill pour m&apos;ouvrir.</p>
+            <p className="text-[13px] text-foreground">Click le pill pour m&apos;ouvrir.</p>
           </Section>
         </div>
       </PageSection>
@@ -232,7 +232,7 @@ export default function MoleculesPage() {
       {/* ━━━ SOFT PANEL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
 
       <PageSection id="soft-panel" eyebrow="Lot 1" title="SoftPanel">
-        <p className="text-[12px] text-gray-600 mb-4 leading-relaxed">
+        <p className="text-[12px] text-muted-foreground mb-4 leading-relaxed">
           Wrapper page intérieure pour éditeurs longs (admin/libraries/media/[id],
           builder, captions/edit). Header sticky + scroll interne + toolbar bottom.
         </p>
@@ -249,7 +249,7 @@ export default function MoleculesPage() {
                     { label: "Story carrousel #18" },
                   ]}
                 />
-                <h2 className="text-[15px] font-semibold tracking-tight text-gray-950">
+                <h2 className="text-[15px] font-semibold tracking-tight text-foreground">
                   Édition du média
                 </h2>
               </div>
@@ -264,13 +264,13 @@ export default function MoleculesPage() {
           }
         >
           <div className="space-y-4">
-            <p className="text-[13px] text-gray-700 leading-relaxed">
+            <p className="text-[13px] text-foreground leading-relaxed">
               Cette page représente un éditeur long. Le header reste sticky au
               scroll de la zone interne. La toolbar bottom contient les actions
               de sauvegarde.
             </p>
             {Array.from({ length: 20 }, (_, i) => (
-              <div key={i} className="p-3 rounded-md bg-white/40 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] text-[12px] text-gray-700">
+              <div key={i} className="p-3 rounded-md bg-card border border-border shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] text-[12px] text-foreground">
                 Ligne d&apos;exemple #{i + 1} — scroll pour voir le sticky header en action.
               </div>
             ))}
@@ -278,12 +278,12 @@ export default function MoleculesPage() {
         </SoftPanel>
 
         <div className="mt-4 space-y-2">
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Sans toolbar</p>
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Sans toolbar</p>
           <SoftPanel
             maxHeight="200px"
-            header={<h2 className="text-[14px] font-semibold tracking-tight text-gray-950">Aperçu rapide</h2>}
+            header={<h2 className="text-[14px] font-semibold tracking-tight text-foreground">Aperçu rapide</h2>}
           >
-            <p className="text-[13px] text-gray-700 leading-relaxed">
+            <p className="text-[13px] text-foreground leading-relaxed">
               SoftPanel peut être utilisé sans toolbar — juste header + content scrollable.
             </p>
           </SoftPanel>
@@ -293,12 +293,12 @@ export default function MoleculesPage() {
       {/* ━━━ EMPTY HERO ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
 
       <PageSection id="empty-hero" eyebrow="Lot 1" title="EmptyHero">
-        <p className="text-[12px] text-gray-600 mb-4 leading-relaxed">
+        <p className="text-[12px] text-muted-foreground mb-4 leading-relaxed">
           À distinguer d&apos;<code className="text-[11px] font-mono">EmptyState</code> (inline dans une carte) — EmptyHero remplit une page entière vide.
           Title en font-hand (signature discrète autorisée pour les "moments"), wrapper icône large avec halo signature.
         </p>
 
-        <div className="rounded-2xl bg-white/30 backdrop-blur-[6px] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.04)]">
+        <div className="rounded-2xl bg-card border border-border shadow-[inset_0_0_0_1px_rgba(15,23,42,0.04)]">
           <EmptyHero
             icon={Folder}
             title="Pas encore de listing"
@@ -309,7 +309,7 @@ export default function MoleculesPage() {
         </div>
 
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="rounded-2xl bg-white/30 backdrop-blur-[6px] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.04)]">
+          <div className="rounded-2xl bg-card border border-border shadow-[inset_0_0_0_1px_rgba(15,23,42,0.04)]">
             <EmptyHero
               padding="md"
               icon={Brush}
@@ -317,7 +317,7 @@ export default function MoleculesPage() {
               description="Cette section accueillera bientôt les sous-titres générés."
             />
           </div>
-          <div className="rounded-2xl bg-white/30 backdrop-blur-[6px] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.04)]">
+          <div className="rounded-2xl bg-card border border-border shadow-[inset_0_0_0_1px_rgba(15,23,42,0.04)]">
             <EmptyHero
               padding="md"
               icon={Sparkles}
@@ -331,7 +331,7 @@ export default function MoleculesPage() {
       {/* ━━━ VIDEO PLAYER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
 
       <PageSection id="video-player" eyebrow="Lot 2 · Média" title="VideoPlayer">
-        <p className="text-[12px] text-gray-600 mb-4 leading-relaxed">
+        <p className="text-[12px] text-muted-foreground mb-4 leading-relaxed">
           5 variants — démos avec Big Buck Bunny sample (CDN public). Aspect
           9:16 par défaut (format story IG). Chrome bottom glass + play button
           center FAB glass-strong avec halo signature.
@@ -348,7 +348,7 @@ export default function MoleculesPage() {
       {/* ━━━ TRIM PLAYER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
 
       <PageSection id="trim-player" eyebrow="Lot 3 · Édition" title="TrimPlayer">
-        <p className="text-[12px] text-gray-600 mb-4 leading-relaxed">
+        <p className="text-[12px] text-muted-foreground mb-4 leading-relaxed">
           Éditeur de trim vidéo dédié — dual-range timeline séparée + frame
           nudge ±1f + transport jump start/play/end + timecode display
           HH:MM:SS.FF + durée du trim sélectionné.
@@ -363,7 +363,7 @@ export default function MoleculesPage() {
             aspect="16:9"
           />
         </div>
-        <p className="text-[11px] text-gray-500 mt-3">
+        <p className="text-[11px] text-muted-foreground mt-3">
           fps={30} configurable · drag handles ou click ± frame · playhead noir
           visible sur la timeline · durée du trim affichée à droite du
           transport.
@@ -396,10 +396,10 @@ export default function MoleculesPage() {
 
       {/* Note pied de page — Phase 4 clôturée */}
       <div className="surface-glass rounded-xl p-5 mt-12">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-sage-700 mb-2">
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-success-700 mb-2">
           Phase 4 · clôturée
         </p>
-        <p className="text-[13px] text-gray-700 leading-relaxed">
+        <p className="text-[13px] text-foreground leading-relaxed">
           11 molécules métier livrées en 4 lots (Structurels, Média, Édition,
           Métier) + 2 helpers (lib/ui/statusMapping, Checkbox primitive).
           Prochain chantier : Phase 5 — playground refondu (foundations /
@@ -466,7 +466,7 @@ function FilterBarShowcase() {
       </FilterBar>
 
       <div className="mt-6 space-y-2">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="panel" (intérieur d&apos;une fiche)</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">variant="panel" (intérieur d&apos;une fiche)</p>
         <FilterBar activeCount={2} onReset={() => {}} variant="panel" sticky={false}>
           <Chip variant="peach" selected onClick={() => {}}>À faire</Chip>
           <Chip variant="sky" selected onClick={() => {}}>Cette semaine</Chip>
@@ -474,7 +474,7 @@ function FilterBarShowcase() {
         </FilterBar>
       </div>
 
-      <p className="text-[11px] text-gray-500 mt-3 leading-relaxed">
+      <p className="text-[11px] text-muted-foreground mt-3 leading-relaxed">
         Le compteur "X filtres" et bouton Réinitialiser apparaissent dès
         qu&apos;activeCount &gt; 0. Sticky top par défaut (configurable via
         stickyTop pour offset header parent).
@@ -573,7 +573,7 @@ function JobQueueShowcase() {
       />
 
       <div className="mt-6 space-y-2">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant compact (h-row sans description ni timestamps)</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">variant compact (h-row sans description ni timestamps)</p>
         {[
           { id: "c1", status: "IN_PROGRESS", title: "Job render #18", domain: "render" as const },
           { id: "c2", status: "GENERATING", title: "Caption @luxe-immo", domain: "caption" as const },
@@ -653,9 +653,9 @@ function OverrideControlShowcase() {
             type="number"
             value={maxDuration}
             onChange={(e) => setMaxDuration(Number(e.target.value))}
-            className="w-24 h-8 rounded-md px-2 text-[13px] bg-white/60 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)] outline-none focus-ring"
+            className="w-24 h-8 rounded-md px-2 text-[13px] bg-card border border-border  outline-none focus-ring"
           />
-          <span className="text-[12px] text-gray-600">secondes (override : {maxDuration}s)</span>
+          <span className="text-[12px] text-muted-foreground">secondes (override : {maxDuration}s)</span>
         </div>
       </OverrideControl>
     </div>
@@ -737,22 +737,22 @@ function VideoPlayerShowcase() {
   return (
     <>
       <div className="space-y-2">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="minimal" · aspect 9:16 (story)</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">variant="minimal" · aspect 9:16 (story)</p>
         <div className="w-48"><VideoPlayer src={SAMPLE_VIDEO} poster={SAMPLE_POSTER} variant="minimal" aspect="9:16" /></div>
       </div>
 
       <div className="mt-6 space-y-2">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="minimal" · aspect 16:9</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">variant="minimal" · aspect 16:9</p>
         <div className="max-w-2xl"><VideoPlayer src={SAMPLE_VIDEO} poster={SAMPLE_POSTER} variant="minimal" aspect="16:9" /></div>
       </div>
 
       <div className="mt-6 space-y-2">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="captions" · captions inline animées</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">variant="captions" · captions inline animées</p>
         <div className="max-w-2xl"><VideoPlayer src={SAMPLE_VIDEO} poster={SAMPLE_POSTER} variant="captions" aspect="16:9" captions={SAMPLE_CAPTIONS} /></div>
       </div>
 
       <div className="mt-6 space-y-2">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="trim" · dual-range trimmer</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">variant="trim" · dual-range trimmer</p>
         <div className="max-w-2xl">
           <VideoPlayer
             src={SAMPLE_VIDEO}
@@ -763,16 +763,16 @@ function VideoPlayerShowcase() {
             trimEnd={8}
           />
         </div>
-        <p className="text-[11px] text-gray-500">Dual-range avec handles ronds glass — la lecture clamp entre trim start/end.</p>
+        <p className="text-[11px] text-muted-foreground">Dual-range avec handles ronds glass — la lecture clamp entre trim start/end.</p>
       </div>
 
       <div className="mt-6 space-y-2">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="fullscreen" · chrome étendu (volume + plein écran)</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">variant="fullscreen" · chrome étendu (volume + plein écran)</p>
         <div className="max-w-2xl"><VideoPlayer src={SAMPLE_VIDEO} poster={SAMPLE_POSTER} variant="fullscreen" aspect="16:9" /></div>
       </div>
 
       <div className="mt-6 space-y-2">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="native" · controls HTML natifs (debug)</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">variant="native" · controls HTML natifs (debug)</p>
         <div className="max-w-md"><VideoPlayer src={SAMPLE_VIDEO} poster={SAMPLE_POSTER} variant="native" aspect="16:9" /></div>
       </div>
     </>
@@ -831,7 +831,7 @@ function AssetCardShowcase() {
     <>
       {/* Compact */}
       <div className="space-y-2">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="compact" · liste dense</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">variant="compact" · liste dense</p>
         <div className="space-y-1.5 max-w-2xl">
           {assets.map((a) => (
             <AssetCard
@@ -860,7 +860,7 @@ function AssetCardShowcase() {
 
       {/* Default grid 9:16 */}
       <div className="mt-8 space-y-2">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="default" · grid 9:16</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">variant="default" · grid 9:16</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-w-3xl">
           {assets.slice(0, 4).map((a) => (
             <AssetCard
@@ -885,7 +885,7 @@ function AssetCardShowcase() {
 
       {/* Default grid 1:1 */}
       <div className="mt-8 space-y-2">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="default" · aspect 1:1 (cover)</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">variant="default" · aspect 1:1 (cover)</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-w-2xl">
           {assets.slice(0, 3).map((a) => (
             <AssetCard
@@ -901,7 +901,7 @@ function AssetCardShowcase() {
 
       {/* Expanded */}
       <div className="mt-8 space-y-2">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">variant="expanded" · preview vidéo inline + metadata détaillé</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">variant="expanded" · preview vidéo inline + metadata détaillé</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl">
           <AssetCard
             asset={{

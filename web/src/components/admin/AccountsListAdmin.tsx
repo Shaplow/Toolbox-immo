@@ -50,12 +50,12 @@ function handleInitials(handle: string): string {
 /** Gradient pastel déterministe par handle pour l'avatar. */
 function avatarGradient(handle: string): string {
   const gradients = [
-    "from-peach-200 to-rose-200",
-    "from-sage-200 to-sky-200",
-    "from-sky-200 to-peach-200",
-    "from-rose-200 to-peach-200",
-    "from-sage-200 to-peach-200",
-    "from-sky-200 to-rose-200",
+    "from-warning-200 to-danger-200",
+    "from-success-200 to-info-200",
+    "from-info-200 to-warning-200",
+    "from-danger-200 to-warning-200",
+    "from-success-200 to-warning-200",
+    "from-info-200 to-danger-200",
   ];
   let h = 0;
   for (let i = 0; i < handle.length; i++) {
@@ -74,28 +74,25 @@ export function AccountsListAdmin({ accounts }: Props) {
   return (
     <div className="min-h-screen">
       <div
-        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
-        style={{
-          background: "var(--gradient-page-shell)",
-        }}
+        className="mx-auto max-w-[1400px] px-6 py-8"
       >
         {/* Header Control Center */}
         <div className="rounded-t-3xl overflow-hidden">
           <div className="max-w-6xl mx-auto px-6 sm:px-8 pt-6 pb-2">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                   Planification
                 </p>
-                <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
+                <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-foreground leading-[1.05]">
                   Comptes Instagram
                 </h1>
-                <p className="mt-2 text-[13px] text-gray-500">
+                <p className="mt-2 text-[13px] text-muted-foreground">
                   {accounts.length} compte{accounts.length !== 1 ? "s" : ""}
                 </p>
               </div>
-              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-                <span className="text-[11px] font-mono text-gray-700 tabular-nums">
+              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-card border border-border ">
+                <span className="text-[11px] font-mono text-foreground tabular-nums">
                   {filtered.length} affiché{filtered.length !== 1 ? "s" : ""}
                 </span>
               </div>
@@ -158,9 +155,9 @@ function AccountCard({ account, onPeek }: AccountCardProps) {
       className={[
         "group relative flex flex-col items-center text-center gap-4 p-6 rounded-3xl transition-all aspect-square",
         // Glass franc — gradient blanc translucent + ring inset spéculaire.
-        "bg-gradient-to-b from-white/90 to-white/60 backdrop-blur-[14px] backdrop-saturate-150",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.06),inset_0_-1px_0_rgba(15,23,42,0.04),0_2px_8px_-2px_rgba(15,23,42,0.08)]",
-        "hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.6),inset_0_0_0_1px_rgba(15,23,42,0.1),inset_0_-1px_0_rgba(15,23,42,0.06),0_4px_12px_rgba(15,23,42,0.08),0_16px_36px_-12px_rgba(15,23,42,0.18)]",
+        "bg-card border border-border ",
+        "",
+        "hover:",
         "hover:-translate-y-0.5",
       ].join(" ")}
     >
@@ -181,7 +178,7 @@ function AccountCard({ account, onPeek }: AccountCardProps) {
           "relative h-20 w-20 rounded-full inline-flex items-center justify-center shrink-0",
           "bg-gradient-to-br",
           gradient,
-          "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),0_2px_4px_rgba(15,23,42,0.06),0_8px_24px_-8px_rgba(15,23,42,0.16)]",
+          "",
           "group-hover:scale-105 transition-transform",
         ].join(" ")}
       >
@@ -189,27 +186,27 @@ function AccountCard({ account, onPeek }: AccountCardProps) {
           {handleInitials(account.handle)}
         </span>
         {/* Icône Instagram en pastille bottom-right */}
-        <span className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-white inline-flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_1px_2px_rgba(15,23,42,0.08)]">
-          <Instagram size={12} className="text-rose-500" />
+        <span className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-white inline-flex items-center justify-center ">
+          <Instagram size={12} className="text-danger-600" />
         </span>
       </div>
 
       {/* Identité */}
       <div className="min-w-0 w-full">
-        <p className="text-[15px] font-semibold text-gray-950 truncate leading-tight">
+        <p className="text-[15px] font-semibold text-foreground truncate leading-tight">
           @{account.handle}
         </p>
-        <p className="text-[12px] text-gray-500 mt-0.5 truncate">{account.name}</p>
+        <p className="text-[12px] text-muted-foreground mt-0.5 truncate">{account.name}</p>
         {account.client ? (
           <Link
             href={`/admin/clients/${account.client.id}?tab=accounts`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center text-[10.5px] uppercase tracking-widest font-medium text-gray-400 hover:text-gray-700 mt-2 transition-colors"
+            className="inline-flex items-center text-[10.5px] uppercase tracking-widest font-medium text-muted-foreground hover:text-foreground mt-2 transition-colors"
           >
             {account.client.name}
           </Link>
         ) : (
-          <p className="text-[10.5px] uppercase tracking-widest font-medium text-gray-400 mt-2 italic">
+          <p className="text-[10.5px] uppercase tracking-widest font-medium text-muted-foreground mt-2 italic">
             Sans client
           </p>
         )}
@@ -227,7 +224,7 @@ function AccountCard({ account, onPeek }: AccountCardProps) {
             {account.activePatternCount > 1 ? "s" : ""}
           </Chip>
         )}
-        <span className="inline-flex items-center gap-1 text-[10.5px] text-gray-500 font-mono tabular-nums whitespace-nowrap">
+        <span className="inline-flex items-center gap-1 text-[10.5px] text-muted-foreground font-mono tabular-nums whitespace-nowrap">
           <Calendar size={10} />
           {lastPublished}
         </span>
@@ -239,8 +236,8 @@ function AccountCard({ account, onPeek }: AccountCardProps) {
         className={[
           "w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-medium transition-all",
           "bg-gradient-to-b from-gray-700 to-gray-900 text-white",
-          "shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_0_0_1px_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.12),0_4px_12px_-4px_rgba(15,23,42,0.22)]",
-          "hover:from-gray-600 hover:to-gray-800 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.24),inset_0_0_0_1px_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(0,0,0,0.2),0_2px_4px_rgba(15,23,42,0.16),0_8px_20px_-4px_rgba(15,23,42,0.28)]",
+          "",
+          "hover:from-gray-600 hover:to-gray-800 hover:",
           "focus-ring",
         ].join(" ")}
       >

@@ -115,7 +115,7 @@ export function CommentsSection({
       collapsible={collapsible}
       actions={
         activeCount > 0 ? (
-          <span className="text-xs text-gray-400 tabular-nums">{activeCount}</span>
+          <span className="text-xs text-muted-foreground tabular-nums">{activeCount}</span>
         ) : null
       }
     >
@@ -138,7 +138,7 @@ export function CommentsSection({
         <button
           type="button"
           onClick={() => setAllModalOpen(true)}
-          className="inline-flex items-center gap-1.5 text-[11.5px] text-gray-600 hover:text-gray-900 transition-colors font-medium pt-2"
+          className="inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground hover:text-gray-900 transition-colors font-medium pt-2"
         >
           Voir tous les {activeCount} commentaires
           <ArrowRight size={11} />
@@ -151,18 +151,18 @@ export function CommentsSection({
       {allModalOpen && (
         <Modal open onClose={() => setAllModalOpen(false)} size="lg">
           <div className="flex flex-col max-h-[80vh]">
-            <div className="shrink-0 px-5 pt-5 pb-3 border-b border-gray-100">
-              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+            <div className="shrink-0 px-5 pt-5 pb-3 border-b border-border">
+              <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                 Conversation
               </p>
-              <h3 className="mt-1 text-[18px] font-semibold tracking-tight text-gray-950">
+              <h3 className="mt-1 text-[18px] font-semibold tracking-tight text-foreground">
                 Tous les commentaires
-                <span className="ml-2 text-[13px] font-normal text-gray-500 tabular-nums">
+                <span className="ml-2 text-[13px] font-normal text-muted-foreground tabular-nums">
                   · {activeCount}
                 </span>
               </h3>
               {initialHasMore && (
-                <p className="mt-2 text-[11.5px] text-gray-500">
+                <p className="mt-2 text-[11.5px] text-muted-foreground">
                   Seuls les 50 derniers sont chargés — les plus anciens sont
                   masqués.
                 </p>

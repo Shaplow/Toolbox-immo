@@ -88,19 +88,16 @@ export function AdminInbox({ items }: Props) {
   }, [items]);
 
   return (
-    <section className="rounded-3xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+    <section className="rounded-lg bg-card border border-border p-5">
       <div className="flex items-center justify-between gap-3 mb-3">
-        <div>
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
-            Cockpit
-          </p>
-          <h2 className="text-[18px] font-semibold tracking-tight text-gray-950">
-            À traiter ({items.length})
-          </h2>
-        </div>
+        <h2 className="text-[15px] font-semibold tracking-tight text-foreground">
+          À traiter
+          <span className="ml-2 text-[11px] font-normal text-muted-foreground tabular-nums">
+            {items.length}
+          </span>
+        </h2>
       </div>
 
-      {/* Tabs filtres */}
       <div className="flex flex-wrap items-center gap-1.5 mb-4">
         {TABS.map((t) => {
           const active = tab === t.key;
@@ -114,20 +111,20 @@ export function AdminInbox({ items }: Props) {
                 setPage(0);
               }}
               className={[
-                "inline-flex items-center gap-1.5 px-2.5 h-7 rounded-md text-[12px] transition-all focus-ring",
+                "inline-flex items-center gap-1.5 px-2.5 h-7 rounded-md text-[12px] transition-colors focus-ring",
                 active
-                  ? "bg-gradient-to-b from-white/95 to-white/70 backdrop-blur-[8px] text-gray-950 font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)]"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-white/50",
+                  ? "bg-accent text-accent-foreground font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted",
               ].join(" ")}
             >
               <span>{t.label}</span>
               {count > 0 && (
                 <span
                   className={[
-                    "inline-flex items-center justify-center min-w-[18px] h-[16px] px-1 rounded text-[10px] font-medium",
+                    "inline-flex items-center justify-center min-w-[18px] h-[16px] px-1 rounded text-[10px] font-medium tabular-nums",
                     active
-                      ? "bg-sky-100/70 text-sky-800"
-                      : "bg-gray-100/80 text-gray-600",
+                      ? "bg-card text-foreground border border-border"
+                      : "bg-muted text-muted-foreground",
                   ].join(" ")}
                 >
                   {count}
@@ -138,12 +135,10 @@ export function AdminInbox({ items }: Props) {
         })}
       </div>
 
-      {/* Liste */}
       {filtered.length === 0 ? (
         <EmptyState
           icon={Inbox}
           title="Tout est traité"
-          description="Aucune action en attente pour ce filtre."
         />
       ) : (
         <>
@@ -157,10 +152,9 @@ export function AdminInbox({ items }: Props) {
               <button
                 type="button"
                 onClick={() => setPage((p) => p + 1)}
-                className="inline-flex items-center gap-1 px-3 h-7 rounded-md text-[12px] text-sky-700 hover:bg-sky-100/60 transition-colors focus-ring"
+                className="inline-flex items-center gap-1 px-3 h-7 rounded-md text-[12px] text-primary hover:bg-muted transition-colors focus-ring"
               >
-                Voir {Math.min(PAGE_SIZE, filtered.length - visible.length)} de
-                plus
+                Voir {Math.min(PAGE_SIZE, filtered.length - visible.length)} de plus
               </button>
             </div>
           )}

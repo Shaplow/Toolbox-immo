@@ -23,7 +23,7 @@ export function AccountCursorsButton({ accountId, accountHandle }: Props) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] text-gray-700 hover:text-gray-950 text-[11px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.12),0_2px_6px_rgba(15,23,42,0.06)] transition-all"
+        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-card border border-border text-foreground hover:text-foreground text-[11px] font-medium  hover: transition-all"
         title="Voir et ajuster tous les curseurs de rotation de ce compte"
       >
         <RotateCw size={12} />

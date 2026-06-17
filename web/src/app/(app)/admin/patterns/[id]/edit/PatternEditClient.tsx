@@ -61,7 +61,7 @@ export function PatternEditClient({
   async function handleArchive() {
     if (initial.bindingCount && initial.bindingCount > 0) {
       toast.error(
-        `Cette recette est utilisée par ${initial.bindingCount} compte${initial.bindingCount > 1 ? "s" : ""}. Délie les liaisons avant d'archiver.`,
+        `Cette recette est utilisée par ${initial.bindingCount} compte${initial.bindingCount > 1 ? "s" : ""}. Retire-la des comptes avant d'archiver.`,
       );
       return;
     }
@@ -87,25 +87,25 @@ export function PatternEditClient({
   return (
     <div className="min-h-screen">
       <div
-        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
-        style={{ background: "var(--gradient-page-shell)" }}
+        className="mx-auto max-w-7xl px-6 py-8"
+
       >
         <div className="px-6 sm:px-8 pt-6 pb-12">
           <div className="max-w-3xl mx-auto space-y-6">
             <div>
               <Link
                 href="/admin/patterns"
-                className="inline-flex items-center gap-1.5 text-[12px] text-gray-600 hover:text-gray-900 transition-colors font-medium"
+                className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-gray-900 transition-colors font-medium"
               >
                 <ArrowLeft size={13} />
                 Catalogue de recettes
               </Link>
-              <p className="mt-4 text-[10px] uppercase tracking-widest font-medium text-gray-500">
+              <p className="mt-4 text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                 Configuration · Édition recette
               </p>
             </div>
 
-            <div className="rounded-3xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[14px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_4px_16px_-4px_rgba(15,23,42,0.10)] overflow-hidden">
+            <div className="rounded-3xl bg-card border border-border  overflow-hidden">
               <PatternTemplateForm
                 initial={initial}
                 templateId={templateId}

@@ -3,15 +3,10 @@
 /**
  * Alert — message inline informatif, succès, avertissement, erreur.
  *
- * Doctrine Liquid Glass v2 :
- * - 4 variants sémantiques (info/success/warning/danger) + 1 neutre (glass).
- * - Background tinté très léger (50/40α) + backdrop-blur + ring inset
- *   spéculaire signature + accent gauche prononcé pour signaler le type.
- * - Icône à gauche dans wrapper glass dédié.
- * - Optional `onDismiss` ajoute un bouton X.
+ * 4 variants sémantiques (info/success/warning/danger) + 1 neutre.
+ * Fond zinc-50 + accent gauche coloré par variant. Pas de glass, pas de pastel.
  *
- * À distinguer de Toast : Alert est inline dans la page (statique), Toast
- * apparaît en overlay transient.
+ * À distinguer de Toast : Alert est inline statique, Toast est overlay transient.
  */
 
 import type { ReactNode } from "react";
@@ -49,37 +44,12 @@ const DEFAULT_ICON: Record<Variant, LucideIcon> = {
   glass:   Sparkles,
 };
 
-const VARIANT_STYLES: Record<Variant, { container: string; accent: string; icon: string; title: string }> = {
-  info: {
-    container: "bg-sky-50/55 border-l-sky-500",
-    accent:    "shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(77,150,191,0.12)]",
-    icon:      "text-sky-700",
-    title:     "text-sky-700",
-  },
-  success: {
-    container: "bg-sage-50/55 border-l-sage-500",
-    accent:    "shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(111,162,128,0.14)]",
-    icon:      "text-sage-700",
-    title:     "text-sage-700",
-  },
-  warning: {
-    container: "bg-peach-50/55 border-l-peach-500",
-    accent:    "shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(245,158,107,0.14)]",
-    icon:      "text-peach-700",
-    title:     "text-peach-700",
-  },
-  danger: {
-    container: "bg-rose-50/55 border-l-rose-500",
-    accent:    "shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.14)]",
-    icon:      "text-rose-700",
-    title:     "text-rose-700",
-  },
-  glass: {
-    container: "bg-white/40 border-l-gray-300",
-    accent:    "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)]",
-    icon:      "text-gray-700",
-    title:     "text-gray-950",
-  },
+const VARIANT_STYLES: Record<Variant, { accent: string; icon: string; title: string }> = {
+  info:    { accent: "border-l-primary",      icon: "text-primary",      title: "text-foreground" },
+  success: { accent: "border-l-success-600",  icon: "text-success-600",  title: "text-foreground" },
+  warning: { accent: "border-l-warning-600",  icon: "text-warning-600",  title: "text-foreground" },
+  danger:  { accent: "border-l-danger-600",   icon: "text-danger-600",   title: "text-foreground" },
+  glass:   { accent: "border-l-border",       icon: "text-muted-foreground", title: "text-foreground" },
 };
 
 export function Alert({
@@ -98,16 +68,15 @@ export function Alert({
     <div
       role="alert"
       className={[
-        "relative flex items-start gap-3 rounded-lg border-l-2 px-4 py-3",
-        "backdrop-blur-[12px] backdrop-saturate-150",
-        styles.container,
+        "relative flex items-start gap-3 rounded-md border border-border border-l-4 px-4 py-3",
+        "bg-muted",
         styles.accent,
         className ?? "",
       ].filter(Boolean).join(" ")}
     >
       {Icon && (
         <span
-          className={`shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/70 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.04)] ${styles.icon}`}
+          className={`shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-md bg-card border border-border ${styles.icon}`}
         >
           <Icon size={14} />
         </span>
@@ -119,7 +88,7 @@ export function Alert({
           </p>
         )}
         {children && (
-          <div className="text-[12px] text-gray-700 leading-relaxed">{children}</div>
+          <div className="text-[12px] text-muted-foreground leading-relaxed">{children}</div>
         )}
         {actions && <div className="pt-1 flex items-center gap-2">{actions}</div>}
       </div>

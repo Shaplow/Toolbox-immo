@@ -105,16 +105,16 @@ export function CloneDialog({ open, accountId, onClose, onCloned }: CloneDialogP
       <Modal.Header onClose={onClose}>Cloner depuis un autre compte</Modal.Header>
 
       <Modal.Body>
-        <p className="text-[12.5px] text-gray-500 mb-4">
+        <p className="text-[12.5px] text-muted-foreground mb-4">
           Tous les patterns du compte source seront copiés vers ce compte. Les patterns
           existants ne sont pas écrasés.
         </p>
 
         <FormField label="Compte source" required>
           {loadingAccounts ? (
-            <p className="text-[12px] text-gray-400 py-2">Chargement des comptes…</p>
+            <p className="text-[12px] text-muted-foreground py-2">Chargement des comptes…</p>
           ) : accounts.length === 0 ? (
-            <p className="text-[12px] text-gray-400 py-2">Aucun autre compte disponible.</p>
+            <p className="text-[12px] text-muted-foreground py-2">Aucun autre compte disponible.</p>
           ) : (
             <Combobox
               value={sourceAccountId}

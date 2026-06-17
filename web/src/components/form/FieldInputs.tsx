@@ -85,7 +85,7 @@ export function SelectFieldInput({
         ))}
       </select>
       {isMetaValues && !value && (
-        <span className="text-[10px] text-sky-700">
+        <span className="text-[10px] text-info-700">
           Valeur sélectionnée automatiquement depuis l&apos;asset si laissé vide.
         </span>
       )}
@@ -123,14 +123,14 @@ export function ImageFieldInput({
 
   if (uploadProgress !== null && uploadProgress !== undefined) {
     return (
-      <div className="w-full h-32 border-2 border-dashed border-sky-300 rounded-xl flex flex-col items-center justify-center gap-3 bg-sky-50 px-6">
+      <div className="w-full h-32 border-2 border-dashed border-info-200 rounded-xl flex flex-col items-center justify-center gap-3 bg-info-50 px-6">
         <div className="w-full bg-gray-200 rounded-full h-1.5">
           <div
-            className="bg-sky-400 h-1.5 rounded-full transition-all duration-300"
+            className="bg-info-200 h-1.5 rounded-full transition-all duration-300"
             style={{ width: `${uploadProgress}%` }}
           />
         </div>
-        <p className="text-xs text-sky-800 font-medium">Upload… {uploadProgress}%</p>
+        <p className="text-xs text-info-700 font-medium">Upload… {uploadProgress}%</p>
       </div>
     );
   }
@@ -145,10 +145,10 @@ export function ImageFieldInput({
 
   if (!imageUrl) {
     return (
-      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-sky-400 hover:bg-sky-50 transition-colors group">
-        <span className="text-2xl text-gray-300 group-hover:text-sky-500 transition-colors">↑</span>
-        <span className="text-sm font-medium text-gray-400 group-hover:text-sky-800 mt-1">Cliquer pour choisir une image</span>
-        <span className="text-xs text-gray-300 mt-0.5">JPG · PNG · WEBP</span>
+      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-info-200 hover:bg-info-50 transition-colors group">
+        <span className="text-2xl text-muted-foreground/60 group-hover:text-info-600 transition-colors">↑</span>
+        <span className="text-sm font-medium text-muted-foreground group-hover:text-info-700 mt-1">Cliquer pour choisir une image</span>
+        <span className="text-xs text-muted-foreground/60 mt-0.5">JPG · PNG · WEBP</span>
         <input
           type="file"
           accept="image/*"
@@ -163,7 +163,7 @@ export function ImageFieldInput({
     <div className="space-y-2">
       <div
         ref={containerRef}
-        className="relative w-full rounded-xl overflow-hidden cursor-crosshair border border-gray-200 select-none mx-auto"
+        className="relative w-full rounded-xl overflow-hidden cursor-crosshair border border-border select-none mx-auto"
         style={{
           aspectRatio: String(aspectRatio),
           maxWidth: `${previewMaxWidth}px`,
@@ -200,10 +200,10 @@ export function ImageFieldInput({
         </div>
       </div>
       <div className="flex items-center justify-between">
-        <p className="text-[10px] text-gray-400">
+        <p className="text-[10px] text-muted-foreground">
           Point focal : {Math.round(fp.x * 100)}% / {Math.round(fp.y * 100)}%
         </p>
-        <label className="text-xs text-sky-800 hover:text-sky-800 cursor-pointer hover:underline">
+        <label className="text-xs text-info-700 hover:text-info-700 cursor-pointer hover:underline">
           Changer l&apos;image
           <input
             type="file"
@@ -255,24 +255,24 @@ export function VideoFieldInput({
 
   if (uploadProgress !== null && uploadProgress !== undefined) {
     return (
-      <div className="w-full h-32 border-2 border-dashed border-sky-300 rounded-xl flex flex-col items-center justify-center gap-3 bg-sky-50 px-6">
+      <div className="w-full h-32 border-2 border-dashed border-info-200 rounded-xl flex flex-col items-center justify-center gap-3 bg-info-50 px-6">
         <div className="w-full bg-gray-200 rounded-full h-2">
           <div
-            className="bg-sky-400 h-2 rounded-full transition-all duration-300"
+            className="bg-info-200 h-2 rounded-full transition-all duration-300"
             style={{ width: `${uploadProgress}%` }}
           />
         </div>
-        <p className="text-xs text-sky-800 font-medium">Upload en cours… {uploadProgress}%</p>
+        <p className="text-xs text-info-700 font-medium">Upload en cours… {uploadProgress}%</p>
       </div>
     );
   }
 
   if (!videoUrl) {
     return (
-      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-sky-400 hover:bg-sky-50 transition-colors group">
-        <span className="text-2xl text-gray-300 group-hover:text-sky-500 transition-colors">🎬</span>
-        <span className="text-sm font-medium text-gray-400 group-hover:text-sky-800 mt-1">Cliquer pour choisir une vidéo</span>
-        <span className="text-xs text-gray-300 mt-0.5">MP4 · MOV · WEBM — max 2 Go</span>
+      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-info-200 hover:bg-info-50 transition-colors group">
+        <span className="text-2xl text-muted-foreground/60 group-hover:text-info-600 transition-colors">🎬</span>
+        <span className="text-sm font-medium text-muted-foreground group-hover:text-info-700 mt-1">Cliquer pour choisir une vidéo</span>
+        <span className="text-xs text-muted-foreground/60 mt-0.5">MP4 · MOV · WEBM — max 2 Go</span>
         <input
           type="file"
           accept="video/mp4,video/quicktime,video/x-m4v,video/webm"
@@ -287,7 +287,7 @@ export function VideoFieldInput({
     <div className="space-y-2">
       <div
         ref={containerRef}
-        className="relative w-full rounded-xl overflow-hidden cursor-crosshair border border-gray-200 select-none mx-auto"
+        className="relative w-full rounded-xl overflow-hidden cursor-crosshair border border-border select-none mx-auto"
         style={{
           aspectRatio: String(aspectRatio),
           maxWidth: `${previewMaxWidth}px`,
@@ -325,10 +325,10 @@ export function VideoFieldInput({
         </div>
       </div>
       <div className="flex items-center justify-between">
-        <p className="text-[10px] text-gray-400">
+        <p className="text-[10px] text-muted-foreground">
           Cadrage : {Math.round(fp.x * 100)}% / {Math.round(fp.y * 100)}%
         </p>
-        <label className="text-xs text-sky-800 hover:text-sky-800 cursor-pointer hover:underline">
+        <label className="text-xs text-info-700 hover:text-info-700 cursor-pointer hover:underline">
           Changer la vidéo
           <input
             type="file"
@@ -359,24 +359,24 @@ export function AudioFieldInput({
 
   if (uploadProgress !== null && uploadProgress !== undefined) {
     return (
-      <div className="w-full h-24 border-2 border-dashed border-sky-300 rounded-xl flex flex-col items-center justify-center gap-3 bg-sky-50 px-6">
+      <div className="w-full h-24 border-2 border-dashed border-info-200 rounded-xl flex flex-col items-center justify-center gap-3 bg-info-50 px-6">
         <div className="w-full bg-gray-200 rounded-full h-2">
           <div
-            className="bg-sky-400 h-2 rounded-full transition-all duration-300"
+            className="bg-info-200 h-2 rounded-full transition-all duration-300"
             style={{ width: `${uploadProgress}%` }}
           />
         </div>
-        <p className="text-xs text-sky-800 font-medium">Upload en cours… {uploadProgress}%</p>
+        <p className="text-xs text-info-700 font-medium">Upload en cours… {uploadProgress}%</p>
       </div>
     );
   }
 
   if (!audioUrl) {
     return (
-      <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-sky-400 hover:bg-sky-50 transition-colors group">
-        <span className="text-2xl text-gray-300 group-hover:text-sky-500 transition-colors">♪</span>
-        <span className="text-sm font-medium text-gray-400 group-hover:text-sky-800 mt-1">Cliquer pour choisir un fichier audio</span>
-        <span className="text-xs text-gray-300 mt-0.5">MP3 · WAV · AAC · M4A · OGG</span>
+      <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-info-200 hover:bg-info-50 transition-colors group">
+        <span className="text-2xl text-muted-foreground/60 group-hover:text-info-600 transition-colors">♪</span>
+        <span className="text-sm font-medium text-muted-foreground group-hover:text-info-700 mt-1">Cliquer pour choisir un fichier audio</span>
+        <span className="text-xs text-muted-foreground/60 mt-0.5">MP3 · WAV · AAC · M4A · OGG</span>
         <input
           type="file"
           accept="audio/mpeg,audio/wav,audio/aac,audio/mp4,audio/ogg,audio/x-m4a,.mp3,.wav,.aac,.m4a,.ogg"
@@ -391,7 +391,7 @@ export function AudioFieldInput({
     <div className="space-y-2">
       <audio src={audioUrl} controls className="w-full" />
       <div className="flex items-center justify-end">
-        <label className="text-xs text-sky-800 hover:text-sky-800 cursor-pointer hover:underline">
+        <label className="text-xs text-info-700 hover:text-info-700 cursor-pointer hover:underline">
           Changer le fichier audio
           <input
             type="file"
@@ -440,35 +440,35 @@ export function FieldInput({
   const helperText = field.description || (isConditional
     ? `Affiché après le choix ${field.showIf?.field} = ${field.showIf?.equals}`
     : "");
-  const controlClassName = "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-400";
+  const controlClassName = "w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-info-200";
 
   return (
     <div>
       <div className="min-h-[28px] mb-1.5 flex items-center gap-2 flex-wrap">
-        <label className="block text-sm font-medium text-gray-700">
+        <label className="block text-sm font-medium text-foreground">
           {field.label || field.key}
           {field.required && <span className="text-red-500 ml-1">*</span>}
         </label>
         {!field.required && !isConditional && (
-          <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-500">
+          <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
             optionnel
           </span>
         )}
         {isConditional && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-peach-200 bg-peach-50 px-2 py-0.5 text-[10px] font-medium text-peach-800">
-            <span className="h-1.5 w-1.5 rounded-full bg-peach-500" />
+          <span className="inline-flex items-center gap-1 rounded-full border border-warning-200 bg-warning-50 px-2 py-0.5 text-[10px] font-medium text-warning-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-warning-600" />
             conditionnel
           </span>
         )}
         {fromLibrary && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
+          <span className="inline-flex items-center gap-1 rounded-full border border-info-200 bg-info-50 px-2 py-0.5 text-[10px] font-medium text-info-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-info-200" />
             depuis la bibliothèque
           </span>
         )}
         {fromAsset && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-800">
-            <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
+          <span className="inline-flex items-center gap-1 rounded-full border border-info-200 bg-info-50 px-2 py-0.5 text-[10px] font-medium text-info-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-info-200" />
             depuis l&apos;asset
           </span>
         )}
@@ -508,7 +508,7 @@ export function FieldInput({
             onChange={(e) => onChange(e.target.checked)}
             className="rounded"
           />
-          <span className="text-sm text-gray-600">Oui</span>
+          <span className="text-sm text-muted-foreground">Oui</span>
         </label>
       ) : field.type === "number" ? (
         <input
@@ -539,7 +539,7 @@ export function FieldInput({
 
       <div className="mt-1.5 min-h-[16px]">
         {helperText ? (
-          <p className="text-xs text-gray-400">{helperText}</p>
+          <p className="text-xs text-muted-foreground">{helperText}</p>
         ) : null}
       </div>
 

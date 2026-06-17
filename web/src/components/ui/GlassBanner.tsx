@@ -3,17 +3,12 @@
  * qui sert aux signaux système sticky-top type maintenance/impersonation).
  *
  * Use cases :
- * 1. Banner contexte slot sur /generate/[templateId] ("Slot @paris-immo · vendredi 19h").
- * 2. Banner contexte slot sur /captions/[id]/generate ("Transcription en attente").
- * 3. Banner contexte slot sur /publications/[id]/cover ("Cover à choisir").
+ * 1. Banner contexte slot sur /generate/[templateId].
+ * 2. Banner contexte slot sur /captions/[id]/generate.
+ * 3. Banner contexte slot sur /publications/[id]/cover.
  *
- * Doctrine Liquid Glass v2 — gradient diagonal pastel + backdrop-blur + ring
- * spéculaire signature. Tint = palette Coastal Studio (peach/sage/sky/rose/
- * neutral). Sizes sm/md/lg pour densité.
- *
- * Avant V2 : ce pattern était copié inline ~20 fois dans /generate, /captions,
- * /listings, /publications/cover, HomeAdmin, etc. avec des paddings/blur
- * légèrement divergents à chaque endroit. GlassBanner consolide.
+ * Flat shadcn — bg-muted + border-l-4 accent par variant (legacy tints mappés).
+ * Nom à terme : Callout (renommage différé pour ne pas casser ~20 call-sites).
  */
 
 import type { LucideIcon } from "lucide-react";
@@ -27,33 +22,24 @@ interface GlassBannerProps {
   size?: GlassBannerSize;
   icon?: LucideIcon;
   children: ReactNode;
-  /** Action à droite (ex: lien retour, bouton). */
   action?: ReactNode;
   className?: string;
 }
 
-const TINT_BG: Record<GlassBannerTint, string> = {
-  peach: "from-peach-50/85 to-peach-50/45",
-  sage: "from-sage-50/85 to-sage-50/45",
-  sky: "from-sky-50/85 to-sky-50/45",
-  rose: "from-rose-50/85 to-rose-50/45",
-  neutral: "from-white/85 to-white/45",
-};
-
-const TINT_TEXT: Record<GlassBannerTint, string> = {
-  peach: "text-peach-800",
-  sage: "text-sage-800",
-  sky: "text-sky-800",
-  rose: "text-rose-800",
-  neutral: "text-gray-800",
+const TINT_ACCENT: Record<GlassBannerTint, string> = {
+  peach:   "border-l-warning-600",
+  sage:    "border-l-success-600",
+  sky:     "border-l-primary",
+  rose:    "border-l-danger-600",
+  neutral: "border-l-border",
 };
 
 const TINT_ICON: Record<GlassBannerTint, string> = {
-  peach: "text-peach-600",
-  sage: "text-sage-600",
-  sky: "text-sky-600",
-  rose: "text-rose-600",
-  neutral: "text-gray-500",
+  peach:   "text-warning-600",
+  sage:    "text-success-600",
+  sky:     "text-primary",
+  rose:    "text-danger-600",
+  neutral: "text-muted-foreground",
 };
 
 const SIZE_PADDING: Record<GlassBannerSize, string> = {
@@ -73,11 +59,8 @@ export function GlassBanner({
   return (
     <div
       className={[
-        "flex items-center justify-between gap-3 rounded-xl",
-        "bg-gradient-to-b backdrop-blur-[10px] backdrop-saturate-150",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
-        TINT_BG[tint],
-        TINT_TEXT[tint],
+        "flex items-center justify-between gap-3 rounded-md border border-border border-l-4 bg-muted text-foreground",
+        TINT_ACCENT[tint],
         SIZE_PADDING[size],
         className ?? "",
       ]

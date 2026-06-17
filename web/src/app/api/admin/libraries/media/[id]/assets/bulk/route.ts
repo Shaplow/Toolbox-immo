@@ -29,6 +29,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
   const { ids: assetIds, action: accessAction, accountIds: accessAccountIds } = parsed;
 
+  // H.2 — Le prefix `pack_` est réservé aux groupes auto-générés.
+  // Bloque toute tentative manuelle d'écrire un setTag avec ce prefix.
+  if (
+    "setTag" in body &&
+    typeof body.setTag === "string" &&
+    body.setTag.startsWith("pack_")
+  ) {
+    return NextResponse.json(
+      { error: "Le préfixe « pack_ » est réservé. Choisis un autre nom de groupe." },
+      { status: 400 },
+    );
+  }
+
   const data: Record<string, unknown> = {};
   if (Array.isArray(body.tags)) data.tags = JSON.stringify(body.tags);
   if ("setTag" in body) data.setTag = (body.setTag as string | null | undefined) ?? null;

@@ -79,28 +79,28 @@ export function DataTabPanel() {
   return (
     <div className="flex flex-col h-full overflow-y-auto text-xs">
       {/* Header */}
-      <div className="px-3 py-3 border-b border-gray-100 flex items-center gap-2">
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-sage-100/70 text-sage-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(111,162,128,0.18)]">
+      <div className="px-3 py-3 border-b border-border flex items-center gap-2">
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-success-100/70 text-success-700 ">
           <Database size={13} />
         </span>
         <div className="min-w-0">
-          <p className="text-[12.5px] font-semibold text-gray-950 leading-tight">Bibliothèque de données</p>
-          <p className="text-[10.5px] text-gray-500 leading-tight">
+          <p className="text-[12.5px] font-semibold text-foreground leading-tight">Bibliothèque de données</p>
+          <p className="text-[10.5px] text-muted-foreground leading-tight">
             Champs auto-remplis depuis une lib data (CSV / Excel).
           </p>
         </div>
       </div>
 
       {/* Bibliothèque */}
-      <div className="px-3 py-3 border-b border-gray-100">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Source</p>
+      <div className="px-3 py-3 border-b border-border">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Source</p>
         {dataLibraries.length === 0 ? (
-          <p className="text-[10.5px] text-gray-400 italic">
+          <p className="text-[10.5px] text-muted-foreground italic">
             Aucune bibliothèque configurée. Crée-en une depuis Médiathèque → Données.
           </p>
         ) : (
           <label className="flex flex-col gap-1">
-            <span className="text-gray-500">Bibliothèque</span>
+            <span className="text-muted-foreground">Bibliothèque</span>
             <select
               value={cl?.dataLibraryId ?? ""}
               onChange={(e) =>
@@ -109,7 +109,7 @@ export function DataTabPanel() {
                   dataCampaignId: undefined, // re-résolu auto par useEffect ci-dessus
                 })
               }
-              className="border border-gray-200 rounded px-2 py-1 text-xs bg-white"
+              className="border border-border rounded px-2 py-1 text-xs bg-white"
             >
               <option value="">— Aucune —</option>
               {dataLibraries.map((lib) => (
@@ -124,13 +124,13 @@ export function DataTabPanel() {
 
       {/* Sélection / Mode de génération — visible uniquement si une lib est choisie */}
       {hasLib && (
-        <div className="px-3 py-3 border-b border-gray-100 space-y-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+        <div className="px-3 py-3 border-b border-border space-y-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             Comportement à la génération
           </p>
 
           <label className="flex flex-col gap-1">
-            <span className="text-gray-500">Sélection à la génération</span>
+            <span className="text-muted-foreground">Sélection à la génération</span>
             <select
               value={cl?.dataSelectionRule === "manual" ? "manual" : "auto"}
               onChange={(e) =>
@@ -138,13 +138,13 @@ export function DataTabPanel() {
                   dataSelectionRule: e.target.value === "manual" ? "manual" : "not_used_in_cycle",
                 })
               }
-              className="border border-gray-200 rounded px-2 py-1 text-xs bg-white"
+              className="border border-border rounded px-2 py-1 text-xs bg-white"
             >
               <option value="auto">Automatique (rotation de la bibliothèque)</option>
               <option value="manual">Manuelle — choix à la génération</option>
             </select>
             {(!cl.dataSelectionRule || cl.dataSelectionRule !== "manual") && (
-              <span className="text-[9px] text-gray-400 leading-relaxed">
+              <span className="text-[9px] text-muted-foreground leading-relaxed">
                 La règle d&apos;utilisation est définie sur la bibliothèque (Médiathèque → Données → réglages).
               </span>
             )}
@@ -152,7 +152,7 @@ export function DataTabPanel() {
 
           {(!cl.dataSelectionRule || cl.dataSelectionRule !== "manual") && (
             <label className="flex flex-col gap-1">
-              <span className="text-gray-500">Mode de génération</span>
+              <span className="text-muted-foreground">Mode de génération</span>
               <select
                 value={template.generationMode ?? "manual"}
                 onChange={(e) =>
@@ -160,13 +160,13 @@ export function DataTabPanel() {
                     e.target.value === "manual" ? undefined : (e.target.value as "auto" | "both"),
                   )
                 }
-                className="border border-gray-200 rounded px-2 py-1 text-xs bg-white"
+                className="border border-border rounded px-2 py-1 text-xs bg-white"
               >
                 <option value="manual">Manuel — formulaire pré-rempli</option>
                 <option value="auto">Auto — pas de formulaire</option>
                 <option value="both">Les deux — l&apos;utilisateur choisit</option>
               </select>
-              <span className="text-[9px] text-gray-400 leading-relaxed">
+              <span className="text-[9px] text-muted-foreground leading-relaxed">
                 {!template.generationMode || template.generationMode === "manual"
                   ? "Le formulaire s'affiche avec les données pré-remplies."
                   : template.generationMode === "auto"
@@ -181,16 +181,16 @@ export function DataTabPanel() {
       {/* Modèle CSV — accessible dès qu'on a un schéma, même sans lib choisie */}
       {hasSchema && (
         <div className="px-3 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Modèle</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Modèle</p>
           <button
             type="button"
             onClick={() => downloadCSVTemplate(template.schema, "données")}
-            className="inline-flex items-center gap-1.5 text-[11px] text-sky-700 hover:text-sky-900 font-medium transition-colors"
+            className="inline-flex items-center gap-1.5 text-[11px] text-info-700 hover:text-info-700 font-medium transition-colors"
           >
             <Download size={11} />
             Télécharger le modèle CSV
           </button>
-          <p className="mt-1 text-[9.5px] text-gray-400 leading-relaxed">
+          <p className="mt-1 text-[9.5px] text-muted-foreground leading-relaxed">
             Colonnes <code className="font-mono">set_tag</code>, <code className="font-mono">category</code> + un en-tête
             par champ du schéma du template.
           </p>

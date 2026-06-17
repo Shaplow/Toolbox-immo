@@ -116,24 +116,23 @@ export function PublicationHeader({
         }}
         onCancel={() => setConfirmDeleteOpen(false)}
       />
-      {/* Header transparent — laisse passer le pastel du wrapper.
-          Style Control Center playground : eyebrow + h2 BIG + live pill. */}
-      <div className="rounded-t-3xl">
-        <div className="max-w-6xl mx-auto px-6 sm:px-8 pt-6 pb-8">
-          {/* Breadcrumb très discret (text-[10px] gray-400) */}
-          <nav className="flex items-center gap-1.5 text-[10px] text-gray-400 mb-3 flex-wrap">
+      {/* Header sticky flat (DA v3) — barre compacte ancrée en haut. */}
+      <header className="sticky top-0 z-20 bg-card border-b border-border">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3">
+          {/* Breadcrumb discret */}
+          <nav className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-2 flex-wrap">
             <Link
               href={currentUserRole === "ADMIN" ? "/calendar" : "/home"}
-              className="inline-flex items-center gap-1 hover:text-gray-700 transition-colors"
+              className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
             >
-              <ArrowLeft size={10} className="flex-shrink-0" />
+              <ArrowLeft size={11} className="flex-shrink-0" />
               {currentUserRole === "ADMIN" ? "Calendrier" : "Ma liste"}
             </Link>
-            <ChevronRight size={10} className="flex-shrink-0 text-gray-300" />
+            <ChevronRight size={11} className="flex-shrink-0 text-muted-foreground/60" />
             {currentUserRole === "ADMIN" ? (
               <Link
                 href={`/admin/accounts/${account.id}`}
-                className="hover:text-gray-700 transition-colors"
+                className="hover:text-foreground transition-colors"
                 title="Voir la fiche compte"
               >
                 @{account.handle}
@@ -143,55 +142,28 @@ export function PublicationHeader({
             )}
           </nav>
 
-          <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="min-w-0 flex-1">
-              {/* Eyebrow Control Center style */}
-              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
-                Fiche publication
-              </p>
-              {/* Title BIG style Control Center "Production en temps réel" */}
-              <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
-                {title}
-              </h1>
-              {/* Status badge — visible pour tous les rôles. Avant W4.4 le
-                  statut n'était accessible qu'aux ADMIN via SlotQuickEditButton ;
-                  les MONTEUR/CM/VIDEASTE devaient scroller jusqu'à la
-                  ProductionChain pour le voir. */}
-              <div className="mt-3 flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-[20px] font-semibold tracking-tight text-foreground truncate">
+                  {title}
+                </h1>
+                {/* Statut — visible pour tous les rôles. */}
                 <StatusBadge domain="slot" status={slot.status} size="sm" />
-                <p className="text-[13px] text-gray-500">
-                  {scheduledAt ? (
-                    <>
-                      {formatDateFR(scheduledAt)} · {formatTimeFR(scheduledAt)}
-                    </>
-                  ) : (
-                    <span className="uppercase tracking-widest text-[11px] font-semibold text-stone-500">
-                      En banque · non programmé
-                    </span>
-                  )}
-                </p>
               </div>
-              {/* V1 (15/06) — timeline narrative 5 étapes pour scanner d'un
-                  coup d'œil où en est la publication (au-delà du badge
-                  statut technique). Source : lib/slots/macroStep.ts */}
-              <div className="mt-3">
-                <SlotStatusTimeline status={slot.status as SlotStatus} size="md" />
-              </div>
+              <p className="mt-0.5 text-[12px] text-muted-foreground">
+                {scheduledAt ? (
+                  <>
+                    {formatDateFR(scheduledAt)} · {formatTimeFR(scheduledAt)}
+                  </>
+                ) : (
+                  "En banque · non programmé"
+                )}
+              </p>
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
-              {/* Live status pill glass signature ControlCenter */}
-              {scheduledAt && (
-                <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-                  <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
-                  <span className="text-[11px] font-mono text-gray-700 tabular-nums">
-                    {formatTimeFR(scheduledAt)}
-                  </span>
-                </div>
-              )}
-
-              {/* Édition rapide (drawer) — admin only. Ouvre le SlotDetailPanel
-                  qui pilote statut, assignations, overrides en surface unique. */}
+              {/* Édition rapide (drawer) — admin only. */}
               {currentUserRole === "ADMIN" && (
                 <SlotQuickEditButton slotId={slot.id} />
               )}
@@ -200,11 +172,7 @@ export function PublicationHeader({
                 <DropdownMenu
                   align="end"
                   trigger={
-                    <ButtonIcon
-                      icon={MoreHorizontal}
-                      label="Actions"
-                      size="sm"
-                    />
+                    <ButtonIcon icon={MoreHorizontal} label="Actions" size="sm" />
                   }
                   items={[
                     {
@@ -224,8 +192,13 @@ export function PublicationHeader({
               )}
             </div>
           </div>
+
+          {/* Timeline narrative 5 étapes — vue d'ensemble compacte. */}
+          <div className="mt-2">
+            <SlotStatusTimeline status={slot.status as SlotStatus} size="sm" />
+          </div>
         </div>
-      </div>
+      </header>
     </>
   );
 }

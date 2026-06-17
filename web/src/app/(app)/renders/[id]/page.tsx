@@ -103,8 +103,8 @@ export default async function RenderPage({ params }: Props) {
   return (
     <div className="min-h-screen">
       <div
-        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
-        style={{ background: "var(--gradient-page-shell)" }}
+        className="mx-auto max-w-[1400px] px-6 py-8"
+
       >
         {/* Header (back + breadcrumb + titre) */}
         <div className="rounded-t-3xl overflow-hidden">
@@ -112,24 +112,24 @@ export default async function RenderPage({ params }: Props) {
             <div className="mb-3 space-y-1.5">
               <Link
                 href={backHref}
-                className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-muted-foreground transition-colors"
               >
                 <ChevronLeft size={13} />
                 {backLabel}
               </Link>
               {breadcrumb.length > 0 && (
-                <nav className="flex items-center gap-1 text-xs text-gray-400 flex-wrap">
+                <nav className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
                   {breadcrumb.map((item, i) => (
                     <span key={item.href} className="flex items-center gap-1">
                       <Link
                         href={item.href}
-                        className="hover:text-sky-600 transition-colors truncate max-w-[200px]"
+                        className="hover:text-info-600 transition-colors truncate max-w-[200px]"
                       >
                         {item.label}
                       </Link>
-                      <ChevronRight size={11} className="text-gray-300" />
+                      <ChevronRight size={11} className="text-muted-foreground/60" />
                       {i === breadcrumb.length - 1 && (
-                        <span className="text-gray-500 font-medium">Render</span>
+                        <span className="text-muted-foreground font-medium">Render</span>
                       )}
                     </span>
                   ))}

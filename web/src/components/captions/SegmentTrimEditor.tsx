@@ -184,12 +184,12 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
   };
 
   return (
-    <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden mb-3">
+    <div className="bg-white border border-border rounded-2xl overflow-hidden mb-3">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
         <div>
           <p className="text-sm font-semibold text-gray-900">Révision des sous-titres</p>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             {includedCount}/{segments.length} segments actifs
           </p>
         </div>
@@ -197,14 +197,14 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
           <button
             type="button"
             onClick={() => toggleAll(true)}
-            className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+            className="text-xs px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors"
           >
             Tout activer
           </button>
           <button
             type="button"
             onClick={() => toggleAll(false)}
-            className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+            className="text-xs px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors"
           >
             Tout désactiver
           </button>
@@ -226,7 +226,7 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
 
       {/* Mini timeline */}
       <div className="px-5 py-3">
-        <div className="relative h-3 rounded-full bg-gray-100 overflow-hidden">
+        <div className="relative h-3 rounded-full bg-muted overflow-hidden">
           {segments.map((seg, i) => {
             const left = (seg.start / totalDuration) * 100;
             const width = Math.max(((seg.end - seg.start) / totalDuration) * 100, 0.3);
@@ -240,7 +240,7 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
                 style={{ left: `${left}%`, width: `${width}%` }}
                 className={`absolute h-full transition-colors ${
                   states[i].included
-                    ? isActive ? "bg-sky-500" : "bg-sky-300 hover:bg-sky-400"
+                    ? isActive ? "bg-info-600" : "bg-info-200 hover:bg-info-200"
                     : "bg-gray-300 hover:bg-gray-400"
                 }`}
               />
@@ -261,10 +261,10 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
               key={i}
               className={`rounded-xl border transition-all ${
                 isActive
-                  ? "border-sky-300 bg-sky-50"
+                  ? "border-info-200 bg-info-50"
                   : state.included
-                  ? "border-gray-100 bg-gray-50"
-                  : "border-gray-100 bg-gray-50 opacity-50"
+                  ? "border-border bg-muted"
+                  : "border-border bg-muted opacity-50"
               }`}
             >
               <div className="flex items-center gap-2 px-3 py-2.5">
@@ -272,7 +272,7 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
                 <button
                   type="button"
                   onClick={() => seekTo(seg.start)}
-                  className="text-xs text-gray-400 hover:text-sky-600 transition-colors font-mono shrink-0 flex items-center gap-1"
+                  className="text-xs text-muted-foreground hover:text-info-600 transition-colors font-mono shrink-0 flex items-center gap-1"
                   title="Aller à ce segment"
                 >
                   <Play size={9} />
@@ -296,8 +296,8 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
                             onClick={() => handleWordClick(i, wi)}
                             className={`text-xs px-1 py-0.5 rounded transition-all ${
                               isInRange
-                                ? "bg-sky-100 text-sky-800 hover:bg-sky-200"
-                                : "bg-white text-gray-300 hover:text-gray-500"
+                                ? "bg-info-100 text-info-700 hover:bg-info-200"
+                                : "bg-white text-muted-foreground/60 hover:text-muted-foreground"
                             }`}
                           >
                             {w.word}
@@ -306,7 +306,7 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
                       })}
                     </div>
                   ) : (
-                    <p className="text-xs text-gray-700 truncate">{seg.text}</p>
+                    <p className="text-xs text-foreground truncate">{seg.text}</p>
                   )}
                 </div>
 
@@ -315,7 +315,7 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
                   type="button"
                   onClick={() => toggleSegment(i)}
                   className={`shrink-0 transition-colors ${
-                    state.included ? "text-sky-600 hover:text-sky-700" : "text-gray-300 hover:text-gray-500"
+                    state.included ? "text-info-600 hover:text-info-700" : "text-muted-foreground/60 hover:text-muted-foreground"
                   }`}
                   title={state.included ? "Désactiver" : "Activer"}
                 >
@@ -331,11 +331,11 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-gray-100 bg-gray-50">
+      <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-border bg-muted">
         <button
           type="button"
           onClick={onCancel}
-          className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+          className="text-sm text-muted-foreground hover:text-muted-foreground transition-colors"
         >
           Annuler
         </button>
@@ -343,7 +343,7 @@ export function SegmentTrimEditor({ segments, videoFile, onConfirm, onCancel }: 
           type="button"
           onClick={handleConfirm}
           disabled={includedCount === 0}
-          className="flex items-center gap-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors"
+          className="flex items-center gap-2 px-5 py-2.5 bg-danger-600 hover:bg-danger-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors"
         >
           <Check size={14} />
           Confirmer et continuer

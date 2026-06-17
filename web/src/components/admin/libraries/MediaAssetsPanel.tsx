@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { Play, Music2 } from "lucide-react";
+import Link from "next/link";
+import { Play, Music2, ChevronLeft, Settings2, Film, Headphones } from "lucide-react";
+import { MediaLibrarySettingsDrawer } from "./MediaLibrarySettingsDrawer";
 import { useConfirm } from "@/components/ui/useConfirm";
 import { MediaAssetEditModal } from "./MediaAssetEditModal";
 import { MediaBatchAutocutPanel } from "./MediaBatchAutocutPanel";
@@ -19,15 +21,14 @@ import { MediaAssetsVideoCard } from "./mediaAssets/MediaAssetsVideoCard";
 import { MediaAssetsGroupColumn } from "./mediaAssets/MediaAssetsGroupColumn";
 import { MediaAssetsCompactCard } from "./mediaAssets/MediaAssetsCompactCard";
 import { MediaAssetsToolbar } from "./mediaAssets/MediaAssetsToolbar";
-// MediaAssetsOrphanRibbon supprimé du flow par défaut (trop bruyant). Filtre via sidebar maintenant.
 import { MediaAssetsBulkSortDrawer } from "./mediaAssets/MediaAssetsBulkSortDrawer";
 import { MediaAssetDetailDrawer } from "./mediaAssets/MediaAssetDetailDrawer";
-import { MediaAssetsNextGenPreview } from "./mediaAssets/MediaAssetsNextGenPreview";
-import { MediaAssetsKpiRow } from "./mediaAssets/MediaAssetsKpiRow";
+import { MediaAssetsTable } from "./mediaAssets/list/MediaAssetsTable";
+// MediaAssetsNextGenPreview + MediaAssetsKpiRow drop I.2 — info redondante remontée dans le strip header.
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { MediaAssetsCategoriesSidebar, type CategoryFilter } from "./mediaAssets/MediaAssetsCategoriesSidebar";
+import { type CategoryFilter } from "./mediaAssets/MediaAssetsCategoriesSidebar";
 import { useAssetSequence } from "./mediaAssets/useAssetSequence";
 import { useAdvancedMode } from "@/hooks/useAdvancedMode";
 
@@ -570,6 +571,28 @@ export function MediaAssetsPanel({ library }: Props) {
   // uploadFiles + handleFileSelect extraits dans MediaAssetsUploadModal (D7).
 
   const isVideo = library.type === "video";
+  // Mode noob vidéo (hors manual) → nouvelle vue liste dense + détail (drawer).
+  // Le mode avancé conserve les vues grille/groupé/rotation.
+  const useListView = !isAdvanced && isVideo && !isManualMode;
+  // I.2 — Drawer settings accessible depuis le strip header.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // I.2 — Counts compacts inline (remplace la KpiRow lourde).
+  const stripCounts = useMemo(() => {
+    const cats = new Set<string>();
+    const groups = new Set<string>();
+    let orphans = 0;
+    for (const a of assets) {
+      if (a.category) cats.add(a.category);
+      else orphans++;
+      if (a.setTag && !a.setTag.startsWith("pack_")) groups.add(a.setTag);
+    }
+    return {
+      total: assets.length,
+      categories: cats.size,
+      groups: groups.size,
+      orphans,
+    };
+  }, [assets]);
 
   // D9-step4 — renderCompactCard extrait dans MediaAssetsCompactCard.
   // Wrapper closure stable pour le passer en callback aux vues grouped/rotation.
@@ -682,7 +705,7 @@ export function MediaAssetsPanel({ library }: Props) {
 
   return (
     <div
-      className={`relative${selectMode ? " pb-20" : ""}`}
+      className={`relative flex flex-col h-full${selectMode ? " pb-20" : ""}`}
       onDragEnter={handlePageDragEnter}
       onDragOver={handlePageDragOver}
       onDragLeave={handlePageDragLeave}
@@ -690,18 +713,76 @@ export function MediaAssetsPanel({ library }: Props) {
     >
       {pageDragOver && !showUploadModal && (
         <div className={`fixed inset-0 z-40 flex items-center justify-center pointer-events-none ${
-          isVideo ? "bg-sky-400/15" : "bg-sage-400/15"
-        } backdrop-blur-[2px]`}>
-          <div className={`rounded-2xl px-6 py-4 bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[12px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.08),0_8px_24px_-8px_rgba(15,23,42,0.18)] text-sm font-medium ${
-            isVideo ? "text-sky-700" : "text-sage-700"
+          isVideo ? "bg-info-200/15" : "bg-success-200/15"
+        } `}>
+          <div className={`rounded-2xl px-6 py-4 bg-card border border-border  text-sm font-medium ${
+            isVideo ? "text-info-700" : "text-success-700"
           }`}>
-            Déposer les fichiers dans <span className="font-semibold text-gray-950">{library.name}</span>
+            Déposer les fichiers dans <span className="font-semibold text-foreground">{library.name}</span>
           </div>
         </div>
       )}
 
-      {/* Phase A — Row de KPI cards (vue d'ensemble lib) */}
-      {assets.length > 0 && <MediaAssetsKpiRow assets={assets} libType={library.type} />}
+      {/* I.2 — Strip header compact (60px total : 40px ligne 1 + 20px ligne 2) */}
+      <header className="shrink-0 sticky top-0 z-20 bg-card border-b border-border">
+        <div className="px-4 sm:px-6 py-2 flex items-center gap-3">
+          <Link
+            href={isVideo ? "/admin/libraries/media" : "/admin/libraries/audio"}
+            className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+            title={isVideo ? "Retour aux bibliothèques vidéo" : "Retour aux bibliothèques audio"}
+          >
+            <ChevronLeft size={12} />
+            <span className="hidden sm:inline">{isVideo ? "Vidéo" : "Audio"}</span>
+          </Link>
+          <span className="text-muted-foreground/40">/</span>
+          <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-foreground truncate">
+            {isVideo ? <Film size={13} className="text-muted-foreground" /> : <Headphones size={13} className="text-muted-foreground" />}
+            {library.name}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={Settings2}
+            onClick={() => setSettingsOpen(true)}
+            title="Réglages de la bibliothèque"
+            className="ml-auto"
+          >
+            <span className="hidden sm:inline">Réglages</span>
+          </Button>
+        </div>
+        <div className="px-4 sm:px-6 pb-1.5 flex items-center gap-3 text-[11px] text-muted-foreground tabular-nums">
+          <span>{stripCounts.total} {isVideo ? "vidéo" : "asset"}{stripCounts.total !== 1 ? "s" : ""}</span>
+          {!isManualMode && (
+            <>
+              <span className="text-muted-foreground/40">·</span>
+              <button
+                type="button"
+                onClick={() => setCategoryFilter("all")}
+                className="hover:text-foreground transition-colors"
+              >
+                {stripCounts.categories} catégorie{stripCounts.categories !== 1 ? "s" : ""}
+              </button>
+              <span className="text-muted-foreground/40">·</span>
+              <span>{stripCounts.groups} groupe{stripCounts.groups !== 1 ? "s" : ""}</span>
+              {stripCounts.orphans > 0 && (
+                <>
+                  <span className="text-muted-foreground/40">·</span>
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFilter("orphans")}
+                    className="text-warning-700 hover:underline"
+                    title="Filtrer les assets sans catégorie"
+                  >
+                    {stripCounts.orphans} orphelin{stripCounts.orphans !== 1 ? "s" : ""}
+                  </button>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </header>
+
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-3">
 
       <MediaAssetsToolbar
         library={library}
@@ -739,22 +820,10 @@ export function MediaAssetsPanel({ library }: Props) {
         {selectMode && <MediaAssetsBulkActionBar bulk={bulk} filtered={filtered} accounts={accounts} />}
       </div>
 
-      {/* Phase B — Layout 2-cols en mode noob : sidebar catégories + vue principale.
-          En mode avancé OU en audio, la sidebar est cachée et la vue prend toute la largeur. */}
-      {(() => {
-        // Sidebar catégories : caché en audio (pas de catégories typiques) ET en mode manuel
-        // (les catégories ne servent pas de filtre quand la sélection est par metadata).
-        const showSidebar = !isAdvanced && isVideo && !isManualMode;
-        return (
-      <div className={showSidebar ? "grid grid-cols-[220px_1fr] gap-4 items-start" : ""}>
-        {showSidebar && (
-          <MediaAssetsCategoriesSidebar
-            assets={assets}
-            selected={categoryFilter}
-            onSelect={setCategoryFilter}
-          />
-        )}
-        <div className={showSidebar ? "min-w-0" : ""}>
+      {/* Vue principale pleine largeur (la sidebar catégories noob est remplacée
+          par la vue liste dense + drawer détail). */}
+      <div>
+        <div>
 
       {/* Error — Alert primitive Coastal Studio (W4) */}
       {loadError && (
@@ -774,7 +843,7 @@ export function MediaAssetsPanel({ library }: Props) {
       {/* Loading */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-info-200 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : assets.length === 0 ? (
         <EmptyState
@@ -787,7 +856,7 @@ export function MediaAssetsPanel({ library }: Props) {
           }}
         />
       ) : filtered.length === 0 ? (
-        <p className="text-sm text-gray-400 py-8 text-center">
+        <p className="text-sm text-muted-foreground py-8 text-center">
           {tagFilter ? `Aucun fichier avec le tag «\u00a0${tagFilter}\u00a0»${search ? ` correspondant à «\u00a0${search}\u00a0»` : ""}.` : `Aucun résultat pour «\u00a0${search}\u00a0».`}
         </p>
       ) : isVideo ? (
@@ -799,7 +868,18 @@ export function MediaAssetsPanel({ library }: Props) {
           <datalist id="bulk-set-tags-list">
             {allSetTags.map((t) => <option key={t} value={t} />)}
           </datalist>
-          {effectiveViewMode === "rotation" ? (
+          {useListView ? (
+            <MediaAssetsTable
+              assets={visibleFiltered}
+              selectedIds={selectedIds}
+              toggleSelect={toggleSelect}
+              setSelectedIds={bulk.setSelectedIds}
+              onOpenDetail={(a) => setDetailAsset(a)}
+              sort={sort}
+              setSort={setSort}
+              sentinelRef={gridSentinelRef}
+            />
+          ) : effectiveViewMode === "rotation" ? (
             <MediaAssetsRotationView
               groupedBySetTag={groupedBySetTag}
               seqState={seqState}
@@ -814,11 +894,6 @@ export function MediaAssetsPanel({ library }: Props) {
             />
           ) : effectiveViewMode === "grouped" ? (
             <>
-              <MediaAssetsNextGenPreview
-                groupedBySetTag={groupedBySetTag}
-                rotationScope={library.rotationScope ?? undefined}
-                accountFilter={accountFilter}
-              />
             <MediaAssetsGroupedView
               groupedBySetTag={groupedBySetTag}
               sectionsByGroup={sectionsByGroup}
@@ -870,8 +945,7 @@ export function MediaAssetsPanel({ library }: Props) {
       )}
         </div>
       </div>
-        );
-      })()}
+      </div>
       {editingAsset && (
         <MediaAssetEditModal
           asset={editingAsset}
@@ -923,6 +997,23 @@ export function MediaAssetsPanel({ library }: Props) {
         onOpenTrim={(a) => setEditingAsset(a)}
         setAssets={detailSetAssets ?? undefined}
         onSwitchAsset={(a) => setDetailAsset(a)}
+      />
+      {/* I.2 — Drawer settings (refondu en tabs en H.4) accessible depuis le strip header. */}
+      <MediaLibrarySettingsDrawer
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        library={{
+          id: library.id,
+          name: library.name,
+          description: null,
+          tags: "[]",
+          setSequence: library.setSequence ?? "[]",
+          rotationScope: library.rotationScope ?? "per_account",
+          rotationMode: library.rotationMode,
+          metadataSchema: library.metadataSchema ?? "[]",
+          maxUsageCount: library.maxUsageCount,
+        }}
+        onUpdated={() => { void load(); }}
       />
       {confirmDialog}
     </div>

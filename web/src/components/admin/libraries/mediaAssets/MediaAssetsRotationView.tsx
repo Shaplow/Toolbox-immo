@@ -49,14 +49,14 @@ interface Props {
 const PALETTE = ["violet", "blue", "amber", "emerald", "rose", "cyan", "orange", "teal"] as const;
 
 const COLOR_CLASSES: Record<string, { bg: string; text: string; border: string }> = {
-  violet:  { bg: "bg-rose-50",  text: "text-rose-800",  border: "border-rose-200" },
+  violet:  { bg: "bg-danger-50",  text: "text-danger-700",  border: "border-danger-200" },
   blue:    { bg: "bg-blue-50",    text: "text-blue-700",    border: "border-blue-200" },
-  amber:   { bg: "bg-peach-50",   text: "text-peach-800",   border: "border-peach-200" },
-  emerald: { bg: "bg-sage-50", text: "text-sage-800", border: "border-sage-200" },
-  rose:    { bg: "bg-rose-50",    text: "text-rose-700",    border: "border-rose-200" },
-  cyan:    { bg: "bg-sky-50",    text: "text-sky-800",    border: "border-sky-200" },
-  orange:  { bg: "bg-peach-50",  text: "text-peach-800",  border: "border-peach-200" },
-  teal:    { bg: "bg-sky-50",    text: "text-sky-800",    border: "border-sky-200" },
+  amber:   { bg: "bg-warning-50",   text: "text-warning-700",   border: "border-warning-200" },
+  emerald: { bg: "bg-success-50", text: "text-success-700", border: "border-success-200" },
+  rose:    { bg: "bg-danger-50",    text: "text-danger-700",    border: "border-danger-200" },
+  cyan:    { bg: "bg-info-50",    text: "text-info-700",    border: "border-info-200" },
+  orange:  { bg: "bg-warning-50",  text: "text-warning-700",  border: "border-warning-200" },
+  teal:    { bg: "bg-info-50",    text: "text-info-700",    border: "border-info-200" },
 };
 
 export function MediaAssetsRotationView({
@@ -95,66 +95,65 @@ export function MediaAssetsRotationView({
   return (
     <div className="space-y-1.5">
       {/* Encadré explicatif — clarifier comment l'auto-pick choisit les rushes */}
-      <details className="rounded-xl border border-sky-100 bg-sky-50/50 px-3 py-2 mb-1 group">
-        <summary className="cursor-pointer flex items-center gap-2 text-xs font-medium text-sky-950 select-none">
-          <HelpCircle size={13} className="text-sky-700" />
+      <details className="rounded-xl border border-info-100 bg-info-50/50 px-3 py-2 mb-1 group">
+        <summary className="cursor-pointer flex items-center gap-2 text-xs font-medium text-info-700 select-none">
+          <HelpCircle size={13} className="text-info-700" />
           Comment fonctionne la rotation ?
         </summary>
-        <div className="mt-2 text-[11px] text-sky-950/90 leading-relaxed space-y-1.5">
+        <div className="mt-2 text-[11px] text-info-700/90 leading-relaxed space-y-1.5">
           <p>
             Chaque rush est rangé dans une <b>catégorie</b> (ex.&nbsp;: <i>Extérieur</i>)
-            puis dans un <b>pack</b> (ex.&nbsp;: <i>Maison-Provence</i>). Un même pack
-            regroupe les plans d&apos;un même tournage qui doivent être joués ensemble.
+            puis dans un <b>groupe</b> (ex.&nbsp;: <i>Maison-Provence</i>). Un même
+            groupe regroupe les plans d&apos;un même tournage qui doivent être joués ensemble.
           </p>
           <p>
             <b>Auto · moins utilisé</b>&nbsp;: à chaque génération, le moteur prend
-            le pack <i>le plus stale</i> (catégorie la plus ancienne en termes de
+            le groupe <i>le plus stale</i> (catégorie la plus ancienne en termes de
             <code>lastUsedAt</code>) parmi ceux qui sont accessibles. Il évite
             de répéter deux fois la même catégorie de suite. Ce n&apos;est pas
             un cycle déterministe — l&apos;ajout de nouveaux rushes décale l&apos;ordre.
           </p>
           <p>
             <b>Ordre personnalisé</b>&nbsp;: tu fixes manuellement la séquence des
-            packs, le moteur cycle dessus sans dévier (Tenue1/Set1 → Tenue2/Set1 →
-            Tenue1/Set2 → … → loop).
+            groupes, le moteur cycle dessus sans dévier.
           </p>
         </div>
       </details>
 
-      <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-xl border bg-gray-50 border-gray-200 mb-3">
+      <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-xl border bg-muted border-border mb-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2 flex-wrap">
             {seqState.length === 0 ? (
               <>
-                <span className="flex items-center gap-1 text-xs font-semibold text-sage-800">
-                  <RotateCcw size={12} className="text-sage-500" /> Rotation auto
+                <span className="flex items-center gap-1 text-xs font-semibold text-success-700">
+                  <RotateCcw size={12} className="text-success-600" /> Rotation auto
                 </span>
-                <span className="text-gray-300 text-xs">·</span>
-                <span className="text-xs text-gray-500">{allNamed.length} groupe{allNamed.length !== 1 ? "s" : ""}</span>
+                <span className="text-muted-foreground/60 text-xs">·</span>
+                <span className="text-xs text-muted-foreground">{allNamed.length} groupe{allNamed.length !== 1 ? "s" : ""}</span>
                 {cycleSize != null && cycleSize > 0 && (
                   <>
-                    <span className="text-gray-300 text-xs">·</span>
-                    <span className="text-xs text-gray-500">Cycle : <span className="font-medium text-gray-700">{cycleSize} gén.</span></span>
+                    <span className="text-muted-foreground/60 text-xs">·</span>
+                    <span className="text-xs text-muted-foreground">Cycle : <span className="font-medium text-foreground">{cycleSize} gén.</span></span>
                   </>
                 )}
                 {nextLabel && (
                   <>
-                    <span className="text-gray-300 text-xs">·</span>
-                    <span className="text-xs text-gray-500">Prochain : <span className="font-semibold text-gray-700">{nextLabel}</span></span>
+                    <span className="text-muted-foreground/60 text-xs">·</span>
+                    <span className="text-xs text-muted-foreground">Prochain : <span className="font-semibold text-foreground">{nextLabel}</span></span>
                   </>
                 )}
               </>
             ) : (
               <>
-                <span className="flex items-center gap-1 text-xs font-semibold text-sky-800">
-                  <ListOrdered size={12} className="text-sky-700" /> Ordre personnalisé
+                <span className="flex items-center gap-1 text-xs font-semibold text-info-700">
+                  <ListOrdered size={12} className="text-info-700" /> Ordre personnalisé
                 </span>
-                <span className="text-gray-300 text-xs">·</span>
-                <span className="text-xs text-gray-500">{seqState.length} pack{seqState.length !== 1 ? "s" : ""} fixés</span>
+                <span className="text-muted-foreground/60 text-xs">·</span>
+                <span className="text-xs text-muted-foreground">{seqState.length} pack{seqState.length !== 1 ? "s" : ""} fixés</span>
                 {nextLabel && (
                   <>
-                    <span className="text-gray-300 text-xs">·</span>
-                    <span className="text-xs text-gray-500">Prochain : <span className="font-semibold text-gray-700">{nextLabel}</span></span>
+                    <span className="text-muted-foreground/60 text-xs">·</span>
+                    <span className="text-xs text-muted-foreground">Prochain : <span className="font-semibold text-foreground">{nextLabel}</span></span>
                   </>
                 )}
               </>
@@ -163,14 +162,14 @@ export function MediaAssetsRotationView({
           {seqState.length > 0 && (
             <button
               onClick={() => { void saveSequence([]); }}
-              className="text-[11px] text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-200 rounded px-2 py-0.5 transition-colors"
+              className="text-[11px] text-muted-foreground hover:text-red-500 border border-border hover:border-red-200 rounded px-2 py-0.5 transition-colors"
             >
               Passer en auto
             </button>
           )}
         </div>
         {inaccessibleCount > 0 && (
-          <span className="flex items-center gap-1 text-[11px] text-peach-700">
+          <span className="flex items-center gap-1 text-[11px] text-warning-700">
             <AlertTriangle size={10} className="shrink-0" />
             {inaccessibleCount} groupe{inaccessibleCount !== 1 ? "s" : ""} hors accès pour ce compte
           </span>
@@ -186,33 +185,33 @@ export function MediaAssetsRotationView({
             key={g.key}
             className={`flex items-start gap-3 p-2.5 rounded-xl border transition-opacity ${
               dimmed
-                ? "opacity-50 border-dashed border-gray-300 bg-gray-50"
-                : cls ? `${cls.bg} ${cls.border}` : "bg-gray-50 border-gray-200"
+                ? "opacity-50 border-dashed border-border bg-muted"
+                : cls ? `${cls.bg} ${cls.border}` : "bg-muted border-border"
             }`}
           >
             {/* Rank badge */}
             <div className="shrink-0 flex flex-col items-center gap-0.5 min-w-[60px]">
               {dimmed ? (
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 bg-gray-100 text-gray-400 border-gray-300">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 bg-muted text-muted-foreground border-border">
                   <Lock size={10} />
                 </div>
               ) : g.autoRank === 1 ? (
-                <span className="px-2 py-1 rounded-full bg-sage-500 text-white text-[10px] font-bold whitespace-nowrap">
+                <span className="px-2 py-1 rounded-full bg-success-600 text-white text-[10px] font-bold whitespace-nowrap">
                   Prochain
                 </span>
               ) : g.autoRank != null ? (
                 <>
                   <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 ${
-                    cls ? `bg-white ${cls.text} ${cls.border}` : "bg-white text-gray-500 border-gray-300"
+                    cls ? `bg-white ${cls.text} ${cls.border}` : "bg-white text-muted-foreground border-border"
                   }`}>
                     {g.autoRank}
                   </div>
-                  <span className="text-[9px] text-gray-400 whitespace-nowrap leading-none">
+                  <span className="text-[9px] text-muted-foreground whitespace-nowrap leading-none">
                     {seqState.length === 0 ? `Dans ${g.autoRank - 1} gén.` : `#${g.autoRank}`}
                   </span>
                 </>
               ) : (
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 bg-white text-gray-300 border-gray-200">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 bg-white text-muted-foreground/60 border-border">
                   –
                 </div>
               )}
@@ -226,23 +225,23 @@ export function MediaAssetsRotationView({
                   </span>
                 )}
                 {dimmed ? (
-                  <span className="text-[9px] text-gray-400 border border-dashed border-gray-300 rounded px-1.5 py-0.5 flex items-center gap-0.5">
+                  <span className="text-[9px] text-muted-foreground border border-dashed border-border rounded px-1.5 py-0.5 flex items-center gap-0.5">
                     <Lock size={8} /> Hors accès
                   </span>
                 ) : null}
                 {g.setTag ? (
                   <>
-                    <span className="text-[10px] text-gray-300">›</span>
-                    <span className="flex items-center gap-0.5 text-[10px] font-semibold bg-rose-50 text-rose-800 border border-rose-100 px-1.5 py-0.5 rounded">
+                    <span className="text-[10px] text-muted-foreground/60">›</span>
+                    <span className="flex items-center gap-0.5 text-[10px] font-semibold bg-danger-50 text-danger-700 border border-danger-100 px-1.5 py-0.5 rounded">
                       <Layers size={9} />{g.setTag}
                     </span>
                   </>
                 ) : (
-                  <span className="text-[10px] text-gray-400 italic">pool</span>
+                  <span className="text-[10px] text-muted-foreground italic">pool</span>
                 )}
-                <span className="text-[10px] text-gray-400 ml-1">{g.accessibleCount} rush{g.accessibleCount !== 1 ? "es" : ""}</span>
+                <span className="text-[10px] text-muted-foreground ml-1">{g.accessibleCount} rush{g.accessibleCount !== 1 ? "es" : ""}</span>
                 {g.lastUsed && (
-                  <span className="text-[10px] text-gray-400 flex items-center gap-0.5 ml-1">
+                  <span className="text-[10px] text-muted-foreground flex items-center gap-0.5 ml-1">
                     <Clock size={9} />{formatDate(g.lastUsed)}
                   </span>
                 )}
@@ -287,7 +286,7 @@ export function MediaAssetsRotationView({
                   ) : (
                     <button
                       onClick={() => addToSequence(g.setTag!)}
-                      className="p-0.5 text-sky-500 hover:text-sky-700"
+                      className="p-0.5 text-info-600 hover:text-info-700"
                       title="Fixer"
                     >
                       <PlusCircle size={12} />
@@ -303,7 +302,7 @@ export function MediaAssetsRotationView({
       {unnamedGroups.map((g) => (
         <div
           key={g.key || "__unset__"}
-          className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-400"
+          className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted text-xs text-muted-foreground"
         >
           <span className="font-medium">Sans pack</span>
           <span>— {g.accessibleCount} rush{g.accessibleCount !== 1 ? "es" : ""}</span>

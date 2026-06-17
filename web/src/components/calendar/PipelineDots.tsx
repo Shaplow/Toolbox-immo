@@ -25,7 +25,7 @@ const COLOR_CLASS: Record<DotStatus, string> = {
   processing: "bg-blue-400",
   done: "bg-green-500",
   failed: "bg-red-500",
-  muted: "bg-gray-100 opacity-30",
+  muted: "bg-muted opacity-30",
 };
 
 const LABEL: Record<DotStatus, string> = {

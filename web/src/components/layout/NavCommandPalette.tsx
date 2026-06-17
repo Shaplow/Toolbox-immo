@@ -126,7 +126,7 @@ export function NavCommandPalette({ user }: Props) {
   return createPortal(
     <>
       <div
-        className="fixed inset-0 backdrop-blur-[12px] backdrop-saturate-110 z-50"
+        className="fixed inset-0 z-50"
         onClick={() => setOpen(false)}
         aria-hidden="true"
       />
@@ -139,24 +139,24 @@ export function NavCommandPalette({ user }: Props) {
         <div
           className={[
             "pointer-events-auto w-full max-w-xl rounded-2xl overflow-hidden",
-            "bg-gradient-to-b from-white to-white/85 backdrop-blur-[24px] backdrop-saturate-150",
-            "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_8px_24px_-4px_rgba(15,23,42,0.12),0_32px_72px_-12px_rgba(15,23,42,0.22)]",
+            "bg-popover border border-border",
+            "",
           ].join(" ")}
         >
           {/* Input */}
           <div className="flex items-center gap-2.5 px-4 py-3 shadow-[inset_0_-1px_0_rgba(255,255,255,0.4)]">
-            <Search size={16} className="text-gray-500 shrink-0" />
+            <Search size={16} className="text-muted-foreground shrink-0" />
             <input
               ref={inputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Que veux-tu faire ?"
-              className="flex-1 py-1 text-[14px] text-gray-950 bg-transparent focus:outline-none placeholder:text-gray-400"
+              className="flex-1 py-1 text-[14px] text-foreground bg-transparent focus:outline-none placeholder:text-muted-foreground"
             />
             <Loader2
               size={14}
-              className={`text-gray-400 shrink-0 ${
+              className={`text-muted-foreground shrink-0 ${
                 query ? "opacity-0" : "opacity-0"
               }`}
             />
@@ -166,13 +166,13 @@ export function NavCommandPalette({ user }: Props) {
           {/* Results */}
           <div className="max-h-[60vh] overflow-y-auto py-2 [scrollbar-width:thin]">
             {grouped.length === 0 ? (
-              <p className="px-4 py-6 text-[12px] text-gray-500 text-center">
+              <p className="px-4 py-6 text-[12px] text-muted-foreground text-center">
                 Aucune commande pour « {query.trim()} ».
               </p>
             ) : (
               grouped.map(({ group, items }) => (
                 <div key={group} className="py-1">
-                  <p className="px-4 py-1.5 text-[10px] font-medium uppercase tracking-widest text-gray-500">
+                  <p className="px-4 py-1.5 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
                     {GROUP_LABELS[group]}
                   </p>
                   {items.map((cmd) => {
@@ -189,17 +189,17 @@ export function NavCommandPalette({ user }: Props) {
                         className={[
                           "w-[calc(100%-1rem)] mx-2 my-0.5 rounded-md inline-flex items-center gap-3 px-3 py-2 text-left text-[13px] transition-colors",
                           isFocused
-                            ? "bg-white/80 backdrop-blur-[8px] text-gray-950 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)]"
-                            : "text-gray-700",
+                            ? "bg-card text-foreground "
+                            : "text-foreground",
                         ].join(" ")}
                       >
                         {Icon && (
                           <span
                             className={[
-                              "shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-md backdrop-blur-[6px]",
+                              "shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-md ",
                               isFocused
-                                ? "bg-sky-100/70 text-sky-700 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.18)]"
-                                : "bg-white/60 text-gray-600 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
+                                ? "bg-info-100/70 text-info-700 "
+                                : "bg-white/60 text-gray-600 ",
                             ].join(" ")}
                           >
                             <Icon size={14} />
@@ -210,7 +210,7 @@ export function NavCommandPalette({ user }: Props) {
                             {cmd.label}
                           </p>
                           {cmd.description && (
-                            <p className="text-[11px] text-gray-500 truncate leading-tight mt-0.5">
+                            <p className="text-[11px] text-muted-foreground truncate leading-tight mt-0.5">
                               {cmd.description}
                             </p>
                           )}
@@ -227,7 +227,7 @@ export function NavCommandPalette({ user }: Props) {
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between px-4 py-2.5 bg-white/40 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] text-[10px] text-gray-500">
+          <div className="flex items-center justify-between px-4 py-2.5 bg-card shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] text-[10px] text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
               <Kbd>↑</Kbd>
               <Kbd>↓</Kbd>

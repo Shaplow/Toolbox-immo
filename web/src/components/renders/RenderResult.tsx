@@ -138,29 +138,29 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
 
       {/* Error message — carte glass rose */}
       {status === "ERROR" && errorMsg && !isWarningPayload && (
-        <div className="rounded-2xl bg-gradient-to-b from-rose-50/85 to-rose-50/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(201,113,133,0.28)] px-4 py-3">
-          <p className="text-[13px] text-rose-700">{errorMsg}</p>
+        <div className="rounded-2xl bg-gradient-to-b from-danger-50/85 to-danger-50/55  px-4 py-3">
+          <p className="text-[13px] text-danger-700">{errorMsg}</p>
         </div>
       )}
 
       {/* Progression — carte glass peach quand encore en cours */}
       {(stage || statusDetail || typeof progress === "number") && status !== "DONE" && (
-        <div className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] px-4 py-3 space-y-2">
+        <div className="rounded-2xl bg-card border border-border  px-4 py-3 space-y-2">
           {stage && (
             <p className="text-[12.5px] font-medium text-gray-800">
               Étape : {getRenderStageLabel(stage)}
             </p>
           )}
-          {statusDetail && <p className="text-[12px] text-gray-500">{statusDetail}</p>}
+          {statusDetail && <p className="text-[12px] text-muted-foreground">{statusDetail}</p>}
           {typeof progress === "number" && (
             <div className="space-y-1">
               <div className="w-full bg-white/60 rounded-full h-1.5 overflow-hidden shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]">
                 <div
-                  className="bg-gradient-to-r from-peach-400 to-peach-500 h-1.5 rounded-full transition-all duration-500"
+                  className="bg-gradient-to-r from-warning-200 to-warning-600 h-1.5 rounded-full transition-all duration-500"
                   style={{ width: `${Math.max(3, Math.round(progress * 100))}%` }}
                 />
               </div>
-              <p className="text-[11px] text-gray-500 tabular-nums">
+              <p className="text-[11px] text-muted-foreground tabular-nums">
                 {Math.round(progress * 100)}%
               </p>
             </div>
@@ -170,13 +170,13 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
 
       {/* Avertissements résolution (DONE + WARNINGS:) */}
       {warningList && (
-        <div className="rounded-2xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.32)] px-4 py-3">
-          <p className="text-[12.5px] font-medium text-sky-800 mb-1.5">
+        <div className="rounded-2xl bg-gradient-to-b from-info-50/85 to-info-50/55  px-4 py-3">
+          <p className="text-[12.5px] font-medium text-info-700 mb-1.5">
             Avertissements résolution
           </p>
           <ul className="list-disc list-inside space-y-0.5">
             {warningList.map((w) => (
-              <li key={w} className="text-[11.5px] text-sky-800/90">
+              <li key={w} className="text-[11.5px] text-info-700/90">
                 {w}
               </li>
             ))}
@@ -187,7 +187,7 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
       {/* Preview — carte glass, media contenu à max-h-[60vh] pour rentrer
           dans l'écran avec le footer actions visible */}
       {status === "DONE" && (videoUrl || pngUrl) && (
-        <div className="rounded-2xl bg-gradient-to-b from-gray-50/80 to-gray-100/60 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] overflow-hidden">
+        <div className="rounded-2xl bg-gradient-to-b from-gray-50/80 to-gray-100/60  overflow-hidden">
           <div className="flex items-center justify-center min-h-[35vh] max-h-[60vh] p-3">
             {videoUrl ? (
               <video
@@ -227,7 +227,7 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
             <a
               href={downloadUrl}
               download
-              className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium bg-gradient-to-b from-gray-700 to-gray-900 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_0_0_1px_rgba(255,255,255,0.04),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.12),0_4px_12px_-4px_rgba(15,23,42,0.22)] hover:from-gray-600 hover:to-gray-800 transition-all focus-ring"
+              className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium bg-gradient-to-b from-gray-700 to-gray-900 text-white  hover:from-gray-600 hover:to-gray-800 transition-all focus-ring"
             >
               <Download size={14} />
               Télécharger {downloadExt}
@@ -251,14 +251,14 @@ export function RenderResult({ renderId, initialStatus, pngUrl: initPng, videoUr
       <div className="flex items-center gap-4 pt-3 border-t border-white/40 text-[12px]">
         <Link
           href="/listings"
-          className="text-gray-600 hover:text-gray-900 transition-colors font-medium"
+          className="text-muted-foreground hover:text-gray-900 transition-colors font-medium"
         >
           ← Mes générations
         </Link>
         {templateId && (
           <Link
             href={`/generate/${templateId}`}
-            className="text-gray-400 hover:text-gray-700 transition-colors"
+            className="text-muted-foreground hover:text-foreground transition-colors"
           >
             Nouveau visuel (vide)
           </Link>
@@ -280,12 +280,12 @@ function StatusPill({ status }: { status: RenderStatus }) {
     : "Erreur";
   const Icon = isProcessing ? Loader2 : isDone ? CheckCircle2 : isError ? AlertCircle : Clock;
   const cls = isProcessing
-    ? "bg-peach-50/70 text-peach-700 shadow-[inset_0_0_0_1px_rgba(221,140,90,0.22)]"
+    ? "bg-warning-50/70 text-warning-700 shadow-[inset_0_0_0_1px_rgba(221,140,90,0.22)]"
     : isDone
-      ? "bg-sage-50/70 text-sage-700 shadow-[inset_0_0_0_1px_rgba(111,162,128,0.22)]"
-      : "bg-rose-50/70 text-rose-700 shadow-[inset_0_0_0_1px_rgba(201,113,133,0.28)]";
+      ? "bg-success-50/70 text-success-700 shadow-[inset_0_0_0_1px_rgba(111,162,128,0.22)]"
+      : "bg-danger-50/70 text-danger-700 shadow-[inset_0_0_0_1px_rgba(201,113,133,0.28)]";
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full backdrop-blur-[6px] px-3 py-1 text-[12px] font-medium ${cls}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium ${cls}`}>
       <Icon size={12} className={isProcessing ? "animate-spin" : ""} />
       {label}
     </span>

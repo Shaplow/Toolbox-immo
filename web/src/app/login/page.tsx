@@ -33,30 +33,30 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-rose-50 overflow-hidden">
+    <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-danger-50 overflow-hidden">
       {/* Halo décoratif discret */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -top-32 -right-32 w-96 h-96 bg-sky-200/40 rounded-full blur-3xl"
+        className="pointer-events-none absolute -top-32 -right-32 w-96 h-96 bg-info-200/40 rounded-full blur-3xl"
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -bottom-32 -left-32 w-96 h-96 bg-rose-200/40 rounded-full blur-3xl"
+        className="pointer-events-none absolute -bottom-32 -left-32 w-96 h-96 bg-danger-200/40 rounded-full blur-3xl"
       />
 
-      <div className="relative bg-white/90 backdrop-blur rounded-2xl shadow-xl shadow-indigo-100/40 border border-gray-100 p-10 w-full max-w-sm">
+      <div className="relative bg-card rounded-lg shadow-lg border border-border p-10 w-full max-w-sm">
         {/* Logo / Titre */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-indigo-500 to-rose-600 rounded-2xl mb-4 shadow-lg shadow-indigo-300/50">
-            <span className="text-white text-2xl font-bold tracking-tight">T</span>
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-primary rounded-md mb-4">
+            <span className="text-primary-foreground text-2xl font-bold tracking-tight">T</span>
           </div>
-          <h1 className="text-2xl font-semibold text-gray-900">Toolbox Immo</h1>
-          <p className="text-sm text-gray-500 mt-1">Votre espace de création immobilière</p>
+          <h1 className="text-2xl font-semibold text-foreground">Toolbox Immo</h1>
+          <p className="text-sm text-muted-foreground mt-1">Espace de création</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Identifiant ou email
             </label>
             <input
@@ -65,12 +65,12 @@ export default function LoginPage() {
               onChange={(e) => setIdentifier(e.target.value)}
               required
               placeholder="Identifiant ou email"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-info-200"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-foreground mb-1">
               Mot de passe
             </label>
             <input
@@ -79,7 +79,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               placeholder="••••••••"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+              className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-info-200"
             />
           </div>
 
@@ -92,13 +92,13 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-rose-600 hover:from-indigo-700 hover:to-rose-700 text-white font-medium rounded-lg text-sm transition-colors disabled:opacity-60 shadow-sm shadow-indigo-200/40"
+            className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-danger-600 hover:from-indigo-700 hover:to-danger-700 text-white font-medium rounded-lg text-sm transition-colors disabled:opacity-60 shadow-sm shadow-indigo-200/40"
           >
             {loading ? "Connexion…" : "Se connecter"}
           </button>
         </form>
 
-        <p className="mt-6 text-center text-[11px] text-gray-400">
+        <p className="mt-6 text-center text-[11px] text-muted-foreground">
           Pipeline éditorial pour agents immobiliers
         </p>
       </div>

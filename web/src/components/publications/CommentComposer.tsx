@@ -62,7 +62,7 @@ export function CommentComposer({ slotId, onCreated }: CommentComposerProps) {
   }
 
   return (
-    <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
+    <div className="mt-4 pt-4 border-t border-border space-y-2">
       <Textarea
         value={body}
         onChange={(v) => setBody(v)}
@@ -72,7 +72,7 @@ export function CommentComposer({ slotId, onCreated }: CommentComposerProps) {
         disabled={submitting}
       />
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-gray-500 inline-flex items-center gap-1.5">
+        <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5">
           <KbdChord keys={["⌘", "↵"]} /> pour envoyer
         </span>
         <Button

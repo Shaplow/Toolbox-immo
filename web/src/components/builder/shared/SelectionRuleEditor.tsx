@@ -101,7 +101,7 @@ export function SelectionRuleEditor({
       <select
         value={strategy}
         onChange={(e) => handleStrategyChange(e.target.value)}
-        className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
+        className="border border-border rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
       >
         {strategies.map((s) => (
           <option key={s.value} value={s.value}>{s.label}</option>
@@ -113,11 +113,11 @@ export function SelectionRuleEditor({
           {/* ── Tag conditions ──────────────────────────────────────────── */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
                 Filtres par tags
               </span>
               {tagConditions.length > 1 && (
-                <div className="flex rounded border border-gray-200 overflow-hidden">
+                <div className="flex rounded border border-border overflow-hidden">
                   {(["AND", "OR"] as const).map((op) => (
                     <button
                       key={op}
@@ -126,7 +126,7 @@ export function SelectionRuleEditor({
                       className={`px-2 py-0.5 text-[9px] font-medium transition-colors ${
                         tagConditionsOperator === op
                           ? "bg-indigo-600 text-white"
-                          : "bg-white text-gray-500 hover:bg-gray-50"
+                          : "bg-white text-muted-foreground hover:bg-muted"
                       }`}
                     >
                       {op}
@@ -143,7 +143,7 @@ export function SelectionRuleEditor({
                   <select
                     value={cond.tag}
                     onChange={(e) => updateCondition(idx, { tag: e.target.value })}
-                    className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                    className="flex-1 border border-border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
                   >
                     <option value="">— Champ —</option>
                     {paramFields.map((f) => (
@@ -156,7 +156,7 @@ export function SelectionRuleEditor({
                     value={cond.tag}
                     onChange={(e) => updateCondition(idx, { tag: e.target.value })}
                     placeholder="tag…"
-                    className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                    className="flex-1 border border-border rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
                   />
                 )}
 
@@ -168,7 +168,7 @@ export function SelectionRuleEditor({
                   className={`shrink-0 text-[9px] font-medium px-1.5 py-1 rounded border transition-colors ${
                     cond.negate
                       ? "bg-red-50 border-red-300 text-red-600"
-                      : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
+                      : "bg-white border-border text-muted-foreground hover:border-border"
                   }`}
                 >
                   {cond.negate ? "NON" : "OUI"}
@@ -183,7 +183,7 @@ export function SelectionRuleEditor({
                     className={`shrink-0 text-[9px] px-1.5 py-1 rounded border transition-colors ${
                       cond.fromParam
                         ? "bg-indigo-50 border-indigo-300 text-indigo-600"
-                        : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
+                        : "bg-white border-border text-muted-foreground hover:border-border"
                     }`}
                   >
                     {cond.fromParam ? "≡" : "T"}
@@ -194,7 +194,7 @@ export function SelectionRuleEditor({
                 <button
                   type="button"
                   onClick={() => removeCondition(idx)}
-                  className="shrink-0 text-gray-300 hover:text-red-400 transition-colors p-0.5"
+                  className="shrink-0 text-muted-foreground/60 hover:text-red-400 transition-colors p-0.5"
                 >
                   <X size={12} />
                 </button>

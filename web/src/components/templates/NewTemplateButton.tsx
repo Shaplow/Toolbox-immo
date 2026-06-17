@@ -63,7 +63,7 @@ export function NewTemplateButton() {
               <Input value={name} onChange={setName} placeholder="Nouveau template" />
             </FormField>
 
-            <FormField label="Client" help="Optionnel">
+            <FormField label="Client">
               <Input value={client} onChange={setClient} placeholder="ex: Bonjour Oscar" />
             </FormField>
 

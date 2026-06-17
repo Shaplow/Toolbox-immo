@@ -116,14 +116,14 @@ export function DataFillForm({ token, fieldsSchema }: Props) {
 
   if (success) {
     return (
-      <div className="rounded-3xl bg-gradient-to-b from-sage-50/85 to-sage-50/55 backdrop-blur-[10px] backdrop-saturate-150 p-6 sm:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(111,162,128,0.22),0_8px_24px_-8px_rgba(15,23,42,0.12)] text-center">
-        <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-sage-100 text-sage-700 mb-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+      <div className="rounded-3xl bg-gradient-to-b from-success-50/85 to-success-50/55 p-6 sm:p-8  text-center">
+        <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-success-100 text-success-700 mb-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
           <Check size={22} />
         </div>
-        <h2 className="text-[18px] font-semibold text-sage-950">
+        <h2 className="text-[18px] font-semibold text-success-700">
           {success.count} fiche{success.count !== 1 ? "s" : ""} envoyée{success.count !== 1 ? "s" : ""}
         </h2>
-        <p className="mt-2 text-[13px] text-sage-800/80">
+        <p className="mt-2 text-[13px] text-success-700/80">
           Merci&nbsp;! L&apos;équipe va les retrouver dans son admin.
         </p>
         <Button variant="ghost" onClick={() => setSuccess(null)} className="mt-4">
@@ -135,8 +135,8 @@ export function DataFillForm({ token, fieldsSchema }: Props) {
 
   if (schema.length === 0) {
     return (
-      <div className="rounded-2xl bg-white/55 backdrop-blur-[8px] p-6 text-center shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-        <p className="text-[13px] text-gray-600">
+      <div className="rounded-2xl bg-card border border-border p-6 text-center ">
+        <p className="text-[13px] text-muted-foreground">
           Cette bibliothèque n&apos;a pas encore de schéma de champs défini.
           <br />
           Demande à l&apos;équipe qu&apos;elle configure les champs avant de remplir.
@@ -150,17 +150,17 @@ export function DataFillForm({ token, fieldsSchema }: Props) {
       {entries.map((entry, idx) => (
         <div
           key={idx}
-          className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 p-4 sm:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] relative"
+          className="rounded-2xl bg-card border border-border p-4 sm:p-5  relative"
         >
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[11px] uppercase tracking-widest font-semibold text-gray-500">
+            <p className="text-[11px] uppercase tracking-widest font-semibold text-muted-foreground">
               Fiche {idx + 1}
             </p>
             {entries.length > 1 && (
               <button
                 type="button"
                 onClick={() => removeRow(idx)}
-                className="p-1 text-gray-300 hover:text-rose-600 transition-colors"
+                className="p-1 text-muted-foreground/60 hover:text-danger-600 transition-colors"
                 title="Supprimer cette fiche"
               >
                 <Trash2 size={14} />

@@ -51,10 +51,10 @@ const TYPOLOGY_META: Record<
 };
 
 const TONE_CHIP: Record<"rose" | "peach" | "sky" | "sage", string> = {
-  rose: "bg-rose-100/70 text-rose-800",
-  peach: "bg-peach-100/70 text-peach-800",
-  sky: "bg-sky-100/70 text-sky-800",
-  sage: "bg-sage-100/70 text-sage-800",
+  rose: "bg-danger-100/70 text-danger-700",
+  peach: "bg-warning-100/70 text-warning-700",
+  sky: "bg-info-100/70 text-info-700",
+  sage: "bg-success-100/70 text-success-700",
 };
 
 interface Props {
@@ -158,7 +158,7 @@ export function InboxItem({ item }: Props) {
 
   return (
     <>
-      <div className="flex items-center gap-2 bg-white/70 backdrop-blur-[8px] rounded-xl pl-3 pr-2 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:bg-white/85 transition-colors">
+      <div className="flex items-center gap-2 bg-card border border-border rounded-md pl-3 pr-2 py-2  hover:bg-muted transition-colors">
         {/* Typology chip */}
         <span
           className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium ${TONE_CHIP[meta.tone]}`}
@@ -173,7 +173,7 @@ export function InboxItem({ item }: Props) {
           href={`/publications/${item.slot.id}`}
           className="flex-1 min-w-0 group"
         >
-          <p className="text-[12px] font-medium text-gray-950 truncate group-hover:text-sky-800 transition-colors">
+          <p className="text-[12px] font-medium text-gray-950 truncate group-hover:text-info-700 transition-colors">
             {item.slot.patternLabel ?? item.slot.title ?? "Publication"}
           </p>
           <p className="text-[11px] text-gray-500 mt-0.5">
@@ -224,7 +224,7 @@ export function InboxItem({ item }: Props) {
           {item.typology === "bank_ready" && (
             <Link
               href={`/publications/${item.slot.id}`}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-sage-800 hover:bg-sage-100/70 transition-colors"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-success-700 hover:bg-success-100/70 transition-colors"
               title="Programmer"
             >
               <Sparkles size={11} />
@@ -233,7 +233,7 @@ export function InboxItem({ item }: Props) {
           )}
           <Link
             href={`/publications/${item.slot.id}`}
-            className="text-sky-500 hover:text-sky-700 transition-colors"
+            className="text-info-600 hover:text-info-700 transition-colors"
             aria-label="Ouvrir la fiche complète"
           >
             <ArrowRight size={12} />

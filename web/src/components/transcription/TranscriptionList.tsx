@@ -92,8 +92,8 @@ const DEFAULT_LANGUAGES = ["fr"];
 const LANGUAGES_LOCALSTORAGE_KEY = "transcription_languages_v1";
 
 const STATUS_ICON: Record<Job["status"], React.ReactNode> = {
-  QUEUED: <Clock className="h-4 w-4 text-peach-700" />,
-  PROCESSING: <Loader2 className="h-4 w-4 animate-spin text-sky-700" />,
+  QUEUED: <Clock className="h-4 w-4 text-warning-700" />,
+  PROCESSING: <Loader2 className="h-4 w-4 animate-spin text-info-700" />,
   COMPLETED: <CheckCircle className="h-4 w-4 text-green-500" />,
   FAILED: <XCircle className="h-4 w-4 text-red-500" />,
 };
@@ -106,8 +106,8 @@ const STATUS_LABEL: Record<Job["status"], string> = {
 };
 
 const STATUS_TONE: Record<Job["status"], string> = {
-  QUEUED: "bg-peach-50 text-peach-800",
-  PROCESSING: "bg-sky-50 text-sky-800",
+  QUEUED: "bg-warning-50 text-warning-700",
+  PROCESSING: "bg-info-50 text-info-700",
   COMPLETED: "bg-green-50 text-green-700",
   FAILED: "bg-red-50 text-red-700",
 };
@@ -632,8 +632,8 @@ export function TranscriptionList({
   return (
     <div className="min-h-screen">
       <div
-        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
-        style={{ background: "var(--gradient-page-shell)" }}
+        className="mx-auto max-w-7xl px-6 py-8"
+
       >
         <div className="px-6 sm:px-8 pt-6 pb-12">
           <div className="max-w-5xl mx-auto space-y-6">
@@ -641,7 +641,7 @@ export function TranscriptionList({
       {returnTo && (
         <Link
           href={returnTo}
-          className="inline-flex items-center gap-1.5 text-[12px] text-gray-500 hover:text-gray-900 transition-colors"
+          className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-gray-900 transition-colors"
         >
           <ArrowLeft size={12} />
           Retour à la publication
@@ -650,14 +650,14 @@ export function TranscriptionList({
 
       {/* V2 friction MED-6 : banner contextuel quand on est ouvert depuis un slot. */}
       {slotContext && (
-        <div className="rounded-xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.32)]">
-          <p className="text-[10px] uppercase tracking-widest font-semibold text-sky-700">
+        <div className="rounded-xl bg-gradient-to-b from-info-50/85 to-info-50/55 px-4 py-3 ">
+          <p className="text-[10px] uppercase tracking-widest font-semibold text-info-700">
             Transcription pour une publication
           </p>
-          <p className="mt-1 text-[13px] text-sky-900">
+          <p className="mt-1 text-[13px] text-info-700">
             {slotContext.title ?? "Publication"} · @{slotContext.accountHandle}
           </p>
-          <p className="mt-0.5 text-[11px] text-sky-700/80">
+          <p className="mt-0.5 text-[11px] text-info-700/80">
             La transcription sera rattachée à cette publication et apparaîtra dans sa
             chaîne de production.
           </p>
@@ -673,13 +673,13 @@ export function TranscriptionList({
           actions={<RefreshButton title="Rafraîchir les jobs" />}
         />
         <div className="-mt-4 mb-2 flex flex-wrap gap-2 text-xs font-medium">
-          <span className="rounded-full bg-peach-50 px-3 py-1 text-peach-800">
+          <span className="rounded-full bg-warning-50 px-3 py-1 text-warning-700">
             {queuedJobs.length} en attente
           </span>
-          <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-800">
+          <span className="rounded-full bg-info-50 px-3 py-1 text-info-700">
             {processingJobs.length} en cours
           </span>
-          <span className="rounded-full bg-gray-100 px-3 py-1 text-gray-600">
+          <span className="rounded-full bg-muted px-3 py-1 text-muted-foreground">
             {historyJobs.length} dans l&apos;historique
           </span>
         </div>
@@ -687,12 +687,12 @@ export function TranscriptionList({
 
       {/* Section Langues — toujours visible, FR coché par défaut.
           1 langue = mode mono. 2+ = mode multi auto (traduction inverse). */}
-      <div className="rounded-2xl border border-white/50 bg-white/60 backdrop-blur-[6px] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+      <div className="rounded-2xl border border-white/50 bg-card border border-border px-4 py-3 ">
         <div className="flex items-center gap-2 mb-2">
-          <Languages className="h-4 w-4 text-sky-700" />
+          <Languages className="h-4 w-4 text-info-700" />
           <span className="text-sm font-semibold text-gray-900">Langues</span>
           {isMultilingual && (
-            <span className="text-[10px] uppercase tracking-widest font-bold text-sky-700">
+            <span className="text-[10px] uppercase tracking-widest font-bold text-info-700">
               Multi · bêta
             </span>
           )}
@@ -705,8 +705,8 @@ export function TranscriptionList({
                 key={option.value}
                 className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium cursor-pointer transition-colors ${
                   checked
-                    ? "bg-sky-100 border-sky-300 text-sky-900"
-                    : "bg-white border-gray-200 text-gray-600 hover:border-sky-300"
+                    ? "bg-info-100 border-info-200 text-info-700"
+                    : "bg-white border-border text-muted-foreground hover:border-info-200"
                 }`}
               >
                 <input
@@ -731,7 +731,7 @@ export function TranscriptionList({
           })}
         </div>
         {isMultilingual && (
-          <p className="mt-2 text-[11px] text-sky-700/80">
+          <p className="mt-2 text-[11px] text-info-700/80">
             Mode multi : {selectedLanguages.length} passes Whisper en séquence + traduction inverse auto. Temps de transcription ≈ × nombre de langues.
           </p>
         )}
@@ -740,10 +740,10 @@ export function TranscriptionList({
       <div
         role="button"
         tabIndex={0}
-        className={`relative rounded-2xl border-2 border-dashed p-10 text-center transition-colors backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] ${
+        className={`relative rounded-2xl border-2 border-dashed p-10 text-center transition-colors  ${
           dragging
-            ? "border-sky-400 bg-sky-50/70"
-            : "border-white/60 bg-white/60 hover:border-sky-300 hover:bg-sky-50/40"
+            ? "border-info-200 bg-info-50/70"
+            : "border-white/60 bg-white/60 hover:border-info-200 hover:bg-info-50/40"
         } ${uploadState ? "pointer-events-none opacity-80" : "cursor-pointer"}`}
         onDragEnter={(event) => {
           event.preventDefault();
@@ -775,32 +775,32 @@ export function TranscriptionList({
         />
 
         {uploadState ? (
-          <div className="mx-auto flex max-w-md flex-col items-center gap-4 text-sky-800">
+          <div className="mx-auto flex max-w-md flex-col items-center gap-4 text-info-700">
             <Loader2 className="h-8 w-8 animate-spin" />
             <div className="space-y-1">
               <p className="text-sm font-semibold">
                 Préparation {uploadState.currentIndex}/{uploadState.total}
               </p>
-              <p className="text-sm text-sky-700">{uploadState.currentName}</p>
+              <p className="text-sm text-info-700">{uploadState.currentName}</p>
             </div>
             <div className="w-full space-y-2">
-              <div className="h-2 overflow-hidden rounded-full bg-sky-100">
+              <div className="h-2 overflow-hidden rounded-full bg-info-100">
                 <div
-                  className="h-full bg-sky-500 transition-all duration-150"
+                  className="h-full bg-info-600 transition-all duration-150"
                   style={{ width: `${uploadState.progress ?? 0}%` }}
                 />
               </div>
-              <div className="flex items-center justify-between text-xs text-sky-700">
+              <div className="flex items-center justify-between text-xs text-info-700">
                 <span>{uploadState.progress ?? 0}%</span>
                 <span>{uploadState.completed} rush prêt{uploadState.completed > 1 ? "s" : ""}</span>
               </div>
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-3 text-gray-500">
+          <div className="flex flex-col items-center gap-3 text-muted-foreground">
             <Upload className="h-8 w-8" />
             <div className="space-y-1">
-              <p className="text-base font-medium text-gray-700">Déposez un ou plusieurs rushs audio / vidéo</p>
+              <p className="text-base font-medium text-foreground">Déposez un ou plusieurs rushs audio / vidéo</p>
               <p className="text-sm">mp3, wav, m4a, mp4, mov, mkv, webm... Les fichiers restent en attente jusqu&apos;au lancement manuel.</p>
             </div>
           </div>
@@ -808,10 +808,10 @@ export function TranscriptionList({
       </div>
 
       {feedback && (
-        <div className={`rounded-2xl backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,1)] ${
+        <div className={`rounded-2xl px-4 py-3 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,1)] ${
           feedback.type === "success"
             ? "bg-gradient-to-b from-green-50/85 to-green-50/55 text-green-800 shadow-[inset_0_0_0_1px_rgba(134,239,172,0.40)]"
-            : "bg-gradient-to-b from-rose-50/85 to-rose-50/55 text-rose-800 shadow-[inset_0_0_0_1px_rgba(244,114,182,0.30)]"
+            : "bg-gradient-to-b from-danger-50/85 to-danger-50/55 text-danger-700 shadow-[inset_0_0_0_1px_rgba(244,114,182,0.30)]"
         }`}>
           {feedback.message}
         </div>
@@ -821,14 +821,14 @@ export function TranscriptionList({
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-sm font-semibold text-gray-800">File de transcription</h2>
-            <p className="text-sm text-gray-500">Les rushs ne partent plus automatiquement. Vous contrôlez le départ, un par un ou en lot.</p>
+            <p className="text-sm text-muted-foreground">Les rushs ne partent plus automatiquement. Vous contrôlez le départ, un par un ou en lot.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => void refreshJobs()}
               disabled={refreshing}
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-sky-300 hover:text-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-info-200 hover:text-info-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Actualiser
@@ -848,7 +848,7 @@ export function TranscriptionList({
         </div>
 
         {queueJobs.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/60 bg-white/40 backdrop-blur-[6px] px-6 py-10 text-center text-sm text-gray-500 shadow-[inset_0_1px_0_rgba(255,255,255,1)]">
+          <div className="rounded-2xl border border-dashed border-white/60 bg-card border border-border px-6 py-10 text-center text-sm text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,1)]">
             Aucun rush en attente ou en cours. Ajoutez vos fichiers ci-dessus pour préparer un lot.
           </div>
         ) : (
@@ -860,17 +860,17 @@ export function TranscriptionList({
               const isStarting = !!startingJobIds[job.id];
 
               return (
-                <li key={job.id} className="rounded-xl border border-white/50 bg-white/60 backdrop-blur-[6px] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+                <li key={job.id} className="rounded-xl border border-white/50 bg-card border border-border p-5 ">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex min-w-0 items-start gap-3">
-                      <div className="flex w-10 h-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-500">
+                      <div className="flex w-10 h-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
                         <FileAudio className="h-5 w-5" />
                       </div>
                       <div className="min-w-0 space-y-1">
                         <p className="truncate text-sm font-semibold text-gray-900">
                           {job.inputFilename ?? "Fichier inconnu"}
                         </p>
-                        <p className="text-xs text-gray-400">Ajouté le {fmtDate(job.createdAt)}</p>
+                        <p className="text-xs text-muted-foreground">Ajouté le {fmtDate(job.createdAt)}</p>
                       </div>
                     </div>
 
@@ -886,7 +886,7 @@ export function TranscriptionList({
                         onClick={() => void cancelJob(job)}
                         disabled={cancellingJobIds[job.id] || isStarting}
                         title="Annuler"
-                        className="ml-auto shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-40 transition-colors"
+                        className="ml-auto shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-muted-foreground disabled:opacity-40 transition-colors"
                       >
                         {cancellingJobIds[job.id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
                       </button>
@@ -898,11 +898,11 @@ export function TranscriptionList({
                       <div className="flex flex-wrap gap-4 items-end">
                         {job.languages && job.languages.length >= 2 ? (
                           <div className="space-y-1 min-w-[200px]">
-                            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">
+                            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                               Langues (mode multi)
                             </span>
                             <div className="flex flex-wrap gap-1.5">
-                              <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-900">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-info-100 px-2.5 py-1 text-xs font-semibold text-info-700">
                                 <Languages className="h-3 w-3" />
                                 {job.languages.join(" · ").toUpperCase()}
                               </span>
@@ -910,11 +910,11 @@ export function TranscriptionList({
                           </div>
                         ) : (
                           <label className="space-y-1 min-w-[150px]">
-                            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Langue</span>
+                            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Langue</span>
                             <select
                               value={draft.language}
                               onChange={(event) => updateQueuedDraft(job, { language: event.target.value })}
-                              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                              className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-info-600"
                             >
                               {LANGUAGE_OPTIONS.map((option) => (
                                 <option key={option.value} value={option.value}>{option.label}</option>
@@ -928,20 +928,20 @@ export function TranscriptionList({
                             type="checkbox"
                             checked={draft.enableDiarization}
                             onChange={(event) => updateQueuedDraft(job, { enableDiarization: event.target.checked })}
-                            className="h-4 w-4 rounded border-gray-300 text-sky-700 focus:ring-sky-500"
+                            className="h-4 w-4 rounded border-border text-info-700 focus:ring-info-600"
                           />
-                          <span className="text-sm text-gray-700">Identifier les intervenants</span>
+                          <span className="text-sm text-foreground">Identifier les intervenants</span>
                         </label>
                       </div>
 
                       {jobErrors[job.id] && (
-                        <div className="rounded-xl bg-gradient-to-b from-rose-50/85 to-rose-50/55 backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 text-sm text-rose-800 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(244,114,182,0.30)]">
+                        <div className="rounded-xl bg-gradient-to-b from-danger-50/85 to-danger-50/55 px-4 py-3 text-sm text-danger-700 ">
                           {jobErrors[job.id]}
                         </div>
                       )}
 
                       <div className="flex flex-col gap-3 border-t border-white/40 pt-3 md:flex-row md:items-center md:justify-between">
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-muted-foreground">
                           Rush prêt. Lancez-le seul ou avec le lot complet.
                         </p>
 
@@ -951,7 +951,7 @@ export function TranscriptionList({
                               type="button"
                               onClick={() => void saveQueuedJobConfig(job)}
                               disabled={isSaving || isStarting}
-                              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-border disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                               Enregistrer
@@ -983,27 +983,27 @@ export function TranscriptionList({
                     </div>
                   ) : (
                     <div className="mt-4 flex flex-col gap-4 border-t border-white/40 pt-4 md:flex-row md:items-center md:justify-between">
-                      <div className="flex flex-wrap gap-2 text-xs font-medium text-gray-500">
+                      <div className="flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
                         {job.languages && job.languages.length >= 2 ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-3 py-1 text-sky-900">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-info-100 px-3 py-1 text-info-700">
                             <Languages className="h-3 w-3" />
                             {job.languages.join(" · ").toUpperCase()}
                           </span>
                         ) : (
-                          <span className="rounded-full bg-gray-100 px-3 py-1">{job.language.toUpperCase()}</span>
+                          <span className="rounded-full bg-muted px-3 py-1">{job.language.toUpperCase()}</span>
                         )}
                         {job.enableDiarization && (
-                          <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-800">Intervenants identifiés</span>
+                          <span className="rounded-full bg-info-50 px-3 py-1 text-info-700">Intervenants identifiés</span>
                         )}
                         {job.duration != null && (
-                          <span className="rounded-full bg-gray-100 px-3 py-1">{fmtDuration(job.duration)}</span>
+                          <span className="rounded-full bg-muted px-3 py-1">{fmtDuration(job.duration)}</span>
                         )}
                       </div>
 
                       <button
                         type="button"
                         onClick={() => router.push(`/transcriptions/${job.id}`)}
-                        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-sky-300 hover:text-sky-800"
+                        className="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-info-200 hover:text-info-700"
                       >
                         Ouvrir le détail
                       </button>
@@ -1020,22 +1020,22 @@ export function TranscriptionList({
         <section className="space-y-4">
           <div>
             <h2 className="text-sm font-semibold text-gray-800">Historique</h2>
-            <p className="text-sm text-gray-500">Les transcriptions terminées ou en échec restent accessibles ici.</p>
+            <p className="text-sm text-muted-foreground">Les transcriptions terminées ou en échec restent accessibles ici.</p>
           </div>
 
           <ul className="space-y-3">
             {historyJobs.map((job) => (
-              <li key={job.id} className="rounded-xl border border-white/50 bg-white/60 backdrop-blur-[6px] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+              <li key={job.id} className="rounded-xl border border-white/50 bg-card border border-border p-5 ">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex min-w-0 items-start gap-3">
-                    <div className="flex w-10 h-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-500">
+                    <div className="flex w-10 h-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
                       <FileAudio className="h-5 w-5" />
                     </div>
                     <div className="min-w-0 space-y-1">
                       <p className="truncate text-sm font-semibold text-gray-900">
                         {job.inputFilename ?? "Fichier inconnu"}
                       </p>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-muted-foreground">
                         {fmtDate(job.createdAt)}
                         {job.duration != null && ` · ${fmtDuration(job.duration)}`}
                         {job.hasDiarization && " · Intervenants identifiés"}
@@ -1055,7 +1055,7 @@ export function TranscriptionList({
                     <button
                       type="button"
                       onClick={() => router.push(`/transcriptions/${job.id}`)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-sky-300 hover:text-sky-800"
+                      className="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-info-200 hover:text-info-700"
                     >
                       Ouvrir
                     </button>
@@ -1069,7 +1069,7 @@ export function TranscriptionList({
               on atteint cette limite (heuristique : on inclut aussi les jobs
               en cours dans le compteur côté serveur, donc à 50 c'est plein). */}
           {jobs.length >= 50 && (
-            <p className="text-center text-[11px] text-peach-700 pt-2">
+            <p className="text-center text-[11px] text-warning-700 pt-2">
               Affichage des 50 plus récents — d&apos;anciennes transcriptions
               ne sont pas listées ici.
             </p>

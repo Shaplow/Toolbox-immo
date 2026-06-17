@@ -209,49 +209,45 @@ export function DeployTemplateModal({
     <Modal open onClose={onClose} size="md">
       <form onSubmit={handleSubmit} className="p-5">
         <div className="flex items-start gap-3">
-          <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-sky-100 text-sky-700 shrink-0">
+          <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-muted border border-border text-foreground shrink-0">
             <Rocket size={18} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
-              Déployer la recette
-            </p>
-            <h2 className="mt-1 text-[18px] font-semibold text-gray-950 truncate">
-              {templateLabel}
+            <h2 className="text-[18px] font-semibold text-foreground truncate">
+              Appliquer « {templateLabel} »
             </h2>
-            <p className="mt-0.5 text-[12px] text-gray-500">
-              Sélectionne les comptes Instagram destinataires. Une liaison
-              sera créée pour chacun avec le planning ci-dessous.
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
+              Sélectionne les comptes destinataires et le planning.
             </p>
           </div>
         </div>
 
         {/* Liste comptes */}
-        <div className="mt-4 rounded-xl bg-white/55 backdrop-blur-[8px] p-3 max-h-56 overflow-y-auto shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+        <div className="mt-4 rounded-md bg-card border border-border p-3 max-h-56 overflow-y-auto">
           {loadingData ? (
-            <p className="text-[12px] text-gray-500">Chargement…</p>
+            <p className="text-[12px] text-muted-foreground">Chargement…</p>
           ) : eligibleAccounts.length === 0 ? (
-            <p className="text-[12px] text-gray-500">
-              Aucun compte éligible (tous déjà liés à cette recette).
+            <p className="text-[12px] text-muted-foreground">
+              Aucun compte éligible (tous déjà appliqués).
             </p>
           ) : (
             <>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] text-gray-500">
+                <span className="text-[11px] text-muted-foreground">
                   {selectedAccountIds.size}/{eligibleAccounts.length} sélectionnés
                 </span>
                 <div className="inline-flex items-center gap-1.5">
                   <button
                     type="button"
-                    className="text-[11px] text-sky-700 hover:underline"
+                    className="text-[11px] text-primary hover:underline"
                     onClick={selectAll}
                   >
                     Tout
                   </button>
-                  <span className="text-gray-300">·</span>
+                  <span className="text-muted-foreground/60">·</span>
                   <button
                     type="button"
-                    className="text-[11px] text-sky-700 hover:underline"
+                    className="text-[11px] text-primary hover:underline"
                     onClick={selectNone}
                   >
                     Aucun
@@ -266,17 +262,17 @@ export function DeployTemplateModal({
                       key={a.id}
                       type="button"
                       onClick={() => toggleAccount(a.id)}
-                      className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] ${
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] transition-colors ${
                         isSelected
-                          ? "bg-sky-100 text-sky-900"
-                          : "bg-white/70 text-gray-700 hover:bg-white/90"
+                          ? "bg-accent text-accent-foreground border border-border"
+                          : "bg-card text-foreground border border-border hover:bg-muted"
                       }`}
                     >
                       <input
                         type="checkbox"
                         checked={isSelected}
                         readOnly
-                        className="h-3.5 w-3.5 rounded border-gray-300 text-sky-600 pointer-events-none"
+                        className="h-3.5 w-3.5 rounded border-border pointer-events-none"
                       />
                       <span className="truncate">@{a.handle}</span>
                     </button>
@@ -307,10 +303,10 @@ export function DeployTemplateModal({
                     type="button"
                     key={d.value}
                     onClick={() => toggleDay(d.value)}
-                    className={`h-7 px-2 rounded-md text-[11.5px] font-medium ${
+                    className={`h-7 px-2 rounded-md text-[11.5px] font-medium border transition-colors ${
                       active
-                        ? "bg-gray-900 text-white"
-                        : "bg-white/55 text-gray-700"
+                        ? "bg-foreground text-background border-foreground"
+                        : "bg-card text-foreground border-border hover:bg-muted"
                     }`}
                   >
                     {d.label}
@@ -361,7 +357,7 @@ export function DeployTemplateModal({
           </FormField>
         </div>
 
-        {error && <p className="mt-3 text-[12px] text-rose-700">{error}</p>}
+        {error && <p className="mt-3 text-[12px] text-danger-700">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <Button
@@ -382,7 +378,7 @@ export function DeployTemplateModal({
             loading={saving}
             disabled={selectedAccountIds.size === 0}
           >
-            Déployer ({selectedAccountIds.size})
+            Appliquer ({selectedAccountIds.size})
           </Button>
         </div>
       </form>

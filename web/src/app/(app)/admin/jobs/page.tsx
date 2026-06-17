@@ -52,12 +52,12 @@ const TYPE_LABELS: Record<JobRow["type"], string> = {
 // → palette Coastal Studio (peach/sage/sky/rose) + neutre pour les domaines
 // pipeline éditorial. Cohérent avec /calendar et /listings.
 const TYPE_COLORS: Record<JobRow["type"], string> = {
-  render:        "bg-peach-50 text-peach-800 border-peach-200",
-  caption:       "bg-sky-50 text-sky-800 border-sky-200",
-  transcription: "bg-sage-50 text-sage-800 border-sage-200",
-  description:   "bg-rose-50 text-rose-800 border-rose-200",
-  "cover-pack":  "bg-peach-50 text-peach-800 border-peach-200",
-  autocut:       "bg-sky-50 text-sky-800 border-sky-200",
+  render:        "bg-warning-50 text-warning-700 border-warning-200",
+  caption:       "bg-info-50 text-info-700 border-info-200",
+  transcription: "bg-success-50 text-success-700 border-success-200",
+  description:   "bg-danger-50 text-danger-700 border-danger-200",
+  "cover-pack":  "bg-warning-50 text-warning-700 border-warning-200",
+  autocut:       "bg-info-50 text-info-700 border-info-200",
 };
 
 function ageMs(date: Date): number {
@@ -76,9 +76,9 @@ function formatAge(ms: number): string {
 
 function ageBadgeClass(ms: number): string {
   // V4 sweep : red/amber → rose/peach (palette Coastal Studio).
-  if (ms >= 2 * 60 * 60 * 1000) return "bg-rose-100 text-rose-800 border-rose-300";
-  if (ms >= 30 * 60 * 1000) return "bg-peach-100 text-peach-800 border-peach-300";
-  return "bg-gray-100 text-gray-600 border-gray-200";
+  if (ms >= 2 * 60 * 60 * 1000) return "bg-danger-100 text-danger-700 border-danger-200";
+  if (ms >= 30 * 60 * 1000) return "bg-warning-100 text-warning-700 border-warning-200";
+  return "bg-muted text-muted-foreground border-border";
 }
 
 interface PageProps {
@@ -232,8 +232,8 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
   return (
     <div className="min-h-screen">
       <div
-        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
-        style={{ background: "var(--gradient-page-shell)" }}
+        className="mx-auto max-w-7xl px-6 py-8"
+
       >
         <div className="px-6 sm:px-8 pt-6 pb-12">
           <div className="max-w-6xl mx-auto">
@@ -252,23 +252,23 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
 
       {/* Stats cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <p className="text-xs text-gray-500 mb-1">Total actifs</p>
+        <div className="rounded-xl border border-border bg-white p-4">
+          <p className="text-xs text-muted-foreground mb-1">Total actifs</p>
           <p className="text-2xl font-semibold text-gray-900">{stats.total}</p>
         </div>
-        <div className="rounded-xl border border-peach-200 bg-peach-50 p-4">
-          <p className="text-xs text-peach-800 mb-1 flex items-center gap-1">
+        <div className="rounded-xl border border-warning-200 bg-warning-50 p-4">
+          <p className="text-xs text-warning-700 mb-1 flex items-center gap-1">
             <Clock size={11} /> {">"}30 min
           </p>
-          <p className="text-2xl font-semibold text-peach-800">{stats.over30min}</p>
+          <p className="text-2xl font-semibold text-warning-700">{stats.over30min}</p>
         </div>
-        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
-          <p className="text-xs text-rose-800 mb-1 flex items-center gap-1">
+        <div className="rounded-xl border border-danger-200 bg-danger-50 p-4">
+          <p className="text-xs text-danger-700 mb-1 flex items-center gap-1">
             <AlertTriangle size={11} /> {">"}2 h
           </p>
-          <p className="text-2xl font-semibold text-rose-800">{stats.over2h}</p>
+          <p className="text-2xl font-semibold text-danger-700">{stats.over2h}</p>
         </div>
-        <div className="rounded-xl border border-rose-300 bg-rose-100 p-4">
+        <div className="rounded-xl border border-danger-200 bg-danger-100 p-4">
           <p className="text-xs text-red-800 mb-1 flex items-center gap-1">
             <AlertTriangle size={11} /> {">"}24 h (zombies)
           </p>
@@ -277,8 +277,8 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
       </div>
 
       {/* Filtres */}
-      <div className="flex flex-wrap items-center gap-2 mb-4 p-3 bg-gray-50 border border-gray-200 rounded-xl">
-        <span className="text-xs text-gray-500">Filtrer :</span>
+      <div className="flex flex-wrap items-center gap-2 mb-4 p-3 bg-muted border border-border rounded-xl">
+        <span className="text-xs text-muted-foreground">Filtrer :</span>
         {(["", "render", "caption", "transcription", "description", "cover-pack", "autocut"] as const).map((t) => (
           <Link
             key={t || "all"}
@@ -286,14 +286,14 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
             className={`text-xs px-2 py-1 rounded border transition-colors ${
               typeFilter === t
                 ? "bg-gray-900 text-white border-gray-900"
-                : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
+                : "bg-white text-foreground border-border hover:border-gray-400"
             }`}
           >
             {t === "" ? "Tous" : TYPE_LABELS[t]}
           </Link>
         ))}
-        <span className="text-xs text-gray-400 mx-2">·</span>
-        <span className="text-xs text-gray-500">Âge ≥</span>
+        <span className="text-xs text-muted-foreground mx-2">·</span>
+        <span className="text-xs text-muted-foreground">Âge ≥</span>
         {[0, 30, 120, 1440].map((m) => (
           <Link
             key={m}
@@ -301,7 +301,7 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
             className={`text-xs px-2 py-1 rounded border transition-colors ${
               minAgeMinutes === m
                 ? "bg-gray-900 text-white border-gray-900"
-                : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
+                : "bg-white text-foreground border-border hover:border-gray-400"
             }`}
           >
             {m === 0 ? "Tous" : m === 30 ? "30 min" : m === 120 ? "2 h" : "24 h"}
@@ -310,7 +310,7 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
         {(typeFilter || minAgeMinutes) && (
           <Link
             href="/admin/jobs"
-            className="ml-auto text-xs text-gray-500 hover:text-red-500 flex items-center gap-0.5"
+            className="ml-auto text-xs text-muted-foreground hover:text-red-500 flex items-center gap-0.5"
           >
             <X size={11} /> Reset
           </Link>
@@ -319,39 +319,39 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
 
       {/* Table */}
       {filtered.length === 0 ? (
-        <div className="text-center py-12 text-sm text-gray-400">
+        <div className="text-center py-12 text-sm text-muted-foreground">
           <RotateCw size={32} className="text-gray-200 mx-auto mb-3" />
           {allRows.length === 0
             ? "Aucun job actif. Pipeline sain."
             : `Aucun job correspondant aux filtres (${allRows.length} jobs au total).`}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-200">
+        <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-muted border-b border-border">
               <tr>
-                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Type</th>
-                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">ID / Détails</th>
-                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Statut</th>
-                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Âge</th>
-                <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Actions</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Type</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">ID / Détails</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Statut</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Âge</th>
+                <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white">
               {filtered.map((row) => {
                 const age = ageMs(row.createdAt);
                 return (
-                  <tr key={`${row.type}-${row.id}`} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                  <tr key={`${row.type}-${row.id}`} className="border-b border-border last:border-0 hover:bg-muted">
                     <td className="px-3 py-2">
                       <span className={`text-xs px-2 py-0.5 rounded border ${TYPE_COLORS[row.type]}`}>
                         {TYPE_LABELS[row.type]}
                       </span>
                     </td>
-                    <td className="px-3 py-2 font-mono text-xs text-gray-600">
+                    <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
                       {row.href ? (
                         <Link
                           href={row.href}
-                          className="text-gray-700 hover:text-gray-950 hover:underline"
+                          className="text-foreground hover:text-foreground hover:underline"
                           title="Ouvrir la source"
                         >
                           {row.label}
@@ -360,7 +360,7 @@ export default async function AdminJobsPage({ searchParams }: PageProps) {
                         row.label
                       )}
                     </td>
-                    <td className="px-3 py-2 text-xs text-gray-700">{row.status}</td>
+                    <td className="px-3 py-2 text-xs text-foreground">{row.status}</td>
                     <td className="px-3 py-2">
                       <span className={`text-xs px-2 py-0.5 rounded border ${ageBadgeClass(age)}`}>
                         {formatAge(age)}

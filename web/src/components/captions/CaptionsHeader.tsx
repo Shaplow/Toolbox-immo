@@ -25,18 +25,18 @@ export function CaptionsHeader({ presetName, isRegen }: Props) {
     <div className="mb-8">
       <Link
         href="/captions"
-        className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 transition-colors mb-5"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-muted-foreground transition-colors mb-5"
       >
         <ChevronLeft size={14} />
         Captions
       </Link>
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
-          <Film size={18} className="text-rose-600" />
+        <div className="w-10 h-10 bg-danger-100 rounded-xl flex items-center justify-center shrink-0">
+          <Film size={18} className="text-danger-600" />
         </div>
         <div>
           <h1 className="text-xl font-semibold text-gray-900">{presetName}</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <p className="text-sm text-muted-foreground mt-0.5">
             {isRegen
               ? "Sous-titres pré-chargés depuis la génération précédente"
               : "Générez une vidéo avec des sous-titres brûlés"}

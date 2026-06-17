@@ -42,7 +42,7 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
   const allSelected = selectedIds.size === filtered.length && filtered.length > 0;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200 shadow-lg px-6 py-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+    <div className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-border shadow-lg px-6 py-3 flex flex-col sm:flex-row items-start sm:items-center gap-3">
       {/* Left: count + select-all */}
       <div className="flex items-center gap-2 shrink-0">
         <button
@@ -53,13 +53,13 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               setSelectedIds(new Set(filtered.map((a) => a.id)));
             }
           }}
-          className="flex items-center gap-1.5 text-xs text-sky-800 hover:underline"
+          className="flex items-center gap-1.5 text-xs text-info-700 hover:underline"
         >
           {allSelected ? <CheckSquare size={12} /> : <Square size={12} />}
           {allSelected ? "Tout désélectionner" : "Tout sélectionner"}
         </button>
         {selectedIds.size > 0 && (
-          <span className="text-xs font-semibold text-sky-800 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-full">
+          <span className="text-xs font-semibold text-info-700 bg-info-50 border border-info-200 px-2 py-0.5 rounded-full">
             {selectedIds.size} sélectionné{selectedIds.size > 1 ? "s" : ""}
           </span>
         )}
@@ -77,7 +77,7 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               onChange={(e) => setBulkCategoryInput(e.target.value)}
               list="group-list"
               placeholder="Catégorie…"
-              className="w-28 text-xs border border-sage-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sage-400"
+              className="w-28 text-xs border border-success-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-success-200"
               onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplyCategory(); } }}
             />
             <button
@@ -91,14 +91,14 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               {bulkCategoryInput.trim() ? "Cat." : <X size={10} />}
             </button>
           </div>
-          {/* Bulk pack */}
+          {/* Bulk groupe */}
           <div className="flex items-center gap-1">
             <input
               value={bulkSetTagInput}
               onChange={(e) => setBulkSetTagInput(e.target.value)}
               list="bulk-set-tags-list"
-              placeholder="Pack…"
-              className="w-28 text-xs border border-sage-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sage-400"
+              placeholder="Groupe…"
+              className="w-28 text-xs border border-success-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-success-200"
               onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplySetTag(); } }}
             />
             <button
@@ -107,9 +107,9 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               className={`px-2.5 py-1 text-white text-xs rounded disabled:opacity-50 ${
                 bulkSetTagInput.trim() ? "bg-gray-900 hover:bg-gray-700" : "bg-gray-400 hover:bg-gray-500"
               }`}
-              title={bulkSetTagInput.trim() ? "Appliquer le pack" : "Retirer le pack"}
+              title={bulkSetTagInput.trim() ? "Appliquer le groupe" : "Retirer le groupe"}
             >
-              {bulkSetTagInput.trim() ? "Pack" : <X size={10} />}
+              {bulkSetTagInput.trim() ? "Groupe" : <X size={10} />}
             </button>
           </div>
           {/* Bulk tags */}
@@ -118,7 +118,7 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
               value={bulkTagsInput}
               onChange={(e) => setBulkTagsInput(e.target.value)}
               placeholder="Tags (virgule)…"
-              className="w-36 text-xs border border-sky-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sky-400"
+              className="w-36 text-xs border border-info-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-info-200"
               onKeyDown={(e) => { if (e.key === "Enter") { void handleBulkApplyTags(); } }}
             />
             <button
@@ -145,7 +145,7 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
                   else { void handleBulkApplyAccess("add", val); }
                 }}
                 disabled={bulkApplying}
-                className="text-xs border border-sky-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-sky-400 text-gray-600 disabled:opacity-50 max-w-[130px]"
+                className="text-xs border border-info-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-info-200 text-muted-foreground disabled:opacity-50 max-w-[130px]"
               >
                 <option value="">Compte IG…</option>
                 <option value="__global__">🌍 Global (tous)</option>
@@ -172,7 +172,7 @@ export function MediaAssetsBulkActionBar({ bulk, filtered, accounts }: Props) {
       {/* Right: cancel */}
       <button
         onClick={exitSelectMode}
-        className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 sm:ml-auto"
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-muted-foreground sm:ml-auto"
       >
         <X size={12} /> Annuler
       </button>

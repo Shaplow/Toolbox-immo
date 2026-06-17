@@ -53,7 +53,7 @@ export function MediaAssetsCategoriesSidebar({ assets, selected, onSelect }: Pro
   }, [assets]);
 
   return (
-    <aside className="sticky top-4 self-start rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] p-2 max-h-[calc(100vh-2rem)] overflow-y-auto [scrollbar-width:thin]">
+    <aside className="sticky top-4 self-start rounded-2xl bg-card border border-border  p-2 max-h-[calc(100vh-2rem)] overflow-y-auto [scrollbar-width:thin]">
       <SidebarItem
         label="Tous"
         count={assets.length}
@@ -86,7 +86,7 @@ export function MediaAssetsCategoriesSidebar({ assets, selected, onSelect }: Pro
       {categoriesWithCount.length > 0 && (
         <>
           <div className="my-2 mx-2 border-t border-white/40" />
-          <p className="px-3 py-1 text-[9px] uppercase tracking-widest font-semibold text-gray-400">
+          <p className="px-3 py-1 text-[9px] uppercase tracking-widest font-semibold text-muted-foreground">
             Catégories
           </p>
           {categoriesWithCount.map(([cat, count]) => (
@@ -109,11 +109,11 @@ export function MediaAssetsCategoriesSidebar({ assets, selected, onSelect }: Pro
 type Tint = "sky" | "sage" | "peach" | "gray" | "violet";
 
 const TINT_CFG: Record<Tint, { iconActive: string; bgActive: string; textActive: string; iconRest: string }> = {
-  sky:    { iconActive: "text-sky-700",    bgActive: "bg-sky-50/80",    textActive: "text-sky-900",    iconRest: "text-gray-400" },
-  sage:   { iconActive: "text-sage-700",   bgActive: "bg-sage-50/80",   textActive: "text-sage-900",   iconRest: "text-gray-400" },
-  peach:  { iconActive: "text-peach-700",  bgActive: "bg-peach-50/80",  textActive: "text-peach-900",  iconRest: "text-peach-600" },
-  gray:   { iconActive: "text-gray-700",   bgActive: "bg-gray-100/80",  textActive: "text-gray-900",   iconRest: "text-gray-400" },
-  violet: { iconActive: "text-rose-700", bgActive: "bg-rose-50/80", textActive: "text-rose-900", iconRest: "text-gray-400" },
+  sky:    { iconActive: "text-info-700",    bgActive: "bg-info-50/80",    textActive: "text-info-700",    iconRest: "text-muted-foreground" },
+  sage:   { iconActive: "text-success-700",   bgActive: "bg-success-50/80",   textActive: "text-success-700",   iconRest: "text-muted-foreground" },
+  peach:  { iconActive: "text-warning-700",  bgActive: "bg-warning-50/80",  textActive: "text-warning-700",  iconRest: "text-warning-600" },
+  gray:   { iconActive: "text-foreground",   bgActive: "bg-muted/80",  textActive: "text-gray-900",   iconRest: "text-muted-foreground" },
+  violet: { iconActive: "text-danger-700", bgActive: "bg-danger-50/80", textActive: "text-danger-700", iconRest: "text-muted-foreground" },
 };
 
 function SidebarItem({
@@ -139,13 +139,13 @@ function SidebarItem({
       className={[
         "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-all",
         active
-          ? `${cfg.bgActive} ${cfg.textActive} font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)]`
-          : "text-gray-700 hover:bg-white/60 hover:backdrop-blur-[6px] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
+          ? `${cfg.bgActive} ${cfg.textActive} font-semibold `
+          : "text-foreground hover:bg-white/60 hover:hover:",
       ].join(" ")}
     >
       <Icon size={12} className={`shrink-0 ${active ? cfg.iconActive : cfg.iconRest}`} />
       <span className="flex-1 min-w-0 truncate text-[12px]">{label}</span>
-      <span className="text-[10px] text-gray-400 tabular-nums shrink-0">{count}</span>
+      <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{count}</span>
     </button>
   );
 }

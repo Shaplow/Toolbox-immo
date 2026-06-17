@@ -1,15 +1,11 @@
 "use client";
 
 /**
- * Avatar — image utilisateur ou fallback (initiales / icône).
+ * Avatar — image utilisateur ou fallback (initiales / icône) flat shadcn.
  *
- * Doctrine Liquid Glass v2 :
- * - Fallback initiales : gradient blanc + ring inset spéculaire signature
- *   (pas un cercle gris plat).
- * - Status dot (online/away/offline) en bottom-right avec ring spéculaire
- *   pour signaler la présence.
- * - Option `ring` ajoute un anneau de focus signature (pour avatars actifs
- *   dans une liste, conversation, etc.).
+ * Fallback initiales : bg-muted + text-foreground.
+ * Status dot (online/away/offline) en bottom-right avec ring blanc.
+ * Option `ring` ajoute un anneau primary subtle pour avatars actifs.
  *
  * Sizes : xs (20px) | sm (24) | md (32, default) | lg (40) | xl (48).
  */
@@ -23,13 +19,10 @@ type Status = "online" | "away" | "offline";
 
 interface AvatarProps {
   src?: string;
-  /** Nom complet — utilisé pour générer les initiales et le label sr-only. */
   name: string;
   fallback?: Fallback;
   size?: Size;
-  /** Affiche un dot coloré en bottom-right. */
   status?: Status;
-  /** Affiche un anneau focus signature autour de l'avatar. */
   ring?: boolean;
   className?: string;
 }
@@ -59,9 +52,9 @@ const STATUS_SIZE: Record<Size, string> = {
 };
 
 const STATUS_BG: Record<Status, string> = {
-  online:  "bg-sage-500",
-  away:    "bg-peach-500",
-  offline: "bg-gray-400",
+  online:  "bg-success-600",
+  away:    "bg-warning-600",
+  offline: "bg-zinc-400",
 };
 
 function getInitials(name: string): string {
@@ -80,19 +73,17 @@ export function Avatar({
   ring = false,
   className,
 }: AvatarProps) {
-  const ringCls = ring
-    ? "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_2px_rgba(77,150,191,0.35),0_0_0_3px_rgba(169,209,230,0.32)]"
-    : "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),inset_0_-1px_0_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.06)]";
+  const ringCls = ring ? "ring-2 ring-primary/40" : "border border-border";
 
   let inner: ReactNode;
   if (src) {
     // eslint-disable-next-line @next/next/no-img-element
     inner = <img src={src} alt={name} className="h-full w-full object-cover" />;
   } else if (fallback === "icon") {
-    inner = <User size={ICON_SIZE[size]} className="text-gray-600" />;
+    inner = <User size={ICON_SIZE[size]} className="text-muted-foreground" />;
   } else {
     inner = (
-      <span className="font-semibold text-gray-700 tracking-tight tabular-nums leading-none">
+      <span className="font-semibold text-foreground tracking-tight tabular-nums leading-none">
         {getInitials(name)}
       </span>
     );
@@ -101,8 +92,7 @@ export function Avatar({
   return (
     <span
       className={[
-        "relative inline-flex shrink-0 items-center justify-center rounded-full overflow-hidden",
-        "bg-gradient-to-b from-white to-white/75 backdrop-blur-[6px]",
+        "relative inline-flex shrink-0 items-center justify-center rounded-full overflow-hidden bg-muted",
         SIZE_CLS[size],
         ringCls,
         className ?? "",
@@ -114,8 +104,7 @@ export function Avatar({
       {status && (
         <span
           className={[
-            "absolute rounded-full",
-            "shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_0_0_2px_rgba(255,255,255,0.9)]",
+            "absolute rounded-full ring-2 ring-card",
             STATUS_SIZE[size],
             STATUS_BG[status],
           ].join(" ")}
@@ -126,9 +115,7 @@ export function Avatar({
   );
 }
 
-/**
- * AvatarGroup — empile plusieurs avatars en overlay (max N visibles + "+X").
- */
+/** AvatarGroup — empile plusieurs avatars en overlay (max N + "+X"). */
 export function AvatarGroup({
   avatars,
   max = 3,
@@ -159,8 +146,7 @@ export function AvatarGroup({
         <span
           className={[
             negativeMargin,
-            "inline-flex items-center justify-center rounded-full bg-gradient-to-b from-white to-white/75 backdrop-blur-[6px] font-semibold text-gray-700",
-            "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_1px_2px_rgba(15,23,42,0.06)]",
+            "inline-flex items-center justify-center rounded-full bg-muted text-foreground border border-border font-semibold",
             SIZE_CLS[size],
           ].join(" ")}
         >

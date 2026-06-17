@@ -89,11 +89,11 @@ export function BulkShiftDateModal({ slotIds, onPatched, onClose }: Props) {
   return (
     <Modal open onClose={onClose} size="md">
       <form onSubmit={handleSubmit} className="p-5">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 inline-flex items-center gap-1.5">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground inline-flex items-center gap-1.5">
           <CalendarDays size={11} />
           Action de groupe · Décaler
         </p>
-        <h2 className="mt-1 text-[18px] font-semibold text-gray-950">
+        <h2 className="mt-1 text-[18px] font-semibold text-foreground">
           {slotIds.length} publication{slotIds.length > 1 ? "s" : ""} sélectionnée
           {slotIds.length > 1 ? "s" : ""}
         </h2>
@@ -105,7 +105,7 @@ export function BulkShiftDateModal({ slotIds, onPatched, onClose }: Props) {
             className={`px-3 py-2 rounded-lg text-[12px] font-medium transition ${
               mode === "relative"
                 ? "bg-gray-900 text-white"
-                : "bg-white/55 text-gray-700"
+                : "bg-white/55 text-foreground"
             }`}
           >
             Rapide
@@ -116,7 +116,7 @@ export function BulkShiftDateModal({ slotIds, onPatched, onClose }: Props) {
             className={`px-3 py-2 rounded-lg text-[12px] font-medium transition ${
               mode === "absolute"
                 ? "bg-gray-900 text-white"
-                : "bg-white/55 text-gray-700"
+                : "bg-white/55 text-foreground"
             }`}
           >
             Date précise
@@ -151,7 +151,7 @@ export function BulkShiftDateModal({ slotIds, onPatched, onClose }: Props) {
           </p>
         </div>
 
-        {error && <p className="mt-3 text-[12px] text-rose-700">{error}</p>}
+        {error && <p className="mt-3 text-[12px] text-danger-700">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <Button

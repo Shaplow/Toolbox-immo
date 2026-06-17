@@ -33,11 +33,11 @@ export function VideoBlockPropertiesPanel({
     <Section label="Options vidéo">
       <div className="space-y-3">
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-600">Redimensionnement</span>
+          <span className="text-xs font-medium text-muted-foreground">Redimensionnement</span>
           <select
             value={block.fit ?? "cover"}
             onChange={(e) => onChange({ fit: e.target.value as "cover" | "contain" })}
-            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+            className="border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
           >
             <option value="cover">Cover (remplir + recadrer)</option>
             <option value="contain">Contain (letterbox)</option>
@@ -54,12 +54,12 @@ export function VideoBlockPropertiesPanel({
         />
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-600">Couleur placeholder (builder)</span>
+          <span className="text-xs font-medium text-muted-foreground">Couleur placeholder (builder)</span>
           <input
             type="color"
             value={block.placeholderColor ?? "#111827"}
             onChange={(e) => onChange({ placeholderColor: e.target.value })}
-            className="h-8 w-full border border-gray-200 rounded-lg cursor-pointer"
+            className="h-8 w-full border border-border rounded-lg cursor-pointer"
           />
         </label>
 
@@ -81,7 +81,7 @@ export function VideoBlockPropertiesPanel({
         )}
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-600">Durée minimale (s)</span>
+          <span className="text-xs font-medium text-muted-foreground">Durée minimale (s)</span>
           <input
             type="number"
             min={0}
@@ -92,9 +92,9 @@ export function VideoBlockPropertiesPanel({
               const v = e.target.value === "" ? undefined : Math.max(0, Number(e.target.value));
               onChange({ minDuration: v });
             }}
-            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500 w-full"
+            className="border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500 w-full"
           />
-          <span className="text-[10px] text-gray-400 leading-relaxed">
+          <span className="text-[10px] text-muted-foreground leading-relaxed">
             Si défini, seuls les assets d&apos;au moins cette durée sont sélectionnés (auto et manuel).
           </span>
         </label>
@@ -117,7 +117,7 @@ export function VideoBlockPropertiesPanel({
           </span>
           <ArrowRight size={12} className="text-indigo-600 shrink-0" />
         </button>
-        <p className="text-[10px] text-gray-400 leading-relaxed">
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
           La source (fichier / bibliothèque / clip de séquence) se configure
           dans le panneau Séquence.
         </p>

@@ -105,8 +105,8 @@ export function VideoSequencePanel({
 
   return (
     <div className="flex flex-col h-full overflow-y-auto text-xs">
-      <div className="px-3 py-3 border-b border-gray-100">
-        <p className="text-[11px] font-semibold text-gray-700">
+      <div className="px-3 py-3 border-b border-border">
+        <p className="text-[11px] font-semibold text-foreground">
           Séquence vidéo
           {hasSlots && (
             <span className="ml-1.5 text-[9px] font-normal text-indigo-500 bg-indigo-50 border border-indigo-100 rounded-full px-1.5 py-0.5">
@@ -114,14 +114,14 @@ export function VideoSequencePanel({
             </span>
           )}
         </p>
-        <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">
+        <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">
           Ordonne les clips assemblés dans le rendu vidéo final. Clique sur un clip pour configurer source et overlays.
         </p>
       </div>
 
       {/* Empty state : pas de VideoBlock dans le template */}
       {!hasSlots && !primaryVideoBlock && (
-        <div className="px-3 py-6 text-[11px] text-gray-400 italic text-center">
+        <div className="px-3 py-6 text-[11px] text-muted-foreground italic text-center">
           Ajoute un bloc vidéo depuis le panneau Calques pour amorcer
           la séquence.
         </div>
@@ -131,7 +131,7 @@ export function VideoSequencePanel({
           (template tout neuf ou tous slots supprimés). */}
       {!hasSlots && primaryVideoBlock && (
         <div className="px-3 py-4 flex flex-col gap-2">
-          <p className="text-[10px] text-gray-500 leading-relaxed">
+          <p className="text-[10px] text-muted-foreground leading-relaxed">
             Le canvas a un bloc vidéo mais aucun clip n&apos;est encore
             défini dans la séquence.
           </p>
@@ -162,17 +162,17 @@ export function VideoSequencePanel({
               : undefined;
             const canDelete = !(slots.length === 1 && primaryVideoBlock);
             return (
-              <div key={slot.id} id={`seq-slot-${slot.id}`} className="border-b border-gray-100 last:border-b-0">
+              <div key={slot.id} id={`seq-slot-${slot.id}`} className="border-b border-border last:border-b-0">
                 {/* Slot row */}
                 <div
                   className={`flex items-center gap-1.5 px-2 py-2 cursor-pointer transition-colors ${
-                    isSelected ? "bg-indigo-50 border-l-2 border-l-indigo-400" : "hover:bg-gray-50/70"
+                    isSelected ? "bg-indigo-50 border-l-2 border-l-indigo-400" : "hover:bg-muted/70"
                   }`}
                   onClick={() => selectSlot(isSelected ? null : slot.id)}
                 >
                   {/* Index badge */}
                   <span className={`shrink-0 w-5 h-5 flex items-center justify-center rounded-full text-[9px] font-semibold ${
-                    isSelected ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-500"
+                    isSelected ? "bg-indigo-600 text-white" : "bg-muted text-muted-foreground"
                   }`}>
                     {i + 1}
                   </span>
@@ -192,11 +192,11 @@ export function VideoSequencePanel({
                       }`}>
                         {sourceSummary}
                       </span>
-                      <span className="inline-block text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 truncate max-w-[80px]">
+                      <span className="inline-block text-[9px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground truncate max-w-[80px]">
                         {overlaySummary}
                       </span>
                       {slot.maxDuration && (
-                        <span className="inline-block text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-400">
+                        <span className="inline-block text-[9px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
                           {slot.maxDuration}s
                         </span>
                       )}
@@ -214,7 +214,7 @@ export function VideoSequencePanel({
                   {/* Expand indicator */}
                   <ChevronRight
                     size={11}
-                    className={`shrink-0 mr-0.5 transition-transform ${isSelected ? "rotate-90 text-indigo-500" : "text-gray-300"}`}
+                    className={`shrink-0 mr-0.5 transition-transform ${isSelected ? "rotate-90 text-indigo-500" : "text-muted-foreground/60"}`}
                   />
 
                   {/* Reorder + remove */}
@@ -224,7 +224,7 @@ export function VideoSequencePanel({
                       onClick={() => moveSlot(slot.id, -1)}
                       disabled={i === 0}
                       title="Monter"
-                      className="p-1 text-gray-300 hover:text-gray-500 disabled:opacity-0 transition-colors"
+                      className="p-1 text-muted-foreground/60 hover:text-muted-foreground disabled:opacity-0 transition-colors"
                     >
                       <ChevronRight size={11} className="-rotate-90" />
                     </button>
@@ -233,7 +233,7 @@ export function VideoSequencePanel({
                       onClick={() => moveSlot(slot.id, 1)}
                       disabled={i === slots.length - 1}
                       title="Descendre"
-                      className="p-1 text-gray-300 hover:text-gray-500 disabled:opacity-0 transition-colors"
+                      className="p-1 text-muted-foreground/60 hover:text-muted-foreground disabled:opacity-0 transition-colors"
                     >
                       <ChevronRight size={11} className="rotate-90" />
                     </button>
@@ -242,7 +242,7 @@ export function VideoSequencePanel({
                       onClick={() => removeSlot(slot.id)}
                       disabled={!canDelete}
                       title={canDelete ? "Supprimer ce clip" : "Au moins 1 clip est requis quand un bloc vidéo existe"}
-                      className="p-1 text-gray-300 hover:text-red-500 disabled:opacity-30 disabled:hover:text-gray-300 transition-colors"
+                      className="p-1 text-muted-foreground/60 hover:text-red-500 disabled:opacity-30 disabled:hover:text-muted-foreground/60 transition-colors"
                     >
                       <Trash2 size={11} />
                     </button>
@@ -290,11 +290,11 @@ export function VideoSequencePanel({
             );
           })}
 
-          <div className="px-3 py-3 border-t border-gray-100">
+          <div className="px-3 py-3 border-t border-border">
             <button
               type="button"
               onClick={addSlot}
-              className="w-full text-[11px] py-1.5 rounded-lg border border-dashed border-gray-300 text-gray-400 hover:border-indigo-400 hover:text-indigo-600 transition-colors"
+              className="w-full text-[11px] py-1.5 rounded-lg border border-dashed border-border text-muted-foreground hover:border-indigo-400 hover:text-indigo-600 transition-colors"
             >
               + Ajouter un clip
             </button>

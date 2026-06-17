@@ -933,13 +933,13 @@ export function Canvas({
       {/* Toolbar — boutons denses (px-2 py-0.5) — le composant Button du
           design system est plus haut (h-7). On garde des micro-boutons custom
           mais sans la couleur indigo bannie (W4 / Coastal Studio palette). */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 border-b border-gray-200 shrink-0 flex-wrap">
-        <button onClick={zoomOut} title="Dézoomer" className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">−</button>
-        <span className="text-xs text-gray-600 w-12 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
-        <button onClick={zoomIn} title="Zoomer" className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">+</button>
-        <button onClick={fitToScreen} title="Ajuster à l'écran" className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-gray-50">Ajuster</button>
+      <div className="flex items-center gap-2 px-4 py-2 bg-muted border-b border-border shrink-0 flex-wrap">
+        <button onClick={zoomOut} title="Dézoomer" className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-muted">−</button>
+        <span className="text-xs text-muted-foreground w-12 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
+        <button onClick={zoomIn} title="Zoomer" className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-muted">+</button>
+        <button onClick={fitToScreen} title="Ajuster à l'écran" className="text-xs px-2 py-0.5 bg-white border rounded hover:bg-muted">Ajuster</button>
 
-        <span className="text-gray-300 mx-1">|</span>
+        <span className="text-muted-foreground/60 mx-1">|</span>
 
         {/* Grid toggle — pressed = sage (Coastal Studio active state) */}
         <button
@@ -947,7 +947,7 @@ export function Canvas({
           title="Afficher/masquer la grille"
           aria-pressed={showGrid}
           className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded transition-colors ${
-            showGrid ? "bg-sage-100 border-sage-300 text-sage-700" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+            showGrid ? "bg-success-100 border-success-200 text-success-700" : "bg-white border-border text-muted-foreground hover:bg-muted"
           }`}
         >
           <Grid3x3 size={12} />
@@ -960,7 +960,7 @@ export function Canvas({
           title={`Snap to grid (${effectiveGridSize}px canvas units at current zoom)`}
           aria-pressed={snapToGrid}
           className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded transition-colors ${
-            snapToGrid ? "bg-sage-100 border-sage-300 text-sage-700" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+            snapToGrid ? "bg-success-100 border-success-200 text-success-700" : "bg-white border-border text-muted-foreground hover:bg-muted"
           }`}
         >
           <Magnet size={12} />
@@ -969,7 +969,7 @@ export function Canvas({
 
         {/* Multi-select hint — sky (info accent Coastal Studio) */}
         {multiSelected.size > 1 && (
-          <span className="text-xs text-sky-700 ml-2">{multiSelected.size} blocs sélectionnés</span>
+          <span className="text-xs text-info-700 ml-2">{multiSelected.size} blocs sélectionnés</span>
         )}
       </div>
 

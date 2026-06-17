@@ -6,14 +6,8 @@ import type { LucideIcon } from "lucide-react";
 /**
  * DropdownMenu simple — menu d'actions au click.
  *
- * Implémentation sans dépendance externe (Floating UI, Radix). Click
- * outside et ESC ferment le menu. Focus revient au trigger à la fermeture.
- *
- * - `trigger` : élément cliquable (souvent un ButtonIcon "More").
- * - `items` : array d'actions { label, icon?, onClick?, destructive?,
- *             disabled?, kbd? } ou `"separator"` pour une ligne.
- * - `align` : "start" (default, aligne à gauche du trigger) | "end"
- *             (aligne à droite).
+ * Implémentation sans dépendance externe. Click outside et ESC ferment le menu.
+ * Items : { label, icon?, onClick?, destructive?, disabled?, kbd? } ou "separator".
  */
 
 type DropdownItem =
@@ -24,7 +18,6 @@ type DropdownItem =
       onClick?: () => void;
       destructive?: boolean;
       disabled?: boolean;
-      /** Raccourci clavier affiché à droite. Décoratif uniquement. */
       kbd?: string;
     };
 
@@ -32,8 +25,6 @@ interface DropdownMenuProps {
   trigger: ReactNode;
   items: DropdownItem[];
   align?: "start" | "end";
-  /** "bottom" (default) ouvre vers le bas. "top" ouvre vers le haut — utile
-   *  pour les menus de footer/bottom nav qui déborderaient sinon. */
   side?: "bottom" | "top";
 }
 
@@ -63,13 +54,13 @@ export function DropdownMenu({ trigger, items, align = "start", side = "bottom" 
       {open && (
         <div
           role="menu"
-          className={`absolute z-50 min-w-[180px] rounded-md bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150 shadow-[var(--shadow-glass-popover),var(--ring-glass-inset)] py-1 ${
+          className={`absolute z-50 min-w-[180px] rounded-md bg-popover text-popover-foreground border border-border shadow-lg py-1 ${
             side === "top" ? "bottom-full mb-1.5" : "top-full mt-1.5"
           } ${align === "end" ? "right-0" : "left-0"}`}
         >
           {items.map((item, idx) => {
             if (item === "separator") {
-              return <div key={`sep-${idx}`} className="my-1 h-px bg-gray-100" />;
+              return <div key={`sep-${idx}`} className="my-1 h-px bg-border" />;
             }
             const Icon = item.icon;
             return (
@@ -85,14 +76,14 @@ export function DropdownMenu({ trigger, items, align = "start", side = "bottom" 
                 }}
                 className={`w-full inline-flex items-center gap-2 px-3 py-1.5 text-[13px] text-left transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                   item.destructive
-                    ? "text-danger-600 hover:bg-danger-50/60 hover:text-danger-700"
-                    : "text-gray-700 hover:bg-white/60 hover:text-gray-950"
+                    ? "text-danger-600 hover:bg-danger-50 hover:text-danger-700"
+                    : "text-foreground hover:bg-accent hover:text-accent-foreground"
                 }`}
               >
                 {Icon && <Icon size={14} className="shrink-0" />}
                 <span className="flex-1">{item.label}</span>
                 {item.kbd && (
-                  <kbd className="text-[10px] font-mono text-gray-400">{item.kbd}</kbd>
+                  <kbd className="text-[10px] font-mono text-muted-foreground">{item.kbd}</kbd>
                 )}
               </button>
             );

@@ -6,15 +6,10 @@ import { CheckCircle2, XCircle, Info, X } from "lucide-react";
 /**
  * Système de toasts — feedback transient pour les actions utilisateur.
  *
- * - 3 types : success / error / info (sémantique uniquement).
- * - Style aligné doctrine : monochrome avec icône sémantique colorée,
- *   shadow-overlay, rounded-md, density Linear.
- * - Auto-dismiss après 4s. Click pour fermer immédiatement.
- * - Affiché via <ToastContainer /> en bas à droite (déjà inclus dans
- *   le RootLayout).
+ * 3 types sémantiques : success / error / info. Auto-dismiss 4s.
+ * Click pour fermer. Affiché via <ToastContainer /> bas-droite (RootLayout).
  *
- * Usage : `toast.success("Slot créé.")` / `toast.error("Échec.")` /
- *         `toast.info("Synchronisation en cours…")`.
+ * Usage : `toast.success("Slot créé.")` etc.
  */
 
 export type ToastType = "success" | "error" | "info";
@@ -55,33 +50,30 @@ const TYPE_ICON = {
   info:    Info,
 };
 
-// Icône sémantique (sens) — gardée pour distinguer success / error / info.
 const TYPE_ICON_CLS = {
-  success: "text-sage-700",
-  error:   "text-rose-700",
-  info:    "text-sky-700",
+  success: "text-success-600",
+  error:   "text-danger-600",
+  info:    "text-primary",
 };
 
-// Accent gauche pastel (Coastal Studio) — bordure gauche colorée qui
-// signale le type sans imposer une couleur de fond saturée.
 const TYPE_ACCENT_CLS = {
-  success: "border-l-sage-500",
-  error:   "border-l-rose-500",
-  info:    "border-l-sky-500",
+  success: "border-l-success-600",
+  error:   "border-l-danger-600",
+  info:    "border-l-primary",
 };
 
 function ToastItem({ item, onRemove }: { item: ToastItem; onRemove: () => void }) {
   const Icon = TYPE_ICON[item.type];
   return (
     <div
-      className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border-l-2 bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150 shadow-[var(--shadow-glass-popover),var(--ring-glass-inset)] text-[13px] max-w-sm cursor-pointer text-gray-900 ${TYPE_ACCENT_CLS[item.type]}`}
+      className={`flex items-start gap-2.5 px-3 py-2.5 rounded-md border border-border border-l-4 bg-card text-card-foreground shadow-lg text-[13px] max-w-sm cursor-pointer ${TYPE_ACCENT_CLS[item.type]}`}
       onClick={onRemove}
       role="alert"
     >
       <Icon size={15} className={`${TYPE_ICON_CLS[item.type]} shrink-0 mt-0.5`} />
       <span className="flex-1 leading-relaxed">{item.message}</span>
       <button
-        className="text-gray-400 hover:text-gray-700 shrink-0 mt-0.5"
+        className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
         aria-label="Fermer"
       >
         <X size={13} />

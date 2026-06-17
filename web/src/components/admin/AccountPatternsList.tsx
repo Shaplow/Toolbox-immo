@@ -147,9 +147,9 @@ function PatternCard({
       id={`pattern-${pattern.id}`}
       className={[
         "group relative grid grid-cols-[96px_1fr] gap-4 p-4 sm:p-5 rounded-2xl transition-all",
-        "bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[14px] backdrop-saturate-150",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.06),inset_0_-1px_0_rgba(15,23,42,0.04),0_2px_8px_-2px_rgba(15,23,42,0.08)]",
-        "hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.6),inset_0_0_0_1px_rgba(15,23,42,0.1),inset_0_-1px_0_rgba(15,23,42,0.06),0_4px_12px_rgba(15,23,42,0.08),0_16px_36px_-12px_rgba(15,23,42,0.18)]",
+        "bg-card border border-border ",
+        "",
+        "hover:",
         !pattern.isActive ? "opacity-65" : "",
       ].filter(Boolean).join(" ")}
     >
@@ -163,7 +163,7 @@ function PatternCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-[15px] font-semibold text-gray-950 leading-tight truncate">
+            <h3 className="text-[15px] font-semibold text-foreground leading-tight truncate">
               {pattern.label}
             </h3>
             {!pattern.isActive && (
@@ -177,13 +177,13 @@ function PatternCard({
               </Chip>
             )}
           </div>
-          <p className="mt-1.5 text-[11px] text-gray-500 font-mono tabular-nums inline-flex items-center gap-1.5">
-            <Clock size={11} className="text-gray-400" />
+          <p className="mt-1.5 text-[11px] text-muted-foreground font-mono tabular-nums inline-flex items-center gap-1.5">
+            <Clock size={11} className="text-muted-foreground" />
             {scheduleLabel}
           </p>
         </div>
         <span
-          className="inline-flex items-center gap-1 text-[10px] text-gray-500 bg-white/55 backdrop-blur-[6px] rounded-full px-2 py-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] shrink-0 tabular-nums"
+          className="inline-flex items-center gap-1 text-[10px] text-muted-foreground bg-card border border-border rounded-full px-2 py-0.5  shrink-0 tabular-nums"
           title={`${pattern._count.publicationSlots} slot${pattern._count.publicationSlots !== 1 ? "s" : ""} associé${pattern._count.publicationSlots !== 1 ? "s" : ""}`}
         >
           {pattern._count.publicationSlots} slot
@@ -219,14 +219,14 @@ function PatternCard({
           {avatars.length > 0 ? (
             <>
               <AvatarGroup avatars={avatars} max={3} size="sm" />
-              <span className="text-[10.5px] text-gray-500 truncate">
+              <span className="text-[10.5px] text-muted-foreground truncate">
                 {pattern.defaultAssigneeMonteur?.name}
                 {pattern.defaultAssigneeMonteur && pattern.defaultAssigneeCm && " · "}
                 {pattern.defaultAssigneeCm?.name}
               </span>
             </>
           ) : (
-            <span className="text-[10.5px] uppercase tracking-widest font-medium text-gray-400 italic">
+            <span className="text-[10.5px] uppercase tracking-widest font-medium text-muted-foreground italic">
               Aucune assignation
             </span>
           )}
@@ -249,7 +249,7 @@ function PatternCard({
               icon={Trash2}
               disabled
               title={`${pattern._count.publicationSlots} slot(s) associé(s) — suppression impossible`}
-              className="text-gray-300 cursor-not-allowed"
+              className="text-muted-foreground/60 cursor-not-allowed"
             >
               <span className="sr-only">Supprimer</span>
             </Button>
@@ -276,7 +276,7 @@ function PatternCover({ lastRender }: { lastRender: LastRender | null }) {
 
   return (
     <div className="shrink-0">
-      <div className="aspect-[9/16] rounded-xl overflow-hidden bg-gradient-to-br from-white/60 to-white/35 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] flex items-center justify-center relative">
+      <div className="aspect-[9/16] rounded-xl overflow-hidden bg-gradient-to-br from-white/60 to-white/35  flex items-center justify-center relative">
         {hasMedia ? (
           lastRender?.pngUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -296,7 +296,7 @@ function PatternCover({ lastRender }: { lastRender: LastRender | null }) {
             />
           ) : null
         ) : (
-          <div className="flex flex-col items-center justify-center gap-1 text-gray-300">
+          <div className="flex flex-col items-center justify-center gap-1 text-muted-foreground/60">
             <ImageIcon size={18} className="opacity-70" />
             <span className="text-[9px] uppercase tracking-widest text-center leading-tight px-1">
               Aucun rendu
@@ -311,10 +311,10 @@ function PatternCover({ lastRender }: { lastRender: LastRender | null }) {
 function Meta({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-[10px] uppercase tracking-widest font-medium text-gray-400 leading-tight">
+      <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground leading-tight">
         {label}
       </p>
-      <p className="text-[12px] text-gray-700 truncate mt-0.5">{value}</p>
+      <p className="text-[12px] text-foreground truncate mt-0.5">{value}</p>
     </div>
   );
 }
@@ -335,9 +335,9 @@ export function AccountPatternsList({ account, patterns, lastRendersByTemplateId
     const el = document.getElementById(`pattern-${targetPatternId}`);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.classList.add("ring-2", "ring-sky-400/50", "ring-offset-2");
+      el.classList.add("ring-2", "ring-info-200/50", "ring-offset-2");
       const timer = setTimeout(() => {
-        el.classList.remove("ring-2", "ring-sky-400/50", "ring-offset-2");
+        el.classList.remove("ring-2", "ring-info-200/50", "ring-offset-2");
       }, 2400);
       return () => clearTimeout(timer);
     }
@@ -380,10 +380,10 @@ export function AccountPatternsList({ account, patterns, lastRendersByTemplateId
       {/* Section header */}
       <div className="flex items-end justify-between gap-3 mb-4 flex-wrap">
         <div>
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
             Workspace
           </p>
-          <p className="text-[18px] font-semibold tracking-tight text-gray-950 mt-1">
+          <p className="text-[18px] font-semibold tracking-tight text-foreground mt-1">
             Patterns de publication
           </p>
         </div>
@@ -400,7 +400,7 @@ export function AccountPatternsList({ account, patterns, lastRendersByTemplateId
 
       {/* Contenu */}
       {patterns.length === 0 ? (
-        <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+        <div className="rounded-2xl bg-card border border-border p-8 ">
           <EmptyState
             icon={Sparkles}
             title="Aucune recette de publication"

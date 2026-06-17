@@ -267,15 +267,15 @@ function VersionCard({
     >
       <div className="flex items-start gap-3">
         {/* Icône version */}
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-          <Film size={14} className="text-gray-600" />
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+          <Film size={14} className="text-muted-foreground" />
         </div>
 
         {/* Infos */}
         <div className="min-w-0 flex-1">
           {/* Badges et filename */}
           <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-200">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-muted text-foreground border border-border">
               V{version.versionNumber}
             </span>
             {isCurrent && (
@@ -295,7 +295,7 @@ function VersionCard({
           </div>
 
           {/* Métadonnées */}
-          <p className="text-xs text-gray-400 flex flex-wrap gap-x-2 mb-1">
+          <p className="text-xs text-muted-foreground flex flex-wrap gap-x-2 mb-1">
             {version.fileSizeBytes !== null && (
               <span>{formatBytes(version.fileSizeBytes)}</span>
             )}
@@ -314,7 +314,7 @@ function VersionCard({
           {!editingNotes && (
             <div className="flex items-start gap-2">
               {(version.notes || isAuthorOrAdmin) && (
-                <p className="text-xs text-gray-500 italic">
+                <p className="text-xs text-muted-foreground italic">
                   {version.notes ? `"${version.notes}"` : "Pas de notes."}
                 </p>
               )}
@@ -322,7 +322,7 @@ function VersionCard({
                 <button
                   type="button"
                   onClick={() => setEditingNotes(true)}
-                  className="text-xs text-sky-500 hover:text-sky-700 underline underline-offset-2 shrink-0"
+                  className="text-xs text-info-600 hover:text-info-700 underline underline-offset-2 shrink-0"
                 >
                   {version.notes ? "Éditer" : "Ajouter des notes"}
                 </button>
@@ -506,7 +506,7 @@ export function VersionsSection({
       collapsible={collapsible}
       actions={
         hasVersions ? (
-          <span className="text-[11px] text-gray-400 tabular-nums">{activeVersions.length}</span>
+          <span className="text-[11px] text-muted-foreground tabular-nums">{activeVersions.length}</span>
         ) : null
       }
     >
@@ -534,7 +534,7 @@ export function VersionsSection({
         {hiddenCount > 0 && (
           <Link
             href={`/publications/${slotId}/versions`}
-            className="inline-flex items-center gap-1.5 text-[11.5px] text-gray-600 hover:text-gray-900 transition-colors font-medium pt-1"
+            className="inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground hover:text-gray-900 transition-colors font-medium pt-1"
           >
             Voir toutes les {activeVersions.length} versions
             <ArrowRight size={11} />

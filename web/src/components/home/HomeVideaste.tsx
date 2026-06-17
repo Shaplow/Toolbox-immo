@@ -108,61 +108,32 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
 
   return (
     <div className="min-h-screen">
-      <div
-        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
-        style={{
-          background: "var(--gradient-page-shell)",
-        }}
-      >
-        {/* Header Control Center */}
-        <div className="rounded-t-3xl overflow-hidden">
-          <div className="max-w-5xl mx-auto px-6 sm:px-8 pt-6 pb-2">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
-                  Mes shoots
-                </p>
-                <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
-                  Bonjour{userName ? `, ${userName.split(" ")[0]}` : ""}
-                </h1>
-                <p className="mt-2 text-[13px] text-gray-500">
-                  {totalActive === 0
-                    ? "Aucun shoot à venir."
-                    : `${totalActive} shoot${totalActive > 1 ? "s" : ""} à faire`}
-                  {overdue.length > 0 && (
-                    <>
-                      {" · "}
-                      <span className="text-rose-700 tabular-nums">
-                        {overdue.length} en retard
-                      </span>
-                    </>
-                  )}
-                </p>
-              </div>
-
-              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-                {totalActive > 0 && (
-                  <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
-                )}
-                <span className="text-[11px] font-mono text-gray-700 tabular-nums">
-                  Vidéaste
+      <div className="mx-auto max-w-5xl px-6 py-8 space-y-6">
+        <header>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Bonjour{userName ? `, ${userName.split(" ")[0]}` : ""}
+          </h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            {totalActive === 0
+              ? "Aucun shoot à venir."
+              : `${totalActive} shoot${totalActive > 1 ? "s" : ""} à faire`}
+            {overdue.length > 0 && (
+              <>
+                {" · "}
+                <span className="text-danger-700 tabular-nums">
+                  {overdue.length} en retard
                 </span>
-              </div>
-            </div>
-          </div>
-        </div>
+              </>
+            )}
+          </p>
+        </header>
 
-        <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
-          <div className="max-w-5xl mx-auto space-y-8">
+        <div className="space-y-8">
             {isFullyEmpty ? (
               <EmptyState
-                icon={<Video size={20} className="text-gray-400" />}
-                title="Rien à shooter pour le moment"
-                description={
-                  "Tes prochaines missions de tournage apparaîtront ici dès qu'elles te seront " +
-                  "assignées dans le calendrier (champ « Vidéaste » sur le slot). Si tu attendais " +
-                  "une mission, vérifie avec un admin qu'elle pointe bien vers ton compte."
-                }
+                icon={<Video size={20} className="text-muted-foreground" />}
+                title="Rien à shooter"
+                description="Aucune mission de tournage assignée."
               />
             ) : (
               <>
@@ -195,10 +166,10 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
                 {delivered.length > 0 && (
                   <section>
                     <div className="flex items-center gap-2 mb-3">
-                      <h3 className="text-[13px] font-semibold tracking-tight text-sage-800">
-                        Shoots livrés (en attente montage)
+                      <h3 className="text-[13px] font-semibold tracking-tight text-foreground">
+                        Rushs livrés
                       </h3>
-                      <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10.5px] font-medium tabular-nums bg-sage-50/80 text-sage-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(111,162,128,0.22)]">
+                      <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-md text-[10.5px] font-medium tabular-nums bg-success-50 text-success-700 border border-success-200">
                         {delivered.length}
                       </span>
                     </div>
@@ -207,18 +178,18 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
                         <Link
                           key={slot.id}
                           href={`/publications/${slot.id}`}
-                          className="block rounded-xl bg-white/70 backdrop-blur-[8px] px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:bg-white/90 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1),0_2px_6px_rgba(15,23,42,0.06)] transition-all"
+                          className="block rounded-md bg-card border border-border px-4 py-2.5 hover:bg-muted transition-colors focus-ring"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="min-w-0">
-                              <p className="text-[12.5px] font-medium text-gray-700 truncate">
+                              <p className="text-[12.5px] font-medium text-foreground truncate">
                                 {slot.pattern?.label ?? slot.title ?? "Publication"}
                               </p>
-                              <p className="text-[11px] text-gray-400">
+                              <p className="text-[11px] text-muted-foreground">
                                 @{slot.account.handle}
                               </p>
                             </div>
-                            <span className="text-[10.5px] text-sage-700 shrink-0">
+                            <span className="text-[10.5px] text-success-700 shrink-0">
                               Rushs livrés
                             </span>
                           </div>
@@ -231,40 +202,37 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
                 {inProduction.length > 0 && (
                   <section>
                     <div className="flex items-center gap-2 mb-3">
-                      <h3 className="text-[13px] font-semibold tracking-tight text-gray-600">
-                        En production (suivi)
+                      <h3 className="text-[13px] font-semibold tracking-tight text-foreground">
+                        En production
                       </h3>
-                      <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10.5px] font-medium tabular-nums bg-gray-100/60 text-gray-500 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.04)]">
+                      <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-md text-[10.5px] font-medium tabular-nums bg-muted text-muted-foreground border border-border">
                         {inProduction.length}
                       </span>
                     </div>
-                    <p className="text-[11px] text-gray-500 mb-3">
-                      Tes shoots sont en montage / validation client. Aucune action requise.
-                    </p>
                     <div className="space-y-2">
                       {inProduction.slice(0, 5).map((slot) => (
                         <Link
                           key={slot.id}
                           href={`/publications/${slot.id}`}
-                          className="block rounded-xl bg-white/70 backdrop-blur-[8px] px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:bg-white/90 transition-all"
+                          className="block rounded-md bg-card border border-border px-4 py-2.5 hover:bg-muted transition-colors focus-ring"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="min-w-0">
-                              <p className="text-[12.5px] font-medium text-gray-700 truncate">
+                              <p className="text-[12.5px] font-medium text-foreground truncate">
                                 {slot.pattern?.label ?? slot.title ?? "Publication"}
                               </p>
-                              <p className="text-[11px] text-gray-400">
+                              <p className="text-[11px] text-muted-foreground">
                                 @{slot.account.handle}
                               </p>
                             </div>
-                            <span className="text-[10.5px] text-gray-400 shrink-0">
+                            <span className="text-[10.5px] text-muted-foreground shrink-0">
                               {STATUS_LABELS[slot.status] ?? slot.status}
                             </span>
                           </div>
                         </Link>
                       ))}
                       {inProduction.length > 5 && (
-                        <p className="text-[11px] text-gray-400 italic text-center">
+                        <p className="text-[11px] text-muted-foreground text-center">
                           + {inProduction.length - 5} autres
                         </p>
                       )}
@@ -273,7 +241,6 @@ export async function HomeVideaste({ userId, userName }: HomeVideasteProps) {
                 )}
               </>
             )}
-          </div>
         </div>
       </div>
     </div>

@@ -83,28 +83,28 @@ export default async function PublicationCaptionsManualPage({ params }: Props) {
   return (
     <div className="min-h-screen">
       <div
-        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
-        style={{ background: "var(--gradient-page-shell)" }}
+        className="mx-auto max-w-7xl px-6 py-8"
+
       >
         <div className="px-6 sm:px-8 pt-6 pb-12">
           <div className="max-w-3xl mx-auto space-y-5">
-            <div className="sticky top-4 z-10 rounded-xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[12px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(96,165,250,0.30)]">
+            <div className="sticky top-4 z-10 rounded-xl bg-gradient-to-b from-info-50/85 to-info-50/55 px-4 py-3 ">
               <Link
                 href={backHref}
-                className="inline-flex items-center gap-1 text-xs text-sky-700 hover:text-sky-900 transition-colors"
+                className="inline-flex items-center gap-1 text-xs text-info-700 hover:text-info-700 transition-colors"
               >
                 <ChevronLeft size={13} />
                 Retour à la publication
               </Link>
-              <nav className="mt-1 flex items-center gap-1 text-xs text-sky-700/80 flex-wrap">
+              <nav className="mt-1 flex items-center gap-1 text-xs text-info-700/80 flex-wrap">
                 <Link
                   href={backHref}
-                  className="hover:text-sky-900 transition-colors truncate max-w-[240px] font-medium"
+                  className="hover:text-info-700 transition-colors truncate max-w-[240px] font-medium"
                 >
                   {slotLabel}
                 </Link>
-                <ChevronRight size={11} className="text-sky-700/50" />
-                <span className="text-sky-900 font-medium inline-flex items-center gap-1">
+                <ChevronRight size={11} className="text-info-700/50" />
+                <span className="text-info-700 font-medium inline-flex items-center gap-1">
                   <Subtitles size={11} />
                   Sous-titres (manuel)
                 </span>

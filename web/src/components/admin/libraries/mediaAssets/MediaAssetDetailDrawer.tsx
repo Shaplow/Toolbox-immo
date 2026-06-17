@@ -120,11 +120,11 @@ export function MediaAssetDetailDrawer({
       <Drawer.Body className="space-y-4">
         {/* Navigateur entre les assets du set — uniquement si setAssets fourni (> 1). */}
         {setAssets && setAssets.length > 1 && onSwitchAsset && (
-          <div className="rounded-xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-            <p className="text-[10px] uppercase tracking-widest font-semibold text-gray-500 mb-1.5 inline-flex items-center gap-1">
+          <div className="rounded-xl bg-card border border-border px-3 py-2 ">
+            <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground mb-1.5 inline-flex items-center gap-1">
               <Layers size={10} />
-              Vidéos du pack
-              <span className="font-normal normal-case tracking-normal text-gray-400">({setAssets.length})</span>
+              Vidéos du groupe
+              <span className="font-normal normal-case tracking-normal text-muted-foreground">({setAssets.length})</span>
             </p>
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]">
               {setAssets.map((a, idx) => {
@@ -138,12 +138,12 @@ export function MediaAssetDetailDrawer({
                     className={[
                       "shrink-0 h-12 w-9 rounded-md overflow-hidden bg-gray-200 relative transition-all",
                       isCurrent
-                        ? "ring-2 ring-sky-400 ring-offset-1 ring-offset-white scale-105"
+                        ? "ring-2 ring-info-200 ring-offset-1 ring-offset-white scale-105"
                         : "ring-1 ring-gray-200 hover:ring-gray-400",
                     ].join(" ")}
                   >
                     <video src={`${a.url}#t=0.5`} muted preload="metadata" className="h-full w-full object-cover" />
-                    <span className={`absolute bottom-0.5 right-0.5 text-[8px] font-mono tabular-nums px-1 rounded ${isCurrent ? "bg-sky-500 text-white" : "bg-black/60 text-white"}`}>
+                    <span className={`absolute bottom-0.5 right-0.5 text-[8px] font-mono tabular-nums px-1 rounded ${isCurrent ? "bg-info-600 text-white" : "bg-black/60 text-white"}`}>
                       {idx + 1}
                     </span>
                   </button>
@@ -154,7 +154,7 @@ export function MediaAssetDetailDrawer({
         )}
 
         {/* Aperçu média — surface noire OK (média = noir naturel), ring spéculaire glass. */}
-        <div className="rounded-2xl overflow-hidden bg-gray-900/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.16),inset_0_0_0_1px_rgba(255,255,255,0.06),0_8px_24px_-8px_rgba(15,23,42,0.32)]">
+        <div className="rounded-2xl overflow-hidden bg-gray-900/95 ">
           {isVideo ? (
             <video
               src={asset.url}
@@ -167,63 +167,29 @@ export function MediaAssetDetailDrawer({
         </div>
 
         {/* Filename + meta — glass tight card */}
-        <div className="rounded-xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-          <p className="text-[13.5px] font-semibold text-gray-950 truncate" title={asset.filename}>
+        <div className="rounded-xl bg-card border border-border px-3 py-2.5 ">
+          <p className="text-[13.5px] font-semibold text-foreground truncate" title={asset.filename}>
             {asset.filename}
           </p>
-          <p className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
+          <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
             {asset.duration && <span>{asset.duration.toFixed(1)}s</span>}
-            <span className="text-gray-300">·</span>
+            <span className="text-muted-foreground/60">·</span>
             <span>{(asset.mimeType || "").split("/")[1]?.toUpperCase() || "?"}</span>
-            <span className="text-gray-300">·</span>
+            <span className="text-muted-foreground/60">·</span>
             <span>
               Utilisé {asset.usageCount} fois{asset.lastUsedAt ? ` · ${new Date(asset.lastUsedAt).toLocaleDateString("fr-FR")}` : ""}
             </span>
           </p>
         </div>
 
-        {/* Rangement — section glass card (toujours visible) */}
-        <section className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] space-y-3">
-          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-500 inline-flex items-center gap-1.5">
+        {/* Rangement — Groupe visible par défaut. Catégorie repliée (mode avancé). */}
+        <section className="rounded-2xl bg-card border border-border p-4 space-y-3">
+          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground inline-flex items-center gap-1.5">
             <FolderOpen size={11} /> Rangement
           </h3>
           <FormField
-            label="Catégorie"
-            help="Le thème — sert à éviter la répétition dans la rotation."
-          >
-            <div className="flex gap-2">
-              <Combobox
-                value={categoryInput}
-                onChange={(v) => {
-                  setCategoryInput(v);
-                  // Auto-save on select
-                  if (asset && v !== (asset.category ?? "")) {
-                    void inline.handleSaveCategory(asset, v.trim());
-                  }
-                }}
-                options={categoryOptions}
-                allowCustom
-                placeholder="Choisir ou créer une catégorie…"
-                emptyMessage="Aucune catégorie. Tapez un nom pour en créer une."
-              />
-              {asset.category && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setCategoryInput("");
-                    if (asset) void inline.handleSaveCategory(asset, "");
-                  }}
-                  icon={X}
-                >
-                  Retirer
-                </Button>
-              )}
-            </div>
-          </FormField>
-          <FormField
-            label="Pack"
-            help="Un pack de plans qui voyagent ensemble dans le même rendu. Auto-créé à l'upload si vide."
+            label="Groupe"
+            help="Plans qui voyagent ensemble dans le même rendu (intro + outro par exemple)."
           >
             <div className="flex gap-2">
               <Combobox
@@ -236,18 +202,65 @@ export function MediaAssetDetailDrawer({
                 }}
                 options={packOptions}
                 allowCustom
-                placeholder="Choisir ou créer un pack…"
-                emptyMessage="Aucun pack. Tapez un nom pour en créer un."
+                placeholder="Choisir ou créer un groupe…"
+                emptyMessage="Aucun groupe. Tapez un nom pour en créer un."
               />
             </div>
           </FormField>
+
+          {/* H.3 — Catégorie déplacée en mode avancé (repliée par défaut).
+              Affichée résumée si déjà setée pour rester découvrable. */}
+          <details className="group" open={!!asset.category}>
+            <summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground select-none inline-flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full border border-border group-open:bg-foreground transition-colors" />
+              Avancé · Catégorie
+              {asset.category && (
+                <span className="text-foreground font-medium">— {asset.category}</span>
+              )}
+            </summary>
+            <div className="mt-2.5">
+              <FormField
+                label="Catégorie"
+                help="Optionnelle. Sert à éviter de jouer deux groupes de la même famille à la suite quand la rotation est en mode auto."
+              >
+                <div className="flex gap-2">
+                  <Combobox
+                    value={categoryInput}
+                    onChange={(v) => {
+                      setCategoryInput(v);
+                      if (asset && v !== (asset.category ?? "")) {
+                        void inline.handleSaveCategory(asset, v.trim());
+                      }
+                    }}
+                    options={categoryOptions}
+                    allowCustom
+                    placeholder="Choisir ou créer une catégorie…"
+                    emptyMessage="Aucune catégorie. Tapez un nom pour en créer une."
+                  />
+                  {asset.category && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setCategoryInput("");
+                        if (asset) void inline.handleSaveCategory(asset, "");
+                      }}
+                      icon={X}
+                    >
+                      Retirer
+                    </Button>
+                  )}
+                </div>
+              </FormField>
+            </div>
+          </details>
         </section>
 
         {/* Tags & filtres — collapsible (glass card) */}
-        <details className="group rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] overflow-hidden" {...(asset.tags.length > 0 ? { open: true } : {})}>
-          <summary className="cursor-pointer flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-semibold text-gray-500 hover:text-gray-700 hover:bg-white/40 select-none px-4 py-3 transition-colors">
+        <details className="group rounded-2xl bg-card border border-border  overflow-hidden" {...(asset.tags.length > 0 ? { open: true } : {})}>
+          <summary className="cursor-pointer flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-semibold text-muted-foreground hover:text-foreground hover:bg-white/40 select-none px-4 py-3 transition-colors">
             <Tag size={11} /> Tags & filtres
-            <span className="text-[10px] text-gray-400 font-normal normal-case tracking-normal">
+            <span className="text-[10px] text-muted-foreground font-normal normal-case tracking-normal">
               ({asset.tags.length})
             </span>
             <ChevronDown size={12} className="ml-auto transition-transform group-open:rotate-180" />
@@ -260,7 +273,7 @@ export function MediaAssetDetailDrawer({
                 </Chip>
               ))}
               {asset.tags.length === 0 && (
-                <span className="text-[11px] text-gray-400 italic">Aucun tag</span>
+                <span className="text-[11px] text-muted-foreground italic">Aucun tag</span>
               )}
             </div>
             <div className="flex gap-2">
@@ -283,8 +296,8 @@ export function MediaAssetDetailDrawer({
         </details>
 
         {/* Avancé — collapsible (glass card, fermée par défaut) */}
-        <details className="group rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] overflow-hidden">
-          <summary className="cursor-pointer flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-semibold text-gray-500 hover:text-gray-700 hover:bg-white/40 select-none px-4 py-3 transition-colors">
+        <details className="group rounded-2xl bg-card border border-border  overflow-hidden">
+          <summary className="cursor-pointer flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-semibold text-muted-foreground hover:text-foreground hover:bg-white/40 select-none px-4 py-3 transition-colors">
             <Info size={11} /> Avancé
             <ChevronDown size={12} className="ml-auto transition-transform group-open:rotate-180" />
           </summary>
@@ -324,7 +337,7 @@ export function MediaAssetDetailDrawer({
                     const value = (asset.metadata?.[field.key] ?? "") as string | number;
                     return (
                       <div key={field.key} className="flex items-center gap-2">
-                        <span className="text-[11px] text-gray-500 w-24 shrink-0 truncate" title={field.label}>
+                        <span className="text-[11px] text-muted-foreground w-24 shrink-0 truncate" title={field.label}>
                           {field.label}
                         </span>
                         <Input

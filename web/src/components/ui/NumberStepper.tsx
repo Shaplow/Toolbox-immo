@@ -3,16 +3,8 @@
 /**
  * NumberStepper — input numérique avec boutons +/− latéraux.
  *
- * Use cases : nudge de frame (builder), durée (transcription), quantité,
- * paramètres avec unité (px, s, %, °).
- *
- * Doctrine Liquid Glass v2 :
- * - Wrapper : look identique à Input default (bg sky-50/40 + ring inset).
- * - Boutons − / + : ButtonIcon glass intégrés latéralement, séparés du
- *   champ par un divider subtle.
- * - Champ central : centered text + tabular-nums.
- * - Unité affichée à droite si fournie (px, s, %, etc.).
- * - Keyboard : arrow up/down dans le champ pour step.
+ * Use cases : nudge de frame (builder), durée (transcription), quantité.
+ * Density Linear : h-8, padding serré, dividers visibles.
  */
 
 import { useRef } from "react";
@@ -24,7 +16,6 @@ interface NumberStepperProps {
   min?: number;
   max?: number;
   step?: number;
-  /** Unité affichée à droite (ex: "px", "s", "%", "°"). */
   unit?: string;
   disabled?: boolean;
   error?: string;
@@ -61,20 +52,22 @@ export function NumberStepper({
   const canDecrement = !disabled && (min === undefined || value > min);
   const canIncrement = !disabled && (max === undefined || value < max);
 
-  const wrapperBase =
-    "group/ns flex items-center w-fit h-8 rounded-md transition-colors";
-  const wrapperBg =
-    "bg-sky-50/40 backdrop-blur-[10px] backdrop-saturate-150";
   const wrapperState = error
-    ? "shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(220,38,38,0.55)]"
-    : "shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.08)] focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.45),0_0_0_3px_rgba(169,209,230,0.4)]";
-  const wrapperDisabled = disabled ? "opacity-60 cursor-not-allowed" : "";
+    ? "border-danger-600 focus-within:ring-2 focus-within:ring-danger-600/30"
+    : "border-input hover:border-zinc-300 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30";
 
   const stepBtnCls =
-    "shrink-0 h-full w-7 inline-flex items-center justify-center text-gray-600 hover:text-gray-950 hover:bg-white/50 focus-ring transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent";
+    "shrink-0 h-full w-7 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent focus-ring transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent";
 
   return (
-    <div className={[wrapperBase, wrapperBg, wrapperState, wrapperDisabled, className ?? ""].filter(Boolean).join(" ")}>
+    <div
+      className={[
+        "flex items-center w-fit h-8 rounded-md transition-colors bg-card border",
+        wrapperState,
+        disabled ? "opacity-60 cursor-not-allowed" : "",
+        className ?? "",
+      ].filter(Boolean).join(" ")}
+    >
       <button
         type="button"
         onClick={decrement}
@@ -84,7 +77,7 @@ export function NumberStepper({
       >
         <Minus size={12} />
       </button>
-      <span className="h-4 w-px bg-gray-200/60" aria-hidden />
+      <span className="h-4 w-px bg-border" aria-hidden />
       <input
         ref={inputRef}
         type="number"
@@ -98,15 +91,15 @@ export function NumberStepper({
         step={step}
         disabled={disabled}
         aria-invalid={error ? true : undefined}
-        className="w-14 h-full bg-transparent text-center text-[13px] text-gray-950 font-medium tabular-nums outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        className="w-14 h-full bg-transparent text-center text-[13px] text-foreground font-medium tabular-nums outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
       />
       {unit && (
         <>
-          <span className="h-4 w-px bg-gray-200/60" aria-hidden />
-          <span className="shrink-0 pl-2 pr-2 text-[11px] font-mono text-gray-500 select-none">{unit}</span>
+          <span className="h-4 w-px bg-border" aria-hidden />
+          <span className="shrink-0 pl-2 pr-2 text-[11px] font-mono text-muted-foreground select-none">{unit}</span>
         </>
       )}
-      <span className="h-4 w-px bg-gray-200/60" aria-hidden />
+      <span className="h-4 w-px bg-border" aria-hidden />
       <button
         type="button"
         onClick={increment}

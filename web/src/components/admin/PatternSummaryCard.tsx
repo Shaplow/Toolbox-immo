@@ -87,7 +87,7 @@ export function PatternSummaryCard({ data }: { data: PatternPeekData }) {
       <div>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <h3 className="text-[16px] font-semibold tracking-tight text-gray-950 truncate">
+            <h3 className="text-[16px] font-semibold tracking-tight text-foreground truncate">
               {data.label}
             </h3>
             <div className="mt-2 flex items-center gap-1.5 flex-wrap">
@@ -105,10 +105,10 @@ export function PatternSummaryCard({ data }: { data: PatternPeekData }) {
             </div>
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-400">
+            <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
               Comptes liés
             </p>
-            <p className="mt-1 text-[18px] font-semibold text-gray-950 font-mono tabular-nums">
+            <p className="mt-1 text-[18px] font-semibold text-foreground font-mono tabular-nums">
               {data.bindingCount}
             </p>
           </div>
@@ -152,8 +152,8 @@ export function PatternSummaryCard({ data }: { data: PatternPeekData }) {
       {/* Workflow flags */}
       {flagChips.length > 0 && (
         <div>
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-2 inline-flex items-center gap-1">
-            <ShieldCheck size={11} className="text-gray-400" />
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-2 inline-flex items-center gap-1">
+            <ShieldCheck size={11} className="text-muted-foreground" />
             Workflow
           </p>
           <div className="flex flex-wrap gap-1.5">
@@ -169,8 +169,8 @@ export function PatternSummaryCard({ data }: { data: PatternPeekData }) {
       {/* Linked accounts (top 5) */}
       {data.linkedAccounts.length > 0 && (
         <div>
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-2 inline-flex items-center gap-1">
-            <Users size={11} className="text-gray-400" />
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-2 inline-flex items-center gap-1">
+            <Users size={11} className="text-muted-foreground" />
             Comptes liés
             {data.bindingCount > data.linkedAccounts.length
               ? ` · top ${data.linkedAccounts.length}`
@@ -180,20 +180,20 @@ export function PatternSummaryCard({ data }: { data: PatternPeekData }) {
             {data.linkedAccounts.map((b) => (
               <li
                 key={b.bindingId}
-                className={`rounded-lg bg-white/55 backdrop-blur-[6px] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] ${
+                className={`rounded-lg bg-card border border-border px-3 py-2  ${
                   !b.isActive ? "opacity-60" : ""
                 }`}
               >
                 <div className="flex items-center justify-between gap-2 min-w-0">
-                  <p className="text-[12px] font-medium text-gray-950 truncate">
+                  <p className="text-[12px] font-medium text-foreground truncate">
                     @{b.handle}
                   </p>
-                  <span className="text-[11px] font-mono text-gray-500 tabular-nums shrink-0">
+                  <span className="text-[11px] font-mono text-muted-foreground tabular-nums shrink-0">
                     {b.publishTime}
                   </span>
                 </div>
                 {b.customLabel && (
-                  <p className="text-[10.5px] text-gray-500 truncate mt-0.5">
+                  <p className="text-[10.5px] text-muted-foreground truncate mt-0.5">
                     {b.customLabel}
                   </p>
                 )}
@@ -206,15 +206,15 @@ export function PatternSummaryCard({ data }: { data: PatternPeekData }) {
       {/* Notes (preview) */}
       {data.notes && (
         <div>
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1">
             Notes
           </p>
-          <p className="text-[11.5px] text-gray-700 line-clamp-3">{data.notes}</p>
+          <p className="text-[11.5px] text-foreground line-clamp-3">{data.notes}</p>
         </div>
       )}
 
       {/* Footer méta */}
-      <p className="text-[10.5px] text-gray-400">
+      <p className="text-[10.5px] text-muted-foreground">
         Modifiée le {formatDate(data.updatedAt)}
         {data.updatedBy?.name ? ` · ${data.updatedBy.name}` : ""}
       </p>
@@ -233,8 +233,8 @@ function MetaRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-3 text-[12px]">
-      <span className="text-[10.5px] uppercase tracking-widest font-medium text-gray-500 inline-flex items-center gap-1 shrink-0">
-        <Icon size={11} className="text-gray-400" />
+      <span className="text-[10.5px] uppercase tracking-widest font-medium text-muted-foreground inline-flex items-center gap-1 shrink-0">
+        <Icon size={11} className="text-muted-foreground" />
         {label}
       </span>
       <span className="text-[12px] text-gray-800 truncate text-right">

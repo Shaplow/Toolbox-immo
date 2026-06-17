@@ -1,15 +1,10 @@
 "use client";
 
 /**
- * Loading placeholder — pulse subtil sur wash gradient aurora léger
- * (Liquid Glass v2). Donne plus de matière qu'un pulse gray-100 plat.
+ * Loading placeholder — pulse simple bg-muted.
  *
- * Variants de shape : line (default, hauteur configurable), block (carré
- * avec ratio configurable), circle (pour avatars).
- *
- * À utiliser pour les états de chargement de surfaces complètes ou
- * d'éléments précis (avatar, ligne de texte, image). Toujours
- * dimensionner explicitement (w/h ou aspect) pour éviter le layout shift.
+ * Variants : line (default), block (carré configurable), circle (avatars).
+ * Toujours dimensionner explicitement (w/h ou aspect) pour éviter le layout shift.
  */
 
 interface SkeletonProps {
@@ -20,12 +15,7 @@ interface SkeletonProps {
 }
 
 export function Skeleton({ className, shape = "line" }: SkeletonProps) {
-  // Aurora léger : gradient peach-soft → sage-soft → sky-soft à très basse
-  // opacité (1-2%), invisible à l'œil sans le pulse, mais qui donne une
-  // matière chaleureuse pendant l'animation. Combo avec `animate-pulse`
-  // (Tailwind default opacity 1↔0.5) pour effet shimmer signature.
-  const base =
-    "animate-pulse bg-gray-100 bg-[linear-gradient(120deg,rgba(255,230,208,0.18),rgba(220,238,224,0.12)_50%,rgba(212,232,243,0.18))]";
+  const base = "animate-pulse bg-muted";
   const shapeCls = {
     line:   "h-3 rounded-sm",
     block:  "rounded-md",
@@ -40,10 +30,7 @@ export function Skeleton({ className, shape = "line" }: SkeletonProps) {
   );
 }
 
-/**
- * Composé pratique : un avatar + 2 lignes (titre + sous-titre).
- * Pattern courant pour les rows de listes en chargement.
- */
+/** Composé pratique : avatar + 2 lignes (titre + sous-titre). */
 export function SkeletonRow() {
   return (
     <div className="flex items-center gap-3">

@@ -48,10 +48,10 @@ interface WorklistSlotCardProps {
 // Dot couleur par phase (cohérent SlotCard calendar).
 const PHASE_DOT_COLOR: Record<ReturnType<typeof getPublicationPhase>, string> = {
   planned: "bg-gray-400",
-  shooting: "bg-peach-500",
+  shooting: "bg-warning-600",
   production: "bg-stone-500",
-  admin_review: "bg-peach-500",
-  cm_review: "bg-sky-500",
+  admin_review: "bg-warning-600",
+  cm_review: "bg-info-600",
   publishing: "bg-info-500",
   published: "bg-success-500",
   terminated: "bg-gray-300",
@@ -94,21 +94,16 @@ export function WorklistSlotCard({ slot, monteurBadges, cmBadges }: WorklistSlot
       onClick={() => router.push(`/publications/${slot.id}`)}
       onKeyDown={handleKeyDown}
       className={[
-        "group relative w-full text-left rounded-2xl px-4 py-3 cursor-pointer transition-all",
-        "bg-white shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.04),0_8px_20px_-12px_rgba(15,23,42,0.14)]",
-        "hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.14),0_4px_8px_rgba(15,23,42,0.06),0_12px_28px_-12px_rgba(15,23,42,0.22)]",
-        "hover:-translate-y-px",
-        "focus:outline-none focus-visible:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_2px_rgba(77,150,191,0.45),0_0_0_3px_rgba(169,209,230,0.4)]",
-        overdue
-          ? "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_2px_rgba(201,113,133,0.4),0_2px_4px_rgba(15,23,42,0.04),0_10px_24px_-12px_rgba(201,113,133,0.3)]"
-          : "",
+        "group relative w-full text-left rounded-md px-4 py-3 cursor-pointer transition-colors focus-ring",
+        "bg-card border",
+        overdue ? "border-danger-300 hover:border-danger-400" : "border-border hover:border-zinc-300",
+        "hover:bg-muted",
       ].filter(Boolean).join(" ")}
     >
       <div className="flex items-start gap-3">
-        {/* Indicateur overdue ou dot phase */}
         <div className="shrink-0 mt-1.5">
           {overdue ? (
-            <AlertCircle size={14} className="text-rose-600" />
+            <AlertCircle size={14} className="text-danger-600" />
           ) : (
             <span
               className={`inline-block h-2 w-2 rounded-full ${phaseDotColor}`}
@@ -117,59 +112,56 @@ export function WorklistSlotCard({ slot, monteurBadges, cmBadges }: WorklistSlot
           )}
         </div>
 
-        {/* Contenu principal */}
         <div className="flex-1 min-w-0">
-          <p className="text-[14px] font-semibold text-gray-950 truncate leading-tight">
+          <p className="text-[14px] font-semibold text-foreground truncate leading-tight">
             {title}
           </p>
-          <p className="mt-0.5 text-[12px] text-gray-500 truncate">
+          <p className="mt-0.5 text-[12px] text-muted-foreground truncate">
             @{slot.account.handle}
             {slot.account.name !== slot.account.handle && (
-              <span className="text-gray-400"> · {slot.account.name}</span>
+              <span className="text-muted-foreground/70"> · {slot.account.name}</span>
             )}
           </p>
           <p
             className={`mt-1 text-[11px] font-mono tabular-nums ${
-              overdue ? "text-rose-700 font-medium" : "text-gray-400"
+              overdue ? "text-danger-700 font-medium" : "text-muted-foreground"
             }`}
           >
             {slot.scheduledAt ? (
               formatScheduledAt(slot.scheduledAt)
             ) : (
-              <span className="uppercase tracking-widest text-[10px] font-semibold text-stone-500">
-                En banque · sans date
+              <span className="uppercase tracking-widest text-[10px] font-semibold text-muted-foreground">
+                En banque
               </span>
             )}
             {overdue && (
-              <span className="ml-1.5 font-semibold uppercase text-rose-700 text-[10px] tracking-widest">
+              <span className="ml-1.5 font-semibold uppercase text-danger-700 text-[10px] tracking-widest">
                 En retard
               </span>
             )}
           </p>
 
-          {/* Badges contextuels monteur */}
           {(showNewRushes || versionPendingN !== null) && (
             <div className="flex flex-wrap gap-1.5 mt-2">
               {showNewRushes && (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-peach-50/80 text-peach-700 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.2)]">
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning-50 text-warning-700 border border-warning-200">
                   Nouveaux rushes
                 </span>
               )}
               {versionPendingN !== null && (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100/80 text-gray-600 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.08)]">
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground border border-border">
                   V{versionPendingN} en révision admin
                 </span>
               )}
             </div>
           )}
 
-          {/* Badge contextuel CM */}
           {cmBadges?.statusLabel && (
             <div className="flex flex-wrap gap-1.5 mt-2">
               <span
                 className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
                   cmBadges.statusClasses ??
-                  "bg-gray-100 text-gray-600 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.08)]"
+                  "bg-muted text-muted-foreground border border-border"
                 }`}
               >
                 {cmBadges.statusLabel}
@@ -178,14 +170,13 @@ export function WorklistSlotCard({ slot, monteurBadges, cmBadges }: WorklistSlot
           )}
         </div>
 
-        {/* Status badge + chevron */}
         <div className="shrink-0 flex flex-col items-end gap-2">
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-gray-50/80 text-gray-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10.5px] font-medium bg-muted text-muted-foreground border border-border">
             {STATUS_LABELS[slot.status]}
           </span>
           <ChevronRight
             size={14}
-            className="text-gray-300 group-hover:text-gray-700 transition-colors"
+            className="text-muted-foreground group-hover:text-foreground transition-colors"
           />
         </div>
       </div>

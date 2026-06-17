@@ -231,9 +231,9 @@ export function CoverTabPanel({ templateId }: Props) {
   if (!templateId) {
     return (
       <div className="flex flex-col h-full overflow-y-auto text-xs">
-        <div className="px-3 py-4 text-center text-gray-500">
-          <p className="mb-1 font-medium text-gray-700">Cover auto indisponible</p>
-          <p className="text-[11px] text-gray-400">
+        <div className="px-3 py-4 text-center text-muted-foreground">
+          <p className="mb-1 font-medium text-foreground">Cover auto indisponible</p>
+          <p className="text-[11px] text-muted-foreground">
             Sauvegarde d&apos;abord le template pour configurer la cover automatique.
           </p>
         </div>
@@ -244,8 +244,8 @@ export function CoverTabPanel({ templateId }: Props) {
   return (
     <div className="flex flex-col h-full overflow-y-auto text-xs">
       {/* Header + toggle activation */}
-      <div className="px-3 py-3 border-b border-gray-100">
-        <p className="text-[11px] text-gray-500 mb-3">
+      <div className="px-3 py-3 border-b border-border">
+        <p className="text-[11px] text-muted-foreground mb-3">
           Génère un pack de frames après chaque rendu pour que la CM choisisse la cover finale dans la fiche publication.
         </p>
 
@@ -257,12 +257,12 @@ export function CoverTabPanel({ templateId }: Props) {
             disabled={loading}
             className="rounded"
           />
-          <span className="text-gray-700 font-medium">Activer après chaque render</span>
+          <span className="text-foreground font-medium">Activer après chaque render</span>
         </label>
 
         {/* Status indicator */}
         <div className="mt-2 text-[10px] h-3.5">
-          {saveStatus === "saving" && <span className="text-gray-400">Sauvegarde…</span>}
+          {saveStatus === "saving" && <span className="text-muted-foreground">Sauvegarde…</span>}
           {saveStatus === "saved" && <span className="text-emerald-600">Sauvegardé</span>}
           {saveStatus === "error" && <span className="text-red-500">Échec — réessayez</span>}
         </div>
@@ -270,8 +270,8 @@ export function CoverTabPanel({ templateId }: Props) {
 
       {/* Patterns liés */}
       {linkedPatterns.length > 0 && (
-        <div className="px-3 py-3 border-b border-gray-100">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2 flex items-center gap-1">
+        <div className="px-3 py-3 border-b border-border">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1">
             <Link2 size={10} />
             Patterns utilisant ce template ({linkedPatterns.length})
           </p>
@@ -280,27 +280,27 @@ export function CoverTabPanel({ templateId }: Props) {
               <Link
                 key={p.id}
                 href={`/admin/accounts/${p.accountId}`}
-                className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-gray-50 transition-colors group"
+                className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-muted transition-colors group"
                 title="Voir la fiche compte"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-gray-700 truncate group-hover:text-gray-900">
+                    <span className="text-xs text-foreground truncate group-hover:text-gray-900">
                       {p.label}
                     </span>
                     {!p.isActive && (
-                      <span className="text-[9px] px-1 rounded bg-gray-100 text-gray-500 border border-gray-200 shrink-0">
+                      <span className="text-[9px] px-1 rounded bg-muted text-muted-foreground border border-border shrink-0">
                         inactif
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px] text-gray-400 truncate">@{p.accountHandle}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">@{p.accountHandle}</p>
                 </div>
                 <span
                   className={`text-[9px] px-1.5 py-0.5 rounded shrink-0 ${
                     p.coverEnabled
                       ? "bg-violet-50 text-violet-700 border border-violet-200"
-                      : "bg-gray-100 text-gray-500 border border-gray-200"
+                      : "bg-muted text-muted-foreground border border-border"
                   }`}
                 >
                   {p.coverEnabled ? "actif" : "off"}
@@ -313,14 +313,14 @@ export function CoverTabPanel({ templateId }: Props) {
 
       {/* Config (visible uniquement si activé) */}
       {!enabled ? (
-        <div className="px-3 py-3 text-[11px] text-gray-400 italic">
+        <div className="px-3 py-3 text-[11px] text-muted-foreground italic">
           Active la case ci-dessus pour configurer les frames, les clips source et les groupes de texte.
         </div>
       ) : (
         <>
           {/* Nombre de frames */}
-          <div className="px-3 py-3 border-b border-gray-100">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">
+          <div className="px-3 py-3 border-b border-border">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
               Frames proposées à la CM
             </p>
             <div className="flex items-center gap-3">
@@ -333,22 +333,22 @@ export function CoverTabPanel({ templateId }: Props) {
                 onChange={(e) => setFrameCount(parseInt(e.target.value, 10))}
                 className="flex-1 accent-indigo-600"
               />
-              <span className="text-xs font-medium text-gray-700 w-8 text-right">
+              <span className="text-xs font-medium text-foreground w-8 text-right">
                 {config.frameCount}
               </span>
             </div>
-            <p className="text-[10px] text-gray-400 mt-1">
+            <p className="text-[10px] text-muted-foreground mt-1">
               Entre 6 et 72. 24-36 est un bon compromis.
             </p>
           </div>
 
           {/* Groupes de texte gardés sur la cover */}
-          <div className="px-3 py-3 border-b border-gray-100">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">
+          <div className="px-3 py-3 border-b border-border">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
               Texte / overlays gardés sur la cover
             </p>
             {groups.length === 0 ? (
-              <span className="text-[10px] text-gray-400 italic">
+              <span className="text-[10px] text-muted-foreground italic">
                 Aucun groupe dans ce template. Ajoute-les depuis l&apos;onglet Calques.
               </span>
             ) : (
@@ -363,7 +363,7 @@ export function CoverTabPanel({ templateId }: Props) {
                         onChange={(e) => toggleOverlayGroup(g.id, e.target.checked)}
                         className="rounded"
                       />
-                      <span className="text-xs text-gray-600">{g.name}</span>
+                      <span className="text-xs text-muted-foreground">{g.name}</span>
                     </label>
                   );
                 })}
@@ -372,12 +372,12 @@ export function CoverTabPanel({ templateId }: Props) {
           </div>
 
           {/* Clips source des frames */}
-          <div className="px-3 py-3 border-b border-gray-100">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">
+          <div className="px-3 py-3 border-b border-border">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
               Clips où piocher les frames
             </p>
             {slots.length === 0 ? (
-              <span className="text-[10px] text-gray-400 italic">
+              <span className="text-[10px] text-muted-foreground italic">
                 Aucun bloc vidéo dans ce template — ajoute-en un depuis Calques
                 puis amorce un clip dans l&apos;onglet Séquence.
               </span>
@@ -392,7 +392,7 @@ export function CoverTabPanel({ templateId }: Props) {
                         checked={config.slotMode === mode}
                         onChange={() => setSlotMode(mode)}
                       />
-                      <span className="text-xs text-gray-700">
+                      <span className="text-xs text-foreground">
                         {mode === "all" && "Toute la vidéo"}
                         {mode === "exclude" && "Toute la vidéo sauf certains clips"}
                         {mode === "include" && "Uniquement certains clips"}
@@ -417,11 +417,11 @@ export function CoverTabPanel({ templateId }: Props) {
                             onChange={(e) => toggleSlot(slot.id, e.target.checked)}
                             className="rounded"
                           />
-                          <span className="text-xs text-gray-600">
+                          <span className="text-xs text-muted-foreground">
                             {slot.label ?? `Slot ${idx + 1}`}
                           </span>
                           {slot.maxDuration !== undefined && (
-                            <span className="text-[9px] text-gray-400">
+                            <span className="text-[9px] text-muted-foreground">
                               ({slot.maxDuration}s max)
                             </span>
                           )}

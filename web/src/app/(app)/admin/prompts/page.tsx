@@ -48,8 +48,8 @@ export default async function AdminPromptsPage() {
   return (
     <div className="min-h-screen">
       <div
-        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
-        style={{ background: "var(--gradient-page-shell)" }}
+        className="mx-auto max-w-7xl px-6 py-8"
+
       >
         <div className="px-6 sm:px-8 pt-6 pb-12">
           <div className="max-w-5xl mx-auto space-y-12">
@@ -64,7 +64,7 @@ export default async function AdminPromptsPage() {
             <section>
               <div className="mb-5">
                 <h2 className="text-base font-semibold text-gray-900">Sous-titres</h2>
-                <p className="text-sm text-gray-500 mt-0.5">
+                <p className="text-sm text-muted-foreground mt-0.5">
                   Prompts de correction IA disponibles dans l&apos;outil sous-titres.
                 </p>
               </div>
@@ -77,7 +77,7 @@ export default async function AdminPromptsPage() {
             <section>
               <div className="mb-5">
                 <h2 className="text-base font-semibold text-gray-900">Descriptions</h2>
-                <p className="text-sm text-gray-500 mt-0.5">
+                <p className="text-sm text-muted-foreground mt-0.5">
                   Prompts de génération disponibles dans l&apos;outil de descriptions.
                 </p>
               </div>

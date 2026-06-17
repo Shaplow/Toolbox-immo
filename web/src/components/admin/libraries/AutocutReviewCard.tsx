@@ -339,15 +339,15 @@ function TrimPlayer({ trimStart, trimEnd, videoRef, lastWordEnd, fullRush = fals
 
       {/* Barre de progression — zone de clic élargie pour faciliter le scrub */}
       <div className="py-1.5 cursor-pointer" onClick={handleScrubClick}>
-        <div ref={scrubBarRef} className="relative h-3 bg-gray-100 rounded-full">
+        <div ref={scrubBarRef} className="relative h-3 bg-muted rounded-full">
           <div
-            className="absolute inset-y-0 left-0 bg-sky-500 rounded-full"
+            className="absolute inset-y-0 left-0 bg-info-600 rounded-full"
             style={{ width: `${progress * 100}%` }}
           />
         {/* Zone du cut en mode rush complet */}
         {fullRush && cutStart != null && cutEnd != null && trimDuration > 0 && (
           <div
-            className="absolute inset-y-0 bg-sky-200/50 pointer-events-none rounded-sm"
+            className="absolute inset-y-0 bg-info-200/50 pointer-events-none rounded-sm"
             style={{
               left: `${((cutStart - effectiveStart) / trimDuration) * 100}%`,
               width: `${((cutEnd - cutStart) / trimDuration) * 100}%`,
@@ -372,14 +372,14 @@ function TrimPlayer({ trimStart, trimEnd, videoRef, lastWordEnd, fullRush = fals
              Ne pas couper avant ce marqueur pour éviter de tronquer la parole. */}
         {lastWordEnd != null && lastWordEnd > effectiveStart && lastWordEnd < effectiveEnd && (
           <div
-            className="absolute inset-y-0 w-0.5 bg-peach-500 rounded-full opacity-90 pointer-events-none"
+            className="absolute inset-y-0 w-0.5 bg-warning-600 rounded-full opacity-90 pointer-events-none"
             style={{ left: `${((lastWordEnd - effectiveStart) / trimDuration) * 100}%` }}
             title={`Dernier mot : +${fmt(lastWordEnd - effectiveStart)} (${fmt(lastWordEnd)})`}
           />
         )}
           {/* Curseur */}
           <div
-            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white border-2 border-sky-500 rounded-full shadow-sm"
+            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white border-2 border-info-600 rounded-full shadow-sm"
             style={{ left: `calc(${progress * 100}% - 7px)` }}
           />
         </div>
@@ -393,21 +393,21 @@ function TrimPlayer({ trimStart, trimEnd, videoRef, lastWordEnd, fullRush = fals
         >
           {isPlaying ? <Pause size={13} /> : <Play size={13} />}
         </button>
-        <span className="text-xs text-gray-500 tabular-nums flex-1 pl-0.5">
+        <span className="text-xs text-muted-foreground tabular-nums flex-1 pl-0.5">
           {fmt(currentTime)}
-          <span className="text-gray-300 mx-1">/</span>
+          <span className="text-muted-foreground/60 mx-1">/</span>
           {fmt(trimDuration)}
         </span>
         <button
           onClick={seekToStart}
-          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
           title="Aller au début du cut"
         >
           <SkipBack size={14} />
         </button>
         <button
           onClick={seekToEnd}
-          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
           title="Aller à la fin du cut"
         >
           <SkipForward size={14} />
@@ -415,8 +415,8 @@ function TrimPlayer({ trimStart, trimEnd, videoRef, lastWordEnd, fullRush = fals
       </div>
       {/* Légende: fin de parole détectée par Whisper */}
       {!fullRush && lastWordEnd != null && lastWordEnd > effectiveStart && lastWordEnd < effectiveEnd && (
-        <div className="flex items-center gap-1.5 text-xs text-peach-700">
-          <span className="w-2 h-2 rounded-full bg-peach-500 flex-shrink-0" />
+        <div className="flex items-center gap-1.5 text-xs text-warning-700">
+          <span className="w-2 h-2 rounded-full bg-warning-600 flex-shrink-0" />
           Fin de parole détectée
         </div>
       )}
@@ -523,16 +523,16 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
     const isFailed = editStatus === "failed";
     const isPending = !isDone && !isFailed;
     return (
-      <div className="border border-gray-200 rounded-xl p-4 bg-white opacity-80">
+      <div className="border border-border rounded-xl p-4 bg-white opacity-80">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-sm text-gray-700 font-medium truncate max-w-xs">{asset.filename}</span>
-          <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 flex-shrink-0 ${isDone ? "bg-green-100 text-green-700" : isFailed ? "bg-red-100 text-red-700" : "bg-peach-100 text-peach-800"}`}>
+          <span className="text-sm text-foreground font-medium truncate max-w-xs">{asset.filename}</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 flex-shrink-0 ${isDone ? "bg-green-100 text-green-700" : isFailed ? "bg-red-100 text-red-700" : "bg-warning-100 text-warning-700"}`}>
             {isPending && <Loader2 size={9} className="animate-spin" />}
             {isDone ? "✓ Appliqué" : isFailed ? "✗ Erreur" : "En cours…"}
           </span>
         </div>
         {isDone && (
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-muted-foreground">
             {asset.filename} remplacé sur R2 · {job.confirmedStart !== null && job.confirmedEnd !== null ? `${fmt(job.confirmedEnd - job.confirmedStart)} conservés` : ""}
           </p>
         )}
@@ -544,18 +544,18 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
   }
 
   return (
-    <div className="border border-gray-200 rounded-xl bg-white">
+    <div className="border border-border rounded-xl bg-white">
       {/* Filename + toggle rush */}
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <span className="text-sm font-medium text-gray-900 truncate max-w-sm">{asset.filename}</span>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {duration > 0 && <span className="text-xs text-gray-400">{fmt(duration)}</span>}
+          {duration > 0 && <span className="text-xs text-muted-foreground">{fmt(duration)}</span>}
           <button
             onClick={() => setShowFullRush(v => !v)}
             className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded border transition-colors ${
               showFullRush
-                ? "bg-sky-50 text-sky-700 border-sky-200"
-                : "text-gray-400 border-gray-200 hover:text-gray-600 hover:border-gray-300"
+                ? "bg-info-50 text-info-700 border-info-200"
+                : "text-muted-foreground border-border hover:text-muted-foreground hover:border-border"
             }`}
             title={showFullRush ? "Revenir au mode coupé" : "Voir le rush complet"}
           >
@@ -592,14 +592,14 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
           {takes.length > 1 && (
             <div className="flex flex-col gap-1.5">
               <div className="flex flex-wrap gap-1.5 items-center">
-                <span className="text-xs text-gray-400 font-medium mr-0.5">Prises :</span>
+                <span className="text-xs text-muted-foreground font-medium mr-0.5">Prises :</span>
                 {takes.map((take, idx) => {
                   const isSelected = idx === selectedTakeIndex;
                   const isBest = idx === bestIdx;
                   const scoreColor = take.score >= 70
                     ? (isSelected ? "text-green-200" : "text-green-600")
                     : take.score >= 45
-                    ? (isSelected ? "text-peach-200" : "text-peach-700")
+                    ? (isSelected ? "text-warning-200" : "text-warning-700")
                     : (isSelected ? "text-red-200" : "text-red-500");
                   return (
                     <button
@@ -608,26 +608,26 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
                       className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border transition-colors ${
                         isSelected
                           ? "bg-gray-900 text-white border-gray-900"
-                          : "bg-white text-gray-600 border-gray-200 hover:border-sky-300 hover:bg-sky-50"
+                          : "bg-white text-muted-foreground border-border hover:border-info-200 hover:bg-info-50"
                       }`}
                     >
                       <span>Prise {take.index}</span>
-                      {isBest && <span className={isSelected ? "text-peach-300" : "text-peach-500"}>★</span>}
+                      {isBest && <span className={isSelected ? "text-warning-200" : "text-warning-600"}>★</span>}
                       <span className={scoreColor}>{take.score}%</span>
                     </button>
                   );
                 })}
               </div>
               {transcriptText && (
-                <p className="text-xs text-gray-500 italic line-clamp-2">&ldquo;{transcriptText}&rdquo;</p>
+                <p className="text-xs text-muted-foreground italic line-clamp-2">&ldquo;{transcriptText}&rdquo;</p>
               )}
             </div>
           )}
           {takes.length <= 1 && transcriptText && (
-            <p className="text-sm text-gray-600 italic line-clamp-3">&ldquo;{transcriptText}&rdquo;</p>
+            <p className="text-sm text-muted-foreground italic line-clamp-3">&ldquo;{transcriptText}&rdquo;</p>
           )}
           {!transcriptText && job.status === "done" && (
-            <p className="text-xs text-gray-400 italic">Pas de transcription disponible</p>
+            <p className="text-xs text-muted-foreground italic">Pas de transcription disponible</p>
           )}
           {job.errorMsg && (
             <div className="flex items-center gap-1.5 text-xs text-red-600">
@@ -640,10 +640,10 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
           <div className="flex items-end gap-3 pt-1">
             {/* Début */}
             <div className="flex flex-col gap-1">
-              <span className="text-xs text-gray-400 font-medium">Début (s)</span>
-              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+              <span className="text-xs text-muted-foreground font-medium">Début (s)</span>
+              <div className="flex items-center border border-border rounded-lg overflow-hidden bg-white">
                 <button
-                  className="px-2.5 py-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 border-r border-gray-200 transition-colors text-base font-semibold leading-none"
+                  className="px-2.5 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground border-r border-border transition-colors text-base font-semibold leading-none"
                   onClick={() => applyStart(trimStart - 0.04)}
                   title="− 1 image (0.04 s)"
                 >−</button>
@@ -651,24 +651,24 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
                   type="number" step="0.01" value={startInput}
                   onChange={(e) => setStartInput(e.target.value)}
                   onBlur={() => { const v = parseFloat(startInput); if (!isNaN(v)) applyStart(v); else setStartInput(trimStart.toFixed(2)); }}
-                  className="w-16 text-center text-sm py-1.5 focus:outline-none focus:bg-sky-50 transition-colors"
+                  className="w-16 text-center text-sm py-1.5 focus:outline-none focus:bg-info-50 transition-colors"
                 />
                 <button
-                  className="px-2.5 py-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 border-l border-gray-200 transition-colors text-base font-semibold leading-none"
+                  className="px-2.5 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground border-l border-border transition-colors text-base font-semibold leading-none"
                   onClick={() => applyStart(trimStart + 0.04)}
                   title="+ 1 image (0.04 s)"
                 >+</button>
               </div>
             </div>
 
-            <span className="text-gray-300 mt-4 text-sm">→</span>
+            <span className="text-muted-foreground/60 mt-4 text-sm">→</span>
 
             {/* Fin */}
             <div className="flex flex-col gap-1">
-              <span className="text-xs text-gray-400 font-medium">Fin (s)</span>
-              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+              <span className="text-xs text-muted-foreground font-medium">Fin (s)</span>
+              <div className="flex items-center border border-border rounded-lg overflow-hidden bg-white">
                 <button
-                  className="px-2.5 py-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 border-r border-gray-200 transition-colors text-base font-semibold leading-none"
+                  className="px-2.5 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground border-r border-border transition-colors text-base font-semibold leading-none"
                   onClick={() => applyEnd(trimEnd - 0.04)}
                   title="− 1 image (0.04 s)"
                 >−</button>
@@ -676,10 +676,10 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
                   type="number" step="0.01" value={endInput}
                   onChange={(e) => setEndInput(e.target.value)}
                   onBlur={() => { const v = parseFloat(endInput); if (!isNaN(v)) applyEnd(v); else setEndInput(trimEnd.toFixed(2)); }}
-                  className="w-16 text-center text-sm py-1.5 focus:outline-none focus:bg-sky-50 transition-colors"
+                  className="w-16 text-center text-sm py-1.5 focus:outline-none focus:bg-info-50 transition-colors"
                 />
                 <button
-                  className="px-2.5 py-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 border-l border-gray-200 transition-colors text-base font-semibold leading-none"
+                  className="px-2.5 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground border-l border-border transition-colors text-base font-semibold leading-none"
                   onClick={() => applyEnd(trimEnd + 0.04)}
                   title="+ 1 image (0.04 s)"
                 >+</button>
@@ -688,16 +688,16 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
 
             {/* Durée */}
             <div className="flex flex-col gap-1 ml-auto">
-              <span className="text-xs text-gray-400 font-medium">Durée</span>
-              <div className="flex items-center h-[38px] px-3 bg-sky-50 rounded-lg border border-sky-100">
-                <span className="text-sm font-semibold text-sky-700 tabular-nums">{fmt(Math.max(0, trimEnd - trimStart))}</span>
+              <span className="text-xs text-muted-foreground font-medium">Durée</span>
+              <div className="flex items-center h-[38px] px-3 bg-info-50 rounded-lg border border-info-100">
+                <span className="text-sm font-semibold text-info-700 tabular-nums">{fmt(Math.max(0, trimEnd - trimStart))}</span>
               </div>
             </div>
           </div>
 
           {/* Tags */}
           <div className="flex flex-col gap-1.5 pt-0.5">
-            <span className="text-xs text-gray-400 font-medium">Tags</span>
+            <span className="text-xs text-muted-foreground font-medium">Tags</span>
             {(knownTags ?? []).length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {(knownTags ?? []).map((t) => {
@@ -714,7 +714,7 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
                       className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
                         active
                           ? "bg-gray-900 text-white border-gray-900"
-                          : "bg-white text-gray-500 border-gray-200 hover:border-sky-300 hover:bg-sky-50"
+                          : "bg-white text-muted-foreground border-border hover:border-info-200 hover:bg-info-50"
                       }`}
                     >
                       {t}
@@ -723,19 +723,19 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
                 })}
               </div>
             )}
-            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 min-h-[32px]">
+            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-white px-2 py-1 min-h-[32px]">
               {pendingTags
                 .filter((t) => !(knownTags ?? []).includes(t))
                 .map((t) => (
                   <span
                     key={t}
-                    className="flex items-center gap-0.5 px-2 py-0.5 bg-sky-100 text-sky-800 rounded-full text-xs"
+                    className="flex items-center gap-0.5 px-2 py-0.5 bg-info-100 text-info-700 rounded-full text-xs"
                   >
                     {t}
                     <button
                       type="button"
                       onClick={() => setPendingTags((prev) => prev.filter((x) => x !== t))}
-                      className="ml-0.5 hover:text-sky-950 font-medium"
+                      className="ml-0.5 hover:text-info-700 font-medium"
                     >
                       ×
                     </button>
@@ -764,10 +764,10 @@ export function AutocutReviewCard({ job, knownTags, onAccept, onSkip }: Props) {
       </div>
 
       {/* Actions */}
-      <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+      <div className="px-4 py-3 border-t border-border flex items-center justify-between">
         <button
           onClick={() => void handleSkip()} disabled={saving}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground border border-border rounded-lg hover:bg-muted disabled:opacity-50"
         >
           {saving ? <Loader2 size={13} className="animate-spin" /> : <X size={13} />}
           Passer

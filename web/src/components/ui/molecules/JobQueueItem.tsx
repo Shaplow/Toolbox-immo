@@ -1,25 +1,12 @@
 "use client";
 
 /**
- * JobQueueItem — item de liste de jobs (render, captions, autocut,
- * description, transcription).
+ * JobQueueItem — item de liste de jobs (render, captions, autocut, etc.).
  *
- * Factorise les patterns dupliqués dans :
- * - RenderSection (jobs render en cours)
- * - CaptionsJobQueue
- * - DescriptionJob list
- * - jobs/page (toutes catégories)
- * - MediaAutocutJob review queue
- *
- * Doctrine Liquid Glass v2 :
- * - Card glass-soft + ring inset signature.
- * - Tinted légèrement selon status (sky in_progress, sage done, rose failed).
- * - Hover lift + ring inset renforcé.
- * - Layout :
- *   - Top : StatusBadge (avec spin) + title semibold + actions à droite
- *   - Description gray sous-titre
- *   - Progress bar inline si progress défini
- *   - Bottom : timestamps tabular + error rouge si présent
+ * Flat shadcn :
+ * - Card bg-card border-border.
+ * - Status tint via border-l-4 semantic (in_progress=primary, done=success, failed=danger).
+ * - Hover lift léger sur bg-muted.
  */
 
 import type { ReactNode } from "react";
@@ -34,7 +21,6 @@ interface JobMeta {
   status: string;
   title: ReactNode;
   description?: ReactNode;
-  /** Si défini, affiche une barre de progression. 0-100. */
   progress?: number;
   createdAt?: Date | string;
   startedAt?: Date | string;
@@ -44,32 +30,29 @@ interface JobMeta {
 
 interface JobQueueItemProps {
   job: JobMeta;
-  /** Actions à droite (Button retry, Button cancel, ButtonIcon view…). */
   actions?: ReactNode;
-  /** Click row → ouvre détail du job. */
   onClick?: () => void;
-  /** Variant compact (h-12 row sans description). Default false. */
   compact?: boolean;
   className?: string;
 }
 
-const STATUS_TINT: Record<string, string> = {
-  IN_PROGRESS: "bg-sky-50/45",
-  GENERATING:  "bg-sky-50/45",
-  RUNNING:     "bg-sky-50/45",
-  RENDERING:   "bg-sky-50/45",
-  UPLOADING:   "bg-sky-50/45",
-  COMPLETED:   "bg-sage-50/40",
-  READY:       "bg-sage-50/40",
-  DONE:        "bg-sage-50/40",
-  FAILED:      "bg-rose-50/40",
-  ERROR:       "bg-rose-50/40",
+const STATUS_ACCENT: Record<string, string> = {
+  IN_PROGRESS: "border-l-primary",
+  GENERATING:  "border-l-primary",
+  RUNNING:     "border-l-primary",
+  RENDERING:   "border-l-primary",
+  UPLOADING:   "border-l-primary",
+  COMPLETED:   "border-l-success-600",
+  READY:       "border-l-success-600",
+  DONE:        "border-l-success-600",
+  FAILED:      "border-l-danger-600",
+  ERROR:       "border-l-danger-600",
 };
 
 function formatTime(d?: Date | string): string {
-  if (!d) return "—";
+  if (!d) return "-";
   const date = typeof d === "string" ? new Date(d) : d;
-  if (!Number.isFinite(date.getTime())) return "—";
+  if (!Number.isFinite(date.getTime())) return "-";
   return date.toLocaleString("fr-FR", {
     day: "2-digit",
     month: "short",
@@ -99,33 +82,29 @@ export function JobQueueItem({
   compact = false,
   className,
 }: JobQueueItemProps) {
-  const tintCls = STATUS_TINT[job.status] ?? "bg-white/40";
+  const accentCls = STATUS_ACCENT[job.status] ?? "border-l-border";
   const interactive = !!onClick;
 
   return (
     <article
       onClick={interactive ? onClick : undefined}
       className={[
-        "rounded-xl px-4 py-3 transition-all backdrop-blur-[10px] backdrop-saturate-150",
-        tintCls,
-        "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),inset_0_-1px_0_rgba(15,23,42,0.04)]",
-        interactive
-          ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.14),0_4px_16px_-4px_rgba(15,23,42,0.12)]"
-          : "",
+        "rounded-md px-4 py-3 transition-colors bg-card border border-border border-l-4",
+        accentCls,
+        interactive ? "cursor-pointer hover:bg-muted" : "",
         className ?? "",
       ].filter(Boolean).join(" ")}
     >
-      {/* Top row : StatusBadge + title + actions */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1">
             <StatusBadge domain={job.domain} status={job.status} size="sm" />
-            <p className="text-[13px] font-semibold text-gray-950 truncate leading-tight">
+            <p className="text-[13px] font-semibold text-foreground truncate leading-tight">
               {job.title}
             </p>
           </div>
           {job.description && !compact && (
-            <p className="text-[12px] text-gray-600 leading-relaxed">
+            <p className="text-[12px] text-muted-foreground leading-relaxed">
               {job.description}
             </p>
           )}
@@ -133,47 +112,36 @@ export function JobQueueItem({
         {actions && <div className="shrink-0 flex items-center gap-1.5">{actions}</div>}
       </div>
 
-      {/* Progress bar inline */}
       {job.progress !== undefined && !compact && (
         <div className="mt-2.5">
-          <Progress
-            value={job.progress}
-            accent={
-              job.status === "FAILED" || job.status === "ERROR" ? undefined
-              : job.status === "COMPLETED" || job.status === "DONE" || job.status === "READY" ? "sage"
-              : "sky"
-            }
-            showValue
-          />
+          <Progress value={job.progress} showValue />
         </div>
       )}
 
-      {/* Error block */}
       {job.error && !compact && (
-        <div className="mt-2.5 flex items-start gap-2 px-2.5 py-2 rounded-md bg-rose-50/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.14)]">
-          <AlertCircle size={12} className="shrink-0 text-rose-700 mt-0.5" />
-          <p className="text-[11px] text-rose-700 leading-relaxed font-medium">{job.error}</p>
+        <div className="mt-2.5 flex items-start gap-2 px-2.5 py-2 rounded-md bg-danger-50 border border-danger-200">
+          <AlertCircle size={12} className="shrink-0 text-danger-700 mt-0.5" />
+          <p className="text-[11px] text-danger-700 leading-relaxed font-medium">{job.error}</p>
         </div>
       )}
 
-      {/* Bottom row : timestamps */}
       {!compact && (job.createdAt || job.startedAt || job.endedAt) && (
-        <div className="mt-2.5 pt-2 border-t border-white/40 flex items-center justify-between text-[10px] text-gray-500 tabular-nums">
+        <div className="mt-2.5 pt-2 border-t border-border flex items-center justify-between text-[10px] text-muted-foreground tabular-nums">
           {job.createdAt && (
             <span>
-              Créé <span className="text-gray-700">{formatTime(job.createdAt)}</span>
+              Créé <span className="text-foreground">{formatTime(job.createdAt)}</span>
             </span>
           )}
           {job.startedAt && (
             <span>
-              Démarré <span className="text-gray-700">{formatTime(job.startedAt)}</span>
+              Démarré <span className="text-foreground">{formatTime(job.startedAt)}</span>
             </span>
           )}
           {job.endedAt && (
             <span>
-              Fini <span className="text-gray-700">{formatTime(job.endedAt)}</span>
+              Fini <span className="text-foreground">{formatTime(job.endedAt)}</span>
               {job.startedAt && (
-                <span className="text-gray-400 ml-1">· {formatDuration(job.startedAt, job.endedAt)}</span>
+                <span className="text-muted-foreground/70 ml-1">· {formatDuration(job.startedAt, job.endedAt)}</span>
               )}
             </span>
           )}

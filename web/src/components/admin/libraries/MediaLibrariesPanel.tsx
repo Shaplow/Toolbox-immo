@@ -35,6 +35,7 @@ import { MediaAssetsUploadModal } from "./mediaAssets/MediaAssetsUploadModal";
 import { MediaLibrarySettingsDrawer } from "./MediaLibrarySettingsDrawer";
 import { type PreviewAsset } from "./LibraryPreviewThumbs";
 import { LazyVideoThumb } from "./mediaAssets/LazyVideoThumb";
+import { rotationScopeLabel } from "@/lib/i18n/entityLabels";
 
 interface MediaLibrary {
   id: string;
@@ -187,7 +188,7 @@ export function MediaLibrariesPanel({ typeFilter: forcedType }: { typeFilter?: "
   return (
     <div className="space-y-5">
       {/* Toolbar glass */}
-      <div className="p-3 rounded-2xl bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)]">
+      <div className="p-3 rounded-2xl bg-card border border-border ">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="w-[260px]">
             <Input
@@ -236,7 +237,7 @@ export function MediaLibrariesPanel({ typeFilter: forcedType }: { typeFilter?: "
             </Chip>
           )}
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-[10.5px] text-gray-500 tabular-nums">
+            <span className="text-[10.5px] text-muted-foreground tabular-nums">
               {filtered.length}/{libraries.length}
             </span>
             <Button variant="primary" size="sm" icon={Plus} onClick={() => setCreating(true)}>
@@ -265,15 +266,15 @@ export function MediaLibrariesPanel({ typeFilter: forcedType }: { typeFilter?: "
 
       {/* Error */}
       {loadError && (
-        <div className="rounded-xl bg-rose-50/70 backdrop-blur-[8px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.22)]">
-          <p className="text-[12.5px] font-semibold text-rose-900">
+        <div className="rounded-xl bg-danger-50/70 p-3 ">
+          <p className="text-[12.5px] font-semibold text-danger-700">
             Impossible de charger les bibliothèques
           </p>
-          <p className="text-[11px] font-mono text-rose-800 mt-1">{loadError}</p>
+          <p className="text-[11px] font-mono text-danger-700 mt-1">{loadError}</p>
           <button
             type="button"
             onClick={() => void load()}
-            className="text-[11px] text-rose-700 underline mt-2"
+            className="text-[11px] text-danger-700 underline mt-2"
           >
             Réessayer
           </button>
@@ -282,12 +283,12 @@ export function MediaLibrariesPanel({ typeFilter: forcedType }: { typeFilter?: "
 
       {/* Loading */}
       {loading ? (
-        <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] py-16 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] flex items-center justify-center text-gray-500 gap-3">
+        <div className="rounded-2xl bg-card border border-border py-16  flex items-center justify-center text-muted-foreground gap-3">
           <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
           <span className="text-[12.5px]">Chargement…</span>
         </div>
       ) : libraries.length === 0 ? (
-        <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+        <div className="rounded-2xl bg-card border border-border p-8 ">
           <EmptyState
             icon={Video}
             title="Aucune bibliothèque média"
@@ -296,7 +297,7 @@ export function MediaLibrariesPanel({ typeFilter: forcedType }: { typeFilter?: "
           />
         </div>
       ) : filtered.length === 0 ? (
-        <p className="text-[12px] text-gray-500 italic text-center py-8">
+        <p className="text-[12px] text-muted-foreground italic text-center py-8">
           Aucune bibliothèque ne correspond aux filtres.
         </p>
       ) : (
@@ -352,13 +353,13 @@ export function MediaLibrariesPanel({ typeFilter: forcedType }: { typeFilter?: "
                 </div>
               </FormField>
 
-              <p className="text-[11px] text-gray-500 leading-relaxed">
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
                 Tags, description, rotation et champs personnalisés sont éditables
                 ensuite via le bouton <span className="font-semibold">Réglages</span> sur la card.
               </p>
 
               {createError && (
-                <p className="text-[11px] text-rose-700">{createError}</p>
+                <p className="text-[11px] text-danger-700">{createError}</p>
               )}
             </div>
           </Modal.Body>
@@ -495,10 +496,10 @@ function MediaLibraryCard({
       onDrop={handleDrop}
       className={[
         "group relative block aspect-[9/16] rounded-2xl overflow-hidden transition-all",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.08)]",
+        "",
         dragOver
-          ? "ring-2 ring-sage-400 scale-[1.015]"
-          : "hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1),0_8px_24px_-6px_rgba(15,23,42,0.18),0_24px_48px_-12px_rgba(15,23,42,0.22)] hover:-translate-y-0.5",
+          ? "ring-2 ring-success-200 scale-[1.015]"
+          : "hover: hover:-translate-y-0.5",
       ].join(" ")}
     >
       {/* Cover plein (video thumb si dispo, sinon fallback gradient pastel teinté type). */}
@@ -509,12 +510,12 @@ function MediaLibraryCard({
           className={[
             "absolute inset-0",
             isVideo
-              ? "bg-gradient-to-br from-sky-100 via-sky-50 to-white"
-              : "bg-gradient-to-br from-sage-100 via-sage-50 to-white",
+              ? "bg-gradient-to-br from-info-100 via-info-50 to-white"
+              : "bg-gradient-to-br from-success-100 via-success-50 to-white",
           ].join(" ")}
         >
           <div className="absolute inset-0 flex items-center justify-center opacity-30">
-            {isVideo ? <Video size={64} className="text-sky-600" /> : <Music2 size={64} className="text-sage-600" />}
+            {isVideo ? <Video size={64} className="text-info-600" /> : <Music2 size={64} className="text-success-600" />}
           </div>
         </div>
       )}
@@ -523,8 +524,8 @@ function MediaLibraryCard({
       <div className="absolute inset-x-0 bottom-0 h-[60%] bg-gradient-to-t from-gray-950/90 via-gray-950/60 to-transparent pointer-events-none" />
 
       {/* Badge type + count en haut-left, glass subtle. */}
-      <div className="absolute top-3 left-3 inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/85 backdrop-blur-[10px] backdrop-saturate-150 text-[10.5px] font-medium text-gray-700 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-        {isVideo ? <Video size={11} className="text-sky-600" /> : <Music2 size={11} className="text-sage-600" />}
+      <div className="absolute top-3 left-3 inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-card border border-border text-[10.5px] font-medium text-foreground ">
+        {isVideo ? <Video size={11} className="text-info-600" /> : <Music2 size={11} className="text-success-600" />}
         <span className="tabular-nums">{lib._count.assets}</span>
       </div>
 
@@ -535,7 +536,7 @@ function MediaLibraryCard({
             type="button"
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpenSettings(); }}
             title="Réglages"
-            className="h-7 w-7 inline-flex items-center justify-center rounded-md bg-white/85 backdrop-blur-[10px] text-gray-700 hover:text-gray-950 hover:bg-white shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.08)]"
+            className="h-7 w-7 inline-flex items-center justify-center rounded-md bg-card border border-border text-foreground hover:text-foreground hover:bg-white "
           >
             <Settings2 size={12} />
           </button>
@@ -544,7 +545,7 @@ function MediaLibraryCard({
           type="button"
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
           title="Supprimer"
-          className="h-7 w-7 inline-flex items-center justify-center rounded-md bg-white/85 backdrop-blur-[10px] text-gray-500 hover:text-rose-600 hover:bg-white shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.08)]"
+          className="h-7 w-7 inline-flex items-center justify-center rounded-md bg-card border border-border text-muted-foreground hover:text-danger-600 hover:bg-white "
         >
           <Trash2 size={12} />
         </button>
@@ -558,7 +559,7 @@ function MediaLibraryCard({
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {tags.slice(0, 2).map((tag) => (
-              <span key={tag} className="inline-flex items-center px-1.5 py-0.5 rounded text-[9.5px] font-medium bg-white/25 backdrop-blur-[6px] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]">
+              <span key={tag} className="inline-flex items-center px-1.5 py-0.5 rounded text-[9.5px] font-medium bg-card border border-border text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]">
                 {tag}
               </span>
             ))}
@@ -573,14 +574,14 @@ function MediaLibraryCard({
             {seq.length > 0 ? "Ordre fixe" : "Rotation auto"}
           </span>
           <span className="text-white/40">·</span>
-          <span>{lib.rotationScope === "shared" ? "Partagé" : "Par compte"}</span>
+          <span>{rotationScopeLabel(lib.rotationScope)}</span>
         </div>
       </div>
 
       {/* Drag-drop overlay (par-dessus tout). */}
       {dragOver && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-sage-50/85 backdrop-blur-[2px] rounded-2xl pointer-events-none">
-          <div className="flex flex-col items-center gap-2 text-sage-700">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-success-50/85 rounded-2xl pointer-events-none">
+          <div className="flex flex-col items-center gap-2 text-success-700">
             <Upload size={28} />
             <span className="text-[12.5px] font-semibold text-center px-3">Déposer dans « {lib.name} »</span>
           </div>

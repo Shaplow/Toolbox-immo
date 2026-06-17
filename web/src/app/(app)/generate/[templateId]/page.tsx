@@ -214,8 +214,8 @@ export default async function GeneratePage({ params, searchParams }: Props) {
   return (
     <div className="min-h-screen">
       <div
-        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
-        style={{ background: "var(--gradient-page-shell)" }}
+        className="mx-auto max-w-[1400px] px-6 py-8"
+
       >
         {/* Header (icon + titre + subtitle) */}
         <div className="rounded-t-3xl overflow-hidden">
@@ -232,17 +232,17 @@ export default async function GeneratePage({ params, searchParams }: Props) {
         {/* Banner prérempli glass v2 — apparaît juste sous le header si applicable */}
         {hasPrefill && (
           <div className="px-6 sm:px-8 pb-3">
-            <div className="rounded-2xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.32)] px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+            <div className="rounded-2xl bg-gradient-to-b from-info-50/85 to-info-50/55  px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2 min-w-0 text-[12.5px]">
-                <Info size={13} className="text-sky-600 shrink-0" />
-                <span className="text-sky-900">
+                <Info size={13} className="text-info-600 shrink-0" />
+                <span className="text-info-700">
                   Formulaire pré-rempli depuis{" "}
                   <span className="font-semibold">{prefillSources.join(" + ")}</span>
                 </span>
               </div>
               <Link
                 href={`/generate/${templateId}`}
-                className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 hover:text-sky-900 transition-colors shrink-0"
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-info-700 hover:text-info-700 transition-colors shrink-0"
                 title="Charger le formulaire sans pré-remplissage"
               >
                 <RotateCcw size={11} />

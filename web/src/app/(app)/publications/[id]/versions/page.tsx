@@ -86,25 +86,25 @@ export default async function PublicationVersionsPage({ params }: PageProps) {
   return (
     <div className="min-h-screen">
       <div
-        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
+        className="mx-auto max-w-[1400px] px-6 py-8"
         style={{ background: "rgb(212, 212, 216)" }}
       >
         <div className="rounded-t-3xl overflow-hidden px-6 sm:px-8 pt-6 pb-2">
           <div className="max-w-4xl mx-auto">
             <Link
               href={`/publications/${slot.id}`}
-              className="inline-flex items-center gap-1.5 text-[12px] text-gray-600 hover:text-gray-900 transition-colors font-medium"
+              className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-gray-900 transition-colors font-medium"
             >
               <ArrowLeft size={13} />
               Retour à la publication
             </Link>
-            <p className="mt-4 text-[10px] uppercase tracking-widest font-medium text-gray-500">
+            <p className="mt-4 text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
               Publication · @{slot.account.handle}
             </p>
-            <h1 className="mt-1 text-[28px] sm:text-[36px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
+            <h1 className="mt-1 text-[28px] sm:text-[36px] font-semibold tracking-tight text-foreground leading-[1.05]">
               Versions livrées
             </h1>
-            <p className="mt-2 text-[13px] text-gray-600">
+            <p className="mt-2 text-[13px] text-muted-foreground">
               Historique complet des montages livrés pour ce slot.
             </p>
           </div>

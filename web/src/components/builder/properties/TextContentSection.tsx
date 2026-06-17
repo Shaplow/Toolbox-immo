@@ -93,7 +93,7 @@ export function TextContentSection({
     if: "Condition",
   };
   const segmentTypeBadge: Record<TextTemplateSegment["type"], string> = {
-    text: "bg-gray-100 text-gray-500",
+    text: "bg-muted text-muted-foreground",
     variable: "bg-indigo-50 text-indigo-600",
     if: "bg-amber-50 text-amber-600",
   };
@@ -102,12 +102,12 @@ export function TextContentSection({
     <Section label="Contenu">
       <div className="space-y-2">
         {currentSegments.length === 0 && (
-          <div className="border border-dashed border-gray-200 rounded-lg px-3 py-3 text-[11px] text-gray-400 text-center">
+          <div className="border border-dashed border-border rounded-lg px-3 py-3 text-[11px] text-muted-foreground text-center">
             Aucun segment. Ajoutez du texte, une variable ou une condition.
           </div>
         )}
         {currentSegments.map((segment, index) => (
-          <div key={`${segment.type}-${index}`} className="border border-gray-200 rounded-lg p-2.5 space-y-2 bg-white">
+          <div key={`${segment.type}-${index}`} className="border border-border rounded-lg p-2.5 space-y-2 bg-white">
             {/* Segment header */}
             <div className="flex items-center gap-1.5">
               <span className={[
@@ -121,13 +121,13 @@ export function TextContentSection({
                   type="button"
                   onClick={() => moveSegment(index, -1)}
                   disabled={index === 0}
-                  className="px-1.5 py-0.5 text-[10px] border border-gray-200 rounded text-gray-500 hover:border-indigo-300 hover:text-indigo-600 disabled:opacity-30 transition-colors"
+                  className="px-1.5 py-0.5 text-[10px] border border-border rounded text-muted-foreground hover:border-indigo-300 hover:text-indigo-600 disabled:opacity-30 transition-colors"
                 >↑</button>
                 <button
                   type="button"
                   onClick={() => moveSegment(index, 1)}
                   disabled={index === currentSegments.length - 1}
-                  className="px-1.5 py-0.5 text-[10px] border border-gray-200 rounded text-gray-500 hover:border-indigo-300 hover:text-indigo-600 disabled:opacity-30 transition-colors"
+                  className="px-1.5 py-0.5 text-[10px] border border-border rounded text-muted-foreground hover:border-indigo-300 hover:text-indigo-600 disabled:opacity-30 transition-colors"
                 >↓</button>
                 <button
                   type="button"
@@ -144,7 +144,7 @@ export function TextContentSection({
                 onChange={(e) => updateSegment(index, { ...segment, value: e.target.value })}
                 onKeyDown={(e) => e.stopPropagation()}
                 placeholder="Texte libre"
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+                className="w-full border border-border rounded-lg px-2 py-1.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
               />
             )}
 
@@ -156,7 +156,7 @@ export function TextContentSection({
                   value={segment.key}
                   onChange={(e) => updateSegment(index, { ...segment, key: e.target.value.replace(/\s+/g, "_") })}
                   placeholder="nom_variable"
-                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+                  className="w-full border border-border rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
                 />
                 <TextFieldMeta
                   field={schema.find((field) => field.key === segment.key)}
@@ -173,7 +173,7 @@ export function TextContentSection({
                   <select
                     value={segment.field}
                     onChange={(e) => updateSegment(index, { ...segment, field: e.target.value })}
-                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+                    className="border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
                   >
                     <option value="">Choisir une variable</option>
                     {schemaFieldOptions.map((field) => (
@@ -190,7 +190,7 @@ export function TextContentSection({
                     value={segment.equals}
                     onChange={(e) => updateSegment(index, { ...segment, equals: e.target.value })}
                     placeholder="valeur attendue"
-                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+                    className="border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
                   />
                 </div>
                 {(() => {
@@ -216,7 +216,7 @@ export function TextContentSection({
                                   "rounded-full px-2 py-0.5 text-[10px] border transition-colors",
                                   isActive
                                     ? "border-indigo-300 bg-indigo-50 text-indigo-700"
-                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50",
+                                    : "border-border bg-white text-muted-foreground hover:bg-muted",
                                 ].join(" ")}
                               >
                                 {option}
@@ -229,25 +229,25 @@ export function TextContentSection({
                   );
                 })()}
                 <label className="flex flex-col gap-1">
-                  <span className="text-[11px] font-medium text-gray-600">Si vrai</span>
+                  <span className="text-[11px] font-medium text-muted-foreground">Si vrai</span>
                   <textarea
                     rows={2}
                     value={segment.thenContent}
                     onChange={(e) => updateSegment(index, { ...segment, thenContent: e.target.value })}
                     onKeyDown={(e) => e.stopPropagation()}
                     placeholder="Contenu affiché si la condition est vraie"
-                    className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+                    className="w-full border border-border rounded-lg px-2 py-1.5 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[11px] font-medium text-gray-600">Sinon</span>
+                  <span className="text-[11px] font-medium text-muted-foreground">Sinon</span>
                   <textarea
                     rows={2}
                     value={segment.elseContent ?? ""}
                     onChange={(e) => updateSegment(index, { ...segment, elseContent: e.target.value })}
                     onKeyDown={(e) => e.stopPropagation()}
                     placeholder="Contenu affiché sinon (optionnel)"
-                    className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+                    className="w-full border border-border rounded-lg px-2 py-1.5 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
                   />
                 </label>
               </div>
@@ -263,7 +263,7 @@ export function TextContentSection({
             key={type}
             type="button"
             onClick={() => addSegment(type)}
-            className="px-2 py-1 text-[11px] border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-600 transition-colors"
+            className="px-2 py-1 text-[11px] border border-border rounded-lg text-muted-foreground hover:bg-muted hover:border-indigo-300 hover:text-indigo-600 transition-colors"
           >
             + {type === "text" ? "Texte" : type === "variable" ? "Variable" : "Condition"}
           </button>
@@ -280,7 +280,7 @@ export function TextContentSection({
       </datalist>
 
       <details className="mt-3">
-        <summary className="cursor-pointer text-[11px] text-gray-500 select-none">Mode avancé</summary>
+        <summary className="cursor-pointer text-[11px] text-muted-foreground select-none">Mode avancé</summary>
         <textarea
           rows={4}
           value={currentContent}
@@ -292,21 +292,21 @@ export function TextContentSection({
           onBlur={(e) => onSyncTextSchema(prevContentRef.current, e.target.value)}
           onKeyDown={(e) => e.stopPropagation()}
           placeholder={`Texte libre avec variables :\n{{prix}} € · Surface : {{surface}} m²\n\nConditionnel :\n{{#if is_copro == oui}} - Nbre lots : {{nbre_lots}}{{/if}}`}
-          className="mt-2 w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+          className="mt-2 w-full border border-border rounded-lg px-2 py-1.5 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
         />
       </details>
 
-      <p className="text-[10px] text-gray-400 mt-1 leading-relaxed">
-        <code className="bg-gray-100 px-0.5 rounded">{`{{variable}}`}</code> pour insérer une valeur.{" "}
-        <code className="bg-gray-100 px-0.5 rounded">{`{{#if champ == val}}...{{else}}...{{/if}}`}</code> pour un segment conditionnel.{" "}
-        <code className="bg-gray-100 px-0.5 rounded">{`{{maintenant:month_year}}`}</code> pour insérer la date du jour (auto-résolu au render).{" "}
+      <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
+        <code className="bg-muted px-0.5 rounded">{`{{variable}}`}</code> pour insérer une valeur.{" "}
+        <code className="bg-muted px-0.5 rounded">{`{{#if champ == val}}...{{else}}...{{/if}}`}</code> pour un segment conditionnel.{" "}
+        <code className="bg-muted px-0.5 rounded">{`{{maintenant:month_year}}`}</code> pour insérer la date du jour (auto-résolu au render).{" "}
         Les espaces, tirets et retours à la ligne sont conservés tels qu&apos;ils sont écrits.
       </p>
 
       {/* Aperçu */}
-      <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+      <div className="mt-3 rounded-lg border border-border bg-muted px-3 py-2">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Aperçu</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Aperçu</p>
           <input
             type="checkbox"
             checked={showResolvedTextPreview}
@@ -315,7 +315,7 @@ export function TextContentSection({
             className="rounded"
           />
         </div>
-        <pre className="mt-1 whitespace-pre-wrap break-words text-xs text-gray-700 font-sans">
+        <pre className="mt-1 whitespace-pre-wrap break-words text-xs text-foreground font-sans">
           {previewText || "Aucun contenu affiché avec les valeurs actuelles."}
         </pre>
       </div>
@@ -336,7 +336,7 @@ export function TextContentSection({
             <code className="text-[11px] text-indigo-700 bg-indigo-50 px-1 rounded">{`{{${key}}}`}</code>
             <span className={[
               "ml-auto text-[10px] px-1.5 py-0.5 rounded-full",
-              sf.required ? "bg-red-50 text-red-400" : "bg-gray-100 text-gray-400",
+              sf.required ? "bg-red-50 text-red-400" : "bg-muted text-muted-foreground",
             ].join(" ")}>
               {sf.required ? "*" : "opt"}
             </span>

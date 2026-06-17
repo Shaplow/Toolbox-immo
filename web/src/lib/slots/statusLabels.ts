@@ -67,8 +67,8 @@ export const STATUS_COLORS: Record<SlotStatus, string> = {
   ARCHIVED:         "bg-gray-50 text-gray-400 border-gray-200",
 
   // ── Statuts critiques (accent sémantique chirurgical, V4 palette Coastal Studio) ──
-  AWAITING_CLIENT:  "bg-peach-50 text-peach-800 border-peach-200",
-  CLIENT_REVISION:  "bg-peach-50 text-peach-800 border-peach-200",
+  AWAITING_CLIENT:  "bg-warning-50 text-warning-700 border-warning-200",
+  CLIENT_REVISION:  "bg-warning-50 text-warning-700 border-warning-200",
   SCHEDULED:        "bg-info-50 text-info-700 border-info-200",
   PUBLISHED:        "bg-success-50 text-success-700 border-success-200",
   REJECTED:         "bg-danger-50 text-danger-700 border-danger-200",
@@ -96,29 +96,29 @@ export const STATUS_DOT: Record<SlotStatus, string> = {
   // - sage    = success terminal (publié)
   // - gray    = neutre (draft/cancelled/archived)
   DRAFT: "bg-gray-400",
-  PLANNED: "bg-sky-500",
-  RUSHES_EXPECTED: "bg-peach-500",
-  RUSHES_RECEIVED: "bg-peach-600",
-  IN_EDIT: "bg-sky-500",
-  EDIT_REVIEW: "bg-peach-500",
-  EDIT_APPROVED: "bg-sky-600",
-  CAPTIONS_PENDING: "bg-sky-500",
-  READY_FOR_CM: "bg-sky-700",
-  AWAITING_CLIENT: "bg-rose-500",
-  CLIENT_REVISION: "bg-rose-500",
-  SCHEDULED: "bg-sky-700",
-  PUBLISHED: "bg-sage-500",
-  REJECTED: "bg-rose-700",
+  PLANNED: "bg-info-600",
+  RUSHES_EXPECTED: "bg-warning-600",
+  RUSHES_RECEIVED: "bg-warning-600",
+  IN_EDIT: "bg-info-600",
+  EDIT_REVIEW: "bg-warning-600",
+  EDIT_APPROVED: "bg-info-600",
+  CAPTIONS_PENDING: "bg-info-600",
+  READY_FOR_CM: "bg-info-700",
+  AWAITING_CLIENT: "bg-danger-600",
+  CLIENT_REVISION: "bg-danger-600",
+  SCHEDULED: "bg-info-700",
+  PUBLISHED: "bg-success-600",
+  REJECTED: "bg-danger-700",
   CANCELLED: "bg-gray-300",
-  BLOCKED: "bg-rose-700",
+  BLOCKED: "bg-danger-700",
   ARCHIVED: "bg-gray-300",
 
   // ── Legacy aliases ─────────────────────────────────────────────────────
   TO_DO: "bg-gray-400",
-  IN_PROGRESS: "bg-sky-500",
-  READY: "bg-sky-600",
-  CHECKING: "bg-peach-500",
-  DONE: "bg-sage-500",
+  IN_PROGRESS: "bg-info-600",
+  READY: "bg-info-600",
+  CHECKING: "bg-warning-600",
+  DONE: "bg-success-600",
 };
 
 // ---------------------------------------------------------------------------
@@ -203,10 +203,10 @@ export const OWNER_LABEL: Record<NonNullable<SlotOwnerRole>, string> = {
 
 /** Couleur du badge owner — V4 palette Coastal Studio (1 ton par rôle). */
 export const OWNER_BADGE_CLS: Record<NonNullable<SlotOwnerRole>, string> = {
-  VIDEASTE: "bg-peach-50 text-peach-800 border-peach-200",
-  MONTEUR:  "bg-sky-50 text-sky-800 border-sky-200",
-  CM:       "bg-sage-50 text-sage-800 border-sage-200",
-  ADMIN:    "bg-rose-50 text-rose-800 border-rose-200",
+  VIDEASTE: "bg-warning-50 text-warning-700 border-warning-200",
+  MONTEUR:  "bg-info-50 text-info-700 border-info-200",
+  CM:       "bg-success-50 text-success-700 border-success-200",
+  ADMIN:    "bg-danger-50 text-danger-700 border-danger-200",
 };
 
 /**

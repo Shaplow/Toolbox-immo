@@ -73,7 +73,7 @@ export function CaptionsSourcePicker({
           type="button"
           onClick={() => setSourceTab("transcription")}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            sourceTab === "transcription" ? "bg-gray-100 text-gray-900" : "text-gray-500 hover:text-gray-700"
+            sourceTab === "transcription" ? "bg-muted text-gray-900" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Mic size={12} /> Transcriptions
@@ -82,7 +82,7 @@ export function CaptionsSourcePicker({
           type="button"
           onClick={() => setSourceTab("upload")}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            sourceTab === "upload" ? "bg-gray-100 text-gray-900" : "text-gray-500 hover:text-gray-700"
+            sourceTab === "upload" ? "bg-muted text-gray-900" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Upload size={12} /> Uploader un fichier
@@ -98,13 +98,13 @@ export function CaptionsSourcePicker({
               </p>
             )}
             {loadingTranscriptions ? (
-              <div className="flex items-center gap-2 text-sm text-gray-400 py-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-3">
                 <Loader2 size={14} className="animate-spin" /> Chargement…
               </div>
             ) : transcriptions.length === 0 ? (
-              <div className="text-sm text-gray-400 text-center py-4">
+              <div className="text-sm text-muted-foreground text-center py-4">
                 Aucune transcription terminée.<br />
-                <Link href="/transcriptions" className="text-sky-600 hover:underline">
+                <Link href="/transcriptions" className="text-info-600 hover:underline">
                   Lancer une transcription →
                 </Link>
               </div>
@@ -116,25 +116,25 @@ export function CaptionsSourcePicker({
                     type="button"
                     onClick={() => setSelectedTranscriptionId(t.id)}
                     disabled={loadingSource}
-                    className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors text-sm border-gray-100 hover:border-rose-200 hover:bg-rose-50/60 text-gray-700 disabled:opacity-50"
+                    className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors text-sm border-border hover:border-danger-200 hover:bg-danger-50/60 text-foreground disabled:opacity-50"
                   >
                     {loadingSource && selectedTranscriptionId === t.id ? (
-                      <Loader2 size={14} className="text-rose-400 animate-spin shrink-0" />
+                      <Loader2 size={14} className="text-danger-200 animate-spin shrink-0" />
                     ) : (
-                      <Mic size={14} className="text-gray-300 shrink-0" />
+                      <Mic size={14} className="text-muted-foreground/60 shrink-0" />
                     )}
                     <span className="flex-1 truncate">{t.inputFilename ?? "Transcription sans nom"}</span>
-                    <span className="text-xs text-gray-400 shrink-0">{formatDate(t.createdAt)}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">{formatDate(t.createdAt)}</span>
                   </button>
                 ))}
               </div>
             )}
           </>
         ) : (
-          <label className="flex flex-col items-center gap-2 p-6 border-2 border-dashed rounded-xl cursor-pointer transition-all border-gray-200 hover:border-gray-300 bg-white">
-            <FileText size={24} className="text-gray-300" />
-            <p className="text-sm font-medium text-gray-600">Glisser un fichier .srt ou .json</p>
-            <p className="text-xs text-gray-400">ou cliquer pour parcourir</p>
+          <label className="flex flex-col items-center gap-2 p-6 border-2 border-dashed rounded-xl cursor-pointer transition-all border-border hover:border-border bg-white">
+            <FileText size={24} className="text-muted-foreground/60" />
+            <p className="text-sm font-medium text-muted-foreground">Glisser un fichier .srt ou .json</p>
+            <p className="text-xs text-muted-foreground">ou cliquer pour parcourir</p>
             <input
               type="file"
               accept=".srt,.json"

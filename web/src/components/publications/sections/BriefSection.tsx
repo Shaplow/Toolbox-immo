@@ -210,7 +210,7 @@ export function BriefSection({
           />
           <div className="flex items-center justify-between">
             <span
-              className={`text-xs ${charCount > MAX_BRIEF_LENGTH ? "text-red-500 font-medium" : "text-gray-400"}`}
+              className={`text-xs ${charCount > MAX_BRIEF_LENGTH ? "text-red-500 font-medium" : "text-muted-foreground"}`}
             >
               {charCount} / {MAX_BRIEF_LENGTH}
             </span>
@@ -231,7 +231,7 @@ export function BriefSection({
           </div>
         </div>
       ) : hasBody ? (
-        <div className="prose prose-sm prose-gray max-w-none text-gray-700">
+        <div className="prose prose-sm prose-gray max-w-none text-foreground">
           <ReactMarkdown rehypePlugins={[rehypeSanitize]}>
             {brief!.body!}
           </ReactMarkdown>
@@ -249,11 +249,11 @@ export function BriefSection({
       )}
 
       {/* Section pièces jointes */}
-      <div className="mt-6 pt-5 border-t border-gray-100">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+      <div className="mt-6 pt-5 border-t border-border">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
           Pièces jointes
           {attachments.length > 0 && (
-            <span className="ml-1 text-gray-400 normal-case font-normal">
+            <span className="ml-1 text-muted-foreground normal-case font-normal">
               ({attachments.length})
             </span>
           )}
@@ -277,7 +277,7 @@ export function BriefSection({
 
         {/* Liste des pièces jointes */}
         {attachments.length === 0 ? (
-          <p className="text-xs text-gray-400">{"Aucune pièce jointe pour l'instant."}</p>
+          <p className="text-xs text-muted-foreground">{"Aucune pièce jointe pour l'instant."}</p>
         ) : (
           <ul className="divide-y divide-gray-50">
             {attachments.map((att) => (
@@ -286,15 +286,15 @@ export function BriefSection({
                 className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0"
               >
                 {/* Icône */}
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-                  <FileText size={14} className="text-gray-600" />
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+                  <FileText size={14} className="text-muted-foreground" />
                 </div>
 
                 {/* Infos */}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-gray-800">{att.fileName}</p>
                   {att.sizeBytes !== null && (
-                    <p className="text-xs text-gray-400">{formatBytes(att.sizeBytes)}</p>
+                    <p className="text-xs text-muted-foreground">{formatBytes(att.sizeBytes)}</p>
                   )}
                 </div>
 

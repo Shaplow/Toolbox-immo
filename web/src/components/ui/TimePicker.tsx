@@ -1,13 +1,11 @@
 "use client";
 
 /**
- * TimePicker — sélecteur d'heure custom Liquid Glass (zero-dep).
+ * TimePicker — sélecteur d'heure flat shadcn (zero-dep).
  *
- * Doctrine :
- * - Trigger : ticket sans bandeau coloré.
- * - Popover : 2 colonnes scrollables (heures + minutes), cellules glass.
- * - Heure / minute sélectionnée = bulle blanche pressée (cohérent picker).
- * - Cohérent visuellement avec DatePicker (mêmes shadows, mêmes hovers).
+ * Trigger : bouton bg-card border-input.
+ * Popover : bg-popover, 2 colonnes scrollables (heures + minutes).
+ * Cellule sélectionnée : bg-primary text-primary-foreground.
  *
  * Format HH:MM (24h). Step minute configurable (5 / 15 / 30 / 60).
  */
@@ -18,9 +16,7 @@ import { ChevronDown, Clock } from "lucide-react";
 interface TimePickerProps {
   value: string;
   onChange: (value: string) => void;
-  /** Granularité minutes (5 / 15 / 30 / 60). Default 5. */
   minuteStep?: number;
-  /** Min / max au format HH:MM (inclus). */
   min?: string;
   max?: string;
   error?: string;
@@ -73,7 +69,6 @@ export function TimePicker({
     [minuteStep]
   );
 
-  // Close on outside click / ESC.
   useEffect(() => {
     if (!open) return;
     function onClickOutside(e: MouseEvent) {
@@ -93,7 +88,6 @@ export function TimePicker({
     };
   }, [open]);
 
-  // Scroll vers la valeur courante à l'ouverture.
   useEffect(() => {
     if (!open || !parsed) return;
     const hEl = hoursListRef.current?.querySelector(`[data-h="${parsed.h}"]`) as HTMLElement | null;
@@ -107,7 +101,6 @@ export function TimePicker({
     if (isAllowed(h, current.m)) {
       onChange(format(h, current.m));
     } else {
-      // Fallback à 00 minutes si combinaison illégale.
       onChange(format(h, 0));
     }
   }
@@ -127,16 +120,11 @@ export function TimePicker({
     return true;
   }
 
-  const triggerBase =
-    "relative inline-flex items-stretch h-10 w-fit min-w-[9rem] rounded-lg overflow-hidden transition-all cursor-pointer text-left";
-  const triggerBg =
-    "bg-gradient-to-b from-white to-white/85 backdrop-blur-[12px] backdrop-saturate-150";
   const triggerState = error
-    ? "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(220,38,38,0.55)]"
+    ? "border-danger-600 focus:ring-2 focus:ring-danger-600/30"
     : open
-      ? "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.22),0_0_0_3px_rgba(10,10,10,0.1)]"
-      : "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1),inset_0_-1px_0_rgba(15,23,42,0.05),0_1px_3px_rgba(15,23,42,0.06)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.16),0_2px_6px_rgba(15,23,42,0.08)]";
-  const triggerDisabled = disabled ? "opacity-60 cursor-not-allowed" : "";
+      ? "border-primary ring-2 ring-primary/30"
+      : "border-input hover:border-zinc-300 focus:border-primary focus:ring-2 focus:ring-primary/30";
 
   return (
     <div ref={containerRef} className={["relative w-fit", className ?? ""].filter(Boolean).join(" ")}>
@@ -147,32 +135,34 @@ export function TimePicker({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className={[triggerBase, triggerBg, triggerState, triggerDisabled].filter(Boolean).join(" ")}
+        className={[
+          "relative inline-flex items-stretch h-10 w-fit min-w-[9rem] rounded-md overflow-hidden transition-colors cursor-pointer text-left bg-card border",
+          triggerState,
+          disabled ? "opacity-60 cursor-not-allowed" : "",
+        ].filter(Boolean).join(" ")}
       >
-        <span className="shrink-0 flex items-center justify-center pl-2.5 pr-2 text-gray-500">
+        <span className="shrink-0 flex items-center justify-center pl-2.5 pr-2 text-muted-foreground">
           <Clock size={14} />
         </span>
-        <span className="self-stretch w-px bg-gray-200/50 my-2" aria-hidden />
+        <span className="self-stretch w-px bg-border my-2" aria-hidden />
 
         {parsed ? (
           <span className="flex-1 inline-flex items-center justify-start px-2.5">
-            <span className="text-[15px] font-semibold tracking-tight text-gray-950 leading-none tabular-nums">
+            <span className="text-[15px] font-semibold tracking-tight text-foreground leading-none tabular-nums">
               {String(parsed.h).padStart(2, "0")}
             </span>
-            <span className="px-1 text-[15px] font-semibold text-gray-300 leading-none" aria-hidden>
-              :
-            </span>
-            <span className="text-[15px] font-semibold tracking-tight text-gray-950 leading-none tabular-nums">
+            <span className="px-1 text-[15px] font-semibold text-muted-foreground leading-none" aria-hidden>:</span>
+            <span className="text-[15px] font-semibold tracking-tight text-foreground leading-none tabular-nums">
               {String(parsed.m).padStart(2, "0")}
             </span>
           </span>
         ) : (
-          <span className="flex-1 flex items-center justify-start px-2.5 text-[12px] text-gray-400 leading-none">
+          <span className="flex-1 flex items-center justify-start px-2.5 text-[12px] text-muted-foreground leading-none">
             {placeholder}
           </span>
         )}
 
-        <span className="shrink-0 flex items-center justify-center pr-2.5 pl-1 text-gray-400">
+        <span className="shrink-0 flex items-center justify-center pr-2.5 pl-1 text-muted-foreground">
           <ChevronDown size={12} className={`transition-transform ${open ? "rotate-180" : ""}`} />
         </span>
       </button>
@@ -181,16 +171,11 @@ export function TimePicker({
         <div
           role="dialog"
           aria-label="Sélecteur d'heure"
-          className={[
-            "absolute top-full left-0 mt-2 z-50 rounded-xl p-2",
-            "bg-gradient-to-b from-white to-white/85 backdrop-blur-[24px] backdrop-saturate-150",
-            "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_2px_6px_-1px_rgba(15,23,42,0.08),0_24px_56px_-12px_rgba(15,23,42,0.2)]",
-          ].join(" ")}
+          className="absolute top-full left-0 mt-2 z-50 rounded-md p-2 bg-popover text-popover-foreground border border-border shadow-lg"
         >
           <div className="flex gap-1">
-            {/* Heures */}
             <div className="flex flex-col">
-              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-400 text-center mb-1.5 select-none">
+              <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground text-center mb-1.5 select-none">
                 Heure
               </p>
               <div
@@ -216,11 +201,10 @@ export function TimePicker({
               </div>
             </div>
 
-            <span className="self-stretch w-px bg-gray-200/50 my-6" aria-hidden />
+            <span className="self-stretch w-px bg-border my-6" aria-hidden />
 
-            {/* Minutes */}
             <div className="flex flex-col">
-              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-400 text-center mb-1.5 select-none">
+              <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground text-center mb-1.5 select-none">
                 Min
               </p>
               <div
@@ -254,11 +238,11 @@ export function TimePicker({
 
 function cellCls(isSelected: boolean, allowed: boolean): string {
   return [
-    "block w-full h-7 px-2 rounded-md text-[12px] font-medium tabular-nums transition-all focus-ring",
+    "block w-full h-7 px-2 rounded-md text-[12px] font-medium tabular-nums transition-colors focus-ring",
     isSelected
-      ? "bg-gradient-to-b from-white to-white/85 text-gray-950 font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.55),inset_0_-1px_0_rgba(15,23,42,0.1),0_2px_4px_rgba(15,23,42,0.08)]"
+      ? "bg-primary text-primary-foreground font-semibold"
       : !allowed
-        ? "text-gray-300 cursor-not-allowed"
-        : "text-gray-700 hover:bg-white/60 hover:text-gray-950 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
+        ? "text-muted-foreground/50 cursor-not-allowed"
+        : "text-foreground hover:bg-accent hover:text-accent-foreground",
   ].join(" ");
 }

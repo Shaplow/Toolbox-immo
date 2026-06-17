@@ -160,10 +160,10 @@ export function BlocksPanel() {
         className={`flex items-center gap-2 rounded-lg cursor-pointer text-xs transition-colors ${nested ? "ml-3" : ""} ${
           isSelected
             ? "bg-indigo-50 border border-indigo-200"
-            : "hover:bg-gray-50 border border-transparent"
+            : "hover:bg-muted border border-transparent"
         } px-2 py-1.5`}
       >
-        <span className="text-[10px] text-gray-300">•</span>
+        <span className="text-[10px] text-muted-foreground/60">•</span>
         {isSelected ? (
           <input
             type="text"
@@ -171,10 +171,10 @@ export function BlocksPanel() {
             onClick={(e) => e.stopPropagation()}
             onChange={(e) => updateBlock(block.id, { name: e.target.value } as Partial<AnyBlock>)}
             placeholder={`${block.type}-${block.id.slice(-4)}`}
-            className="flex-1 min-w-0 border border-indigo-200 bg-white rounded px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            className="flex-1 min-w-0 border border-indigo-200 bg-white rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-indigo-400"
           />
         ) : (
-          <span className={`flex-1 truncate ${block.hidden ? "text-gray-400" : "text-gray-700"}`}>
+          <span className={`flex-1 truncate ${block.hidden ? "text-muted-foreground" : "text-foreground"}`}>
             {block.name?.trim() || `${block.type}-${block.id.slice(-4)}`}
           </span>
         )}
@@ -188,7 +188,7 @@ export function BlocksPanel() {
           className={`shrink-0 inline-flex items-center justify-center rounded border px-1.5 py-1 transition-colors ${
             block.hidden
               ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
-              : "border-gray-200 bg-white text-gray-400 hover:border-gray-400 hover:text-gray-600"
+              : "border-border bg-white text-muted-foreground hover:border-gray-400 hover:text-muted-foreground"
           }`}
         >
           {block.hidden ? <EyeOff size={11} /> : <Eye size={11} />}
@@ -204,7 +204,7 @@ export function BlocksPanel() {
               }}
               disabled={index <= 0}
               title="Monter dans l'ordre auto-layout"
-              className="shrink-0 rounded border border-gray-200 bg-white px-1 py-0.5 text-[10px] text-gray-500 hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-35 disabled:cursor-not-allowed"
+              className="shrink-0 rounded border border-border bg-white px-1 py-0.5 text-[10px] text-muted-foreground hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-35 disabled:cursor-not-allowed"
             >
               ↑
             </button>
@@ -217,22 +217,22 @@ export function BlocksPanel() {
               }}
               disabled={index >= total - 1}
               title="Descendre dans l'ordre auto-layout"
-              className="shrink-0 rounded border border-gray-200 bg-white px-1 py-0.5 text-[10px] text-gray-500 hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-35 disabled:cursor-not-allowed"
+              className="shrink-0 rounded border border-border bg-white px-1 py-0.5 text-[10px] text-muted-foreground hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-35 disabled:cursor-not-allowed"
             >
               ↓
             </button>
           </div>
         ) : null}
-        <span className="text-gray-400 text-[10px]">z:{block.z}</span>
+        <span className="text-muted-foreground text-[10px]">z:{block.z}</span>
       </div>
     );
   }
 
   return (
     <aside className="w-full bg-white flex flex-col overflow-hidden h-full">
-      <div className="p-3 border-b border-gray-100 space-y-2">
+      <div className="p-3 border-b border-border space-y-2">
         <div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Ajouter un bloc</p>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Ajouter un bloc</p>
           <div className="grid grid-cols-3 gap-1">
             {BLOCK_TYPES.map(({ type, label, icon }) => (
               <button
@@ -242,10 +242,10 @@ export function BlocksPanel() {
                   addBlock(block);
                   selectBlock(block.id);
                 }}
-                className="flex flex-col items-center justify-center p-2 rounded-lg border border-gray-100 hover:border-indigo-300 hover:bg-indigo-50 transition-colors text-xs gap-1"
+                className="flex flex-col items-center justify-center p-2 rounded-lg border border-border hover:border-indigo-300 hover:bg-indigo-50 transition-colors text-xs gap-1"
               >
-                <span className="flex items-center justify-center text-gray-400">{icon}</span>
-                <span className="text-gray-600">{label}</span>
+                <span className="flex items-center justify-center text-muted-foreground">{icon}</span>
+                <span className="text-muted-foreground">{label}</span>
               </button>
             ))}
           </div>
@@ -254,14 +254,14 @@ export function BlocksPanel() {
         <button
           type="button"
           onClick={() => addGroup(createDefaultGroup(template.groups.length))}
-          className="w-full rounded-lg border border-dashed border-gray-300 px-3 py-2 text-xs text-gray-600 hover:border-indigo-300 hover:text-indigo-700"
+          className="w-full rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground hover:border-indigo-300 hover:text-indigo-700"
         >
           + Nouveau groupe
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Calques ({template.blocks.length})</p>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Calques ({template.blocks.length})</p>
 
         {template.groups.map((group) => {
           const blocks = groupedBlocks.get(group.id) ?? [];
@@ -291,7 +291,7 @@ export function BlocksPanel() {
                     ? "border-violet-300 bg-violet-50/50"
                     : isSelected
                       ? "border-indigo-200 bg-indigo-50/50"
-                      : "border-gray-200 bg-gray-50/60"
+                      : "border-border bg-muted/60"
               }`}
             >
               <div
@@ -319,7 +319,7 @@ export function BlocksPanel() {
                     e.stopPropagation();
                     updateGroup(group.id, { collapsed: !group.collapsed });
                   }}
-                  className="h-6 w-6 rounded-md border border-gray-200 bg-white text-[10px] text-gray-500 hover:border-indigo-300 hover:text-indigo-700"
+                  className="h-6 w-6 rounded-md border border-border bg-white text-[10px] text-muted-foreground hover:border-indigo-300 hover:text-indigo-700"
                   title={group.collapsed ? "Déplier le groupe" : "Replier le groupe"}
                 >
                   {group.collapsed ? "›" : "⌄"}
@@ -330,12 +330,12 @@ export function BlocksPanel() {
                     value={group.name}
                     onClick={(e) => e.stopPropagation()}
                     onChange={(e) => updateGroup(group.id, { name: e.target.value })}
-                    className="flex-1 min-w-0 rounded border border-indigo-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    className="flex-1 min-w-0 rounded border border-indigo-200 bg-white px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-indigo-400"
                   />
                 ) : (
-                  <span className={`flex-1 truncate font-medium ${group.hidden ? "text-gray-400" : "text-gray-700"}`}>{group.name}</span>
+                  <span className={`flex-1 truncate font-medium ${group.hidden ? "text-muted-foreground" : "text-foreground"}`}>{group.name}</span>
                 )}
-                <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] text-gray-400">{blocks.length}</span>
+                <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] text-muted-foreground">{blocks.length}</span>
                 {selectedBlockId ? (
                   <button
                     type="button"
@@ -344,7 +344,7 @@ export function BlocksPanel() {
                       assignBlocksToGroup([selectedBlockId], group.id);
                     }}
                     title="Ajouter le bloc sélectionné à ce groupe"
-                    className="shrink-0 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[11px] text-gray-500 hover:border-indigo-300 hover:text-indigo-700"
+                    className="shrink-0 rounded border border-border bg-white px-1.5 py-0.5 text-[11px] text-muted-foreground hover:border-indigo-300 hover:text-indigo-700"
                   >
                     +
                   </button>
@@ -359,7 +359,7 @@ export function BlocksPanel() {
                   className={`shrink-0 inline-flex items-center justify-center rounded border px-1.5 py-1 transition-colors ${
                     group.hidden
                       ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                      : "border-gray-200 bg-white text-gray-400 hover:border-gray-400 hover:text-gray-600"
+                      : "border-border bg-white text-muted-foreground hover:border-gray-400 hover:text-muted-foreground"
                   }`}
                 >
                   {group.hidden ? <EyeOff size={11} /> : <Eye size={11} />}
@@ -369,7 +369,7 @@ export function BlocksPanel() {
               {!group.collapsed && (
                 <div className="px-2.5 pb-2 space-y-1">
                   {blocks.length === 0 ? (
-                    <p className="ml-3 rounded-lg border border-dashed border-gray-200 px-2 py-2 text-[11px] text-gray-400">
+                    <p className="ml-3 rounded-lg border border-dashed border-border px-2 py-2 text-[11px] text-muted-foreground">
                       Dépose un calque ici pour l&apos;ajouter au groupe.
                     </p>
                   ) : (
@@ -382,7 +382,7 @@ export function BlocksPanel() {
         })}
 
         <div
-          className={`space-y-1 rounded-xl border border-dashed p-2 transition-colors ${dropTarget === "ungrouped" ? "border-indigo-400 bg-indigo-50" : "border-gray-200"}`}
+          className={`space-y-1 rounded-xl border border-dashed p-2 transition-colors ${dropTarget === "ungrouped" ? "border-indigo-400 bg-indigo-50" : "border-border"}`}
           onDragOver={(event) => {
             event.preventDefault();
             if (draggedBlockId) setDropTarget("ungrouped");
@@ -396,9 +396,9 @@ export function BlocksPanel() {
             handleDropOnGroup(blockId || null, undefined);
           }}
         >
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Hors groupe</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Hors groupe</p>
           {ungroupedBlocks.length > 0 ? ungroupedBlocks.map((block) => renderBlockRow(block, { nested: false })) : (
-            <p className="rounded-lg border border-dashed border-gray-200 px-2 py-2 text-[11px] text-gray-400">
+            <p className="rounded-lg border border-dashed border-border px-2 py-2 text-[11px] text-muted-foreground">
               Dépose un calque ici pour le sortir d&apos;un groupe.
             </p>
           )}
@@ -406,7 +406,7 @@ export function BlocksPanel() {
             <button
               type="button"
               onClick={() => assignBlocksToGroup([selectedBlockId], undefined)}
-              className="w-full rounded-lg border border-dashed border-gray-300 px-2 py-1.5 text-[11px] text-gray-500 hover:border-indigo-300 hover:text-indigo-700"
+              className="w-full rounded-lg border border-dashed border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:border-indigo-300 hover:text-indigo-700"
             >
               Retirer le bloc sélectionné de son groupe
             </button>
@@ -415,7 +415,7 @@ export function BlocksPanel() {
       </div>
 
       {selectedBlockId && (
-        <div className="px-3 pb-3 pt-2 border-t border-gray-100 space-y-1.5">
+        <div className="px-3 pb-3 pt-2 border-t border-border space-y-1.5">
           <div className="flex gap-1.5">
             <Button variant="secondary" size="sm" icon={ArrowUp} onClick={() => moveBlockZ(selectedBlockId, "up")} className="flex-1">
               Dessus
@@ -436,7 +436,7 @@ export function BlocksPanel() {
       )}
 
       {selectedGroupId && !selectedBlockId && (
-        <div className="px-3 pb-3 pt-2 border-t border-gray-100 space-y-1.5">
+        <div className="px-3 pb-3 pt-2 border-t border-border space-y-1.5">
           <div className="flex gap-1.5">
             <Button
               variant="secondary"

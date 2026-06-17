@@ -224,10 +224,10 @@ function ActivityIcon({ type }: ActivityIconProps) {
   // distinctive porte la sémantique — la couleur ne sert qu'à signaler
   // un état exceptionnel.
   const base = "w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0";
-  const neutral = `${base} bg-gray-100 text-gray-600`;
+  const neutral = `${base} bg-muted text-muted-foreground`;
   const success = `${base} bg-success-50 text-success-700`;
   const danger = `${base} bg-danger-50 text-danger-700`;
-  const warning = `${base} bg-peach-50 text-peach-700`;
+  const warning = `${base} bg-warning-50 text-warning-700`;
 
   switch (type) {
     case "STATUS_CHANGED":
@@ -343,7 +343,7 @@ export function ActivityTimeline({
       collapsible={collapsible}
       actions={
         activities.length > 0 ? (
-          <span className="text-xs text-gray-400 tabular-nums">{activities.length}</span>
+          <span className="text-xs text-muted-foreground tabular-nums">{activities.length}</span>
         ) : null
       }
     >
@@ -351,7 +351,7 @@ export function ActivityTimeline({
         <EmptyState
           icon={Activity}
           title="Aucune activité"
-          description="Les actions sur cette publication apparaîtront ici."
+          description="Aucune activité."
         />
       ) : (
         <ol className="space-y-3">
@@ -381,19 +381,19 @@ export function ActivityTimeline({
                           href={publishedUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-sky-600 hover:underline"
+                          className="text-info-600 hover:underline"
                         >
                           Voir
                         </a>
                       </>
                     )}
                     {commentExcerpt && (
-                      <span className="ml-1 text-gray-500 italic truncate">
+                      <span className="ml-1 text-muted-foreground italic truncate">
                         «{commentExcerpt}»
                       </span>
                     )}
                   </span>
-                  <span className="ml-2 text-xs text-gray-400 whitespace-nowrap">
+                  <span className="ml-2 text-xs text-muted-foreground whitespace-nowrap">
                     {relativeTime(item.createdAt)}
                   </span>
                 </div>
@@ -410,7 +410,7 @@ export function ActivityTimeline({
           <button
             onClick={() => void loadMore()}
             disabled={loading}
-            className="text-xs text-sky-600 hover:text-sky-800 disabled:opacity-50 transition-colors"
+            className="text-xs text-info-600 hover:text-info-700 disabled:opacity-50 transition-colors"
           >
             {loading ? "Chargement…" : "Charger plus"}
           </button>

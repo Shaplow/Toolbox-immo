@@ -141,9 +141,7 @@ export function TrimPlayer({
     <div
       data-trim-player
       className={[
-        "rounded-xl overflow-hidden",
-        "bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.08),0_24px_56px_-12px_rgba(15,23,42,0.18)]",
+        "rounded-lg overflow-hidden bg-card border border-border",
         className ?? "",
       ].filter(Boolean).join(" ")}
     >
@@ -175,7 +173,7 @@ export function TrimPlayer({
           <div className="absolute inset-y-1/2 left-0 right-0 h-2 -translate-y-1/2 rounded-full bg-gray-200/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),inset_0_0_0_1px_rgba(15,23,42,0.06)]" />
           {/* Selected range */}
           <div
-            className="absolute inset-y-1/2 h-2 -translate-y-1/2 rounded-full bg-gradient-to-r from-peach-300 to-peach-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]"
+            className="absolute inset-y-1/2 h-2 -translate-y-1/2 rounded-full bg-gradient-to-r from-primary/70 to-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]"
             style={{ left: `${startPct}%`, right: `${100 - endPct}%` }}
           />
           {/* Playhead */}

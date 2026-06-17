@@ -222,7 +222,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <Link href="/admin/clients" className="text-xs text-gray-400 hover:text-sky-800 flex items-center gap-1 transition-colors">
+            <Link href="/admin/clients" className="text-xs text-muted-foreground hover:text-info-700 flex items-center gap-1 transition-colors">
               <ChevronLeft size={12} /> Clients
             </Link>
           </div>
@@ -231,13 +231,13 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
       </div>
 
       {/* Onglets */}
-      <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
+      <div className="flex gap-1 mb-6 bg-muted rounded-lg p-1 w-fit">
         <button
           onClick={() => setActiveTab("info")}
           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
             activeTab === "info"
               ? "bg-white text-gray-900 shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
+              : "text-muted-foreground hover:text-foreground"
           }`}
         >
           Infos client
@@ -247,13 +247,13 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
           className={`flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
             activeTab === "accounts"
               ? "bg-white text-gray-900 shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
+              : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Instagram size={14} />
           Comptes Instagram
           {client.accounts.length > 0 && (
-            <span className="ml-1 text-[10px] bg-sky-100 text-sky-800 rounded-full px-1.5 py-0.5 font-semibold">
+            <span className="ml-1 text-[10px] bg-info-100 text-info-700 rounded-full px-1.5 py-0.5 font-semibold">
               {client.accounts.length}
             </span>
           )}
@@ -264,8 +264,8 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
       {activeTab === "info" && (
         <div className="space-y-6">
           {/* Informations client */}
-          <div className="bg-white border border-gray-100 rounded-xl p-5">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Informations</p>
+          <div className="bg-white border border-border rounded-xl p-5">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-4">Informations</p>
             <form onSubmit={(e) => void handleSave(e)} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <FormField label="Nom" required error={saveError || undefined}>
@@ -276,7 +276,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
                     onChange={(v) => { setForm({ ...form, name: v }); setSaveOk(false); }}
                   />
                 </FormField>
-                <FormField label="Contact" help="Optionnel">
+                <FormField label="Contact">
                   <Input
                     type="text"
                     value={form.contactName}
@@ -284,7 +284,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
                     placeholder="Jean Martin"
                   />
                 </FormField>
-                <FormField label="Email" help="Optionnel">
+                <FormField label="Email">
                   <Input
                     type="email"
                     value={form.email}
@@ -292,7 +292,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
                     placeholder="jean@agence.fr"
                   />
                 </FormField>
-                <FormField label="Téléphone" help="Optionnel">
+                <FormField label="Téléphone">
                   <Input
                     type="tel"
                     value={form.phone}
@@ -303,7 +303,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
               </div>
               <div className="flex items-center justify-end gap-3">
                 {saveOk && (
-                  <span className="flex items-center gap-1 text-xs text-sage-700">
+                  <span className="flex items-center gap-1 text-xs text-success-700">
                     <Check size={12} /> Enregistré
                   </span>
                 )}
@@ -315,12 +315,12 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
           </div>
 
           {/* Comptes Instagram rattachés (picker) */}
-          <div className="bg-white border border-gray-100 rounded-xl p-5">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">
+          <div className="bg-white border border-border rounded-xl p-5">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-4">
               Comptes Instagram rattachés
             </p>
             {allAccounts.length === 0 ? (
-              <p className="text-xs text-gray-400">Aucun compte Instagram créé.</p>
+              <p className="text-xs text-muted-foreground">Aucun compte Instagram créé.</p>
             ) : (
               <>
                 {allAccounts.length > 10 && (
@@ -334,7 +334,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
                 )}
                 <div className="space-y-2">
                   {filteredPickerAccounts.length === 0 ? (
-                    <p className="text-xs text-gray-400 italic py-2">
+                    <p className="text-xs text-muted-foreground italic py-2">
                       Aucun compte ne correspond à votre recherche.
                     </p>
                   ) : (
@@ -348,8 +348,8 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
                           key={account.id}
                           className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                             isAttached
-                              ? "bg-sky-50 border-sky-200"
-                              : "bg-white border-gray-100 hover:border-gray-200"
+                              ? "bg-info-50 border-info-200"
+                              : "bg-white border-border hover:border-border"
                           }`}
                         >
                           <input
@@ -360,18 +360,18 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
                             className="accent-indigo-600 shrink-0"
                           />
                           <div className="flex-1 min-w-0">
-                            <p className={`text-xs font-semibold ${isAttached ? "text-sky-900" : "text-gray-700"}`}>
+                            <p className={`text-xs font-semibold ${isAttached ? "text-info-700" : "text-foreground"}`}>
                               {account.name}
                             </p>
-                            <p className="text-[11px] text-gray-400">@{account.handle}</p>
+                            <p className="text-[11px] text-muted-foreground">@{account.handle}</p>
                           </div>
                           {isOtherClient && (
-                            <span className="text-[11px] text-gray-400 italic shrink-0">
+                            <span className="text-[11px] text-muted-foreground italic shrink-0">
                               rattaché à {account.client?.name ?? "un autre client"}
                             </span>
                           )}
                           {toggling && (
-                            <div className="w-3 h-3 border border-sky-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                            <div className="w-3 h-3 border border-info-200 border-t-transparent rounded-full animate-spin shrink-0" />
                           )}
                         </label>
                       );
@@ -390,10 +390,10 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
           {/* Header onglet */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Comptes Instagram configurés pour ce client.
               </p>
-              <Link href="/admin/accounts" className="text-xs text-sky-700 hover:text-sky-900 transition-colors">
+              <Link href="/admin/accounts" className="text-xs text-info-700 hover:text-info-700 transition-colors">
                 → Voir tous les comptes Instagram
               </Link>
             </div>
@@ -410,7 +410,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
           {showAddForm && (
             <form
               onSubmit={(e) => void handleAddAccount(e)}
-              className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3"
+              className="rounded-lg border border-border bg-muted p-4 space-y-3"
             >
               <h3 className="text-sm font-semibold">Nouveau compte Instagram</h3>
               <div className="grid grid-cols-2 gap-3">
@@ -451,8 +451,8 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
 
           {/* Liste des comptes */}
           {igLoading ? (
-            <div className="flex items-center justify-center h-32 text-gray-400">
-              <div className="w-5 h-5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mr-2" />
+            <div className="flex items-center justify-center h-32 text-muted-foreground">
+              <div className="w-5 h-5 border-2 border-info-200 border-t-transparent rounded-full animate-spin mr-2" />
               Chargement...
             </div>
           ) : igError ? (
@@ -468,7 +468,7 @@ export function ClientDetailClient({ clientId, initialClient, initialAccounts }:
               }}
             />
           ) : (
-            <div className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+            <div className="divide-y divide-gray-100 rounded-lg border border-border">
               {igAccounts.map((account) => (
                 <InstagramAccountRow
                   key={account.id}

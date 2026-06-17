@@ -35,13 +35,13 @@ export function ActivityToggleButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/60 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:bg-white/85 transition-colors text-[12.5px] text-gray-700 focus-ring"
+        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border  hover:bg-white/85 transition-colors text-[12.5px] text-foreground focus-ring"
         title="Voir l'activité"
       >
-        <Activity size={14} className="text-gray-500 shrink-0" />
+        <Activity size={14} className="text-muted-foreground shrink-0" />
         <span>Activité</span>
         {count > 0 && (
-          <span className="inline-flex items-center justify-center min-w-[18px] h-[16px] px-1 rounded bg-gray-100/80 text-gray-600 text-[10px] font-medium">
+          <span className="inline-flex items-center justify-center min-w-[18px] h-[16px] px-1 rounded bg-muted/80 text-muted-foreground text-[10px] font-medium">
             {count}
             {initialHasMore && "+"}
           </span>

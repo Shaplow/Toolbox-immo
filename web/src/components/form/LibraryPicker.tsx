@@ -94,19 +94,19 @@ export function LibraryPickerModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <div>
             <p className="font-semibold text-gray-900 text-base">
               {isVideo ? "Choisir une vidéo" : "Choisir une musique"}
             </p>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               {loading ? "Chargement…" : `${(assets ?? []).length} fichier${(assets ?? []).length !== 1 ? "s" : ""} disponibles`}
               {currentAssetId && !loading ? " · 1 sélectionné" : ""}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted text-muted-foreground transition-colors"
           >
             <X size={16} />
           </button>
@@ -116,10 +116,10 @@ export function LibraryPickerModal({
         <div className="flex-1 overflow-y-auto p-6">
           {loading ? (
             <div className="flex items-center justify-center py-20">
-              <div className="w-6 h-6 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-info-200 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (assets ?? []).length === 0 ? (
-            <div className="text-center py-20 text-gray-400">
+            <div className="text-center py-20 text-muted-foreground">
               <p className="font-medium">Aucun fichier dans cette bibliothèque</p>
             </div>
           ) : isVideo ? (
@@ -142,12 +142,12 @@ export function LibraryPickerModal({
                         onSelect({ id: asset.id, url: asset.url, filename: asset.filename });
                         onClose();
                       }}
-                      className={`group relative rounded-xl overflow-hidden border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-sky-400 ${
+                      className={`group relative rounded-xl overflow-hidden border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-info-200 ${
                         tooShort
                           ? "opacity-50 cursor-not-allowed border-transparent"
                           : currentAssetId === asset.id
-                            ? "border-sky-500 shadow-md shadow-indigo-200/60"
-                            : "border-transparent hover:border-sky-300"
+                            ? "border-info-600 shadow-md shadow-indigo-200/60"
+                            : "border-transparent hover:border-info-200"
                       }`}
                       onMouseEnter={() => !tooShort && setHoverPlayId(asset.id)}
                       onMouseLeave={() => setHoverPlayId(null)}
@@ -176,22 +176,22 @@ export function LibraryPickerModal({
                           </span>
                         )}
                         {currentAssetId === asset.id && (
-                          <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-sky-500 rounded-full flex items-center justify-center shadow">
+                          <div className="absolute top-1.5 left-1.5 w-5 h-5 bg-info-600 rounded-full flex items-center justify-center shadow">
                             <Check size={11} className="text-white" />
                           </div>
                         )}
                         {hoverPlayId === asset.id && currentAssetId !== asset.id && (
-                          <div className="absolute inset-0 bg-sky-600/10 pointer-events-none" />
+                          <div className="absolute inset-0 bg-info-600/10 pointer-events-none" />
                         )}
                       </div>
                       <div className="px-2 py-1.5 bg-white">
                         <p
-                          className="text-[10px] font-medium text-gray-700 truncate leading-tight"
+                          className="text-[10px] font-medium text-foreground truncate leading-tight"
                           title={asset.filename}
                         >
                           {asset.filename.replace(/\.[^.]+$/, "")}
                         </p>
-                        <p className="text-[9px] text-gray-400 mt-0.5">
+                        <p className="text-[9px] text-muted-foreground mt-0.5">
                           {asset.usageCount} usage{asset.usageCount !== 1 ? "s" : ""}
                           {asset.duration ? ` · ${fmtDuration(asset.duration)}` : ""}
                         </p>
@@ -221,28 +221,28 @@ export function LibraryPickerModal({
                       onSelect({ id: asset.id, url: asset.url, filename: asset.filename });
                       onClose();
                     }}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-sky-400 ${
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left focus:outline-none focus:ring-2 focus:ring-info-200 ${
                       tooShort
-                        ? "opacity-50 cursor-not-allowed border-gray-100 bg-gray-50"
+                        ? "opacity-50 cursor-not-allowed border-border bg-muted"
                         : currentAssetId === asset.id
-                          ? "border-sky-500 bg-sky-50"
-                          : "border-gray-100 bg-gray-50 hover:border-sky-300 hover:bg-sky-50/50"
+                          ? "border-info-600 bg-info-50"
+                          : "border-border bg-muted hover:border-info-200 hover:bg-info-50/50"
                     }`}
                   >
                     <div
                       className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                        currentAssetId === asset.id ? "bg-sky-100" : "bg-white border border-gray-200"
+                        currentAssetId === asset.id ? "bg-info-100" : "bg-white border border-border"
                       }`}
                     >
                       {currentAssetId === asset.id ? (
-                        <Check size={14} className="text-sky-700" />
+                        <Check size={14} className="text-info-700" />
                       ) : (
-                        <Music2 size={14} className="text-gray-400" />
+                        <Music2 size={14} className="text-muted-foreground" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800 truncate">{asset.filename}</p>
-                      <p className="text-[11px] text-gray-400 mt-0.5">
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
                         {asset.duration ? fmtDuration(asset.duration) : ""}
                         {asset.duration && asset.usageCount > 0 ? " · " : ""}
                         {asset.usageCount > 0
@@ -296,12 +296,12 @@ export function LibraryFieldInput({
     <div>
       {/* Label */}
       <div className="min-h-[28px] mb-1.5 flex items-center gap-2 flex-wrap">
-        <label className="block text-sm font-medium text-gray-700">
+        <label className="block text-sm font-medium text-foreground">
           {field.label || field.key}
           {field.required && <span className="text-red-500 ml-1">*</span>}
         </label>
-        <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700">
-          <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
+        <span className="inline-flex items-center gap-1 rounded-full border border-info-200 bg-info-50 px-2 py-0.5 text-[10px] font-medium text-info-700">
+          <span className="h-1.5 w-1.5 rounded-full bg-info-200" />
           depuis la bibliothèque
         </span>
       </div>
@@ -309,7 +309,7 @@ export function LibraryFieldInput({
       {/* Preview + picker trigger */}
       {currentSelection ? (
         libraryMeta.type === "video" ? (
-          <div className="flex items-start gap-3 p-3 bg-gray-50 border border-gray-200 rounded-xl">
+          <div className="flex items-start gap-3 p-3 bg-muted border border-border rounded-xl">
             <div className="relative w-16 shrink-0 aspect-[9/16] rounded-lg overflow-hidden bg-gray-200">
               <video
                 src={`${currentSelection.url}#t=0.5`}
@@ -322,20 +322,20 @@ export function LibraryFieldInput({
               <p className="text-sm font-medium text-gray-800 truncate">
                 {currentSelection.filename.replace(/\.[^.]+$/, "")}
               </p>
-              <p className="text-xs text-gray-400 mt-0.5">Vidéo sélectionnée</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Vidéo sélectionnée</p>
               <button
                 type="button"
                 onClick={() => setPickerOpen(true)}
-                className="mt-2 text-xs font-medium text-sky-700 hover:text-sky-900 hover:underline"
+                className="mt-2 text-xs font-medium text-info-700 hover:text-info-700 hover:underline"
               >
                 Changer →
               </button>
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-xl">
-            <div className="w-9 h-9 bg-sky-50 border border-sky-100 rounded-lg flex items-center justify-center shrink-0">
-              <Music2 size={16} className="text-sky-500" />
+          <div className="flex items-center gap-3 p-3 bg-muted border border-border rounded-xl">
+            <div className="w-9 h-9 bg-info-50 border border-info-100 rounded-lg flex items-center justify-center shrink-0">
+              <Music2 size={16} className="text-info-600" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-800 truncate">{currentSelection.filename}</p>
@@ -343,7 +343,7 @@ export function LibraryFieldInput({
             <button
               type="button"
               onClick={() => setPickerOpen(true)}
-              className="text-xs font-medium text-sky-700 hover:text-sky-900 hover:underline shrink-0"
+              className="text-xs font-medium text-info-700 hover:text-info-700 hover:underline shrink-0"
             >
               Changer
             </button>
@@ -353,12 +353,12 @@ export function LibraryFieldInput({
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
-          className="w-full flex flex-col items-center justify-center h-28 border-2 border-dashed border-gray-200 rounded-xl hover:border-sky-400 hover:bg-sky-50 transition-colors group focus:outline-none focus:ring-2 focus:ring-sky-400"
+          className="w-full flex flex-col items-center justify-center h-28 border-2 border-dashed border-border rounded-xl hover:border-info-200 hover:bg-info-50 transition-colors group focus:outline-none focus:ring-2 focus:ring-info-200"
         >
-          <span className="text-2xl text-gray-300 group-hover:text-sky-500 transition-colors">
+          <span className="text-2xl text-muted-foreground/60 group-hover:text-info-600 transition-colors">
             {libraryMeta.type === "video" ? "🎬" : "♪"}
           </span>
-          <span className="text-sm font-medium text-gray-400 group-hover:text-sky-800 mt-1">
+          <span className="text-sm font-medium text-muted-foreground group-hover:text-info-700 mt-1">
             Choisir depuis la bibliothèque
           </span>
         </button>

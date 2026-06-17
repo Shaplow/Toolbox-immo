@@ -19,6 +19,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
+import { Tabs } from "@/components/ui/Tabs";
 import { Textarea } from "@/components/ui/Textarea";
 import { FormField } from "@/components/ui/FormField";
 import { useConfirm } from "@/components/ui/useConfirm";
@@ -32,6 +33,7 @@ import {
   Plus,
   RotateCw,
   Settings2,
+  SlidersHorizontal,
   Tag,
   Trash2,
   X,
@@ -113,6 +115,9 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
     library?.maxUsageCount != null ? String(library.maxUsageCount) : "",
   );
   const [saving, setSaving] = useState(false);
+  // H.4 — tabs pour décomposer le drawer 600+ LOC en sections digestes.
+  type TabKey = "identity" | "rotation" | "groups" | "fields" | "cleanup";
+  const [tab, setTab] = useState<TabKey>("identity");
   // Phase ε — taxonomies (Catégories / Packs / Tags) chargées au open du drawer.
   type TaxItem = { value: string; count: number };
   const [taxonomies, setTaxonomies] = useState<{ categories: TaxItem[]; packs: TaxItem[]; tags: TaxItem[] } | null>(null);
@@ -302,14 +307,30 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
     <Drawer open={open} onClose={onClose} side="right" size="lg">
       <Drawer.Header onClose={onClose}>
         <span className="inline-flex items-center gap-2">
-          <Settings2 size={14} className="text-gray-400" />
+          <Settings2 size={14} className="text-muted-foreground" />
           Réglages — {library.name}
         </span>
       </Drawer.Header>
       <Drawer.Body className="space-y-4">
-        {/* Identité */}
-        <section className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] space-y-3">
-          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-500">
+        <Tabs
+          variant="line"
+          size="sm"
+          value={tab}
+          onChange={(id) => setTab(id as TabKey)}
+          items={[
+            { id: "identity", label: "Identité", icon: Settings2 },
+            { id: "rotation", label: "Rotation", icon: RotateCw },
+            ...(rotationMode === "override"
+              ? [{ id: "groups" as const, label: "Groupes", icon: Layers }]
+              : []),
+            { id: "fields", label: "Champs perso", icon: SlidersHorizontal },
+            { id: "cleanup", label: "Nettoyage", icon: ListTree },
+          ]}
+        />
+
+        {tab === "identity" && (
+        <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
+          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
             Identité
           </h3>
           <FormField label="Nom" required>
@@ -322,10 +343,11 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
             <Input value={tagsCsv} onChange={setTagsCsv} placeholder="RPI, RTIPS" />
           </FormField>
         </section>
+        )}
 
-        {/* Rotation */}
-        <section className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] space-y-3">
-          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-500 inline-flex items-center gap-1.5">
+        {tab === "rotation" && (
+        <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
+          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground inline-flex items-center gap-1.5">
             <RotateCw size={11} /> Rotation
           </h3>
           <FormField label="Mode de rotation">
@@ -342,11 +364,11 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
                 </Chip>
               ))}
             </div>
-            <p className="text-[10.5px] text-gray-500 mt-1.5 leading-relaxed">
+            <p className="text-[10.5px] text-muted-foreground mt-1.5 leading-relaxed">
               {rotationMode === "auto"
-                ? "Toolbox sélectionne le pack le moins récemment utilisé, en évitant de répéter deux fois la même catégorie de suite."
+                ? "Toolbox sélectionne le groupe le moins récemment utilisé, en évitant de répéter deux fois la même catégorie de suite."
                 : rotationMode === "override"
-                  ? "Vous définissez l'ordre exact des packs ci-dessous. Le moteur cycle dessus sans dévier."
+                  ? "Vous définissez l'ordre exact des groupes ci-dessous. Le moteur cycle dessus sans dévier."
                   : "Pas de rotation auto. La sélection se fait via un champ du formulaire de génération (metadata) — vous choisissez vous-même quel asset utiliser."}
             </p>
           </FormField>
@@ -381,21 +403,21 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
             />
           </FormField>
         </section>
+        )}
 
-        {/* Ordre des packs (mode override) */}
-        {rotationMode === "override" && (
-          <section className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] space-y-2">
-            <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-500 inline-flex items-center gap-1.5">
-              <Layers size={11} /> Ordre des packs
+        {tab === "groups" && rotationMode === "override" && (
+          <section className="rounded-2xl bg-card border border-border p-4  space-y-2">
+            <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground inline-flex items-center gap-1.5">
+              <Layers size={11} /> Ordre des groupes
             </h3>
             <div className="space-y-1">
               {sequence.length === 0 && (
-                <p className="text-[11px] text-gray-400 italic">Aucun pack fixé pour l&apos;instant.</p>
+                <p className="text-[11px] text-muted-foreground italic">Aucun groupe fixé pour l&apos;instant.</p>
               )}
               {sequence.map((s, idx) => (
-                <div key={s} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/60 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-                  <span className="text-[10px] text-gray-400 w-5 tabular-nums">{idx + 1}.</span>
-                  <Layers size={10} className="text-rose-400 shrink-0" />
+                <div key={s} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-card border border-border ">
+                  <span className="text-[10px] text-muted-foreground w-5 tabular-nums">{idx + 1}.</span>
+                  <Layers size={10} className="text-danger-200 shrink-0" />
                   <span className="flex-1 text-[12px] text-gray-800 truncate">{s}</span>
                   <button
                     type="button"
@@ -416,7 +438,7 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
                   <button
                     type="button"
                     onClick={() => removeSeq(idx)}
-                    className="p-1 text-gray-400 hover:text-rose-500 rounded"
+                    className="p-1 text-muted-foreground hover:text-danger-600 rounded"
                   >
                     <X size={12} />
                   </button>
@@ -427,7 +449,7 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
               <Input
                 value={seqDraft}
                 onChange={setSeqDraft}
-                placeholder="Ajouter un pack à la séquence…"
+                placeholder="Ajouter un groupe à la séquence…"
               />
               <Button variant="secondary" size="sm" icon={Plus} onClick={addSeq} disabled={!seqDraft.trim()}>
                 Ajouter
@@ -436,10 +458,10 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
           </section>
         )}
 
-        {/* Champs personnalisés */}
-        <section className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] space-y-2">
+        {tab === "fields" && (
+        <section className="rounded-2xl bg-card border border-border p-4  space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-500">
+            <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
               Champs personnalisés
             </h3>
             <Button variant="ghost" size="sm" icon={Plus} onClick={addMetaField}>
@@ -447,12 +469,12 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
             </Button>
           </div>
           {metadataFields.length === 0 && (
-            <p className="text-[11px] text-gray-400 italic">
+            <p className="text-[11px] text-muted-foreground italic">
               Aucun champ personnalisé. Ajoute des champs comme « propriétaire », « prix », « lien », etc.
             </p>
           )}
           {metadataFields.map((field, idx) => (
-            <div key={idx} className="grid grid-cols-[1fr_1.5fr_auto_auto] gap-2 items-center p-2 rounded-md bg-white/40 backdrop-blur-[6px]">
+            <div key={idx} className="grid grid-cols-[1fr_1.5fr_auto_auto] gap-2 items-center p-2 rounded-md bg-card border border-border">
               <Input
                 value={field.key}
                 onChange={(v) => updateMetaField(idx, { key: v })}
@@ -466,7 +488,7 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
               <select
                 value={field.type}
                 onChange={(e) => updateMetaField(idx, { type: e.target.value as MetadataField["type"] })}
-                className="h-8 text-[12px] rounded-md bg-white/70 border border-gray-200 px-2 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                className="h-8 text-[12px] rounded-md bg-white/70 border border-border px-2 focus:outline-none focus:ring-2 focus:ring-info-200"
               >
                 <option value="text">Texte</option>
                 <option value="number">Nombre</option>
@@ -476,7 +498,7 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
               <button
                 type="button"
                 onClick={() => removeMetaField(idx)}
-                className="p-1.5 text-gray-300 hover:text-rose-500 rounded"
+                className="p-1.5 text-muted-foreground/60 hover:text-danger-600 rounded"
                 title="Supprimer ce champ"
               >
                 <Trash2 size={12} />
@@ -484,25 +506,26 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
             </div>
           ))}
         </section>
+        )}
 
-        {/* Phase ε — Gérer les taxonomies (Catégories / Packs / Tags). Détache, ne supprime pas les assets. */}
-        <section className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] space-y-3">
+        {tab === "cleanup" && (
+        <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-500 inline-flex items-center gap-1.5">
-              <ListTree size={11} /> Gérer les taxonomies
+            <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground inline-flex items-center gap-1.5">
+              <ListTree size={11} /> Nettoyage
             </h3>
             <button
               type="button"
               onClick={() => void loadTaxonomies()}
               disabled={taxLoading}
-              className="text-[10px] text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-50"
+              className="text-[10px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
               title="Rafraîchir"
             >
               {taxLoading ? "…" : "↻"}
             </button>
           </div>
-          <p className="text-[10.5px] text-gray-500 leading-relaxed">
-            Supprime une catégorie, un pack ou un tag de tous les assets concernés en un clic. Les assets ne sont pas supprimés — ils perdent juste cette étiquette.
+          <p className="text-[10.5px] text-muted-foreground leading-relaxed">
+            Supprime une catégorie, un groupe ou un tag de tous les assets concernés en un clic. Les assets ne sont pas supprimés — ils perdent juste cette étiquette.
           </p>
           {taxonomies && (
             <div className="space-y-2.5">
@@ -513,7 +536,7 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
                 onDetach={(value, count) => void handleDetach("category", value, count)}
               />
               <TaxonomyList
-                label="Packs (nommés)"
+                label="Groupes"
                 icon={Layers}
                 items={taxonomies.packs}
                 onDetach={(value, count) => void handleDetach("pack", value, count)}
@@ -527,6 +550,7 @@ export function MediaLibrarySettingsDrawer({ open, onClose, library, onUpdated }
             </div>
           )}
         </section>
+        )}
       </Drawer.Body>
       <Drawer.Footer>
         <Button variant="ghost" onClick={onClose} disabled={saving}>
@@ -556,25 +580,25 @@ function TaxonomyList({
 }) {
   return (
     <div>
-      <p className="text-[9.5px] uppercase tracking-widest font-medium text-gray-400 mb-1 inline-flex items-center gap-1">
+      <p className="text-[9.5px] uppercase tracking-widest font-medium text-muted-foreground mb-1 inline-flex items-center gap-1">
         <Icon size={9} /> {label}
-        <span className="text-gray-300 normal-case tracking-normal font-normal">({items.length})</span>
+        <span className="text-muted-foreground/60 normal-case tracking-normal font-normal">({items.length})</span>
       </p>
       {items.length === 0 ? (
-        <p className="text-[10.5px] text-gray-400 italic px-1">Aucun.</p>
+        <p className="text-[10.5px] text-muted-foreground italic px-1">Aucun.</p>
       ) : (
         <ul className="space-y-0.5">
           {items.map((item) => (
             <li
               key={item.value}
-              className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/40 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.04)] group/tax"
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-card border border-border  group/tax"
             >
               <span className="flex-1 min-w-0 text-[11.5px] text-gray-800 truncate">{item.value}</span>
-              <span className="text-[10px] text-gray-400 tabular-nums shrink-0">{item.count}</span>
+              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{item.count}</span>
               <button
                 type="button"
                 onClick={() => onDetach(item.value, item.count)}
-                className="p-0.5 text-gray-300 hover:text-rose-500 transition-colors opacity-0 group-hover/tax:opacity-100"
+                className="p-0.5 text-muted-foreground/60 hover:text-danger-600 transition-colors opacity-0 group-hover/tax:opacity-100"
                 title="Détacher de tous les assets"
               >
                 <X size={11} />

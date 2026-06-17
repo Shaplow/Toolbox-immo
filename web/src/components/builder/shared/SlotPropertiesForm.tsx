@@ -105,20 +105,20 @@ export function SlotPropertiesForm({
 
       {/* Nom */}
       <div className="flex flex-col gap-1">
-        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Nom</span>
+        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Nom</span>
         <input
           type="text"
           value={slot.label ?? ""}
           onChange={(e) => onChange({ label: e.target.value || undefined })}
           placeholder={`Clip ${index + 1}`}
-          className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
+          className="border border-border rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
         />
       </div>
 
       {/* Source vidéo */}
       <div className="flex flex-col gap-1.5">
-        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Source vidéo</span>
-        <p className="text-[10px] text-gray-400 leading-relaxed -mt-0.5">
+        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Source vidéo</span>
+        <p className="text-[10px] text-muted-foreground leading-relaxed -mt-0.5">
           D’où vient la vidéo pour ce clip ?
         </p>
         <div className="flex flex-col gap-1.5">
@@ -128,19 +128,19 @@ export function SlotPropertiesForm({
             className={`flex items-start gap-2 text-left px-2.5 py-2.5 rounded-lg border transition-colors ${
               sourceMode === "form"
                 ? "bg-indigo-50 border-indigo-300"
-                : "bg-white border-gray-200 hover:border-gray-300"
+                : "bg-white border-border hover:border-border"
             }`}
           >
             <span className={`mt-0.5 w-3 h-3 shrink-0 rounded-full border-2 flex items-center justify-center ${
-              sourceMode === "form" ? "border-indigo-500" : "border-gray-300"
+              sourceMode === "form" ? "border-indigo-500" : "border-border"
             }`}>
               {sourceMode === "form" && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 block" />}
             </span>
             <span>
               <span className={`block text-[11px] font-medium ${
-                sourceMode === "form" ? "text-indigo-800" : "text-gray-700"
+                sourceMode === "form" ? "text-indigo-800" : "text-foreground"
               }`}>Saisie à la génération</span>
-              <span className="block text-[10px] text-gray-400 mt-0.5 leading-relaxed">
+              <span className="block text-[10px] text-muted-foreground mt-0.5 leading-relaxed">
                 L’utilisateur choisit/upload la vidéo au moment de créer la vidéo
               </span>
             </span>
@@ -151,19 +151,19 @@ export function SlotPropertiesForm({
             className={`flex items-start gap-2 text-left px-2.5 py-2.5 rounded-lg border transition-colors ${
               sourceMode === "library"
                 ? "bg-indigo-50 border-indigo-300"
-                : "bg-white border-gray-200 hover:border-gray-300"
+                : "bg-white border-border hover:border-border"
             }`}
           >
             <span className={`mt-0.5 w-3 h-3 shrink-0 rounded-full border-2 flex items-center justify-center ${
-              sourceMode === "library" ? "border-indigo-500" : "border-gray-300"
+              sourceMode === "library" ? "border-indigo-500" : "border-border"
             }`}>
               {sourceMode === "library" && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 block" />}
             </span>
             <span>
               <span className={`block text-[11px] font-medium ${
-                sourceMode === "library" ? "text-indigo-800" : "text-gray-700"
+                sourceMode === "library" ? "text-indigo-800" : "text-foreground"
               }`}>Bibliothèque (auto-sélection)</span>
-              <span className="block text-[10px] text-gray-400 mt-0.5 leading-relaxed">
+              <span className="block text-[10px] text-muted-foreground mt-0.5 leading-relaxed">
                 Toolbox pioche automatiquement une vidéo depuis vos assets
               </span>
             </span>
@@ -181,7 +181,7 @@ export function SlotPropertiesForm({
               <select
                 value={slot.binding ?? ""}
                 onChange={(e) => onChange({ binding: e.target.value || undefined })}
-                className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                className="border border-border rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
               >
                 <option value="">— Choisir le champ vidéo —</option>
                 {bindingFields.map((f) => (
@@ -203,7 +203,7 @@ export function SlotPropertiesForm({
             <select
               value={slot.libraryId ?? ""}
               onChange={(e) => onChange({ libraryId: e.target.value || undefined })}
-              className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="border border-border rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
             >
               <option value="">— Choisir une bibliothèque —</option>
               {videoLibraries.map((lib) => (
@@ -211,7 +211,7 @@ export function SlotPropertiesForm({
               ))}
             </select>
             {videoLibraries.length === 0 && (
-              <p className="text-[10px] text-gray-400">Aucune bibliothèque vidéo disponible.</p>
+              <p className="text-[10px] text-muted-foreground">Aucune bibliothèque vidéo disponible.</p>
             )}
             {slot.libraryId && (
               <SelectionRuleEditor
@@ -228,14 +228,14 @@ export function SlotPropertiesForm({
       {/* Positionnement (VideoBlock) — only shown when there are multiple VideoBlocks */}
       {videoBlocks.length > 1 && (
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Bloc vidéo</span>
-          <p className="text-[10px] text-gray-400 leading-relaxed -mt-0.5">
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Bloc vidéo</span>
+          <p className="text-[10px] text-muted-foreground leading-relaxed -mt-0.5">
             Position et dimensions utilisées pour cadrer ce clip dans le template.
           </p>
           <select
             value={slot.videoBlockId ?? ""}
             onChange={(e) => onChange({ videoBlockId: e.target.value || undefined })}
-            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            className="border border-border rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
           >
             <option value="">— Détecter automatiquement —</option>
             {videoBlocks.map((vb) => (
@@ -247,8 +247,8 @@ export function SlotPropertiesForm({
 
       {/* Infos affichées sur le clip */}
       <div className="flex flex-col gap-1.5">
-        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Quoi afficher sur le clip ?</span>
-        <p className="text-[10px] text-gray-400 leading-relaxed -mt-0.5">
+        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Quoi afficher sur le clip ?</span>
+        <p className="text-[10px] text-muted-foreground leading-relaxed -mt-0.5">
           Les blocs du template (prix, adresse, logo…) peuvent apparaître en overlay sur ce clip ou non.
         </p>
         <div className="flex flex-col gap-1">
@@ -260,11 +260,11 @@ export function SlotPropertiesForm({
               className={`flex items-start gap-2 text-left px-2.5 py-2 rounded-lg border transition-colors ${
                 overlayMode === opt.value
                   ? "bg-indigo-50 border-indigo-300 text-indigo-900"
-                  : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
+                  : "bg-white border-border text-muted-foreground hover:border-border"
               }`}
             >
               <span className={`mt-0.5 w-3 h-3 shrink-0 rounded-full border-2 flex items-center justify-center ${
-                overlayMode === opt.value ? "border-indigo-500" : "border-gray-300"
+                overlayMode === opt.value ? "border-indigo-500" : "border-border"
               }`}>
                 {overlayMode === opt.value && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 block" />}
               </span>
@@ -284,12 +284,12 @@ export function SlotPropertiesForm({
                   type="checkbox"
                   checked={slot.overlayGroupIds?.includes(g.id) ?? false}
                   onChange={(e) => toggleOverlayGroup(g.id, e.target.checked)}
-                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-400"
+                  className="rounded border-border text-indigo-600 focus:ring-indigo-400"
                 />
-                <span className="text-[11px] text-gray-600">{g.name || g.id.slice(-6)}</span>
+                <span className="text-[11px] text-muted-foreground">{g.name || g.id.slice(-6)}</span>
               </label>
             )) : (
-              <p className="text-[10px] text-gray-400">Aucun groupe dans le template.</p>
+              <p className="text-[10px] text-muted-foreground">Aucun groupe dans le template.</p>
             )}
           </div>
         )}
@@ -298,7 +298,7 @@ export function SlotPropertiesForm({
 
       {/* Durée max */}
       <div className="flex flex-col gap-1">
-        <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Durée max</span>
+        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Durée max</span>
         <div className="flex items-center gap-1.5">
           <input
             type="number"
@@ -310,9 +310,9 @@ export function SlotPropertiesForm({
               const raw = e.target.value;
               onChange({ maxDuration: raw === "" ? undefined : Math.max(0.5, Number(raw) || 0.5) });
             }}
-            className="w-24 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            className="w-24 border border-border rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
           />
-          <span className="text-[10px] text-gray-400">s (vide = durée du clip)</span>
+          <span className="text-[10px] text-muted-foreground">s (vide = durée du clip)</span>
         </div>
       </div>
 
@@ -325,26 +325,26 @@ export function SlotPropertiesForm({
 
       {/* ── Volume musique sur ce clip ───────────────────────────────────── */}
       {hasMusicBlock && onAudioChange && (
-        <div className="flex flex-col gap-1.5 pt-1 border-t border-gray-100">
+        <div className="flex flex-col gap-1.5 pt-1 border-t border-border">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">🎵 Volume musique</span>
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">🎵 Volume musique</span>
             {(slotAudioOverride?.musicTrackVolumeDb !== undefined || slotAudioOverride?.musicTrackFadeIn !== undefined || slotAudioOverride?.musicTrackFadeOut !== undefined) && (
               <button
                 type="button"
                 onClick={() => onAudioChange({ musicTrackVolumeDb: undefined, musicTrackFadeIn: undefined, musicTrackFadeOut: undefined })}
-                className="text-[9px] text-gray-400 hover:text-red-500 transition-colors"
+                className="text-[9px] text-muted-foreground hover:text-red-500 transition-colors"
                 title="Revenir au volume global"
               >
                 réinitialiser
               </button>
             )}
           </div>
-          <p className="text-[10px] text-gray-400 leading-relaxed -mt-0.5">
+          <p className="text-[10px] text-muted-foreground leading-relaxed -mt-0.5">
             Niveau cible de la musique pendant ce clip. Laissez vide pour utiliser le volume global.
           </p>
           <div className="grid grid-cols-3 gap-2">
             <label className="flex flex-col gap-0.5">
-              <span className="text-[9px] text-gray-400 uppercase">Volume (dB)</span>
+              <span className="text-[9px] text-muted-foreground uppercase">Volume (dB)</span>
               <input
                 type="number"
                 min={-60}
@@ -359,11 +359,11 @@ export function SlotPropertiesForm({
                     musicTrackVolumeDb: raw === "" ? undefined : Math.min(0, Number(raw)),
                   });
                 }}
-                className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
+                className="border border-border rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
               />
             </label>
             <label className="flex flex-col gap-0.5">
-              <span className="text-[9px] text-gray-400 uppercase">Fade ↑ (s)</span>
+              <span className="text-[9px] text-muted-foreground uppercase">Fade ↑ (s)</span>
               <input
                 type="number"
                 min={0}
@@ -377,11 +377,11 @@ export function SlotPropertiesForm({
                     musicTrackFadeIn: raw === "" ? undefined : Math.max(0, Number(raw)),
                   });
                 }}
-                className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
+                className="border border-border rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
               />
             </label>
             <label className="flex flex-col gap-0.5">
-              <span className="text-[9px] text-gray-400 uppercase">Fade ↓ (s)</span>
+              <span className="text-[9px] text-muted-foreground uppercase">Fade ↓ (s)</span>
               <input
                 type="number"
                 min={0}
@@ -395,7 +395,7 @@ export function SlotPropertiesForm({
                     musicTrackFadeOut: raw === "" ? undefined : Math.max(0, Number(raw)),
                   });
                 }}
-                className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
+                className="border border-border rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
               />
             </label>
           </div>

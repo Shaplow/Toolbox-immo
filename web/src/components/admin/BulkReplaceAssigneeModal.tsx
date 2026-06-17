@@ -84,8 +84,8 @@ export function BulkReplaceAssigneeModal({
       const data = (await res.json()) as { updatedCount: number };
       toast.success(
         data.updatedCount === 0
-          ? "Aucun binding ne correspondait"
-          : `${data.updatedCount} liaison${data.updatedCount > 1 ? "s" : ""} mise${data.updatedCount > 1 ? "s" : ""} à jour`,
+          ? "Aucune recette ne correspondait"
+          : `${data.updatedCount} recette${data.updatedCount > 1 ? "s" : ""} mise${data.updatedCount > 1 ? "s" : ""} à jour`,
       );
       onReplaced(data.updatedCount);
       onClose();
@@ -100,18 +100,15 @@ export function BulkReplaceAssigneeModal({
     <Modal open onClose={onClose} size="md">
       <form onSubmit={handleSubmit} className="p-5">
         <div className="flex items-start gap-3">
-          <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-700 shrink-0">
+          <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-muted border border-border text-foreground shrink-0">
             <UserCheck size={18} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
-              Remplacement en lot
-            </p>
-            <h2 className="mt-1 text-[18px] font-semibold text-gray-950">
+            <h2 className="text-[18px] font-semibold text-foreground">
               Remplacer une assignée par défaut
             </h2>
-            <p className="mt-0.5 text-[12px] text-gray-500">
-              Met à jour toutes les liaisons de ce compte où le rôle choisi
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
+              Met à jour toutes les recettes de ce compte où le rôle choisi
               vaut « de ». Les slots historiques ne sont pas affectés.
             </p>
           </div>
@@ -156,7 +153,7 @@ export function BulkReplaceAssigneeModal({
           </div>
         </div>
 
-        {error && <p className="mt-3 text-[12px] text-rose-700">{error}</p>}
+        {error && <p className="mt-3 text-[12px] text-danger-700">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <Button

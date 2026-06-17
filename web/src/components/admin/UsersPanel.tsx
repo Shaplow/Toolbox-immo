@@ -323,7 +323,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
 
   if (loading) {
     return (
-      <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] py-12 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] flex items-center justify-center text-gray-500 gap-3">
+      <div className="rounded-2xl bg-card border border-border py-12  flex items-center justify-center text-muted-foreground gap-3">
         <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
         <span className="text-[12.5px]">Chargement…</span>
       </div>
@@ -352,7 +352,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
               emptyMessage="—"
             />
           </div>
-          <span className="text-[10.5px] text-gray-500 tabular-nums">
+          <span className="text-[10.5px] text-muted-foreground tabular-nums">
             {filteredUsers.length}/{users.length} utilisateurs
           </span>
         </div>
@@ -363,7 +363,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
 
       {/* Liste */}
       {users.length === 0 ? (
-        <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+        <div className="rounded-2xl bg-card border border-border p-8 ">
           <EmptyState
             icon={UserPlus}
             title="Aucun utilisateur"
@@ -372,7 +372,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
           />
         </div>
       ) : filteredUsers.length === 0 ? (
-        <p className="text-[12px] text-gray-500 italic text-center py-8">
+        <p className="text-[12px] text-muted-foreground italic text-center py-8">
           Aucun utilisateur ne correspond à la recherche.
         </p>
       ) : (
@@ -407,7 +407,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
             return (
               <div
                 key={user.id}
-                className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[14px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.06),inset_0_-1px_0_rgba(15,23,42,0.04),0_2px_8px_-2px_rgba(15,23,42,0.08)] overflow-hidden"
+                className="rounded-2xl bg-card border border-border  overflow-hidden"
               >
                 {/* User header row */}
                 <div className="px-5 py-4 flex items-center gap-4">
@@ -424,7 +424,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-[14px] font-semibold text-gray-950 truncate">{user.name}</p>
+                      <p className="text-[14px] font-semibold text-foreground truncate">{user.name}</p>
                       <Chip variant={ROLE_VARIANT[user.role] ?? "default"} size="sm">
                         {ROLE_LABEL[user.role] ?? user.role}
                       </Chip>
@@ -434,7 +434,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                         </Chip>
                       )}
                     </div>
-                    <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                    <p className="text-[11px] text-muted-foreground truncate mt-0.5">
                       {user.username && <span className="font-mono">{user.username}</span>}
                       {user.username && user.email && " · "}
                       {user.email}
@@ -480,7 +480,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
 
                 {/* Expanded panel */}
                 {isExpanded && (
-                  <div className="border-t border-white/40 bg-white/30 backdrop-blur-[6px] divide-y divide-white/30">
+                  <div className="border-t border-white/40 bg-card border border-border divide-y divide-white/30">
                     {/* Edit account section */}
                     <div className="px-5 py-4">
                       {editingId === user.id ? (
@@ -490,7 +490,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                           }}
                           className="space-y-3"
                         >
-                          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                             Modifier le compte
                           </p>
                           <div className="grid grid-cols-2 gap-3">
@@ -546,7 +546,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                       ) : (
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3">
-                            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                            <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                               Compte
                             </p>
                             <div className="w-[180px]">
@@ -566,8 +566,8 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                     </div>
 
                     {isAdmin ? (
-                      <div className="px-5 py-4 bg-rose-50/40">
-                        <p className="text-[12px] text-rose-800">
+                      <div className="px-5 py-4 bg-danger-50/40">
+                        <p className="text-[12px] text-danger-700">
                           <span className="font-semibold">Administrateur</span> — tous les outils
                           et templates sont accessibles automatiquement.
                         </p>
@@ -577,11 +577,11 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                         {/* Tools section */}
                         <div className="px-5 py-4 space-y-3">
                           <div className="flex items-center justify-between">
-                            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                            <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                               Outils
                             </p>
                             {user.role === "EXTERNAL_GENERATOR" && (
-                              <p className="text-[10px] text-gray-400 italic">
+                              <p className="text-[10px] text-muted-foreground italic">
                                 Client externe : {EXTERNAL_GENERATOR_ALLOWED_TOOLS.join(", ")} uniquement
                               </p>
                             )}
@@ -600,12 +600,12 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                                   className={[
                                     "flex items-center gap-3 p-3 rounded-xl transition-all",
                                     isBlocked
-                                      ? "bg-gray-100/40 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.04)] opacity-60"
+                                      ? "bg-muted/40 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.04)] opacity-60"
                                       : isLegacy
-                                      ? "bg-peach-50/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(245,158,107,0.22)]"
+                                      ? "bg-warning-50/60 "
                                       : active
-                                      ? "bg-sky-50/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(77,150,191,0.22)]"
-                                      : "bg-white/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
+                                      ? "bg-info-50/60 "
+                                      : "bg-white/50 ",
                                   ].join(" ")}
                                   title={
                                     isBlocked
@@ -626,24 +626,24 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                                     <p
                                       className={`text-[12px] font-semibold flex items-center gap-1.5 ${
                                         isBlocked
-                                          ? "text-gray-400"
+                                          ? "text-muted-foreground"
                                           : isLegacy
-                                          ? "text-peach-800"
+                                          ? "text-warning-700"
                                           : active
-                                          ? "text-sky-800"
-                                          : "text-gray-700"
+                                          ? "text-info-700"
+                                          : "text-foreground"
                                       }`}
                                     >
                                       {TOOL_LABELS[tool]}
                                       {isLegacy && (
-                                        <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-peach-100/80 text-peach-900">
+                                        <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-warning-100/80 text-warning-700">
                                           legacy
                                         </span>
                                       )}
                                     </p>
                                     <p
                                       className={`text-[10.5px] mt-0.5 ${
-                                        isBlocked ? "text-gray-300" : "text-gray-500"
+                                        isBlocked ? "text-muted-foreground/60" : "text-muted-foreground"
                                       }`}
                                     >
                                       {TOOL_DESCRIPTIONS[tool]}
@@ -657,11 +657,11 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
 
                         {/* Templates section */}
                         <div className="px-5 py-4 space-y-3">
-                          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                             Templates assignés
                           </p>
                           {user.accesses.length === 0 ? (
-                            <p className="text-[12px] text-gray-400 italic">
+                            <p className="text-[12px] text-muted-foreground italic">
                               Aucun template assigné.
                             </p>
                           ) : (
@@ -674,7 +674,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                                 >
                                   {a.template.name}
                                   {a.template.client && (
-                                    <span className="text-sky-600/70 ml-1">· {a.template.client}</span>
+                                    <span className="text-info-600/70 ml-1">· {a.template.client}</span>
                                   )}
                                 </Chip>
                               ))}
@@ -682,7 +682,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                           )}
                           {unassignedTemplates.length > 0 && (
                             <details className="group">
-                              <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-700 transition-colors inline-flex items-center gap-1">
+                              <summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1">
                                 <Plus size={11} />
                                 Ajouter un template ({unassignedTemplates.length} dispo)
                               </summary>
@@ -692,7 +692,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                                     key={t.id}
                                     type="button"
                                     onClick={() => void handleGrantTemplate(user.id, t.id)}
-                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-gray-600 bg-white/50 hover:bg-white/85 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.12)] transition-all"
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-muted-foreground bg-white/50 hover:bg-card border border-border  hover: transition-all"
                                   >
                                     <Plus size={10} />
                                     {t.name}
@@ -707,11 +707,11 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                         {/* Caption presets section */}
                         {userTools.includes(TOOLS.CAPTIONS) && (
                           <div className="px-5 py-4 space-y-3">
-                            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                            <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                               Presets de sous-titres assignés
                             </p>
                             {user.captionPresetAccesses.length === 0 ? (
-                              <p className="text-[11px] text-peach-800 bg-peach-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.2)]">
+                              <p className="text-[11px] text-warning-700 bg-warning-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.2)]">
                                 Aucun preset assigné — l&apos;utilisateur verra une galerie vide.
                                 Assignez au moins un preset ci-dessous.
                               </p>
@@ -730,7 +730,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                                     >
                                       {preset.name}
                                       {preset.isBuiltin && (
-                                        <span className="text-rose-600/70 ml-1">· intégré</span>
+                                        <span className="text-danger-600/70 ml-1">· intégré</span>
                                       )}
                                     </Chip>
                                   );
@@ -739,7 +739,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                             )}
                             {unassignedPresets.length > 0 && (
                               <details className="group">
-                                <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-700 transition-colors inline-flex items-center gap-1">
+                                <summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1">
                                   <Plus size={11} />
                                   Ajouter un preset ({unassignedPresets.length} dispo)
                                 </summary>
@@ -749,7 +749,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                                       key={p.id}
                                       type="button"
                                       onClick={() => void handleGrantPreset(user.id, p.id)}
-                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-gray-600 bg-white/50 hover:bg-white/85 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.12)] transition-all"
+                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-muted-foreground bg-white/50 hover:bg-card border border-border  hover: transition-all"
                                     >
                                       <Plus size={10} />
                                       {p.name}
@@ -802,7 +802,7 @@ export function UsersPanel({ templates, presets, currentUserId, impersonatedUser
                   placeholder="Marie Dupont"
                 />
               </FormField>
-              <FormField label="Email" help="Optionnel">
+              <FormField label="Email">
                 <Input
                   type="email"
                   value={newUser.email}

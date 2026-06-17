@@ -26,6 +26,7 @@ import {
   CursorAdjustModal,
   type CursorRow,
 } from "./CursorAdjustModal";
+import { rotationScopeLabel } from "@/lib/i18n/entityLabels";
 
 interface Props {
   accountId: string;
@@ -43,6 +44,8 @@ interface MediaCursor {
   lastUsedCategory: string | null;
   lastAdvancedAt: string | null;
   rotationScope: string;
+  /** Clé réelle du curseur (sentinelle en shared) — pour l'ajustement. */
+  cursorAccountId: string;
   sequenceLength: number;
 }
 
@@ -55,6 +58,7 @@ interface DataCursor {
   lastUsedCategory: string | null;
   lastAdvancedAt: string | null;
   rotationScope: string;
+  cursorAccountId: string;
 }
 
 export function AllCursorsForAccountDrawer({
@@ -134,13 +138,13 @@ export function AllCursorsForAccountDrawer({
     <Drawer open onClose={onClose} side="right" size="lg">
       <header className="shrink-0 px-5 pt-5 pb-3 border-b border-white/30 flex items-center justify-between gap-3">
         <div>
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
             Rotation cross-libs
           </p>
-          <h2 className="mt-1 text-[18px] font-semibold tracking-tight text-gray-950">
+          <h2 className="mt-1 text-[18px] font-semibold tracking-tight text-foreground">
             Curseurs de @{accountHandle}
           </h2>
-          <p className="mt-0.5 text-[11.5px] text-gray-500">
+          <p className="mt-0.5 text-[11.5px] text-muted-foreground">
             Vue agrégée Media + Data. Reset global possible.
           </p>
         </div>
@@ -174,7 +178,7 @@ export function AllCursorsForAccountDrawer({
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
         {/* Media */}
         <section>
-          <h3 className="text-[12px] font-semibold uppercase tracking-widest text-gray-700 mb-3">
+          <h3 className="text-[12px] font-semibold uppercase tracking-widest text-foreground mb-3">
             Bibliothèques vidéo · {mediaCursors.length}
           </h3>
           {mediaCursors.length === 0 ? (
@@ -188,13 +192,13 @@ export function AllCursorsForAccountDrawer({
               {mediaCursors.map((c) => (
                 <li
                   key={c.id}
-                  className="flex items-center justify-between gap-2 rounded-lg bg-white/55 backdrop-blur-[8px] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]"
+                  className="flex items-center justify-between gap-2 rounded-lg bg-card border border-border px-3 py-2 "
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-[12.5px] font-medium text-gray-950 truncate">
+                    <p className="text-[12.5px] font-medium text-foreground truncate">
                       {c.libraryName}
                     </p>
-                    <p className="text-[11px] text-gray-500 mt-0.5">
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
                       Cursor:{" "}
                       <span className="font-mono">
                         {c.cursor}
@@ -219,7 +223,7 @@ export function AllCursorsForAccountDrawer({
                       variant={c.rotationScope === "shared" ? "sky" : "sage"}
                       size="sm"
                     >
-                      {c.rotationScope === "shared" ? "Partagé" : "Per-account"}
+                      {rotationScopeLabel(c.rotationScope)}
                     </Chip>
                     <Button
                       type="button"
@@ -230,7 +234,8 @@ export function AllCursorsForAccountDrawer({
                           "media",
                           c.libraryId,
                           {
-                            accountId,
+                            // En shared, cible la sentinelle (curseur global).
+                            accountId: c.cursorAccountId,
                             handle: accountHandle,
                             isShared: c.rotationScope === "shared",
                             cursor: c.cursor,
@@ -253,7 +258,7 @@ export function AllCursorsForAccountDrawer({
 
         {/* Data */}
         <section>
-          <h3 className="text-[12px] font-semibold uppercase tracking-widest text-gray-700 mb-3">
+          <h3 className="text-[12px] font-semibold uppercase tracking-widest text-foreground mb-3">
             Bibliothèques données · {dataCursors.length}
           </h3>
           {dataCursors.length === 0 ? (
@@ -267,16 +272,16 @@ export function AllCursorsForAccountDrawer({
               {dataCursors.map((c) => (
                 <li
                   key={c.id}
-                  className="flex items-center justify-between gap-2 rounded-lg bg-white/55 backdrop-blur-[8px] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]"
+                  className="flex items-center justify-between gap-2 rounded-lg bg-card border border-border px-3 py-2 "
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-[12.5px] font-medium text-gray-950 truncate">
+                    <p className="text-[12.5px] font-medium text-foreground truncate">
                       {c.libraryName}{" "}
-                      <span className="text-gray-400 font-normal">
+                      <span className="text-muted-foreground font-normal">
                         · {c.templateType}
                       </span>
                     </p>
-                    <p className="text-[11px] text-gray-500 mt-0.5">
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
                       {c.lastUsedSetTag && (
                         <>
                           set: <span className="font-mono">{c.lastUsedSetTag}</span>
@@ -296,7 +301,7 @@ export function AllCursorsForAccountDrawer({
                       variant={c.rotationScope === "shared" ? "sky" : "sage"}
                       size="sm"
                     >
-                      {c.rotationScope === "shared" ? "Partagé" : "Per-account"}
+                      {rotationScopeLabel(c.rotationScope)}
                     </Chip>
                     <Button
                       type="button"
@@ -307,7 +312,8 @@ export function AllCursorsForAccountDrawer({
                           "data",
                           c.libraryId,
                           {
-                            accountId,
+                            // En shared, cible la sentinelle (curseur global).
+                            accountId: c.cursorAccountId,
                             handle: accountHandle,
                             isShared: c.rotationScope === "shared",
                             cursor: 0,
@@ -347,7 +353,7 @@ export function AllCursorsForAccountDrawer({
       <ConfirmDialog
         open={resetConfirmOpen}
         title="Réinitialiser tous les curseurs ?"
-        description={`Tous les curseurs Media + Data du compte @${accountHandle} seront remis à zéro. Cette action est irréversible.`}
+        description={`Les curseurs propres au compte @${accountHandle} seront remis à zéro. Les curseurs partagés (globaux) ne sont pas affectés — ajuste-les individuellement (ils impactent tous les comptes). Action irréversible.`}
         confirmLabel="Réinitialiser"
         variant="danger"
         loading={resetting}

@@ -25,9 +25,8 @@ const TOOLS: ToolEntry[] = [
     perm: "captions",
     href: "/captions",
     label: "Sous-titres",
-    description: "Générer et incruster des sous-titres avec presets.",
+    description: "Générer et incruster des sous-titres.",
     icon: Subtitles,
-    tint: "sky",
   },
   // Covers retirée du hub : la route `/covers` n'existe pas (bug pré-existant)
   // et les covers ne sont accessibles que dans le contexte d'une publication
@@ -37,17 +36,15 @@ const TOOLS: ToolEntry[] = [
     perm: "description",
     href: "/descriptions",
     label: "Descriptions IA",
-    description: "Générer les légendes Instagram avec Claude / GPT.",
+    description: "Légendes Instagram (Claude / GPT).",
     icon: FileText,
-    tint: "rose",
   },
   {
     perm: "transcription",
     href: "/transcriptions",
     label: "Transcription",
-    description: "Transcrire des vidéos en texte (Whisper).",
+    description: "Vidéos en texte (Whisper).",
     icon: Mic,
-    tint: "peach",
   },
 ];
 
@@ -68,7 +65,6 @@ export default async function OutilsHubPage() {
     <Hub
       eyebrow="Production"
       title="Outils"
-      description="Outils standalone, sans contexte de slot ou pattern."
       items={available}
       cols={3}
     />

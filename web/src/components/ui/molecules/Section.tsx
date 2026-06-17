@@ -1,37 +1,14 @@
 "use client";
 
 /**
- * Section — wrapper unifié pour les sections de fiche (publications, admin,
- * builder, etc.).
+ * Section — wrapper unifié pour les sections de fiche.
  *
- * Factorise le pattern dupliqué dans les 9 sections de PublicationFiche
- * (`bg-white border rounded-2xl p-8`) + le pattern CollapsibleSection.
+ * Flat shadcn :
+ * - Container : bg-card border-border rounded-2xl.
+ * - Header : icône + titre + description + actions.
+ * - Collapsible optionnel : pill bg-muted au repos.
  *
- * Doctrine Liquid Glass v2 :
- * - Variant `default` (solid Card) ou `glass` (surface-glass-strong) ou
- *   `tinted` (Coastal pastel via tint prop).
- * - Header sticky optionnel (sticky-on-scroll prévu Phase 6 — pour l'instant
- *   non-sticky).
- * - Collapsible optionnel : pill fermé glass-faint au repos + chevron.
- * - Slot icon (Lucide leading), title (semibold), description (gray body),
- *   actions (right side).
- *
- * API minimale :
- *   <Section title="Brief client">…</Section>
- *
- * API riche :
- *   <Section
- *     icon={FileText}
- *     title="Brief client"
- *     description="Visite guidée du 3 pièces"
- *     actions={<Button size="sm" icon={Edit}>Éditer</Button>}
- *     variant="glass"
- *     collapsible
- *     defaultOpen
- *     storageKey="pub-brief"
- *   >
- *     …
- *   </Section>
+ * Variants legacy (frosted/glass/tinted) mappés vers default.
  */
 
 import { useEffect, useState, type ReactNode } from "react";
@@ -42,64 +19,28 @@ type Variant = "default" | "glass" | "frosted" | "tinted";
 type Tint = "peach" | "sage" | "sky" | "rose";
 
 interface SectionProps {
-  /** Titre obligatoire — affiché en pill fermé ET en header ouvert. */
   title: ReactNode;
-  /** Icône Lucide leading dans le header. */
   icon?: LucideIcon;
-  /** Description sous le titre (text-[12px] gray). */
   description?: ReactNode;
-  /** Actions à droite du header (Button, Switch, etc.). */
   actions?: ReactNode;
-  /** Variant visuel. Default "default" (solid Card). */
   variant?: Variant;
-  /** Si variant="tinted", choisir la teinte. */
   tint?: Tint;
-  /** Permet de plier/déplier. Default false (toujours ouvert). */
   collapsible?: boolean;
-  /** État ouvert initial si collapsible. Default true. */
   defaultOpen?: boolean;
-  /** Persiste l'état entre les visites de la page. */
   storageKey?: string;
-  /** Permet à un autre composant (ProductionChain, header) d'ouvrir via
-   *  `window.dispatchEvent(new CustomEvent("pub:open-section", { detail: { sectionId } }))`. */
   sectionId?: string;
-  /** Body padded. Default true. */
   padded?: boolean;
   children: ReactNode;
   className?: string;
 }
-
-const VARIANT_CONTAINER: Record<Variant, string> = {
-  default:
-    "bg-gradient-to-b from-white to-white/85 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1),inset_0_-1px_0_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.08)]",
-  glass:
-    "bg-[var(--surface-glass-strong)] backdrop-blur-[20px] backdrop-saturate-150 shadow-[var(--ring-glass-inset),inset_0_0_0_1px_rgba(255,255,255,0.45),0_2px_8px_-2px_rgba(15,23,42,0.08)]",
-  // Frosted = matière "Glass + Frosted" — gradient blanc translucide.
-  // Blur réduit à [8px] (était [18px]) pour perf : LCP 12s → quelques 100ms.
-  // Le ring inset spéculaire + gradient suffisent à donner la matière sans
-  // le compositing GPU coûteux du blur fort.
-  frosted:
-    "bg-gradient-to-b from-white/80 to-white/60 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.08)]",
-  tinted: "", // résolu par tint ci-dessous
-};
-
-const TINT_CONTAINER: Record<Tint, string> = {
-  peach: "bg-peach-50/70 border border-peach-100/60 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]",
-  sage:  "bg-sage-50/70 border border-sage-100/60 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]",
-  sky:   "bg-sky-50/70 border border-sky-100/60 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]",
-  rose:  "bg-rose-50/70 border border-rose-100/60 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]",
-};
 
 export function Section({
   title,
   icon: Icon,
   description,
   actions,
-  // Default frosted : matière glass + frosted laissant passer subtilement
-  // les couleurs du fond (wrapper ControlCenter pastel sur la fiche). Plus
-  // doux à l'œil que white pur.
-  variant = "frosted",
-  tint,
+  variant: _variant = "default",
+  tint: _tint,
   collapsible = false,
   defaultOpen = true,
   storageKey,
@@ -108,9 +49,10 @@ export function Section({
   children,
   className,
 }: SectionProps) {
+  void _variant;
+  void _tint;
   const [open, setOpen] = useState(defaultOpen);
 
-  // Restore from localStorage.
   useEffect(() => {
     if (!storageKey || typeof window === "undefined") return;
     try {
@@ -123,7 +65,6 @@ export function Section({
     }
   }, [storageKey]);
 
-  // Persist to localStorage.
   useEffect(() => {
     if (!storageKey || typeof window === "undefined") return;
     try {
@@ -133,7 +74,6 @@ export function Section({
     }
   }, [open, storageKey]);
 
-  // Listen for pub:open-section event.
   useEffect(() => {
     if (!sectionId || typeof window === "undefined") return;
     function handler(e: Event) {
@@ -144,22 +84,13 @@ export function Section({
     return () => window.removeEventListener("pub:open-section", handler);
   }, [sectionId]);
 
-  const containerCls =
-    variant === "tinted" && tint
-      ? TINT_CONTAINER[tint]
-      : VARIANT_CONTAINER[variant];
-
-  // Si collapsible fermé : rendre uniquement le pill compact.
   if (collapsible && !open) {
     return (
       <button
         type="button"
         onClick={() => setOpen(true)}
         className={[
-          "w-full flex items-center justify-between px-5 py-3 rounded-2xl text-left transition-colors focus-ring",
-          "bg-[var(--surface-glass-faint)] backdrop-blur-[8px] backdrop-saturate-150",
-          "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.5),inset_0_-1px_0_rgba(15,23,42,0.04)]",
-          "hover:bg-[var(--surface-glass-medium)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)]",
+          "w-full flex items-center justify-between px-5 py-3 rounded-lg text-left transition-colors focus-ring bg-card border border-border hover:bg-muted",
           className ?? "",
         ].join(" ")}
         aria-expanded={false}
@@ -167,13 +98,13 @@ export function Section({
       >
         <span className="inline-flex items-center gap-2.5 min-w-0">
           {Icon && (
-            <span className="shrink-0 inline-flex h-5 w-5 items-center justify-center rounded-md bg-white/70 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] text-gray-700">
+            <span className="shrink-0 inline-flex h-5 w-5 items-center justify-center rounded-md bg-muted border border-border text-muted-foreground">
               <Icon size={12} />
             </span>
           )}
-          <span className="text-[13px] font-semibold text-gray-700 truncate">{title}</span>
+          <span className="text-[13px] font-semibold text-foreground truncate">{title}</span>
         </span>
-        <ChevronRight size={14} className="text-gray-400 shrink-0" />
+        <ChevronRight size={14} className="text-muted-foreground shrink-0" />
       </button>
     );
   }
@@ -182,25 +113,23 @@ export function Section({
     <section
       id={sectionId}
       className={[
-        "relative rounded-2xl overflow-hidden",
-        containerCls,
+        "relative rounded-2xl overflow-hidden bg-card text-card-foreground border border-border",
         className ?? "",
       ].filter(Boolean).join(" ")}
     >
-      {/* Header */}
       <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3">
         <div className="flex items-start gap-3 min-w-0 flex-1">
           {Icon && (
-            <span className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-md bg-white/70 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] text-gray-700">
+            <span className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-md bg-muted border border-border text-muted-foreground">
               <Icon size={14} />
             </span>
           )}
           <div className="min-w-0">
-            <h2 className="text-[14px] font-semibold tracking-tight text-gray-950 leading-tight">
+            <h2 className="text-[14px] font-semibold tracking-tight text-foreground leading-tight">
               {title}
             </h2>
             {description && (
-              <p className="text-[12px] text-gray-500 mt-0.5 leading-relaxed">{description}</p>
+              <p className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">{description}</p>
             )}
           </div>
         </div>
@@ -212,7 +141,7 @@ export function Section({
               onClick={() => setOpen(false)}
               aria-label="Réduire"
               title="Réduire"
-              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-white/60 transition-colors focus-ring"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-ring"
             >
               <ChevronDown size={14} />
             </button>
@@ -220,7 +149,6 @@ export function Section({
         </div>
       </div>
 
-      {/* Body */}
       <div className={padded ? "px-5 pb-5" : ""}>{children}</div>
     </section>
   );

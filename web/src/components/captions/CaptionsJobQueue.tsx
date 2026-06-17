@@ -42,7 +42,7 @@ export function CaptionsJobQueue({ jobs, returnTo, busy }: Props) {
         <div className="text-center mt-3">
           <a
             href={returnTo}
-            className="text-xs text-sky-600 hover:underline"
+            className="text-xs text-info-600 hover:underline"
           >
             ← Retour à la publication
           </a>
@@ -51,9 +51,9 @@ export function CaptionsJobQueue({ jobs, returnTo, busy }: Props) {
 
       <div className="mt-8">
         <div className="flex items-center gap-2 mb-3">
-          <Clock size={14} className="text-gray-400" />
-          <p className="text-sm font-medium text-gray-700">File de génération</p>
-          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+          <Clock size={14} className="text-muted-foreground" />
+          <p className="text-sm font-medium text-foreground">File de génération</p>
+          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
             {jobs.length}
           </span>
         </div>
@@ -64,7 +64,7 @@ export function CaptionsJobQueue({ jobs, returnTo, busy }: Props) {
             return (
               <div
                 key={job.id}
-                className="bg-white border border-gray-100 rounded-xl overflow-hidden"
+                className="bg-white border border-border rounded-xl overflow-hidden"
               >
                 <div className="flex items-center gap-3 px-4 py-3">
                   {/* Status icon */}
@@ -74,7 +74,7 @@ export function CaptionsJobQueue({ jobs, returnTo, busy }: Props) {
                     ) : isFailed ? (
                       <AlertCircle size={16} className="text-red-400" />
                     ) : (
-                      <div className="w-4 h-4 border-2 border-rose-400 border-t-transparent rounded-full animate-spin" />
+                      <div className="w-4 h-4 border-2 border-danger-200 border-t-transparent rounded-full animate-spin" />
                     )}
                   </div>
 
@@ -84,7 +84,7 @@ export function CaptionsJobQueue({ jobs, returnTo, busy }: Props) {
                       {job.videoName} · {job.createdAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
                     </p>
                     <p className={`text-[10px] mt-0.5 ${
-                      isDone ? "text-green-600" : isFailed ? "text-red-400" : "text-rose-500"
+                      isDone ? "text-green-600" : isFailed ? "text-red-400" : "text-danger-600"
                     }`}>
                       {isDone ? "Terminé" : isFailed ? "Échec" : "En cours…"}
                     </p>
@@ -95,7 +95,7 @@ export function CaptionsJobQueue({ jobs, returnTo, busy }: Props) {
                     <a
                       href={job.videoUrl}
                       download
-                      className="shrink-0 inline-flex items-center gap-1.5 text-xs bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
+                      className="shrink-0 inline-flex items-center gap-1.5 text-xs bg-danger-600 hover:bg-danger-700 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
                     >
                       <Download size={12} />
                       MP4
@@ -107,7 +107,7 @@ export function CaptionsJobQueue({ jobs, returnTo, busy }: Props) {
                 {isDone && job.videoUrl && (
                   <div className="border-t border-gray-50 p-3">
                     <div className="max-w-[280px]">
-                      <div className="relative aspect-video rounded-lg overflow-hidden bg-gray-100">
+                      <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
                         <video
                           src={job.videoUrl}
                           controls

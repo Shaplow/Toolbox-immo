@@ -70,8 +70,8 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto text-xs">
-      <div className="px-3 py-3 border-b border-gray-100">
-        <p className="text-[11px] text-gray-500 mb-3">
+      <div className="px-3 py-3 border-b border-border">
+        <p className="text-[11px] text-muted-foreground mb-3">
           Génère automatiquement les sous-titres après chaque rendu. La config par défaut s&apos;applique à toute publication utilisant ce template (sauf override slot ou pattern).
         </p>
 
@@ -82,14 +82,14 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
             onChange={(e) => updateCaptionAutoConfig({ enabled: e.target.checked })}
             className="rounded"
           />
-          <span className="text-gray-700 font-medium">Activer après chaque render</span>
+          <span className="text-foreground font-medium">Activer après chaque render</span>
         </label>
       </div>
 
       {/* Patterns liés — visibilité de l'impact des changements */}
       {linkedPatterns.length > 0 && (
-        <div className="px-3 py-3 border-b border-gray-100">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2 flex items-center gap-1">
+        <div className="px-3 py-3 border-b border-border">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1">
             <Link2 size={10} />
             Patterns utilisant ce template ({linkedPatterns.length})
           </p>
@@ -98,25 +98,25 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
               <Link
                 key={p.id}
                 href={`/admin/accounts/${p.accountId}`}
-                className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-gray-50 transition-colors group"
+                className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-muted transition-colors group"
                 title="Voir la fiche compte"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-gray-700 truncate group-hover:text-gray-900">{p.label}</span>
+                    <span className="text-xs text-foreground truncate group-hover:text-gray-900">{p.label}</span>
                     {!p.isActive && (
-                      <span className="text-[9px] px-1 rounded bg-gray-100 text-gray-500 border border-gray-200 shrink-0">
+                      <span className="text-[9px] px-1 rounded bg-muted text-muted-foreground border border-border shrink-0">
                         inactif
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px] text-gray-400 truncate">@{p.accountHandle}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">@{p.accountHandle}</p>
                 </div>
                 <span
                   className={`text-[9px] px-1.5 py-0.5 rounded shrink-0 ${
                     p.captionPresetId
                       ? "bg-violet-50 text-violet-700 border border-violet-200"
-                      : "bg-gray-100 text-gray-500 border border-gray-200"
+                      : "bg-muted text-muted-foreground border border-border"
                   }`}
                   title={p.captionPresetId ? "Caption preset défini sur le pattern" : "Utilise le défaut template"}
                 >
@@ -129,27 +129,27 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
       )}
 
       {!enabled ? (
-        <div className="px-3 py-3 text-[11px] text-gray-400 italic">
+        <div className="px-3 py-3 text-[11px] text-muted-foreground italic">
           Active la case ci-dessus pour configurer le preset, les zones d&apos;exclusion et la correction IA.
         </div>
       ) : (
         <>
           {/* Preset */}
-          <div className="px-3 py-3 border-b border-gray-100">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">
+          <div className="px-3 py-3 border-b border-border">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
               Style des sous-titres
             </p>
             {loadingPresets ? (
-              <span className="text-[10px] text-gray-400 italic">Chargement…</span>
+              <span className="text-[10px] text-muted-foreground italic">Chargement…</span>
             ) : captionPresets.length === 0 ? (
-              <span className="text-[10px] text-gray-400 italic">
+              <span className="text-[10px] text-muted-foreground italic">
                 Aucun preset disponible. Crée-en un dans <code>/tools/captions</code>.
               </span>
             ) : (
               <select
                 value={captionAutoConfig?.presetId ?? ""}
                 onChange={(e) => updateCaptionAutoConfig({ presetId: e.target.value || undefined })}
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                className="w-full border border-border rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
               >
                 <option value="">— Sélectionner un style —</option>
                 {captionPresets.map((p) => (
@@ -160,13 +160,13 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
           </div>
 
           {/* Zones d'exclusion */}
-          <div className="px-3 py-3 border-b border-gray-100">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">
+          <div className="px-3 py-3 border-b border-border">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
               Zones sans sous-titres
             </p>
             {(template.videoSequence?.length ?? 0) > 0 ? (
               <>
-                <p className="text-[10px] text-gray-400 mb-2">
+                <p className="text-[10px] text-muted-foreground mb-2">
                   Coche les clips où tu ne veux pas voir de sous-titres.
                 </p>
                 <div className="space-y-1 pl-3 border-l-2 border-red-200">
@@ -186,9 +186,9 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
                           }}
                           className="rounded"
                         />
-                        <span className="text-xs text-gray-600">{slot.label ?? `Slot ${idx + 1}`}</span>
+                        <span className="text-xs text-muted-foreground">{slot.label ?? `Slot ${idx + 1}`}</span>
                         {slot.maxDuration !== undefined && (
-                          <span className="text-[9px] text-gray-400">({slot.maxDuration}s max)</span>
+                          <span className="text-[9px] text-muted-foreground">({slot.maxDuration}s max)</span>
                         )}
                       </label>
                     );
@@ -197,7 +197,7 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
               </>
             ) : (
               <>
-                <p className="text-[10px] text-gray-400 mb-2">
+                <p className="text-[10px] text-muted-foreground mb-2">
                   Aucun clip défini dans ce template — définis des plages
                   temporelles à ignorer, ou ajoute des clips dans l&apos;onglet
                   Séquence.
@@ -214,7 +214,7 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
                           zones[i] = { ...zones[i], label: e.target.value };
                           updateCaptionAutoConfig({ excludeZones: zones });
                         }}
-                        className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs"
+                        className="flex-1 border border-border rounded px-2 py-1 text-xs"
                       />
                       <button
                         type="button"
@@ -222,14 +222,14 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
                           const zones = (captionAutoConfig?.excludeZones ?? []).filter((_, j) => j !== i);
                           updateCaptionAutoConfig({ excludeZones: zones });
                         }}
-                        className="text-gray-400 hover:text-red-500 p-1 transition-colors"
+                        className="text-muted-foreground hover:text-red-500 p-1 transition-colors"
                         title="Supprimer cette zone"
                       >
                         <X size={12} />
                       </button>
                     </div>
                     <label className="flex flex-col gap-0.5">
-                      <span className="text-gray-400 text-[10px]">Début — groupe</span>
+                      <span className="text-muted-foreground text-[10px]">Début — groupe</span>
                       <select
                         value={zone.startGroupId ?? ""}
                         onChange={(e) => {
@@ -237,7 +237,7 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
                           zones[i] = { ...zones[i], startGroupId: e.target.value || undefined };
                           updateCaptionAutoConfig({ excludeZones: zones });
                         }}
-                        className="border border-gray-200 rounded px-2 py-1 text-xs bg-white"
+                        className="border border-border rounded px-2 py-1 text-xs bg-white"
                       >
                         <option value="">— Timestamp explicite —</option>
                         {template.groups.map((g) => (
@@ -256,12 +256,12 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
                             zones[i] = { ...zones[i], startTime: e.target.value ? Number(e.target.value) : undefined };
                             updateCaptionAutoConfig({ excludeZones: zones });
                           }}
-                          className="border border-gray-200 rounded px-2 py-1 text-xs"
+                          className="border border-border rounded px-2 py-1 text-xs"
                         />
                       )}
                     </label>
                     <label className="flex flex-col gap-0.5">
-                      <span className="text-gray-400 text-[10px]">Fin — groupe</span>
+                      <span className="text-muted-foreground text-[10px]">Fin — groupe</span>
                       <select
                         value={zone.endGroupId ?? ""}
                         onChange={(e) => {
@@ -269,7 +269,7 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
                           zones[i] = { ...zones[i], endGroupId: e.target.value || undefined };
                           updateCaptionAutoConfig({ excludeZones: zones });
                         }}
-                        className="border border-gray-200 rounded px-2 py-1 text-xs bg-white"
+                        className="border border-border rounded px-2 py-1 text-xs bg-white"
                       >
                         <option value="">— Fin de vidéo —</option>
                         {template.groups.map((g) => (
@@ -288,7 +288,7 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
                             zones[i] = { ...zones[i], endTime: e.target.value ? Number(e.target.value) : undefined };
                             updateCaptionAutoConfig({ excludeZones: zones });
                           }}
-                          className="border border-gray-200 rounded px-2 py-1 text-xs"
+                          className="border border-border rounded px-2 py-1 text-xs"
                         />
                       )}
                     </label>
@@ -312,23 +312,23 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
 
           {/* Correction IA */}
           <div className="px-3 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
               Correction IA
             </p>
-            <p className="text-[10px] text-gray-400 mb-2">
+            <p className="text-[10px] text-muted-foreground mb-2">
               Repasse le transcript brut dans un LLM pour corriger fautes et ponctuation avant l&apos;affichage.
             </p>
             <label className="flex flex-col gap-1 mb-2">
-              <span className="text-[10px] text-gray-500">Prompt de correction</span>
+              <span className="text-[10px] text-muted-foreground">Prompt de correction</span>
               {loadingPrompts ? (
-                <span className="text-[10px] text-gray-400 italic">Chargement…</span>
+                <span className="text-[10px] text-muted-foreground italic">Chargement…</span>
               ) : captionPrompts.length === 0 ? (
-                <span className="text-[10px] text-gray-400 italic">Aucun prompt disponible.</span>
+                <span className="text-[10px] text-muted-foreground italic">Aucun prompt disponible.</span>
               ) : (
                 <select
                   value={captionAutoConfig?.correctionPromptId ?? ""}
                   onChange={(e) => updateCaptionAutoConfig({ correctionPromptId: e.target.value || undefined })}
-                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  className="w-full border border-border rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
                 >
                   <option value="">— Désactivée —</option>
                   {captionPrompts.map((p) => (
@@ -339,11 +339,11 @@ export function CaptionsTabPanel({ templateId }: { templateId?: string }) {
             </label>
             {captionAutoConfig?.correctionPromptId && (
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-gray-500">Modèle IA</span>
+                <span className="text-[10px] text-muted-foreground">Modèle IA</span>
                 <select
                   value={captionAutoConfig?.correctionModel ?? "claude"}
                   onChange={(e) => updateCaptionAutoConfig({ correctionModel: e.target.value as "claude" | "gpt" })}
-                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  className="w-full border border-border rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
                 >
                   <option value="claude">Claude (Anthropic)</option>
                   <option value="gpt">GPT (OpenAI)</option>

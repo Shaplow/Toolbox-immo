@@ -88,8 +88,8 @@ export function MediaAssetsBulkSortDrawer({
         Ranger {orphanAssets.length} fichier{orphanAssets.length > 1 ? "s" : ""}
       </Drawer.Header>
       <Drawer.Body>
-        <div className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] space-y-3">
-          <p className="text-[12.5px] text-gray-600 leading-relaxed">
+        <div className="rounded-2xl bg-card border border-border p-4  space-y-3">
+          <p className="text-[12.5px] text-muted-foreground leading-relaxed">
             Choisissez une <b>catégorie</b> pour ces fichiers. Vous pouvez en
             créer une nouvelle ou réutiliser une existante.
           </p>
@@ -102,8 +102,8 @@ export function MediaAssetsBulkSortDrawer({
             emptyMessage="Aucune catégorie. Tapez un nom pour en créer une."
           />
           {orphanAssets.length > 0 && (
-            <details className="text-[11px] text-gray-500 rounded-xl bg-white/40 backdrop-blur-[6px] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.05)]">
-              <summary className="cursor-pointer hover:text-gray-700 select-none">
+            <details className="text-[11px] text-muted-foreground rounded-xl bg-card border border-border px-3 py-2 ">
+              <summary className="cursor-pointer hover:text-foreground select-none">
                 {orphanAssets.length} fichier{orphanAssets.length > 1 ? "s" : ""} concerné{orphanAssets.length > 1 ? "s" : ""}
               </summary>
               <ul className="mt-2 space-y-0.5 max-h-32 overflow-y-auto pr-2">

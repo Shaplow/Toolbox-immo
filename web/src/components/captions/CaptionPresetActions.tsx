@@ -93,19 +93,19 @@ export function CaptionPresetActions({ id, onChanged }: Props) {
       <button
         type="button"
         onClick={() => { setOpen((v) => !v); setConfirming(false); }}
-        className="flex items-center justify-center w-8 h-7 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition-colors"
+        className="flex items-center justify-center w-8 h-7 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-border hover:bg-muted transition-colors"
         title="Plus d'actions"
       >
         <MoreHorizontal size={14} />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1 text-sm">
+        <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-border rounded-xl shadow-lg z-20 py-1 text-sm">
           <button
             type="button"
             onClick={() => void handleExport()}
             disabled={loading !== null}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-gray-600 hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50 transition-colors"
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-muted-foreground hover:bg-muted hover:text-gray-900 disabled:opacity-50 transition-colors"
           >
             <Download size={13} />
             {loading === "export" ? "Export..." : "Exporter"}
@@ -114,12 +114,12 @@ export function CaptionPresetActions({ id, onChanged }: Props) {
             type="button"
             onClick={() => void handleDuplicate()}
             disabled={loading !== null}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-gray-600 hover:bg-gray-50 hover:text-gray-900 disabled:opacity-50 transition-colors"
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-muted-foreground hover:bg-muted hover:text-gray-900 disabled:opacity-50 transition-colors"
           >
             <Copy size={13} />
             {loading === "duplicate" ? "..." : "Dupliquer"}
           </button>
-          <div className="border-t border-gray-100 my-1" />
+          <div className="border-t border-border my-1" />
           {!confirming ? (
             <button
               type="button"
@@ -132,7 +132,7 @@ export function CaptionPresetActions({ id, onChanged }: Props) {
             </button>
           ) : (
             <div className="px-3 py-2 space-y-1.5">
-              <p className="text-xs text-gray-500">Confirmer la suppression ?</p>
+              <p className="text-xs text-muted-foreground">Confirmer la suppression ?</p>
               <div className="flex gap-1.5">
                 <button
                   type="button"
@@ -145,7 +145,7 @@ export function CaptionPresetActions({ id, onChanged }: Props) {
                 <button
                   type="button"
                   onClick={() => setConfirming(false)}
-                  className="flex-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 py-1 rounded-lg transition-colors"
+                  className="flex-1 text-xs bg-muted hover:bg-gray-200 text-muted-foreground py-1 rounded-lg transition-colors"
                 >
                   Annuler
                 </button>

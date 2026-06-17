@@ -55,7 +55,7 @@ export function ImportCaptionPresetButton({
         type="button"
         onClick={() => inputRef.current?.click()}
         disabled={loading}
-        className="flex items-center gap-1.5 text-sm border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
+        className="flex items-center gap-1.5 text-sm border border-border bg-white hover:bg-muted text-foreground font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
       >
         <Upload size={14} />
         {loading ? "Import..." : "Importer"}

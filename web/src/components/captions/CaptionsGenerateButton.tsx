@@ -33,7 +33,7 @@ export function CaptionsGenerateButton({
       <button
         disabled={!canGenerate || busy}
         onClick={onGenerate}
-        className="w-full flex items-center justify-center gap-2 py-4 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-2xl font-semibold text-sm transition-colors"
+        className="w-full flex items-center justify-center gap-2 py-4 bg-danger-600 hover:bg-danger-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-2xl font-semibold text-sm transition-colors"
       >
         {busy ? (
           <>
@@ -49,16 +49,16 @@ export function CaptionsGenerateButton({
       </button>
 
       {!canGenerate && !busy && (
-        <p className="text-xs text-center text-gray-400 mt-2">
+        <p className="text-xs text-center text-muted-foreground mt-2">
           {!hasVideoFile ? "Ajoutez une vidéo" : "Sélectionnez une source de sous-titres"}
         </p>
       )}
 
       {/* Progress bar — visible pendant le rendu */}
       {renderProgress >= 0 && (
-        <div className="mt-4 w-full bg-gray-100 rounded-full h-1 overflow-hidden">
+        <div className="mt-4 w-full bg-muted rounded-full h-1 overflow-hidden">
           <div
-            className="bg-rose-500 h-1 rounded-full transition-all duration-500"
+            className="bg-danger-600 h-1 rounded-full transition-all duration-500"
             style={{ width: `${Math.round(renderProgress * 100)}%` }}
           />
         </div>
@@ -68,7 +68,7 @@ export function CaptionsGenerateButton({
       {message && !busy && (
         <p
           className={`text-sm text-center mt-3 ${
-            message.startsWith("Erreur") ? "text-red-500" : "text-gray-500"
+            message.startsWith("Erreur") ? "text-red-500" : "text-muted-foreground"
           }`}
         >
           {message}

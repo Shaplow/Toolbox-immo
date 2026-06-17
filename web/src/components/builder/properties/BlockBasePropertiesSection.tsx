@@ -33,7 +33,7 @@ function AlignButtonRow({
           type="button"
           title={title}
           onClick={fn}
-          className="flex-1 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-colors"
+          className="flex-1 py-1.5 rounded-lg border border-border text-sm text-muted-foreground hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 transition-colors"
         >
           {label}
         </button>
@@ -93,21 +93,21 @@ export function BlockBasePropertiesSection({
       <Section label="Calque">
         <div className="space-y-2">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Nom</span>
+            <span className="text-xs font-medium text-muted-foreground">Nom</span>
             <input
               type="text"
               value={block.name ?? ""}
               onChange={(e) => updateBlock(block.id, { name: e.target.value } as Partial<AnyBlock>)}
               placeholder={`${block.type}-${block.id.slice(-4)}`}
-              className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+              className="border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Groupe</span>
+            <span className="text-xs font-medium text-muted-foreground">Groupe</span>
             <select
               value={block.groupId ?? ""}
               onChange={(e) => updateBlock(block.id, { groupId: e.target.value || undefined } as Partial<AnyBlock>)}
-              className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+              className="border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
             >
               <option value="">Aucun groupe</option>
               {template.groups.map((groupOption) => (
@@ -124,7 +124,7 @@ export function BlockBasePropertiesSection({
           <div className="grid grid-cols-2 gap-2">
             {(["x", "y", "w", "h", "z"] as const).map((field) => (
               <label key={field} className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-gray-600 uppercase">{field}</span>
+                <span className="text-xs font-medium text-muted-foreground uppercase">{field}</span>
                 <input
                   type="number"
                   value={(block as unknown as Record<string, number>)[field]}
@@ -137,7 +137,7 @@ export function BlockBasePropertiesSection({
                     }
                     updateBlock(block.id, { [field]: value } as Partial<AnyBlock>);
                   }}
-                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+                  className="border border-border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
                 />
               </label>
             ))}
@@ -228,7 +228,7 @@ export function BlockBasePropertiesSection({
               setSchema(nextSchema);
             }}
             placeholder="ex: price_eur"
-            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+            className="w-full border border-border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
           />
           {block.binding && (() => {
             const sf = template.schema.find((f) => f.key === block.binding);
@@ -250,10 +250,10 @@ export function BlockBasePropertiesSection({
                   }}
                   className="rounded"
                 />
-                <span className="text-gray-600 text-[11px]">Obligatoire dans le formulaire</span>
+                <span className="text-muted-foreground text-[11px]">Obligatoire dans le formulaire</span>
                 <span className={[
                   "ml-auto text-[10px] px-1.5 py-0.5 rounded-full",
-                  sf.required ? "bg-red-50 text-red-400" : "bg-gray-100 text-gray-400",
+                  sf.required ? "bg-red-50 text-red-400" : "bg-muted text-muted-foreground",
                 ].join(" ")}>
                   {sf.required ? "*" : "optionnel"}
                 </span>
@@ -318,7 +318,7 @@ function BlockTimingSection({ block }: { block: AnyBlock }) {
       <div className="space-y-2">
         <div className="grid grid-cols-2 gap-2">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Apparaît à (s)</span>
+            <span className="text-xs font-medium text-muted-foreground">Apparaît à (s)</span>
             <input
               type="number" min={0} step={0.5} placeholder="0"
               value={block.appearAt ?? ""}
@@ -328,11 +328,11 @@ function BlockTimingSection({ block }: { block: AnyBlock }) {
                   appearAt: raw === "" ? undefined : Math.max(0, Number(raw)),
                 } as Partial<AnyBlock>);
               }}
-              className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+              className="border border-border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Disparaît à (s)</span>
+            <span className="text-xs font-medium text-muted-foreground">Disparaît à (s)</span>
             <input
               type="number" min={0} step={0.5} placeholder="fin"
               value={block.hideAt ?? ""}
@@ -342,16 +342,16 @@ function BlockTimingSection({ block }: { block: AnyBlock }) {
                   hideAt: raw === "" ? undefined : Math.max(0, Number(raw)),
                 } as Partial<AnyBlock>);
               }}
-              className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+              className="border border-border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
             />
           </label>
         </div>
-        <p className="text-[10px] text-gray-400 leading-snug">
+        <p className="text-[10px] text-muted-foreground leading-snug">
           Vide = valeur par défaut (0 s / fin de chaque clip). S&apos;applique à
           tous les clips où le bloc est visible.
         </p>
         {hasSequence && (
-          <p className="text-[10px] text-sky-600 leading-snug">
+          <p className="text-[10px] text-info-600 leading-snug">
             Pour limiter sur un clip précis (ex : « Prix visible 2s sur CONTENT ») :
             sélectionne le bloc + le clip dans la timeline ci-dessous — deux inputs
             <span className="font-mono"> Apparaît → Disparaît</span> apparaissent dans la cellule.

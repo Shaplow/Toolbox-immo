@@ -66,16 +66,16 @@ export function InstagramAccountRow({ account, onUpdated }: InstagramAccountRowP
     <>
       <div>
         <div className="flex items-center gap-3 px-4 py-3">
-          <Instagram className="h-4 w-4 shrink-0 text-rose-500" />
+          <Instagram className="h-4 w-4 shrink-0 text-danger-600" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">{account.name}</p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               @{account.handle} · {account._count.renders} render{account._count.renders !== 1 ? "s" : ""}
             </p>
           </div>
           <Link
             href={`/admin/accounts/${account.id}`}
-            className="inline-flex items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 hover:bg-sky-100 transition-colors"
+            className="inline-flex items-center gap-1 rounded-md border border-info-200 bg-info-50 px-2.5 py-1 text-xs font-medium text-info-700 hover:bg-info-100 transition-colors"
             title="Configurer les patterns de publication"
           >
             <Settings2 className="h-3.5 w-3.5" />
@@ -83,21 +83,21 @@ export function InstagramAccountRow({ account, onUpdated }: InstagramAccountRowP
           </Link>
           <button
             onClick={() => setIsExpanded((v) => !v)}
-            className="rounded p-1 text-gray-400 hover:text-gray-600"
+            className="rounded p-1 text-muted-foreground hover:text-muted-foreground"
             title="Voir les curseurs"
           >
             {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
           <button
             onClick={() => setResetDialogOpen(true)}
-            className="rounded p-1 text-gray-400 hover:text-blue-600"
+            className="rounded p-1 text-muted-foreground hover:text-blue-600"
             title="Remettre les curseurs à zéro"
           >
             <RefreshCw className="h-4 w-4" />
           </button>
           <button
             onClick={() => setDeleteDialogOpen(true)}
-            className="rounded p-1 text-gray-400 hover:text-red-600"
+            className="rounded p-1 text-muted-foreground hover:text-red-600"
             title="Supprimer"
           >
             <Trash2 className="h-4 w-4" />
@@ -105,12 +105,12 @@ export function InstagramAccountRow({ account, onUpdated }: InstagramAccountRowP
         </div>
 
         {isExpanded && (
-          <div className="border-t border-gray-100 bg-gray-50 px-4 py-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+          <div className="border-t border-border bg-muted px-4 py-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Curseurs de séquence
             </p>
             {account.cursors.length === 0 ? (
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-muted-foreground">
                 Aucune bibliothèque utilisée avec theme_sequence pour le moment.
               </p>
             ) : (
@@ -122,15 +122,15 @@ export function InstagramAccountRow({ account, onUpdated }: InstagramAccountRowP
                   return (
                     <div
                       key={c.libraryId}
-                      className="flex items-center gap-3 rounded border border-gray-200 bg-white px-3 py-2 text-xs"
+                      className="flex items-center gap-3 rounded border border-border bg-white px-3 py-2 text-xs"
                     >
-                      <span className="font-medium text-gray-700">{c.library.name}</span>
-                      <span className="text-gray-400">→</span>
+                      <span className="font-medium text-foreground">{c.library.name}</span>
+                      <span className="text-muted-foreground">→</span>
                       <span className="rounded bg-blue-50 px-1.5 py-0.5 font-mono text-blue-700">
                         {activeTheme} ({c.cursor}/{themes.length || "?"})
                       </span>
                       {c.lastAdvancedAt && (
-                        <span className="ml-auto text-gray-400">
+                        <span className="ml-auto text-muted-foreground">
                           avancé {new Date(c.lastAdvancedAt).toLocaleDateString("fr-FR")}
                         </span>
                       )}

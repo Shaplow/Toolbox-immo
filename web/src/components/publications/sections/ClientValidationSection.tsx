@@ -207,7 +207,7 @@ export function ClientValidationSection({
       defaultOpen={defaultOpen}
       collapsible={collapsible}
       actions={
-        <span className="text-[11px] text-gray-500">
+        <span className="text-[11px] text-muted-foreground">
           {allowsClientRevision ? "Avec révisions" : "Validation simple"}
         </span>
       }
@@ -215,12 +215,12 @@ export function ClientValidationSection({
 
       {/* ── État courant ───────────────────────────────────────────────────── */}
       {isAwaiting && (
-        <div className="bg-peach-50 border border-peach-200 rounded-lg p-3 mb-4">
-          <p className="text-sm text-peach-800">
+        <div className="bg-warning-50 border border-warning-200 rounded-lg p-3 mb-4">
+          <p className="text-sm text-warning-700">
             En attente de la réponse du client.
           </p>
           {activeToken && (
-            <p className="text-xs text-peach-800 mt-1">
+            <p className="text-xs text-warning-700 mt-1">
               Lien valide jusqu&apos;au{" "}
               {new Date(activeToken.expiresAt).toLocaleString("fr-FR", {
                 day: "numeric",
@@ -234,16 +234,16 @@ export function ClientValidationSection({
       )}
 
       {slotStatus === "CLIENT_REVISION" && (
-        <div className="bg-peach-50 border border-peach-200 rounded-lg p-3 mb-4">
-          <p className="text-sm text-peach-800">
+        <div className="bg-warning-50 border border-warning-200 rounded-lg p-3 mb-4">
+          <p className="text-sm text-warning-700">
             Le client a demandé des modifications. Corrigez puis renvoyez pour validation.
           </p>
         </div>
       )}
 
       {isResolved && (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
-          <p className="text-sm text-gray-700 inline-flex items-center gap-1.5">
+        <div className="bg-muted border border-border rounded-lg p-3 mb-4">
+          <p className="text-sm text-foreground inline-flex items-center gap-1.5">
             {slotStatus === "SCHEDULED" && (
               <>
                 <CheckCircle size={14} className="text-success-700" />
@@ -269,8 +269,8 @@ export function ClientValidationSection({
 
       {/* ── Lien actif (admin uniquement) ──────────────────────────────────── */}
       {isAdmin && activeToken && validationUrl && (
-        <div className="border border-gray-200 bg-gray-50 rounded-lg p-3 mb-4">
-          <p className="text-xs font-medium text-gray-700 mb-2">
+        <div className="border border-border bg-muted rounded-lg p-3 mb-4">
+          <p className="text-xs font-medium text-foreground mb-2">
             Lien à partager au client
           </p>
           <div className="flex items-center gap-2">
@@ -278,7 +278,7 @@ export function ClientValidationSection({
               type="text"
               readOnly
               value={validationUrl}
-              className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded bg-white font-mono text-gray-700"
+              className="flex-1 px-2 py-1.5 text-xs border border-border rounded bg-white font-mono text-foreground"
               onFocus={(e) => e.currentTarget.select()}
             />
             <Button
@@ -290,7 +290,7 @@ export function ClientValidationSection({
               {copied ? "Copié" : "Copier"}
             </Button>
           </div>
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-muted-foreground mt-2">
             Ce lien ne sera plus jamais affiché après actualisation de la page.
             Régénérez-en un si vous l&apos;avez perdu.
           </p>
@@ -298,13 +298,13 @@ export function ClientValidationSection({
       )}
 
       {isAdmin && activeToken && !validationUrl && (
-        <div className="border border-gray-200 bg-gray-50 rounded-lg p-3 mb-4">
-          <p className="text-xs text-gray-700 mb-2">
-            <AlertTriangle size={12} className="inline mr-1 text-peach-700" />
+        <div className="border border-border bg-muted rounded-lg p-3 mb-4">
+          <p className="text-xs text-foreground mb-2">
+            <AlertTriangle size={12} className="inline mr-1 text-warning-700" />
             Un lien actif existe mais son URL complète n&apos;est plus accessible.
             Régénérez-en un pour repartager au client.
           </p>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Créé{" "}
             {new Date(activeToken.createdAt).toLocaleString("fr-FR", {
               day: "numeric",
@@ -324,12 +324,12 @@ export function ClientValidationSection({
           réservé ADMIN) afin que le rôle responsable comprenne pourquoi le
           bouton est grisé / invisible. */}
       {!canSendValidation && !isResolved && (
-        <div className="mb-4 rounded-xl bg-gradient-to-b from-peach-50/85 to-peach-50/55 backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(245,158,107,0.30)]">
-          <p className="text-[13px] font-semibold text-peach-900 flex items-center gap-2">
+        <div className="mb-4 rounded-xl bg-gradient-to-b from-warning-50/85 to-warning-50/55 px-4 py-3 ">
+          <p className="text-[13px] font-semibold text-warning-700 flex items-center gap-2">
             <AlertTriangle size={14} className="flex-shrink-0" />
             Envoi bloqué
           </p>
-          <p className="text-[11px] text-peach-700/80 mt-0.5">
+          <p className="text-[11px] text-warning-700/80 mt-0.5">
             {cannotSendReason ?? "Une étape amont n'est pas encore terminée. Vérifie la chaîne de production."}
           </p>
         </div>
@@ -390,8 +390,8 @@ export function ClientValidationSection({
 
       {/* ── Historique des rounds ─────────────────────────────────────────── */}
       {rounds.length > 0 && (
-        <div className="mt-4 pt-4 border-t border-gray-100">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+        <div className="mt-4 pt-4 border-t border-border">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             Historique ({rounds.length})
           </h3>
           <ul className="space-y-3">
@@ -403,7 +403,7 @@ export function ClientValidationSection({
                       r.action === "approved"
                         ? "bg-success-50 text-success-700"
                         : r.action === "rejected"
-                          ? "bg-peach-50 text-peach-800"
+                          ? "bg-warning-50 text-warning-700"
                           : "bg-danger-50 text-danger-700"
                     }`}
                   >
@@ -414,7 +414,7 @@ export function ClientValidationSection({
                         ? "Modifications demandées"
                         : "Annulé"}
                   </span>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-muted-foreground">
                     {new Date(r.respondedAt).toLocaleString("fr-FR", {
                       day: "numeric",
                       month: "short",
@@ -424,7 +424,7 @@ export function ClientValidationSection({
                   </span>
                 </div>
                 {r.comment && (
-                  <p className="text-gray-700 mt-1 text-sm whitespace-pre-wrap">
+                  <p className="text-foreground mt-1 text-sm whitespace-pre-wrap">
                     « {r.comment} »
                   </p>
                 )}
@@ -470,7 +470,7 @@ export function ClientValidationSection({
         }}
       >
         <div className="mt-3 space-y-1">
-          <span className="text-xs text-gray-600">Commentaire (optionnel)</span>
+          <span className="text-xs text-muted-foreground">Commentaire (optionnel)</span>
           <Textarea
             value={manualComment}
             onChange={setManualComment}

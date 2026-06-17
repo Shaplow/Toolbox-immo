@@ -1,31 +1,17 @@
 "use client";
 
 /**
- * AssetCard — carte média (vidéo, image, audio) Liquid Glass.
+ * AssetCard — carte média (vidéo, image, audio) flat shadcn.
  *
- * Factorise les patterns dupliqués dans MediaAssetsVideoCard, LibraryPicker
- * grids, CoverGenerator, RushesSection thumbnails, VersionsSection cards.
- *
- * Doctrine Liquid Glass v2 :
- * - Card glass avec ring inset signature.
- * - Thumbnail dominant (aspect ratio respecté) + footer compact.
- * - Selected : ring sky prononcé + halo signature.
- * - Hover : lift + shadow glass-md.
- * - Variant expanded : preview vidéo inline (VideoPlayer minimal) + metadata.
+ * Factorise MediaAssetsVideoCard, LibraryPicker grids, CoverGenerator,
+ * RushesSection thumbnails, VersionsSection cards.
  *
  * 3 variants :
- * - `compact`  : ligne horizontale dense (h-14) — thumbnail 48×48 + texte
- *                + duration. Pour listes denses (admin tableaux, picker).
- * - `default`  : card aspect 9:16 ou 1:1 — thumbnail + footer (filename +
- *                duration + badges).
- * - `expanded` : grande carte avec VideoPlayer minimal inline + metadata
- *                detaillé.
+ * - compact  : ligne horizontale dense (h-14) — pour listes denses.
+ * - default  : card avec thumbnail aspect + footer compact.
+ * - expanded : carte avec VideoPlayer inline + metadata détaillé.
  *
- * Props :
- * - `asset` : { id, url, filename, duration?, thumbnail?, mimeType?, metadata? }
- * - `variant`, `aspect` (pour default/expanded)
- * - `selectable` + `selected` + `onSelect`
- * - `onPlay`, `badges`, `actions`, `href`
+ * Selected : ring primary + bg primary/5.
  */
 
 import type { ReactNode } from "react";
@@ -54,7 +40,6 @@ interface AssetCardProps {
   selected?: boolean;
   selectable?: boolean;
   onSelect?: () => void;
-  /** Click play button — sinon click thumbnail = lance VideoPlayer interne (expanded). */
   onPlay?: () => void;
   badges?: ReactNode;
   actions?: ReactNode;
@@ -82,13 +67,11 @@ function getKind(mimeType?: string, filename?: string): "video" | "image" | "aud
 }
 
 function KindIcon({ kind, size = 14 }: { kind: ReturnType<typeof getKind>; size?: number }) {
-  if (kind === "video") return <Video size={size} className="text-gray-500" />;
-  if (kind === "image") return <ImageIcon size={size} className="text-gray-500" />;
-  if (kind === "audio") return <Music size={size} className="text-gray-500" />;
-  return <FileText size={size} className="text-gray-500" />;
+  if (kind === "video") return <Video size={size} className="text-muted-foreground" />;
+  if (kind === "image") return <ImageIcon size={size} className="text-muted-foreground" />;
+  if (kind === "audio") return <Music size={size} className="text-muted-foreground" />;
+  return <FileText size={size} className="text-muted-foreground" />;
 }
-
-// ─── Composant ──────────────────────────────────────────────────────────────
 
 export function AssetCard({
   asset,
@@ -148,8 +131,6 @@ export function AssetCard({
   );
 }
 
-// ─── Compact ────────────────────────────────────────────────────────────────
-
 function CompactCard({
   asset,
   selected,
@@ -176,10 +157,10 @@ function CompactCard({
   const inner = (
     <div
       className={[
-        "flex items-center gap-3 px-3 py-2 rounded-lg transition-all",
+        "flex items-center gap-3 px-3 py-2 rounded-md border transition-colors",
         selected
-          ? "bg-sky-50/60 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.32),0_2px_8px_-2px_rgba(77,150,191,0.18)]"
-          : "bg-gradient-to-b from-white/60 to-white/40 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),inset_0_-1px_0_rgba(15,23,42,0.04)] hover:from-white/75 hover:to-white/55 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.14),0_2px_6px_rgba(15,23,42,0.06)]",
+          ? "bg-primary/5 border-primary/30"
+          : "bg-card border-border hover:bg-muted",
         className ?? "",
       ].filter(Boolean).join(" ")}
     >
@@ -191,8 +172,7 @@ function CompactCard({
           label={`Sélectionner ${asset.filename}`}
         />
       )}
-      {/* Thumbnail */}
-      <div className="shrink-0 h-10 w-10 rounded-md bg-gray-100 overflow-hidden relative shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+      <div className="shrink-0 h-10 w-10 rounded-md bg-muted overflow-hidden relative border border-border">
         {asset.thumbnail ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={asset.thumbnail} alt="" className="h-full w-full object-cover" />
@@ -209,16 +189,15 @@ function CompactCard({
               onPlay?.();
             }}
             aria-label="Lire"
-            className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-[2px] text-white opacity-0 hover:opacity-100 transition-opacity"
+            className="absolute inset-0 flex items-center justify-center bg-zinc-950/40 text-white opacity-0 hover:opacity-100 transition-opacity"
           >
             <Play size={12} fill="currentColor" />
           </button>
         )}
       </div>
-      {/* Text */}
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-medium text-gray-950 truncate">{asset.filename}</p>
-        <div className="flex items-center gap-1.5 text-[11px] text-gray-500 mt-0.5">
+        <p className="text-[13px] font-medium text-foreground truncate">{asset.filename}</p>
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mt-0.5">
           <KindIcon kind={kind} size={10} />
           {asset.duration !== undefined && (
             <span className="font-mono tabular-nums">{formatDuration(asset.duration)}</span>
@@ -226,7 +205,6 @@ function CompactCard({
           {badges && <span className="flex items-center gap-1">{badges}</span>}
         </div>
       </div>
-      {/* Actions */}
       {actions && <div className="shrink-0 flex items-center gap-1">{actions}</div>}
     </div>
   );
@@ -234,8 +212,6 @@ function CompactCard({
   if (href) return <Link href={href}>{inner}</Link>;
   return inner;
 }
-
-// ─── Default ────────────────────────────────────────────────────────────────
 
 function DefaultCard({
   asset,
@@ -269,17 +245,16 @@ function DefaultCard({
   }[aspect];
 
   const cardCls = [
-    "group/asset relative rounded-xl overflow-hidden transition-all",
+    "group/asset relative rounded-lg overflow-hidden border transition-colors",
     selected
-      ? "bg-sky-50/60 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.4),0_4px_16px_-4px_rgba(77,150,191,0.32),0_12px_32px_-8px_rgba(77,150,191,0.28)]"
-      : "bg-gradient-to-b from-white/55 to-white/30 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),inset_0_-1px_0_rgba(15,23,42,0.04),0_1px_3px_rgba(15,23,42,0.05)] hover:from-white/70 hover:to-white/45 hover:-translate-y-0.5 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.14),0_4px_16px_-4px_rgba(15,23,42,0.14)]",
+      ? "bg-primary/5 border-primary/30 ring-2 ring-primary/20"
+      : "bg-card border-border hover:bg-muted hover:border-zinc-300",
     className ?? "",
   ].filter(Boolean).join(" ");
 
   const inner = (
     <div className={cardCls}>
-      {/* Thumbnail area */}
-      <div className={`relative ${aspectCls} bg-gray-100 overflow-hidden`}>
+      <div className={`relative ${aspectCls} bg-muted overflow-hidden`}>
         {asset.thumbnail ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -293,7 +268,6 @@ function DefaultCard({
           </div>
         )}
 
-        {/* Selection checkbox overlay top-left */}
         {selectable && (
           <div className="absolute top-2 left-2">
             <Checkbox
@@ -305,14 +279,12 @@ function DefaultCard({
           </div>
         )}
 
-        {/* Badges overlay top-right */}
         {badges && (
           <div className="absolute top-2 right-2 flex flex-wrap items-center gap-1 justify-end max-w-[60%]">
             {badges}
           </div>
         )}
 
-        {/* Play overlay center (vidéo) */}
         {kind === "video" && onPlay && (
           <button
             type="button"
@@ -321,33 +293,24 @@ function DefaultCard({
               onPlay();
             }}
             aria-label="Lire"
-            className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/30 transition-colors group-hover/asset:bg-black/30"
+            className="absolute inset-0 flex items-center justify-center bg-zinc-950/0 hover:bg-zinc-950/40 transition-colors group-hover/asset:bg-zinc-950/40"
           >
-            <span
-              className={[
-                "inline-flex h-10 w-10 items-center justify-center rounded-full opacity-0 group-hover/asset:opacity-100 transition-opacity",
-                "bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[16px] backdrop-saturate-150",
-                "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),0_2px_4px_rgba(15,23,42,0.08),0_12px_28px_-8px_rgba(15,23,42,0.32)]",
-                "text-gray-900",
-              ].join(" ")}
-            >
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full opacity-0 group-hover/asset:opacity-100 transition-opacity bg-card text-foreground border border-border shadow-lg">
               <Play size={14} strokeWidth={2.4} className="ml-0.5" fill="currentColor" />
             </span>
           </button>
         )}
 
-        {/* Duration overlay bottom-right */}
         {asset.duration !== undefined && (
-          <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-gray-950/65 backdrop-blur-[4px] text-[10px] font-mono text-white tabular-nums">
+          <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-zinc-950/70 text-[10px] font-mono text-white tabular-nums">
             {formatDuration(asset.duration)}
           </div>
         )}
       </div>
 
-      {/* Footer */}
       <div className="px-3 py-2.5 flex items-center gap-2">
         <KindIcon kind={kind} size={12} />
-        <p className="flex-1 text-[12px] font-medium text-gray-950 truncate">{asset.filename}</p>
+        <p className="flex-1 text-[12px] font-medium text-foreground truncate">{asset.filename}</p>
         {actions && <div className="shrink-0 flex items-center gap-0.5">{actions}</div>}
       </div>
     </div>
@@ -356,8 +319,6 @@ function DefaultCard({
   if (href) return <Link href={href}>{inner}</Link>;
   return inner;
 }
-
-// ─── Expanded ───────────────────────────────────────────────────────────────
 
 function ExpandedCard({
   asset,
@@ -381,16 +342,13 @@ function ExpandedCard({
   const kind = getKind(asset.mimeType, asset.filename);
 
   const cardCls = [
-    "rounded-2xl overflow-hidden transition-all",
-    selected
-      ? "bg-sky-50/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.4),0_4px_16px_-4px_rgba(77,150,191,0.28),0_12px_32px_-8px_rgba(77,150,191,0.28)]"
-      : "bg-gradient-to-b from-white/55 to-white/30 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.08)]",
+    "rounded-lg overflow-hidden border bg-card transition-colors",
+    selected ? "border-primary/30 ring-2 ring-primary/20" : "border-border",
     className ?? "",
   ].filter(Boolean).join(" ");
 
   return (
     <div className={cardCls}>
-      {/* Preview lecteur si vidéo, sinon thumbnail simple */}
       {kind === "video" ? (
         <VideoPlayer
           src={asset.url}
@@ -400,7 +358,7 @@ function ExpandedCard({
           className="rounded-none"
         />
       ) : (
-        <div className={`relative ${aspect === "9:16" ? "aspect-[9/16]" : aspect === "16:9" ? "aspect-video" : aspect === "1:1" ? "aspect-square" : ""} bg-gray-100`}>
+        <div className={`relative ${aspect === "9:16" ? "aspect-[9/16]" : aspect === "16:9" ? "aspect-video" : aspect === "1:1" ? "aspect-square" : ""} bg-muted`}>
           {asset.thumbnail ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={asset.thumbnail} alt={asset.filename} className="h-full w-full object-cover" />
@@ -412,16 +370,15 @@ function ExpandedCard({
         </div>
       )}
 
-      {/* Footer riche */}
       <div className="px-4 py-3 space-y-2">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
               <KindIcon kind={kind} size={13} />
-              <p className="text-[14px] font-semibold text-gray-950 truncate">{asset.filename}</p>
+              <p className="text-[14px] font-semibold text-foreground truncate">{asset.filename}</p>
             </div>
             {asset.duration !== undefined && (
-              <p className="text-[11px] text-gray-500 font-mono tabular-nums">
+              <p className="text-[11px] text-muted-foreground font-mono tabular-nums">
                 {formatDuration(asset.duration)}
               </p>
             )}
@@ -441,20 +398,20 @@ function ExpandedCard({
         {badges && <div className="flex flex-wrap items-center gap-1.5">{badges}</div>}
 
         {asset.metadata && Object.keys(asset.metadata).length > 0 && (
-          <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-2 border-t border-white/40">
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-2 border-t border-border">
             {Object.entries(asset.metadata).map(([key, value]) => (
               <div key={key} className="min-w-0">
-                <dt className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                <dt className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                   {key}
                 </dt>
-                <dd className="text-[12px] text-gray-800 truncate mt-0.5">{value}</dd>
+                <dd className="text-[12px] text-foreground truncate mt-0.5">{value}</dd>
               </div>
             ))}
           </dl>
         )}
 
         {actions && (
-          <div className="flex items-center gap-2 pt-2 border-t border-white/40">
+          <div className="flex items-center gap-2 pt-2 border-t border-border">
             {actions}
           </div>
         )}

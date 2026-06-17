@@ -48,11 +48,11 @@ function AuditSection({ id, title, eyebrow, hint, children }: { id: string; titl
   return (
     <section id={id} className="space-y-3 scroll-mt-20">
       <header className="space-y-1">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">{eyebrow}</p>
-        <h2 className="text-xl font-semibold tracking-tight text-gray-950">{title}</h2>
-        {hint && <p className="text-[12px] text-gray-600 leading-relaxed max-w-2xl">{hint}</p>}
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">{eyebrow}</p>
+        <h2 className="text-xl font-semibold tracking-tight text-foreground">{title}</h2>
+        {hint && <p className="text-[12px] text-muted-foreground leading-relaxed max-w-2xl">{hint}</p>}
       </header>
-      <div className="bg-white/55 backdrop-blur-[10px] rounded-xl p-5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)]">
+      <div className="bg-card border border-border rounded-xl p-5 ">
         {children}
       </div>
     </section>
@@ -63,8 +63,8 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
   return (
     <div className="grid grid-cols-[200px_1fr] items-center gap-6 py-2.5 border-b border-white/30 last:border-b-0">
       <div className="space-y-0.5">
-        <p className="text-[11px] font-semibold text-gray-700">{label}</p>
-        {hint && <p className="text-[10px] text-gray-500 leading-tight">{hint}</p>}
+        <p className="text-[11px] font-semibold text-foreground">{label}</p>
+        {hint && <p className="text-[10px] text-muted-foreground leading-tight">{hint}</p>}
       </div>
       <div className="flex flex-wrap items-center gap-3">{children}</div>
     </div>
@@ -77,8 +77,8 @@ function Note({ children, kind = "info" }: { children: React.ReactNode; kind?: "
       className={[
         "mt-3 px-3 py-2 rounded-lg text-[11px] leading-relaxed",
         kind === "warning"
-          ? "bg-peach-50/55 text-peach-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(245,158,107,0.18)]"
-          : "bg-sky-50/55 text-sky-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(77,150,191,0.18)]",
+          ? "bg-warning-50/55 text-warning-700 "
+          : "bg-info-50/55 text-info-700 ",
       ].join(" ")}
     >
       {children}
@@ -105,13 +105,13 @@ export default function AuditPage() {
   return (
     <div className="space-y-12">
       <header className="space-y-3">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">
           Phase 5 · Lot 1 · Audit cohérence
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight text-gray-950">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           Tout côte à côte — check visuel
         </h1>
-        <p className="text-sm text-gray-600 max-w-2xl leading-relaxed">
+        <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
           Aligne les composants par catégorie pour repérer les incohérences
           à l&apos;œil. Heights, focus rings, ring inset, shadows, backdrop
           blur, gradient blanc, états. Les fixes identifiés deviennent des
@@ -212,7 +212,7 @@ export default function AuditPage() {
               className="h-16 rounded-lg bg-gradient-to-b from-white to-white/85"
               style={{ boxShadow: `inset 0 1px 0 rgba(255,255,255,1), inset 0 0 0 1px rgba(15,23,42,${alpha}), 0 1px 3px rgba(15,23,42,0.04)` }}
             >
-              <div className="h-full flex items-center justify-center text-[11px] font-mono text-gray-700">
+              <div className="h-full flex items-center justify-center text-[11px] font-mono text-foreground">
                 {alpha}
               </div>
             </div>
@@ -243,10 +243,10 @@ export default function AuditPage() {
           ].map((s) => (
             <div
               key={s.name}
-              className="h-24 rounded-xl bg-white/85 backdrop-blur-[12px] flex items-end p-3"
+              className="h-24 rounded-xl bg-card border border-border flex items-end p-3"
               style={{ boxShadow: s.value }}
             >
-              <code className="text-[10px] font-mono text-gray-700">{s.name}</code>
+              <code className="text-[10px] font-mono text-foreground">{s.name}</code>
             </div>
           ))}
         </div>
@@ -267,10 +267,10 @@ export default function AuditPage() {
           {[6, 8, 10, 12, 16, 18, 20, 24].map((px) => (
             <div
               key={px}
-              className="h-24 rounded-xl bg-white/40 flex items-end p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),inset_0_0_0_1px_rgba(15,23,42,0.06)]"
+              className="h-24 rounded-xl bg-white/40 flex items-end p-3 "
               style={{ backdropFilter: `blur(${px}px) saturate(150%)` }}
             >
-              <code className="text-[10px] font-mono text-gray-700">{px}px</code>
+              <code className="text-[10px] font-mono text-foreground">{px}px</code>
             </div>
           ))}
         </div>
@@ -353,7 +353,7 @@ export default function AuditPage() {
               value={tab}
               onChange={setTab}
             />
-            <div className="px-3 py-2 rounded-md bg-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] text-[12px] text-gray-700">
+            <div className="px-3 py-2 rounded-md bg-card border border-border  text-[12px] text-foreground">
               Contenu tab {tab}
             </div>
           </div>
@@ -369,13 +369,13 @@ export default function AuditPage() {
           </div>
         </Row>
         <Row label="Card avec actions">
-          <div className="w-full max-w-md p-4 rounded-xl bg-gradient-to-b from-white to-white/85 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1),0_2px_8px_-2px_rgba(15,23,42,0.08)]">
+          <div className="w-full max-w-md p-4 rounded-xl bg-gradient-to-b from-white to-white/85 ">
             <div className="flex items-start justify-between gap-3 mb-2.5">
               <div className="flex items-center gap-2">
                 <Avatar name="Alice Dubois" size="sm" />
                 <div>
-                  <p className="text-[13px] font-semibold text-gray-950 leading-tight">Alice Dubois</p>
-                  <p className="text-[10px] text-gray-500 leading-tight">Monteuse · @studio-paris</p>
+                  <p className="text-[13px] font-semibold text-foreground leading-tight">Alice Dubois</p>
+                  <p className="text-[10px] text-muted-foreground leading-tight">Monteuse · @studio-paris</p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -466,10 +466,10 @@ export default function AuditPage() {
       {/* ━━━ Conclusion ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
 
       <div className="surface-glass-soft rounded-xl p-5 mt-12">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500 mb-2">
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground mb-2">
           Comment utiliser cette page
         </p>
-        <ol className="space-y-1.5 text-[13px] text-gray-700 leading-relaxed list-decimal pl-5">
+        <ol className="space-y-1.5 text-[13px] text-foreground leading-relaxed list-decimal pl-5">
           <li>Scroll dans chaque section. Note les incohérences à l&apos;œil (alignement, ring inset, focus, hover, shadow).</li>
           <li>Tab à travers les composants pour voir les focus rings tous d&apos;affilée.</li>
           <li>Liste les fixes nécessaires dans le chat.</li>

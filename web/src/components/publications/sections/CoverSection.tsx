@@ -179,12 +179,12 @@ export function CoverSection({
   // ── Branche monteurUpload : dropzone pour le monteur ───────────────────────
   if (mode === "monteurUpload") {
     const monteurBadge = (
-      <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-gray-600 bg-white/60 backdrop-blur-[6px] border border-white/50 rounded-full px-2 py-0.5 font-medium shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+      <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-muted-foreground bg-card border border-border border border-white/50 rounded-full px-2 py-0.5 font-medium ">
         Monteur
       </span>
     );
     const deliveredBadge = coverPack?.finalCoverUrl ? (
-      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-sage-100/70 text-sage-700 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(111,162,128,0.22)]">
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-success-100/70 text-success-700 ">
         Livrée
       </span>
     ) : null;
@@ -205,10 +205,10 @@ export function CoverSection({
             <img
               src={coverPack.finalCoverUrl}
               alt="Cover uploadée par le monteur"
-              className="w-full max-w-sm rounded-lg border border-gray-100 object-cover aspect-square"
+              className="w-full max-w-sm rounded-lg border border-border object-cover aspect-square"
             />
             {canMonteurUpload && (
-              <label className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors font-medium cursor-pointer">
+              <label className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground bg-muted rounded-lg hover:bg-gray-200 transition-colors font-medium cursor-pointer">
                 <Upload size={14} />
                 Remplacer
                 <input
@@ -229,20 +229,20 @@ export function CoverSection({
             <div
               className={`w-full flex flex-col items-center gap-2 py-10 px-6 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
                 uploading
-                  ? "border-gray-400 bg-gray-50"
-                  : "border-gray-200 hover:border-gray-400 hover:bg-gray-50"
+                  ? "border-gray-400 bg-muted"
+                  : "border-border hover:border-gray-400 hover:bg-muted"
               }`}
             >
               {uploading ? (
                 <>
-                  <Loader2 size={22} className="text-gray-700 animate-spin" />
-                  <span className="text-sm text-gray-500">Upload en cours…</span>
+                  <Loader2 size={22} className="text-foreground animate-spin" />
+                  <span className="text-sm text-muted-foreground">Upload en cours…</span>
                 </>
               ) : (
                 <>
-                  <Upload size={22} className="text-gray-400" />
-                  <span className="text-sm text-gray-600">Déposer la cover (PNG / JPG / WEBP)</span>
-                  <span className="text-xs text-gray-400">Image carrée recommandée — max 20 Mo</span>
+                  <Upload size={22} className="text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Déposer la cover (PNG / JPG / WEBP)</span>
+                  <span className="text-xs text-muted-foreground">Image carrée recommandée — max 20 Mo</span>
                 </>
               )}
             </div>
@@ -258,7 +258,7 @@ export function CoverSection({
             />
           </label>
         ) : (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-muted-foreground">
             Le monteur uploadera la cover en livrant son montage.
           </p>
         )}
@@ -267,7 +267,7 @@ export function CoverSection({
   }
 
   const linkedBadge = currentVersion ? (
-    <span className="text-[11px] text-gray-600 bg-white/60 backdrop-blur-[6px] border border-white/50 px-2 py-0.5 rounded-full font-medium shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+    <span className="text-[11px] text-muted-foreground bg-card border border-border border border-white/50 px-2 py-0.5 rounded-full font-medium ">
       Lié à V{currentVersion.versionNumber}
     </span>
   ) : null;
@@ -290,8 +290,8 @@ export function CoverSection({
           coverMode = "manualSelect" (extraction libre + choix d'une frame
           comme cover finale via le bouton "Cover finale" sur l'outil). */}
       {mode === "manualSelect" && (
-        <p className="text-[10.5px] uppercase tracking-widest font-medium text-gray-500 mb-3 inline-flex items-center gap-1.5">
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-500" />
+        <p className="text-[10.5px] uppercase tracking-widest font-medium text-muted-foreground mb-3 inline-flex items-center gap-1.5">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-info-600" />
           Mode manuel · extraction libre
         </p>
       )}
@@ -396,14 +396,14 @@ export function CoverSection({
           <img
             src={coverPack.finalCoverUrl}
             alt="Cover sélectionnée"
-            className="w-full max-w-sm rounded-lg border border-gray-100 object-cover aspect-square"
+            className="w-full max-w-sm rounded-lg border border-border object-cover aspect-square"
           />
 
           {canEdit && (
             <div className="flex items-center gap-2">
               <Link
                 href={coverToolHref}
-                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground bg-muted rounded-lg hover:bg-gray-200 transition-colors font-medium"
               >
                 <ExternalLink size={14} />
                 Modifier la cover
@@ -434,7 +434,7 @@ export function CoverSection({
         <div className="space-y-3">
           {coverPack.status === "READY" ? (
             <>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 Les frames sont prêtes — choisis la meilleure cover dans l&apos;outil dédié.
               </p>
               {canEdit && (

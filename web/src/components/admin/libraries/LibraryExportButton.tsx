@@ -21,7 +21,7 @@ export function LibraryExportButton(_props: Props) {
       type="button"
       disabled
       title="Export bibliothèque — à venir"
-      className="flex items-center gap-1.5 px-3.5 py-2.5 text-gray-300 cursor-not-allowed opacity-60"
+      className="flex items-center gap-1.5 px-3.5 py-2.5 text-muted-foreground/60 cursor-not-allowed opacity-60"
     >
       <Download size={14} />
       <span className="text-[10px] uppercase tracking-wide">À venir</span>

@@ -14,14 +14,10 @@ import {
   TERMINAL_STATUSES,
 } from "@/types/worklist";
 
-// Statuts à inclure dans la worklist Monteur. Doit rester aligné avec
-// MONTEUR_SECTION_MAP dans worklist.ts.
 const MONTEUR_STATUSES: SlotStatus[] = [
   "DRAFT",
   "PLANNED",
-  // Fix 2026-05-31 : RUSHES_EXPECTED retiré — le monteur ne doit pas être
-  // notifié tant que les rushs ne sont pas livrés (étape vidéaste). Aligné
-  // avec MONTEUR_SECTION_MAP côté worklist.ts.
+  // Fix 2026-05-31 : RUSHES_EXPECTED retiré (étape vidéaste, monteur attend).
   "RUSHES_RECEIVED",
   "IN_EDIT",
   "EDIT_REVIEW",
@@ -30,7 +26,6 @@ const MONTEUR_STATUSES: SlotStatus[] = [
   "READY_FOR_CM",
   "AWAITING_CLIENT",
   "CLIENT_REVISION",
-  // Legacy
   "TO_DO",
   "IN_PROGRESS",
 ];
@@ -45,11 +40,8 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
   const weekMonday = getCurrentWeekMonday();
   const weekSunday = getCurrentWeekSunday();
 
-  // Pour la worklist datée : MONTEUR_STATUSES exclut RUSHES_EXPECTED (le
-  // monteur attend les rushs, rien à faire). Pour la BANQUE en revanche, on
-  // veut afficher RUSHES_EXPECTED sans date afin que le monteur sache qu'une
-  // mission lui est assignée (même s'il doit attendre que les rushs arrivent).
-  // OR permet d'inclure les deux types sans dupliquer le query.
+  // MONTEUR_STATUSES exclut RUSHES_EXPECTED en datée mais on l'ajoute sans date
+  // pour banque : le monteur veut voir la mission attribuée même en attente rushs.
   const rawSlots = await prisma.publicationSlot.findMany({
     where: {
       assigneeMonteurId: userId,
@@ -78,7 +70,6 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
     pattern: s.pattern,
   }));
 
-  // ── Badges contextuels monteur ─────────────────────────────────────────
   const editReviewSlotIds = slots
     .filter((s) => s.status === "EDIT_REVIEW")
     .map((s) => s.id);
@@ -110,9 +101,6 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
     }
   }
 
-  // ── Découpe en sections ────────────────────────────────────────────────
-  // Note : slots en banque (scheduledAt === null) sont exclus des sections
-  // datées et iront dans une section dédiée "Missions banque" (Phase 5).
   const overdue = slots.filter(
     (s) =>
       !(TERMINAL_STATUSES as readonly string[]).includes(s.status) &&
@@ -142,10 +130,6 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
   });
 
   const waiting = slots.filter((s) => getMonteurSection(s.status) === "waiting");
-  // Missions banque (sans date) — surface tous les slots actifs sans date,
-  // y compris RUSHES_EXPECTED (le monteur veut voir la mission attribuée
-  // même s'il attend les rushs). Exclut explicitement les sections "waiting"
-  // (post-montage) qui n'appellent plus aucune action côté monteur.
   const isBankActiveStatus = (status: SlotStatus): boolean => {
     if (status === "RUSHES_EXPECTED") return true;
     const section = getMonteurSection(status);
@@ -161,147 +145,115 @@ export async function HomeMonteur({ userId, userName }: HomeMonteurProps) {
 
   return (
     <div className="min-h-screen">
-      <div
-        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
-        style={{
-          background: "var(--gradient-page-shell)",
-        }}
-      >
-        {/* Header Control Center */}
-        <div className="rounded-t-3xl overflow-hidden">
-          <div className="max-w-5xl mx-auto px-6 sm:px-8 pt-6 pb-2">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
-                  Ma worklist
-                </p>
-                <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
-                  Bonjour{userName ? `, ${userName.split(" ")[0]}` : ""}
-                </h1>
-                <p className="mt-2 text-[13px] text-gray-500">
-                  {totalActive === 0
-                    ? "Aucune publication en cours."
-                    : `${totalActive} publication${totalActive > 1 ? "s" : ""} active${totalActive > 1 ? "s" : ""}`}
-                  {overdue.length > 0 && (
-                    <>
-                      {" · "}
-                      <span className="text-rose-700 tabular-nums">
-                        {overdue.length} en retard
-                      </span>
-                    </>
-                  )}
-                </p>
-              </div>
-
-              {/* Live pill */}
-              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-                {totalActive > 0 && (
-                  <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
-                )}
-                <span className="text-[11px] font-mono text-gray-700 tabular-nums">
-                  Monteur
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
-          <div className="max-w-5xl mx-auto space-y-8">
-            {isFullyEmpty ? (
-              <EmptyState
-                icon={<CheckCircle2 size={20} className="text-gray-400" />}
-                title="Rien à monter pour le moment"
-                description="Ta file est vide. Bonne pause — les prochaines publications arriveront via le calendrier."
-              />
-            ) : (
+      <div className="mx-auto max-w-5xl px-6 py-8 space-y-6">
+        <header>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Bonjour{userName ? `, ${userName.split(" ")[0]}` : ""}
+          </h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            {totalActive === 0
+              ? "Aucune publication en cours."
+              : `${totalActive} publication${totalActive > 1 ? "s" : ""} active${totalActive > 1 ? "s" : ""}`}
+            {overdue.length > 0 && (
               <>
-                {overdue.length > 0 && (
-                  <WorklistSection
-                    title="En retard"
-                    slots={overdue}
-                    mode="monteur"
-                    tone="danger"
-                    monteurBadgesMap={monteurBadgesMap}
-                  />
-                )}
-
-                <WorklistSection
-                  title="Cette semaine"
-                  slots={thisWeekTodo}
-                  mode="monteur"
-                  tone="default"
-                  emptyMessage="Aucune publication à monter cette semaine."
-                  monteurBadgesMap={monteurBadgesMap}
-                />
-
-                {bankMissions.length > 0 && (
-                  <WorklistSection
-                    title="Missions sans date (banque)"
-                    slots={bankMissions}
-                    mode="monteur"
-                    tone="default"
-                    monteurBadgesMap={monteurBadgesMap}
-                  />
-                )}
-
-                <WorklistSection
-                  title="À venir"
-                  slots={upcoming}
-                  mode="monteur"
-                  tone="muted"
-                  collapsible
-                  defaultOpen={false}
-                  monteurBadgesMap={monteurBadgesMap}
-                />
-
-                {waiting.length > 0 && (
-                  <section>
-                    <div className="flex items-center gap-2 mb-3">
-                      <h3 className="text-[13px] font-semibold tracking-tight text-gray-600">
-                        Mes envois en attente client
-                      </h3>
-                      <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10.5px] font-medium tabular-nums bg-gray-100/60 text-gray-500 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.04)]">
-                        {waiting.length}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-gray-500 mb-3">
-                      Ces publications ont quitté ta file. Le CM ou le client prend la main.
-                    </p>
-                    <div className="space-y-2">
-                      {waiting.map((slot) => (
-                        <Link
-                          key={slot.id}
-                          href={`/publications/${slot.id}`}
-                          className="block rounded-xl bg-white/70 backdrop-blur-[8px] px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:bg-white/90 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1),0_2px_6px_rgba(15,23,42,0.06)] transition-all"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="text-[12.5px] font-medium text-gray-700 truncate">
-                                {slot.pattern?.label ?? slot.title ?? "Publication"}
-                              </p>
-                              <p className="text-[11px] text-gray-400">
-                                @{slot.account.handle}
-                              </p>
-                            </div>
-                            <span className="text-[10.5px] text-gray-400 font-mono tabular-nums shrink-0">
-                              {slot.scheduledAt
-                                ? slot.scheduledAt.toLocaleDateString("fr-FR", {
-                                    day: "numeric",
-                                    month: "short",
-                                  })
-                                : "Banque"}
-                            </span>
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
-                  </section>
-                )}
+                {" · "}
+                <span className="text-danger-700 tabular-nums">
+                  {overdue.length} en retard
+                </span>
               </>
             )}
+          </p>
+        </header>
+
+        {isFullyEmpty ? (
+          <EmptyState
+            icon={<CheckCircle2 size={20} className="text-muted-foreground" />}
+            title="Rien à monter"
+            description="Aucune publication assignée."
+          />
+        ) : (
+          <div className="space-y-8">
+            {overdue.length > 0 && (
+              <WorklistSection
+                title="En retard"
+                slots={overdue}
+                mode="monteur"
+                tone="danger"
+                monteurBadgesMap={monteurBadgesMap}
+              />
+            )}
+
+            <WorklistSection
+              title="Cette semaine"
+              slots={thisWeekTodo}
+              mode="monteur"
+              tone="default"
+              emptyMessage="Aucune publication à monter cette semaine."
+              monteurBadgesMap={monteurBadgesMap}
+            />
+
+            {bankMissions.length > 0 && (
+              <WorklistSection
+                title="Missions sans date (banque)"
+                slots={bankMissions}
+                mode="monteur"
+                tone="default"
+                monteurBadgesMap={monteurBadgesMap}
+              />
+            )}
+
+            <WorklistSection
+              title="À venir"
+              slots={upcoming}
+              mode="monteur"
+              tone="muted"
+              collapsible
+              defaultOpen={false}
+              monteurBadgesMap={monteurBadgesMap}
+            />
+
+            {waiting.length > 0 && (
+              <section>
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="text-[13px] font-semibold tracking-tight text-foreground">
+                    En attente côté CM ou client
+                  </h3>
+                  <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-md text-[10.5px] font-medium tabular-nums bg-muted text-muted-foreground border border-border">
+                    {waiting.length}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {waiting.map((slot) => (
+                    <Link
+                      key={slot.id}
+                      href={`/publications/${slot.id}`}
+                      className="block rounded-md bg-card border border-border px-4 py-2.5 hover:bg-muted transition-colors focus-ring"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[12.5px] font-medium text-foreground truncate">
+                            {slot.pattern?.label ?? slot.title ?? "Publication"}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            @{slot.account.handle}
+                          </p>
+                        </div>
+                        <span className="text-[10.5px] text-muted-foreground font-mono tabular-nums shrink-0">
+                          {slot.scheduledAt
+                            ? slot.scheduledAt.toLocaleDateString("fr-FR", {
+                                day: "numeric",
+                                month: "short",
+                              })
+                            : "Banque"}
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

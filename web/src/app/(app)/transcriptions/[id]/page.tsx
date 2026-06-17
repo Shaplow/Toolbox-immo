@@ -61,14 +61,14 @@ export default async function TranscriptionJobPage({
   return (
     <div className="min-h-screen">
       <div
-        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
-        style={{ background: "var(--gradient-page-shell)" }}
+        className="mx-auto max-w-7xl px-6 py-8"
+
       >
         <div className="px-6 sm:px-8 pt-6 pb-12">
           <div className="max-w-3xl mx-auto">
       <Link
         href="/transcriptions"
-        className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 mb-6 transition-colors"
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-muted-foreground mb-6 transition-colors"
       >
         <ChevronLeft size={13} />
         Transcriptions
@@ -76,14 +76,14 @@ export default async function TranscriptionJobPage({
 
       {/* Bandeau source : render parent + publication si liée */}
       {sourceRender && (
-        <div className="mb-6 flex items-center gap-3 bg-sky-50 border border-sky-200 rounded-xl px-5 py-3 text-sm">
-          <Video size={16} className="text-sky-600 shrink-0" />
+        <div className="mb-6 flex items-center gap-3 bg-info-50 border border-info-200 rounded-xl px-5 py-3 text-sm">
+          <Video size={16} className="text-info-600 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sky-900">
+            <p className="text-info-700">
               Issue du{" "}
               <Link
                 href={`/renders/${sourceRender.id}`}
-                className="font-semibold text-sky-700 hover:text-sky-900 hover:underline"
+                className="font-semibold text-info-700 hover:text-info-700 hover:underline"
               >
                 render
               </Link>
@@ -92,7 +92,7 @@ export default async function TranscriptionJobPage({
                   {" "}de la publication{" "}
                   <Link
                     href={`/publications/${sourceSlot.id}`}
-                    className="font-semibold text-sky-700 hover:text-sky-900 hover:underline inline-flex items-center gap-1"
+                    className="font-semibold text-info-700 hover:text-info-700 hover:underline inline-flex items-center gap-1"
                   >
                     <FileText size={12} />
                     {sourceSlot.title ?? `@${sourceSlot.account.handle}`}
@@ -126,8 +126,8 @@ export default async function TranscriptionJobPage({
           outils captions/descriptions. Visible uniquement quand le job est
           complet (sinon ça pointerait vers une transcription vide). */}
       {job.status === "COMPLETED" && job.outputJsonKey && (
-        <div className="mt-6 bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">
+        <div className="mt-6 bg-white border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-foreground mb-3">
             Utiliser cette transcription
           </h3>
           <div className="flex flex-wrap gap-2">
@@ -137,7 +137,7 @@ export default async function TranscriptionJobPage({
                   ? `/captions?slotId=${sourceSlot.id}&transcriptionId=${job.id}&returnTo=/publications/${sourceSlot.id}`
                   : `/captions?transcriptionId=${job.id}`
               }
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-colors text-sm font-medium"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-danger-50 text-danger-700 border border-danger-200 hover:bg-danger-100 transition-colors text-sm font-medium"
             >
               <Scissors size={14} />
               Dans Sous-titres
@@ -148,14 +148,14 @@ export default async function TranscriptionJobPage({
                   ? `/descriptions?slotId=${sourceSlot.id}`
                   : `/descriptions`
               }
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-peach-50 text-peach-700 border border-peach-200 hover:bg-peach-100 transition-colors text-sm font-medium"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-warning-50 text-warning-700 border border-warning-200 hover:bg-warning-100 transition-colors text-sm font-medium"
             >
               <Sparkles size={14} />
               Dans Légende
             </Link>
           </div>
           {!sourceSlot && (
-            <p className="text-xs text-gray-400 mt-2">
+            <p className="text-xs text-muted-foreground mt-2">
               Cette transcription n&apos;est pas rattachée à une publication —
               le résultat sera créé en mode standalone.
             </p>

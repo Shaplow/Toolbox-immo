@@ -434,7 +434,7 @@ export function DescriptionTool({
               <div
                 className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
                   isDragging
-                    ? "border-peach-300 bg-peach-50"
+                    ? "border-warning-200 bg-warning-50"
                     : transcriptText
                     ? "border-green-300 bg-green-50/50"
                     : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
@@ -492,7 +492,7 @@ export function DescriptionTool({
               ) : transcriptions.length === 0 ? (
                 <div className="text-sm text-gray-400 text-center py-4">
                   Aucune transcription terminée. <br />
-                  <Link href="/transcriptions" className="text-sky-700 hover:underline">
+                  <Link href="/transcriptions" className="text-info-700 hover:underline">
                     Lancer une transcription →
                   </Link>
                 </div>
@@ -504,16 +504,16 @@ export function DescriptionTool({
                       onClick={() => setTranscriptionId(t.id)}
                       className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors text-sm ${
                         transcriptionId === t.id
-                          ? "border-sky-300 bg-sky-50 text-sky-900"
+                          ? "border-info-200 bg-info-50 text-info-700"
                           : "border-gray-100 hover:border-gray-200 hover:bg-gray-50 text-gray-700"
                       }`}
                     >
-                      <Mic size={14} className={transcriptionId === t.id ? "text-sky-500" : "text-gray-300"} />
+                      <Mic size={14} className={transcriptionId === t.id ? "text-info-600" : "text-gray-300"} />
                       <span className="flex-1 truncate">
                         {t.inputFilename ?? "Transcription sans nom"}
                       </span>
                       {transcriptionId === t.id && (
-                        <Check size={12} className="text-sky-500 shrink-0" />
+                        <Check size={12} className="text-info-600 shrink-0" />
                       )}
                       <span className="text-xs text-gray-400 shrink-0">{formatDate(t.createdAt)}</span>
                     </button>
@@ -557,7 +557,7 @@ export function DescriptionTool({
               }}
               className={`w-full rounded-xl border border-dashed px-4 py-4 text-left transition-colors ${
                 referenceImage
-                  ? "border-peach-200 bg-peach-50/70 hover:border-peach-300"
+                  ? "border-warning-200 bg-warning-50/70 hover:border-warning-200"
                   : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
               }`}
             >
@@ -578,8 +578,8 @@ export function DescriptionTool({
                 </div>
               ) : referenceImage ? (
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-peach-100">
-                    <Check size={16} className="text-peach-700" />
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-warning-100">
+                    <Check size={16} className="text-warning-700" />
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-gray-800">
@@ -656,7 +656,7 @@ export function DescriptionTool({
                   onClick={() => setSelectedPromptId(p.id)}
                   className={`text-left px-4 py-3 rounded-xl border transition-colors ${
                     selectedPromptId === p.id
-                      ? "border-peach-300 bg-peach-50 text-peach-900"
+                      ? "border-warning-200 bg-warning-50 text-warning-700"
                       : "border-gray-100 hover:border-gray-200 hover:bg-gray-50 text-gray-700"
                   }`}
                 >

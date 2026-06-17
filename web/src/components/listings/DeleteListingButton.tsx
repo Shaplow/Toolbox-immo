@@ -58,7 +58,7 @@ export function DeleteListingButton({ listingId, onDeleted }: Props) {
           disabled={loading}
           title="Confirmer la suppression"
           aria-label="Confirmer la suppression"
-          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-white bg-rose-500 hover:bg-rose-600 disabled:opacity-50 transition-all focus-ring"
+          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-white bg-danger-600 hover:bg-danger-600 disabled:opacity-50 transition-all focus-ring"
         >
           {loading ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
         </button>
@@ -71,7 +71,7 @@ export function DeleteListingButton({ listingId, onDeleted }: Props) {
           disabled={loading}
           title="Annuler"
           aria-label="Annuler"
-          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-500 hover:text-gray-900 hover:bg-white/70 transition-all focus-ring"
+          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-gray-900 hover:bg-white/70 transition-all focus-ring"
         >
           <X size={13} />
         </button>
@@ -88,7 +88,7 @@ export function DeleteListingButton({ listingId, onDeleted }: Props) {
       }}
       title="Supprimer (admin)"
       aria-label="Supprimer cette génération"
-      className="inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-400 hover:text-rose-600 hover:bg-white/70 transition-all focus-ring"
+      className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-danger-600 hover:bg-white/70 transition-all focus-ring"
     >
       <X size={13} />
     </button>

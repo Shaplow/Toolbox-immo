@@ -61,7 +61,7 @@ export function DescriptionHistoryItem({ job }: Props) {
           <span
             className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
               notApplied
-                ? "bg-peach-50 text-peach-700"
+                ? "bg-warning-50 text-warning-700"
                 : isDone
                   ? "bg-green-50 text-green-600"
                   : isFailed
@@ -106,7 +106,7 @@ export function DescriptionHistoryItem({ job }: Props) {
       {open && (
         <div className="mt-2 space-y-2">
           {notApplied && (
-            <p className="text-xs text-peach-700 bg-peach-50 rounded-lg px-3 py-2">
+            <p className="text-xs text-warning-700 bg-warning-50 rounded-lg px-3 py-2">
               {job.errorMsg}
             </p>
           )}

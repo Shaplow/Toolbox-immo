@@ -14,23 +14,16 @@ const eslintConfig = defineConfig([
       "react/no-unescaped-entities": "off",
     },
   },
-  // V2 (15/06) — Anti-drift "glass inline" : interdit de copier-coller le
-  // pattern `bg-(white|black)/XX backdrop-blur` hors de `src/components/ui/`.
-  // L'audit Explore avant V2 a recensé ~90 instances de ce drift ; les
-  // primitives `GlassBanner` (sections contextuelles), `KPIPill` (indicateurs
-  // chiffrés), `PageShell` (wrapper page) et `Banner` (signaux système)
-  // couvrent les 3 usages dominants. Toute nouvelle inline = bypass d'une
-  // primitive existante (ou besoin de créer une 5e).
+  // DA v3 (15/06) — Anti-drift Coastal Studio : interdit la réintroduction
+  // des classes pastel `bg-(peach|sage)-XX` qui n'ont plus de tokens définis
+  // depuis le passage flat shadcn. `sky` et `rose` restent autorisés (Tailwind
+  // natifs) mais à utiliser avec parcimonie — préférer info / danger semantic.
   //
-  // Heuristique simple : on flag les literals contenant `backdrop-blur` ET
-  // une opacité Tailwind blanc/noir (5x..89). Faux négatifs acceptés sur les
-  // template strings concaténées ; on prend le top du gain. Override ponctuel
-  // pour un cas légitime hors `ui/` : `// eslint-disable-next-line no-restricted-syntax`.
+  // Override ponctuel pour un cas hors `ui/` : `// eslint-disable-next-line no-restricted-syntax`.
   {
     files: ["src/**/*.{ts,tsx}"],
     ignores: [
       "src/components/ui/**",
-      "src/components/layout/**",
       "src/app/(dev)/playground/**",
       "**/__tests__/**",
     ],
@@ -39,16 +32,15 @@ const eslintConfig = defineConfig([
         "warn",
         {
           selector:
-            "Literal[value=/bg-(white|black)\\/(5[0-9]|[6-8][0-9]).*backdrop-blur/]",
+            "Literal[value=/\\b(bg|text|border|ring|from|to|via)-(peach|sage)-/]",
           message:
-            "Utilise <GlassBanner>, <KPIPill>, <PageShell> ou <Banner> au lieu d'une glass inline. Voir src/components/ui/{GlassBanner,PageShell,Banner}.tsx + molecules/KPIPill.tsx.",
+            "Palette Coastal Studio jetée en DA v3. Utilise warning-* (peach) ou success-* (sage) à la place. Voir src/app/globals.css.",
         },
       ],
     },
   },
   // Override default ignores of eslint-config-next.
   globalIgnores([
-    // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",
     "build/**",

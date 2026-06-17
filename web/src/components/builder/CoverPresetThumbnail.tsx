@@ -53,7 +53,7 @@ export function CoverPresetThumbnail({
   if (!canvas) {
     return (
       <div
-        className={`bg-gray-100 rounded ${className}`}
+        className={`bg-muted rounded ${className}`}
         style={{ width, aspectRatio: "9 / 16" }}
       />
     );
@@ -87,7 +87,7 @@ export function CoverPresetThumbnail({
 
   return (
     <div
-      className={`relative bg-gray-200 rounded overflow-hidden border border-gray-300 ${className}`}
+      className={`relative bg-gray-200 rounded overflow-hidden border border-border ${className}`}
       style={{ width, height }}
     >
       {/* Background placeholder : motif quadrillé */}
@@ -157,7 +157,7 @@ export function CoverPresetThumbnail({
       {/* Badge "vide" si aucun overlay ni zone */}
       {overlayBlocks.length === 0 && excludeZones.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="text-[10px] text-gray-400 font-medium">Aperçu</span>
+          <span className="text-[10px] text-muted-foreground font-medium">Aperçu</span>
         </div>
       )}
     </div>

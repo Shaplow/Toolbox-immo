@@ -116,7 +116,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   // re-vérifié dans la tx finale via advisory lock.
   const existingCount = await prisma.dataEntry.count({ where: { campaignId } });
   const forceFlag = formData.get("force") === "true";
-  if (existingCount > 0 && !forceFlag) {
+  // En dry-run on ne bloque pas : le preview affiche existingCount et le client
+  // confirmera avec force=true au commit.
+  const isDryGuard = req.nextUrl.searchParams.get("dry") === "true";
+  if (existingCount > 0 && !forceFlag && !isDryGuard) {
     return NextResponse.json(
       {
         error: `Cette campaign contient déjà ${existingCount} entrée(s). Envoyez force=true pour ajouter quand même.`,
@@ -132,63 +135,43 @@ export async function POST(req: NextRequest, { params }: Params) {
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Erreur lecture fichier" }, { status: 400 });
   }
-  const rows = parseCSV(text);
 
-  if (rows.length < 2) {
-    return NextResponse.json({ error: "Le fichier CSV doit contenir au moins une ligne d'en-tête et une ligne de données" }, { status: 400 });
+  // Parsing factorisé (dry-run ET commit utilisent le même plan pour éviter
+  // toute divergence preview/réalité).
+  let plan: ImportPlan;
+  try {
+    plan = buildImportPlan(text, campaignId);
+  } catch (err) {
+    if (err instanceof ImportValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+    throw err;
   }
-
-  const [headers, ...dataRows] = rows;
-  const sanitizedHeaders = headers.map((h) => sanitizeKey(h));
-
-  // Vérifier qu'il n'y a pas de doublons de colonnes
-  const uniqueHeaders = new Set(sanitizedHeaders);
-  if (uniqueHeaders.size !== sanitizedHeaders.length) {
-    return NextResponse.json({ error: "Le CSV contient des colonnes en double" }, { status: 400 });
-  }
-
-  // Colonnes réservées — extraites de fields et mappées sur les champs Prisma dédiés.
-  // Si set_tag absent mais qu'une autre colonne est désignée comme clé (première colonne non réservée),
-  // un slug est généré automatiquement.
-  const RESERVED = new Set(["set_tag", "category"]);
-  const setTagIdx = sanitizedHeaders.indexOf("set_tag");
-  const categoryIdx = sanitizedHeaders.indexOf("category");
-  // Index de la première colonne "données" (pour le slug auto si pas de set_tag)
-  const firstDataIdx = sanitizedHeaders.findIndex((h) => !RESERVED.has(h));
-
-  const entries = dataRows
-    .filter((row) => row.some((cell) => cell.trim() !== ""))
-    .map((row) => {
-      const fields: Record<string, string> = {};
-      for (let i = 0; i < sanitizedHeaders.length; i++) {
-        if (RESERVED.has(sanitizedHeaders[i])) continue;
-        // W5.2 : skip les valeurs vides après sanitize. Avant, une colonne
-        // optionnelle (ex: tip3) absente du CSV mais déclarée dans le header
-        // produisait `{ tip3: "" }` qui s'injectait dans le template — l'user
-        // voyait des champs vides dans la vidéo finale.
-        const value = sanitizeValue(row[i] ?? "");
-        if (value === "") continue;
-        fields[sanitizedHeaders[i]] = value;
-      }
-
-      // setTag : colonne set_tag si présente, sinon slug de la première colonne de données
-      let setTag: string | null = null;
-      if (setTagIdx !== -1 && (row[setTagIdx] ?? "").trim()) {
-        setTag = sanitizeValue(row[setTagIdx] ?? "").toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 64) || null;
-      } else if (firstDataIdx !== -1 && (row[firstDataIdx] ?? "").trim()) {
-        setTag = slugify(row[firstDataIdx] ?? "");
-      }
-
-      // category : colonne category si présente
-      const category = categoryIdx !== -1 && (row[categoryIdx] ?? "").trim()
-        ? sanitizeValue(row[categoryIdx] ?? "")
-        : null;
-
-      return { campaignId, fields: JSON.stringify(fields), setTag, category };
-    });
+  const { entries, columns, hasSetTag, hasCategory, skippedEmpty } = plan;
 
   if (entries.length === 0) {
     return NextResponse.json({ error: "Aucune ligne de données trouvée dans le CSV" }, { status: 400 });
+  }
+
+  // Mode dry-run (preview) : on retourne le plan SANS insérer. La garde
+  // existingCount/force n'est pas appliquée ici — le client l'affiche et
+  // confirmera avec force=true au commit si besoin.
+  const isDry = req.nextUrl.searchParams.get("dry") === "true";
+  if (isDry) {
+    const sample = entries.slice(0, 8).map((e) => ({
+      setTag: e.setTag,
+      category: e.category,
+      fields: JSON.parse(e.fields) as Record<string, string>,
+    }));
+    return NextResponse.json({
+      dryRun: true,
+      detected: entries.length,
+      columns,
+      reserved: { set_tag: hasSetTag, category: hasCategory },
+      skippedEmpty,
+      existingCount,
+      sample,
+    });
   }
 
   // Bug-hunter #10 (2026-06-01) : transaction + advisory lock pour éviter
@@ -223,6 +206,98 @@ export async function POST(req: NextRequest, { params }: Params) {
       : "Erreur serveur lors de l'import";
     return NextResponse.json({ error: msg }, { status: 409 });
   }
+}
+
+// ─── Plan d'import (partagé dry-run / commit) ──────────────────────────────────
+
+interface ImportEntry {
+  campaignId: string;
+  fields: string;
+  setTag: string | null;
+  category: string | null;
+}
+
+interface ImportPlan {
+  entries: ImportEntry[];
+  /** Colonnes non réservées (= clés de `fields`). */
+  columns: string[];
+  hasSetTag: boolean;
+  hasCategory: boolean;
+  /** Lignes ignorées car entièrement vides. */
+  skippedEmpty: number;
+}
+
+/** Erreur de validation fatale du fichier (format → 400 dans les deux modes). */
+class ImportValidationError extends Error {}
+
+/**
+ * Construit le plan d'import depuis le texte CSV. Utilisé par le dry-run
+ * (preview) ET le commit pour garantir que ce qui est prévisualisé est
+ * exactement ce qui sera inséré.
+ */
+function buildImportPlan(text: string, campaignId: string): ImportPlan {
+  const rows = parseCSV(text);
+  if (rows.length < 2) {
+    throw new ImportValidationError(
+      "Le fichier doit contenir au moins une ligne d'en-tête et une ligne de données",
+    );
+  }
+
+  const [headers, ...dataRows] = rows;
+  const sanitizedHeaders = headers.map((h) => sanitizeKey(h));
+
+  const uniqueHeaders = new Set(sanitizedHeaders);
+  if (uniqueHeaders.size !== sanitizedHeaders.length) {
+    throw new ImportValidationError("Le fichier contient des colonnes en double");
+  }
+
+  const RESERVED = new Set(["set_tag", "category"]);
+  const setTagIdx = sanitizedHeaders.indexOf("set_tag");
+  const categoryIdx = sanitizedHeaders.indexOf("category");
+  const firstDataIdx = sanitizedHeaders.findIndex((h) => !RESERVED.has(h));
+  const columns = sanitizedHeaders.filter((h) => !RESERVED.has(h));
+
+  const nonEmptyRows = dataRows.filter((row) =>
+    row.some((cell) => cell.trim() !== ""),
+  );
+  const skippedEmpty = dataRows.length - nonEmptyRows.length;
+
+  const entries: ImportEntry[] = nonEmptyRows.map((row) => {
+    const fields: Record<string, string> = {};
+    for (let i = 0; i < sanitizedHeaders.length; i++) {
+      if (RESERVED.has(sanitizedHeaders[i])) continue;
+      const value = sanitizeValue(row[i] ?? "");
+      if (value === "") continue;
+      fields[sanitizedHeaders[i]] = value;
+    }
+
+    let setTag: string | null = null;
+    if (setTagIdx !== -1 && (row[setTagIdx] ?? "").trim()) {
+      setTag =
+        sanitizeValue(row[setTagIdx] ?? "")
+          .toLowerCase()
+          .replace(/\s+/g, "_")
+          .replace(/[^a-z0-9_]/g, "")
+          .slice(0, 64) || null;
+    } else if (firstDataIdx !== -1 && (row[firstDataIdx] ?? "").trim()) {
+      setTag = slugify(row[firstDataIdx] ?? "");
+    }
+
+    const category =
+      categoryIdx !== -1 && (row[categoryIdx] ?? "").trim()
+        ? sanitizeValue(row[categoryIdx] ?? "")
+        : null;
+
+    return { campaignId, fields: JSON.stringify(fields), setTag, category };
+  });
+
+  return {
+    entries,
+    columns,
+    hasSetTag: setTagIdx !== -1,
+    hasCategory: categoryIdx !== -1,
+    skippedEmpty,
+  };
 }
 
 // ─── Helpers CSV ─────────────────────────────────────────────────────────────

@@ -47,7 +47,7 @@ export function TextFieldMeta({
 
   if (kind === "condition" && !rawKey.trim()) {
     return (
-      <div className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-500">
+      <div className="rounded-md border border-border bg-white px-2 py-1.5 text-[11px] text-muted-foreground">
         Choisissez une variable existante pour definir la condition.
       </div>
     );
@@ -63,11 +63,11 @@ export function TextFieldMeta({
   }
 
   return (
-    <div className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-600 space-y-1">
+    <div className="rounded-md border border-border bg-white px-2 py-1.5 text-[11px] text-muted-foreground space-y-1">
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="font-mono text-gray-700">{field.key}</span>
-        <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">{field.type}</span>
-        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${field.required ? "bg-red-50 text-red-500" : "bg-gray-100 text-gray-500"}`}>
+        <span className="font-mono text-foreground">{field.key}</span>
+        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{field.type}</span>
+        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${field.required ? "bg-red-50 text-red-500" : "bg-muted text-muted-foreground"}`}>
           {field.required ? "requis" : "optionnel"}
         </span>
         {kind === "condition" && field.showIf && (
@@ -76,7 +76,7 @@ export function TextFieldMeta({
           </span>
         )}
       </div>
-      <div className="text-gray-500">
+      <div className="text-muted-foreground">
         {field.label || field.key}
         {field.description ? ` · ${field.description}` : ""}
       </div>
@@ -84,11 +84,11 @@ export function TextFieldMeta({
         <div className="space-y-1">
           <div className="flex flex-wrap gap-1">
             {(field.options ?? []).length > 0 ? (field.options ?? []).map((option) => (
-              <span key={option} className="rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] text-gray-600">
+              <span key={option} className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                 {option}
               </span>
             )) : (
-              <span className="text-[10px] text-gray-400">Aucune option definie.</span>
+              <span className="text-[10px] text-muted-foreground">Aucune option definie.</span>
             )}
           </div>
           {kind === "condition" && (
@@ -113,13 +113,13 @@ export function TextFieldMeta({
                     }))}
                     onKeyDown={(e) => e.stopPropagation()}
                     placeholder="Une option par ligne"
-                    className="w-full resize-none rounded border border-indigo-200 bg-white px-2 py-1.5 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    className="w-full resize-none rounded border border-indigo-200 bg-white px-2 py-1.5 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-indigo-400"
                   />
                   <div className="flex items-center justify-end gap-2">
                     <button
                       type="button"
                       onClick={closeInlineSelectEditor}
-                      className="px-2 py-1 text-[10px] border border-gray-200 rounded hover:bg-white"
+                      className="px-2 py-1 text-[10px] border border-border rounded hover:bg-white"
                     >
                       Annuler
                     </button>

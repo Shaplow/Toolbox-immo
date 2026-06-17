@@ -36,7 +36,7 @@ export function ToggleSwitch({ checked, onChange, label }: ToggleSwitchProps) {
           ].join(" ")}
         />
       </span>
-      <span className="text-xs text-gray-600">{label}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
     </button>
   );
 }

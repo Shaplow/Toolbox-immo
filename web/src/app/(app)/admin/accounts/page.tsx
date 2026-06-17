@@ -56,12 +56,10 @@ export default async function AdminAccountsPage() {
         <ToolPageHeader
           icon={Instagram}
           title="Comptes Instagram"
-          subtitle="Tous les comptes IG et leurs recettes appliquées."
-          iconTint="peach"
           kpis={
             <>
-              <KPIPill label="Comptes" value={accountItems.length} tint="peach" />
-              <KPIPill label="Recettes actives" value={totalBindings} tint="sky" />
+              <KPIPill label="Comptes" value={accountItems.length} />
+              <KPIPill label="Recettes actives" value={totalBindings} />
             </>
           }
         />

@@ -1,20 +1,15 @@
 "use client";
 
 /**
- * Table — table minimaliste density Linear, glass header sticky.
+ * Table — table minimaliste density Linear flat shadcn.
  *
- * Doctrine Liquid Glass v2 :
- * - Wrapper rounded-lg + ring inset signature + overflow hidden.
- * - Header surface-glass-soft sticky avec backdrop-blur.
- * - Rows : hover white/40 backdrop-blur, séparateurs border subtle.
- * - Density : padding-y serré (px-3 py-2.5) + text-[13px].
+ * - Wrapper rounded-md + border + overflow hidden.
+ * - Header bg-muted sticky avec border-bottom.
+ * - Rows : hover bg-muted/50, séparateurs border-border subtle.
+ * - Density Linear : px-3 py-2.5 + text-[13px].
  *
- * Features :
- * - Sortable : click sur header pour cycle asc → desc → null.
- * - Selectable : checkbox header (toggle all) + checkbox par row.
- * - Empty state : message custom quand rows vide.
- * - Custom cell rendering via `cell?` per column.
- * - sticky header indépendant du parent scroll si `stickyHeader`.
+ * Features : sortable, selectable (checkbox), empty state, custom cells,
+ * sticky header, click row callback.
  */
 
 import { useState, useMemo, type ReactNode } from "react";
@@ -24,38 +19,24 @@ import { Checkbox } from "./Checkbox";
 type SortDir = "asc" | "desc" | null;
 
 export interface TableColumn<Row> {
-  /** Clé d'identification + nom du champ par défaut. */
   id: string;
-  /** Texte du header. */
   label: ReactNode;
-  /** Sortable ? Default false. */
   sortable?: boolean;
-  /** Largeur fixe (CSS value, ex: "120px", "20%"). */
   width?: string;
-  /** Alignment text. Default left. */
   align?: "left" | "center" | "right";
-  /** Custom cell render. Si absent, on essaye row[id] direct. */
   cell?: (row: Row) => ReactNode;
-  /** Custom comparator pour le sort. */
   sortFn?: (a: Row, b: Row) => number;
 }
 
 interface TableProps<Row> {
   columns: TableColumn<Row>[];
   rows: Row[];
-  /** Clé unique par row pour key React. Default JSON.stringify (lent). */
   rowKey?: (row: Row) => string;
-  /** Active la sélection (checkbox col leading). */
   selectable?: boolean;
-  /** Selected row keys (controlled). */
   selectedKeys?: Set<string>;
-  /** Callback selection change. */
   onSelectionChange?: (keys: Set<string>) => void;
-  /** Message empty state. */
   empty?: ReactNode;
-  /** Sticky header au scroll de la table. Default true. */
   stickyHeader?: boolean;
-  /** Click sur row (intra-row, hors checkbox). */
   onRowClick?: (row: Row) => void;
   className?: string;
 }
@@ -77,7 +58,6 @@ export function Table<Row>({
 
   const getKey = rowKey ?? ((r: Row) => JSON.stringify(r));
 
-  // Sort logic.
   const sortedRows = useMemo(() => {
     if (!sortBy || !sortDir) return rows;
     const col = columns.find((c) => c.id === sortBy);
@@ -100,7 +80,6 @@ export function Table<Row>({
       setSortDir("asc");
       return;
     }
-    // Cycle asc → desc → null.
     setSortDir(sortDir === "asc" ? "desc" : sortDir === "desc" ? null : "asc");
     if (sortDir === "desc") setSortBy(null);
   }
@@ -127,16 +106,14 @@ export function Table<Row>({
   return (
     <div
       className={[
-        "overflow-hidden rounded-lg",
-        "bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[10px] backdrop-saturate-150",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),inset_0_-1px_0_rgba(15,23,42,0.04),0_1px_3px_rgba(15,23,42,0.04)]",
+        "overflow-hidden rounded-md bg-card border border-border",
         className ?? "",
       ].filter(Boolean).join(" ")}
     >
       <div className="overflow-auto">
         <table className="w-full border-collapse text-[13px]">
           <thead className={stickyHeader ? "sticky top-0 z-10" : ""}>
-            <tr className="surface-glass-soft border-b border-white/40">
+            <tr className="bg-muted border-b border-border">
               {selectable && (
                 <th className="w-9 px-3 py-2.5 text-left">
                   <Checkbox
@@ -155,19 +132,19 @@ export function Table<Row>({
                   <th
                     key={col.id}
                     style={col.width ? { width: col.width } : undefined}
-                    className={`px-3 py-2.5 ${alignCls} text-[10px] uppercase tracking-widest font-medium text-gray-500`}
+                    className={`px-3 py-2.5 ${alignCls} text-[10px] uppercase tracking-widest font-medium text-muted-foreground`}
                   >
                     {col.sortable ? (
                       <button
                         type="button"
                         onClick={() => handleSort(col.id)}
-                        className="inline-flex items-center gap-1 hover:text-gray-950 transition-colors focus-ring rounded-sm"
+                        className="inline-flex items-center gap-1 hover:text-foreground transition-colors focus-ring rounded-sm"
                       >
                         {col.label}
                         {dir === "asc" ? (
-                          <ChevronUp size={11} className="text-gray-950" />
+                          <ChevronUp size={11} className="text-foreground" />
                         ) : dir === "desc" ? (
-                          <ChevronDown size={11} className="text-gray-950" />
+                          <ChevronDown size={11} className="text-foreground" />
                         ) : (
                           <ChevronsUpDown size={11} className="opacity-50" />
                         )}
@@ -185,7 +162,7 @@ export function Table<Row>({
               <tr>
                 <td
                   colSpan={columns.length + (selectable ? 1 : 0)}
-                  className="px-3 py-10 text-center text-[12px] text-gray-500"
+                  className="px-3 py-10 text-center text-[12px] text-muted-foreground"
                 >
                   {empty}
                 </td>
@@ -201,9 +178,9 @@ export function Table<Row>({
                     onClick={interactive ? () => onRowClick?.(row) : undefined}
                     className={[
                       "transition-colors",
-                      i !== 0 ? "border-t border-white/30" : "",
-                      isSelected ? "bg-sky-50/45 backdrop-blur-[8px]" : "",
-                      interactive ? "cursor-pointer hover:bg-white/50 hover:backdrop-blur-[8px]" : "",
+                      i !== 0 ? "border-t border-border" : "",
+                      isSelected ? "bg-primary/5" : "",
+                      interactive ? "cursor-pointer hover:bg-muted" : "",
                     ].filter(Boolean).join(" ")}
                   >
                     {selectable && (
@@ -222,7 +199,7 @@ export function Table<Row>({
                         ? col.cell(row)
                         : ((row as Record<string, unknown>)[col.id] as ReactNode);
                       return (
-                        <td key={col.id} className={`px-3 py-2.5 ${alignCls} text-gray-800`}>
+                        <td key={col.id} className={`px-3 py-2.5 ${alignCls} text-foreground`}>
                           {value}
                         </td>
                       );

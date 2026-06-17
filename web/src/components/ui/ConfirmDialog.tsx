@@ -8,14 +8,8 @@ import { useRegisterDialog } from "./useDialogStack";
 /**
  * Modal de confirmation avec focus trap léger + ESC.
  *
- * Z-index dynamique via useRegisterDialog : le ConfirmDialog s'empile au-dessus
- * de tout autre dialogue (Drawer, Modal) déjà ouvert. Sans ça, un confirm
- * déclenché depuis un Drawer apparaissait DERRIÈRE le Drawer (z-40/z-50
- * statiques inférieurs au Drawer stacké à z-60+).
- *
- * - Autofocus sur "Confirmer".
- * - Variant `danger` → bouton de confirmation rouge sémantique.
- * - ESC géré par le hook (ne ferme QUE le dialog au sommet de la pile).
+ * Z-index dynamique via useRegisterDialog : empile au-dessus de tout Drawer
+ * ou Modal déjà ouvert. ESC ne ferme QUE le top de la pile.
  */
 interface ConfirmDialogProps {
   open: boolean;
@@ -45,11 +39,10 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const confirmRef = useRef<HTMLButtonElement>(null);
   const [mounted, setMounted] = useState(false);
-  // Stack dynamique : ce dialog passe au-dessus de tout Drawer/Modal déjà ouvert.
-  // ESC géré par le hook (ne ferme que le top de la pile).
   const { zIndex } = useRegisterDialog(open, onCancel);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
@@ -63,7 +56,7 @@ export function ConfirmDialog({
   return createPortal(
     <>
       <div
-        className="fixed inset-0 backdrop-blur-[12px] backdrop-saturate-110"
+        className="fixed inset-0 bg-zinc-950/50"
         style={{ zIndex }}
         onClick={onCancel}
         aria-hidden="true"
@@ -75,20 +68,20 @@ export function ConfirmDialog({
         className="fixed inset-0 flex items-center justify-center px-4 pointer-events-none"
         style={{ zIndex: zIndex + 1 }}
       >
-        <div className="bg-gradient-to-b from-white to-white/85 backdrop-blur-[24px] backdrop-saturate-150 rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_8px_24px_-4px_rgba(15,23,42,0.12),0_32px_72px_-12px_rgba(15,23,42,0.22)] w-full max-w-md pointer-events-auto overflow-hidden">
+        <div className="bg-card text-card-foreground border border-border shadow-lg rounded-lg w-full max-w-md pointer-events-auto overflow-hidden">
           <div className="px-5 pt-5 pb-3">
             <h2
               id="confirm-dialog-title"
-              className="text-sm font-semibold text-gray-950 mb-1"
+              className="text-sm font-semibold text-foreground mb-1"
             >
               {title}
             </h2>
-            <p className="text-[13px] text-gray-600 leading-relaxed">
+            <p className="text-[13px] text-muted-foreground leading-relaxed">
               {description}
             </p>
             {children}
           </div>
-          <div className="flex items-center justify-end gap-2 px-5 py-3 bg-white/40 border-t border-white/40">
+          <div className="flex items-center justify-end gap-2 px-5 py-3 bg-muted border-t border-border">
             <Button
               variant="secondary"
               size="sm"

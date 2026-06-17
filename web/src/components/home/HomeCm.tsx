@@ -99,25 +99,24 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
   const totalActive = overdue.length + toPrepare.length + toPublishThisWeek.length;
   const isFullyEmpty = totalActive === 0 && publishedRecently.length === 0;
 
-  // ── Badges CM ─────────────────────────────────────────────────────────
   const CM_STATUS_BADGES: Record<string, WorklistCmBadges> = {
     EDIT_APPROVED: {
       statusLabel: "À sous-titrer",
-      statusClasses: "bg-sky-50/80 text-sky-700 shadow-[inset_0_0_0_1px_rgba(77,150,191,0.22)]",
+      statusClasses: "bg-info-50 text-info-700 border border-info-200",
     },
     CAPTIONS_PENDING: {
       statusLabel: "Captions en cours",
-      statusClasses: "bg-sky-50/80 text-sky-700 shadow-[inset_0_0_0_1px_rgba(77,150,191,0.22)]",
+      statusClasses: "bg-info-50 text-info-700 border border-info-200",
     },
     READY_FOR_CM: {
       statusLabel: "Prêt à publier",
-      statusClasses: "bg-success-50/80 text-success-700 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.22)]",
+      statusClasses: "bg-success-50 text-success-700 border border-success-200",
     },
   };
 
   const COVER_TO_PICK_BADGE: WorklistCmBadges = {
     statusLabel: "Cover à choisir",
-    statusClasses: "bg-peach-50/80 text-peach-700 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.22)]",
+    statusClasses: "bg-warning-50 text-warning-700 border border-warning-200",
   };
 
   const coverPackBySlot = new Map<string, { status: string; finalCoverUrl: string | null } | null>(
@@ -148,100 +147,72 @@ export async function HomeCm({ userId, userName }: HomeCmProps) {
 
   return (
     <div className="min-h-screen">
-      <div
-        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
-        style={{
-          background: "var(--gradient-page-shell)",
-        }}
-      >
-        {/* Header Control Center */}
-        <div className="rounded-t-3xl overflow-hidden">
-          <div className="max-w-5xl mx-auto px-6 sm:px-8 pt-6 pb-2">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
-                  Ma worklist
-                </p>
-                <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
-                  Bonjour{userName ? `, ${userName.split(" ")[0]}` : ""}
-                </h1>
-                <p className="mt-2 text-[13px] text-gray-500">
-                  {totalActive === 0
-                    ? "Aucune publication en cours."
-                    : `${totalActive} publication${totalActive > 1 ? "s" : ""} active${totalActive > 1 ? "s" : ""}`}
-                  {overdue.length > 0 && (
-                    <>
-                      {" · "}
-                      <span className="text-rose-700 tabular-nums">
-                        {overdue.length} en retard
-                      </span>
-                    </>
-                  )}
-                </p>
-              </div>
-
-              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/55 backdrop-blur-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-                {totalActive > 0 && (
-                  <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_8px_rgba(111,162,128,0.6)] animate-pulse" />
-                )}
-                <span className="text-[11px] font-mono text-gray-700 tabular-nums">
-                  CM
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
-          <div className="max-w-5xl mx-auto space-y-8">
-            {isFullyEmpty ? (
-              <EmptyState
-                icon={<CheckCircle2 size={20} className="text-gray-400" />}
-                title="Rien à publier pour le moment"
-                description="Aucune publication ne t'attend. Reviens plus tard ou consulte le calendrier pour anticiper la suite."
-              />
-            ) : (
+      <div className="mx-auto max-w-5xl px-6 py-8 space-y-6">
+        <header>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Bonjour{userName ? `, ${userName.split(" ")[0]}` : ""}
+          </h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            {totalActive === 0
+              ? "Aucune publication en cours."
+              : `${totalActive} publication${totalActive > 1 ? "s" : ""} active${totalActive > 1 ? "s" : ""}`}
+            {overdue.length > 0 && (
               <>
-                {overdue.length > 0 && (
-                  <WorklistSection
-                    title="En retard"
-                    slots={overdue}
-                    mode="cm"
-                    tone="danger"
-                  />
-                )}
-
-                <WorklistSection
-                  title="À préparer"
-                  slots={toPrepare}
-                  mode="cm"
-                  tone="default"
-                  emptyMessage="Aucune publication à préparer."
-                  cmBadgesMap={cmBadgesMap}
-                />
-
-                <WorklistSection
-                  title="À publier cette semaine"
-                  slots={toPublishThisWeek}
-                  mode="cm"
-                  tone="default"
-                  emptyMessage="Aucune publication prévue cette semaine."
-                />
-
-                {publishedRecently.length > 0 && (
-                  <WorklistSection
-                    title="Publications récentes (2 dernières semaines)"
-                    slots={publishedRecently}
-                    mode="cm"
-                    tone="muted"
-                    collapsible
-                    defaultOpen={false}
-                  />
-                )}
+                {" · "}
+                <span className="text-danger-700 tabular-nums">
+                  {overdue.length} en retard
+                </span>
               </>
             )}
+          </p>
+        </header>
+
+        {isFullyEmpty ? (
+          <EmptyState
+            icon={<CheckCircle2 size={20} className="text-muted-foreground" />}
+            title="Rien à publier"
+            description="Aucune publication en attente."
+          />
+        ) : (
+          <div className="space-y-8">
+            {overdue.length > 0 && (
+              <WorklistSection
+                title="En retard"
+                slots={overdue}
+                mode="cm"
+                tone="danger"
+              />
+            )}
+
+            <WorklistSection
+              title="À préparer"
+              slots={toPrepare}
+              mode="cm"
+              tone="default"
+              emptyMessage="Aucune publication à préparer."
+              cmBadgesMap={cmBadgesMap}
+            />
+
+            <WorklistSection
+              title="À publier cette semaine"
+              slots={toPublishThisWeek}
+              mode="cm"
+              tone="default"
+              emptyMessage="Aucune publication prévue cette semaine."
+            />
+
+            {publishedRecently.length > 0 && (
+              <WorklistSection
+                title="Publications récentes (2 dernières semaines)"
+                slots={publishedRecently}
+                mode="cm"
+                tone="muted"
+                collapsible
+                defaultOpen={false}
+              />
+            )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

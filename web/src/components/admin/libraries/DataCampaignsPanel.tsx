@@ -29,6 +29,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Chip } from "@/components/ui/Chip";
 import { Switch } from "@/components/ui/Switch";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { usagePolicyLabel } from "@/lib/i18n/entityLabels";
 
 // USAGE_POLICIES legacy 5-value enum DB. Conservé pour le mapping côté API.
 // L'UI utilise désormais 2 dimensions (scope + maxUsage) cohérent avec MediaLibrary.
@@ -255,17 +256,17 @@ export function DataCampaignsPanel({ libraryId, libraryName: _libraryName }: Pro
     <div className="space-y-5">
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <p className="text-[12.5px] text-gray-600">
+        <p className="text-[12.5px] text-muted-foreground">
           {campaigns.length} campagne{campaigns.length !== 1 ? "s" : ""}
           {activeCount > 0 && (
             <>
               {" · "}
-              <span className="text-sage-700 tabular-nums">
+              <span className="text-success-700 tabular-nums">
                 {activeCount} active
               </span>
             </>
           )}
-          <span className="text-gray-400 ml-2">
+          <span className="text-muted-foreground ml-2">
             (1 campagne active à la fois)
           </span>
         </p>
@@ -276,15 +277,15 @@ export function DataCampaignsPanel({ libraryId, libraryName: _libraryName }: Pro
 
       {/* Error */}
       {loadError && (
-        <div className="rounded-xl bg-rose-50/70 backdrop-blur-[8px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.22)]">
-          <p className="text-[12.5px] font-semibold text-rose-900">
+        <div className="rounded-xl bg-danger-50/70 p-3 ">
+          <p className="text-[12.5px] font-semibold text-danger-700">
             Impossible de charger les campagnes
           </p>
-          <p className="text-[11px] font-mono text-rose-800 mt-1">{loadError}</p>
+          <p className="text-[11px] font-mono text-danger-700 mt-1">{loadError}</p>
           <button
             type="button"
             onClick={() => void load()}
-            className="text-[11px] text-rose-700 underline mt-2"
+            className="text-[11px] text-danger-700 underline mt-2"
           >
             Réessayer
           </button>
@@ -293,12 +294,12 @@ export function DataCampaignsPanel({ libraryId, libraryName: _libraryName }: Pro
 
       {/* Loading / Empty */}
       {loading ? (
-        <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] py-16 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] flex items-center justify-center text-gray-500 gap-3">
+        <div className="rounded-2xl bg-card border border-border py-16  flex items-center justify-center text-muted-foreground gap-3">
           <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
           <span className="text-[12.5px]">Chargement…</span>
         </div>
       ) : campaigns.length === 0 ? (
-        <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+        <div className="rounded-2xl bg-card border border-border p-8 ">
           <EmptyState
             icon={RotateCcw}
             title="Aucune campagne"
@@ -349,11 +350,11 @@ export function DataCampaignsPanel({ libraryId, libraryName: _libraryName }: Pro
               {activeCampaign ? (
                 renderCard(activeCampaign, "hero")
               ) : (
-                <div className="rounded-2xl bg-gradient-to-b from-peach-50/70 via-peach-50/45 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(221,140,90,0.22)] px-4 py-3 flex items-center gap-3">
-                  <span className="shrink-0 h-8 w-8 rounded-full bg-peach-100 inline-flex items-center justify-center text-peach-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+                <div className="rounded-2xl bg-gradient-to-b from-warning-50/70 via-warning-50/45 to-white/55  px-4 py-3 flex items-center gap-3">
+                  <span className="shrink-0 h-8 w-8 rounded-full bg-warning-100 inline-flex items-center justify-center text-warning-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
                     <RotateCcw size={14} />
                   </span>
-                  <p className="text-[12.5px] text-peach-900 leading-tight">
+                  <p className="text-[12.5px] text-warning-700 leading-tight">
                     <span className="font-semibold">Aucune campagne active.</span>{" "}
                     Active une campagne ci-dessous pour démarrer un cycle de rotation.
                   </p>
@@ -363,7 +364,7 @@ export function DataCampaignsPanel({ libraryId, libraryName: _libraryName }: Pro
               {/* Inactives en grid compact 2-3 cols. */}
               {inactiveCampaigns.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-[10px] uppercase tracking-widest font-semibold text-gray-500 pl-1">
+                  <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground pl-1">
                     {inactiveCampaigns.length} campagne{inactiveCampaigns.length > 1 ? "s" : ""} inactive{inactiveCampaigns.length > 1 ? "s" : ""}
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -436,13 +437,13 @@ export function DataCampaignsPanel({ libraryId, libraryName: _libraryName }: Pro
                 />
               </FormField>
 
-              <div className="rounded-xl bg-white/40 backdrop-blur-[8px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+              <div className="rounded-xl bg-card border border-border p-3 ">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[13px] font-semibold text-gray-950">
+                    <p className="text-[13px] font-semibold text-foreground">
                       Activer immédiatement
                     </p>
-                    <p className="text-[11px] text-gray-500 mt-0.5">
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
                       La campagne actuellement active (s&apos;il y en a une) sera désactivée.
                     </p>
                   </div>
@@ -455,7 +456,7 @@ export function DataCampaignsPanel({ libraryId, libraryName: _libraryName }: Pro
                 </div>
               </div>
 
-              {createError && <p className="text-[11px] text-rose-700">{createError}</p>}
+              {createError && <p className="text-[11px] text-danger-700">{createError}</p>}
             </div>
           </Modal.Body>
           <Modal.Footer>
@@ -521,20 +522,20 @@ function CampaignCard({
   // ─── HERO : campagne active proéminente ──────────────────────────────
   if (isHero) {
     return (
-      <div className="group rounded-2xl bg-gradient-to-b from-sage-50/65 via-white/65 to-white/45 backdrop-blur-[14px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_2px_rgba(111,162,128,0.4),0_4px_12px_-4px_rgba(111,162,128,0.18),0_16px_32px_-12px_rgba(15,23,42,0.12)] p-5 space-y-4">
+      <div className="group rounded-2xl bg-gradient-to-b from-success-50/65 via-white/65 to-white/45  p-5 space-y-4">
         {/* Header — badge active + actions */}
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] uppercase tracking-widest font-semibold text-sage-700 inline-flex items-center gap-1.5">
+            <p className="text-[10px] uppercase tracking-widest font-semibold text-success-700 inline-flex items-center gap-1.5">
               <Check size={11} /> Campagne active
             </p>
-            <h2 className="mt-1 text-[22px] sm:text-[26px] font-semibold tracking-tight text-gray-950 leading-[1.1] truncate" title={c.name}>
+            <h2 className="mt-1 text-[22px] sm:text-[26px] font-semibold tracking-tight text-foreground leading-[1.1] truncate" title={c.name}>
               {c.name}
             </h2>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {pendingToggle ? (
-              <span className="h-8 inline-flex items-center px-2 text-[11px] text-gray-500">
+              <span className="h-8 inline-flex items-center px-2 text-[11px] text-muted-foreground">
                 <span className="h-3.5 w-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mr-2" />
                 Désactivation…
               </span>
@@ -546,7 +547,7 @@ function CampaignCard({
             <button
               type="button"
               onClick={onDelete}
-              className="p-1.5 text-gray-300 hover:text-rose-600 rounded-md hover:bg-rose-50/60 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+              className="p-1.5 text-muted-foreground/60 hover:text-danger-600 rounded-md hover:bg-danger-50/60 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-danger-200"
               title="Supprimer"
             >
               <Trash2 size={13} />
@@ -556,27 +557,27 @@ function CampaignCard({
 
         {/* Stats row */}
         <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-xl bg-white/70 backdrop-blur-[8px] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.05)]">
-            <p className="text-[9.5px] uppercase tracking-widest font-semibold text-gray-500">Fiches</p>
-            <p className="text-[18px] font-semibold text-gray-950 tabular-nums leading-tight mt-0.5">{c._count.entries}</p>
+          <div className="rounded-xl bg-card border border-border p-2.5 ">
+            <p className="text-[9.5px] uppercase tracking-widest font-semibold text-muted-foreground">Fiches</p>
+            <p className="text-[18px] font-semibold text-foreground tabular-nums leading-tight mt-0.5">{c._count.entries}</p>
           </div>
-          <div className="rounded-xl bg-white/70 backdrop-blur-[8px] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.05)]">
-            <p className="text-[9.5px] uppercase tracking-widest font-semibold text-gray-500">Utilisées</p>
-            <p className="text-[18px] font-semibold text-gray-950 tabular-nums leading-tight mt-0.5">{c.usedInCycleCount}</p>
+          <div className="rounded-xl bg-card border border-border p-2.5 ">
+            <p className="text-[9.5px] uppercase tracking-widest font-semibold text-muted-foreground">Utilisées</p>
+            <p className="text-[18px] font-semibold text-foreground tabular-nums leading-tight mt-0.5">{c.usedInCycleCount}</p>
           </div>
-          <div className="rounded-xl bg-white/70 backdrop-blur-[8px] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.05)]">
-            <p className="text-[9.5px] uppercase tracking-widest font-semibold text-gray-500">Progression</p>
-            <p className="text-[18px] font-semibold text-gray-950 tabular-nums leading-tight mt-0.5">{pct}%</p>
+          <div className="rounded-xl bg-card border border-border p-2.5 ">
+            <p className="text-[9.5px] uppercase tracking-widest font-semibold text-muted-foreground">Progression</p>
+            <p className="text-[18px] font-semibold text-foreground tabular-nums leading-tight mt-0.5">{pct}%</p>
           </div>
         </div>
 
         {/* Progress bar */}
         {c._count.entries > 0 && (
-          <div className="h-2 rounded-full overflow-hidden bg-white/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+          <div className="h-2 rounded-full overflow-hidden bg-white/40 ">
             <div
               className={[
                 "h-full rounded-full transition-all",
-                pct >= 100 ? "bg-gradient-to-r from-sage-400 to-sage-500" : pct > 0 ? "bg-gradient-to-r from-sky-400 to-sky-500" : "bg-gray-200/60",
+                pct >= 100 ? "bg-gradient-to-r from-success-200 to-success-600" : pct > 0 ? "bg-gradient-to-r from-info-200 to-info-600" : "bg-gray-200/60",
               ].join(" ")}
               style={{ width: `${Math.min(pct, 100)}%` }}
             />
@@ -587,9 +588,9 @@ function CampaignCard({
         <div className="flex items-end justify-between gap-3 flex-wrap">
           <div className="min-w-0 flex-1 space-y-1">
             {isEditingPolicy ? (
-              <div className="rounded-xl bg-white/55 backdrop-blur-[8px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] space-y-2.5">
+              <div className="rounded-xl bg-card border border-border p-3  space-y-2.5">
                 <div>
-                  <p className="text-[9.5px] uppercase tracking-widest font-semibold text-gray-500 mb-1.5">Comment elles tournent</p>
+                  <p className="text-[9.5px] uppercase tracking-widest font-semibold text-muted-foreground mb-1.5">Comment elles tournent</p>
                   <div className="flex gap-1.5 flex-wrap">
                     {(["per_account", "shared"] as const).map((s) => (
                       <Chip
@@ -605,7 +606,7 @@ function CampaignCard({
                   </div>
                 </div>
                 <div>
-                  <p className="text-[9.5px] uppercase tracking-widest font-semibold text-gray-500 mb-1.5">Consommation max par fiche</p>
+                  <p className="text-[9.5px] uppercase tracking-widest font-semibold text-muted-foreground mb-1.5">Consommation max par fiche</p>
                   <input
                     type="number"
                     min={1}
@@ -618,7 +619,7 @@ function CampaignCard({
                       setEditingPolicyView({ ...editingPolicyView, maxUsage: 1 });
                     }}
                     placeholder="Vide = infini · 1 = bloquer après 1 usage"
-                    className="w-full rounded-lg bg-white/65 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.08)] px-2.5 py-1.5 text-[13px] text-gray-950 placeholder:text-gray-400 outline-none focus:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.45),0_0_0_3px_rgba(169,209,230,0.4)]"
+                    className="w-full rounded-lg bg-card border border-border  px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground outline-none focus:"
                   />
                 </div>
                 <div className="flex items-center gap-1.5 pt-1">
@@ -632,23 +633,23 @@ function CampaignCard({
               <button
                 type="button"
                 onClick={onStartEditPolicy}
-                className="inline-flex items-center gap-1.5 text-[11px] text-sky-700 hover:text-sky-900 transition-colors"
+                className="inline-flex items-center gap-1.5 text-[11px] text-info-700 hover:text-info-700 transition-colors"
                 title={policyMeta?.description ?? ""}
               >
                 <span className="font-medium">Rotation :</span>
-                <span>{policyMeta?.label ?? c.usagePolicy}</span>
-                <Pencil size={10} className="text-gray-300" />
+                <span>{policyMeta?.label ?? usagePolicyLabel(c.usagePolicy)}</span>
+                <Pencil size={10} className="text-muted-foreground/60" />
               </button>
             )}
             {c.cycleResetAt && (
-              <p className="text-[10.5px] text-gray-500">
+              <p className="text-[10.5px] text-muted-foreground">
                 Dernier reset : {new Date(c.cycleResetAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/Paris" })}
               </p>
             )}
           </div>
           <Link
             href={`/admin/libraries/data/${libraryId}/${c.id}`}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12.5px] font-semibold text-white bg-gradient-to-b from-gray-800 to-gray-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_2px_4px_rgba(15,23,42,0.18)] hover:from-gray-900 hover:to-gray-950 transition-all"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12.5px] font-semibold text-white bg-gradient-to-b from-gray-800 to-gray-950  hover:from-gray-900 hover:to-gray-950 transition-all"
           >
             Voir les fiches
             <ChevronRight size={13} />
@@ -660,18 +661,18 @@ function CampaignCard({
 
   // ─── COMPACT : campagne inactive (card discrète) ──────────────────────
   return (
-    <div className="group flex flex-col gap-2 p-3 rounded-xl bg-gradient-to-b from-white/75 to-white/45 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1),0_2px_8px_-2px_rgba(15,23,42,0.08)] transition-all">
+    <div className="group flex flex-col gap-2 p-3 rounded-xl bg-card border border-border  hover: transition-all">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-semibold text-gray-800 truncate" title={c.name}>{c.name}</p>
-          <p className="text-[10.5px] text-gray-500 tabular-nums mt-0.5">
+          <p className="text-[10.5px] text-muted-foreground tabular-nums mt-0.5">
             {c._count.entries} fiche{c._count.entries !== 1 ? "s" : ""}
           </p>
         </div>
         <button
           type="button"
           onClick={onDelete}
-          className="p-1 text-gray-300 hover:text-rose-600 rounded-md transition-colors opacity-0 group-hover:opacity-100"
+          className="p-1 text-muted-foreground/60 hover:text-danger-600 rounded-md transition-colors opacity-0 group-hover:opacity-100"
           title="Supprimer"
         >
           <Trash2 size={12} />
@@ -679,7 +680,7 @@ function CampaignCard({
       </div>
       <div className="flex items-center gap-1.5 mt-auto pt-1">
         {pendingToggle ? (
-          <span className="flex-1 h-7 inline-flex items-center justify-center text-[10.5px] text-gray-500">
+          <span className="flex-1 h-7 inline-flex items-center justify-center text-[10.5px] text-muted-foreground">
             <span className="h-3 w-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mr-1.5" />
             Activation…
           </span>
@@ -690,7 +691,7 @@ function CampaignCard({
         )}
         <Link
           href={`/admin/libraries/data/${libraryId}/${c.id}`}
-          className="inline-flex items-center justify-center px-2 py-1.5 rounded-md text-[11px] font-medium text-gray-700 hover:text-gray-950 bg-white/60 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)] transition-all"
+          className="inline-flex items-center justify-center px-2 py-1.5 rounded-md text-[11px] font-medium text-foreground hover:text-foreground bg-card border border-border  transition-all"
           title="Voir les fiches"
         >
           <ChevronRight size={13} />

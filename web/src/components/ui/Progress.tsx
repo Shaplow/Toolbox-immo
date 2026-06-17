@@ -3,15 +3,11 @@
 /**
  * Progress — indicateur de progression linéaire ou circulaire.
  *
- * Doctrine Liquid Glass v2 :
- * - Track ring inset signature glass.
- * - Fill : gradient color + highlight intérieur subtle (matière).
- * - Variant linear (default) : barre horizontale.
- * - Variant circular : SVG cercle stroke avec backdrop-blur du label.
- * - Accent : default (gray-800 graphite), peach, sage, sky (Coastal Studio).
- * - Indeterminate : shimmer animé pour les jobs sans % connu.
+ * Track bg-muted, fill bg-primary (unique accent en DA v3).
+ * Indeterminate : shimmer animé pour jobs sans % connu.
  *
  * Sizes : sm (h-1 / 24px circ) | md (h-1.5 / 32px circ) | lg (h-2 / 48px circ).
+ * La prop `accent` est legacy et mappée vers primary.
  */
 
 import type { CSSProperties } from "react";
@@ -27,24 +23,9 @@ interface ProgressProps {
   size?: Size;
   accent?: Accent;
   indeterminate?: boolean;
-  /** Affiche la valeur (linear: à droite ; circular: au centre). */
   showValue?: boolean;
   className?: string;
 }
-
-const ACCENT_FILL: Record<Accent, string> = {
-  default: "#1f2937",
-  peach:   "#f59e6b",
-  sage:    "#6fa280",
-  sky:     "#4d96bf",
-};
-
-const ACCENT_LIGHT: Record<Accent, string> = {
-  default: "#374151",
-  peach:   "#fdcfa3",
-  sage:    "#a5cdaf",
-  sky:     "#85bcd9",
-};
 
 const LINEAR_HEIGHT: Record<Size, string> = {
   sm: "h-1",
@@ -69,11 +50,12 @@ export function Progress({
   max = 100,
   variant = "linear",
   size = "md",
-  accent = "default",
+  accent: _accent = "default",
   indeterminate = false,
   showValue = false,
   className,
 }: ProgressProps) {
+  void _accent;
   const pct = max === 0 ? 0 : Math.min(100, Math.max(0, (value / max) * 100));
 
   if (variant === "circular") {
@@ -81,7 +63,6 @@ export function Progress({
       <CircularProgress
         pct={pct}
         size={size}
-        accent={accent}
         indeterminate={indeterminate}
         showValue={showValue}
         className={className}
@@ -89,30 +70,14 @@ export function Progress({
     );
   }
 
-  // ─── Linear ──────────────────────────────────────────────────────────────
-
-  const fill = ACCENT_FILL[accent];
-  const fillLight = ACCENT_LIGHT[accent];
-
   const fillStyle: CSSProperties = indeterminate
-    ? {
-        background: `linear-gradient(90deg, transparent 0%, ${fillLight} 30%, ${fill} 50%, ${fillLight} 70%, transparent 100%)`,
-        backgroundSize: "200% 100%",
-      }
-    : {
-        width: `${pct}%`,
-        background: `linear-gradient(180deg, ${fillLight} 0%, ${fill} 100%)`,
-      };
+    ? {}
+    : { width: `${pct}%` };
 
   return (
     <div className={["flex items-center gap-3", className ?? ""].filter(Boolean).join(" ")}>
       <div
-        className={[
-          "flex-1 rounded-full overflow-hidden",
-          "bg-white/40 backdrop-blur-[6px]",
-          "shadow-[inset_0_1px_0_rgba(255,255,255,0.85),inset_0_0_0_1px_rgba(15,23,42,0.06),inset_0_-1px_0_rgba(15,23,42,0.04)]",
-          LINEAR_HEIGHT[size],
-        ].join(" ")}
+        className={["flex-1 rounded-full overflow-hidden bg-muted", LINEAR_HEIGHT[size]].join(" ")}
         role="progressbar"
         aria-valuenow={indeterminate ? undefined : value}
         aria-valuemin={0}
@@ -120,24 +85,17 @@ export function Progress({
       >
         <div
           className={[
-            "h-full rounded-full",
-            "shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]",
-            indeterminate ? "animate-[shimmer_1.6s_ease-in-out_infinite] w-full" : "transition-all",
+            "h-full rounded-full bg-primary",
+            indeterminate ? "animate-pulse w-1/3" : "transition-all",
           ].join(" ")}
           style={fillStyle}
         />
       </div>
       {showValue && !indeterminate && (
-        <span className="shrink-0 text-[11px] font-mono text-gray-700 tabular-nums min-w-[3rem] text-right">
+        <span className="shrink-0 text-[11px] font-mono text-muted-foreground tabular-nums min-w-[3rem] text-right">
           {Math.round(pct)}%
         </span>
       )}
-      <style jsx>{`
-        @keyframes shimmer {
-          0%   { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-      `}</style>
     </div>
   );
 }
@@ -145,14 +103,12 @@ export function Progress({
 function CircularProgress({
   pct,
   size,
-  accent,
   indeterminate,
   showValue,
   className,
 }: {
   pct: number;
   size: Size;
-  accent: Accent;
   indeterminate: boolean;
   showValue: boolean;
   className?: string;
@@ -162,8 +118,6 @@ function CircularProgress({
   const radius = (px - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference * (1 - pct / 100);
-  const fill = ACCENT_FILL[accent];
-  const fillLight = ACCENT_LIGHT[accent];
 
   return (
     <span
@@ -175,38 +129,30 @@ function CircularProgress({
       aria-valuemax={100}
     >
       <svg width={px} height={px} className={indeterminate ? "animate-spin" : ""} style={{ animationDuration: "1.4s" }}>
-        <defs>
-          <linearGradient id={`prog-grad-${accent}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor={fillLight} />
-            <stop offset="100%" stopColor={fill} />
-          </linearGradient>
-        </defs>
-        {/* Track */}
         <circle
           cx={px / 2}
           cy={px / 2}
           r={radius}
           fill="none"
-          stroke="rgba(15,23,42,0.08)"
+          className="stroke-muted"
           strokeWidth={stroke}
         />
-        {/* Fill */}
         <circle
           cx={px / 2}
           cy={px / 2}
           r={radius}
           fill="none"
-          stroke={`url(#prog-grad-${accent})`}
+          className="stroke-primary"
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={indeterminate ? circumference * 0.7 : dashOffset}
           transform={`rotate(-90 ${px / 2} ${px / 2})`}
-          className="transition-all"
+          style={{ transition: "stroke-dashoffset 0.3s ease" }}
         />
       </svg>
       {showValue && !indeterminate && (
-        <span className="absolute text-[10px] font-mono text-gray-700 tabular-nums">
+        <span className="absolute text-[10px] font-mono text-foreground tabular-nums">
           {Math.round(pct)}
         </span>
       )}

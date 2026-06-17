@@ -38,23 +38,20 @@ export default async function TemplatesPage() {
   return (
     <div className="min-h-screen">
       <div
-        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
-        style={{
-          background: "var(--gradient-page-shell)",
-        }}
+        className="mx-auto max-w-[1400px] px-6 py-8"
       >
         {/* Header Control Center */}
         <div className="rounded-t-3xl overflow-hidden">
           <div className="max-w-7xl mx-auto px-6 sm:px-8 pt-6 pb-2">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                   Production
                 </p>
-                <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
+                <h1 className="mt-2 text-[36px] sm:text-[44px] font-semibold tracking-tight text-foreground leading-[1.05]">
                   Studio
                 </h1>
-                <p className="mt-2 text-[13px] text-gray-500">
+                <p className="mt-2 text-[13px] text-muted-foreground">
                   {items.length} template{items.length !== 1 ? "s" : ""}
                   {distinctClients.size > 0 && (
                     <>

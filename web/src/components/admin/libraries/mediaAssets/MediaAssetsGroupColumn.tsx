@@ -113,14 +113,14 @@ export function MediaAssetsGroupColumn({
       <div
         className={`mb-2 p-2.5 rounded-xl border flex flex-col gap-1 ${
           !isAccessible && accountFilter
-            ? "bg-gray-50 border-dashed border-gray-300"
-            : "bg-gray-50 border-gray-200"
+            ? "bg-muted border-dashed border-border"
+            : "bg-muted border-border"
         }`}
       >
         {!isAccessible && accountFilter && (
           groupAssets.every((a) => a.disabled)
-            ? <span className="text-[9px] text-red-400 flex items-center gap-0.5 mb-0.5"><AlertTriangle size={8} /> Pack désactivé — bloque la rotation</span>
-            : <span className="text-[9px] text-gray-400 flex items-center gap-0.5 mb-0.5"><Lock size={8} /> Hors accès pour ce compte</span>
+            ? <span className="text-[9px] text-red-400 flex items-center gap-0.5 mb-0.5"><AlertTriangle size={8} /> Groupe désactivé — bloque la rotation</span>
+            : <span className="text-[9px] text-muted-foreground flex items-center gap-0.5 mb-0.5"><Lock size={8} /> Hors accès pour ce compte</span>
         )}
         {/* Category */}
         {(setTag || category) && !inSection && (
@@ -143,17 +143,17 @@ export function MediaAssetsGroupColumn({
                 }}
                 list="group-list"
                 placeholder="ex: Tenue A, Plan Ext…"
-                className="w-full text-[10px] border border-rose-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-rose-400"
+                className="w-full text-[10px] border border-danger-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-danger-200"
               />
             ) : (
               <button
                 onClick={() => { setEditingFamilyKey(groupKey); setFamilyInput(category ?? ""); }}
                 className={`flex items-center gap-1 text-[10px] w-full text-left px-1.5 py-0.5 rounded border transition-colors ${
                   category
-                    ? "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100 font-medium"
-                    : "text-gray-400 border-dashed border-gray-200 hover:border-rose-200 hover:text-rose-500"
+                    ? "bg-danger-50 text-danger-700 border-danger-200 hover:bg-danger-100 font-medium"
+                    : "text-muted-foreground border-dashed border-border hover:border-danger-200 hover:text-danger-600"
                 }`}
-                title="Catégorie du pack — deux packs de la même catégorie ne se suivent jamais dans la rotation"
+                title="Catégorie du groupe — deux groupes de la même catégorie ne se suivent jamais dans la rotation"
               >
                 <FolderOpen size={10} className="shrink-0" />
                 <span className="truncate">{category || "Catégorie…"}</span>
@@ -166,47 +166,47 @@ export function MediaAssetsGroupColumn({
         {/* Pack name */}
         {setTag ? (
           <div className="flex items-center gap-1.5">
-            <Layers size={11} className="text-rose-400 shrink-0" />
+            <Layers size={11} className="text-danger-200 shrink-0" />
             <span className="text-xs font-semibold text-gray-800 truncate" title={setTag}>{setTag}</span>
           </div>
         ) : category ? (
-          <span className="text-xs font-medium text-gray-500 italic">Pool catégorie</span>
+          <span className="text-xs font-medium text-muted-foreground italic">Pool catégorie</span>
         ) : (
-          <span className="text-xs font-medium text-gray-400">Sans pack</span>
+          <span className="text-xs font-medium text-muted-foreground">Sans pack</span>
         )}
         <div className="flex flex-wrap items-center gap-1">
-          <span className="text-[10px] text-gray-400">
+          <span className="text-[10px] text-muted-foreground">
             {accessibleCount ?? groupAssets.length} rush{(accessibleCount ?? groupAssets.length) !== 1 ? "es" : ""}
           </span>
           {(setTag || category) && (
             isAutoMode ? (
               autoRank === 1 ? (
-                <span className="text-[10px] font-medium bg-sage-50 text-sage-800 border border-sage-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                <span className="text-[10px] font-medium bg-success-50 text-success-700 border border-success-200 px-1.5 py-0.5 rounded flex items-center gap-1">
                   <RotateCcw size={9} /> Prochain
                 </span>
               ) : (
-                <span className="text-[10px] text-gray-400 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                <span className="text-[10px] text-muted-foreground bg-muted border border-border px-1.5 py-0.5 rounded flex items-center gap-1">
                   <RotateCcw size={9} /> {autoRank != null ? `Dans ${autoRank - 1} gén.` : "–"}
                 </span>
               )
             ) : (
               isSequenced ? (
                 <div className="flex items-center gap-0.5">
-                  <span className="text-[10px] font-mono bg-sky-100 text-sky-800 border border-sky-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                  <span className="text-[10px] font-mono bg-info-100 text-info-700 border border-info-200 px-1.5 py-0.5 rounded flex items-center gap-1">
                     <ListOrdered size={10} /> #{seqIdx + 1}
                   </span>
-                  <button onClick={() => moveSetTag(setTag!, -1)} disabled={seqIdx === 0} className="p-0.5 rounded hover:bg-gray-100 disabled:opacity-30">
-                    <ChevronUp size={12} className="text-gray-500" />
+                  <button onClick={() => moveSetTag(setTag!, -1)} disabled={seqIdx === 0} className="p-0.5 rounded hover:bg-muted disabled:opacity-30">
+                    <ChevronUp size={12} className="text-muted-foreground" />
                   </button>
-                  <button onClick={() => moveSetTag(setTag!, 1)} disabled={seqIdx === seqState.length - 1} className="p-0.5 rounded hover:bg-gray-100 disabled:opacity-30">
-                    <ChevronDown size={12} className="text-gray-500" />
+                  <button onClick={() => moveSetTag(setTag!, 1)} disabled={seqIdx === seqState.length - 1} className="p-0.5 rounded hover:bg-muted disabled:opacity-30">
+                    <ChevronDown size={12} className="text-muted-foreground" />
                   </button>
                   <button onClick={() => removeFromSequence(setTag!)} className="text-[10px] text-red-400 hover:text-red-600 px-0.5 flex items-center" title="Retirer de la rotation">
                     <MinusCircle size={11} />
                   </button>
                 </div>
               ) : (
-                <button onClick={() => addToSequence(setTag!)} className="flex items-center gap-1 text-[10px] text-sky-700 hover:text-sky-800 border border-sky-200 rounded-full px-2 py-0.5">
+                <button onClick={() => addToSequence(setTag!)} className="flex items-center gap-1 text-[10px] text-info-700 hover:text-info-700 border border-info-200 rounded-full px-2 py-0.5">
                   <PlusCircle size={10} /> Fixer l&apos;ordre
                 </button>
               )
@@ -214,7 +214,7 @@ export function MediaAssetsGroupColumn({
           )}
         </div>
         {(setTag || category) && lastUsed && (
-          <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+          <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
             <Clock size={9} /> {formatDate(lastUsed)}
           </span>
         )}
@@ -222,13 +222,13 @@ export function MediaAssetsGroupColumn({
 
       {/* Rushes avec rôles définis */}
       {hasRoles && (
-        <div className="border border-dashed border-peach-200 bg-peach-50/40 rounded-xl p-1.5 mb-2">
-          <span className="text-[9px] font-semibold text-peach-700 uppercase tracking-wide mb-1.5 flex items-center gap-1">
+        <div className="border border-dashed border-warning-200 bg-warning-50/40 rounded-xl p-1.5 mb-2">
+          <span className="text-[9px] font-semibold text-warning-700 uppercase tracking-wide mb-1.5 flex items-center gap-1">
             <Film size={9} /> Rushes
           </span>
           {roleTags.map(([tag, assets]) => (
             <div key={tag} className="mb-1.5 last:mb-0">
-              <span className="text-[9px] text-peach-700 mb-1 block pl-0.5">{tag}</span>
+              <span className="text-[9px] text-warning-700 mb-1 block pl-0.5">{tag}</span>
               <div className="flex flex-col gap-1.5">{assets.map((a) => renderVideoCard(a))}</div>
             </div>
           ))}

@@ -3,19 +3,11 @@
 /**
  * CollapsibleSection — wrapper accordéon pour les sections de fiche.
  *
- * UX :
- * - Quand fermée : pill compact avec titre + chevron, click n'importe où
- *   pour ouvrir. Liquid Glass v2 : surface-glass-faint + backdrop-blur
- *   pour rappeler la matière flottante.
- * - Quand ouverte : un mini bouton chevron flottant en haut à droite du
- *   contenu permet de la refermer. Pas de lien "Réduire" qui prend une
- *   ligne entière en bas.
- * - storageKey : persiste l'état entre les visites de la fiche.
- * - sectionId : permet à un autre composant (ProductionChain, header)
- *   d'ouvrir via event window `pub:open-section`.
+ * Fermée : pill compact bg-muted + chevron, click n'importe où pour ouvrir.
+ * Ouverte : bouton chevron flottant en haut à droite du contenu pour fermer.
  *
- * Sticky header au scroll : à implémenter en Phase 6 (refonte fiche pub).
- * Nécessite IntersectionObserver + portail header — hors scope Phase 2.
+ * storageKey persiste l'état. sectionId écoute `pub:open-section` pour
+ * ouverture programmatique depuis ProductionChain / header.
  */
 
 import { useEffect, useState } from "react";
@@ -77,7 +69,7 @@ export function CollapsibleSection({
           onClick={() => setOpen(false)}
           aria-label={`Réduire ${title}`}
           title={`Réduire ${title}`}
-          className="absolute top-5 right-5 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors focus-ring"
+          className="absolute top-5 right-5 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-ring"
         >
           <ChevronDown size={14} />
         </button>
@@ -90,10 +82,10 @@ export function CollapsibleSection({
     <button
       type="button"
       onClick={() => setOpen(true)}
-      className="w-full flex items-center justify-between px-5 py-3 bg-[var(--surface-glass-faint)] backdrop-blur-[8px] backdrop-saturate-150 border border-white/50 rounded-2xl hover:bg-[var(--surface-glass-medium)] hover:border-gray-200 transition-colors text-left focus-ring shadow-[var(--ring-glass-edge)]"
+      className="w-full flex items-center justify-between px-5 py-3 bg-card border border-border rounded-lg hover:bg-muted transition-colors text-left focus-ring"
     >
-      <span className="text-[13px] font-semibold text-gray-700">{title}</span>
-      <ChevronRight size={14} className="text-gray-400" />
+      <span className="text-[13px] font-semibold text-foreground">{title}</span>
+      <ChevronRight size={14} className="text-muted-foreground" />
     </button>
   );
 }

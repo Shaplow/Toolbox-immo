@@ -47,7 +47,7 @@ export function PlaygroundSidebar() {
       <nav className="space-y-7 text-[13px]">
         {NAV.map((section) => (
           <div key={section.label} className="space-y-1.5">
-            <p className="text-[10px] uppercase tracking-[0.14em] text-gray-400 font-medium px-2">
+            <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground font-medium px-2">
               {section.label}
             </p>
             <ul className="space-y-px">
@@ -61,8 +61,8 @@ export function PlaygroundSidebar() {
                       className={[
                         "block rounded-md px-2 py-1 transition-colors leading-snug",
                         active
-                          ? "bg-gray-100 text-gray-950 font-medium"
-                          : "text-gray-600 hover:text-gray-950 hover:bg-gray-50",
+                          ? "bg-muted text-foreground font-medium"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted",
                       ].join(" ")}
                     >
                       {item.label}

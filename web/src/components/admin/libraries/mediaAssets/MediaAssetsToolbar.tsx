@@ -128,7 +128,7 @@ export function MediaAssetsToolbar({
             </Button>
             {autocutPendingCount > 0 && (
               <span
-                className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-gradient-to-b from-peach-500 to-peach-600 text-white text-[10px] font-semibold leading-none shadow-[0_0_0_2px_rgba(255,255,255,1),0_2px_4px_rgba(245,158,107,0.4)]"
+                className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-gradient-to-b from-warning-600 to-warning-600 text-white text-[10px] font-semibold leading-none shadow-[0_0_0_2px_rgba(255,255,255,1),0_2px_4px_rgba(245,158,107,0.4)]"
                 title={`${autocutPendingCount} analyse${autocutPendingCount > 1 ? "s" : ""} à valider`}
               >
                 {autocutPendingCount > 99 ? "99+" : autocutPendingCount}
@@ -144,14 +144,14 @@ export function MediaAssetsToolbar({
 
       {/* Reset error */}
       {resetError && (
-        <div className="rounded-2xl bg-gradient-to-b from-rose-50/85 via-rose-50/55 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(201,113,133,0.22),0_2px_8px_-4px_rgba(244,114,128,0.16)]">
-          <p className="text-[12.5px] text-rose-800">{resetError}</p>
+        <div className="rounded-2xl bg-gradient-to-b from-danger-50/85 via-danger-50/55 to-white/55 p-3 ">
+          <p className="text-[12.5px] text-danger-700">{resetError}</p>
         </div>
       )}
 
       {/* Filter bar glass — 1 ligne ramassée + filtres actifs en dessous */}
       {!loading && assetsCount > 0 && (
-        <div className="p-2.5 rounded-2xl bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)] space-y-2">
+        <div className="p-2.5 rounded-2xl bg-card border border-border  space-y-2">
           {/* Une seule ligne : search + sort + compte + view + select + (tags pop avancé) */}
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex-1 min-w-[200px] max-w-[280px]">
@@ -233,7 +233,7 @@ export function MediaAssetsToolbar({
           {/* Tags filter en mode avancé — collapsible discret */}
           {allTags.length > 0 && isAdvanced && (
             <details className="group">
-              <summary className="cursor-pointer flex items-center gap-1.5 text-[10.5px] text-gray-500 hover:text-gray-700 select-none w-fit pl-1 py-1">
+              <summary className="cursor-pointer flex items-center gap-1.5 text-[10.5px] text-muted-foreground hover:text-foreground select-none w-fit pl-1 py-1">
                 <Tag size={10} />
                 <span>Filtrer par tag</span>
                 {tagFilter && (

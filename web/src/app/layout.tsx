@@ -49,7 +49,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fr" className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} ${caveat.variable}`}>
-      <body suppressHydrationWarning className="antialiased bg-gray-50 text-gray-900 min-h-screen font-sans">
+      <body suppressHydrationWarning className="antialiased bg-muted text-gray-900 min-h-screen font-sans">
         <SessionProvider>
           {children}
           <ToastContainer />

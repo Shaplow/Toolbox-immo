@@ -4,7 +4,7 @@
  * CommentItem — affiche un commentaire individuel.
  *
  * UX décisions Phase 3 :
- * - Avatar bg-sky-100 text-sky-700 → bg-gray-100 text-gray-700
+ * - Avatar bg-info-100 text-info-700 → bg-muted text-foreground
  *   (mono, cohérent avec UserAvatar de AppNav).
  * - Textarea natif d'édition → <Textarea> primitive.
  * - 2 boutons indigo + gray → <Button size="sm" /> primary/secondary.
@@ -83,8 +83,8 @@ export function CommentItem({
   if (comment.deletedAt !== null) {
     return (
       <div className="flex gap-3 py-3">
-        <div className="h-8 w-8 rounded-full bg-gray-100 flex-shrink-0" />
-        <p className="text-[13px] text-gray-400 mt-1">Message supprimé.</p>
+        <div className="h-8 w-8 rounded-full bg-muted flex-shrink-0" />
+        <p className="text-[13px] text-muted-foreground mt-1">Message supprimé.</p>
       </div>
     );
   }
@@ -147,7 +147,7 @@ export function CommentItem({
   return (
     <div className="flex gap-3 py-3 group">
       <div
-        className="h-8 w-8 rounded-full bg-gray-100 border border-gray-200 text-[11px] font-semibold text-gray-700 flex items-center justify-center flex-shrink-0 select-none"
+        className="h-8 w-8 rounded-full bg-muted border border-border text-[11px] font-semibold text-foreground flex items-center justify-center flex-shrink-0 select-none"
         aria-hidden
       >
         {avatarInitials}
@@ -155,10 +155,10 @@ export function CommentItem({
 
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 flex-wrap">
-          <span className="text-[13px] font-medium text-gray-950">{displayName}</span>
-          <span className="text-[11px] text-gray-400">{relativeTime(comment.createdAt)}</span>
+          <span className="text-[13px] font-medium text-foreground">{displayName}</span>
+          <span className="text-[11px] text-muted-foreground">{relativeTime(comment.createdAt)}</span>
           {comment.updatedAt !== comment.createdAt && (
-            <span className="text-[11px] text-gray-400">(modifié)</span>
+            <span className="text-[11px] text-muted-foreground">(modifié)</span>
           )}
         </div>
 
@@ -194,7 +194,7 @@ export function CommentItem({
             </div>
           </div>
         ) : (
-          <p className="mt-0.5 text-[13px] text-gray-700 whitespace-pre-wrap break-words leading-relaxed">
+          <p className="mt-0.5 text-[13px] text-foreground whitespace-pre-wrap break-words leading-relaxed">
             {comment.body}
           </p>
         )}

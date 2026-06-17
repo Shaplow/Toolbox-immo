@@ -116,6 +116,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     metadata?: Record<string, string | number | null>;
   };
 
+  // H.2 — Le prefix `pack_` est réservé aux groupes auto-générés à l'upload.
+  // L'admin ne doit jamais pouvoir créer un setTag manuel avec ce prefix
+  // (sinon il apparaîtra invisible dans l'UI qui filtre les pack_*).
+  if (
+    "setTag" in body &&
+    typeof body.setTag === "string" &&
+    body.setTag.startsWith("pack_")
+  ) {
+    return NextResponse.json(
+      { error: "Le préfixe « pack_ » est réservé. Choisis un autre nom de groupe." },
+      { status: 400 },
+    );
+  }
+
   const data: Record<string, unknown> = {};
   if (typeof body.duration === "number") data.duration = body.duration;
   if (Array.isArray(body.tags)) data.tags = JSON.stringify(body.tags);

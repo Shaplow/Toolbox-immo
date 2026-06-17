@@ -59,13 +59,13 @@ export default function PlaygroundIndexPage() {
     <div className="space-y-14 max-w-4xl">
       {/* ── Hero ────────────────────────────────────────────────────────── */}
       <header className="space-y-4">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">
           Playground · Liquid Glass v2
         </p>
-        <h1 className="text-4xl font-semibold tracking-tight text-gray-950">
+        <h1 className="text-4xl font-semibold tracking-tight text-foreground">
           Toolbox Immo — Design System
         </h1>
-        <p className="text-[15px] text-gray-700 max-w-2xl leading-relaxed">
+        <p className="text-[15px] text-foreground max-w-2xl leading-relaxed">
           Sandbox interne pour valider la refonte Liquid Glass phase par phase.
           Tokens, primitives, molécules, patterns — chaque livraison passe par
           ici avant migration des surfaces métier.
@@ -75,8 +75,8 @@ export default function PlaygroundIndexPage() {
       {/* ── Sections livrées ────────────────────────────────────────────── */}
       <section className="space-y-4">
         <header className="space-y-1">
-          <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">Vitrines</p>
-          <h2 className="text-xl font-semibold tracking-tight text-gray-950">Livré · validable maintenant</h2>
+          <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">Vitrines</p>
+          <h2 className="text-xl font-semibold tracking-tight text-foreground">Livré · validable maintenant</h2>
         </header>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {SECTIONS.map((s) => {
@@ -88,17 +88,17 @@ export default function PlaygroundIndexPage() {
                 className="group surface-glass rounded-xl p-6 transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-glass-md),var(--ring-glass-inset)]"
               >
                 <div className="flex items-start justify-between mb-3">
-                  <div className="h-10 w-10 rounded-lg bg-white/80 backdrop-blur-[8px] shadow-[var(--ring-glass-inset)] flex items-center justify-center text-gray-800">
+                  <div className="h-10 w-10 rounded-lg bg-card border border-border shadow-[var(--ring-glass-inset)] flex items-center justify-center text-gray-800">
                     <Icon size={18} />
                   </div>
-                  <span className="rounded-full bg-sage-100 px-2 py-0.5 text-[10px] font-medium text-sage-700 shadow-[var(--ring-glass-edge)]">
+                  <span className="rounded-full bg-success-100 px-2 py-0.5 text-[10px] font-medium text-success-700 shadow-[var(--ring-glass-edge)]">
                     {s.status}
                   </span>
                 </div>
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1">{s.eyebrow}</p>
-                <h3 className="text-[17px] font-semibold tracking-tight text-gray-950 mb-2">{s.title}</h3>
-                <p className="text-[12px] text-gray-600 leading-relaxed">{s.description}</p>
-                <div className="mt-4 inline-flex items-center gap-1 text-[12px] font-medium text-gray-950 group-hover:gap-2 transition-all">
+                <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1">{s.eyebrow}</p>
+                <h3 className="text-[17px] font-semibold tracking-tight text-foreground mb-2">{s.title}</h3>
+                <p className="text-[12px] text-muted-foreground leading-relaxed">{s.description}</p>
+                <div className="mt-4 inline-flex items-center gap-1 text-[12px] font-medium text-foreground group-hover:gap-2 transition-all">
                   Voir
                   <ArrowRight size={12} />
                 </div>
@@ -111,13 +111,13 @@ export default function PlaygroundIndexPage() {
       {/* ── Doctrine ────────────────────────────────────────────────────── */}
       <section className="space-y-4">
         <header className="space-y-1">
-          <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">Doctrine</p>
-          <h2 className="text-xl font-semibold tracking-tight text-gray-950">4 règles cardinales</h2>
+          <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">Doctrine</p>
+          <h2 className="text-xl font-semibold tracking-tight text-foreground">4 règles cardinales</h2>
         </header>
         <ol className="surface-glass-soft rounded-xl p-6 space-y-3">
           {DOCTRINE.map((rule, i) => (
-            <li key={i} className="flex items-start gap-3 text-[13px] text-gray-700 leading-relaxed">
-              <span className="shrink-0 inline-flex items-center justify-center h-5 w-5 rounded-md bg-white/70 backdrop-blur-[6px] shadow-[var(--ring-glass-edge)] text-[10px] font-mono font-medium text-gray-700 mt-0.5">
+            <li key={i} className="flex items-start gap-3 text-[13px] text-foreground leading-relaxed">
+              <span className="shrink-0 inline-flex items-center justify-center h-5 w-5 rounded-md bg-card border border-border shadow-[var(--ring-glass-edge)] text-[10px] font-mono font-medium text-foreground mt-0.5">
                 {i + 1}
               </span>
               <span>{rule}</span>
@@ -129,20 +129,20 @@ export default function PlaygroundIndexPage() {
       {/* ── Upcoming ────────────────────────────────────────────────────── */}
       <section className="space-y-4">
         <header className="space-y-1">
-          <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">Roadmap</p>
-          <h2 className="text-xl font-semibold tracking-tight text-gray-950">À venir</h2>
+          <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">Roadmap</p>
+          <h2 className="text-xl font-semibold tracking-tight text-foreground">À venir</h2>
         </header>
         <div className="space-y-3">
           {UPCOMING.map((p) => {
             const Icon = p.icon;
             return (
               <div key={p.label} className="surface-glass-soft rounded-xl p-4 flex items-start gap-4">
-                <div className="h-9 w-9 shrink-0 rounded-lg bg-white/70 backdrop-blur-[6px] shadow-[var(--ring-glass-edge)] flex items-center justify-center text-gray-600">
+                <div className="h-9 w-9 shrink-0 rounded-lg bg-card border border-border shadow-[var(--ring-glass-edge)] flex items-center justify-center text-muted-foreground">
                   <Icon size={16} />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[13px] font-semibold text-gray-950">{p.label}</p>
-                  <p className="text-[12px] text-gray-600 mt-0.5 leading-relaxed">{p.description}</p>
+                  <p className="text-[13px] font-semibold text-foreground">{p.label}</p>
+                  <p className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">{p.description}</p>
                 </div>
               </div>
             );

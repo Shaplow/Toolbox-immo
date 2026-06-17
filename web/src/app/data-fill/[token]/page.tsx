@@ -33,19 +33,19 @@ export default async function DataFillPage({ params }: PageProps) {
   if (!lib) notFound();
 
   return (
-    <div className="min-h-screen flex items-start justify-center px-4 py-8 sm:py-16" style={{ background: "var(--gradient-page-shell)" }}>
+    <div className="min-h-screen flex items-start justify-center px-4 py-8 sm:py-16">
       <div className="w-full max-w-2xl">
         <div className="text-center mb-6">
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
             Bibliothèque de données · {lib.templateType}
           </p>
-          <h1 className="mt-2 text-[28px] sm:text-[36px] font-semibold tracking-tight text-gray-950 leading-[1.05]">
+          <h1 className="mt-2 text-[28px] sm:text-[36px] font-semibold tracking-tight text-foreground leading-[1.05]">
             {lib.name}
           </h1>
           {lib.description && (
-            <p className="mt-2 text-[13px] text-gray-500 max-w-md mx-auto">{lib.description}</p>
+            <p className="mt-2 text-[13px] text-muted-foreground max-w-md mx-auto">{lib.description}</p>
           )}
-          <p className="mt-4 text-[13px] text-gray-600">
+          <p className="mt-4 text-[13px] text-muted-foreground">
             Ajoute ci-dessous les fiches à intégrer dans cette bibliothèque. Tu peux en saisir plusieurs d&apos;un coup.
           </p>
         </div>

@@ -31,16 +31,16 @@ export function LibraryPreviewThumbs({ type, previewAssets }: Props) {
 
   if (!isVideo) {
     return (
-      <div className="aspect-[16/9] rounded-lg overflow-hidden bg-gradient-to-br from-sage-100/60 to-sage-50/40 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.04)]">
+      <div className="aspect-[16/9] rounded-lg overflow-hidden bg-gradient-to-br from-success-100/60 to-success-50/40 flex items-center justify-center ">
         {previewAssets.length === 0 ? (
-          <div className="flex flex-col items-center gap-1 text-sage-600/60">
+          <div className="flex flex-col items-center gap-1 text-success-600/60">
             <Music2 size={22} />
             <span className="text-[9.5px] uppercase tracking-widest font-medium">vide</span>
           </div>
         ) : (
           <div className="flex items-center gap-1">
-            <Music2 size={22} className="text-sage-700" />
-            <span className="text-[12px] font-semibold text-sage-800 tabular-nums">
+            <Music2 size={22} className="text-success-700" />
+            <span className="text-[12px] font-semibold text-success-700 tabular-nums">
               {previewAssets.length}+
             </span>
           </div>
@@ -51,8 +51,8 @@ export function LibraryPreviewThumbs({ type, previewAssets }: Props) {
 
   if (previewAssets.length === 0) {
     return (
-      <div className="aspect-[16/9] rounded-lg overflow-hidden bg-gradient-to-br from-sky-50/60 to-sky-100/40 flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.04)]">
-        <div className="flex flex-col items-center gap-1 text-sky-600/60">
+      <div className="aspect-[16/9] rounded-lg overflow-hidden bg-gradient-to-br from-info-50/60 to-info-100/40 flex items-center justify-center ">
+        <div className="flex flex-col items-center gap-1 text-info-600/60">
           <VideoIcon size={22} />
           <span className="text-[9.5px] uppercase tracking-widest font-medium">vide</span>
         </div>
@@ -67,7 +67,7 @@ export function LibraryPreviewThumbs({ type, previewAssets }: Props) {
   );
 
   return (
-    <div className="aspect-[16/9] rounded-lg overflow-hidden bg-gray-900/5 grid grid-cols-2 grid-rows-2 gap-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.04)]">
+    <div className="aspect-[16/9] rounded-lg overflow-hidden bg-gray-900/5 grid grid-cols-2 grid-rows-2 gap-0.5 ">
       {slots.map((asset, idx) =>
         asset ? (
           <div key={asset.id} className="overflow-hidden bg-gray-900/85">

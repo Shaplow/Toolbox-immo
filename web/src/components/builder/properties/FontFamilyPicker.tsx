@@ -48,7 +48,7 @@ export function FontFamilyPicker({
         <button
           type="button"
           onClick={() => setOpen((current) => !current)}
-          className="w-full rounded border border-gray-200 bg-white px-2 py-2 text-left transition hover:border-indigo-300"
+          className="w-full rounded border border-border bg-white px-2 py-2 text-left transition hover:border-indigo-300"
         >
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
@@ -58,11 +58,11 @@ export function FontFamilyPicker({
               >
                 {value || "Choisir une typographie"}
               </p>
-              <p className="truncate text-[10px] uppercase tracking-wide text-gray-400">
+              <p className="truncate text-[10px] uppercase tracking-wide text-muted-foreground">
                 {selectedFont ? sourceLabel(selectedFont.source) : "Toutes les typographies disponibles"}
               </p>
             </div>
-            <span className="shrink-0 text-xs text-gray-400">{open ? "▲" : "▼"}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{open ? "▲" : "▼"}</span>
           </div>
         </button>
 
@@ -70,7 +70,7 @@ export function FontFamilyPicker({
           <button
             type="button"
             onClick={() => onChange(undefined)}
-            className="text-[11px] text-gray-500 hover:text-gray-700"
+            className="text-[11px] text-muted-foreground hover:text-foreground"
           >
             Retirer la police du bloc
           </button>
@@ -78,21 +78,21 @@ export function FontFamilyPicker({
       </div>
 
       {open ? (
-        <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
-          <div className="border-b border-gray-100 p-2">
+        <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-xl border border-border bg-white shadow-xl">
+          <div className="border-b border-border p-2">
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Rechercher une typographie"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              className="w-full rounded-lg border border-border px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
               autoFocus
             />
           </div>
 
           <div className="max-h-72 overflow-y-auto p-2">
             {filteredFonts.length === 0 ? (
-              <p className="px-2 py-4 text-center text-xs text-gray-400">Aucune typographie correspondante.</p>
+              <p className="px-2 py-4 text-center text-xs text-muted-foreground">Aucune typographie correspondante.</p>
             ) : (
               <div className="space-y-1">
                 {filteredFonts.map((font) => {
@@ -109,7 +109,7 @@ export function FontFamilyPicker({
                       className={`w-full rounded-lg border px-3 py-2 text-left transition ${
                         isSelected
                           ? "border-indigo-200 bg-indigo-50"
-                          : "border-transparent hover:border-gray-200 hover:bg-gray-50"
+                          : "border-transparent hover:border-border hover:bg-muted"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -121,13 +121,13 @@ export function FontFamilyPicker({
                             {font.family}
                           </p>
                           <p
-                            className="truncate text-[11px] text-gray-500"
+                            className="truncate text-[11px] text-muted-foreground"
                             style={{ fontFamily: font.family }}
                           >
                             Apercu Aa Bb Cc 123
                           </p>
                         </div>
-                        <span className="shrink-0 rounded-full bg-gray-100 px-2 py-1 text-[10px] uppercase tracking-wide text-gray-500">
+                        <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                           {sourceLabel(font.source)}
                         </span>
                       </div>

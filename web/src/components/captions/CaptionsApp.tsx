@@ -440,26 +440,26 @@ export default function CaptionsApp({
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
             {backUrl && (
-              <Link href={backUrl} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 transition-colors mr-1">
+              <Link href={backUrl} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-gray-900 transition-colors mr-1">
                 <ChevronLeft size={14}/>Retour
               </Link>
             )}
-            <div className="w-10 h-10 bg-rose-600 rounded-xl flex items-center justify-center text-white shrink-0">
+            <div className="w-10 h-10 bg-danger-600 rounded-xl flex items-center justify-center text-white shrink-0">
               <Film size={20}/>
             </div>
             <div>
               <h1 className="text-xl font-semibold text-gray-900">
                 {loadedPresetName ?? (initialPresetId ? 'Modifier le preset' : 'Nouveau preset')}
               </h1>
-              <p className="text-sm text-gray-500 mt-0.5">Réglez la typo, les effets et le placement des sous-titres</p>
+              <p className="text-sm text-muted-foreground mt-0.5">Réglez la typo, les effets et le placement des sous-titres</p>
               <div className="mt-2 flex flex-wrap gap-2">
-                <span className="inline-flex items-center rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-medium text-rose-700">
+                <span className="inline-flex items-center rounded-full bg-danger-50 px-2.5 py-1 text-[11px] font-medium text-danger-700">
                   {loadedPresetName ? 'Preset chargé' : initialPresetId ? 'Preset existant' : 'Nouveau preset'}
                 </span>
-                <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 ring-1 ring-gray-200">
+                <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-muted-foreground ring-1 ring-gray-200">
                   {captions.length} bloc{captions.length > 1 ? 's' : ''}
                 </span>
-                <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 ring-1 ring-gray-200">
+                <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-muted-foreground ring-1 ring-gray-200">
                   {highlighted.size} mot{highlighted.size > 1 ? 's' : ''} en highlight
                 </span>
               </div>
@@ -467,7 +467,7 @@ export default function CaptionsApp({
           </div>
           <div className="flex items-center gap-2">
             <button
-              className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors bg-white"
+              className="px-3 py-1.5 text-xs border border-border rounded-lg text-muted-foreground hover:bg-muted transition-colors bg-white"
               onClick={() => {
                 setConfig(emptyConfig)
                 setCaptions([])
@@ -487,7 +487,7 @@ export default function CaptionsApp({
                 className={`flex items-center gap-1.5 px-4 py-1.5 text-xs rounded-lg disabled:opacity-60 transition-colors font-medium ${
                   saveStatus === 'ok' ? 'bg-green-600 text-white' :
                   saveStatus === 'err' ? 'bg-red-500 text-white' :
-                  'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                  'border border-danger-200 bg-danger-50 text-danger-700 hover:bg-danger-100'
                 }`}
                 disabled={saving}
                 onClick={() => void updatePreset()}
@@ -496,7 +496,7 @@ export default function CaptionsApp({
               </button>
             )}
             <button
-              className="flex items-center gap-1.5 px-4 py-1.5 text-xs bg-rose-600 hover:bg-rose-700 text-white rounded-lg disabled:opacity-60 transition-colors font-medium"
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs bg-danger-600 hover:bg-danger-700 text-white rounded-lg disabled:opacity-60 transition-colors font-medium"
               disabled={busy}
               onClick={() => runAction('render-full')}
             >

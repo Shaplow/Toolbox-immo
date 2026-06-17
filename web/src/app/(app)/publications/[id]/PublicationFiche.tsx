@@ -457,74 +457,11 @@ export function PublicationFiche({
     } as Record<string, unknown>);
   };
 
-  // Ordre du process éditorial (2026-05-30) — la chaîne effective dépend du
-  // pattern (captions seulement si needsCaptions, etc.). Permet de calculer
-  // pour chaque section quelle est la "suivante" et d'afficher un mini lien
-  // discret "Étape suivante : XXX ↓" en bas de chaque card.
-  const processOrder: { key: SectionKey; label: string; visible: boolean }[] = [
-    { key: "render", label: "Rendu vidéo", visible: shouldRenderForRole("render", currentUserRole) },
-    {
-      key: "captions",
-      label: "Sous-titres",
-      visible: captionsActive && shouldRenderForRole("captions", currentUserRole),
-    },
-    {
-      key: "clientValidation",
-      label: "Validation client",
-      visible: clientValidation.needsClientValidation && shouldRenderForRole("clientValidation", currentUserRole),
-    },
-    {
-      key: "description",
-      label: "Description",
-      visible: pattern != null && pattern.needsDescription !== "none" && shouldRenderForRole("description", currentUserRole),
-    },
-    {
-      key: "cover",
-      label: "Cover",
-      visible: pattern != null && pattern.coverMode !== "none" && shouldRenderForRole("cover", currentUserRole),
-    },
-    { key: "publish", label: "Publier", visible: shouldRenderForRole("publish", currentUserRole) },
-  ];
-
-  function getNextProcessStep(currentKey: SectionKey): { key: SectionKey; label: string } | null {
-    const idx = processOrder.findIndex((s) => s.key === currentKey);
-    if (idx === -1) return null;
-    for (let i = idx + 1; i < processOrder.length; i++) {
-      if (processOrder[i].visible) return { key: processOrder[i].key, label: processOrder[i].label };
-    }
-    return null;
-  }
-
-  // Lien visuel entre 2 sections — référence directe à la chaîne de
-  // production (trait + dot central qui matérialise l'étape). Cliquable
-  // → scroll vers la section suivante. Tooltip = nom de l'étape.
-  function renderNextStepHint(currentKey: SectionKey) {
-    const next = getNextProcessStep(currentKey);
-    if (!next) return null;
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          const el = document.getElementById(next.key);
-          window.dispatchEvent(new CustomEvent("pub:open-section", { detail: { sectionId: next.key } }));
-          requestAnimationFrame(() => {
-            el?.scrollIntoView({ behavior: "smooth", block: "start" });
-          });
-        }}
-        aria-label={`Aller à : ${next.label}`}
-        title={`Étape suivante : ${next.label}`}
-        className="group relative flex flex-col items-center justify-center w-full h-8 my-1"
-      >
-        {/* Trait fin vertical traversant */}
-        <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-gray-300 to-transparent group-hover:via-sky-400 transition-colors" />
-        {/* Dot central — matérialise l'étape, mêmes codes que ProductionChain */}
-        <span className="relative h-2 w-2 rounded-full bg-white border border-gray-300 group-hover:border-sky-500 group-hover:scale-125 transition-all shadow-sm" />
-      </button>
-    );
-  }
+  // Connecteurs gradient entre sections retirés (DA v3) — la navigation
+  // inter-étapes est assurée par le stepper ProductionChain (clic → scroll).
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background">
       {/* Refresh live de la fiche sur events SSE — supprime le besoin de F5
           pour voir l'avancement du pipeline (render/captions/description/cover). */}
       <PublicationLiveRefresh
@@ -535,51 +472,36 @@ export function PublicationFiche({
         ]}
         expectedJobTypes={["captions", "transcription", "render", "cover", "description"]}
       />
-      {/* Wrapper ControlCenter (niveau MID). Card flottante : margin autour
-          pour qu'on voit le fond gris léger derrière, rounded-3xl all corners,
-          ring inset spéculaire + ombre subtle pour la matière des bords. */}
-      <div
-        className="my-11 ml-[60px] mr-[100px] rounded-3xl min-h-[calc(100vh-5.5rem)] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]"
-        style={{
-          // Fond gris foncé diffus (radial soft → gris pâle en bas). Plus
-          // de gradient peach/sage, ambiance neutre studio.
-          background: "rgb(212, 212, 216)",
-        }}
-      >
-        {/* Header shell — non sticky (Mathis 2026-05-29). Le header
-            scrolle naturellement avec le contenu. */}
-        <div className="rounded-t-3xl overflow-hidden">
-          <PublicationHeader
-            slot={slot}
-            account={account}
-            pattern={pattern ? { id: pattern.id, label: pattern.label } : null}
-            canMarkPublished={canMarkPublished}
-            canDelete={canDelete}
-            currentUserRole={currentUserRole}
-          />
-          <NextActionBanner
-            slotStatus={slot.status}
-            currentUserId={currentUserId}
-            currentUserRole={currentUserRole}
-            assigneeMonteurId={assigneeMonteur?.id ?? null}
-            assigneeCmId={assigneeCm?.id ?? null}
-            assigneeVideasteId={assigneeVideaste?.id ?? null}
-            visibleSectionIds={visibleSectionIds}
-          />
+
+      {/* Header sticky flat (DA v3) — le composant porte sa propre barre. */}
+      <PublicationHeader
+        slot={slot}
+        account={account}
+        pattern={pattern ? { id: pattern.id, label: pattern.label } : null}
+        canMarkPublished={canMarkPublished}
+        canDelete={canDelete}
+        currentUserRole={currentUserRole}
+      />
+
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+        <NextActionBanner
+          slotStatus={slot.status}
+          currentUserId={currentUserId}
+          currentUserRole={currentUserRole}
+          assigneeMonteurId={assigneeMonteur?.id ?? null}
+          assigneeCmId={assigneeCm?.id ?? null}
+          assigneeVideasteId={assigneeVideaste?.id ?? null}
+          visibleSectionIds={visibleSectionIds}
+        />
+
+        {/* Chaîne de production */}
+        <div className="mt-4 p-4 rounded-lg bg-card border border-border">
+          <ProductionChain steps={steps} viewerRole={currentUserRole} />
         </div>
 
-        <div className="pt-6 md:pt-8 pb-12 px-4 sm:px-6 md:px-8">
-        <div className="max-w-6xl mx-auto">
-          {/* Card chaîne de production — wrapper glass v2 pour ancrer la
-              chaîne. Pas de titre ni eyebrow ; le composant ProductionChain
-              porte sa propre densité avec les step cards glass. */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-white/80 to-white/60 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.05)]">
-            <ProductionChain steps={steps} viewerRole={currentUserRole} />
-          </div>
-
-          <div className="mt-8 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-8">
+        <div className="mt-6 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-6">
           {/* Colonne workflow — sections d'action */}
-          <div className="space-y-10 min-w-0">
+          <div className="space-y-4 min-w-0">
             {/* Brief éditorial — Phase B3, conditionné par pattern.needsBrief */}
             {pattern?.needsBrief &&
               wrap(
@@ -706,7 +628,6 @@ export function PublicationFiche({
               />,
               true,
             )}
-            {shouldRenderForRole("render", currentUserRole) && renderNextStepHint("render")}
 
             {/* 2. Sous-titres — visible si mode auto OU manual (V8).
                 Phase 8 V2 — section permanente (toujours ouverte, pas de pli). */}
@@ -738,8 +659,6 @@ export function PublicationFiche({
                 />,
                 true,
               )}
-            {captionsActive && shouldRenderForRole("captions", currentUserRole) &&
-              renderNextStepHint("captions")}
 
             {/* 3. Validation client externe — masquée si needsClientValidation false.
                 V8.10 — On bloque l'envoi tant que les sous-titres ne sont pas
@@ -773,8 +692,6 @@ export function PublicationFiche({
                 />
               );
             })()}
-            {clientValidation.needsClientValidation && shouldRenderForRole("clientValidation", currentUserRole) &&
-              renderNextStepHint("clientValidation")}
 
             {/* 4. Description de publication */}
             {wrap(
@@ -816,7 +733,6 @@ export function PublicationFiche({
                 transcriptionJobStatus={transcriptionJobStatus}
               />
             )}
-            {shouldRenderForRole("description", currentUserRole) && renderNextStepHint("description")}
 
             {/* 5. Cover Instagram */}
             {wrap(
@@ -853,8 +769,6 @@ export function PublicationFiche({
                 slotStatus={slot.status}
               />
             )}
-            {pattern != null && pattern.coverMode !== "none" && shouldRenderForRole("cover", currentUserRole) &&
-              renderNextStepHint("cover")}
 
             {/* Phase 6 — Boutons triggers manuels pour slots one-off (ADMIN only)
                 Utilise resolvedConfig (override slot + pattern) au lieu de pattern brut
@@ -895,8 +809,8 @@ export function PublicationFiche({
           {/* Colonne droite — Conversation + Activité, sticky en xl.
               Pas de max-h + overflow-y-auto interne : laisse scroller la page
               naturellement. Sinon scrollbar visible + activité tronquée. */}
-          <aside className="mt-10 xl:mt-0 space-y-8">
-            <div className="xl:sticky xl:top-[160px] space-y-8">
+          <aside className="mt-6 xl:mt-0">
+            <div className="xl:sticky xl:top-[128px] space-y-4">
               {wrap(
                 "comments",
                 <CommentsSection
@@ -922,8 +836,6 @@ export function PublicationFiche({
               )}
             </div>
           </aside>
-          </div>
-        </div>
         </div>
       </div>
     </div>

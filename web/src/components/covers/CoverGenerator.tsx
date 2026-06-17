@@ -522,19 +522,19 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
       />
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 mb-6 bg-gray-100 p-1 rounded-xl w-fit">
+      <div className="flex items-center gap-1 mb-6 bg-muted p-1 rounded-xl w-fit">
         <button
           type="button"
           onClick={() => setActiveTab("packs")}
           className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === "packs" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            activeTab === "packs" ? "bg-white text-gray-900 shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Layers size={14} />
           Packs semi-auto
           {!packsLoading && packs.length > 0 && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-              activeTab === "packs" ? "bg-sky-100 text-sky-700" : "bg-gray-200 text-gray-500"
+              activeTab === "packs" ? "bg-info-100 text-info-700" : "bg-gray-200 text-muted-foreground"
             }`}>
               {packs.length}
             </span>
@@ -544,7 +544,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
           type="button"
           onClick={() => setActiveTab("manual")}
           className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === "manual" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            activeTab === "manual" ? "bg-white text-gray-900 shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Upload size={14} />
@@ -553,17 +553,17 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
       </div>
 
       {activeTab === "packs" && (
-      <section className="mb-8 bg-white border border-gray-100 rounded-2xl p-5 md:p-6 shadow-sm">
+      <section className="mb-8 bg-white border border-border rounded-2xl p-5 md:p-6 shadow-sm">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
             <h2 className="text-sm font-semibold text-gray-900">Packs automatiques</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Frames préparées depuis les renders vidéo des templates activées.</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Frames préparées depuis les renders vidéo des templates activées.</p>
           </div>
           <button
             type="button"
             onClick={() => void loadPacks()}
             disabled={packsLoading}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50 flex items-center gap-2"
+            className="px-3 py-2 border border-border rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50 flex items-center gap-2"
           >
             <RefreshCw size={14} className={packsLoading ? "animate-spin" : ""} />
             Actualiser
@@ -573,18 +573,18 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
         {packsLoading ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {Array.from({ length: 2 }).map((_, index) => (
-              <div key={index} className="h-64 bg-gray-100 rounded-xl animate-pulse" />
+              <div key={index} className="h-64 bg-muted rounded-xl animate-pulse" />
             ))}
           </div>
         ) : packs.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center">
-            <p className="text-sm font-medium text-gray-700">
+          <div className="rounded-xl border border-dashed border-border p-8 text-center">
+            <p className="text-sm font-medium text-foreground">
               {slotId ? "Pas encore de pack cover pour cette publication." : "Aucun pack cover à traiter."}
             </p>
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               {slotId
                 ? "Le rendu vidéo doit avoir terminé pour qu'un pack soit généré. Tu peux aussi extraire des frames librement via l'onglet « Extraction libre »."
-                : "Les prochains renders vidéo avec cover activée apparaîtront ici."}
+                : "Aucun render."}
             </p>
           </div>
         ) : (
@@ -597,7 +597,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
               const ready = pack.status === "READY" && pack.candidates.length > 0;
               const selected = pack.status === "SELECTED" && pack.finalCoverUrl;
               return (
-                <article key={pack.id} className="rounded-xl border border-gray-100 bg-gray-50/40 overflow-hidden">
+                <article key={pack.id} className="rounded-xl border border-border bg-muted/40 overflow-hidden">
                   <div className="grid gap-0 md:grid-cols-[minmax(220px,360px)_1fr]">
                     <div className="bg-white p-0 md:p-4 flex items-start justify-center">
                       {selected ? (
@@ -646,7 +646,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                           />
                         </div>
                       ) : (
-                        <div className="mx-auto aspect-[9/16] w-full max-w-[360px] rounded-lg flex items-center justify-center text-xs text-gray-400 bg-white">Aucune frame</div>
+                        <div className="mx-auto aspect-[9/16] w-full max-w-[360px] rounded-lg flex items-center justify-center text-xs text-muted-foreground bg-white">Aucune frame</div>
                       )}
                     </div>
 
@@ -659,17 +659,17 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                           <div className="flex items-center gap-2 flex-wrap mt-1">
                             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                               pack.status === "READY" ? "bg-green-50 text-green-600" :
-                              pack.status === "SELECTED" ? "bg-sky-50 text-sky-700" :
+                              pack.status === "SELECTED" ? "bg-info-50 text-info-700" :
                               pack.status === "FAILED" ? "bg-red-50 text-red-500" :
-                              "bg-sky-50 text-sky-700"
+                              "bg-info-50 text-info-700"
                             }`}>
                               {pack.status === "READY" ? "À choisir" : pack.status === "SELECTED" ? "Cover validée" : pack.status === "FAILED" ? "Erreur" : "Préparation…"}
                             </span>
-                            <span className="text-[10px] text-gray-400">{new Date(pack.createdAt).toLocaleString("fr-FR")}</span>
-                            {pack.ownerName && <span className="text-[10px] text-gray-400">{pack.ownerName}</span>}
+                            <span className="text-[10px] text-muted-foreground">{new Date(pack.createdAt).toLocaleString("fr-FR")}</span>
+                            {pack.ownerName && <span className="text-[10px] text-muted-foreground">{pack.ownerName}</span>}
                           </div>
                           {selected && (
-                            <p className="text-[10px] text-sky-700 mt-1">Cover enregistrée sur ce rendu.</p>
+                            <p className="text-[10px] text-info-700 mt-1">Cover enregistrée sur ce rendu.</p>
                           )}
                         </div>
 
@@ -678,7 +678,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                             <>
                               <Link
                                 href={`/renders/${pack.renderId}`}
-                                className="px-3 py-2 border border-sky-200 bg-sky-50 text-sky-800 rounded-lg text-xs font-medium hover:bg-sky-100 transition-colors"
+                                className="px-3 py-2 border border-info-200 bg-info-50 text-info-700 rounded-lg text-xs font-medium hover:bg-info-100 transition-colors"
                               >
                                 Voir le rendu →
                               </Link>
@@ -696,7 +696,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                             type="button"
                             onClick={() => void regeneratePack(pack.id)}
                             disabled={isBusy || pack.status === "PROCESSING" || pack.status === "QUEUED"}
-                            className="px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-white transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                            className="px-3 py-2 border border-border rounded-lg text-xs text-muted-foreground hover:bg-white transition-colors disabled:opacity-50 flex items-center gap-1.5"
                           >
                             <RefreshCw size={13} className={isBusy ? "animate-spin" : ""} />
                             Nouveau tirage
@@ -726,14 +726,14 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                                     type="button"
                                     onClick={() => setSelectedCandidateByPack((prev) => ({ ...prev, [pack.id]: candidate.id }))}
                                     className={`relative rounded-lg overflow-hidden border-2 transition ${
-                                      selectedId === candidate.id ? "border-sky-500 shadow-sm" : "border-transparent hover:border-gray-300"
+                                      selectedId === candidate.id ? "border-info-600 shadow-sm" : "border-transparent hover:border-border"
                                     }`}
                                     title={titleLabel}
                                   >
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img src={candidate.imageUrl} alt={fmt(candidate.timestamp)} className="w-full aspect-[9/16] object-cover" loading="lazy" />
                                     {selectedId === candidate.id && (
-                                      <span className="absolute top-1 right-1 w-4 h-4 bg-sky-600 rounded-full flex items-center justify-center">
+                                      <span className="absolute top-1 right-1 w-4 h-4 bg-info-600 rounded-full flex items-center justify-center">
                                         <Check size={9} className="text-white" strokeWidth={3} />
                                       </span>
                                     )}
@@ -753,11 +753,11 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
 
                           {/* Overlay groups toggle */}
                           {pack.templateGroups.filter((g) => !g.hidden && !g.locked).length > 0 ? (
-                            <div className="mt-4 p-3 rounded-lg bg-gray-50 border border-gray-100">
+                            <div className="mt-4 p-3 rounded-lg bg-muted border border-border">
                               <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-medium text-gray-600">Overlays</span>
+                                <span className="text-xs font-medium text-muted-foreground">Overlays</span>
                                 {groupPatchingPackId === pack.id && (
-                                  <span className="text-[10px] text-sky-700">Enregistrement…</span>
+                                  <span className="text-[10px] text-info-700">Enregistrement…</span>
                                 )}
                               </div>
                               <div className="flex flex-wrap gap-2">
@@ -771,8 +771,8 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                                         key={group.id}
                                         className={`flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1 rounded-md border transition-colors ${
                                           isChecked
-                                            ? "bg-sky-50 border-sky-200 text-sky-800"
-                                            : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
+                                            ? "bg-info-50 border-info-200 text-info-700"
+                                            : "bg-white border-border text-muted-foreground hover:border-border"
                                         } ${groupPatchingPackId === pack.id ? "opacity-60 pointer-events-none" : ""}`}
                                       >
                                         <input
@@ -794,16 +794,16 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                                   })}
                               </div>
                               {(overlayGroupsByPack[pack.id] ?? pack.overlayGroupIds).length === 0 && (
-                                <p className="text-[10px] text-gray-400 mt-1.5">Aucun overlay — la cover sera la frame brute.</p>
+                                <p className="text-[10px] text-muted-foreground mt-1.5">Aucun overlay — la cover sera la frame brute.</p>
                               )}
                             </div>
                           ) : pack.templateGroups.length === 0 ? (
-                            <p className="mt-3 text-[10px] text-gray-400">Ce template n&apos;a pas d&apos;overlays.</p>
+                            <p className="mt-3 text-[10px] text-muted-foreground">Ce template n&apos;a pas d&apos;overlays.</p>
                           ) : null}
 
                           {/* Offset controls */}
                           <div className="mt-4 flex flex-col gap-2">
-                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
                               <span className="w-16 shrink-0">X</span>
                               <input
                                 type="range"
@@ -825,12 +825,12 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                                   ...prev,
                                   [pack.id]: { x: Number(event.target.value) || 0, y: offset.y },
                                 }))}
-                                className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-xs"
+                                className="w-20 rounded-lg border border-border px-2 py-1 text-xs"
                                 aria-label="Décalage horizontal"
                               />
                               <span className="w-14 shrink-0">px horiz.</span>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
                               <span className="w-16 shrink-0">Y</span>
                               <input
                                 type="range"
@@ -852,7 +852,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                                   ...prev,
                                   [pack.id]: { x: offset.x, y: Number(event.target.value) || 0 },
                                 }))}
-                                className="w-20 rounded-lg border border-gray-200 px-2 py-1 text-xs"
+                                className="w-20 rounded-lg border border-border px-2 py-1 text-xs"
                                 aria-label="Décalage vertical"
                               />
                               <span className="w-14 shrink-0">px vert.</span>
@@ -887,8 +887,8 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
         {/* ── Left column ─────────────────────────────────────────────────── */}
         <div className="flex flex-col gap-5">
           {/* Upload */}
-          <div className="bg-white border border-gray-100 rounded-2xl p-6">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Vidéo source</h2>
+          <div className="bg-white border border-border rounded-2xl p-6">
+            <h2 className="text-sm font-semibold text-foreground mb-4">Vidéo source</h2>
             {videoUrl ? (
               <div className="flex items-center gap-3 py-3 px-4 bg-green-50 rounded-xl border border-green-100">
                 <Film size={17} className="text-green-600 shrink-0" />
@@ -896,7 +896,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                 <button
                   type="button"
                   onClick={clearVideo}
-                  className="shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+                  className="shrink-0 text-muted-foreground hover:text-muted-foreground transition-colors"
                   title="Supprimer la vidéo"
                 >
                   <X size={15} />
@@ -907,20 +907,20 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="w-full flex flex-col items-center gap-3 py-10 px-6 border-2 border-dashed border-gray-200 rounded-xl hover:border-sky-300 hover:bg-sky-50/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex flex-col items-center gap-3 py-10 px-6 border-2 border-dashed border-border rounded-xl hover:border-info-200 hover:bg-info-50/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {uploading ? (
                   <>
-                    <div className="w-7 h-7 border-2 border-sky-200 border-t-indigo-600 rounded-full animate-spin" />
-                    <span className="text-sm text-gray-500">
+                    <div className="w-7 h-7 border-2 border-info-200 border-t-indigo-600 rounded-full animate-spin" />
+                    <span className="text-sm text-muted-foreground">
                       Envoi en cours… {uploadProgress}%
                     </span>
                   </>
                 ) : (
                   <>
-                    <Upload size={22} className="text-gray-400" />
-                    <span className="text-sm text-gray-500">Cliquer pour choisir une vidéo</span>
-                    <span className="text-xs text-gray-400">MP4, MOV, WebM — max 2 Go</span>
+                    <Upload size={22} className="text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Cliquer pour choisir une vidéo</span>
+                    <span className="text-xs text-muted-foreground">MP4, MOV, WebM — max 2 Go</span>
                   </>
                 )}
               </button>
@@ -940,16 +940,16 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
 
           {/* Frames grid */}
           {(hasExtracted || loading) && (
-            <div className="bg-white border border-gray-100 rounded-2xl p-6">
+            <div className="bg-white border border-border rounded-2xl p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-semibold text-gray-700">
+                <h2 className="text-sm font-semibold text-foreground">
                   Tirage #{roundNumber}
                   {!loading && frames.length > 0 && (
-                    <span className="font-normal text-gray-400 ml-1.5">— {frames.length} frames</span>
+                    <span className="font-normal text-muted-foreground ml-1.5">— {frames.length} frames</span>
                   )}
                 </h2>
                 {selected.size > 0 && (
-                  <span className="text-xs font-medium text-sky-700">
+                  <span className="text-xs font-medium text-info-700">
                     {selected.size} sélectionnée{selected.size > 1 ? "s" : ""}
                   </span>
                 )}
@@ -958,11 +958,11 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
               {loading ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {Array.from({ length: count }).map((_, i) => (
-                    <div key={i} className="aspect-[9/16] bg-gray-100 rounded-lg animate-pulse" />
+                    <div key={i} className="aspect-[9/16] bg-muted rounded-lg animate-pulse" />
                   ))}
                 </div>
               ) : frames.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-8">
+                <p className="text-sm text-muted-foreground text-center py-8">
                   Aucune frame extraite pour cette plage.
                 </p>
               ) : (
@@ -974,8 +974,8 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                         onClick={() => toggleSelect(i)}
                         className={`relative block w-full rounded-xl overflow-hidden border-2 transition-all ${
                           selected.has(i)
-                            ? "border-sky-500 shadow-md scale-[1.02]"
-                            : "border-transparent hover:border-gray-300"
+                            ? "border-info-600 shadow-md scale-[1.02]"
+                            : "border-transparent hover:border-border"
                         }`}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -986,7 +986,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                           loading="lazy"
                         />
                         {selected.has(i) && (
-                          <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-sky-600 rounded-full flex items-center justify-center shadow">
+                          <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-info-600 rounded-full flex items-center justify-center shadow">
                             <Check size={11} className="text-white" strokeWidth={3} />
                           </div>
                         )}
@@ -1032,58 +1032,58 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
         {/* ── Right column ─────────────────────────────────────────────────── */}
         <div className="flex flex-col gap-4 lg:sticky lg:top-6">
           {/* Settings */}
-          <div className="bg-white border border-gray-100 rounded-2xl p-5">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Paramètres</h2>
+          <div className="bg-white border border-border rounded-2xl p-5">
+            <h2 className="text-sm font-semibold text-foreground mb-4">Paramètres</h2>
             <div className="flex flex-col gap-4">
               {/* Start */}
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1.5 block">Début</label>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Début</label>
                 <div className="flex items-center gap-1.5">
                   <input
                     type="number"
                     min="0"
                     value={startMin}
                     onChange={(e) => setStartMin(e.target.value)}
-                    className="w-14 text-center rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                    className="w-14 text-center rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-info-200"
                     placeholder="0"
                   />
-                  <span className="text-xs text-gray-400">min</span>
+                  <span className="text-xs text-muted-foreground">min</span>
                   <input
                     type="number"
                     min="0"
                     max="59"
                     value={startSec}
                     onChange={(e) => setStartSec(e.target.value)}
-                    className="w-14 text-center rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                    className="w-14 text-center rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-info-200"
                     placeholder="0"
                   />
-                  <span className="text-xs text-gray-400">sec</span>
+                  <span className="text-xs text-muted-foreground">sec</span>
                 </div>
               </div>
 
               {/* End */}
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1.5 block">Fin</label>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Fin</label>
                 <div className="flex items-center gap-1.5">
                   <input
                     type="number"
                     min="0"
                     value={endMin}
                     onChange={(e) => setEndMin(e.target.value)}
-                    className="w-14 text-center rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                    className="w-14 text-center rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-info-200"
                     placeholder="0"
                   />
-                  <span className="text-xs text-gray-400">min</span>
+                  <span className="text-xs text-muted-foreground">min</span>
                   <input
                     type="number"
                     min="0"
                     max="59"
                     value={endSec}
                     onChange={(e) => setEndSec(e.target.value)}
-                    className="w-14 text-center rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+                    className="w-14 text-center rounded-lg border border-border px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-info-200"
                     placeholder="30"
                   />
-                  <span className="text-xs text-gray-400">sec</span>
+                  <span className="text-xs text-muted-foreground">sec</span>
                 </div>
                 {!rangeValid && (startMin || startSec || endMin || endSec) && (
                   <p className="text-xs text-red-500 mt-1.5">La fin doit être après le début.</p>
@@ -1092,7 +1092,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
 
               {/* Count */}
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1.5 block">
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
                   Frames par tirage :{" "}
                   <span className="text-gray-900 font-semibold">{count}</span>
                 </label>
@@ -1110,7 +1110,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                   }}
                   className="w-full accent-indigo-600"
                 />
-                <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+                <div className="flex justify-between text-xs text-muted-foreground mt-0.5">
                   <span>6</span>
                   <span>20</span>
                 </div>
@@ -1124,7 +1124,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
               type="button"
               onClick={handleExtract}
               disabled={!videoUrl || !rangeValid || loading || uploading}
-              className="w-full py-2.5 px-4 bg-sky-600 text-white text-sm font-medium rounded-xl hover:bg-sky-700 active:bg-sky-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-2.5 px-4 bg-info-600 text-white text-sm font-medium rounded-xl hover:bg-info-700 active:bg-info-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -1144,7 +1144,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                 type="button"
                 onClick={handleNewRound}
                 disabled={loading}
-                className="w-full py-2.5 px-4 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:border-sky-300 hover:text-sky-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-2.5 px-4 bg-white border border-border text-foreground text-sm font-medium rounded-xl hover:border-info-200 hover:text-info-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 <RefreshCw size={14} />
                 Nouveau tirage
@@ -1176,12 +1176,12 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
             )}
 
             {slotId && selected.size > 1 && (
-              <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
-                <p className="text-[12px] font-medium text-sky-900">
+              <div className="rounded-xl border border-info-200 bg-info-50 p-3">
+                <p className="text-[12px] font-medium text-info-700">
                   Sélectionne <strong>une seule frame</strong> pour la définir
                   comme cover de la publication.
                 </p>
-                <p className="text-[11px] text-sky-700/80 mt-0.5">
+                <p className="text-[11px] text-info-700/80 mt-0.5">
                   ({selected.size} actuellement — clique sur l&apos;une pour
                   garder celle-là.)
                 </p>
@@ -1194,7 +1194,7 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
                 onClick={() => void handleDownload()}
                 className={
                   slotId
-                    ? "w-full py-2 px-4 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:border-gray-300 transition-colors flex items-center justify-center gap-2"
+                    ? "w-full py-2 px-4 bg-white border border-border text-foreground text-sm font-medium rounded-xl hover:border-border transition-colors flex items-center justify-center gap-2"
                     : "w-full py-2.5 px-4 bg-green-600 text-white text-sm font-medium rounded-xl hover:bg-green-700 active:bg-green-800 transition-colors flex items-center justify-center gap-2"
                 }
               >
@@ -1204,18 +1204,18 @@ export function CoverGenerator({ slotId, prefillVideoUrl, prefillVideoName, init
             )}
 
             {hasExtracted && !canDoNextRound && (
-              <div className="rounded-xl border border-peach-200 bg-peach-50 p-3 text-center">
-                <p className="text-xs font-semibold text-peach-800">
+              <div className="rounded-xl border border-warning-200 bg-warning-50 p-3 text-center">
+                <p className="text-xs font-semibold text-warning-700">
                   Toutes les frames ont été proposées.
                 </p>
-                <p className="text-xs text-peach-700 mt-0.5">
+                <p className="text-xs text-warning-700 mt-0.5">
                   Modifiez la plage de temps pour continuer.
                 </p>
               </div>
             )}
 
             {hasExtracted && canDoNextRound && (
-              <p className="text-center text-xs text-gray-400">
+              <p className="text-center text-xs text-muted-foreground">
                 {remaining.length} frame{remaining.length > 1 ? "s" : ""} restante{remaining.length > 1 ? "s" : ""} dans la plage
               </p>
             )}

@@ -167,10 +167,10 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-muted-foreground">
           {prompts.length} prompt{prompts.length !== 1 ? "s" : ""} configuré{prompts.length !== 1 ? "s" : ""}
           {prompts.length > 0 && (
-            <span className="ml-1 text-gray-400">
+            <span className="ml-1 text-muted-foreground">
               · {activeCount} actif{activeCount !== 1 ? "s" : ""}
             </span>
           )}
@@ -181,7 +181,7 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
       </div>
 
       {prompts.length > 0 && activeCount === 0 && (
-        <div className="rounded-lg border border-peach-200 bg-peach-50 px-3 py-2 text-xs text-peach-800">
+        <div className="rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-700">
           Aucun prompt n&apos;est actif — ils n&apos;apparaîtront pas dans la modal IA des fiches publication.
           Active au moins un prompt avec l&apos;icône <Eye size={11} className="inline -mt-0.5" />.
         </div>
@@ -216,7 +216,7 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
           />
         )}
         {prompts.map((p) => (
-          <div key={p.id} className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+          <div key={p.id} className="bg-white border border-border rounded-xl overflow-hidden">
             {editingId === p.id ? (
               <div className="p-4">
                 <PromptForm
@@ -235,22 +235,22 @@ export function DescriptionPromptsPanel({ initialPrompts }: { initialPrompts: Pr
                 />
               </div>
             ) : (
-              <div className={`px-4 py-3 flex items-start gap-3 ${p.isActive ? "" : "opacity-60 bg-gray-50/50"}`}>
+              <div className={`px-4 py-3 flex items-start gap-3 ${p.isActive ? "" : "opacity-60 bg-muted/50"}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-sm font-medium text-gray-900">{p.name}</p>
                     {!p.isActive && (
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 border border-gray-300">
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-200 text-muted-foreground border border-border">
                         Inactif
                       </span>
                     )}
                     {p.recipeKind && p.recipeKind !== "transcript_only" && (
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-danger-50 text-danger-700 border border-danger-200">
                         {RECIPE_LABELS[p.recipeKind]}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-gray-400 mt-0.5 whitespace-pre-line line-clamp-3">
+                  <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-line line-clamp-3">
                     {p.prompt}
                   </p>
                 </div>
@@ -319,7 +319,7 @@ function PromptForm({
   label: string;
 }) {
   return (
-    <div className="bg-sky-50/60 border border-sky-100 rounded-xl p-4 space-y-3">
+    <div className="bg-info-50/60 border border-info-100 rounded-xl p-4 space-y-3">
       <FormField label="Nom" required>
         <Input
           value={name}
@@ -340,7 +340,7 @@ function PromptForm({
         <select
           value={recipeKind}
           onChange={(e) => onRecipeKind(e.target.value as RecipeKind)}
-          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300 bg-white"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-info-200 bg-white"
         >
           {(Object.keys(RECIPE_LABELS) as RecipeKind[]).map((k) => (
             <option key={k} value={k}>{RECIPE_LABELS[k]}</option>

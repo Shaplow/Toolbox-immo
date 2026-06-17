@@ -39,8 +39,8 @@ function Section({ id, title, eyebrow, children }: { id: string; title: string; 
   return (
     <section id={id} className="space-y-4 scroll-mt-20">
       <header className="space-y-1">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">{eyebrow}</p>
-        <h2 className="text-xl font-semibold tracking-tight text-gray-950">{title}</h2>
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">{eyebrow}</p>
+        <h2 className="text-xl font-semibold tracking-tight text-foreground">{title}</h2>
       </header>
       <div className="surface-glass-soft rounded-xl p-6">{children}</div>
     </section>
@@ -50,7 +50,7 @@ function Section({ id, title, eyebrow, children }: { id: string; title: string; 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-6 py-3 border-b border-white/30 last:border-b-0">
-      <span className="w-32 shrink-0 text-[10px] uppercase tracking-widest font-medium text-gray-500 pt-2">{label}</span>
+      <span className="w-32 shrink-0 text-[10px] uppercase tracking-widest font-medium text-muted-foreground pt-2">{label}</span>
       <div className="flex-1 flex flex-wrap items-center gap-3">{children}</div>
     </div>
   );
@@ -88,16 +88,16 @@ export default function AtomsNewPage() {
   return (
     <div className="space-y-14">
       <header className="space-y-3">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">
           Phase 3 · Atomes nouveaux
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight text-gray-950">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           Modal · Drawer · Sheet
         </h1>
-        <p className="text-sm text-gray-600 max-w-2xl leading-relaxed">
-          Lot 1 — overlays Liquid Glass partageant le hook <code className="text-[12px] font-mono text-gray-700 bg-white/60 px-1 rounded">useDialogStack</code> :
+        <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
+          Lot 1 — overlays Liquid Glass partageant le hook <code className="text-[12px] font-mono text-foreground bg-white/60 px-1 rounded">useDialogStack</code> :
           empilement z-index automatique, ESC ne ferme que le dialogue au sommet, scroll lock du body.
-          Tous variants <code className="text-[12px] font-mono text-gray-700 bg-white/60 px-1 rounded">default</code> (glass) ou <code className="text-[12px] font-mono text-gray-700 bg-white/60 px-1 rounded">solid</code>.
+          Tous variants <code className="text-[12px] font-mono text-foreground bg-white/60 px-1 rounded">default</code> (glass) ou <code className="text-[12px] font-mono text-foreground bg-white/60 px-1 rounded">solid</code>.
         </p>
       </header>
 
@@ -112,11 +112,11 @@ export default function AtomsNewPage() {
         </Row>
         <Row label="Variant solid">
           <Button variant="secondary" size="sm" onClick={() => setModalSolid(true)}>Open solid white</Button>
-          <span className="text-[12px] text-gray-500">Au lieu du glass strong default</span>
+          <span className="text-[12px] text-muted-foreground">Au lieu du glass strong default</span>
         </Row>
         <Row label="Empilage">
           <Button variant="secondary" size="sm" onClick={() => setModalStack1(true)}>Stack 2 modals</Button>
-          <span className="text-[12px] text-gray-500">Ouvre la 1, puis depuis la 1 ouvre la 2 → vérifie z-index + ESC top-only</span>
+          <span className="text-[12px] text-muted-foreground">Ouvre la 1, puis depuis la 1 ouvre la 2 → vérifie z-index + ESC top-only</span>
         </Row>
 
         {/* ── Instances ────────────────────────────── */}
@@ -124,7 +124,7 @@ export default function AtomsNewPage() {
         <Modal open={modalSm} onClose={() => setModalSm(false)} size="sm">
           <Modal.Header onClose={() => setModalSm(false)}>Petit modal</Modal.Header>
           <Modal.Body>
-            <p className="text-[13px] text-gray-700 leading-relaxed">
+            <p className="text-[13px] text-foreground leading-relaxed">
               Modal compact (max-w-sm). Idéal pour confirmations simples ou actions rapides.
             </p>
           </Modal.Body>
@@ -151,7 +151,7 @@ export default function AtomsNewPage() {
         <Modal open={modalLg} onClose={() => setModalLg(false)} size="lg">
           <Modal.Header onClose={() => setModalLg(false)}>Aperçu détaillé</Modal.Header>
           <Modal.Body>
-            <div className="space-y-3 text-[13px] text-gray-700 leading-relaxed">
+            <div className="space-y-3 text-[13px] text-foreground leading-relaxed">
               <p>
                 Modal large (max-w-2xl). Idéal pour formulaires longs, aperçus
                 de contenu (image + métadonnées), tableaux compacts.
@@ -176,14 +176,14 @@ export default function AtomsNewPage() {
         <Modal open={modalXl} onClose={() => setModalXl(false)} size="xl">
           <Modal.Header onClose={() => setModalXl(false)}>Très grand modal</Modal.Header>
           <Modal.Body>
-            <p className="text-[13px] text-gray-700">Idéal pour table dense ou builder léger.</p>
+            <p className="text-[13px] text-foreground">Idéal pour table dense ou builder léger.</p>
           </Modal.Body>
         </Modal>
 
         <Modal open={modalSolid} onClose={() => setModalSolid(false)} size="md" variant="solid">
           <Modal.Header onClose={() => setModalSolid(false)}>Variant solid</Modal.Header>
           <Modal.Body>
-            <p className="text-[13px] text-gray-700 leading-relaxed">
+            <p className="text-[13px] text-foreground leading-relaxed">
               Background white solide + shadow-modal classique. Utile quand le
               glass crée un contraste insuffisant avec un fond particulier.
             </p>
@@ -193,7 +193,7 @@ export default function AtomsNewPage() {
         <Modal open={modalStack1} onClose={() => setModalStack1(false)} size="md">
           <Modal.Header onClose={() => setModalStack1(false)}>Modal niveau 1</Modal.Header>
           <Modal.Body>
-            <p className="text-[13px] text-gray-700 mb-3">Ouvre le 2e modal pour tester l'empilement.</p>
+            <p className="text-[13px] text-foreground mb-3">Ouvre le 2e modal pour tester l'empilement.</p>
             <Button size="sm" onClick={() => setModalStack2(true)} icon={Plus}>Ouvrir modal niveau 2</Button>
           </Modal.Body>
         </Modal>
@@ -201,7 +201,7 @@ export default function AtomsNewPage() {
         <Modal open={modalStack2} onClose={() => setModalStack2(false)} size="sm">
           <Modal.Header onClose={() => setModalStack2(false)}>Modal niveau 2 (top)</Modal.Header>
           <Modal.Body>
-            <p className="text-[13px] text-gray-700">
+            <p className="text-[13px] text-foreground">
               Je suis au-dessus du modal 1. ESC ne ferme QUE moi. Click backdrop pareil.
             </p>
           </Modal.Body>
@@ -234,7 +234,7 @@ export default function AtomsNewPage() {
               <Textarea value={desc} onChange={setDesc} placeholder="Description du slot…" rows={4} />
               <Switch checked={notifications} onChange={setNotifications} label="Notifier le client" description="Email envoyé à la publication" />
               <div className="space-y-2">
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Tags</p>
+                <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Tags</p>
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="peach" dot>Brief</Badge>
                   <Badge variant="sage" dot>Validé</Badge>
@@ -254,9 +254,9 @@ export default function AtomsNewPage() {
           <Drawer.Body>
             <nav className="space-y-1">
               {["Tableau de bord", "Calendrier", "Publications", "Comptes IG", "Médias", "Paramètres"].map((label) => (
-                <button key={label} className="w-full flex items-center justify-between px-3 py-2 rounded-md text-[13px] text-gray-700 hover:bg-white/60 hover:text-gray-950 transition-colors">
+                <button key={label} className="w-full flex items-center justify-between px-3 py-2 rounded-md text-[13px] text-foreground hover:bg-white/60 hover:text-foreground transition-colors">
                   <span>{label}</span>
-                  <ChevronRight size={14} className="text-gray-400" />
+                  <ChevronRight size={14} className="text-muted-foreground" />
                 </button>
               ))}
             </nav>
@@ -266,21 +266,21 @@ export default function AtomsNewPage() {
         <Drawer open={drawerBottom} onClose={() => setDrawerBottom(false)} side="bottom" size="md">
           <Drawer.Header onClose={() => setDrawerBottom(false)}>Drawer bottom</Drawer.Header>
           <Drawer.Body>
-            <p className="text-[13px] text-gray-700">Drawer ancré bottom — 50vh par défaut (size md).</p>
+            <p className="text-[13px] text-foreground">Drawer ancré bottom — 50vh par défaut (size md).</p>
           </Drawer.Body>
         </Drawer>
 
         <Drawer open={drawerLg} onClose={() => setDrawerLg(false)} side="right" size="lg">
           <Drawer.Header onClose={() => setDrawerLg(false)}>Drawer large</Drawer.Header>
           <Drawer.Body>
-            <p className="text-[13px] text-gray-700">size lg = 640px width. Pour formulaires plus généreux.</p>
+            <p className="text-[13px] text-foreground">size lg = 640px width. Pour formulaires plus généreux.</p>
           </Drawer.Body>
         </Drawer>
 
         <Drawer open={drawerSolid} onClose={() => setDrawerSolid(false)} side="right" size="md" variant="solid">
           <Drawer.Header onClose={() => setDrawerSolid(false)}>Drawer solid</Drawer.Header>
           <Drawer.Body>
-            <p className="text-[13px] text-gray-700">Background white solide.</p>
+            <p className="text-[13px] text-foreground">Background white solide.</p>
           </Drawer.Body>
         </Drawer>
       </Section>
@@ -293,7 +293,7 @@ export default function AtomsNewPage() {
           <Button variant="secondary" size="sm" onClick={() => setSheetHalf(true)}>Open 50vh</Button>
           <Button variant="secondary" size="sm" onClick={() => setSheetFull(true)}>Open fullHeight</Button>
         </Row>
-        <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
+        <p className="text-[12px] text-muted-foreground mt-3 leading-relaxed">
           Bottom-anchored mobile. Handle macOS/iOS visible en haut. Idéal pour
           feuilles d'actions, sélecteurs, revue compacte.
         </p>
@@ -310,7 +310,7 @@ export default function AtomsNewPage() {
                 const I = item.icon;
                 return (
                   <li key={item.label}>
-                    <button className="w-full flex items-center gap-3 px-2 py-3 text-[13px] text-gray-800 hover:text-gray-950">
+                    <button className="w-full flex items-center gap-3 px-2 py-3 text-[13px] text-gray-800 hover:text-foreground">
                       <I size={16} />
                       <span>{item.label}</span>
                     </button>
@@ -324,14 +324,14 @@ export default function AtomsNewPage() {
         <Sheet open={sheetHalf} onClose={() => setSheetHalf(false)} variant="halfHeight">
           <Sheet.Header onClose={() => setSheetHalf(false)}>Sheet 50 vh</Sheet.Header>
           <Sheet.Body>
-            <p className="text-[13px] text-gray-700">Hauteur fixée à la moitié du viewport.</p>
+            <p className="text-[13px] text-foreground">Hauteur fixée à la moitié du viewport.</p>
           </Sheet.Body>
         </Sheet>
 
         <Sheet open={sheetFull} onClose={() => setSheetFull(false)} variant="fullHeight">
           <Sheet.Header onClose={() => setSheetFull(false)}>Sheet plein écran</Sheet.Header>
           <Sheet.Body>
-            <p className="text-[13px] text-gray-700">100vh — utile en mobile pour transitions natives.</p>
+            <p className="text-[13px] text-foreground">100vh — utile en mobile pour transitions natives.</p>
           </Sheet.Body>
         </Sheet>
       </Section>
@@ -355,12 +355,12 @@ export default function AtomsNewPage() {
           <Avatar name="Alice Dubois" status="online" />
           <Avatar name="Bob Martin" status="away" />
           <Avatar name="Camille Petit" status="offline" />
-          <span className="text-[12px] text-gray-500">online · away · offline</span>
+          <span className="text-[12px] text-muted-foreground">online · away · offline</span>
         </Row>
         <Row label="Ring (focus)">
           <Avatar name="Mathis Barbet" ring />
           <Avatar name="Sarah Lemoine" ring size="lg" />
-          <span className="text-[12px] text-gray-500">Halo sky-200 signature</span>
+          <span className="text-[12px] text-muted-foreground">Halo sky-200 signature</span>
         </Row>
         <Row label="Group">
           <AvatarGroup
@@ -373,7 +373,7 @@ export default function AtomsNewPage() {
             ]}
             max={3}
           />
-          <span className="text-[12px] text-gray-500">Max 3 visibles + compteur</span>
+          <span className="text-[12px] text-muted-foreground">Max 3 visibles + compteur</span>
         </Row>
       </Section>
 
@@ -400,7 +400,7 @@ export default function AtomsNewPage() {
           </Alert>
         </div>
         <div className="mt-4 space-y-2">
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Sans titre, sans dismiss</p>
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Sans titre, sans dismiss</p>
           <Alert variant="info">
             Synchronisation en cours… Les données seront actualisées dans quelques secondes.
           </Alert>
@@ -456,7 +456,7 @@ export default function AtomsNewPage() {
         </Row>
         <Row label="Separator slash">
           <Breadcrumb
-            separator={<span className="text-gray-400">/</span>}
+            separator={<span className="text-muted-foreground">/</span>}
             items={[
               { href: "/", label: "Toolbox" },
               { href: "/projets", label: "Projets" },
@@ -516,10 +516,10 @@ export default function AtomsNewPage() {
 
       {/* Note pied de page — Phase 3 complète */}
       <div className="surface-glass rounded-xl p-5 mt-12">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-sage-700 mb-2">
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-success-700 mb-2">
           Phase 3 · clôturée
         </p>
-        <p className="text-[13px] text-gray-700 leading-relaxed">
+        <p className="text-[13px] text-foreground leading-relaxed">
           16 atomes nouveaux livrés en 4 lots. Prochain chantier : Phase 4 — 11 molécules métier
           (VideoPlayer, AssetCard, Section, StatusBadge, OverrideControl, TrimPlayer, AssigneePicker,
           FilterBar, JobQueueItem, EmptyHero, SoftPanel).
@@ -586,14 +586,14 @@ function TableShowcase() {
           />
         </div>
       </Row>
-      <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
+      <p className="text-[12px] text-muted-foreground mt-3 leading-relaxed">
         Header glass sticky · sort cycle asc/desc/null · selection multiple
         avec toggle-all · row hover white/50 backdrop-blur · click row →
         toast (mais checkbox stops propagation).
       </p>
 
       <div className="mt-6 space-y-2">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Empty state</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Empty state</p>
         <Table columns={columns} rows={[]} empty="Aucune publication dans cette période." />
       </div>
     </>
@@ -642,7 +642,7 @@ function DatePickerShowcase() {
     <>
       <Row label="Vide">
         <div className="w-60"><DatePicker value={date1} onChange={setDate1} /></div>
-        <span className="text-[12px] text-gray-500">Valeur : {date1 || "(vide)"}</span>
+        <span className="text-[12px] text-muted-foreground">Valeur : {date1 || "(vide)"}</span>
       </Row>
       <Row label="Pré-rempli">
         <div className="w-60"><DatePicker value={date2} onChange={setDate2} /></div>
@@ -656,7 +656,7 @@ function DatePickerShowcase() {
             max="2026-06-21"
           />
         </div>
-        <span className="text-[12px] text-gray-500">Borné 15→21 juin 2026</span>
+        <span className="text-[12px] text-muted-foreground">Borné 15→21 juin 2026</span>
       </Row>
       <Row label="Error">
         <div className="w-60"><DatePicker value="" onChange={() => {}} error="Date requise" /></div>
@@ -676,7 +676,7 @@ function TimePickerShowcase() {
     <>
       <Row label="Vide">
         <div className="w-44"><TimePicker value={time1} onChange={setTime1} /></div>
-        <span className="text-[12px] text-gray-500">Valeur : {time1 || "(vide)"}</span>
+        <span className="text-[12px] text-muted-foreground">Valeur : {time1 || "(vide)"}</span>
       </Row>
       <Row label="Pré-rempli (18:00)">
         <div className="w-44"><TimePicker value={time2} onChange={setTime2} /></div>
@@ -703,7 +703,7 @@ function NumberStepperShowcase() {
     <>
       <Row label="Sans unité">
         <NumberStepper value={count} onChange={setCount} min={0} />
-        <span className="text-[12px] text-gray-500">Valeur : {count}</span>
+        <span className="text-[12px] text-muted-foreground">Valeur : {count}</span>
       </Row>
       <Row label="Unité px (step 4)">
         <NumberStepper value={px} onChange={setPx} step={4} min={0} max={200} unit="px" />
@@ -760,7 +760,7 @@ function ChipShowcase() {
         {tags.length === 0 && (
           <button
             onClick={() => setTags(["Brief", "Validé", "Cuisine ouverte"])}
-            className="text-[12px] text-gray-500 hover:text-gray-950 underline underline-offset-2"
+            className="text-[12px] text-muted-foreground hover:text-foreground underline underline-offset-2"
           >
             Réinitialiser
           </button>
@@ -777,7 +777,7 @@ function ChipShowcase() {
             {label}
           </Chip>
         ))}
-        <span className="text-[12px] text-gray-500">Filtre actif : {filter ?? "aucun"}</span>
+        <span className="text-[12px] text-muted-foreground">Filtre actif : {filter ?? "aucun"}</span>
       </Row>
     </>
   );
@@ -799,17 +799,17 @@ function StepperShowcase() {
   return (
     <>
       <div className="space-y-3">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Horizontal linear · interactif</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Horizontal linear · interactif</p>
         <Stepper
           steps={productionSteps}
           active={active}
           onClickStep={(s) => setActive(s.id)}
         />
-        <p className="text-[11px] text-gray-500">Click sur un step pour le passer en in_progress · Active : {active}</p>
+        <p className="text-[11px] text-muted-foreground">Click sur un step pour le passer en in_progress · Active : {active}</p>
       </div>
 
       <div className="space-y-3 mt-6">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Horizontal glass (avec wrapper)</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Horizontal glass (avec wrapper)</p>
         <Stepper
           variant="glass"
           steps={productionSteps}
@@ -818,7 +818,7 @@ function StepperShowcase() {
       </div>
 
       <div className="space-y-3 mt-6">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Compact (dots only)</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Compact (dots only)</p>
         <Stepper
           variant="compact"
           steps={productionSteps}
@@ -827,7 +827,7 @@ function StepperShowcase() {
       </div>
 
       <div className="space-y-3 mt-6">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Vertical glass — fiche détaillée</p>
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Vertical glass — fiche détaillée</p>
         <Stepper
           orientation="vertical"
           variant="glass"
@@ -869,7 +869,7 @@ function ComboboxShowcase() {
             ]}
           />
         </div>
-        <span className="text-[12px] text-gray-500">Valeur : {value1 || "aucune"}</span>
+        <span className="text-[12px] text-muted-foreground">Valeur : {value1 || "aucune"}</span>
       </Row>
       <Row label="Groupé">
         <div className="w-80">
@@ -984,11 +984,11 @@ function CommandPaletteShowcase() {
         <Button variant="secondary" size="sm" icon={SearchIcon} onClick={() => setOpen(true)}>
           Ouvrir la palette
         </Button>
-        <span className="text-[12px] text-gray-500">
+        <span className="text-[12px] text-muted-foreground">
           Ou tape <kbd className="text-[10px] font-mono">⌘K</kbd> n&apos;importe où dans la page
         </span>
       </Row>
-      <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
+      <p className="text-[12px] text-muted-foreground mt-3 leading-relaxed">
         cmdk gère le matching fuzzy + l&apos;a11y (focus, ARIA, nav clavier). 6 actions
         dans 3 groupes (Navigation / Actions / Compte) avec raccourcis affichés en Kbd.
       </p>
@@ -1027,12 +1027,12 @@ function ProgressShowcase() {
       </Row>
       <Row label="Animé">
         <div className="w-72"><Progress value={animated} accent="sky" showValue /></div>
-        <span className="text-[12px] text-gray-500">Update en boucle 0 → 100</span>
+        <span className="text-[12px] text-muted-foreground">Update en boucle 0 → 100</span>
       </Row>
       <Row label="Indeterminate">
         <div className="w-72"><Progress indeterminate /></div>
         <div className="w-72"><Progress indeterminate accent="peach" /></div>
-        <span className="text-[12px] text-gray-500">Pour jobs sans % connu</span>
+        <span className="text-[12px] text-muted-foreground">Pour jobs sans % connu</span>
       </Row>
       <Row label="Circular">
         <Progress variant="circular" value={25} size="sm" />

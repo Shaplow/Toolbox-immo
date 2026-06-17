@@ -881,8 +881,8 @@ export default function CaptionsGenerateForm({
   return (
     <div className="min-h-screen">
       <div
-        className="my-11 ml-[100px] mr-[100px] rounded-3xl"
-        style={{ background: "var(--gradient-page-shell)" }}
+        className="mx-auto max-w-7xl px-6 py-8"
+
       >
         <div className="px-6 sm:px-8 pt-6 pb-12">
           <div className="max-w-2xl mx-auto">
@@ -895,23 +895,23 @@ export default function CaptionsGenerateForm({
             le SSE listener ci-dessus refresh quand le job termine et les
             segments arrivent automatiquement (initialSegments pré-rempli). */}
         {pendingTranscription && (
-          <div className="mb-3 rounded-xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[12px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(96,165,250,0.30)]">
-            <p className="text-[13px] font-semibold text-sky-900 flex items-center gap-2">
-              <span className="inline-block h-2 w-2 rounded-full bg-sky-500 animate-pulse" />
+          <div className="mb-3 rounded-xl bg-gradient-to-b from-info-50/85 to-info-50/55 px-4 py-3 ">
+            <p className="text-[13px] font-semibold text-info-700 flex items-center gap-2">
+              <span className="inline-block h-2 w-2 rounded-full bg-info-600 animate-pulse" />
               Transcription en cours…
             </p>
-            <p className="text-[11px] text-sky-700/80 mt-0.5">
+            <p className="text-[11px] text-info-700/80 mt-0.5">
               Le sous-titrage démarre dès que la transcription est prête. La
               page se rafraîchira automatiquement.
             </p>
           </div>
         )}
         {transcriptionBlocker && (
-          <div className="mb-3 rounded-xl bg-gradient-to-b from-rose-50/85 to-rose-50/55 backdrop-blur-[12px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(244,114,182,0.30)]">
-            <p className="text-[13px] font-semibold text-rose-900">
+          <div className="mb-3 rounded-xl bg-gradient-to-b from-danger-50/85 to-danger-50/55 px-4 py-3 ">
+            <p className="text-[13px] font-semibold text-danger-700">
               Impossible de pré-charger une transcription
             </p>
-            <p className="text-[11px] text-rose-700/80 mt-0.5">{transcriptionBlocker}</p>
+            <p className="text-[11px] text-danger-700/80 mt-0.5">{transcriptionBlocker}</p>
           </div>
         )}
 
@@ -919,14 +919,14 @@ export default function CaptionsGenerateForm({
         <CaptionsVideoUploadBar videoFile={videoFile} setVideoFile={setVideoFile} />
 
         {/* Source card — Sous-titres */}
-        <div className="bg-white/60 backdrop-blur-[6px] border border-white/50 rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] overflow-hidden mb-3">
+        <div className="bg-card border border-border border border-white/50 rounded-2xl  overflow-hidden mb-3">
           <div className="px-4 py-3 border-b border-white/40 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">Sous-titres</h2>
+            <h2 className="text-sm font-semibold text-foreground">Sous-titres</h2>
             {(captions.length > 0 || showTrimEditor || subsFile) && (
               <button
                 type="button"
                 onClick={clearSubsSource}
-                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-muted-foreground transition-colors"
               >
                 <X size={12} /> Effacer
               </button>
@@ -971,14 +971,14 @@ export default function CaptionsGenerateForm({
             sans intervention. Le bouton ici reste un fallback manuel si l'auto-config
             n'était pas activée à l'upload, ou pour retraduire après édition manuelle. */}
         {bilingualStatus !== "none" && selectedTranscriptionId && (
-          <div className={`mb-3 rounded-2xl backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1)] ${
+          <div className={`mb-3 rounded-2xl px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1)] ${
             bilingualStatus === "translated"
               ? "bg-gradient-to-b from-emerald-50/85 to-emerald-50/55 shadow-[inset_0_0_0_1px_rgba(110,231,183,0.40)]"
-              : "bg-gradient-to-b from-sky-50/85 to-sky-50/55 shadow-[inset_0_0_0_1px_rgba(125,180,210,0.32)]"
+              : "bg-gradient-to-b from-info-50/85 to-info-50/55 shadow-[inset_0_0_0_1px_rgba(125,180,210,0.32)]"
           }`}>
             <div className="flex items-start gap-3">
               <Languages className={`h-5 w-5 mt-0.5 shrink-0 ${
-                bilingualStatus === "translated" ? "text-emerald-700" : "text-sky-700"
+                bilingualStatus === "translated" ? "text-emerald-700" : "text-info-700"
               }`} />
               <div className="flex-1 min-w-0">
                 {bilingualStatus === "translated" ? (
@@ -991,21 +991,21 @@ export default function CaptionsGenerateForm({
                       ou relancer la traduction si nécessaire.
                     </p>
                     {translateError && (
-                      <p className="mt-1 text-[11px] text-rose-700">{translateError}</p>
+                      <p className="mt-1 text-[11px] text-danger-700">{translateError}</p>
                     )}
                   </>
                 ) : (
                   <>
-                    <p className="text-[13px] font-semibold text-sky-900">
+                    <p className="text-[13px] font-semibold text-info-700">
                       Traductions absentes
                     </p>
-                    <p className="mt-0.5 text-[11px] text-sky-700/80">
+                    <p className="mt-0.5 text-[11px] text-info-700/80">
                       Cette transcription n&apos;a pas été traduite automatiquement
                       (vous pouvez activer la chaîne auto depuis /transcriptions).
                       Lancez-la manuellement ci-contre.
                     </p>
                     {translateError && (
-                      <p className="mt-1 text-[11px] text-rose-700">{translateError}</p>
+                      <p className="mt-1 text-[11px] text-danger-700">{translateError}</p>
                     )}
                   </>
                 )}
@@ -1017,7 +1017,7 @@ export default function CaptionsGenerateForm({
                 className={`shrink-0 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                   bilingualStatus === "translated"
                     ? "border border-emerald-300 bg-white text-emerald-900 hover:bg-emerald-50"
-                    : "bg-sky-900 text-white hover:bg-sky-800"
+                    : "bg-info-700 text-white hover:bg-info-700"
                 }`}
               >
                 {translating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
@@ -1053,12 +1053,12 @@ export default function CaptionsGenerateForm({
 
         {/* Highlight editor + AI corrector — shown after SRT parsed */}
         {!showTrimEditor && captions.length > 0 && (
-          <div className="bg-white/60 backdrop-blur-[6px] border border-white/50 rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] p-5 mb-3">
+          <div className="bg-card border border-border border border-white/50 rounded-2xl  p-5 mb-3">
             {/* Editor header */}
             <div className="flex items-center justify-between mb-3">
               <div>
                 <p className="text-sm font-medium text-gray-900">Mots à surligner</p>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   Cliquez sur les mots pour les mettre en valeur
                 </p>
               </div>
@@ -1066,7 +1066,7 @@ export default function CaptionsGenerateForm({
                 {highlighted.size > 0 && (
                   <button
                     onClick={() => setHighlighted(new Map())}
-                    className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-muted-foreground transition-colors"
                   >
                     <X size={10} />
                     Effacer tout
@@ -1115,11 +1115,11 @@ export default function CaptionsGenerateForm({
         {/* Décalage vertical — override per-génération du preset (sans modifier
             le preset partagé). Visible dès qu'un SRT est chargé. */}
         {!showTrimEditor && captions.length > 0 && (
-          <div className="bg-white/60 backdrop-blur-[6px] border border-white/50 rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] p-4 mb-3">
+          <div className="bg-card border border-border border border-white/50 rounded-2xl  p-4 mb-3">
             <div className="flex items-center justify-between gap-3 mb-2">
               <label className="text-sm font-medium text-gray-900">
                 Décalage vertical
-                <span className="ml-2 text-[11px] font-mono text-gray-500 tabular-nums">
+                <span className="ml-2 text-[11px] font-mono text-muted-foreground tabular-nums">
                   {effectiveVerticalOffset === 0
                     ? "Centre"
                     : `${effectiveVerticalOffset > 0 ? "+" : ""}${Math.round(effectiveVerticalOffset * 100)}%`}
@@ -1129,7 +1129,7 @@ export default function CaptionsGenerateForm({
                 <button
                   type="button"
                   onClick={() => setVerticalOffsetOverride(null)}
-                  className="text-[11px] text-gray-500 hover:text-gray-800"
+                  className="text-[11px] text-muted-foreground hover:text-gray-800"
                 >
                   Réinitialiser (preset : {presetVerticalOffset === 0 ? "centre" : `${presetVerticalOffset > 0 ? "+" : ""}${Math.round(presetVerticalOffset * 100)}%`})
                 </button>
@@ -1145,7 +1145,7 @@ export default function CaptionsGenerateForm({
               className="w-full accent-sage-600"
               aria-label="Décalage vertical des sous-titres"
             />
-            <p className="text-[11px] text-gray-500 leading-snug mt-1">
+            <p className="text-[11px] text-muted-foreground leading-snug mt-1">
               Négatif = remonte, positif = descend. Override appliqué uniquement
               à cette génération (le preset reste inchangé).
             </p>

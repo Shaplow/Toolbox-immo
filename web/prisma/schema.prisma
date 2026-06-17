@@ -485,6 +485,10 @@ model MediaAsset {
   url         String
   /// "video/mp4" | "audio/mpeg" etc.
   mimeType    String
+  /// URL publique R2 d'une image poster (frame extraite à l'upload côté
+  /// navigateur). Sert de vignette légère dans la grille — la vidéo n'est
+  /// chargée qu'au hover/détail. Null = pas de poster (fallback <video>).
+  posterUrl   String?
   /// Durée en secondes (remplie au probe après upload)
   duration    Float?
   /// JSON string[] — tags métier associés au fichier : ["RPI","RTIPS","RPOD"]

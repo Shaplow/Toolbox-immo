@@ -32,7 +32,7 @@ export function ImageBlockPropertiesPanel({
     <Section label="Options image">
       {/* Image statique (logo, fond fixe) */}
       <div className="space-y-2">
-        <p className="text-xs font-medium text-gray-600">Image statique (logo, fond…)</p>
+        <p className="text-xs font-medium text-muted-foreground">Image statique (logo, fond…)</p>
         <input
           ref={staticInputRef}
           type="file"
@@ -45,10 +45,10 @@ export function ImageBlockPropertiesPanel({
           }}
         />
         {block.staticSrc ? (
-          <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-2">
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted p-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={block.staticSrc} alt="" className="h-10 w-10 object-contain rounded border border-gray-200 bg-white shrink-0" />
-            <span className="text-[10px] text-gray-500 flex-1 truncate">{block.staticSrc.split("/").pop()}</span>
+            <img src={block.staticSrc} alt="" className="h-10 w-10 object-contain rounded border border-border bg-white shrink-0" />
+            <span className="text-[10px] text-muted-foreground flex-1 truncate">{block.staticSrc.split("/").pop()}</span>
             <button
               type="button"
               onClick={() => onChange({ staticSrc: undefined })}
@@ -61,7 +61,7 @@ export function ImageBlockPropertiesPanel({
             type="button"
             onClick={() => staticInputRef.current?.click()}
             disabled={uploading}
-            className="w-full text-xs py-2 border border-dashed border-gray-300 rounded-lg text-gray-500 hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-600 disabled:opacity-50 transition-colors"
+            className="w-full text-xs py-2 border border-dashed border-border rounded-lg text-muted-foreground hover:bg-muted hover:border-indigo-300 hover:text-indigo-600 disabled:opacity-50 transition-colors"
           >
             {uploading ? "Upload…" : "+ Télécharger une image"}
           </button>
@@ -71,23 +71,23 @@ export function ImageBlockPropertiesPanel({
             type="button"
             onClick={() => staticInputRef.current?.click()}
             disabled={uploading}
-            className="w-full text-[10px] text-gray-400 hover:text-gray-600 transition-colors"
+            className="w-full text-[10px] text-muted-foreground hover:text-muted-foreground transition-colors"
           >
             Remplacer
           </button>
         )}
-        <p className="text-[9px] text-gray-400 leading-relaxed">
+        <p className="text-[9px] text-muted-foreground leading-relaxed">
           Si renseigné, cette image est toujours affichée (ignore le binding).
         </p>
       </div>
 
       <div className="space-y-3 mt-3">
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-600">Ajustement</span>
+          <span className="text-xs font-medium text-muted-foreground">Ajustement</span>
           <select
             value={block.fit}
             onChange={(e) => onChange({ fit: e.target.value as "cover" | "contain" })}
-            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+            className="border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
           >
             <option value="cover">Cover</option>
             <option value="contain">Contain</option>

@@ -146,7 +146,7 @@ export function DataLibrariesPanel() {
               icon={Search}
             />
           </div>
-          <span className="text-[10.5px] text-gray-500 tabular-nums">
+          <span className="text-[10.5px] text-muted-foreground tabular-nums">
             {filtered.length}/{libraries.length} bibliothèques
           </span>
         </div>
@@ -157,15 +157,15 @@ export function DataLibrariesPanel() {
 
       {/* Error */}
       {loadError && (
-        <div className="rounded-xl bg-rose-50/70 backdrop-blur-[8px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.22)]">
-          <p className="text-[12.5px] font-semibold text-rose-900">
+        <div className="rounded-xl bg-danger-50/70 p-3 ">
+          <p className="text-[12.5px] font-semibold text-danger-700">
             Impossible de charger les bibliothèques
           </p>
-          <p className="text-[11px] font-mono text-rose-800 mt-1">{loadError}</p>
+          <p className="text-[11px] font-mono text-danger-700 mt-1">{loadError}</p>
           <button
             type="button"
             onClick={() => void load()}
-            className="text-[11px] text-rose-700 underline mt-2"
+            className="text-[11px] text-danger-700 underline mt-2"
           >
             Réessayer
           </button>
@@ -174,12 +174,12 @@ export function DataLibrariesPanel() {
 
       {/* Loading */}
       {loading ? (
-        <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] py-16 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] flex items-center justify-center text-gray-500 gap-3">
+        <div className="rounded-2xl bg-card border border-border py-16  flex items-center justify-center text-muted-foreground gap-3">
           <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
           <span className="text-[12.5px]">Chargement…</span>
         </div>
       ) : libraries.length === 0 ? (
-        <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+        <div className="rounded-2xl bg-card border border-border p-8 ">
           <EmptyState
             icon={Database}
             title="Aucune bibliothèque de données"
@@ -188,7 +188,7 @@ export function DataLibrariesPanel() {
           />
         </div>
       ) : filtered.length === 0 ? (
-        <p className="text-[12px] text-gray-500 italic text-center py-8">
+        <p className="text-[12px] text-muted-foreground italic text-center py-8">
           Aucune bibliothèque correspondant à « {search} ».
         </p>
       ) : (
@@ -244,7 +244,7 @@ export function DataLibrariesPanel() {
                 />
               </FormField>
               {createError && (
-                <p className="text-[11px] text-rose-700">{createError}</p>
+                <p className="text-[11px] text-danger-700">{createError}</p>
               )}
             </div>
           </Modal.Body>
@@ -310,15 +310,15 @@ function DataLibraryCard({
   return (
     <Link
       href={`/admin/libraries/data/${lib.id}`}
-      className="group relative flex flex-col gap-2.5 p-3.5 rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[14px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.08)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.1),0_4px_12px_-4px_rgba(15,23,42,0.12),0_16px_36px_-12px_rgba(15,23,42,0.18)] hover:-translate-y-0.5 transition-all"
+      className="group relative flex flex-col gap-2.5 p-3.5 rounded-2xl bg-card border border-border  hover: hover:-translate-y-0.5 transition-all"
     >
       {/* Header — icône type + actions hover */}
       <div className="flex items-start gap-2.5">
-        <span className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-sage-100/70 text-sage-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.04)]">
+        <span className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-success-100/70 text-success-700 ">
           <Database size={14} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[14px] font-semibold text-gray-950 leading-tight truncate" title={lib.name}>
+          <p className="text-[14px] font-semibold text-foreground leading-tight truncate" title={lib.name}>
             {lib.name}
           </p>
           <Chip variant="sage" size="sm" className="mt-1">
@@ -329,7 +329,7 @@ function DataLibraryCard({
           <button
             type="button"
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onStartEdit(); }}
-            className="p-1 text-gray-300 hover:text-gray-700 transition-colors"
+            className="p-1 text-muted-foreground/60 hover:text-foreground transition-colors"
             title="Modifier"
           >
             <Pencil size={12} />
@@ -337,7 +337,7 @@ function DataLibraryCard({
           <button
             type="button"
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
-            className="p-1 text-gray-300 hover:text-rose-600 transition-colors"
+            className="p-1 text-muted-foreground/60 hover:text-danger-600 transition-colors"
             title="Supprimer"
           >
             <Trash2 size={12} />
@@ -348,20 +348,20 @@ function DataLibraryCard({
       {/* Compteur fiches — info clé : combien de fiches tournent dans cette lib.
           Phase 1.x : le concept campagne est invisible côté UI, on ne montre
           plus que le compteur de fiches actives. */}
-      <div className="rounded-xl bg-gradient-to-b from-sage-50/85 to-sage-50/45 backdrop-blur-[8px] px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(111,162,128,0.22)]">
-        <p className="text-[9px] uppercase tracking-widest font-semibold text-sage-700 inline-flex items-center gap-1">
+      <div className="rounded-xl bg-gradient-to-b from-success-50/85 to-success-50/45 px-2.5 py-2 ">
+        <p className="text-[9px] uppercase tracking-widest font-semibold text-success-700 inline-flex items-center gap-1">
           <Check size={9} /> Active
         </p>
-        <p className="text-[18px] font-semibold text-sage-900 tabular-nums mt-0.5 leading-tight">
+        <p className="text-[18px] font-semibold text-success-700 tabular-nums mt-0.5 leading-tight">
           {lib.activeCampaign?.entryCount ?? 0}
         </p>
-        <p className="text-[10.5px] text-sage-700/80 mt-0">
+        <p className="text-[10.5px] text-success-700/80 mt-0">
           fiche{(lib.activeCampaign?.entryCount ?? 0) !== 1 ? "s" : ""}
         </p>
       </div>
 
       <div className="flex items-center justify-end mt-auto pt-1">
-        <ChevronRight size={12} className="text-gray-300 group-hover:text-gray-700 transition-colors" />
+        <ChevronRight size={12} className="text-muted-foreground/60 group-hover:text-foreground transition-colors" />
       </div>
     </Link>
   );

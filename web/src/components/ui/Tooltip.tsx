@@ -5,21 +5,12 @@ import { useState, useRef, useEffect, type ReactNode } from "react";
 /**
  * Tooltip simple — apparaît au hover/focus, disparaît au mouseleave/blur.
  *
- * Implémentation sans dépendance externe (Floating UI, Radix). Position
- * absolue par défaut au-dessus (top), avec fallback bas si pas la place
- * (calcul léger basé sur getBoundingClientRect).
- *
- * Pour des cas plus complexes (collision intelligente, virtual triggers),
- * on prendra Floating UI le moment venu.
- *
+ * Position absolue par défaut au-dessus (top), fallback bas si pas la place.
  * Délai d'ouverture : 200ms (évite les flashes au passage rapide).
  */
 interface TooltipProps {
-  /** Le contenu du tooltip — texte court ou raccourci clavier. */
   content: ReactNode;
-  /** Position préférentielle. Default top. */
   side?: "top" | "bottom";
-  /** Délai avant d'ouvrir (ms). Default 200. */
   delay?: number;
   children: ReactNode;
   className?: string;
@@ -34,7 +25,6 @@ export function Tooltip({ content, side = "top", delay = 200, children, classNam
   function show() {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      // Compute side : si on demande top mais qu'on est trop haut, fallback bottom.
       if (triggerRef.current) {
         const rect = triggerRef.current.getBoundingClientRect();
         if (side === "top" && rect.top < 40) setActualSide("bottom");
@@ -69,7 +59,7 @@ export function Tooltip({ content, side = "top", delay = 200, children, classNam
       {open && (
         <span
           role="tooltip"
-          className={`absolute left-1/2 -translate-x-1/2 z-50 pointer-events-none whitespace-nowrap rounded-md bg-gray-950/90 backdrop-blur-[8px] backdrop-saturate-150 px-2 py-1 text-[11px] font-medium text-white shadow-[var(--shadow-overlay),inset_0_1px_0_rgba(255,255,255,0.08)] ${
+          className={`absolute left-1/2 -translate-x-1/2 z-50 pointer-events-none whitespace-nowrap rounded-md bg-zinc-900 px-2 py-1 text-[11px] font-medium text-white shadow-lg ${
             actualSide === "top" ? "bottom-full mb-1.5" : "top-full mt-1.5"
           }`}
         >

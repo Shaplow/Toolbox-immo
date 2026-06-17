@@ -378,13 +378,13 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
   const statusLabel = (asset: AssetWithJobStatus) => {
     switch (asset.autocutStatus) {
       case "none": return null;
-      case "pending": return <span className="text-xs text-peach-700 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> En attente</span>;
+      case "pending": return <span className="text-xs text-warning-700 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> En attente</span>;
       case "processing": return <span className="text-xs text-blue-600 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Analyse…</span>;
       case "done": return <span className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 size={10} /> Analysé</span>;
       case "failed": return <span className="text-xs text-red-600 flex items-center gap-1"><AlertTriangle size={10} /> Erreur</span>;
       case "cut": return (
-        <span className="text-xs text-gray-500 flex items-center gap-1">
-          ✂ Coupé{asset.cutDuration != null ? <span className="text-gray-400">· {asset.cutDuration}s</span> : null}
+        <span className="text-xs text-muted-foreground flex items-center gap-1">
+          ✂ Coupé{asset.cutDuration != null ? <span className="text-muted-foreground">· {asset.cutDuration}s</span> : null}
         </span>
       );
     }
@@ -399,11 +399,11 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border">
             <div className="flex items-center gap-2">
-              <Wand2 size={18} className="text-rose-700" />
+              <Wand2 size={18} className="text-danger-700" />
               <h2 className="text-base font-semibold text-gray-900">Atelier Autocut</h2>
-              <span className="text-xs text-gray-400">— {library.name}</span>
+              <span className="text-xs text-muted-foreground">— {library.name}</span>
             </div>
             <div className="flex items-center gap-2">
               {doneCount > 0 && (
@@ -415,11 +415,11 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
                 </button>
               )}
               {cutCount > 0 && (
-                <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">
+                <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">
                   ✂ {cutCount} coupé{cutCount > 1 ? "s" : ""}
                 </span>
               )}
-              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
+              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
                 <X size={16} />
               </button>
             </div>
@@ -427,7 +427,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
 
           {/* Stats bar */}
           {processingCount > 0 && (
-            <div className="px-6 py-2 bg-gray-50 border-b border-gray-100 text-xs text-gray-500 flex items-center gap-2">
+            <div className="px-6 py-2 bg-muted border-b border-border text-xs text-muted-foreground flex items-center gap-2">
               <Loader2 size={11} className="animate-spin text-blue-500" />
               <span>{processingCount} asset{processingCount > 1 ? "s" : ""} en cours d&apos;analyse…</span>
             </div>
@@ -437,17 +437,17 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
           <div className="px-6 py-3 flex items-center gap-3 border-b border-gray-50">
             <button
               onClick={toggleAll}
-              className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-gray-900"
             >
               {selectedIds.size === selectableCount && selectableCount > 0
-                ? <CheckSquare size={14} className="text-sky-700" />
+                ? <CheckSquare size={14} className="text-info-700" />
                 : <Square size={14} />}
               Tout sélectionner
             </button>
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-muted-foreground">
               {selectedIds.size} sélectionné{selectedIds.size > 1 ? "s" : ""}
               {selectedIds.size > 20 && (
-                <span className="ml-2 text-peach-700">
+                <span className="ml-2 text-warning-700">
                   · découpé en {Math.ceil(selectedIds.size / 20)} batches de 20 max
                 </span>
               )}
@@ -455,7 +455,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
             <div className="ml-auto flex items-center gap-2">
               <button
                 onClick={() => void loadAssets()}
-                className="p-1.5 rounded hover:bg-gray-100 text-gray-400"
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground"
                 title="Rafraîchir"
               >
                 <RefreshCw size={13} />
@@ -487,7 +487,7 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
             </div>
           )}
           {resetResult && (
-            <div className="mx-6 mt-3 p-3 bg-peach-50 border border-peach-200 rounded-lg text-xs text-peach-800">
+            <div className="mx-6 mt-3 p-3 bg-warning-50 border border-warning-200 rounded-lg text-xs text-warning-700">
               {resetResult.deleted} analyse{resetResult.deleted > 1 ? "s" : ""} supprimée{resetResult.deleted > 1 ? "s" : ""}.
               Les fichiers déjà coupés sont préservés.
             </div>
@@ -502,13 +502,13 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
           {/* Asset list */}
           <div className="overflow-y-auto flex-1 max-h-[60vh]">
             {loadingAssets ? (
-              <div className="flex items-center justify-center py-16 text-gray-400">
+              <div className="flex items-center justify-center py-16 text-muted-foreground">
                 <Loader2 size={20} className="animate-spin" />
               </div>
             ) : loadError ? (
               <div className="p-6 text-sm text-red-600">{loadError}</div>
             ) : assets.length === 0 ? (
-              <div className="p-6 text-sm text-gray-400 text-center">Aucun asset dans cette bibliothèque</div>
+              <div className="p-6 text-sm text-muted-foreground text-center">Aucun asset dans cette bibliothèque</div>
             ) : (
               <ul className="divide-y divide-gray-50">
                 {assets.map((asset) => {
@@ -519,24 +519,24 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
                     <li
                       key={asset.id}
                       className={`flex items-center gap-3 px-6 py-2.5 transition-colors ${
-                        isSelectable ? "cursor-pointer hover:bg-gray-50"
-                        : isCut ? "bg-gray-50/50"
+                        isSelectable ? "cursor-pointer hover:bg-muted"
+                        : isCut ? "bg-muted/50"
                         : "opacity-60"
                       }`}
                       onClick={() => isSelectable && toggleSelect(asset.id)}
                     >
                       {isSelectable ? (
                         isSelected
-                          ? <CheckSquare size={15} className="text-sky-700 flex-shrink-0" />
-                          : <Square size={15} className="text-gray-300 flex-shrink-0" />
+                          ? <CheckSquare size={15} className="text-info-700 flex-shrink-0" />
+                          : <Square size={15} className="text-muted-foreground/60 flex-shrink-0" />
                       ) : (
                         <span className="w-[15px] flex-shrink-0" />
                       )}
-                      <span className={`text-sm flex-1 truncate ${isCut ? "text-gray-400" : "text-gray-800"}`}>
+                      <span className={`text-sm flex-1 truncate ${isCut ? "text-muted-foreground" : "text-gray-800"}`}>
                         {asset.filename}
                       </span>
                       {asset.duration !== null && (
-                        <span className="text-xs text-gray-400 flex-shrink-0">{fmt(asset.duration)}</span>
+                        <span className="text-xs text-muted-foreground flex-shrink-0">{fmt(asset.duration)}</span>
                       )}
                       <span className="flex-shrink-0 w-32 text-right">
                         {statusLabel(asset)}
@@ -563,11 +563,11 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setView("select")}
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
+              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
             >
               <ArrowLeft size={16} />
             </button>
@@ -576,35 +576,35 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
             </h2>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
               <X size={16} />
             </button>
           </div>
         </div>
 
         {/* Audio options */}
-        <div className="mx-6 mt-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl flex items-center gap-5 flex-wrap">
-          <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Audio</span>
-          <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer select-none">
+        <div className="mx-6 mt-3 px-4 py-3 bg-muted border border-border rounded-xl flex items-center gap-5 flex-wrap">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Audio</span>
+          <label className="flex items-center gap-1.5 text-sm text-foreground cursor-pointer select-none">
             <input
               type="checkbox"
               checked={mixToMono}
               onChange={(e) => setMixToMono(e.target.checked)}
-              className="rounded border-gray-300 text-sky-700 focus:ring-sky-400"
+              className="rounded border-border text-info-700 focus:ring-info-200"
             />
             Mix mono
           </label>
-          <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer select-none">
+          <label className="flex items-center gap-1.5 text-sm text-foreground cursor-pointer select-none">
             <input
               type="checkbox"
               checked={normalize}
               onChange={(e) => setNormalize(e.target.checked)}
-              className="rounded border-gray-300 text-sky-700 focus:ring-sky-400"
+              className="rounded border-border text-info-700 focus:ring-info-200"
             />
             Normaliser
           </label>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600 w-16">Volume</span>
+            <span className="text-sm text-muted-foreground w-16">Volume</span>
             <input
               type="range"
               min={-12}
@@ -614,13 +614,13 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
               onChange={(e) => setGainDb(parseFloat(e.target.value))}
               className="w-24 accent-indigo-600"
             />
-            <span className="text-sm text-gray-700 w-14 text-right">
+            <span className="text-sm text-foreground w-14 text-right">
               {gainDb > 0 ? `+${gainDb}` : gainDb} dB
             </span>
             {gainDb !== 0 && (
               <button
                 onClick={() => setGainDb(0)}
-                className="text-xs text-gray-400 hover:text-gray-600"
+                className="text-xs text-muted-foreground hover:text-muted-foreground"
               >
                 reset
               </button>
@@ -631,13 +631,13 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
         {/* Review cards */}
         <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
           {loadingJobs ? (
-            <div className="flex items-center justify-center py-16 text-gray-400">
+            <div className="flex items-center justify-center py-16 text-muted-foreground">
               <Loader2 size={20} className="animate-spin" />
             </div>
           ) : jobs.length === 0 ? (
             <div className="py-12 text-center">
               <CheckCircle2 size={32} className="text-green-400 mx-auto mb-3" />
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 {reviewTotal === 0
                   ? "Aucune analyse à valider pour le moment."
                   : `${reviewTotal} analyse${reviewTotal > 1 ? "s" : ""} restante${reviewTotal > 1 ? "s" : ""} à valider.`}
@@ -645,14 +645,14 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
               {reviewTotal === 0 ? (
                 <button
                   onClick={() => setView("select")}
-                  className="mt-4 text-sm text-sky-700 hover:underline"
+                  className="mt-4 text-sm text-info-700 hover:underline"
                 >
                   ← Retour à la sélection
                 </button>
               ) : (
                 <button
                   onClick={() => { setReviewPage(1); void loadReviewQueue(1); }}
-                  className="mt-4 flex items-center gap-1.5 mx-auto text-sm text-sky-700 hover:underline"
+                  className="mt-4 flex items-center gap-1.5 mx-auto text-sm text-info-700 hover:underline"
                 >
                   Charger la suite <ChevronRight size={13} />
                 </button>
@@ -674,14 +674,14 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
           {appliedJobs.length > 0 && (
             <div className="mt-2">
               <div className="flex items-center gap-2 mb-1.5">
-                <div className="flex-1 h-px bg-gray-100" />
-                <span className="text-xs text-gray-400 font-medium uppercase tracking-wide px-1 flex items-center gap-1.5">
+                <div className="flex-1 h-px bg-muted" />
+                <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide px-1 flex items-center gap-1.5">
                   {appliedJobs.some((j) => !j.editJob?.status || j.editJob.status === "pending" || j.editJob.status === "processing") && (
                     <Loader2 size={9} className="animate-spin" />
                   )}
                   En traitement ({appliedJobs.filter((j) => j.editJob?.status === "done").length}/{appliedJobs.length})
                 </span>
-                <div className="flex-1 h-px bg-gray-100" />
+                <div className="flex-1 h-px bg-muted" />
               </div>
               <ul className="flex flex-col gap-0.5">
                 {appliedJobs.map((job) => {
@@ -693,17 +693,17 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
                       ? Math.round((job.confirmedEnd - job.confirmedStart) * 10) / 10
                       : null;
                   return (
-                    <li key={job.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 text-xs">
+                    <li key={job.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted text-xs">
                       {isDone ? (
                         <CheckCircle2 size={11} className="text-green-500 flex-shrink-0" />
                       ) : isFailed ? (
                         <AlertTriangle size={11} className="text-red-500 flex-shrink-0" />
                       ) : (
-                        <Loader2 size={11} className="animate-spin text-gray-400 flex-shrink-0" />
+                        <Loader2 size={11} className="animate-spin text-muted-foreground flex-shrink-0" />
                       )}
-                      <span className="flex-1 truncate text-gray-600">{job.asset.filename}</span>
+                      <span className="flex-1 truncate text-muted-foreground">{job.asset.filename}</span>
                       {dur != null && isDone && (
-                        <span className="text-gray-400 flex-shrink-0">{dur}s conservés</span>
+                        <span className="text-muted-foreground flex-shrink-0">{dur}s conservés</span>
                       )}
                       {isFailed && job.errorMsg && (
                         <span className="text-red-400 truncate max-w-[160px]">{job.errorMsg}</span>
@@ -718,19 +718,19 @@ export function MediaBatchAutocutPanel({ library, knownTags, onClose }: Props) {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 py-3 text-sm text-gray-600 border-t border-gray-100 shrink-0">
+          <div className="flex items-center justify-center gap-2 py-3 text-sm text-muted-foreground border-t border-border shrink-0">
             <button
               onClick={() => setReviewPage((p) => Math.max(1, p - 1))}
               disabled={reviewPage === 1}
-              className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
+              className="px-3 py-1 rounded border border-border hover:bg-muted disabled:opacity-40"
             >
               ←
             </button>
-            <span className="text-xs text-gray-500">Page {reviewPage} / {totalPages}</span>
+            <span className="text-xs text-muted-foreground">Page {reviewPage} / {totalPages}</span>
             <button
               onClick={() => setReviewPage((p) => Math.min(totalPages, p + 1))}
               disabled={reviewPage === totalPages}
-              className="px-3 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
+              className="px-3 py-1 rounded border border-border hover:bg-muted disabled:opacity-40"
             >
               →
             </button>

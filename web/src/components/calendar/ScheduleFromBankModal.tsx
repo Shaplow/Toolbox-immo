@@ -82,13 +82,13 @@ export function ScheduleFromBankModal({
     <Modal open onClose={onClose} size="sm">
       <form onSubmit={handleSubmit} className="p-5">
         <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
             Programmer
           </p>
-          <h2 className="mt-0.5 text-[15px] font-semibold text-gray-950 truncate leading-tight">
+          <h2 className="mt-0.5 text-[15px] font-semibold text-foreground truncate leading-tight">
             {title}
           </h2>
-          <p className="text-[11px] text-gray-500 truncate">@{slot.account.handle}</p>
+          <p className="text-[11px] text-muted-foreground truncate">@{slot.account.handle}</p>
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3">
@@ -106,7 +106,7 @@ export function ScheduleFromBankModal({
           </FormField>
         </div>
 
-        {error && <p className="mt-2 text-[11.5px] text-rose-700">{error}</p>}
+        {error && <p className="mt-2 text-[11.5px] text-danger-700">{error}</p>}
 
         <div className="mt-4 flex justify-end gap-2">
           <Button

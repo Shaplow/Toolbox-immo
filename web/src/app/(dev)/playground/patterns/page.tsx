@@ -75,9 +75,9 @@ import { toast } from "@/components/ui/Toast";
 function PatternHeader({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
   return (
     <header className="space-y-2 mb-6">
-      <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">{eyebrow}</p>
-      <h2 className="text-2xl font-semibold tracking-tight text-gray-950">{title}</h2>
-      <p className="text-[13px] text-gray-600 max-w-2xl leading-relaxed">{description}</p>
+      <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">{eyebrow}</p>
+      <h2 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h2>
+      <p className="text-[13px] text-muted-foreground max-w-2xl leading-relaxed">{description}</p>
     </header>
   );
 }
@@ -121,13 +121,13 @@ export default function PatternsPage() {
   return (
     <div className="space-y-20">
       <header className="space-y-3">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">
           Phase 5 · Lot 2 · Patterns métier
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight text-gray-950">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           5 layouts réalistes — l&apos;épreuve du feu
         </h1>
-        <p className="text-sm text-gray-600 max-w-2xl leading-relaxed">
+        <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
           Si la matière fonctionne dans ces 5 patterns, elle fonctionnera dans
           l&apos;app entière. Pas des démos isolées — des combos primitives +
           atomes + molécules dans leurs vrais contextes métier Toolbox.
@@ -202,7 +202,7 @@ function FicheDetailPattern() {
   return (
     <div className="space-y-4">
       {/* Top header glass */}
-      <div className="rounded-2xl px-5 py-4 bg-gradient-to-b from-white to-white/85 backdrop-blur-[12px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)]">
+      <div className="rounded-2xl px-5 py-4 bg-gradient-to-b from-white to-white/85 ">
         <Breadcrumb
           items={[
             { href: "/", label: "Toolbox", icon: <Home size={12} /> },
@@ -213,14 +213,14 @@ function FicheDetailPattern() {
         />
         <div className="flex items-start justify-between gap-4 mt-3">
           <div className="min-w-0 flex-1">
-            <h3 className="text-2xl font-semibold tracking-tight text-gray-950 truncate">
+            <h3 className="text-2xl font-semibold tracking-tight text-foreground truncate">
               Story carrousel #18 — Rooftop Paris
             </h3>
             <div className="flex flex-wrap items-center gap-2 mt-2">
               <StatusBadge domain="slot" status="CAPTIONS_PENDING" />
               <Badge variant="info" icon={CalIcon}>Programmé · 18 juin 18 h</Badge>
               <span className="inline-flex items-center gap-1.5">
-                <span className="text-[11px] text-gray-500">Pattern</span>
+                <span className="text-[11px] text-muted-foreground">Pattern</span>
                 <Chip variant="sky" size="sm">Vidéo Story</Chip>
               </span>
             </div>
@@ -235,7 +235,7 @@ function FicheDetailPattern() {
 
       {/* Production chain */}
       <div>
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-2 px-1">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-2 px-1">
           Chaîne de production
         </p>
         <Stepper
@@ -256,7 +256,7 @@ function FicheDetailPattern() {
             actions={<StatusBadge domain="cover" status="READY" />}
             collapsible
           >
-            <p className="text-[13px] text-gray-700 leading-relaxed">
+            <p className="text-[13px] text-foreground leading-relaxed">
               Visite guidée du 3 pièces, 65 m² avec balcon. Mise en avant de
               la cuisine ouverte (10 m²) et de la vue Sacré-Cœur depuis le séjour.
               Ambiance lumineuse, plans larges sur les volumes.
@@ -299,12 +299,12 @@ function FicheDetailPattern() {
               ].map((c, i) => (
                 <div key={i} className="flex items-start gap-3">
                   <Avatar name={c.user} size="sm" />
-                  <div className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+                  <div className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-card border border-border ">
                     <div className="flex items-baseline gap-2 mb-1">
-                      <p className="text-[12px] font-semibold text-gray-950">{c.user}</p>
-                      <p className="text-[10px] text-gray-500">{c.role} · {c.time}</p>
+                      <p className="text-[12px] font-semibold text-foreground">{c.user}</p>
+                      <p className="text-[10px] text-muted-foreground">{c.role} · {c.time}</p>
                     </div>
-                    <p className="text-[12px] text-gray-700 leading-relaxed">{c.text}</p>
+                    <p className="text-[12px] text-foreground leading-relaxed">{c.text}</p>
                   </div>
                 </div>
               ))}
@@ -326,7 +326,7 @@ function FicheDetailPattern() {
           <Section title="Assignations" icon={UserCircle2} padded>
             <div className="space-y-3">
               <div>
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">Monteur</p>
+                <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1.5">Monteur</p>
                 <AssigneePicker
                   value={monteurId}
                   onChange={setMonteurId}
@@ -336,7 +336,7 @@ function FicheDetailPattern() {
                 />
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">CM</p>
+                <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1.5">CM</p>
                 <AssigneePicker
                   value={cmId}
                   onChange={setCmId}
@@ -351,20 +351,20 @@ function FicheDetailPattern() {
           <Section title="Détails" icon={Bookmark} padded>
             <dl className="space-y-1.5 text-[12px]">
               <div className="flex justify-between">
-                <dt className="text-gray-500">Format</dt>
-                <dd className="text-gray-950 font-medium">1080 × 1920</dd>
+                <dt className="text-muted-foreground">Format</dt>
+                <dd className="text-foreground font-medium">1080 × 1920</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-gray-500">Durée cible</dt>
-                <dd className="text-gray-950 font-medium tabular-nums">18 s</dd>
+                <dt className="text-muted-foreground">Durée cible</dt>
+                <dd className="text-foreground font-medium tabular-nums">18 s</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-gray-500">Créé</dt>
-                <dd className="text-gray-700">il y a 3 j</dd>
+                <dt className="text-muted-foreground">Créé</dt>
+                <dd className="text-foreground">il y a 3 j</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-gray-500">Modifié</dt>
-                <dd className="text-gray-700">il y a 2 h</dd>
+                <dt className="text-muted-foreground">Modifié</dt>
+                <dd className="text-foreground">il y a 2 h</dd>
               </div>
             </dl>
           </Section>
@@ -397,8 +397,8 @@ function QuickEditDrawerPattern() {
   const [duration, setDuration] = useState(18);
 
   return (
-    <div className="rounded-2xl p-5 bg-white/40 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-      <p className="text-[12px] text-gray-600 mb-3 leading-relaxed">
+    <div className="rounded-2xl p-5 bg-card border border-border ">
+      <p className="text-[12px] text-muted-foreground mb-3 leading-relaxed">
         Le drawer édition rapide est ouvert depuis le calendrier ou la fiche.
         Click le bouton ci-dessous pour ouvrir.
       </p>
@@ -425,7 +425,7 @@ function QuickEditDrawerPattern() {
           {tab === "statut" && (
             <div className="space-y-4">
               <div>
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">Statut</p>
+                <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1.5">Statut</p>
                 <Combobox
                   value={status}
                   onChange={setStatus}
@@ -451,7 +451,7 @@ function QuickEditDrawerPattern() {
           {tab === "assignations" && (
             <div className="space-y-4">
               <div>
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">Monteur</p>
+                <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1.5">Monteur</p>
                 <AssigneePicker
                   value={monteurId}
                   onChange={setMonteurId}
@@ -461,7 +461,7 @@ function QuickEditDrawerPattern() {
                 />
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">CM</p>
+                <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1.5">CM</p>
                 <AssigneePicker
                   value={cmId}
                   onChange={setCmId}
@@ -528,15 +528,15 @@ function QuickEditDrawerPattern() {
           {tab === "planning" && (
             <div className="space-y-4">
               <div>
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">Date publication</p>
+                <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1.5">Date publication</p>
                 <DatePicker value={scheduledAt} onChange={setScheduledAt} />
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">Heure publication</p>
+                <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1.5">Heure publication</p>
                 <TimePicker value={scheduledTime} onChange={setScheduledTime} minuteStep={15} />
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">Durée cible</p>
+                <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1.5">Durée cible</p>
                 <Slider value={duration} onChange={setDuration} min={5} max={90} unit="s" />
               </div>
             </div>
@@ -620,8 +620,8 @@ function ListingGridPattern() {
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div className="rounded-xl px-4 py-2.5 bg-sky-50/60 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.32)] flex items-center justify-between gap-3">
-          <p className="text-[13px] font-medium text-sky-700">
+        <div className="rounded-xl px-4 py-2.5 bg-info-50/60  flex items-center justify-between gap-3">
+          <p className="text-[13px] font-medium text-info-700">
             {selected.size} média{selected.size > 1 ? "s" : ""} sélectionné{selected.size > 1 ? "s" : ""}
           </p>
           <div className="flex items-center gap-2">
@@ -684,7 +684,7 @@ function ToolPagePattern() {
             ]}
           />
           <div className="flex items-end justify-between gap-3">
-            <h3 className="text-[15px] font-semibold tracking-tight text-gray-950">
+            <h3 className="text-[15px] font-semibold tracking-tight text-foreground">
               Édition preset captions
             </h3>
             <Badge variant="info" dot>Modifié</Badge>
@@ -702,15 +702,15 @@ function ToolPagePattern() {
         <Section title="Identité du preset" icon={FileText}>
           <div className="space-y-3">
             <div>
-              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">Nom</p>
+              <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1.5">Nom</p>
               <Input value={name} onChange={setName} />
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">Description</p>
+              <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1.5">Description</p>
               <Textarea value={desc} onChange={setDesc} rows={3} />
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">Font</p>
+              <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1.5">Font</p>
               <div className="w-60">
                 <Select
                   value={font}
@@ -730,7 +730,7 @@ function ToolPagePattern() {
           <div className="space-y-3">
             <Switch checked={autoApply} onChange={setAutoApply} label="Appliquer automatiquement aux nouveaux slots" description="Sinon : sélection manuelle par slot" />
             <div>
-              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">Actif à partir du</p>
+              <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1.5">Actif à partir du</p>
               <DatePicker value={activeFromDate} onChange={setActiveFromDate} />
             </div>
           </div>
@@ -830,7 +830,7 @@ function AdminTablePattern() {
           <Avatar name={r.name} size="sm" />
           <span>
             <span className="block font-medium leading-tight">{r.name}</span>
-            <span className="block text-[10px] text-gray-500 leading-tight">{r.email}</span>
+            <span className="block text-[10px] text-muted-foreground leading-tight">{r.email}</span>
           </span>
         </span>
       ),
@@ -861,7 +861,7 @@ function AdminTablePattern() {
           <Badge variant="default" dot>Inactif</Badge>
         ),
     },
-    { id: "lastSeen", label: "Dernière activité", width: "160px", cell: (r) => <span className="text-gray-700">{r.lastSeen}</span> },
+    { id: "lastSeen", label: "Dernière activité", width: "160px", cell: (r) => <span className="text-foreground">{r.lastSeen}</span> },
   ];
 
   const activeCount = [search ? 1 : 0, role ? 1 : 0, activeOnly ? 1 : 0].reduce((a, b) => a + b, 0);
@@ -905,8 +905,8 @@ function AdminTablePattern() {
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div className="rounded-xl px-4 py-2.5 bg-sky-50/60 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.32)] flex items-center justify-between gap-3">
-          <p className="text-[13px] font-medium text-sky-700">
+        <div className="rounded-xl px-4 py-2.5 bg-info-50/60  flex items-center justify-between gap-3">
+          <p className="text-[13px] font-medium text-info-700">
             {selected.size} utilisateur{selected.size > 1 ? "s" : ""} sélectionné{selected.size > 1 ? "s" : ""}
           </p>
           <div className="flex items-center gap-2">
@@ -937,15 +937,15 @@ function AdminTablePattern() {
         <Modal.Body>
           <div className="space-y-3">
             <div>
-              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">Nom</p>
+              <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1.5">Nom</p>
               <Input value={editName} onChange={setEditName} />
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">Email</p>
+              <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1.5">Email</p>
               <Input value={editEmail} onChange={setEditEmail} type="email" />
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1.5">Rôle</p>
+              <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1.5">Rôle</p>
               <Select
                 value={editRole}
                 onChange={setEditRole}

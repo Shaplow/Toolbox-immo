@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { Upload, RotateCcw, Download, Plus, Trash2 } from "lucide-react";
+import { Upload, RotateCcw, Download, Plus, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Combobox } from "@/components/ui/Combobox";
+import { Input } from "@/components/ui/Input";
 import { toast } from "@/components/ui/Toast";
 import { DataEntriesSpreadsheet } from "@/components/admin/libraries/dataEntries/DataEntriesSpreadsheet";
 
@@ -133,6 +134,10 @@ function parseFieldsSchema(raw: string | null | undefined): FieldDef[] {
 import { useConfirm } from "@/components/ui/useConfirm";
 import { useBulkEditDataEntries } from "@/components/admin/libraries/dataEntries/useBulkEditDataEntries";
 import { DataEntriesBulkActionBar } from "@/components/admin/libraries/dataEntries/DataEntriesBulkActionBar";
+import {
+  ImportPreviewModal,
+  type ImportPreview,
+} from "@/components/admin/libraries/dataEntries/ImportPreviewModal";
 
 export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props) {
   // Phase 1.x — schéma de champs au niveau lib (source de vérité).
@@ -142,10 +147,16 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
   const [entries, setEntries] = useState<DataEntry[]>([]);
   const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
   const [accountFilter, setAccountFilter] = useState<string | null>(null);
+  // Recherche texte (Set / catégorie / valeurs de champs). Filtre client-side
+  // appliqué avant le scoping accès, comme accountFilter.
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  // Dry-run : preview + fichier en attente de confirmation.
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [resetting, setResetting] = useState(false);
   const [resetSuccess, setResetSuccess] = useState<string | null>(null);
   const [resetError, setResetError] = useState<string | null>(null);
@@ -227,44 +238,77 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
         )
       : [];
 
-  /** Import effectif d'un fichier CSV — extrait pour pouvoir être appelé
-   *  depuis le drop-zone page-level en plus du <input type="file">. */
-  async function importCSVFile(file: File) {
+  /** Étape 1 — dry-run : parse le fichier côté serveur SANS insérer et ouvre
+   *  la modal d'aperçu. Appelé depuis le drop-zone ET le <input type="file">. */
+  async function requestImportPreview(file: File) {
     setImporting(true);
     setImportError(null);
     setImportSuccess(null);
-    // CSV ET xlsx passent tels quels — le serveur détecte et parse selon l'extension/MIME.
-    const formData = new FormData();
-    formData.append("file", file);
-    const res = await fetch(`/api/admin/libraries/data/campaigns/${campaignId}/import`, {
-      method: "POST",
-      body: formData,
-    });
-    if (!res.ok) {
-      const d = await res.json() as { error?: string };
-      setImportError(d.error ?? "Erreur lors de l'import");
-    } else {
-      const d = await res.json() as { imported: number };
-      if (d.imported === 0) {
-        // B8 — Distinguer "0 importé" (= format invalide, fichier vide, colonnes
-        // qui ne matchent pas) du vrai succès. Avant, "0 entrées importées avec
-        // succès" était silencieux et trompeur.
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(
+        `/api/admin/libraries/data/campaigns/${campaignId}/import?dry=true`,
+        { method: "POST", body: formData },
+      );
+      const d = (await res.json().catch(() => ({}))) as
+        | (ImportPreview & { dryRun: true })
+        | { error?: string };
+      if (!res.ok || !("dryRun" in d)) {
         setImportError(
-          "Aucune ligne importée. Vérifie que ton CSV contient au moins les colonnes 'set_tag' et 'category', et que le format est valide (séparateur virgule, encodage UTF-8)."
+          ("error" in d && d.error) || "Aucune ligne valide détectée dans le fichier.",
         );
-      } else {
-        setImportSuccess(`${d.imported} entrée${d.imported !== 1 ? "s" : ""} importée${d.imported !== 1 ? "s" : ""} avec succès`);
-        void load();
+        return;
       }
+      setImportPreview(d);
+      setPendingFile(file);
+    } catch {
+      setImportError("Erreur réseau lors de l'analyse du fichier.");
+    } finally {
+      setImporting(false);
     }
-    setImporting(false);
+  }
+
+  /** Étape 2 — commit : import réel (avec force si la campagne est non vide). */
+  async function confirmImport() {
+    if (!pendingFile) return;
+    setImporting(true);
+    setImportError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", pendingFile);
+      if (importPreview && importPreview.existingCount > 0) {
+        formData.append("force", "true");
+      }
+      const res = await fetch(
+        `/api/admin/libraries/data/campaigns/${campaignId}/import`,
+        { method: "POST", body: formData },
+      );
+      if (!res.ok) {
+        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        setImportError(d.error ?? "Erreur lors de l'import");
+        return;
+      }
+      const d = (await res.json()) as { imported: number };
+      setImportSuccess(
+        `${d.imported} entrée${d.imported !== 1 ? "s" : ""} importée${d.imported !== 1 ? "s" : ""} avec succès`,
+      );
+      setImportPreview(null);
+      setPendingFile(null);
+      setSearch("");
+      void load();
+    } catch {
+      setImportError("Erreur réseau — import annulé.");
+    } finally {
+      setImporting(false);
+    }
   }
 
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
-    await importCSVFile(file);
+    await requestImportPreview(file);
   }
 
   // ── Drop-zone page-level pour CSV ───────────────────────────────────
@@ -304,7 +348,7 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
       setImportError("Aucun fichier CSV ou Excel détecté dans la sélection déposée.");
       return;
     }
-    void importCSVFile(file);
+    void requestImportPreview(file);
   }
 
   async function handleReset() {
@@ -374,6 +418,9 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
         toast.error(d.error ?? "Erreur lors de la création");
         return;
       }
+      // Clear la recherche : une fiche vide (Set/catégorie null) ne matcherait
+      // pas une requête active et resterait invisible.
+      setSearch("");
       await load();
       setFocusBottomSignal((n) => n + 1);
     } catch {
@@ -408,6 +455,55 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
   // n'ont aucun effet utile.
   const isUnlimitedPolicy = campaign?.usagePolicy === "unlimited";
 
+  // Recherche : Set / catégorie / valeurs de champs (insensible à la casse).
+  const matchesSearch = useCallback(
+    (entry: DataEntry) => {
+      const q = search.trim().toLowerCase();
+      if (!q) return true;
+      if ((entry.setTag ?? "").toLowerCase().includes(q)) return true;
+      if ((entry.category ?? "").toLowerCase().includes(q)) return true;
+      try {
+        const f = JSON.parse(entry.fields) as Record<string, unknown>;
+        return Object.values(f).some(
+          (v) => v != null && String(v).toLowerCase().includes(q),
+        );
+      } catch {
+        return false;
+      }
+    },
+    [search],
+  );
+
+  const accessibleEntries = useMemo(
+    () => entries.filter(isAccessible),
+    [entries, isAccessible],
+  );
+  const visibleEntries = useMemo(
+    () => accessibleEntries.filter(matchesSearch),
+    [accessibleEntries, matchesSearch],
+  );
+  // Lignes masquées (non accessibles OU filtrées par la recherche) : à conserver
+  // dans le state quand la spreadsheet renvoie sa liste filtrée éditée — sinon
+  // l'édition d'une ligne effacerait les autres du state.
+  const visibleIds = useMemo(
+    () => new Set(visibleEntries.map((e) => e.id)),
+    [visibleEntries],
+  );
+  const hiddenEntries = useMemo(
+    () => entries.filter((e) => !visibleIds.has(e.id)),
+    [entries, visibleIds],
+  );
+
+  // Suggestions pour les Combobox bulk Set / catégorie (valeurs existantes).
+  const setTagOptions = useMemo(
+    () => Array.from(new Set(entries.map((e) => e.setTag).filter((s): s is string => !!s))).sort(),
+    [entries],
+  );
+  const categoryOptions = useMemo(
+    () => Array.from(new Set(entries.map((e) => e.category).filter((c): c is string => !!c))).sort(),
+    [entries],
+  );
+
   return (
     <div
       className="relative"
@@ -417,8 +513,8 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
       onDrop={handleDrop}
     >
       {pageDragOver && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-sky-500/10 backdrop-blur-[6px] pointer-events-none">
-          <div className="rounded-xl bg-gradient-to-b from-white to-white/85 backdrop-blur-[20px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.45),0_8px_24px_-4px_rgba(125,180,210,0.25),0_24px_64px_-12px_rgba(15,23,42,0.22)] px-6 py-4 text-[13px] font-medium text-gray-800">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-info-600/10 pointer-events-none">
+          <div className="rounded-xl bg-gradient-to-b from-white to-white/85  px-6 py-4 text-[13px] font-medium text-gray-800">
             Déposez le CSV ou Excel pour importer dans{" "}
             <span className="font-semibold">cette bibliothèque</span>
           </div>
@@ -427,7 +523,7 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
 
       {/* Actions principales */}
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-        <p className="text-[12.5px] text-gray-600">
+        <p className="text-[12.5px] text-muted-foreground">
           {entries.length} fiche{entries.length !== 1 ? "s" : ""} · {schemaFields.length} champ{schemaFields.length !== 1 ? "s" : ""} dans le schéma
           {!isUnlimitedPolicy && (
             <>
@@ -437,7 +533,7 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
             </>
           )}
           {accountFilter && isPerAccountPolicy && (
-            <span className="ml-1 text-sky-700">
+            <span className="ml-1 text-info-700">
               ·{" "}
               <span className="tabular-nums">
                 {entries.filter((e) => e.usageCount > 0).length}
@@ -533,10 +629,30 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
         />
       </div>
 
-      {/* Filter bar : compte IG si plusieurs */}
-      {accounts.length > 0 && (
-        <div className="p-3 rounded-2xl bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.06)] mb-4">
-          <div className="flex items-center gap-3 flex-wrap">
+      {/* Filter bar : recherche texte + compte IG si plusieurs */}
+      <div className="p-3 rounded-2xl bg-card border border-border mb-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="w-[280px]">
+            <Input
+              value={search}
+              onChange={setSearch}
+              icon={Search}
+              placeholder="Rechercher (Set, catégorie, valeurs…)"
+              trailing={
+                search ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    className="text-muted-foreground hover:text-foreground text-[11px]"
+                    aria-label="Effacer la recherche"
+                  >
+                    ✕
+                  </button>
+                ) : undefined
+              }
+            />
+          </div>
+          {accounts.length > 0 && (
             <div className="w-[260px]">
               <Combobox
                 value={accountFilter ?? ""}
@@ -553,40 +669,45 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
                 emptyMessage="Aucun compte"
               />
             </div>
-          </div>
+          )}
+          {search && (
+            <span className="text-[11.5px] text-muted-foreground tabular-nums">
+              {visibleEntries.length} résultat{visibleEntries.length !== 1 ? "s" : ""}
+            </span>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Alerts */}
       {importError && (
-        <div className="mb-4 rounded-xl bg-rose-50/70 backdrop-blur-[8px] px-3 py-2.5 text-[12px] text-rose-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.22)]">
+        <div className="mb-4 rounded-xl bg-danger-50/70 px-3 py-2.5 text-[12px] text-danger-700 ">
           {importError}
         </div>
       )}
       {importSuccess && (
-        <div className="mb-4 rounded-xl bg-sage-50/70 backdrop-blur-[8px] px-3 py-2.5 text-[12px] text-sage-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(111,162,128,0.22)]">
+        <div className="mb-4 rounded-xl bg-success-50/70 px-3 py-2.5 text-[12px] text-success-700 ">
           {importSuccess}
         </div>
       )}
       {resetSuccess && (
-        <div className="mb-4 rounded-xl bg-sage-50/70 backdrop-blur-[8px] px-3 py-2.5 text-[12px] text-sage-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(111,162,128,0.22)]">
+        <div className="mb-4 rounded-xl bg-success-50/70 px-3 py-2.5 text-[12px] text-success-700 ">
           ✓ {resetSuccess}
         </div>
       )}
       {resetError && (
-        <div className="mb-4 rounded-xl bg-rose-50/70 backdrop-blur-[8px] px-3 py-2.5 text-[12px] text-rose-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.22)]">
+        <div className="mb-4 rounded-xl bg-danger-50/70 px-3 py-2.5 text-[12px] text-danger-700 ">
           {resetError}
         </div>
       )}
 
       {loading ? (
-        <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] py-12 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] flex items-center justify-center text-gray-500 gap-3">
+        <div className="rounded-2xl bg-card border border-border py-12  flex items-center justify-center text-muted-foreground gap-3">
           <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
           <span className="text-[12.5px]">Chargement…</span>
         </div>
       ) : entries.length === 0 ? (
-        <div className="rounded-2xl bg-gradient-to-b from-white/75 to-white/55 backdrop-blur-[8px] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-2px_rgba(15,23,42,0.06)] text-center">
-          <p className="text-[14px] font-semibold text-gray-700 mb-2">Aucune entrée pour le moment.</p>
+        <div className="rounded-2xl bg-card border border-border p-8  text-center">
+          <p className="text-[14px] font-semibold text-foreground mb-2">Aucune entrée pour le moment.</p>
           <p className="mb-3">Glisse-dépose un CSV n&apos;importe où sur la page, ou utilise le bouton ci-dessous.</p>
           <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
             <Button
@@ -608,10 +729,10 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
               Modèle CSV
             </Button>
           </div>
-          <p className="text-[10.5px] text-gray-500 mb-1">
+          <p className="text-[10.5px] text-muted-foreground mb-1">
             Colonnes réservées : <code className="bg-white/60 px-1.5 py-0.5 rounded shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)] font-mono">set_tag</code>, <code className="bg-white/60 px-1.5 py-0.5 rounded shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)] font-mono">category</code>
           </p>
-          <p className="text-[10.5px] text-gray-400">
+          <p className="text-[10.5px] text-muted-foreground">
             Astuce : générez le modèle CSV depuis le builder (onglet Paramètres) pour obtenir automatiquement
             les bons en-têtes depuis le schéma de la template.
           </p>
@@ -620,8 +741,8 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
         <>
           {/* Bulk action bar — delete + accès comptes IG. Apparaît quand ≥1 fiche sélectionnée. */}
           {bulk.selectedIds.size > 0 && (
-            <div className="mb-3 rounded-xl px-3 py-2 bg-sky-50/60 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(77,150,191,0.32)] flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-[12.5px] font-medium text-sky-700">
+            <div className="mb-3 rounded-xl px-3 py-2 bg-info-50/60  flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-[12.5px] font-medium text-info-700">
                 {bulk.selectedIds.size} fiche{bulk.selectedIds.size > 1 ? "s" : ""} sélectionnée{bulk.selectedIds.size > 1 ? "s" : ""}
               </p>
               <div className="flex items-center gap-2">
@@ -636,23 +757,39 @@ export function DataEntriesPanel({ campaignId, libraryId, fieldsSchema }: Props)
           )}
           <DataEntriesSpreadsheet
             campaignId={campaignId}
-            entries={entries.filter(isAccessible)}
-            onEntriesChange={setEntries}
+            entries={visibleEntries}
+            onEntriesChange={(next) => setEntries([...hiddenEntries, ...next])}
             schema={schemaFields}
             selectedKeys={bulk.selectedIds}
             onSelectionChange={bulk.setSelectedIds}
             focusBottomSignal={focusBottomSignal}
             accounts={accounts}
           />
-          {/* Sticky bar accès bulk — affichée uniquement si comptes disponibles et sélection active. */}
-          {accounts.length > 0 && bulk.selectedIds.size > 0 && (
+          {/* Sticky bar bulk (Set / catégorie / accès) — dès qu'une fiche est
+              sélectionnée (le sélecteur compte est masqué si aucun compte). */}
+          {bulk.selectedIds.size > 0 && (
             <DataEntriesBulkActionBar
               bulk={bulk}
-              allVisibleIds={entries.filter(isAccessible).map((e) => e.id)}
+              allVisibleIds={visibleEntries.map((e) => e.id)}
               accounts={accounts}
+              setTagOptions={setTagOptions}
+              categoryOptions={categoryOptions}
             />
           )}
         </>
+      )}
+
+      {importPreview && pendingFile && (
+        <ImportPreviewModal
+          preview={importPreview}
+          fileName={pendingFile.name}
+          importing={importing}
+          onConfirm={() => void confirmImport()}
+          onClose={() => {
+            setImportPreview(null);
+            setPendingFile(null);
+          }}
+        />
       )}
 
       {confirmDialog}

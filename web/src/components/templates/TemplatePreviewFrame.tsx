@@ -201,9 +201,9 @@ export function TemplatePreviewFrame({
       {layoutDebug ? (
         <div className="max-h-[42vh] shrink-0 overflow-auto border-t border-white/10 bg-neutral-950/95">
           <div className="mx-auto w-full max-w-6xl px-4 py-4">
-            <div className="rounded-xl border border-peach-400/30 bg-neutral-950/90 text-white shadow-2xl">
+            <div className="rounded-xl border border-warning-200/30 bg-neutral-950/90 text-white shadow-2xl">
               <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-4 py-3 text-xs">
-                <span className="rounded-full bg-peach-400/15 px-2 py-1 font-medium text-peach-200">Mode debug layout</span>
+                <span className="rounded-full bg-warning-200/15 px-2 py-1 font-medium text-warning-200">Mode debug layout</span>
                 <span className="text-white/45">Builder: {builderSnapshot ? `${builderSnapshot.blocks.length} blocs` : "indisponible"}</span>
                 <span className="text-white/45">Rendu: {previewSnapshot ? `${previewSnapshot.blocks.length} blocs` : "en attente"}</span>
                 <span className="text-white/45">Max delta: {blockDiffs[0]?.maxAbsDelta ?? 0}px</span>

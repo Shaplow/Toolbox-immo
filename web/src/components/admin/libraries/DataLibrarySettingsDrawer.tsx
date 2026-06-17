@@ -230,14 +230,14 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
     <Drawer open={open} onClose={onClose} side="right" size="lg">
       <Drawer.Header onClose={onClose}>
         <span className="inline-flex items-center gap-2">
-          <Settings2 size={14} className="text-gray-400" />
+          <Settings2 size={14} className="text-muted-foreground" />
           Réglages — {library.name}
         </span>
       </Drawer.Header>
       <Drawer.Body className="space-y-4">
         {/* Identité */}
-        <section className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] space-y-3">
-          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-500">
+        <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
+          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
             Identité
           </h3>
           <FormField label="Nom" required>
@@ -254,8 +254,8 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
         </section>
 
         {/* Rotation */}
-        <section className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] space-y-4">
-          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-500">
+        <section className="rounded-2xl bg-card border border-border p-4  space-y-4">
+          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
             Rotation
           </h3>
 
@@ -327,16 +327,16 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
         </section>
 
         {/* Champs personnalisés */}
-        <section className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] space-y-3">
+        <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-500">
+            <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
               Champs des fiches
             </h3>
             <Button variant="ghost" size="sm" icon={Plus} onClick={addField}>
               Ajouter
             </Button>
           </div>
-          <p className="text-[11px] text-gray-500 leading-relaxed">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
             Définis les colonnes attendues dans une fiche (ex : <code className="text-[10.5px] bg-white/60 px-1 rounded">titre</code>, <code className="text-[10.5px] bg-white/60 px-1 rounded">prix</code>, <code className="text-[10.5px] bg-white/60 px-1 rounded">surface</code>). Ces champs servent à&nbsp;:
             <br />— générer un modèle CSV propre (même sans fiche existante),
             <br />— construire le formulaire « Nouvelle fiche »,
@@ -345,19 +345,19 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
           </p>
 
           {fields.length === 0 ? (
-            <div className="rounded-lg bg-white/40 px-3 py-4 text-center text-[12px] text-gray-500 italic shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.05)]">
+            <div className="rounded-lg bg-white/40 px-3 py-4 text-center text-[12px] text-muted-foreground italic ">
               Aucun champ défini — ajoute-en pour structurer tes fiches.
             </div>
           ) : (
             <div className="space-y-2">
-              <p className="text-[10.5px] text-gray-500">
+              <p className="text-[10.5px] text-muted-foreground">
                 <span className="font-medium">Table</span> = champ visible dans la vue table compacte (max 5 affichés).
                 Si rien n&apos;est coché, les 3 premiers champs servent par défaut.
               </p>
               {fields.map((f, i) => (
                 <div
                   key={i}
-                  className="grid grid-cols-[1fr_1fr_130px_auto_auto_auto] gap-2 items-center rounded-lg bg-white/55 backdrop-blur-[6px] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.05)]"
+                  className="grid grid-cols-[1fr_1fr_130px_auto_auto_auto] gap-2 items-center rounded-lg bg-card border border-border p-2 "
                 >
                   <Input
                     value={f.key}
@@ -374,7 +374,7 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
                     onChange={(v) => updateField(i, { type: v as FieldType })}
                     options={FIELD_TYPE_OPTIONS}
                   />
-                  <label className="inline-flex items-center gap-1 text-[11px] text-gray-600 select-none cursor-pointer" title="Champ visible dans la vue table">
+                  <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground select-none cursor-pointer" title="Champ visible dans la vue table">
                     <input
                       type="checkbox"
                       checked={!!f.primary}
@@ -383,7 +383,7 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
                     />
                     table
                   </label>
-                  <label className="inline-flex items-center gap-1 text-[11px] text-gray-600 select-none cursor-pointer">
+                  <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground select-none cursor-pointer">
                     <input
                       type="checkbox"
                       checked={!!f.required}
@@ -395,7 +395,7 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
                   <button
                     type="button"
                     onClick={() => removeField(i)}
-                    className="p-1 text-gray-300 hover:text-rose-600 transition-colors"
+                    className="p-1 text-muted-foreground/60 hover:text-danger-600 transition-colors"
                     title="Supprimer ce champ"
                   >
                     <Trash2 size={12} />
@@ -406,13 +406,13 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
           )}
         </section>
         {/* Lien public de remplissage (Phase 1.x Vague 3) */}
-        <section className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] space-y-3">
+        <section className="rounded-2xl bg-card border border-border p-4  space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-500 inline-flex items-center gap-1.5">
+            <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground inline-flex items-center gap-1.5">
               <Link2 size={12} /> Lien public de remplissage
             </h3>
           </div>
-          <p className="text-[11px] text-gray-500 leading-relaxed">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
             Génère un lien que tu peux partager (mail, Slack…) à quelqu&apos;un d&apos;externe.
             Cette personne pourra ajouter des fiches sans avoir besoin d&apos;un compte. Les fiches
             arrivent direct dans la bibliothèque — tu peux les supprimer si besoin.
@@ -421,17 +421,17 @@ export function DataLibrarySettingsDrawer({ open, onClose, library, onUpdated }:
 
           {publicToken ? (
             <div className="space-y-2">
-              <div className="rounded-lg bg-white/65 backdrop-blur-[6px] px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.08)] flex items-center gap-2">
+              <div className="rounded-lg bg-card border border-border px-2.5 py-2  flex items-center gap-2">
                 <input
                   readOnly
                   value={typeof window !== "undefined" ? `${window.location.origin}/data-fill/${publicToken}` : `…/data-fill/${publicToken}`}
-                  className="flex-1 min-w-0 bg-transparent text-[12px] font-mono text-gray-700 outline-none"
+                  className="flex-1 min-w-0 bg-transparent text-[12px] font-mono text-foreground outline-none"
                   onClick={(e) => (e.target as HTMLInputElement).select()}
                 />
                 <button
                   type="button"
                   onClick={() => void copyPublicUrl()}
-                  className="shrink-0 p-1 text-gray-400 hover:text-gray-700 transition-colors"
+                  className="shrink-0 p-1 text-muted-foreground hover:text-foreground transition-colors"
                   title="Copier"
                 >
                   <Copy size={13} />

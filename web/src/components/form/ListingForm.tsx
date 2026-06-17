@@ -612,18 +612,18 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
       {/* ── Form ─────────────────────────────────────────────────────────── */}
       {autoSubmit && variants.length === 0 && submitErrors.length === 0 ? (
         <div className="md:col-span-4 flex flex-col items-center justify-center gap-4 py-24">
-          <div className="h-10 w-10 rounded-full border-4 border-peach-500 border-t-transparent animate-spin" />
-          <p className="text-[13px] text-gray-500">Génération automatique en cours…</p>
+          <div className="h-10 w-10 rounded-full border-4 border-warning-600 border-t-transparent animate-spin" />
+          <p className="text-[13px] text-muted-foreground">Génération automatique en cours…</p>
         </div>
       ) : autoSubmit && submitErrors.length > 0 ? (
-        <div className="md:col-span-4 rounded-2xl bg-gradient-to-b from-rose-50/85 to-rose-50/55 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(201,113,133,0.32)] p-5 space-y-2">
+        <div className="md:col-span-4 rounded-2xl bg-gradient-to-b from-danger-50/85 to-danger-50/55  p-5 space-y-2">
           {submitErrors.map((e) => (
-            <p key={e} className="text-[13px] text-rose-800">{e}</p>
+            <p key={e} className="text-[13px] text-danger-700">{e}</p>
           ))}
           <button
             type="button"
             onClick={() => { autoSubmitFiredRef.current = false; formRef.current?.requestSubmit(); }}
-            className="mt-2 px-4 py-2 rounded-lg bg-gradient-to-b from-rose-600 to-rose-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_2px_4px_rgba(201,113,133,0.32)] text-white text-[13px] font-medium hover:from-rose-700 hover:to-rose-800 transition-all"
+            className="mt-2 px-4 py-2 rounded-lg bg-gradient-to-b from-danger-600 to-danger-700  text-white text-[13px] font-medium hover:from-danger-700 hover:to-danger-700 transition-all"
           >
             Réessayer
           </button>
@@ -656,8 +656,8 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
                 variant="glass"
               />
               {prefillLoading && (
-                <p className="text-[11.5px] text-peach-700 flex items-center gap-2">
-                  <span className="inline-block h-3 w-3 rounded-full border-2 border-peach-500 border-t-transparent animate-spin" />
+                <p className="text-[11.5px] text-warning-700 flex items-center gap-2">
+                  <span className="inline-block h-3 w-3 rounded-full border-2 border-warning-600 border-t-transparent animate-spin" />
                   Chargement des suggestions…
                 </p>
               )}
@@ -666,8 +666,8 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
         )}
         {/* Sélecteur "changer de compte" : visible quand prefill déjà chargé */}
         {instagramAccounts.length > 0 && libraryPrefillContext && (
-          <div className="relative z-30 rounded-2xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.32)] p-3 flex items-center gap-3">
-            <span className="text-[12.5px] font-semibold text-sky-900 shrink-0">Compte Instagram</span>
+          <div className="relative z-30 rounded-2xl bg-gradient-to-b from-info-50/85 to-info-50/55  p-3 flex items-center gap-3">
+            <span className="text-[12.5px] font-semibold text-info-700 shrink-0">Compte Instagram</span>
             <Select
               value={selectedAccountId || libraryPrefillContext.selectedAccountId || ""}
               onChange={(id) => {
@@ -685,8 +685,8 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
               className="flex-1"
             />
             {prefillLoading && (
-              <span className="text-[11px] text-sky-600 shrink-0 flex items-center gap-1.5">
-                <span className="inline-block h-3 w-3 rounded-full border-2 border-sky-500 border-t-transparent animate-spin" />
+              <span className="text-[11px] text-info-600 shrink-0 flex items-center gap-1.5">
+                <span className="inline-block h-3 w-3 rounded-full border-2 border-info-600 border-t-transparent animate-spin" />
                 Chargement…
               </span>
             )}
@@ -694,9 +694,9 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
         )}
 
         {submitErrors.length > 0 && (
-          <div className="rounded-2xl bg-gradient-to-b from-rose-50/85 to-rose-50/55 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(201,113,133,0.32)] p-4 space-y-1">
+          <div className="rounded-2xl bg-gradient-to-b from-danger-50/85 to-danger-50/55  p-4 space-y-1">
             {submitErrors.map((e) => (
-              <p key={e} className="text-[12.5px] text-rose-800">{e}</p>
+              <p key={e} className="text-[12.5px] text-danger-700">{e}</p>
             ))}
           </div>
         )}
@@ -708,7 +708,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
                 key={section.id}
                 type="button"
                 onClick={() => scrollToSection(section.id)}
-                className="px-3 py-1.5 rounded-full bg-white/60 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] text-[11.5px] text-gray-600 hover:text-gray-950 hover:bg-white/80 transition-all"
+                className="px-3 py-1.5 rounded-full bg-card border border-border  text-[11.5px] text-muted-foreground hover:text-foreground hover:bg-white/80 transition-all"
               >
                 {section.title}
               </button>
@@ -721,16 +721,16 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
             <section
               key={section.id}
               id={`form-section-${section.id}`}
-              className={`rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] p-5 md:p-6 scroll-mt-6 ${getFormSectionSpanClass(section)}`}
+              className={`rounded-2xl bg-card border border-border  p-5 md:p-6 scroll-mt-6 ${getFormSectionSpanClass(section)}`}
             >
             {!(hasOnlyUnsectionedSection && section.id === UNSECTIONED_FORM_SECTION_ID) ? (
               <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between mb-5">
                 <div>
-                  <p className="text-[10px] font-semibold tracking-widest uppercase text-gray-500">Section</p>
-                  <h2 className="text-[20px] font-semibold text-gray-950 mt-1 tracking-tight">{section.title}</h2>
-                  {section.description ? <p className="text-[12.5px] text-gray-500 mt-2 max-w-2xl">{section.description}</p> : null}
+                  <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground">Section</p>
+                  <h2 className="text-[20px] font-semibold text-foreground mt-1 tracking-tight">{section.title}</h2>
+                  {section.description ? <p className="text-[12.5px] text-muted-foreground mt-2 max-w-2xl">{section.description}</p> : null}
                 </div>
-                <div className="text-[11px] text-gray-400 tabular-nums">
+                <div className="text-[11px] text-muted-foreground tabular-nums">
                   {section.fields.filter((field) => field.required).length} requis · {section.fields.length} champs
                 </div>
               </div>
@@ -787,15 +787,15 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
         </div>
 
         <div className="sticky bottom-4 z-10">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gradient-to-t from-white/95 to-white/75 backdrop-blur-[12px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_4px_16px_-4px_rgba(15,23,42,0.10),0_12px_32px_-8px_rgba(15,23,42,0.14)] px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gradient-to-t from-white/95 to-white/75  px-4 py-3">
             <div className="text-[12.5px]">
               {remainingRequiredFields.length > 0 ? (
-                <p className="font-medium text-peach-700">
+                <p className="font-medium text-warning-700">
                   {remainingRequiredFields.length} champ{remainingRequiredFields.length > 1 ? "s" : ""} obligatoire{remainingRequiredFields.length > 1 ? "s" : ""} restant{remainingRequiredFields.length > 1 ? "s" : ""}
                 </p>
               ) : (
-                <p className="font-medium text-sage-700 inline-flex items-center gap-1">
-                  <span className="inline-flex h-1.5 w-1.5 rounded-full bg-sage-500 shadow-[0_0_6px_rgba(111,162,128,0.6)]" />
+                <p className="font-medium text-success-700 inline-flex items-center gap-1">
+                  <span className="inline-flex h-1.5 w-1.5 rounded-full bg-success-600 shadow-[0_0_6px_rgba(111,162,128,0.6)]" />
                   Tous les champs obligatoires sont remplis
                 </p>
               )}
@@ -804,7 +804,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
               <button
                 type="button"
                 onClick={() => router.back()}
-                className="px-3.5 py-1.5 rounded-lg bg-white/60 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)] text-[12.5px] text-gray-700 hover:bg-white/80 hover:text-gray-950 transition-all"
+                className="px-3.5 py-1.5 rounded-lg bg-card border border-border  text-[12.5px] text-foreground hover:bg-white/80 hover:text-foreground transition-all"
               >
                 ← Retour
               </button>
@@ -812,7 +812,7 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
                 type="submit"
                 disabled={generating || prefillLoading || (templateNeedsAccount && !libraryPrefillContext)}
                 title={templateNeedsAccount && !libraryPrefillContext ? "Sélectionne un compte Instagram pour charger les suggestions" : undefined}
-                className="px-5 py-1.5 rounded-lg bg-gradient-to-b from-gray-800 to-gray-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_2px_4px_rgba(15,23,42,0.18)] text-[12.5px] font-semibold text-white hover:from-gray-900 hover:to-gray-950 disabled:opacity-60 transition-all"
+                className="px-5 py-1.5 rounded-lg bg-gradient-to-b from-gray-800 to-gray-950  text-[12.5px] font-semibold text-white hover:from-gray-900 hover:to-gray-950 disabled:opacity-60 transition-all"
               >
                 {generating ? "Génération…" : prefillLoading ? "Chargement…" : variants.length === 0 ? "Générer" : "Générer une variante"}
               </button>
@@ -824,8 +824,8 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
       {/* ── Variants panel ───────────────────────────────────────────────── */}
       <div className={`w-full shrink-0 md:sticky md:top-6 space-y-3 order-1 md:order-none ${autoSubmit && variants.length > 0 ? "md:col-span-4" : "md:col-span-1"}`}>
         {!hasOnlyUnsectionedSection ? (
-          <div className="rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] p-4">
-            <p className="text-[10px] font-semibold tracking-widest uppercase text-gray-500 mb-3">Navigation</p>
+          <div className="rounded-2xl bg-card border border-border  p-4">
+            <p className="text-[10px] font-semibold tracking-widest uppercase text-muted-foreground mb-3">Navigation</p>
             <div className="space-y-1.5">
               {sections.map((section) => {
                 const requiredCount = section.fields.filter((field) => field.required).length;
@@ -836,17 +836,17 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
                     key={section.id}
                     type="button"
                     onClick={() => scrollToSection(section.id)}
-                    className="w-full text-left px-3 py-2 rounded-xl bg-white/45 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.04)] hover:bg-white/75 hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(125,180,210,0.32)] transition-all"
+                    className="w-full text-left px-3 py-2 rounded-xl bg-card border border-border  hover:bg-white/75 hover: transition-all"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[12.5px] font-medium text-gray-800">{section.title}</span>
                       {sectionErrorCount > 0 ? (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-50/70 text-rose-700 shadow-[inset_0_0_0_1px_rgba(201,113,133,0.22)]">{sectionErrorCount} err.</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-danger-50/70 text-danger-700 shadow-[inset_0_0_0_1px_rgba(201,113,133,0.22)]">{sectionErrorCount} err.</span>
                       ) : (
-                        <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full bg-white/60 text-gray-500 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]">{filledCount}/{section.fields.length}</span>
+                        <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full bg-white/60 text-muted-foreground shadow-[inset_0_0_0_1px_rgba(15,23,42,0.06)]">{filledCount}/{section.fields.length}</span>
                       )}
                     </div>
-                    <p className="text-[10.5px] text-gray-400 mt-0.5">{requiredCount > 0 ? `${requiredCount} champ${requiredCount > 1 ? "s" : ""} requis` : `${section.fields.length} champ${section.fields.length > 1 ? "s" : ""}`}</p>
+                    <p className="text-[10.5px] text-muted-foreground mt-0.5">{requiredCount > 0 ? `${requiredCount} champ${requiredCount > 1 ? "s" : ""} requis` : `${section.fields.length} champ${section.fields.length > 1 ? "s" : ""}`}</p>
                   </button>
                 );
               })}
@@ -855,11 +855,11 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
         ) : null}
 
         {doneVariants.length > 0 && (
-          <div className="rounded-xl bg-gradient-to-b from-peach-50/85 to-peach-50/55 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(221,140,90,0.22)] px-3 py-2 flex items-center justify-between">
-            <p className="text-[11.5px] font-semibold text-peach-800">{doneVariants.length} variante{doneVariants.length > 1 ? "s" : ""} générée{doneVariants.length > 1 ? "s" : ""}</p>
+          <div className="rounded-xl bg-gradient-to-b from-warning-50/85 to-warning-50/55  px-3 py-2 flex items-center justify-between">
+            <p className="text-[11.5px] font-semibold text-warning-700">{doneVariants.length} variante{doneVariants.length > 1 ? "s" : ""} générée{doneVariants.length > 1 ? "s" : ""}</p>
             <a
               href="/listings"
-              className="text-[11.5px] text-peach-700 hover:text-peach-900 font-medium transition-colors"
+              className="text-[11.5px] text-warning-700 hover:text-warning-700 font-medium transition-colors"
             >
               Mes générations →
             </a>
@@ -867,9 +867,9 @@ export function ListingForm({ templateId, currentUserId, schema, formSections, m
         )}
 
         {variants.length === 0 && (
-          <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)] p-6 flex flex-col items-center justify-center gap-2 text-gray-400">
+          <div className="rounded-2xl bg-card border border-border  p-6 flex flex-col items-center justify-center gap-2 text-muted-foreground">
             <span className="text-3xl">▦</span>
-            <p className="text-[11.5px] text-center text-gray-500">Remplissez le formulaire<br />et cliquez sur Générer</p>
+            <p className="text-[11.5px] text-center text-muted-foreground">Remplissez le formulaire<br />et cliquez sur Générer</p>
           </div>
         )}
 

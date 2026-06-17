@@ -15,7 +15,7 @@ export function ShapeBlockPropertiesPanel({
         <select
           value={block.shape}
           onChange={(e) => onChange({ shape: e.target.value as ShapeKind })}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
+          className="w-full border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
         >
           <option value="rectangle">▬ Rectangle</option>
           <option value="circle">● Cercle / Ovale</option>
@@ -27,21 +27,21 @@ export function ShapeBlockPropertiesPanel({
       <Section label="Couleurs">
         <div className="grid grid-cols-2 gap-2">
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Remplissage</span>
+            <span className="text-xs font-medium text-muted-foreground">Remplissage</span>
             <input
               type="color"
               value={block.fillColor}
               onChange={(e) => onChange({ fillColor: e.target.value })}
-              className="h-8 w-full cursor-pointer rounded-lg border border-gray-200"
+              className="h-8 w-full cursor-pointer rounded-lg border border-border"
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-600">Contour</span>
+            <span className="text-xs font-medium text-muted-foreground">Contour</span>
             <input
               type="color"
               value={block.borderColor ?? "#000000"}
               onChange={(e) => onChange({ borderColor: e.target.value })}
-              className="h-8 w-full cursor-pointer rounded-lg border border-gray-200"
+              className="h-8 w-full cursor-pointer rounded-lg border border-border"
             />
           </label>
         </div>

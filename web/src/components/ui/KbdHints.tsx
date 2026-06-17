@@ -32,7 +32,7 @@ export function KbdHints({
   if (hints.length === 0) return null;
   return (
     <div
-      className={`inline-flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500 ${className ?? ""}`}
+      className={`inline-flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground ${className ?? ""}`}
     >
       {hints.map((h, i) => (
         <span key={`${h.label}-${i}`} className="inline-flex items-center gap-1.5">

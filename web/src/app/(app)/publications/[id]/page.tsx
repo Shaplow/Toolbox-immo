@@ -26,11 +26,19 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     select: {
       title: true,
       pattern: { select: { label: true } },
+      patternBinding: {
+        select: { customLabel: true, patternTemplate: { select: { label: true } } },
+      },
       account: { select: { handle: true } },
     },
   });
   if (!slot) return { title: "Publication | Toolbox Immo" };
-  const label = slot.pattern?.label ?? slot.title ?? "Publication";
+  const recipeLabel =
+    slot.pattern?.label ??
+    slot.patternBinding?.customLabel ??
+    slot.patternBinding?.patternTemplate?.label ??
+    null;
+  const label = recipeLabel ?? slot.title ?? "Publication";
   return {
     title: `${label} · @${slot.account.handle} | Toolbox Immo`,
   };
@@ -74,6 +82,36 @@ export default async function PublicationPage({ params }: PageProps) {
           needsBrief: true,
           captionPresetId: true,
           descriptionPromptId: true,
+        },
+      },
+      // Recette moderne (PatternBinding → PatternTemplate). Source canonique
+      // depuis G.3 : les slots récents/générés ont un patternBinding mais PAS de
+      // patternId legacy. On synthétise `slot.pattern` depuis le binding plus bas
+      // pour que la chaîne de production s'affiche.
+      patternBinding: {
+        select: {
+          customLabel: true,
+          templateIdOverride: true,
+          coverModeOverride: true,
+          captionPresetIdOverride: true,
+          descriptionPromptIdOverride: true,
+          patternTemplate: {
+            select: {
+              id: true,
+              label: true,
+              source: true,
+              templateId: true,
+              coverMode: true,
+              needsCaptions: true,
+              needsCaptionsMode: true,
+              needsDescription: true,
+              needsClientValidation: true,
+              allowsClientRevision: true,
+              needsBrief: true,
+              captionPresetId: true,
+              descriptionPromptId: true,
+            },
+          },
         },
       },
       assigneeMonteur: { select: { id: true, name: true, email: true } },
@@ -163,6 +201,32 @@ export default async function PublicationPage({ params }: PageProps) {
   // 404 systématique : slot inexistant OU pas accessible (anti-énumération)
   if (!slot || !canUserAccessSlot(slot, role, userId)) {
     notFound();
+  }
+
+  // G.3 — Si le slot n'a pas de pattern legacy (AccountPattern) mais une recette
+  // moderne (PatternBinding → PatternTemplate), on synthétise `slot.pattern`
+  // depuis le binding (overrides binding prioritaires). Sans ça, les slots créés
+  // depuis une recette moderne affichent une chaîne de production vide.
+  if (!slot.pattern && slot.patternBinding?.patternTemplate) {
+    const t = slot.patternBinding.patternTemplate;
+    const b = slot.patternBinding;
+    slot.pattern = {
+      id: t.id,
+      label: b.customLabel ?? t.label,
+      source: t.source,
+      templateId: b.templateIdOverride ?? t.templateId,
+      coverMode: b.coverModeOverride ?? t.coverMode,
+      needsCaptions: t.needsCaptions,
+      needsCaptionsMode: t.needsCaptionsMode,
+      needsDescription: t.needsDescription,
+      needsClientValidation: t.needsClientValidation,
+      allowsClientRevision: t.allowsClientRevision,
+      // PatternTemplate n'a pas de champ needsRushes : dérivé de la source.
+      needsRushes: t.source === "manual_rushes",
+      needsBrief: t.needsBrief,
+      captionPresetId: b.captionPresetIdOverride ?? t.captionPresetId,
+      descriptionPromptId: b.descriptionPromptIdOverride ?? t.descriptionPromptId,
+    };
   }
 
   // Rattrapage opportuniste : si le render existe (PROCESSING/DONE) mais le

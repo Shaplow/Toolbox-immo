@@ -260,8 +260,8 @@ export function DataEntriesSpreadsheet({
 
   if (entries.length === 0) {
     return (
-      <div className="rounded-2xl bg-gradient-to-b from-white/65 to-white/40 backdrop-blur-[8px] py-10 px-6 text-center shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-        <p className="text-[13px] text-gray-500">
+      <div className="rounded-2xl bg-card border border-border py-10 px-6 text-center ">
+        <p className="text-[13px] text-muted-foreground">
           Aucune fiche — utilise « Nouvelle fiche » ou « Importer CSV/Excel ».
         </p>
         {confirmDialog}
@@ -273,11 +273,11 @@ export function DataEntriesSpreadsheet({
     <>
       <div
         ref={scrollRef}
-        className="w-full rounded-2xl bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06),0_2px_8px_-4px_rgba(15,23,42,0.06)] overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)]"
+        className="w-full rounded-2xl bg-card border border-border  overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)]"
       >
         <table
           ref={tableRef}
-          className="text-[12.5px] text-gray-950"
+          className="text-[12.5px] text-foreground"
           style={{
             borderCollapse: "separate",
             borderSpacing: 0,
@@ -310,7 +310,7 @@ export function DataEntriesSpreadsheet({
             <tr>
               <th
                 style={{ left: OFFSET_CHECKBOX }}
-                className="sticky z-40 bg-gray-50/95 backdrop-blur-[10px] backdrop-saturate-150 border-b border-r border-gray-200/60 px-2.5 py-2"
+                className="sticky z-40 bg-muted/95 border-b border-r border-border/60 px-2.5 py-2"
               >
                 <Checkbox
                   checked={allSelected ? true : someSelected ? "indeterminate" : false}
@@ -321,17 +321,17 @@ export function DataEntriesSpreadsheet({
               </th>
               <th
                 style={{ left: OFFSET_SET }}
-                className="sticky z-40 bg-gray-50/95 backdrop-blur-[10px] backdrop-saturate-150 border-b border-r border-gray-200/60 p-0"
+                className="sticky z-40 bg-muted/95 border-b border-r border-border/60 p-0"
               >
                 <SortableHeader
-                  label="Set"
+                  label="Groupe"
                   sortDir={sort && sortKeyEqual(sort.key, "setTag") ? sort.dir : null}
                   onClick={() => toggleSort("setTag")}
                 />
               </th>
               <th
                 style={{ left: OFFSET_CATEGORY }}
-                className="sticky z-40 bg-gray-50/95 backdrop-blur-[10px] backdrop-saturate-150 border-b border-r border-gray-200/60 p-0"
+                className="sticky z-40 bg-muted/95 border-b border-r border-border/60 p-0"
               >
                 <SortableHeader
                   label="Catégorie"
@@ -342,7 +342,7 @@ export function DataEntriesSpreadsheet({
               {schema.map((f) => (
                 <th
                   key={f.key}
-                  className="bg-gray-50/95 backdrop-blur-[10px] backdrop-saturate-150 border-b border-r border-gray-200/60 p-0"
+                  className="bg-muted/95 border-b border-r border-border/60 p-0"
                   title={f.label}
                 >
                   <SortableHeader
@@ -355,14 +355,14 @@ export function DataEntriesSpreadsheet({
               ))}
               <th
                 style={{ right: RIGHT_ACCESS }}
-                className="sticky z-40 bg-gray-50/95 backdrop-blur-[10px] backdrop-saturate-150 border-b border-l border-gray-200/60 px-2.5 py-2 text-left text-[10px] uppercase tracking-widest font-semibold text-gray-600"
+                className="sticky z-40 bg-muted/95 border-b border-l border-border/60 px-2.5 py-2 text-left text-[10px] uppercase tracking-widest font-semibold text-muted-foreground"
                 title="Comptes IG ayant accès à cette fiche (vide = accessible à tous)"
               >
                 Accès
               </th>
               <th
                 style={{ right: RIGHT_ACTIONS }}
-                className="sticky z-40 bg-gray-50/95 backdrop-blur-[10px] backdrop-saturate-150 border-b border-l border-gray-200/60 px-2 py-2"
+                className="sticky z-40 bg-muted/95 border-b border-l border-border/60 px-2 py-2"
                 aria-label="Actions"
               />
             </tr>
@@ -375,14 +375,14 @@ export function DataEntriesSpreadsheet({
                   key={r.id}
                   className={[
                     "group/row transition-colors",
-                    isSelected ? "bg-sky-50/45" : "hover:bg-white/55",
+                    isSelected ? "bg-info-50/45" : "hover:bg-white/55",
                   ].join(" ")}
                 >
                   <td
                     style={{ left: OFFSET_CHECKBOX }}
                     className={[
-                      "sticky z-20 border-b border-r border-gray-200/40 px-2.5 py-1",
-                      isSelected ? "bg-sky-50/95" : "bg-white/90 group-hover/row:bg-white/95",
+                      "sticky z-20 border-b border-r border-border/40 px-2.5 py-1",
+                      isSelected ? "bg-info-50/95" : "bg-white/90 group-hover/row:bg-white/95",
                     ].join(" ")}
                   >
                     <Checkbox
@@ -395,8 +395,8 @@ export function DataEntriesSpreadsheet({
                   <td
                     style={{ left: OFFSET_SET }}
                     className={[
-                      "sticky z-20 border-b border-r border-gray-200/40 p-0",
-                      isSelected ? "bg-sky-50/95" : "bg-white/90 group-hover/row:bg-white/95",
+                      "sticky z-20 border-b border-r border-border/40 p-0",
+                      isSelected ? "bg-info-50/95" : "bg-white/90 group-hover/row:bg-white/95",
                     ].join(" ")}
                     data-cell={`${r.id}::set`}
                   >
@@ -410,8 +410,8 @@ export function DataEntriesSpreadsheet({
                   <td
                     style={{ left: OFFSET_CATEGORY }}
                     className={[
-                      "sticky z-20 border-b border-r border-gray-200/40 p-0",
-                      isSelected ? "bg-sky-50/95" : "bg-white/90 group-hover/row:bg-white/95",
+                      "sticky z-20 border-b border-r border-border/40 p-0",
+                      isSelected ? "bg-info-50/95" : "bg-white/90 group-hover/row:bg-white/95",
                     ].join(" ")}
                   >
                     <SpreadsheetCell
@@ -422,7 +422,7 @@ export function DataEntriesSpreadsheet({
                     />
                   </td>
                   {schema.map((f) => (
-                    <td key={f.key} className="border-b border-r border-gray-200/40 p-0">
+                    <td key={f.key} className="border-b border-r border-border/40 p-0">
                       <SpreadsheetCell
                         value={r._fields[f.key] ?? ""}
                         type={f.type}
@@ -433,13 +433,13 @@ export function DataEntriesSpreadsheet({
                   <td
                     style={{ right: RIGHT_ACCESS }}
                     className={[
-                      "sticky z-20 border-b border-l border-gray-200/40 px-2 py-1",
-                      isSelected ? "bg-sky-50/95" : "bg-white/90 group-hover/row:bg-white/95",
+                      "sticky z-20 border-b border-l border-border/40 px-2 py-1",
+                      isSelected ? "bg-info-50/95" : "bg-white/90 group-hover/row:bg-white/95",
                     ].join(" ")}
                   >
                     {r.accessAccountIds.length === 0 ? (
                       <div
-                        className="inline-flex items-center gap-1 text-gray-400"
+                        className="inline-flex items-center gap-1 text-muted-foreground"
                         title="Accessible à tous les comptes IG"
                       >
                         <Globe2 size={12} />
@@ -468,14 +468,14 @@ export function DataEntriesSpreadsheet({
                   <td
                     style={{ right: RIGHT_ACTIONS }}
                     className={[
-                      "sticky z-20 border-b border-l border-gray-200/40 px-1 py-1 text-center",
-                      isSelected ? "bg-sky-50/95" : "bg-white/90 group-hover/row:bg-white/95",
+                      "sticky z-20 border-b border-l border-border/40 px-1 py-1 text-center",
+                      isSelected ? "bg-info-50/95" : "bg-white/90 group-hover/row:bg-white/95",
                     ].join(" ")}
                   >
                     <button
                       type="button"
                       onClick={() => void handleDelete(r.id)}
-                      className="p-1 text-gray-300 hover:text-rose-600 transition-colors rounded opacity-0 group-hover/row:opacity-100"
+                      className="p-1 text-muted-foreground/60 hover:text-danger-600 transition-colors rounded opacity-0 group-hover/row:opacity-100"
                       title="Supprimer"
                       aria-label="Supprimer"
                     >
@@ -550,7 +550,7 @@ function SpreadsheetCell({ value, onCommit, type = "text", placeholder, chipVari
           }}
           autoFocus
           rows={3}
-          className="w-full h-full min-h-[72px] px-2.5 py-1.5 bg-white text-[12.5px] text-gray-950 outline-none ring-2 ring-sky-300/60 resize-none"
+          className="w-full h-full min-h-[72px] px-2.5 py-1.5 bg-white text-[12.5px] text-foreground outline-none ring-2 ring-info-200/60 resize-none"
         />
       );
     }
@@ -570,7 +570,7 @@ function SpreadsheetCell({ value, onCommit, type = "text", placeholder, chipVari
           }
         }}
         autoFocus
-        className="w-full h-9 px-2.5 bg-white text-[12.5px] text-gray-950 outline-none ring-2 ring-sky-300/60"
+        className="w-full h-9 px-2.5 bg-white text-[12.5px] text-foreground outline-none ring-2 ring-info-200/60"
       />
     );
   }
@@ -583,17 +583,17 @@ function SpreadsheetCell({ value, onCommit, type = "text", placeholder, chipVari
         setDraft(value);
         setEditing(true);
       }}
-      className="w-full h-9 px-2.5 text-left text-[12.5px] truncate flex items-center hover:bg-sky-50/40 focus-visible:bg-sky-50/40 outline-none"
+      className="w-full h-9 px-2.5 text-left text-[12.5px] truncate flex items-center hover:bg-info-50/40 focus-visible:bg-info-50/40 outline-none"
       title={value || undefined}
     >
       {isEmpty ? (
-        <span className="text-gray-300 italic">{placeholder ?? "—"}</span>
+        <span className="text-muted-foreground/60 italic">{placeholder ?? "—"}</span>
       ) : chipVariant ? (
         <Chip variant={chipVariant} size="sm">
           {value}
         </Chip>
       ) : (
-        <span className="text-gray-950 truncate">{value}</span>
+        <span className="text-foreground truncate">{value}</span>
       )}
     </button>
   );
@@ -616,19 +616,19 @@ function SortableHeader({
     <button
       type="button"
       onClick={onClick}
-      className="w-full flex items-center justify-between gap-1.5 px-2.5 py-2 text-left text-[10px] uppercase tracking-widest font-semibold text-gray-600 hover:bg-white/40 transition-colors truncate"
+      className="w-full flex items-center justify-between gap-1.5 px-2.5 py-2 text-left text-[10px] uppercase tracking-widest font-semibold text-muted-foreground hover:bg-white/40 transition-colors truncate"
       title={`Trier par ${label}`}
     >
       <span className="truncate">
         {label}
-        {required && <span className="text-rose-600 ml-0.5">*</span>}
+        {required && <span className="text-danger-600 ml-0.5">*</span>}
       </span>
       {sortDir === "asc" ? (
-        <ChevronUp size={11} className="text-sky-600 shrink-0" />
+        <ChevronUp size={11} className="text-info-600 shrink-0" />
       ) : sortDir === "desc" ? (
-        <ChevronDown size={11} className="text-sky-600 shrink-0" />
+        <ChevronDown size={11} className="text-info-600 shrink-0" />
       ) : (
-        <ChevronsUpDown size={11} className="text-gray-300 shrink-0" />
+        <ChevronsUpDown size={11} className="text-muted-foreground/60 shrink-0" />
       )}
     </button>
   );

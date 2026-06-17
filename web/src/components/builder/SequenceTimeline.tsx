@@ -13,11 +13,11 @@ import type { AnyBlock, MusicBlock, VideoSequenceSlot } from "@/types/template";
 const AUTO_DURATION = 10;
 
 const SLOT_COLORS = [
-  { colBg: "bg-gray-50",       bar: "bg-indigo-400",  headerActive: "bg-indigo-600 text-white",  headerIdle: "bg-white hover:bg-indigo-50 text-gray-700"   },
-  { colBg: "bg-emerald-50/60", bar: "bg-emerald-400", headerActive: "bg-emerald-600 text-white", headerIdle: "bg-white hover:bg-emerald-50 text-gray-700"  },
-  { colBg: "bg-amber-50/60",   bar: "bg-amber-400",   headerActive: "bg-amber-600 text-white",   headerIdle: "bg-white hover:bg-amber-50 text-gray-700"    },
-  { colBg: "bg-purple-50/60",  bar: "bg-purple-400",  headerActive: "bg-purple-600 text-white",  headerIdle: "bg-white hover:bg-purple-50 text-gray-700"   },
-  { colBg: "bg-rose-50/60",    bar: "bg-rose-400",    headerActive: "bg-rose-600 text-white",    headerIdle: "bg-white hover:bg-rose-50 text-gray-700"     },
+  { colBg: "bg-muted",       bar: "bg-indigo-400",  headerActive: "bg-indigo-600 text-white",  headerIdle: "bg-white hover:bg-indigo-50 text-foreground"   },
+  { colBg: "bg-emerald-50/60", bar: "bg-emerald-400", headerActive: "bg-emerald-600 text-white", headerIdle: "bg-white hover:bg-emerald-50 text-foreground"  },
+  { colBg: "bg-amber-50/60",   bar: "bg-amber-400",   headerActive: "bg-amber-600 text-white",   headerIdle: "bg-white hover:bg-amber-50 text-foreground"    },
+  { colBg: "bg-purple-50/60",  bar: "bg-purple-400",  headerActive: "bg-purple-600 text-white",  headerIdle: "bg-white hover:bg-purple-50 text-foreground"   },
+  { colBg: "bg-danger-50/60",    bar: "bg-danger-200",    headerActive: "bg-danger-600 text-white",    headerIdle: "bg-white hover:bg-danger-50 text-foreground"     },
 ] as const;
 
 type SlotColor = (typeof SLOT_COLORS)[number];
@@ -117,7 +117,7 @@ export function SequenceTimeline() {
   const hasAutoSlots = (videoSequence ?? []).some((s) => !s.maxDuration);
 
   return (
-    <div className="bg-white border-t border-gray-200 shrink-0 overflow-x-auto overflow-y-auto max-h-52">
+    <div className="bg-white border-t border-border shrink-0 overflow-x-auto overflow-y-auto max-h-52">
       <table
         className="w-full border-collapse table-fixed text-xs"
         style={{ minWidth: `${Math.max(400, slotLayouts.length * 120)}px` }}
@@ -138,12 +138,12 @@ export function SequenceTimeline() {
         <thead>
           <tr className="h-10">
             {/* Corner: legend */}
-            <th className="sticky top-0 z-10 border-r border-b border-gray-200 bg-white px-2 text-left align-middle">
+            <th className="sticky top-0 z-10 border-r border-b border-border bg-white px-2 text-left align-middle">
               <div className="flex flex-col gap-0.5">
-                <span className="text-[8px] font-semibold uppercase tracking-widest text-gray-400 leading-none">
+                <span className="text-[8px] font-semibold uppercase tracking-widest text-muted-foreground leading-none">
                   {hasAutoSlots ? "durées auto" : `~${totalSec}s`}
                 </span>
-                <span className="text-[7px] text-gray-300 leading-none">cliquer clip ou bloc → timing</span>
+                <span className="text-[7px] text-muted-foreground/60 leading-none">cliquer clip ou bloc → timing</span>
               </div>
             </th>
 
@@ -153,7 +153,7 @@ export function SequenceTimeline() {
               return (
                 <th
                   key={layout.slot.id}
-                  className={`sticky top-0 z-10 border-r last:border-r-0 border-b border-gray-200 px-2 cursor-pointer select-none transition-colors align-middle ${
+                  className={`sticky top-0 z-10 border-r last:border-r-0 border-b border-border px-2 cursor-pointer select-none transition-colors align-middle ${
                     isSelected ? layout.color.headerActive : layout.color.headerIdle
                   }`}
                   onClick={() => {
@@ -188,9 +188,9 @@ export function SequenceTimeline() {
         {/* ── Block track rows ─────────────────────────────────────────────── */}
         <tbody>
           {/* ── Video source row — la couche fond de chaque clip ───────────── */}
-          <tr className="h-[22px] border-b-2 border-gray-200">
-            <td className="border-r border-gray-200 px-2 align-middle bg-gray-50">
-              <span className="text-[8px] font-semibold uppercase tracking-wider text-gray-400">Vidéo</span>
+          <tr className="h-[22px] border-b-2 border-border">
+            <td className="border-r border-border px-2 align-middle bg-muted">
+              <span className="text-[8px] font-semibold uppercase tracking-wider text-muted-foreground">Vidéo</span>
             </td>
             {slotLayouts.map((layout) => {
               const isSlotActive = selectedSlotId === layout.slot.id;
@@ -203,7 +203,7 @@ export function SequenceTimeline() {
               return (
                 <td
                   key={layout.slot.id}
-                  className={`border-r last:border-r-0 border-gray-200 relative align-middle cursor-pointer ${
+                  className={`border-r last:border-r-0 border-border relative align-middle cursor-pointer ${
                     isSlotActive ? "bg-indigo-50/40" : layout.color.colBg
                   }`}
                   onClick={() => {
@@ -237,17 +237,17 @@ export function SequenceTimeline() {
             return (
               <tr
                 key={musicBlock.id}
-                className={`h-[22px] border-b border-rose-100 group ${
-                  isSelectedBlock ? "bg-rose-50" : "hover:bg-rose-50/30"
+                className={`h-[22px] border-b border-danger-100 group ${
+                  isSelectedBlock ? "bg-danger-50" : "hover:bg-danger-50/30"
                 }`}
               >
-                <td className="border-r border-gray-200 px-2 align-middle bg-rose-50/60">
+                <td className="border-r border-border px-2 align-middle bg-danger-50/60">
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => selectBlock(isSelectedBlock ? null : musicBlock.id)}
                       className={`text-left text-[8px] font-semibold uppercase tracking-wider truncate ${
-                        isSelectedBlock ? "text-rose-700" : "text-rose-400 group-hover:text-rose-600"
+                        isSelectedBlock ? "text-danger-700" : "text-danger-200 group-hover:text-danger-600"
                       }`}
                       title={`Bloc musique « ${musicBlock.name ?? musicBlock.binding ?? "music"} » — sélectionner, puis cliquer un clip pour régler le volume`}
                     >
@@ -260,7 +260,7 @@ export function SequenceTimeline() {
                       ).length;
                       return overrideCount > 0 ? (
                         <span
-                          className="shrink-0 text-[7px] px-1 rounded-full bg-rose-100 text-rose-500 font-medium"
+                          className="shrink-0 text-[7px] px-1 rounded-full bg-danger-100 text-danger-600 font-medium"
                           title={`${overrideCount} clip${overrideCount > 1 ? "s" : ""} avec override audio`}
                         >
                           {overrideCount}×
@@ -279,8 +279,8 @@ export function SequenceTimeline() {
                   return (
                     <td
                       key={layout.slot.id}
-                      className={`border-r last:border-r-0 border-rose-100 relative align-middle ${
-                        isEditMode ? "bg-rose-50" : isSlotActive ? "bg-rose-50/30" : "bg-white"
+                      className={`border-r last:border-r-0 border-danger-100 relative align-middle ${
+                        isEditMode ? "bg-danger-50" : isSlotActive ? "bg-danger-50/30" : "bg-white"
                       }`}
                     >
                       {isEditMode ? (
@@ -294,7 +294,7 @@ export function SequenceTimeline() {
                             className={`shrink-0 w-5 h-[14px] rounded border text-[7px] leading-none ${
                               isMuted
                                 ? "bg-red-100 border-red-300 text-red-700"
-                                : "bg-white border-gray-200 text-gray-500 hover:border-rose-300"
+                                : "bg-white border-border text-muted-foreground hover:border-danger-200"
                             }`}
                             title={isMuted ? "Réactiver" : "Mettre en sourdine"}
                           >
@@ -314,7 +314,7 @@ export function SequenceTimeline() {
                                 })
                               }
                               onClick={(e) => e.stopPropagation()}
-                              className="w-[30px] border border-rose-300 rounded px-1 py-0 text-[8px] focus:outline-none focus:ring-1 focus:ring-rose-400 bg-white text-center"
+                              className="w-[30px] border border-danger-200 rounded px-1 py-0 text-[8px] focus:outline-none focus:ring-1 focus:ring-danger-200 bg-white text-center"
                               title="Volume pour ce clip (0–1)"
                             />
                           )}
@@ -337,7 +337,7 @@ export function SequenceTimeline() {
                             hasOverride ? " · override actif" : ""
                           } — cliquer pour configurer`}
                           className={`absolute inset-y-[2px] inset-x-[1px] rounded flex items-center px-1.5 cursor-pointer transition-opacity ${
-                            isMuted ? "bg-gray-200" : hasOverride ? "bg-rose-400 opacity-90" : "bg-rose-300/60"
+                            isMuted ? "bg-gray-200" : hasOverride ? "bg-danger-200 opacity-90" : "bg-danger-200/60"
                           } ${isSelectedBlock ? "opacity-100" : "opacity-50 group-hover:opacity-80"}`}
                         >
                           <span className="text-[7px] text-white truncate font-medium leading-none">
@@ -354,12 +354,12 @@ export function SequenceTimeline() {
 
           {/* ── Section separator: Textes & blocs ───────────────────────── */}
           {blockTracks.length > 0 && (
-            <tr className="h-[13px] bg-gray-50/60">
+            <tr className="h-[13px] bg-muted/60">
               <td
                 colSpan={slotLayouts.length + 1}
-                className="px-2 align-middle border-b border-gray-100"
+                className="px-2 align-middle border-b border-border"
               >
-                <span className="text-[7px] font-semibold uppercase tracking-widest text-gray-300">
+                <span className="text-[7px] font-semibold uppercase tracking-widest text-muted-foreground/60">
                   textes &amp; blocs
                 </span>
               </td>
@@ -370,9 +370,9 @@ export function SequenceTimeline() {
             <tr>
               <td
                 colSpan={slotLayouts.length + 1}
-                className="px-3 py-2.5 text-[10px] text-gray-400 leading-relaxed"
+                className="px-3 py-2.5 text-[10px] text-muted-foreground leading-relaxed"
               >
-                Les blocs visibles sur vos clips apparaîtront ici avec leurs timings.
+                Aucun bloc visible.
               </td>
             </tr>
           ) : (
@@ -386,11 +386,11 @@ export function SequenceTimeline() {
                   className={`border-b border-gray-50 last:border-b-0 transition-colors group ${
                     isEditRow ? "h-[26px]" : "h-[16px]"
                   } ${
-                    isSelected ? "bg-indigo-50" : "hover:bg-gray-50/80"
+                    isSelected ? "bg-indigo-50" : "hover:bg-muted/80"
                   }`}
                 >
                   {/* Block label — click to select/deselect block, preserve slot if active */}
-                  <td className="border-r border-gray-100 px-2 align-middle">
+                  <td className="border-r border-border px-2 align-middle">
                     <button
                       type="button"
                       onClick={() => {
@@ -404,7 +404,7 @@ export function SequenceTimeline() {
                         }
                       }}
                       className={`w-full text-left text-[9px] font-mono truncate transition-colors ${
-                        isSelected ? "text-indigo-700" : "text-gray-500 group-hover:text-gray-700"
+                        isSelected ? "text-indigo-700" : "text-muted-foreground group-hover:text-foreground"
                       }`}
                       title={`Sélectionner le bloc "${track.label}"${
                         selectedSlotId && !isSelected ? " (+ timing pour ce clip)" : ""
@@ -439,7 +439,7 @@ export function SequenceTimeline() {
                     return (
                       <td
                         key={layout.slot.id}
-                        className={`border-r last:border-r-0 border-gray-100 relative align-middle cursor-pointer ${
+                        className={`border-r last:border-r-0 border-border relative align-middle cursor-pointer ${
                           isEditMode ? "bg-indigo-50" : isSlotActive ? "bg-indigo-50/40" : layout.color.colBg
                         }`}
                         onClick={() => {
@@ -470,7 +470,7 @@ export function SequenceTimeline() {
                               className="w-[34px] border border-indigo-300 rounded px-1 py-0 text-[8px] focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white text-center"
                               title="Apparaît à (s)"
                             />
-                            <span className="text-[7px] text-gray-400 shrink-0">→</span>
+                            <span className="text-[7px] text-muted-foreground shrink-0">→</span>
                             <input
                               type="number"
                               min={0}

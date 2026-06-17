@@ -363,17 +363,17 @@ export function SchemaPanel() {
 
   return (
     <div className="w-full bg-slate-50 flex flex-col h-full overflow-hidden">
-      <div className="px-3 py-3 border-b border-gray-200 bg-white space-y-2.5">
+      <div className="px-3 py-3 border-b border-border bg-white space-y-2.5">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Variables</p>
-          <p className="text-[13px] text-gray-600 mt-0.5">{effectiveSchema.length} champ{effectiveSchema.length > 1 ? "s" : ""}{autoSchemaFields.length > 0 ? ` · ${autoSchemaFields.length} auto DPE` : ""}</p>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Variables</p>
+          <p className="text-[13px] text-muted-foreground mt-0.5">{effectiveSchema.length} champ{effectiveSchema.length > 1 ? "s" : ""}{autoSchemaFields.length > 0 ? ` · ${autoSchemaFields.length} auto DPE` : ""}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setIsOrganizerOpen(true)}
             title="Ouvrir l'organizer grand format"
-            className="flex-1 shrink-0 inline-flex items-center justify-center gap-1.5 text-xs px-3 py-2 rounded-xl border border-gray-200 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-700"
+            className="flex-1 shrink-0 inline-flex items-center justify-center gap-1.5 text-xs px-3 py-2 rounded-xl border border-border bg-white text-muted-foreground hover:border-indigo-300 hover:text-indigo-700"
           >
             <Maximize2 className="h-3.5 w-3.5" />
             Studio
@@ -392,29 +392,29 @@ export function SchemaPanel() {
       <SchemaOrganizerModal open={isOrganizerOpen} onClose={() => setIsOrganizerOpen(false)} />
 
       <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2">
-        <div className="rounded-[20px] border border-gray-200 bg-white shadow-sm overflow-hidden">
-          <div className="px-3 py-2 border-b border-gray-100 bg-slate-50 flex items-center justify-between gap-2">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Sections</p>
+        <div className="rounded-[20px] border border-border bg-white shadow-sm overflow-hidden">
+          <div className="px-3 py-2 border-b border-border bg-slate-50 flex items-center justify-between gap-2">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Sections</p>
           </div>
           <div className="p-2.5 space-y-2">
             {formSections.length > 0 ? (
               formSections.map((section, index) => (
-                <div key={section.id} className="rounded-xl border border-gray-200 bg-slate-50 px-2.5 py-2 space-y-1.5">
+                <div key={section.id} className="rounded-xl border border-border bg-slate-50 px-2.5 py-2 space-y-1.5">
                   <div className="flex items-center gap-1.5">
                     <input
                       type="text"
                       value={section.title}
                       onChange={(e) => updateSection(section.id, { title: e.target.value })}
-                      className="min-w-0 flex-1 border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 text-[11px]"
+                      className="min-w-0 flex-1 border border-border rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 text-[11px]"
                     />
-                    <button type="button" onClick={() => moveSection(section.id, -1)} disabled={index === 0} className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-600 disabled:opacity-30"><ArrowUp className="h-3 w-3" /></button>
-                    <button type="button" onClick={() => moveSection(section.id, 1)} disabled={index === formSections.length - 1} className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-600 disabled:opacity-30"><ArrowDown className="h-3 w-3" /></button>
-                    <button type="button" onClick={() => removeSection(section.id)} className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-gray-200 text-gray-300 hover:border-red-200 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                    <button type="button" onClick={() => moveSection(section.id, -1)} disabled={index === 0} className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-muted-foreground hover:border-border hover:text-muted-foreground disabled:opacity-30"><ArrowUp className="h-3 w-3" /></button>
+                    <button type="button" onClick={() => moveSection(section.id, 1)} disabled={index === formSections.length - 1} className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-muted-foreground hover:border-border hover:text-muted-foreground disabled:opacity-30"><ArrowDown className="h-3 w-3" /></button>
+                    <button type="button" onClick={() => removeSection(section.id)} className="h-7 w-7 inline-flex items-center justify-center rounded-full border border-border text-muted-foreground/60 hover:border-red-200 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
                   </div>
                 </div>
               ))
             ) : (
-              <p className="px-1 text-[11px] text-gray-400">Aucune section créée.</p>
+              <p className="px-1 text-[11px] text-muted-foreground">Aucune section créée.</p>
             )}
 
             <div className="flex items-center gap-2 pt-1">
@@ -423,7 +423,7 @@ export function SchemaPanel() {
                 value={newSectionTitle}
                 onChange={(e) => setNewSectionTitle(e.target.value)}
                 placeholder="Nouvelle section"
-                className="min-w-0 flex-1 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 text-[11px]"
+                className="min-w-0 flex-1 border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 text-[11px]"
               />
               <button
                 type="button"
@@ -442,7 +442,7 @@ export function SchemaPanel() {
             <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="text-[10px] font-semibold text-indigo-700 uppercase tracking-wide">Nouveau champ</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">Définis la structure du formulaire.</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Définis la structure du formulaire.</p>
               </div>
             </div>
             <SchemaFieldEditor
@@ -473,7 +473,7 @@ export function SchemaPanel() {
               <button
                 type="button"
                 onClick={cancelAdding}
-                className="flex-1 text-center py-1.5 bg-white text-gray-600 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-xs"
+                className="flex-1 text-center py-1.5 bg-white text-muted-foreground rounded-lg border border-border hover:bg-muted transition-colors text-xs"
               >
                 Annuler
               </button>
@@ -482,7 +482,7 @@ export function SchemaPanel() {
         )}
 
         {effectiveSchema.length === 0 && !adding && (
-          <p className="text-xs text-gray-400 text-center mt-8 px-4">
+          <p className="text-xs text-muted-foreground text-center mt-8 px-4">
             Aucune variable. Ajoute un premier champ pour construire le formulaire de génération.
           </p>
         )}
@@ -505,18 +505,18 @@ export function SchemaPanel() {
               setDraggedFieldKey(null);
               setDropBucketId(null);
             }}
-            className={`rounded-[20px] border shadow-sm overflow-hidden transition-colors ${dropBucketId === bucket.id ? "border-indigo-300 bg-indigo-50/70" : "border-gray-200 bg-white"}`}
+            className={`rounded-[20px] border shadow-sm overflow-hidden transition-colors ${dropBucketId === bucket.id ? "border-indigo-300 bg-indigo-50/70" : "border-border bg-white"}`}
           >
-            <div className="px-3 py-2 border-b border-gray-100 bg-slate-50 flex items-center justify-between gap-2">
+            <div className="px-3 py-2 border-b border-border bg-slate-50 flex items-center justify-between gap-2">
               <button
                 type="button"
                 onClick={() => toggleBucket(bucket.id)}
                 className="min-w-0 flex flex-1 items-center gap-2 text-left"
               >
-                {collapsedBucketIds.includes(bucket.id) ? <ChevronRight className="h-3.5 w-3.5 text-gray-400 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-gray-400 shrink-0" />}
+                {collapsedBucketIds.includes(bucket.id) ? <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
                 <div className="flex items-center gap-2 min-w-0">
                   <p className="text-[11px] font-semibold text-slate-700 truncate">{bucket.title}</p>
-                  <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] text-gray-500 border border-gray-200">{bucket.fields.length}</span>
+                  <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] text-muted-foreground border border-border">{bucket.fields.length}</span>
                   {bucket.isUnsectioned ? <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] text-slate-500">hors sec.</span> : null}
                 </div>
               </button>
@@ -525,13 +525,13 @@ export function SchemaPanel() {
 
             {!collapsedBucketIds.includes(bucket.id) ? <div className="p-2 space-y-1.5 min-h-10">
               {bucket.fields.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-gray-200 bg-slate-50 px-2.5 py-2 text-[10px] text-gray-400 text-center">
+                <div className="rounded-xl border border-dashed border-border bg-slate-50 px-2.5 py-2 text-[10px] text-muted-foreground text-center">
                   Glisser un champ ici
                 </div>
               ) : bucket.fields.map(({ field, isAutoDpe }) => {
                 const isEditing = editingKey === field.key && editingDraft;
                 return (
-                  <div key={field.key} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                  <div key={field.key} className="rounded-xl border border-border bg-white overflow-hidden">
                     <div
                       draggable={!isEditing}
                       onDragStart={() => setDraggedFieldKey(field.key)}
@@ -542,41 +542,41 @@ export function SchemaPanel() {
                       className={`px-2.5 py-2 ${!isEditing ? "cursor-grab active:cursor-grabbing" : ""}`}
                     >
                       <div className="flex items-start gap-2">
-                        <div className="pt-0.5 text-gray-300 shrink-0">
+                        <div className="pt-0.5 text-muted-foreground/60 shrink-0">
                           <GripVertical className="h-4 w-4" />
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <p className="text-[12px] font-medium text-slate-800 truncate">{field.label || field.key}</p>
-                            <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-gray-500">
+                            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground">
                               {SCHEMA_FIELD_TYPES.find((item) => item.value === field.type)?.label ?? field.type}
                             </span>
                             {isAutoDpe ? <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] text-emerald-700">auto DPE</span> : null}
                             {field.showIf ? <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] text-blue-600">cond</span> : null}
                             {field.metadataSource?.metadataKey ? <span className="rounded-full bg-teal-50 border border-teal-100 px-1.5 py-0.5 text-[9px] text-teal-700">auto</span> : null}
                           </div>
-                          <p className="text-[10px] font-mono text-gray-400 truncate mt-0.5">{field.key}</p>
+                          <p className="text-[10px] font-mono text-muted-foreground truncate mt-0.5">{field.key}</p>
                         </div>
                       </div>
                       <div className="mt-2 flex items-center gap-1.5 shrink-0">
                         <button
                           type="button"
                           onClick={() => updateField(field.key, { required: !field.required })}
-                          className={`flex-1 h-7 px-2 rounded-lg border text-[10px] ${field.required ? "border-red-200 bg-red-50 text-red-500" : "border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-600"}`}
+                          className={`flex-1 h-7 px-2 rounded-lg border text-[10px] ${field.required ? "border-red-200 bg-red-50 text-red-500" : "border-border text-muted-foreground hover:border-border hover:text-muted-foreground"}`}
                           title={field.required ? "Optionnel" : "Requis"}
                         >
                           {field.required ? "Req" : "Opt"}
                         </button>
-                        <button type="button" onClick={() => duplicateField(field.key)} className="flex-1 h-7 inline-flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-700" title="Dupliquer"><Copy className="h-3.5 w-3.5" /></button>
-                        <button type="button" onClick={() => startEditing(field.key)} className="flex-1 h-7 inline-flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-700"><Pencil className="h-3.5 w-3.5" /></button>
-                        <button type="button" disabled={isAutoDpe} onClick={() => removeField(field.key)} title={isAutoDpe ? "Champ auto lie au bloc DPE" : "Supprimer"} className="flex-1 h-7 inline-flex items-center justify-center rounded-lg border border-gray-200 text-gray-300 hover:border-red-200 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:text-gray-300"><Trash2 className="h-3.5 w-3.5" /></button>
+                        <button type="button" onClick={() => duplicateField(field.key)} className="flex-1 h-7 inline-flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:border-border hover:text-foreground" title="Dupliquer"><Copy className="h-3.5 w-3.5" /></button>
+                        <button type="button" onClick={() => startEditing(field.key)} className="flex-1 h-7 inline-flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:border-border hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
+                        <button type="button" disabled={isAutoDpe} onClick={() => removeField(field.key)} title={isAutoDpe ? "Champ auto lie au bloc DPE" : "Supprimer"} className="flex-1 h-7 inline-flex items-center justify-center rounded-lg border border-border text-muted-foreground/60 hover:border-red-200 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground/60"><Trash2 className="h-3.5 w-3.5" /></button>
                       </div>
                     </div>
 
                     {isEditing ? (
-                      <div className="border-t border-gray-100 p-3 bg-slate-50/80 space-y-2.5">
+                      <div className="border-t border-border p-3 bg-slate-50/80 space-y-2.5">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Edition</p>
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Edition</p>
                           <div className="flex items-center gap-2 shrink-0">
                             <button
                               type="button"
@@ -588,7 +588,7 @@ export function SchemaPanel() {
                             <button
                               type="button"
                               onClick={stopEditing}
-                              className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                              className="text-xs px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-muted"
                             >
                               Fermer
                             </button>
@@ -669,13 +669,13 @@ function SelectOptionsEditor({
   return (
     <div className="flex flex-col gap-2">
       {/* Mode toggle */}
-      <span className="text-gray-500">Options</span>
-      <div className="flex rounded-lg overflow-hidden border border-gray-200 text-[11px]">
+      <span className="text-muted-foreground">Options</span>
+      <div className="flex rounded-lg overflow-hidden border border-border text-[11px]">
         <button
           type="button"
           onClick={() => onFieldChange({ optionsSource: undefined })}
           className={`flex-1 px-2 py-1.5 transition-colors ${
-            !isDynamic ? "bg-indigo-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"
+            !isDynamic ? "bg-indigo-600 text-white font-medium" : "bg-white text-muted-foreground hover:bg-muted"
           }`}
         >
           Manuelle
@@ -686,8 +686,8 @@ function SelectOptionsEditor({
             fetchLibraries();
             onFieldChange({ optionsSource: { type: "ig-accounts-from-library", libraryId: "" }, options: undefined });
           }}
-          className={`flex-1 px-2 py-1.5 transition-colors border-l border-gray-200 ${
-            isIgAccounts ? "bg-indigo-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"
+          className={`flex-1 px-2 py-1.5 transition-colors border-l border-border ${
+            isIgAccounts ? "bg-indigo-600 text-white font-medium" : "bg-white text-muted-foreground hover:bg-muted"
           }`}
         >
           Comptes IG d&apos;une lib
@@ -698,8 +698,8 @@ function SelectOptionsEditor({
             fetchLibraries();
             onFieldChange({ optionsSource: { type: "metadata-values-from-library", libraryId: "", metadataKey: "", blockId: "" }, options: undefined });
           }}
-          className={`flex-1 px-2 py-1.5 transition-colors border-l border-gray-200 ${
-            isMetaValues ? "bg-indigo-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"
+          className={`flex-1 px-2 py-1.5 transition-colors border-l border-border ${
+            isMetaValues ? "bg-indigo-600 text-white font-medium" : "bg-white text-muted-foreground hover:bg-muted"
           }`}
         >
           Valeurs métadonnées
@@ -720,18 +720,18 @@ function SelectOptionsEditor({
               });
             }}
             placeholder={"vendeur\nacquéreur"}
-            className="border border-gray-200 rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400 font-mono text-[11px]"
+            className="border border-border rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400 font-mono text-[11px]"
           />
-          <span className="text-[10px] text-gray-400">Une option par ligne.</span>
+          <span className="text-[10px] text-muted-foreground">Une option par ligne.</span>
         </label>
       ) : isIgAccounts ? (
         <div className="flex flex-col gap-1.5">
           <label className="flex flex-col gap-1">
-            <span className="text-gray-500">Bibliothèque vidéo</span>
+            <span className="text-muted-foreground">Bibliothèque vidéo</span>
             <select
               value={field.optionsSource?.libraryId ?? ""}
               onChange={(e) => onFieldChange({ optionsSource: { type: "ig-accounts-from-library", libraryId: e.target.value } })}
-              className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
             >
               <option value="">Choisir une bibliothèque…</option>
               {videoLibraries.map((lib) => (
@@ -747,13 +747,13 @@ function SelectOptionsEditor({
         /* metadata-values-from-library */
         <div className="flex flex-col gap-1.5">
           <label className="flex flex-col gap-1">
-            <span className="text-gray-500">Bibliothèque</span>
+            <span className="text-muted-foreground">Bibliothèque</span>
             <select
               value={field.optionsSource?.libraryId ?? ""}
               onChange={(e) => onFieldChange({
                 optionsSource: { type: "metadata-values-from-library", libraryId: e.target.value, metadataKey: "", blockId: "" },
               })}
-              className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
             >
               <option value="">Choisir une bibliothèque…</option>
               {videoLibraries.map((lib) => (
@@ -764,7 +764,7 @@ function SelectOptionsEditor({
 
           {field.optionsSource?.libraryId && (
             <label className="flex flex-col gap-1">
-              <span className="text-gray-500">Champ métadonnée</span>
+              <span className="text-muted-foreground">Champ métadonnée</span>
               {metaFields.length === 0 ? (
                 <p className="text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1">
                   Cette bibliothèque n&apos;a pas de champs de métadonnées définis.
@@ -775,7 +775,7 @@ function SelectOptionsEditor({
                   onChange={(e) => onFieldChange({
                     optionsSource: { ...field.optionsSource!, metadataKey: e.target.value },
                   })}
-                  className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                 >
                   <option value="">Choisir un champ…</option>
                   {metaFields.map((f) => (
@@ -788,7 +788,7 @@ function SelectOptionsEditor({
 
           {field.optionsSource?.libraryId && field.optionsSource?.metadataKey && (
             <label className="flex flex-col gap-1">
-              <span className="text-gray-500">Bloc vidéo piloté</span>
+              <span className="text-muted-foreground">Bloc vidéo piloté</span>
               {eligibleBlocks.length === 0 ? (
                 <p className="text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1">
                   Aucun bloc vidéo dans ce template.
@@ -799,7 +799,7 @@ function SelectOptionsEditor({
                   onChange={(e) => onFieldChange({
                     optionsSource: { ...field.optionsSource!, blockId: e.target.value },
                   })}
-                  className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                 >
                   <option value="">Choisir un bloc…</option>
                   {eligibleBlocks.map((b) => (
@@ -867,49 +867,49 @@ function SchemaFieldEditor({
       <FieldGroup label="Identité">
         {mode === "create" ? (
           <label className="flex flex-col gap-1">
-            <span className="text-gray-500">Clé</span>
+            <span className="text-muted-foreground">Clé</span>
             <input
               type="text"
               value={field.key}
               onChange={(e) => onFieldChange({ key: e.target.value })}
               placeholder="ma_variable"
-              className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
             />
             {keyError ? <span className="text-[11px] text-red-500">{keyError}</span> : null}
-            {!keyError ? <span className="text-[10px] text-gray-400">Tu peux utiliser des majuscules. Caractères autorisés : lettres, chiffres et _.</span> : null}
+            {!keyError ? <span className="text-[10px] text-muted-foreground">Tu peux utiliser des majuscules. Caractères autorisés : lettres, chiffres et _.</span> : null}
           </label>
         ) : (
           <label className="flex flex-col gap-1">
-            <span className="text-gray-500">Clé</span>
-            <p className="font-mono rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-2 text-gray-600">{`{{${field.key}}}`}</p>
+            <span className="text-muted-foreground">Clé</span>
+            <p className="font-mono rounded-lg border border-border bg-muted px-2.5 py-2 text-muted-foreground">{`{{${field.key}}}`}</p>
           </label>
         )}
         <label className="flex flex-col gap-1">
-          <span className="text-gray-500">Nom affiché</span>
+          <span className="text-muted-foreground">Nom affiché</span>
           <input
             type="text"
             value={field.label}
             onChange={(e) => onFieldChange({ label: e.target.value })}
             placeholder="Ex: Prix du bien"
-            className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-gray-500">Description</span>
+          <span className="text-muted-foreground">Description</span>
           <input
             type="text"
             value={field.description ?? ""}
             onChange={(e) => onFieldChange({ description: e.target.value || undefined })}
             placeholder={mode === "edit" ? "Aide affichée sous le champ" : ""}
-            className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-gray-500">Section</span>
+          <span className="text-muted-foreground">Section</span>
           <select
             value={field.sectionId ?? ""}
             onChange={(e) => onFieldChange({ sectionId: e.target.value || undefined })}
-            className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
           >
             <option value="">Hors section</option>
             {sections.map((section) => (
@@ -921,11 +921,11 @@ function SchemaFieldEditor({
 
       <FieldGroup label="Type et saisie">
         <label className="flex flex-col gap-1">
-          <span className="text-gray-500">Type</span>
+          <span className="text-muted-foreground">Type</span>
           <select
             value={field.type}
             onChange={(e) => onTypeChange(e.target.value as SchemaFieldType)}
-            className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+            className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
           >
             {SCHEMA_FIELD_TYPES.map((type) => (
               <option key={type.value} value={type.value}>{type.label}</option>
@@ -946,50 +946,50 @@ function SchemaFieldEditor({
         {field.type === "number" && (
           <div className="space-y-2">
             <label className="flex flex-col gap-1">
-              <span className="text-gray-500">Séparateur décimal</span>
+              <span className="text-muted-foreground">Séparateur décimal</span>
               <select
                 value={field.decimalSeparator ?? ","}
                 onChange={(e) => onFieldChange({ decimalSeparator: e.target.value as DecimalSeparator })}
-                className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
               >
                 <option value=",">Virgule (31,4)</option>
                 <option value=".">Point (31.4)</option>
               </select>
             </label>
-            <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-2 cursor-pointer">
+            <label className="flex items-center gap-2 rounded-lg border border-border bg-white px-2.5 py-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={field.formatThousands ?? false}
                 onChange={(e) => onFieldChange({ formatThousands: e.target.checked })}
                 className="rounded"
               />
-              <span className="text-gray-600">Espaces milliers</span>
+              <span className="text-muted-foreground">Espaces milliers</span>
             </label>
           </div>
         )}
 
-        <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-2 cursor-pointer">
+        <label className="flex items-center gap-2 rounded-lg border border-border bg-white px-2.5 py-2 cursor-pointer">
           <input
             type="checkbox"
             checked={field.required}
             onChange={(e) => onFieldChange({ required: e.target.checked })}
             className="rounded"
           />
-          <span className="text-gray-600">Champ requis si visible</span>
+          <span className="text-muted-foreground">Champ requis si visible</span>
         </label>
       </FieldGroup>
 
       {(field.type === "text" || field.type === "number") && (
         <FieldGroup label="Source automatique (asset)">
           {videoLibrariesLoading ? (
-            <p className="text-[10px] text-gray-400">Chargement des bibliothèques…</p>
+            <p className="text-[10px] text-muted-foreground">Chargement des bibliothèques…</p>
           ) : parsedLibrarySchemas.length === 0 ? (
-            <p className="text-[10px] text-gray-400 leading-relaxed">
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
               Liez un bloc vidéo à une bibliothèque avec un schéma de métadonnées pour activer la source automatique.
             </p>
           ) : (
             <>
-              <p className="text-[10px] text-gray-400 leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Remplit automatiquement ce champ depuis les métadonnées de l&apos;asset vidéo résolu à la génération.
                 Utilisez {`{{${field.key || "…"}}}`} dans vos blocs texte pour afficher cette valeur.
               </p>
@@ -1005,7 +1005,7 @@ function SchemaFieldEditor({
                         onFieldChange({ metadataSource: { libraryId: libId, metadataKey: "" } });
                       }
                     }}
-                    className="w-full border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    className="w-full border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                   >
                     <option value="">— Aucune source —</option>
                     {parsedLibrarySchemas.map((lib) => (
@@ -1021,7 +1021,7 @@ function SchemaFieldEditor({
                       <select
                         value={field.metadataSource.metadataKey}
                         onChange={(e) => onFieldChange({ metadataSource: { ...field.metadataSource!, metadataKey: e.target.value } })}
-                        className="w-full border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                        className="w-full border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                       >
                         <option value="">— Choisir un champ —</option>
                         {lib.fields.map((f) => (
@@ -1061,13 +1061,13 @@ function SchemaFieldEditor({
         {supportsPlaceholder && (
           <>
             <label className="flex flex-col gap-1">
-              <span className="text-gray-500">Placeholder</span>
+              <span className="text-muted-foreground">Placeholder</span>
               <input
                 type="text"
                 value={field.placeholder ?? ""}
                 onChange={(e) => onFieldChange({ placeholder: e.target.value || undefined })}
                 placeholder="Texte indicatif"
-                className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
               />
             </label>
           </>
@@ -1075,19 +1075,19 @@ function SchemaFieldEditor({
       </FieldGroup>
 
       <FieldGroup label="Affichage conditionnel">
-        <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-2 cursor-pointer">
+        <label className="flex items-center gap-2 rounded-lg border border-border bg-white px-2.5 py-2 cursor-pointer">
           <input
             type="checkbox"
             checked={Boolean(field.showIf)}
             onChange={(e) => onFieldChange({ showIf: e.target.checked ? { field: "", equals: "" } : undefined })}
             className="rounded"
           />
-          <span className="text-gray-600">Afficher ce champ seulement dans certains cas</span>
+          <span className="text-muted-foreground">Afficher ce champ seulement dans certains cas</span>
         </label>
         {field.showIf && (
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
             <label className="flex flex-col gap-1">
-              <span className="text-gray-500">Champ source</span>
+              <span className="text-muted-foreground">Champ source</span>
               <select
                 value={field.showIf.field}
                 onChange={(e) => {
@@ -1099,7 +1099,7 @@ function SchemaFieldEditor({
                     },
                   });
                 }}
-                className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
               >
                 <option value="">— choisir —</option>
                 {conditionFields.map((candidate) => (
@@ -1108,12 +1108,12 @@ function SchemaFieldEditor({
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-gray-500">Valeur attendue</span>
+              <span className="text-muted-foreground">Valeur attendue</span>
               {conditionValueOptions.length > 0 ? (
                 <select
                   value={field.showIf.equals}
                   onChange={(e) => onFieldChange({ showIf: { ...field.showIf!, equals: e.target.value } })}
-                  className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                 >
                   <option value="">— choisir —</option>
                   {conditionValueOptions.map((option) => (
@@ -1126,7 +1126,7 @@ function SchemaFieldEditor({
                   value={field.showIf.equals}
                   onChange={(e) => onFieldChange({ showIf: { ...field.showIf!, equals: e.target.value } })}
                   placeholder="valeur"
-                  className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                 />
               )}
             </label>
@@ -1139,8 +1139,8 @@ function SchemaFieldEditor({
 
 function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5 rounded-xl border border-gray-200 bg-slate-50 p-2.5">
-      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{label}</p>
+    <div className="space-y-1.5 rounded-xl border border-border bg-slate-50 p-2.5">
+      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
       {children}
     </div>
   );
@@ -1157,11 +1157,11 @@ function DefaultValueInput({
     const value = field.default === true ? "true" : field.default === false ? "false" : "";
     return (
       <label className="flex flex-col gap-1">
-        <span className="text-gray-500">Valeur par défaut</span>
+        <span className="text-muted-foreground">Valeur par défaut</span>
         <select
           value={value}
           onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value === "true")}
-          className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
         >
           <option value="">Aucune</option>
           <option value="true">Oui</option>
@@ -1174,11 +1174,11 @@ function DefaultValueInput({
   if (field.type === "select") {
     return (
       <label className="flex flex-col gap-1">
-        <span className="text-gray-500">Valeur par défaut</span>
+        <span className="text-muted-foreground">Valeur par défaut</span>
         <select
           value={typeof field.default === "string" ? field.default : ""}
           onChange={(e) => onChange(e.target.value || undefined)}
-          className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
         >
           <option value="">Aucune</option>
           {(field.options ?? []).map((option) => (
@@ -1192,13 +1192,13 @@ function DefaultValueInput({
   if (field.type === "number") {
     return (
       <label className="flex flex-col gap-1">
-        <span className="text-gray-500">Valeur par défaut</span>
+        <span className="text-muted-foreground">Valeur par défaut</span>
         <input
           type="number"
           value={typeof field.default === "number" ? field.default : ""}
           onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
           placeholder="Ex: 980000"
-          className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
         />
       </label>
     );
@@ -1206,13 +1206,13 @@ function DefaultValueInput({
 
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-gray-500">Valeur par défaut</span>
+      <span className="text-muted-foreground">Valeur par défaut</span>
       <input
         type="text"
         value={typeof field.default === "string" ? field.default : ""}
         onChange={(e) => onChange(e.target.value || undefined)}
         placeholder="Valeur initiale"
-        className="border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        className="border border-border rounded-lg px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400"
       />
     </label>
   );

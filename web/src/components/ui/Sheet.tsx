@@ -1,26 +1,12 @@
 "use client";
 
 /**
- * Sheet — bottom-anchored mobile, gauge handle visible.
+ * Sheet — bottom-anchored mobile, handle visible.
  *
- * Idéal pour : feuilles d'actions mobile, sélecteurs (date, options), revue
- * d'élément en mobile-first.
+ * Idéal pour : feuilles d'actions mobile, sélecteurs, revue mobile-first.
  *
- * Doctrine Liquid Glass v2 :
- * - Backdrop scrim-dark + backdrop-blur 4px.
- * - Panel surface-glass-strong + shadow-glass-lg + ring inset, ancré bottom.
- * - Handle visible (la "poignée" macOS / iOS) en haut du panel.
- * - Z-index via useDialogStack.
- *
- * Variants :
- * - `auto` (default) : height = content (max 90vh).
- * - `halfHeight` : 50vh.
- * - `fullHeight` : 100vh.
- *
- * Sous-composants :
- * - <Sheet.Header onClose?> — titre + bouton fermer optionnel
- * - <Sheet.Body>            — content scrollable
- * - <Sheet.Footer>          — barre actions
+ * Scrim solid zinc-950/50. Panel flat bg-card border-border shadow-lg.
+ * Variants : auto (max 90vh) | halfHeight (50vh) | fullHeight (100vh).
  */
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -52,16 +38,18 @@ export function Sheet({
   open,
   onClose,
   variant = "auto",
-  style = "default",
+  style: _style = "default",
   dismissOnBackdrop = true,
   className,
   children,
 }: SheetProps) {
+  void _style;
   const { zIndex } = useRegisterDialog(open, onClose);
   const panelRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
@@ -72,15 +60,10 @@ export function Sheet({
 
   if (!open || !mounted) return null;
 
-  const panelCls =
-    style === "solid"
-      ? "bg-white shadow-[var(--shadow-modal),0_24px_64px_-16px_rgba(15,23,42,0.18)] border-t border-gray-200"
-      : "bg-gradient-to-b from-white to-white/85 backdrop-blur-[24px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_-8px_24px_-4px_rgba(15,23,42,0.12),0_-32px_72px_-12px_rgba(15,23,42,0.22)]";
-
   return createPortal(
     <>
       <div
-        className="fixed inset-0 backdrop-blur-[12px] backdrop-saturate-110"
+        className="fixed inset-0 bg-zinc-950/50"
         style={{ zIndex }}
         onClick={dismissOnBackdrop ? onClose : undefined}
         aria-hidden
@@ -91,16 +74,14 @@ export function Sheet({
         aria-modal="true"
         tabIndex={-1}
         className={[
-          "fixed bottom-0 left-0 right-0 flex flex-col rounded-t-2xl overflow-hidden focus:outline-none",
+          "fixed bottom-0 left-0 right-0 flex flex-col rounded-t-lg overflow-hidden focus:outline-none bg-card text-card-foreground border-t border-border shadow-lg",
           VARIANT_CLS[variant],
-          panelCls,
           className ?? "",
         ].filter(Boolean).join(" ")}
         style={{ zIndex: zIndex + 1 }}
       >
-        {/* Handle macOS/iOS signature. */}
         <div className="shrink-0 flex justify-center pt-3 pb-2">
-          <span className="h-1 w-9 rounded-full bg-gray-300/80" aria-hidden />
+          <span className="h-1 w-9 rounded-full bg-zinc-300" aria-hidden />
         </div>
         {children}
       </div>
@@ -111,8 +92,8 @@ export function Sheet({
 
 function SheetHeader({ children, onClose }: { children?: ReactNode; onClose?: () => void }) {
   return (
-    <div className="shrink-0 flex items-center justify-between px-5 pb-3 border-b border-white/30">
-      <h2 className="text-[15px] font-semibold tracking-tight text-gray-950">{children}</h2>
+    <div className="shrink-0 flex items-center justify-between px-5 pb-3 border-b border-border">
+      <h2 className="text-[15px] font-semibold tracking-tight text-foreground">{children}</h2>
       {onClose && (
         <ButtonIcon icon={X} label="Fermer" variant="ghost" size="sm" onClick={onClose} />
       )}
@@ -130,7 +111,7 @@ function SheetBody({ children, className }: { children: ReactNode; className?: s
 
 function SheetFooter({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={["shrink-0 flex items-center justify-end gap-2 px-5 py-3 bg-white/30 border-t border-white/30", className ?? ""].filter(Boolean).join(" ")}>
+    <div className={["shrink-0 flex items-center justify-end gap-2 px-5 py-3 bg-muted border-t border-border", className ?? ""].filter(Boolean).join(" ")}>
       {children}
     </div>
   );

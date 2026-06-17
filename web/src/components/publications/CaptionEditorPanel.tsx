@@ -195,10 +195,10 @@ export function CaptionEditorPanel({ slotId, initialSrt, returnHref }: Props) {
         {blocks.map((b, i) => (
           <div
             key={i}
-            className="rounded-xl border border-white/50 bg-white/70 backdrop-blur-[6px] p-3 space-y-2 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]"
+            className="rounded-xl border border-white/50 bg-card border border-border p-3 space-y-2 "
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] uppercase tracking-widest text-gray-500 font-semibold">
+              <span className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold">
                 Bloc {i + 1}
               </span>
               <Button

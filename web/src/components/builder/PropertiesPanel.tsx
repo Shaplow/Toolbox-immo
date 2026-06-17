@@ -38,20 +38,20 @@ export function PropertiesPanel({
   // Empty selection
   if (!block) {
     return (
-      <aside className="w-64 bg-white border-l border-gray-200 flex flex-col shrink-0 overflow-y-auto">
-        <div className="p-4 border-b border-gray-100 space-y-4">
+      <aside className="w-64 bg-white border-l border-border flex flex-col shrink-0 overflow-y-auto">
+        <div className="p-4 border-b border-border space-y-4">
           <div className="space-y-1">
             <p className="text-sm font-medium text-gray-800">Aucune sélection</p>
-            <p className="text-xs text-gray-500 leading-5">
+            <p className="text-xs text-muted-foreground leading-5">
               Sélectionne un bloc ou un groupe pour éditer ses propriétés. Tu
               peux aussi naviguer plus vite dans le canvas avec les raccourcis
               ci-dessous.
             </p>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Navigation</p>
-            <ul className="space-y-1.5 text-[11px] text-gray-600">
+          <div className="rounded-xl border border-border bg-muted p-3 space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Navigation</p>
+            <ul className="space-y-1.5 text-[11px] text-muted-foreground">
               {[
                 { keys: ["+", "−"], label: "Zoomer / dézoomer" },
                 { keys: ["0", "F"], label: "Recentrer et ajuster" },
@@ -66,7 +66,7 @@ export function PropertiesPanel({
                     {row.keys.map((k, i) => (
                       <kbd
                         key={`${row.label}-${i}`}
-                        className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded border border-gray-300 bg-white text-[10px] font-medium text-gray-700 shadow-[0_1px_0_rgba(0,0,0,0.04)]"
+                        className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded border border-border bg-white text-[10px] font-medium text-foreground shadow-[0_1px_0_rgba(0,0,0,0.04)]"
                       >
                         {k}
                       </kbd>
@@ -86,23 +86,23 @@ export function PropertiesPanel({
   if (block.type === "music") {
     const mb = block as MusicBlock;
     return (
-      <aside className="w-64 bg-white border-l border-gray-200 flex flex-col shrink-0 overflow-y-auto">
-        <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide inline-flex items-center gap-1.5">
-            <Music size={12} className="text-gray-400" />
-            musique <span className="text-gray-300 font-normal">#{block.id.slice(-4)}</span>
+      <aside className="w-64 bg-white border-l border-border flex flex-col shrink-0 overflow-y-auto">
+        <div className="p-4 border-b border-border flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide inline-flex items-center gap-1.5">
+            <Music size={12} className="text-muted-foreground" />
+            musique <span className="text-muted-foreground/60 font-normal">#{block.id.slice(-4)}</span>
           </p>
         </div>
         <div className="p-4 space-y-5 text-xs">
           <Section label="Calque">
             <label className="flex flex-col gap-0.5">
-              <span className="text-gray-400 uppercase">Nom</span>
+              <span className="text-muted-foreground uppercase">Nom</span>
               <input
                 type="text"
                 value={mb.name ?? ""}
                 onChange={(e) => updateBlock(mb.id, { name: e.target.value } as Partial<AnyBlock>)}
                 placeholder={`musique-${mb.id.slice(-4)}`}
-                className="border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="border border-border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
               />
             </label>
           </Section>
@@ -116,7 +116,7 @@ export function PropertiesPanel({
 
           <Section label="Variable (upload formulaire)">
             <label className="flex flex-col gap-0.5">
-              <span className="text-gray-400 uppercase">Binding</span>
+              <span className="text-muted-foreground uppercase">Binding</span>
               <input
                 type="text"
                 value={mb.binding ?? ""}
@@ -145,10 +145,10 @@ export function PropertiesPanel({
                   }
                   setSchema(nextSchema);
                 }}
-                className="border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 font-mono"
+                className="border border-border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 font-mono"
               />
             </label>
-            <p className="text-[10px] text-gray-400 mt-1">Nom de la variable qui contiendra le fichier audio.</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Nom de la variable qui contiendra le fichier audio.</p>
           </Section>
         </div>
       </aside>
@@ -157,10 +157,10 @@ export function PropertiesPanel({
 
   // Generic block panel
   return (
-    <aside className="w-64 bg-white border-l border-gray-200 flex flex-col shrink-0 overflow-y-auto">
-      <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          {block.type} <span className="text-gray-300 font-normal">#{block.id.slice(-4)}</span>
+    <aside className="w-64 bg-white border-l border-border flex flex-col shrink-0 overflow-y-auto">
+      <div className="p-4 border-b border-border flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          {block.type} <span className="text-muted-foreground/60 font-normal">#{block.id.slice(-4)}</span>
         </p>
         <div className="flex items-center gap-1">
           <button
@@ -169,7 +169,7 @@ export function PropertiesPanel({
             className={`shrink-0 inline-flex items-center justify-center px-1.5 py-1 rounded border transition-colors ${
               block.hidden
                 ? "bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100"
-                : "bg-white border-gray-200 text-gray-400 hover:border-gray-400 hover:text-gray-600"
+                : "bg-white border-border text-muted-foreground hover:border-gray-400 hover:text-muted-foreground"
             }`}
           >
             {block.hidden ? <EyeOff size={13} /> : <Eye size={13} />}
@@ -180,7 +180,7 @@ export function PropertiesPanel({
             className={`shrink-0 inline-flex items-center justify-center px-1.5 py-1 rounded border transition-colors ${
               block.locked
                 ? "bg-indigo-50 border-indigo-300 text-indigo-700 hover:bg-indigo-100"
-                : "bg-white border-gray-200 text-gray-400 hover:border-gray-400 hover:text-gray-600"
+                : "bg-white border-border text-muted-foreground hover:border-gray-400 hover:text-muted-foreground"
             }`}
           >
             {block.locked ? <Lock size={13} /> : <Unlock size={13} />}

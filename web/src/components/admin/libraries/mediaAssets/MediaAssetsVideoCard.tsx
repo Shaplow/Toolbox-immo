@@ -118,11 +118,11 @@ export function MediaAssetsVideoCard({
       key={asset.id}
       className={[
         "group relative rounded-2xl overflow-hidden transition-all",
-        "bg-gradient-to-b from-white/85 to-white/55 backdrop-blur-[8px] backdrop-saturate-150",
+        "bg-card border border-border ",
         !isAssetAccessible ? "opacity-50" : "",
         isSelected
-          ? "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_2px_rgba(125,180,210,0.6),0_0_0_3px_rgba(169,209,230,0.35),0_4px_12px_-4px_rgba(15,23,42,0.12)]"
-          : "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_0_0_1px_rgba(15,23,42,0.06),0_1px_2px_rgba(15,23,42,0.04)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.55),inset_0_0_0_1px_rgba(15,23,42,0.1),0_4px_12px_-4px_rgba(15,23,42,0.12)] hover:-translate-y-0.5",
+          ? ""
+          : " hover: hover:-translate-y-0.5",
         !isAdvanced && !selectMode ? "cursor-pointer" : "",
       ].filter(Boolean).join(" ")}
       onClick={() => {
@@ -138,11 +138,11 @@ export function MediaAssetsVideoCard({
             e.stopPropagation();
             toggleSelect(asset.id);
           }}
-          className="absolute top-2 left-2 z-30 h-5 w-5 rounded-md bg-white/85 backdrop-blur-[8px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.12),0_2px_4px_rgba(15,23,42,0.12)] flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-white transition-opacity"
+          className="absolute top-2 left-2 z-30 h-5 w-5 rounded-md bg-card border border-border  flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-white transition-opacity"
           title="Sélectionner"
           aria-label="Sélectionner cet asset"
         >
-          <Square size={11} className="text-gray-400" />
+          <Square size={11} className="text-muted-foreground" />
         </button>
       )}
       {/* Thumbnail / preview */}
@@ -151,7 +151,7 @@ export function MediaAssetsVideoCard({
           <video src={asset.url} controls autoPlay className="absolute inset-0 w-full h-full object-cover" />
         ) : (
           <>
-            <LazyVideoThumb url={asset.url} className="w-full h-full object-cover" />
+            <LazyVideoThumb url={asset.url} posterUrl={asset.posterUrl} className="w-full h-full object-cover" />
             {!selectMode && (
               <button
                 onClick={() => setPreviewId(asset.id)}
@@ -171,7 +171,7 @@ export function MediaAssetsVideoCard({
           >✕</button>
         )}
         {asset.duration && (
-          <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-gray-950/65 backdrop-blur-[4px] text-[10px] font-mono text-white tabular-nums">
+          <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-gray-950/65 text-[10px] font-mono text-white tabular-nums">
             {formatDuration(asset.duration)}
           </span>
         )}
@@ -185,7 +185,7 @@ export function MediaAssetsVideoCard({
           return (
             <span
               title={title}
-              className="absolute bottom-2 left-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-sky-50/90 backdrop-blur-[6px] text-sky-700 text-[9.5px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(77,150,191,0.22)] max-w-[60%] truncate"
+              className="absolute bottom-2 left-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-info-50/90 text-info-700 text-[9.5px] font-medium  max-w-[60%] truncate"
             >
               <Lock size={9} className="shrink-0" />
               <span className="truncate">{label}</span>
@@ -198,13 +198,13 @@ export function MediaAssetsVideoCard({
         {!isAdvanced && !isManualMode && (asset.category || (asset.setTag && !asset.setTag.startsWith("pack_"))) && (
           <div className="absolute top-2 right-2 flex flex-col items-end gap-1 max-w-[70%] z-10">
             {asset.category && (
-              <span className="text-[9.5px] font-medium px-1.5 py-0.5 rounded-md bg-white/85 backdrop-blur-[6px] text-rose-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(139,92,246,0.18)] inline-flex items-center gap-0.5 truncate max-w-full">
+              <span className="text-[9.5px] font-medium px-1.5 py-0.5 rounded-md bg-card border border-border text-foreground inline-flex items-center gap-0.5 truncate max-w-full">
                 <FolderOpen size={8} className="shrink-0" />
                 <span className="truncate">{asset.category}</span>
               </span>
             )}
             {asset.setTag && !asset.setTag.startsWith("pack_") && (
-              <span className="text-[9.5px] font-medium px-1.5 py-0.5 rounded-md bg-white/85 backdrop-blur-[6px] text-rose-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(236,72,153,0.18)] inline-flex items-center gap-0.5 truncate max-w-full">
+              <span className="text-[9.5px] font-medium px-1.5 py-0.5 rounded-md bg-primary/10 border border-primary/20 text-primary inline-flex items-center gap-0.5 truncate max-w-full">
                 <Layers size={8} className="shrink-0" />
                 <span className="truncate">{asset.setTag}</span>
               </span>
@@ -218,15 +218,15 @@ export function MediaAssetsVideoCard({
           </div>
         )}
         {asset.disabled && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-peach-900/50 gap-1 pointer-events-none">
-            <EyeOff size={18} className="text-peach-200" />
-            <span className="text-[10px] text-peach-100 font-medium">Désactivé</span>
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-warning-700/50 gap-1 pointer-events-none">
+            <EyeOff size={18} className="text-warning-200" />
+            <span className="text-[10px] text-warning-100 font-medium">Désactivé</span>
           </div>
         )}
         {selectMode && (
           <div className="absolute top-1 right-1 z-10" onClick={(e) => { e.stopPropagation(); toggleSelect(asset.id); }}>
             {isSelected
-              ? <CheckSquare size={16} className="text-sky-700 drop-shadow" />
+              ? <CheckSquare size={16} className="text-info-700 drop-shadow" />
               : <Square size={16} className="text-white/80 drop-shadow" />}
           </div>
         )}
@@ -245,11 +245,11 @@ export function MediaAssetsVideoCard({
                 const secondaryValue = secondary ? asset.metadata?.[secondary.key] : null;
                 return (
                   <>
-                    <p className="text-[12px] font-semibold text-gray-950 truncate leading-tight" title={primary?.label}>
-                      {primaryValue != null && primaryValue !== "" ? String(primaryValue) : <span className="text-gray-400 italic font-normal">{primary?.label ?? asset.filename}</span>}
+                    <p className="text-[12px] font-semibold text-foreground truncate leading-tight" title={primary?.label}>
+                      {primaryValue != null && primaryValue !== "" ? String(primaryValue) : <span className="text-muted-foreground italic font-normal">{primary?.label ?? asset.filename}</span>}
                     </p>
                     {secondary && (
-                      <p className="text-[10.5px] text-gray-500 truncate mt-0.5" title={secondary.label}>
+                      <p className="text-[10.5px] text-muted-foreground truncate mt-0.5" title={secondary.label}>
                         {secondaryValue != null && secondaryValue !== "" ? String(secondaryValue) : <span className="italic">{secondary.label}</span>}
                       </p>
                     )}
@@ -257,15 +257,15 @@ export function MediaAssetsVideoCard({
                 );
               })()}
             </div>
-            <ChevronRight size={13} className="text-gray-300 group-hover:text-gray-700 shrink-0 mt-0.5 transition-colors" />
+            <ChevronRight size={13} className="text-muted-foreground/60 group-hover:text-foreground shrink-0 mt-0.5 transition-colors" />
           </div>
         ) : (
           <div className="px-2.5 py-2 flex items-center gap-1.5">
-            <Video size={11} className="shrink-0 text-gray-400" />
-            <p className="flex-1 min-w-0 text-[11.5px] font-medium text-gray-700 truncate" title={asset.filename}>
+            <Video size={11} className="shrink-0 text-muted-foreground" />
+            <p className="flex-1 min-w-0 text-[11.5px] font-medium text-foreground truncate" title={asset.filename}>
               {asset.filename}
             </p>
-            <ChevronRight size={13} className="text-gray-300 group-hover:text-gray-700 shrink-0 transition-colors" />
+            <ChevronRight size={13} className="text-muted-foreground/60 group-hover:text-foreground shrink-0 transition-colors" />
           </div>
         )
       ) : (
@@ -284,23 +284,26 @@ export function MediaAssetsVideoCard({
               onBlur={() => { void handleSaveCategory(asset, familyInput); setEditingFamilyKey(null); }}
               list="group-list"
               placeholder="Catégorie…"
-              className="w-24 text-[9px] border border-rose-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-rose-400"
+              className="w-24 text-[9px] border border-input rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary/30"
             />
           ) : (
             <button
               onClick={() => { setEditingFamilyKey(asset.id); setFamilyInput(asset.category ?? ""); }}
               className={`flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
                 asset.category
-                  ? "bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100"
-                  : "bg-gray-50 text-gray-400 border-dashed border-gray-200 hover:text-rose-500 hover:border-rose-200"
+                  ? "bg-muted text-foreground border-border hover:bg-zinc-200/70"
+                  : "bg-card text-muted-foreground border-dashed border-border hover:text-foreground hover:border-zinc-300"
               }`}
-              title="Catégorie — cliquer pour modifier"
+              title="Catégorie (thème rotation) — cliquer pour modifier"
             >
               <FolderOpen size={8} className="shrink-0" />
               <span>{asset.category || "Catégorie…"}</span>
             </button>
           )}
-          <span className="text-[9px] text-gray-300">›</span>
+          {/* Séparateur visible seulement si un Groupe réel est affiché. */}
+          {asset.setTag && !asset.setTag.startsWith("pack_") && editingSetTagId !== asset.id && (
+            <span className="text-[9px] text-muted-foreground/60">›</span>
+          )}
           {editingSetTagId === asset.id ? (
             <div className="flex flex-col gap-0.5">
               <input
@@ -313,33 +316,40 @@ export function MediaAssetsVideoCard({
                 }}
                 onBlur={() => { void handleSaveSetTag(asset, setTagValue); }}
                 list="set-tags-list"
-                placeholder="pack…"
-                className="w-20 text-[9px] border border-rose-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-pink-400"
+                placeholder="Groupe…"
+                className="w-20 text-[9px] border border-primary/40 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary/30"
               />
               {setTagValue.trim() && setTagValue.trim() !== asset.setTag && (() => {
                 const existingCategories = Array.from(new Set(
                   assets.filter((a) => a.setTag === setTagValue.trim() && a.id !== asset.id && a.category).map((a) => a.category!)
                 ));
                 return existingCategories.length > 0 ? (
-                  <span className="text-[9px] flex items-center gap-0.5 font-medium text-peach-700">
+                  <span className="text-[9px] flex items-center gap-0.5 font-medium text-warning-700">
                     <FolderOpen size={8} /> Catégorie existante&nbsp;: {existingCategories[0]}
                   </span>
                 ) : null;
               })()}
               {setTagError && <span className="text-[9px] text-red-500">{setTagError}</span>}
             </div>
-          ) : (
+          ) : asset.setTag && !asset.setTag.startsWith("pack_") ? (
+            // Groupe réel → chip accent indigo (distinct de la catégorie neutre).
             <button
               onClick={() => { setEditingSetTagId(asset.id); setSetTagValue(asset.setTag ?? ""); }}
-              className={`flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
-                asset.setTag
-                  ? "bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100"
-                  : "bg-gray-50 text-gray-400 border-dashed border-gray-200 hover:text-rose-500 hover:border-rose-200"
-              }`}
-              title="Pack — cliquer pour assigner"
+              className="flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded border bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 transition-colors"
+              title="Groupe — plans joués ensemble dans un même rendu"
             >
               <Layers size={8} className="shrink-0" />
-              <span>{asset.setTag || "Pack…"}</span>
+              <span>{asset.setTag}</span>
+            </button>
+          ) : (
+            // Pas de Groupe réel (vide ou pack_ auto) → affordance discrète.
+            <button
+              onClick={() => { setEditingSetTagId(asset.id); setSetTagValue(""); }}
+              className="flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded text-muted-foreground/50 hover:text-primary transition-colors"
+              title="Grouper avec d'autres plans (joués ensemble)"
+            >
+              <Layers size={8} className="shrink-0" />
+              <span>Groupe</span>
             </button>
           )}
         </div>
@@ -358,19 +368,19 @@ export function MediaAssetsVideoCard({
               }}
               onBlur={() => { void handleSaveTags(asset, tagInput.split(",").map((t) => t.trim()).filter(Boolean)); }}
               placeholder="intro, outro, plan1…"
-              className="w-full text-xs border border-sky-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sky-200"
+              className="w-full text-xs border border-info-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-info-200"
             />
           </div>
         ) : (
           <div
-            className="flex flex-wrap gap-1 min-h-[26px] cursor-pointer -mx-1 px-1 py-1 rounded-lg hover:bg-gray-50 transition-colors mb-1"
+            className="flex flex-wrap gap-1 min-h-[26px] cursor-pointer -mx-1 px-1 py-1 rounded-lg hover:bg-muted transition-colors mb-1"
             onClick={(e) => { e.stopPropagation(); setEditingTagsId(asset.id); setTagInput(asset.tags.join(", ")); }}
             title="Tags : cliquer pour éditer (intro, outro, rôle…)"
           >
             {asset.tags.length > 0 ? asset.tags.map((t) => (
-              <span key={t} className="text-[10px] bg-sky-50 text-sky-700 border border-sky-200 px-1.5 py-0.5 rounded">{t}</span>
+              <span key={t} className="text-[10px] bg-info-50 text-info-700 border border-info-200 px-1.5 py-0.5 rounded">{t}</span>
             )) : (
-              <span className="text-[10px] text-gray-300 flex items-center gap-0.5"><Tag size={9} /> ajouter tags…</span>
+              <span className="text-[10px] text-muted-foreground/60 flex items-center gap-0.5"><Tag size={9} /> ajouter tags…</span>
             )}
           </div>
         )}
@@ -387,7 +397,7 @@ export function MediaAssetsVideoCard({
               const hasError = metaSaveError?.assetId === asset.id && metaSaveError.key === field.key;
               return (
                 <div key={field.key} className={isTextarea ? "flex flex-col gap-0.5" : "flex items-center gap-1.5"}>
-                  <span className="text-[9px] text-gray-400 shrink-0 truncate" style={isTextarea ? undefined : { width: 68 }} title={field.label}>{field.label}</span>
+                  <span className="text-[9px] text-muted-foreground shrink-0 truncate" style={isTextarea ? undefined : { width: 68 }} title={field.label}>{field.label}</span>
                   {isEditing ? (
                     isTextarea ? (
                       <textarea
@@ -400,7 +410,7 @@ export function MediaAssetsVideoCard({
                           if (e.key === "Escape") void handleSaveMetadata(asset, field.key, metaInput);
                         }}
                         onBlur={() => void handleSaveMetadata(asset, field.key, metaInput)}
-                        className="w-full min-w-0 text-[10px] border border-sky-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-sky-400 bg-white resize-y"
+                        className="w-full min-w-0 text-[10px] border border-info-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-info-200 bg-white resize-y"
                       />
                     ) : (
                       <input
@@ -413,7 +423,7 @@ export function MediaAssetsVideoCard({
                           if (e.key === "Escape") setEditingMetaKey(null);
                         }}
                         onBlur={() => void handleSaveMetadata(asset, field.key, metaInput)}
-                        className="flex-1 min-w-0 text-[10px] border border-sky-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-sky-400 bg-white"
+                        className="flex-1 min-w-0 text-[10px] border border-info-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-info-200 bg-white"
                       />
                     )
                   ) : (
@@ -423,10 +433,10 @@ export function MediaAssetsVideoCard({
                         hasError
                           ? "bg-red-50 text-red-600 border-red-300"
                           : justSaved && displayValue
-                          ? "bg-sage-100 text-sage-800 border-sage-300"
+                          ? "bg-success-100 text-success-700 border-success-200"
                           : displayValue
-                          ? "bg-sage-50 text-sage-800 border-sage-200 hover:bg-sage-100"
-                          : "bg-gray-50 text-gray-300 border-dashed border-gray-200 hover:text-sage-500 hover:border-sage-200"
+                          ? "bg-success-50 text-success-700 border-success-200 hover:bg-success-100"
+                          : "bg-muted text-muted-foreground/60 border-dashed border-border hover:text-success-600 hover:border-success-200"
                       }`}
                       title={displayValue || `Saisir ${field.label}`}
                     >
@@ -444,7 +454,7 @@ export function MediaAssetsVideoCard({
         {/* Accès */}
         <div className="flex items-center gap-1 flex-wrap mt-1 mb-1" onClick={(e) => e.stopPropagation()}>
           {asset.accessAccountIds.length === 0 ? (
-            <span className="flex items-center gap-0.5 text-[9px] text-gray-300" title="Accessible à tous les comptes">
+            <span className="flex items-center gap-0.5 text-[9px] text-muted-foreground/60" title="Accessible à tous les comptes">
               <Globe size={8} /> Global
             </span>
           ) : (
@@ -466,7 +476,7 @@ export function MediaAssetsVideoCard({
             <select
               value=""
               onChange={(e) => { if (e.target.value) void handleToggleAccess(asset, e.target.value, true); }}
-              className="text-[9px] text-gray-400 border border-dashed border-gray-200 rounded px-1 py-0.5 focus:outline-none hover:border-blue-300 hover:text-blue-500 max-w-[80px] cursor-pointer"
+              className="text-[9px] text-muted-foreground border border-dashed border-border rounded px-1 py-0.5 focus:outline-none hover:border-blue-300 hover:text-blue-500 max-w-[80px] cursor-pointer"
               title="Restreindre l'accès à un compte"
             >
               <option value="">+ compte</option>
@@ -491,20 +501,20 @@ export function MediaAssetsVideoCard({
                 if (e.key === "Escape") { setEditingUsageId(null); setUsageInput(""); }
               }}
               onBlur={() => { void handleSaveUsage(asset, usageInput); }}
-              className="w-14 text-[10px] border border-sky-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-sky-400"
+              className="w-14 text-[10px] border border-info-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-info-200"
               onClick={(e) => e.stopPropagation()}
             />
           ) : accountFilter ? (
             <span
-              className="flex items-center gap-0.5 text-[10px] text-gray-400"
+              className="flex items-center gap-0.5 text-[10px] text-muted-foreground"
               title="Stats du compte (lecture seule — basculer en vue globale pour modifier)"
             >
-              <BarChart2 size={10} /> {asset.usageCount} <span className="text-gray-300">(compte)</span>
+              <BarChart2 size={10} /> {asset.usageCount} <span className="text-muted-foreground/60">(compte)</span>
             </span>
           ) : (
             <button
               onClick={(e) => { e.stopPropagation(); setEditingUsageId(asset.id); setUsageInput(String(asset.usageCount)); }}
-              className="flex items-center gap-0.5 text-[10px] text-gray-400 hover:text-sky-700 hover:underline transition-colors"
+              className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-info-700 hover:underline transition-colors"
               title="Cliquer pour modifier"
             >
               <BarChart2 size={10} /> {asset.usageCount}
@@ -521,12 +531,12 @@ export function MediaAssetsVideoCard({
                 if (e.key === "Escape") { setEditingLastUsedId(null); setLastUsedInput(""); }
               }}
               onBlur={() => { void handleSaveLastUsed(asset, lastUsedInput); }}
-              className="w-full text-[10px] border border-peach-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
+              className="w-full text-[10px] border border-warning-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
               onClick={(e) => e.stopPropagation()}
             />
           ) : accountFilter ? (
             <span
-              className="flex items-center gap-0.5 text-[10px] text-gray-400"
+              className="flex items-center gap-0.5 text-[10px] text-muted-foreground"
               title="Dernière utilisation du compte (lecture seule)"
             >
               <Clock size={10} /> {formatDate(asset.lastUsedAt)}
@@ -534,7 +544,7 @@ export function MediaAssetsVideoCard({
           ) : (
             <button
               onClick={(e) => { e.stopPropagation(); setEditingLastUsedId(asset.id); setLastUsedInput(toDateInputValue(asset.lastUsedAt)); }}
-              className="flex items-center gap-0.5 text-[10px] text-gray-400 hover:text-peach-700 hover:underline transition-colors"
+              className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-warning-700 hover:underline transition-colors"
               title="Dernière utilisation : cliquer pour modifier"
             >
               <Clock size={10} /> {formatDate(asset.lastUsedAt)}
@@ -549,14 +559,14 @@ export function MediaAssetsVideoCard({
         <>
           <button
             onClick={(e) => { e.stopPropagation(); void handleDelete(asset); }}
-            className="absolute top-1.5 left-1.5 w-6 h-6 bg-white/80 hover:bg-red-50 text-gray-500 hover:text-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
+            className="absolute top-1.5 left-1.5 w-6 h-6 bg-white/80 hover:bg-red-50 text-muted-foreground hover:text-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
             title="Supprimer"
           >
             <Trash2 size={11} />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onEditAsset(asset); }}
-            className="absolute top-8 left-1.5 w-6 h-6 bg-white/80 hover:bg-rose-50 text-gray-500 hover:text-rose-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
+            className="absolute top-8 left-1.5 w-6 h-6 bg-white/80 hover:bg-danger-50 text-muted-foreground hover:text-danger-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
             title="Éditer (trim, audio)"
           >
             <Scissors size={11} />
@@ -565,8 +575,8 @@ export function MediaAssetsVideoCard({
             onClick={(e) => { e.stopPropagation(); void handleToggleDisabled(asset); }}
             className={`absolute top-14.5 left-1.5 w-6 h-6 bg-white/80 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow ${
               asset.disabled
-                ? "text-peach-700 hover:text-peach-800 hover:bg-peach-50"
-                : "text-gray-500 hover:text-peach-700 hover:bg-peach-50"
+                ? "text-warning-700 hover:text-warning-700 hover:bg-warning-50"
+                : "text-muted-foreground hover:text-warning-700 hover:bg-warning-50"
             }`}
             title={asset.disabled ? "Réactiver dans la rotation" : "Désactiver de la rotation (garder dans la bibliothèque)"}
           >
@@ -574,7 +584,7 @@ export function MediaAssetsVideoCard({
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); void handleResetAssetUsage(asset); }}
-            className="absolute top-1.5 right-1.5 w-6 h-6 bg-white/80 hover:bg-peach-50 text-gray-500 hover:text-peach-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
+            className="absolute top-1.5 right-1.5 w-6 h-6 bg-white/80 hover:bg-warning-50 text-muted-foreground hover:text-warning-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
             title={accountFilter ? "Réinitialiser les stats de ce compte" : "Réinitialiser les compteurs"}
           >
             <RotateCcw size={11} />

@@ -3,32 +3,8 @@
 /**
  * CommandPalette — Cmd+K modal pour actions globales / nav rapide.
  *
- * Doctrine Liquid Glass v2 :
- * - Wrapper Modal-like : surface-glass-strong + shadow-glass-lg + ring inset.
- * - Pas de scrim dim (cohérent avec Modal/Drawer/Sheet Phase 3) : juste
- *   backdrop-blur 12.
- * - cmdk pour le matching fuzzy + a11y (focus, ARIA, keyboard nav).
- * - Items groupés par `group` avec heading uppercase tiny.
- * - Affichage du raccourci à droite (Kbd primitive).
- *
- * Usage :
- *
- * ```tsx
- * const [open, setOpen] = useState(false);
- *
- * useEffect(() => {
- *   const handler = (e: KeyboardEvent) => {
- *     if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
- *       e.preventDefault();
- *       setOpen((o) => !o);
- *     }
- *   };
- *   window.addEventListener("keydown", handler);
- *   return () => window.removeEventListener("keydown", handler);
- * }, []);
- *
- * <CommandPalette open={open} onClose={() => setOpen(false)} actions={...} />
- * ```
+ * Scrim solid zinc-950/50. Panel bg-popover border-border shadow-lg.
+ * cmdk pour matching fuzzy + a11y. Items groupés par `group`.
  */
 
 import { useEffect, useState, type ReactNode } from "react";
@@ -42,16 +18,11 @@ import { useRegisterDialog } from "./useDialogStack";
 export interface CommandAction {
   id: string;
   label: ReactNode;
-  /** Description courte sous le label (optionnel). */
   description?: string;
-  /** Mots-clés pour le fuzzy match. */
   keywords?: string[];
   icon?: LucideIcon;
-  /** Group label — items du même group sont rassemblés. */
   group?: string;
-  /** Raccourci affiché à droite. Tableau de touches. */
   shortcut?: string[];
-  /** Action exécutée au select. La palette se ferme automatiquement après. */
   run: () => void;
   disabled?: boolean;
 }
@@ -75,17 +46,12 @@ export function CommandPalette({
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
-  // Auto-focus à l'ouverture (cmdk gère ça naturellement mais on s'assure).
-  useEffect(() => {
-    if (!open) return;
-  }, [open]);
-
   if (!open || !mounted) return null;
 
-  // Group actions par `group`.
   const groups = (() => {
     const map = new Map<string, CommandAction[]>();
     for (const a of actions) {
@@ -100,7 +66,7 @@ export function CommandPalette({
   return createPortal(
     <>
       <div
-        className="fixed inset-0 backdrop-blur-[12px] backdrop-saturate-110"
+        className="fixed inset-0 bg-zinc-950/50"
         style={{ zIndex }}
         onClick={onClose}
         aria-hidden
@@ -112,31 +78,25 @@ export function CommandPalette({
         className="fixed inset-0 flex items-start justify-center px-4 pt-[15vh] pointer-events-none"
         style={{ zIndex: zIndex + 1 }}
       >
-        <div
-          className={[
-            "pointer-events-auto w-full max-w-xl rounded-2xl overflow-hidden",
-            "bg-gradient-to-b from-white to-white/85 backdrop-blur-[24px] backdrop-saturate-150",
-            "shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(15,23,42,0.06),0_8px_24px_-4px_rgba(15,23,42,0.12),0_32px_72px_-12px_rgba(15,23,42,0.22)]",
-          ].join(" ")}
-        >
+        <div className="pointer-events-auto w-full max-w-xl rounded-lg overflow-hidden bg-popover text-popover-foreground border border-border shadow-lg">
           <Command shouldFilter={true} className="flex flex-col max-h-[60vh]">
-            <div className="shrink-0 flex items-center gap-2.5 px-4 py-3 border-b border-white/30">
-              <Search size={16} className="shrink-0 text-gray-500" />
+            <div className="shrink-0 flex items-center gap-2.5 px-4 py-3 border-b border-border">
+              <Search size={16} className="shrink-0 text-muted-foreground" />
               <Command.Input
                 placeholder={placeholder}
-                className="flex-1 bg-transparent text-[14px] text-gray-950 placeholder:text-gray-400 outline-none"
+                className="flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground outline-none"
               />
               <KbdChord keys={["Esc"]} />
             </div>
             <Command.List className="flex-1 overflow-y-auto py-2">
-              <Command.Empty className="px-4 py-6 text-[13px] text-center text-gray-500">
+              <Command.Empty className="px-4 py-6 text-[13px] text-center text-muted-foreground">
                 {emptyMessage}
               </Command.Empty>
               {groups.map(([groupName, items]) => (
                 <Command.Group
                   key={groupName || "_default"}
                   heading={groupName || undefined}
-                  className="[&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-widest [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-gray-500"
+                  className="[&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-widest [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground"
                 >
                   {items.map((action) => {
                     const Icon = action.icon;
@@ -151,17 +111,17 @@ export function CommandPalette({
                           action.run();
                           onClose();
                         }}
-                        className="cursor-pointer mx-2 my-0.5 rounded-md inline-flex items-center gap-3 w-[calc(100%-1rem)] px-3 py-2 text-[13px] text-gray-700 transition-colors data-[selected=true]:bg-white/70 data-[selected=true]:backdrop-blur-[8px] data-[selected=true]:text-gray-950 data-[selected=true]:shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)] data-[disabled=true]:opacity-50 data-[disabled=true]:cursor-not-allowed"
+                        className="cursor-pointer mx-2 my-0.5 rounded-md inline-flex items-center gap-3 w-[calc(100%-1rem)] px-3 py-2 text-[13px] text-foreground transition-colors data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground data-[disabled=true]:opacity-50 data-[disabled=true]:cursor-not-allowed"
                       >
                         {Icon && (
-                          <span className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-md bg-white/60 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-                            <Icon size={14} className="text-gray-700" />
+                          <span className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-md bg-muted border border-border">
+                            <Icon size={14} className="text-muted-foreground" />
                           </span>
                         )}
                         <span className="flex-1 min-w-0">
                           <span className="block font-medium leading-tight">{action.label}</span>
                           {action.description && (
-                            <span className="block text-[11px] text-gray-500 leading-tight mt-0.5">
+                            <span className="block text-[11px] text-muted-foreground leading-tight mt-0.5">
                               {action.description}
                             </span>
                           )}

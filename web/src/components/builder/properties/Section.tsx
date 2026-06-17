@@ -16,8 +16,8 @@ export function Section({
     <div>
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-1.5">
-          {Icon && <Icon size={11} className="text-gray-400 shrink-0" />}
-          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{label}</p>
+          {Icon && <Icon size={11} className="text-muted-foreground shrink-0" />}
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
         </div>
         {action && <div className="shrink-0">{action}</div>}
       </div>

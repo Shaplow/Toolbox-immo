@@ -37,8 +37,8 @@ function Section({ id, title, eyebrow, children }: { id: string; title: string; 
   return (
     <section id={id} className="space-y-4 scroll-mt-20">
       <header className="space-y-1">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">{eyebrow}</p>
-        <h2 className="text-xl font-semibold tracking-tight text-gray-950">{title}</h2>
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">{eyebrow}</p>
+        <h2 className="text-xl font-semibold tracking-tight text-foreground">{title}</h2>
       </header>
       <div className="surface-glass-soft rounded-xl p-6">{children}</div>
     </section>
@@ -48,7 +48,7 @@ function Section({ id, title, eyebrow, children }: { id: string; title: string; 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-6 py-3 border-b border-white/30 last:border-b-0">
-      <span className="w-32 shrink-0 text-[10px] uppercase tracking-widest font-medium text-gray-500 pt-2">{label}</span>
+      <span className="w-32 shrink-0 text-[10px] uppercase tracking-widest font-medium text-muted-foreground pt-2">{label}</span>
       <div className="flex-1 flex flex-wrap items-center gap-3">{children}</div>
     </div>
   );
@@ -76,14 +76,14 @@ export default function AtomsPage() {
   return (
     <div className="space-y-14">
       <header className="space-y-3">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">
           Phase 2 · Atoms
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight text-gray-950">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           22 primitives — Liquid Glass
         </h1>
-        <p className="text-sm text-gray-600 max-w-2xl leading-relaxed">
-          Chaque primitive a gagné un variant <code className="text-[12px] font-mono text-gray-700 bg-white/60 px-1 rounded">glass</code> ou <code className="text-[12px] font-mono text-gray-700 bg-white/60 px-1 rounded">tinted</code> opt-in
+        <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
+          Chaque primitive a gagné un variant <code className="text-[12px] font-mono text-foreground bg-white/60 px-1 rounded">glass</code> ou <code className="text-[12px] font-mono text-foreground bg-white/60 px-1 rounded">tinted</code> opt-in
           (Phase 2A). Les overlays (Tooltip, DropdownMenu, ConfirmDialog, Toast) ont
           migré leur défaut vers Liquid Glass (Phase 2B). Cette page sert de
           validation visuelle avant Phase 3.
@@ -102,7 +102,7 @@ export default function AtomsPage() {
 
         {/* Glass + softPrimary mis en scène sur fond coloré pour révéler le vrai verre */}
         <div className="mt-4 space-y-2">
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Glass v2 · sur fond coloré</p>
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Glass v2 · sur fond coloré</p>
           <div
             className="rounded-2xl p-6 ring-1 ring-white/30"
             style={{ backgroundImage: "linear-gradient(135deg, #ffe6d0 0%, #f7dde2 50%, #d4e8f3 100%)" }}
@@ -115,7 +115,7 @@ export default function AtomsPage() {
               <Button variant="softPrimary" icon={Plus} size="lg">Action chaude</Button>
             </div>
           </div>
-          <p className="text-[11px] text-gray-500 leading-relaxed">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
             Vrai verre macOS Tahoe : gradient blanc top → translucide bottom,
             ring inset spéculaire prononcé, halo extérieur diffus. Le fond
             derrière est blurred et désaturé.
@@ -146,7 +146,7 @@ export default function AtomsPage() {
 
         {/* Glass + Floating mis en scène sur image / dégradé pour vrai effet FAB */}
         <div className="mt-4 space-y-2">
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Glass + Floating · sur fond coloré</p>
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Glass + Floating · sur fond coloré</p>
           <div
             className="relative rounded-2xl p-10 ring-1 ring-white/30 min-h-[140px]"
             style={{ backgroundImage: "linear-gradient(135deg, #ffe6d0 0%, #f7dde2 50%, #d4e8f3 100%)" }}
@@ -162,7 +162,7 @@ export default function AtomsPage() {
               <ButtonIcon icon={Download} label="Télécharger" floating size="sm" />
             </div>
           </div>
-          <p className="text-[11px] text-gray-500 leading-relaxed">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
             Variant glass = même signature liquide que Button glass.
             Option <code className="text-[11px] font-mono">floating</code> = FAB rond avec blur 24px et ombre diffuse — flotte vraiment au-dessus du contenu.
           </p>
@@ -181,7 +181,7 @@ export default function AtomsPage() {
               { label: "Supprimer", icon: Trash2, destructive: true, onClick: () => {} },
             ]}
           />
-          <span className="text-[12px] text-gray-500">Click → panel passe en surface-glass-strong + shadow-glass-popover.</span>
+          <span className="text-[12px] text-muted-foreground">Click → panel passe en surface-glass-strong + shadow-glass-popover.</span>
         </Row>
       </Section>
 
@@ -197,7 +197,7 @@ export default function AtomsPage() {
           <div className="w-72">
             <Input value={glassInputV} onChange={setGlassInputV} placeholder="Rechercher…" icon={Search} variant="glass" />
           </div>
-          <span className="text-[12px] text-gray-500">Halo sky au focus</span>
+          <span className="text-[12px] text-muted-foreground">Halo sky au focus</span>
         </Row>
         <Row label="States">
           <div className="w-72">
@@ -298,7 +298,7 @@ export default function AtomsPage() {
             Trigger info
           </Button>
         </Row>
-        <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
+        <p className="text-[12px] text-muted-foreground mt-3 leading-relaxed">
           Le toast apparaît en bas à droite. Surface glass-popover + accent gauche
           pastel (sage / rose / sky) selon type.
         </p>
@@ -334,7 +334,7 @@ export default function AtomsPage() {
         <Row label="Migration interne">
           <Tooltip content="Raccourci · ⌘K"><Button variant="secondary" size="sm">Hover me</Button></Tooltip>
           <Tooltip content="Action discrète"><ButtonIcon icon={Copy} label="Copier" /></Tooltip>
-          <span className="text-[12px] text-gray-500">Look macOS Sequoia : noir 90 % + backdrop-blur + ring inset.</span>
+          <span className="text-[12px] text-muted-foreground">Look macOS Sequoia : noir 90 % + backdrop-blur + ring inset.</span>
         </Row>
       </Section>
 
@@ -346,7 +346,7 @@ export default function AtomsPage() {
             Supprimer cet élément
           </Button>
         </Row>
-        <p className="text-[12px] text-gray-500 mt-3 leading-relaxed">
+        <p className="text-[12px] text-muted-foreground mt-3 leading-relaxed">
           Backdrop scrim-dark + backdrop-blur 4 px. Panel surface-glass-strong +
           shadow-glass-lg. ESC ou click backdrop ferme.
         </p>
@@ -365,14 +365,14 @@ export default function AtomsPage() {
       </Section>
 
       <Section id="dropzone" eyebrow="Overlays" title="MediaDropzone">
-        <p className="text-[12px] text-gray-600 mb-3 leading-relaxed">
+        <p className="text-[12px] text-muted-foreground mb-3 leading-relaxed">
           Composant complet câblé sur l'API publications — non démontrable hors
           contexte. Le visuel : surface-glass-soft au repos, gradient aurora +
           shadow-glass au hover/dragover.
         </p>
-        <div className="rounded-lg border-2 border-dashed border-gray-300 bg-[var(--surface-glass-soft)] backdrop-blur-[8px] px-6 py-8 text-center">
-          <p className="text-[13px] font-medium text-gray-950">Aperçu zone de dépôt</p>
-          <p className="text-[11px] text-gray-500 mt-0.5">surface-glass-soft + backdrop-blur 8 px</p>
+        <div className="rounded-lg border-2 border-dashed border-border bg-[var(--surface-glass-soft)] px-6 py-8 text-center">
+          <p className="text-[13px] font-medium text-foreground">Aperçu zone de dépôt</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">surface-glass-soft + backdrop-blur 8 px</p>
         </div>
       </Section>
 
@@ -406,28 +406,28 @@ export default function AtomsPage() {
       <Section id="card" eyebrow="Data" title="Card">
         {/* ── Solid sur fond neutre ──────────────────────────────────── */}
         <div className="mb-6 space-y-2">
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Solid (défaut)</p>
-          <div className="rounded-2xl bg-gray-50 p-6 ring-1 ring-gray-200/60">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Solid (défaut)</p>
+          <div className="rounded-2xl bg-muted p-6 ring-1 ring-gray-200/60">
             <Card variant="solid">
               <CardHeader title="Pattern Vidéo Story" />
               <div className="mt-4 space-y-3">
                 <div className="flex items-baseline justify-between">
-                  <span className="text-[13px] text-gray-700">Publications cette semaine</span>
-                  <span className="text-2xl font-semibold tracking-tight text-gray-950 tabular-nums">14</span>
+                  <span className="text-[13px] text-foreground">Publications cette semaine</span>
+                  <span className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">14</span>
                 </div>
-                <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                <div className="flex items-center gap-2 pt-2 border-t border-border">
                   <Badge variant="success" dot>Validé</Badge>
                   <Badge variant="info" dot>3 programmés</Badge>
                 </div>
               </div>
             </Card>
           </div>
-          <p className="text-[11px] text-gray-500 leading-relaxed">Posée sur fond gray-50 → look document classique, border gray-200, density Linear.</p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">Posée sur fond gray-50 → look document classique, border gray-200, density Linear.</p>
         </div>
 
         {/* ── Glass sur fond aurora ──────────────────────────────────── */}
         <div className="mb-6 space-y-2">
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Glass + Frosted</p>
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Glass + Frosted</p>
           <div
             className="rounded-2xl p-6 ring-1 ring-white/30"
             style={{ backgroundImage: "linear-gradient(135deg, #ffe6d0 0%, #f7dde2 50%, #d4e8f3 100%)" }}
@@ -435,7 +435,7 @@ export default function AtomsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Card variant="glass" border={false}>
                 <CardHeader title="Glass · strong" borderless />
-                <p className="text-[12px] text-gray-700 mt-3 leading-relaxed">
+                <p className="text-[12px] text-foreground mt-3 leading-relaxed">
                   surface-glass-strong + blur 20px + ring inset. Posée sur dégradé pour révéler la matière verre — l'arrière est blurred et désaturé.
                 </p>
                 <div className="mt-3 flex items-center gap-2">
@@ -445,7 +445,7 @@ export default function AtomsPage() {
               </Card>
               <Card variant="frosted" border={false}>
                 <CardHeader title="Frosted" borderless />
-                <p className="text-[12px] text-gray-700 mt-3 leading-relaxed">
+                <p className="text-[12px] text-foreground mt-3 leading-relaxed">
                   gradient-frosted blanc + blur 12px + ring edge. Plus opaque que glass-strong, parfait pour panneaux secondaires sans perdre la transparence.
                 </p>
                 <div className="mt-3">
@@ -454,12 +454,12 @@ export default function AtomsPage() {
               </Card>
             </div>
           </div>
-          <p className="text-[11px] text-gray-500 leading-relaxed">Sur fond coloré → vrai effet liquide visible : blur, ring inset, gradient frosted top.</p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">Sur fond coloré → vrai effet liquide visible : blur, ring inset, gradient frosted top.</p>
         </div>
 
         {/* ── Tinted × 4 ─────────────────────────────────────────────── */}
         <div className="mb-6 space-y-2">
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Tinted × Coastal Studio</p>
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Tinted × Coastal Studio</p>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {([
               { tint: "peach" as const, title: "Brief client", note: "À faire" },
@@ -468,26 +468,26 @@ export default function AtomsPage() {
               { tint: "rose" as const, title: "Override actif", note: "Cover custom" },
             ]).map((c) => (
               <Card key={c.tint} variant="tinted" tint={c.tint}>
-                <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1">{c.tint}</p>
-                <p className="text-[14px] font-semibold text-gray-950 leading-tight">{c.title}</p>
-                <p className="text-[11px] text-gray-700 mt-2">{c.note}</p>
+                <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1">{c.tint}</p>
+                <p className="text-[14px] font-semibold text-foreground leading-tight">{c.title}</p>
+                <p className="text-[11px] text-foreground mt-2">{c.note}</p>
               </Card>
             ))}
           </div>
-          <p className="text-[11px] text-gray-500 leading-relaxed">Background pastel + border même teinte. Idéal pour catégoriser des cards en un coup d'œil sans saturer.</p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">Background pastel + border même teinte. Idéal pour catégoriser des cards en un coup d'œil sans saturer.</p>
         </div>
 
         {/* ── Interactive ────────────────────────────────────────────── */}
         <div className="space-y-2">
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Interactive · hover</p>
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Interactive · hover</p>
           <div className="grid grid-cols-2 gap-4">
             <Card interactive>
-              <p className="text-[12px] font-medium text-gray-950">Solid · hover lift</p>
-              <p className="text-[11px] text-gray-500 mt-1">translate-y + shadow-card-elevated + border gray-300</p>
+              <p className="text-[12px] font-medium text-foreground">Solid · hover lift</p>
+              <p className="text-[11px] text-muted-foreground mt-1">translate-y + shadow-card-elevated + border gray-300</p>
             </Card>
             <Card interactive variant="glass" border={false}>
-              <p className="text-[12px] font-medium text-gray-950">Glass · hover lift</p>
-              <p className="text-[11px] text-gray-600 mt-1">translate-y + shadow-glass-md + ring intérieur prononcé</p>
+              <p className="text-[12px] font-medium text-foreground">Glass · hover lift</p>
+              <p className="text-[11px] text-muted-foreground mt-1">translate-y + shadow-glass-md + ring intérieur prononcé</p>
             </Card>
           </div>
         </div>
@@ -500,7 +500,7 @@ export default function AtomsPage() {
             onChange={setTab}
             items={[
               { id: "a", label: "Aperçu" },
-              { id: "b", label: "Versions", badge: <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600">3</span> },
+              { id: "b", label: "Versions", badge: <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">3</span> },
               { id: "c", label: "Activité" },
             ]}
           />
@@ -519,7 +519,7 @@ export default function AtomsPage() {
         </Row>
         {/* Glass mis en scène sur fond aurora pour révéler le verre */}
         <div className="mt-4 space-y-2">
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Glass v2 — sur fond coloré</p>
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Glass v2 — sur fond coloré</p>
           <div
             className="rounded-2xl p-6 ring-1 ring-white/30"
             style={{ backgroundImage: "linear-gradient(135deg, #ffe6d0 0%, #f7dde2 50%, #d4e8f3 100%)" }}
@@ -535,7 +535,7 @@ export default function AtomsPage() {
               ]}
             />
           </div>
-          <p className="text-[11px] text-gray-500 leading-relaxed">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
             Pill segmenté flottant : gradient frosted + ring inset top + halo
             diffus. Tab actif = pastille blanche solide qui semble pressée dans
             le verre.
@@ -557,16 +557,16 @@ export default function AtomsPage() {
           <KbdChord keys={["⌥", "Tab"]} separator="·" />
         </Row>
         <div className="mt-4 space-y-2">
-          <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Dans un contexte réel</p>
-          <div className="rounded-2xl bg-gray-50 p-5 ring-1 ring-gray-200/60">
-            <div className="space-y-2.5 text-[13px] text-gray-700">
+          <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Dans un contexte réel</p>
+          <div className="rounded-2xl bg-muted p-5 ring-1 ring-gray-200/60">
+            <div className="space-y-2.5 text-[13px] text-foreground">
               <p className="flex items-center gap-2">Ouvrir la palette de commandes <KbdChord keys={["⌘", "K"]} /></p>
               <p className="flex items-center gap-2">Aller au listing suivant <Kbd>J</Kbd></p>
               <p className="flex items-center gap-2">Revenir au listing précédent <Kbd>K</Kbd></p>
               <p className="flex items-center gap-2">Fermer un dialogue <Kbd>Esc</Kbd></p>
             </div>
           </div>
-          <p className="text-[11px] text-gray-500 leading-relaxed">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
             Vraies touches macOS Sequoia : gradient blanc top, ring inset
             spéculaire, ombre bas marquée pour relief tactile.
           </p>
@@ -579,15 +579,15 @@ export default function AtomsPage() {
           {/* Header de fiche mock */}
           <div className="surface-glass rounded-2xl px-5 py-4 flex items-center justify-between">
             <div>
-              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">Publication</p>
-              <h3 className="text-[15px] font-semibold tracking-tight text-gray-950 mt-0.5">Story carrousel #18 — @studio-paris</h3>
+              <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">Publication</p>
+              <h3 className="text-[15px] font-semibold tracking-tight text-foreground mt-0.5">Story carrousel #18 — @studio-paris</h3>
             </div>
             <Badge variant="info" dot>Programmé</Badge>
           </div>
 
           {/* Section ouverte */}
           <CollapsibleSection title="Brief client" defaultOpen={true}>
-            <div className="px-5 py-4 rounded-2xl bg-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[var(--ring-glass-edge)]">
+            <div className="px-5 py-4 rounded-2xl bg-card border border-border shadow-[var(--ring-glass-edge)]">
               <p className="text-[13px] text-gray-800 leading-relaxed">
                 Visite guidée de l'appartement 3 pièces, 65 m². Mise en avant
                 de la cuisine ouverte et de la vue Sacré-Cœur.
@@ -611,7 +611,7 @@ export default function AtomsPage() {
 
           {/* Section ouverte */}
           <CollapsibleSection title="Description IG" defaultOpen={true}>
-            <div className="px-5 py-4 rounded-2xl bg-white/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[var(--ring-glass-edge)]">
+            <div className="px-5 py-4 rounded-2xl bg-card border border-border shadow-[var(--ring-glass-edge)]">
               <p className="text-[13px] text-gray-800 leading-relaxed italic">
                 ✨ Un trois pièces qui sent bon Paris. Cuisine ouverte, lumière
                 travaillée et vue toits sur Montmartre — disponible pour visite
@@ -620,7 +620,7 @@ export default function AtomsPage() {
             </div>
           </CollapsibleSection>
         </div>
-        <p className="text-[11px] text-gray-500 mt-4 leading-relaxed">
+        <p className="text-[11px] text-muted-foreground mt-4 leading-relaxed">
           Mini fiche simulée — voir le contraste entre les pills glass-faint
           (fermées) et le contenu glass-soft (ouvert). Sticky-header-au-scroll
           prévu Phase 6.
@@ -629,10 +629,10 @@ export default function AtomsPage() {
 
       {/* Note pied de page */}
       <div className="surface-glass-soft rounded-xl p-5 mt-12">
-        <p className="text-[11px] uppercase tracking-widest font-medium text-gray-500 mb-2">
+        <p className="text-[11px] uppercase tracking-widest font-medium text-muted-foreground mb-2">
           Phases suivantes
         </p>
-        <p className="text-[13px] text-gray-700 leading-relaxed">
+        <p className="text-[13px] text-foreground leading-relaxed">
           Phase 3 → 16 atomes nouveaux (Modal, Drawer, Sheet, Avatar, Alert,
           Progress, Combobox, Chip, Breadcrumb, Stepper, CommandPalette, Table,
           Pagination, DatePicker, TimePicker, NumberStepper). Phase 4 → 11

@@ -180,7 +180,7 @@ export function CaptionsSection({
   const canRegenerate = isDone || isError;
 
   const linkedBadge = currentVersion ? (
-    <span className="text-[11px] text-gray-600 bg-white/60 backdrop-blur-[6px] border border-white/50 px-2 py-0.5 rounded-full font-medium shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+    <span className="text-[11px] text-muted-foreground bg-card border border-border border border-white/50 px-2 py-0.5 rounded-full font-medium ">
       Lié à V{currentVersion.versionNumber}
     </span>
   ) : null;
@@ -198,7 +198,7 @@ export function CaptionsSection({
         defaultOpen={defaultOpen}
         collapsible={collapsible}
         actions={
-          <span className="text-[11px] text-gray-600 bg-white/60 backdrop-blur-[6px] border border-white/50 px-2 py-0.5 rounded-full font-medium shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+          <span className="text-[11px] text-muted-foreground bg-card border border-border border border-white/50 px-2 py-0.5 rounded-full font-medium ">
             Mode manuel
           </span>
         }
@@ -209,7 +209,7 @@ export function CaptionsSection({
               Sous-titres saisis à la main.
             </Alert>
           ) : (
-            <Alert variant="glass" icon={Subtitles}>
+            <Alert variant="info" icon={Subtitles}>
               Mode manuel : rédige les sous-titres à la main, ils seront stockés
               sur la publication (pas de burn-in vidéo).
             </Alert>
@@ -253,7 +253,7 @@ export function CaptionsSection({
 
         {/* État du dernier job — Alert molecule (uniformisé pattern P4 audit V1) */}
         {latestCaptionJob && isInProgress && (
-          <Alert variant="glass" icon={Loader2}>
+          <Alert variant="info" icon={Loader2}>
             {latestCaptionJob.status === "QUEUED"
               ? "Job en file d'attente…"
               : "Traitement en cours…"}
@@ -296,7 +296,7 @@ export function CaptionsSection({
           </Alert>
         )}
         {!latestCaptionJob && verdict.visible && verdict.enabled === true && (
-          <Alert variant="glass" icon={Subtitles}>
+          <Alert variant="info" icon={Subtitles}>
             Aucun job de sous-titres encore lancé pour cette publication.
           </Alert>
         )}
@@ -310,8 +310,8 @@ export function CaptionsSection({
             Le 2e bouton est plus large (visible même avec captionJob
             existant) car c'est une action de force voulue. */}
         {isAdmin && captionsMode === "auto" && renderId && renderStatus === "DONE" && (
-          <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-200/60">
-            <span className="text-[11px] text-gray-500">Admin</span>
+          <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/60">
+            <span className="text-[11px] text-muted-foreground">Admin</span>
             <div className="flex items-center gap-2">
               {!latestCaptionJob && (
                 <Button

@@ -18,18 +18,13 @@
 // ───────────────────────────────────────────────────────────────────────────
 
 export const ENTITY_LABELS = {
-  // Une PatternTemplate (recette éditoriale réutilisable cross-comptes)
+  // Une PatternTemplate ou un PatternBinding fusionnés en UI : on parle
+  // toujours de "recette" depuis G.3, qu'il s'agisse du blueprint global
+  // (catalogue) ou de son application à un compte (fiche compte).
   pattern: {
     singular: "Recette",
     plural: "Recettes",
     article: "la",
-    determinant: "une",
-  },
-  // Un PatternBinding (application d'une recette à un compte avec planning)
-  binding: {
-    singular: "Application",
-    plural: "Applications",
-    article: "l'",
     determinant: "une",
   },
   // Un PublicationSlot (créneau de publication)
@@ -174,6 +169,26 @@ export const CAPTIONS_MODE_HELP: Record<string, string> = {
 };
 
 // ───────────────────────────────────────────────────────────────────────────
+// Médiathèque + Data — Groupe / Catégorie
+// ───────────────────────────────────────────────────────────────────────────
+//
+// H.1 (16/06) — Le DB-level `setTag` (MediaAsset, DataEntry) est exposé en UI
+// sous le terme unifié « Groupe » côté média ET data. L'ancien vocabulaire
+// "Pack" (média) / "Set" (data) a été retiré : un seul mot pour la même
+// mécanique de groupement / rotation. Le code Prisma reste inchangé.
+//
+// Le concept "category" (MediaAsset.category, DataEntry.category) reste
+// exposé sous "Catégorie" mais caché en mode simple (cf H.3).
+
+export const MEDIA_LABELS_FR = {
+  group: "Groupe",
+  groupPlural: "Groupes",
+  category: "Catégorie",
+  asset: "Asset",
+  assetPlural: "Assets",
+};
+
+// ───────────────────────────────────────────────────────────────────────────
 // Rôles
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -184,3 +199,37 @@ export const ROLE_LABELS: Record<string, string> = {
   CM: "CM",
   EXTERNAL_GENERATOR: "Générateur externe",
 };
+
+// ───────────────────────────────────────────────────────────────────────────
+// MediaLibrary.rotationScope — portée des curseurs de rotation
+// ───────────────────────────────────────────────────────────────────────────
+//
+// Source unique : avant, "shared"/"per_account" étaient traduits localement de
+// 5 façons différentes (dont "Per-account" en anglais brut). Tout passe ici.
+
+export const ROTATION_SCOPE_LABELS: Record<string, string> = {
+  shared: "Partagé (global)",
+  per_account: "Indépendant par compte",
+};
+
+export function rotationScopeLabel(scope: string | null | undefined): string {
+  if (!scope) return "Indépendant par compte";
+  return ROTATION_SCOPE_LABELS[scope] ?? scope;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// DataCampaign.usagePolicy — politique de consommation des entrées
+// ───────────────────────────────────────────────────────────────────────────
+
+export const USAGE_POLICY_LABELS: Record<string, string> = {
+  cycle: "Cycle global",
+  cycle_per_account: "Cycle par compte",
+  once_per_account: "1 fois par compte",
+  once_global: "1 fois global",
+  unlimited: "Sans limite",
+};
+
+export function usagePolicyLabel(policy: string | null | undefined): string {
+  if (!policy) return "—";
+  return USAGE_POLICY_LABELS[policy] ?? policy;
+}

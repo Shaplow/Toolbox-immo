@@ -205,8 +205,8 @@ export function RenderSection({
       {/* Cas : pattern manuel sans render auto — info glass tinted neutre.
           Le wording dépend de la source pour clarifier qui fait quoi. */}
       {pattern?.source === "manual_rushes" && (
-        <div className="flex items-start gap-2 text-[12px] text-gray-700 bg-white/60 backdrop-blur-[8px] rounded-lg p-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-          <Upload size={14} className="text-gray-500 mt-0.5 flex-shrink-0" />
+        <div className="flex items-start gap-2 text-[12px] text-foreground bg-card border border-border rounded-lg p-3 ">
+          <Upload size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
           <span className="leading-relaxed">
             Vidéo livrée par le monteur depuis ses rushes —
             {" "}
@@ -221,8 +221,8 @@ export function RenderSection({
         </div>
       )}
       {pattern?.source === "external_upload" && (
-        <div className="flex items-start gap-2 text-[12px] text-gray-700 bg-white/60 backdrop-blur-[8px] rounded-lg p-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
-          <Upload size={14} className="text-gray-500 mt-0.5 flex-shrink-0" />
+        <div className="flex items-start gap-2 text-[12px] text-foreground bg-card border border-border rounded-lg p-3 ">
+          <Upload size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
           <span className="leading-relaxed">
             Vidéo uploadée directement par le client — pas de rushes, pas de montage interne.
           </span>
@@ -273,9 +273,9 @@ export function RenderSection({
               du render + un badge explicite "version finale en cours de
               préparation" pour éviter l'écran muet. */}
           {pendingCaptionsBurnIn && !isCaptioned && (
-            <div className="rounded-xl bg-gradient-to-b from-sky-50/85 to-sky-50/55 backdrop-blur-[10px] backdrop-saturate-150 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(96,165,250,0.30)]">
-              <p className="text-[12px] text-sky-900 flex items-center gap-2">
-                <span className="inline-block h-2 w-2 rounded-full bg-sky-500 animate-pulse" />
+            <div className="rounded-xl bg-gradient-to-b from-info-50/85 to-info-50/55 px-4 py-3 ">
+              <p className="text-[12px] text-info-700 flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-info-600 animate-pulse" />
                 <strong>Aperçu sans sous-titres</strong> — la version finale
                 avec sous-titres incrustés sera disponible une fois les
                 captions terminées.
@@ -327,7 +327,7 @@ export function RenderSection({
       {/* Cas : render présent avec image uniquement */}
       {render && !render.videoUrl && render.pngUrl && (
         <div className="space-y-4">
-          <div className="max-w-[280px] rounded-2xl overflow-hidden bg-gradient-to-b from-white to-white/80 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08),0_2px_8px_-2px_rgba(15,23,42,0.08)]">
+          <div className="max-w-[280px] rounded-2xl overflow-hidden bg-gradient-to-b from-white to-white/80 ">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={render.pngUrl}

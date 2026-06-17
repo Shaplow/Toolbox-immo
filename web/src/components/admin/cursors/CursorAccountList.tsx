@@ -137,28 +137,28 @@ export function CursorAccountList({
   return (
     <>
       {/* Table wrapper */}
-      <div className="overflow-x-auto rounded-xl border border-white/50 bg-white/40 backdrop-blur-[6px] shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]">
+      <div className="overflow-x-auto rounded-xl border border-white/50 bg-card border border-border ">
         <table className="w-full text-[13px]">
           <thead>
-            <tr className="border-b border-gray-100/80">
-              <th className="px-4 py-2.5 text-left text-[10px] uppercase tracking-widest font-medium text-gray-500">
+            <tr className="border-b border-border/80">
+              <th className="px-4 py-2.5 text-left text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                 Compte
               </th>
               {type === "media" && (
-                <th className="px-4 py-2.5 text-left text-[10px] uppercase tracking-widest font-medium text-gray-500">
+                <th className="px-4 py-2.5 text-left text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                   Cursor
                 </th>
               )}
-              <th className="px-4 py-2.5 text-left text-[10px] uppercase tracking-widest font-medium text-gray-500">
+              <th className="px-4 py-2.5 text-left text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                 Last setTag
               </th>
-              <th className="px-4 py-2.5 text-left text-[10px] uppercase tracking-widest font-medium text-gray-500">
+              <th className="px-4 py-2.5 text-left text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                 Last catégorie
               </th>
-              <th className="px-4 py-2.5 text-left text-[10px] uppercase tracking-widest font-medium text-gray-500">
+              <th className="px-4 py-2.5 text-left text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                 Dernière avance
               </th>
-              <th className="px-4 py-2.5 text-right text-[10px] uppercase tracking-widest font-medium text-gray-500">
+              <th className="px-4 py-2.5 text-right text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
                 Actions
               </th>
             </tr>
@@ -169,13 +169,13 @@ export function CursorAccountList({
               return (
                 <tr
                   key={row.accountId}
-                  className="border-b border-gray-100/60 last:border-0 hover:bg-white/30 transition-colors"
+                  className="border-b border-border/60 last:border-0 hover:bg-white/30 transition-colors"
                 >
                   {/* Compte */}
                   <td className="px-4 py-2.5">
                     <span className="inline-flex items-center gap-2 font-medium text-gray-900">
                       {row.handle ?? (
-                        <span className="text-gray-500 font-normal italic">{row.accountId.slice(0, 12)}…</span>
+                        <span className="text-muted-foreground font-normal italic">{row.accountId.slice(0, 12)}…</span>
                       )}
                       {row.isShared && (
                         <Badge size="sm" variant="default">PARTAGÉ</Badge>
@@ -186,10 +186,10 @@ export function CursorAccountList({
                   {/* Cursor (Media seulement) */}
                   {type === "media" && (
                     <td className="px-4 py-2.5">
-                      <span className="font-mono text-[12px] text-gray-700">
+                      <span className="font-mono text-[12px] text-foreground">
                         {row.cursor ?? 0}
                         {sequenceLength > 0 && (
-                          <span className="text-gray-400">/{sequenceLength}</span>
+                          <span className="text-muted-foreground">/{sequenceLength}</span>
                         )}
                       </span>
                     </td>
@@ -198,27 +198,27 @@ export function CursorAccountList({
                   {/* Last setTag */}
                   <td className="px-4 py-2.5">
                     {row.lastUsedSetTag ? (
-                      <span className="font-mono text-[12px] text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded">
+                      <span className="font-mono text-[12px] text-info-700 bg-info-50 px-1.5 py-0.5 rounded">
                         {row.lastUsedSetTag}
                       </span>
                     ) : (
-                      <span className="text-gray-400">—</span>
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </td>
 
                   {/* Last catégorie */}
                   <td className="px-4 py-2.5">
                     {row.lastUsedCategory ? (
-                      <span className="font-mono text-[12px] text-sage-700 bg-sage-50 px-1.5 py-0.5 rounded">
+                      <span className="font-mono text-[12px] text-success-700 bg-success-50 px-1.5 py-0.5 rounded">
                         {row.lastUsedCategory}
                       </span>
                     ) : (
-                      <span className="text-gray-400">—</span>
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </td>
 
                   {/* Dernière avance */}
-                  <td className="px-4 py-2.5 text-[12px] text-gray-500">
+                  <td className="px-4 py-2.5 text-[12px] text-muted-foreground">
                     {formatDate(row.lastAdvancedAt)}
                   </td>
 

@@ -38,7 +38,7 @@ function KeyEditor({ originalKey, onCommit }: { originalKey: string; onCommit: (
           (e.target as HTMLInputElement).blur();
         }
       }}
-      className="w-32 shrink-0 text-xs border border-gray-200 rounded px-2 py-1 text-gray-700 focus:outline-none focus:ring-1 focus:ring-sky-300 bg-gray-50"
+      className="w-32 shrink-0 text-xs border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-info-200 bg-muted"
     />
   );
 }
@@ -86,20 +86,20 @@ export function FlexFieldsEditor({ schema, values, onChange, readOnly = false }:
   return (
     <div className="space-y-2">
       {schema.length === 0 && (
-        <p className="text-xs text-gray-400 italic">Aucun champ. Ajoutez-en un ci-dessous.</p>
+        <p className="text-xs text-muted-foreground italic">Aucun champ. Ajoutez-en un ci-dessous.</p>
       )}
 
       {schema.map((key) => (
         <div key={key} className="flex items-center gap-2">
           {!readOnly && (
-            <span className="text-gray-300 shrink-0">
+            <span className="text-muted-foreground/60 shrink-0">
               <GripVertical size={14} />
             </span>
           )}
           {/* Key label — editable if not readOnly. Controlled via KeyEditor
               pour éviter les races onBlur stale entre 2 renames rapides. */}
           {readOnly ? (
-            <span className="w-32 shrink-0 text-xs font-medium text-gray-600 truncate">{key}</span>
+            <span className="w-32 shrink-0 text-xs font-medium text-muted-foreground truncate">{key}</span>
           ) : (
             <KeyEditor originalKey={key} onCommit={(next) => renameField(key, next)} />
           )}
@@ -111,14 +111,14 @@ export function FlexFieldsEditor({ schema, values, onChange, readOnly = false }:
             onChange={(e) => updateValue(key, e.target.value)}
             readOnly={readOnly}
             placeholder={`Valeur pour « ${key} »`}
-            className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 text-gray-800 focus:outline-none focus:ring-1 focus:ring-sky-300 disabled:bg-gray-50"
+            className="flex-1 text-xs border border-border rounded px-2 py-1 text-gray-800 focus:outline-none focus:ring-1 focus:ring-info-200 disabled:bg-muted"
           />
 
           {!readOnly && (
             <button
               type="button"
               onClick={() => removeField(key)}
-              className="shrink-0 p-1 text-gray-400 hover:text-red-500 rounded"
+              className="shrink-0 p-1 text-muted-foreground hover:text-red-500 rounded"
             >
               <Trash2 size={13} />
             </button>
@@ -135,13 +135,13 @@ export function FlexFieldsEditor({ schema, values, onChange, readOnly = false }:
             onChange={(e) => setNewKey(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addField(); } }}
             placeholder="Nom du champ…"
-            className="flex-1 text-xs border border-dashed border-gray-300 rounded px-2 py-1 text-gray-700 focus:outline-none focus:ring-1 focus:ring-sky-300"
+            className="flex-1 text-xs border border-dashed border-gray-300 rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-info-200"
           />
           <button
             type="button"
             onClick={addField}
             disabled={!newKey.trim()}
-            className="shrink-0 px-2.5 py-1 text-xs text-sky-600 border border-sky-200 rounded hover:bg-sky-50 disabled:opacity-40 flex items-center gap-1"
+            className="shrink-0 px-2.5 py-1 text-xs text-info-600 border border-info-200 rounded hover:bg-info-50 disabled:opacity-40 flex items-center gap-1"
           >
             <Plus size={12} /> Ajouter
           </button>

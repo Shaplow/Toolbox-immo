@@ -139,23 +139,23 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
       <button
         type="button"
         onClick={() => router.push("/transcriptions")}
-        className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900"
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-gray-900"
       >
         <ArrowLeft className="w-4 h-4" />
         Retour
       </button>
 
       {/* Header */}
-      <div className="bg-white border border-gray-100 rounded-2xl p-5 space-y-4">
+      <div className="bg-white border border-border rounded-2xl p-5 space-y-4">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 bg-sky-50 rounded-xl flex items-center justify-center shrink-0">
-            <Mic2 className="w-5 h-5 text-sky-700" />
+          <div className="w-10 h-10 bg-info-50 rounded-xl flex items-center justify-center shrink-0">
+            <Mic2 className="w-5 h-5 text-info-700" />
           </div>
           <div className="flex-1 min-w-0">
             <h1 className="font-semibold text-gray-900 truncate">
               {job.inputFilename ?? "Transcription"}
             </h1>
-            <p className="text-sm text-gray-400 mt-0.5">
+            <p className="text-sm text-muted-foreground mt-0.5">
               {new Date(job.createdAt).toLocaleString("fr-FR")}
             </p>
           </div>
@@ -163,8 +163,8 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
           <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
             job.status === "COMPLETED" ? "bg-green-50 text-green-700" :
             job.status === "FAILED"    ? "bg-red-50 text-red-700" :
-            job.status === "PROCESSING" ? "bg-sky-50 text-sky-800" :
-            "bg-gray-50 text-gray-500"
+            job.status === "PROCESSING" ? "bg-info-50 text-info-700" :
+            "bg-muted text-muted-foreground"
           }`}>
             {job.status === "COMPLETED" && <CheckCircle className="w-3.5 h-3.5" />}
             {job.status === "FAILED"    && <XCircle className="w-3.5 h-3.5" />}
@@ -180,33 +180,33 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
         {/* Metadata chips */}
         <div className="flex flex-wrap gap-2">
           {job.duration != null && (
-            <span className="px-2.5 py-1 rounded-full bg-gray-50 text-gray-600 text-xs">
+            <span className="px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs">
               ⏱ {fmtDuration(job.duration)}
             </span>
           )}
           {job.segmentCount != null && (
-            <span className="px-2.5 py-1 rounded-full bg-gray-50 text-gray-600 text-xs">
+            <span className="px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs">
               {job.segmentCount} segments
             </span>
           )}
-          <span className="px-2.5 py-1 rounded-full bg-gray-50 text-gray-600 text-xs">
+          <span className="px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs">
             {MODEL_LABELS[job.model] ?? job.model}
           </span>
           <span className={`px-2.5 py-1 rounded-full text-xs ${
             job.languages && job.languages.length >= 2
-              ? "bg-sky-100 text-sky-900 font-semibold"
-              : "bg-gray-50 text-gray-600"
+              ? "bg-info-100 text-info-700 font-semibold"
+              : "bg-muted text-muted-foreground"
           }`}>
             {languageBadgeLabel(job)}
           </span>
           {job.hasDiarization && (
-            <span className="px-2.5 py-1 rounded-full bg-sky-50 text-sky-700 text-xs">
+            <span className="px-2.5 py-1 rounded-full bg-info-50 text-info-700 text-xs">
               Diarisé
             </span>
           )}          {qualityScore !== null && (
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
               qualityScore >= 80 ? "bg-green-50 text-green-700" :
-              qualityScore >= 60 ? "bg-peach-50 text-peach-800" :
+              qualityScore >= 60 ? "bg-warning-50 text-warning-700" :
               "bg-red-50 text-red-700"
             }`}>
               SRT {qualityScore}/100
@@ -217,10 +217,10 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
 
       {/* Processing state */}
       {(job.status === "QUEUED" || job.status === "PROCESSING") && (
-        <div className="flex flex-col items-center gap-4 py-12 text-gray-400">
-          <Loader2 className="w-10 h-10 animate-spin text-sky-500" />
+        <div className="flex flex-col items-center gap-4 py-12 text-muted-foreground">
+          <Loader2 className="w-10 h-10 animate-spin text-info-600" />
           <div className="text-center">
-            <p className="font-medium text-gray-600">
+            <p className="font-medium text-muted-foreground">
               {job.status === "QUEUED" ? "En file d'attente…" : "Transcription en cours…"}
             </p>
             <p className="text-sm mt-1">Cette page se met à jour automatiquement</p>
@@ -228,7 +228,7 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
           <button
             type="button"
             onClick={() => { void fetch(`/api/transcription/${job.id}`).then((r) => r.json()).then((d: JobDetail) => setJob(d)); }}
-            className="flex items-center gap-1.5 text-sm text-sky-700 hover:underline"
+            className="flex items-center gap-1.5 text-sm text-info-700 hover:underline"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Actualiser
@@ -257,7 +257,7 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
               <Scissors className="w-5 h-5 shrink-0" />
               <div className="text-left">
                 <p className="font-semibold text-sm">Utiliser dans Captions</p>
-                <p className="text-sky-200 text-xs">Découper les segments et générer des sous-titres vidéo</p>
+                <p className="text-info-200 text-xs">Découper les segments et générer des sous-titres vidéo</p>
               </div>
             </div>
             <ArrowRight className="w-4 h-4 shrink-0" />
@@ -275,7 +275,7 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
               <FileText className="w-5 h-5 shrink-0" />
               <div className="text-left">
                 <p className="font-semibold text-sm">Télécharger le SRT</p>
-                <p className="text-sky-300 text-xs">Sous-titres prêts pour l&apos;éditeur captions</p>
+                <p className="text-info-200 text-xs">Sous-titres prêts pour l&apos;éditeur captions</p>
               </div>
             </div>
             {downloading === "srt"
@@ -289,8 +289,8 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
             <button
               type="button"
               onClick={() => void relaunchWithDiarization()}
-              className="w-full flex items-center justify-center gap-2 border border-sky-200 text-sky-700
-                hover:bg-sky-50 rounded-xl px-5 py-3 text-sm transition-colors"
+              className="w-full flex items-center justify-center gap-2 border border-info-200 text-info-700
+                hover:bg-info-50 rounded-xl px-5 py-3 text-sm transition-colors"
             >
               <Mic2 className="w-4 h-4" />
               Relancer avec identification des intervenants
@@ -298,36 +298,36 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
           )}
 
           {/* Advanced section */}
-          <div className="border border-gray-100 rounded-xl overflow-hidden">
+          <div className="border border-border rounded-xl overflow-hidden">
             <button
               type="button"
               onClick={() => setAdvancedOpen((v) => !v)}
-              className="w-full flex items-center justify-between px-5 py-3.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center justify-between px-5 py-3.5 text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
             >
               <span>Outils avancés</span>
-              <span className="text-gray-400 text-xs">{advancedOpen ? "▲" : "▼"}</span>
+              <span className="text-muted-foreground text-xs">{advancedOpen ? "▲" : "▼"}</span>
             </button>
 
             {advancedOpen && (
-              <div className="border-t border-gray-100 divide-y divide-gray-50">
+              <div className="border-t border-border divide-y divide-gray-50">
                 {/* JSON brut */}
                 <button
                   type="button"
                   onClick={() => void download("json")}
                   disabled={downloading === "json"}
-                  className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-gray-50 disabled:opacity-60 transition-colors"
+                  className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-muted disabled:opacity-60 transition-colors"
                 >
-                  <FileJson className="w-5 h-5 text-gray-400 shrink-0" />
+                  <FileJson className="w-5 h-5 text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-700">JSON brut</p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-sm font-medium text-foreground">JSON brut</p>
+                    <p className="text-xs text-muted-foreground">
                       Segments complets avec timestamps
                       {job.hasDiarization ? " et speakers" : ""}
                     </p>
                   </div>
                   {downloading === "json"
-                    ? <Loader2 className="w-4 h-4 animate-spin text-gray-400 shrink-0" />
-                    : <Download className="w-4 h-4 text-gray-400 shrink-0" />
+                    ? <Loader2 className="w-4 h-4 animate-spin text-muted-foreground shrink-0" />
+                    : <Download className="w-4 h-4 text-muted-foreground shrink-0" />
                   }
                 </button>
 
@@ -336,18 +336,18 @@ export function TranscriptionDetail({ job: initialJob }: { job: JobDetail }) {
                   type="button"
                   onClick={() => void download("chunks")}
                   disabled={downloading === "chunks"}
-                  className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-gray-50 disabled:opacity-60 transition-colors"
+                  className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-muted disabled:opacity-60 transition-colors"
                 >
-                  <Layers className="w-5 h-5 text-gray-400 shrink-0" />
+                  <Layers className="w-5 h-5 text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-700">Chunks IA <span className="text-xs text-gray-400 font-normal">(ZIP)</span></p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-sm font-medium text-foreground">Chunks IA <span className="text-xs text-muted-foreground font-normal">(ZIP)</span></p>
+                    <p className="text-xs text-muted-foreground">
                       Découpage ~9 000 tokens pour ChatGPT / Claude — détection backstage incluse
                     </p>
                   </div>
                   {downloading === "chunks"
-                    ? <Loader2 className="w-4 h-4 animate-spin text-gray-400 shrink-0" />
-                    : <Download className="w-4 h-4 text-gray-400 shrink-0" />
+                    ? <Loader2 className="w-4 h-4 animate-spin text-muted-foreground shrink-0" />
+                    : <Download className="w-4 h-4 text-muted-foreground shrink-0" />
                   }
                 </button>
               </div>

@@ -37,18 +37,18 @@ export default function PlaygroundLayout({ children }: { children: ReactNode }) 
             <span className="h-6 w-6 rounded-md bg-brand-600 inline-flex items-center justify-center text-white text-[11px] font-bold">
               T
             </span>
-            <span className="font-hand text-xl leading-none text-gray-950">Toolbox</span>
-            <span className="text-gray-300">/</span>
-            <span className="text-[13px] text-gray-500 font-medium">Design · Liquid Glass</span>
+            <span className="font-hand text-xl leading-none text-foreground">Toolbox</span>
+            <span className="text-muted-foreground/60">/</span>
+            <span className="text-[13px] text-muted-foreground font-medium">Design · Liquid Glass</span>
           </Link>
           <div className="ml-auto flex items-center gap-3">
             <Link
               href="/home"
-              className="text-[12px] text-gray-500 hover:text-gray-950 transition-colors"
+              className="text-[12px] text-muted-foreground hover:text-foreground transition-colors"
             >
               ← Retour à l&apos;app
             </Link>
-            <span className="rounded-full bg-peach-100 px-2 py-0.5 text-[10px] font-medium text-peach-700 shadow-[var(--ring-glass-edge)]">
+            <span className="rounded-full bg-warning-100 px-2 py-0.5 text-[10px] font-medium text-warning-700 shadow-[var(--ring-glass-edge)]">
               DEV
             </span>
           </div>

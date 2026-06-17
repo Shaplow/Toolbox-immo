@@ -378,7 +378,7 @@ export function PatternTemplateForm({
       <ConfirmDialog
         open={confirmArchive}
         title="Archiver cette recette ?"
-        description="La recette disparaît du catalogue mais les liaisons existantes restent fonctionnelles. Archivage réversible via l'API."
+        description="La recette disparaît du catalogue mais les comptes qui l'utilisent restent fonctionnels. Archivage réversible via l'API."
         confirmLabel="Archiver"
         variant="danger"
         loading={saving}
@@ -390,21 +390,21 @@ export function PatternTemplateForm({
       />
 
       <header className="shrink-0 px-5 pt-5 pb-3 border-b border-white/30">
-        <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+        <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
           {templateId ? "Édition" : "Nouvelle recette"}
         </p>
-        <h2 className="mt-1 text-[20px] font-semibold tracking-tight text-gray-950">
+        <h2 className="mt-1 text-[20px] font-semibold tracking-tight text-foreground">
           {templateId ? label || "Sans nom" : "Nouvelle recette"}
         </h2>
         {initial?.bindingCount !== undefined && initial.bindingCount > 0 && (
-          <p className="mt-1 text-[11.5px] text-sky-700">
+          <p className="mt-1 text-[11.5px] text-info-700">
             Utilisée par {initial.bindingCount} compte
             {initial.bindingCount > 1 ? "s" : ""}.
           </p>
         )}
         {/* Sprint D — Auteur de la dernière modification (lazy-load). */}
         {updatedBy && (
-          <p className="mt-1 text-[10.5px] text-gray-400">
+          <p className="mt-1 text-[10.5px] text-muted-foreground">
             Modifiée par {updatedBy.name} ·{" "}
             {new Date(updatedBy.at).toLocaleDateString("fr-FR", {
               day: "numeric",
@@ -419,10 +419,10 @@ export function PatternTemplateForm({
             className={[
               "mt-2 inline-flex items-center px-2 h-6 rounded-md text-[11px] font-medium",
               autoSave.status === "saving"
-                ? "text-gray-500 bg-gray-100/70"
+                ? "text-muted-foreground bg-muted/70"
                 : autoSave.status === "saved"
-                  ? "text-sage-700 bg-sage-100/70"
-                  : "text-rose-700 bg-rose-100/70",
+                  ? "text-success-700 bg-success-100/70"
+                  : "text-danger-700 bg-danger-100/70",
             ].join(" ")}
             title={autoSave.error ?? undefined}
           >
@@ -438,7 +438,7 @@ export function PatternTemplateForm({
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
         {/* Identité */}
         <section className="space-y-3">
-          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-700">
+          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-foreground">
             Identité
           </h3>
           <FormField label="Label" required>
@@ -467,7 +467,7 @@ export function PatternTemplateForm({
 
         {/* Production */}
         <section className="space-y-3 pt-4 border-t border-white/40">
-          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-700">
+          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-foreground">
             Production
           </h3>
           <FormField label="Cover">
@@ -514,7 +514,7 @@ export function PatternTemplateForm({
 
         {/* Workflow */}
         <section className="space-y-2 pt-4 border-t border-white/40">
-          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-700">
+          <h3 className="text-[10px] uppercase tracking-widest font-semibold text-foreground">
             Workflow
           </h3>
           <WorkflowToggle
@@ -536,7 +536,7 @@ export function PatternTemplateForm({
             onChange={setNeedsClientValidationWithAutoSave}
           />
           {needsClientValidation && (
-            <div className="ml-3 pl-3 border-l-2 border-rose-200/60">
+            <div className="ml-3 pl-3 border-l-2 border-danger-200/60">
               <WorkflowToggle
                 label="Autoriser révisions client"
                 description="Le client peut refuser avec un commentaire."
@@ -569,30 +569,29 @@ export function PatternTemplateForm({
             >
               <div className="pt-1">
                 {linkedLoading ? (
-                  <p className="text-[11.5px] text-gray-500">Chargement…</p>
+                  <p className="text-[11.5px] text-muted-foreground">Chargement…</p>
                 ) : !linkedBindings || linkedBindings.length === 0 ? (
-                  <p className="text-[11.5px] text-gray-500">
-                    Aucune liaison active. Lie cette recette à un compte depuis
-                    sa fiche, ou utilise « Déployer » plus tard.
+                  <p className="text-[11.5px] text-muted-foreground">
+                    Aucun compte n&apos;utilise cette recette. Applique-la depuis la fiche compte ou via « Appliquer à des comptes ».
                   </p>
                 ) : (
                   <ul className="space-y-1.5">
                     {linkedBindings.map((b) => (
                       <li
                         key={b.id}
-                        className="flex items-center justify-between gap-2 rounded-lg bg-white/55 backdrop-blur-[8px] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.06)]"
+                        className="flex items-center justify-between gap-2 rounded-lg bg-card border border-border px-3 py-2 "
                       >
                         <div className="min-w-0">
-                          <p className="text-[12.5px] font-medium text-gray-950 truncate">
+                          <p className="text-[12.5px] font-medium text-foreground truncate">
                             @{b.account.handle}
                             {b.account.name !== b.account.handle && (
-                              <span className="text-gray-500 font-normal">
+                              <span className="text-muted-foreground font-normal">
                                 {" "}
                                 · {b.account.name}
                               </span>
                             )}
                           </p>
-                          <p className="text-[11px] text-gray-500 mt-0.5">
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
                             {b.customLabel ?? "Label hérité"} ·{" "}
                             <span className="font-mono">{b.publishTime}</span>
                             {!b.isActive && " · désactivée"}
@@ -600,7 +599,7 @@ export function PatternTemplateForm({
                         </div>
                         <Link
                           href={`/admin/accounts/${b.account.id}`}
-                          className="shrink-0 inline-flex items-center gap-1 text-[11px] text-sky-700 hover:text-sky-900"
+                          className="shrink-0 inline-flex items-center gap-1 text-[11px] text-info-700 hover:text-info-700"
                           target="_blank"
                           rel="noreferrer"
                         >
@@ -616,7 +615,7 @@ export function PatternTemplateForm({
           </section>
         )}
 
-        {error && <p className="text-[12px] text-rose-700">{error}</p>}
+        {error && <p className="text-[12px] text-danger-700">{error}</p>}
       </div>
 
       {deployOpen && templateId && (
@@ -694,11 +693,11 @@ function WorkflowToggle({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+        className="mt-0.5 h-4 w-4 rounded border-border text-info-600 focus:ring-info-600"
       />
       <div className="min-w-0 flex-1">
         <p className="text-[13px] font-medium text-gray-900">{label}</p>
-        <p className="text-[11px] text-gray-500 mt-0.5">{description}</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>
       </div>
     </label>
   );

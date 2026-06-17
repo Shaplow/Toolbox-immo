@@ -102,8 +102,20 @@ html {
   /* Info : annotations neutres, hints */
   --color-info-50:     #eff6ff;
   --color-info-100:    #dbeafe;
+  --color-info-200:    #bfdbfe;
   --color-info-600:    #2563eb;
   --color-info-700:    #1d4ed8;
+
+  /* Warning : alertes douces, avertissements */
+  --color-warning-50:  #fff7ed;
+  --color-warning-100: #ffedd5;
+  --color-warning-200: #fed7aa;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+
+  /* Success / Danger : ajout niveaux 200 pour borders */
+  --color-success-200: #bbf7d0;
+  --color-danger-200:  #fecaca;
 
   /* ── Brand — orange signature ──────────────────────────────────────────
      Usage strictement chirurgical : logo Toolbox + 1 dot indicateur dans

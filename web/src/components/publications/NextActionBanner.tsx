@@ -139,24 +139,24 @@ export function NextActionBanner({
   const isClickable = Boolean(sectionId && sectionInDom);
 
   const content = (
-    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-b from-sage-50/85 to-sage-50/55 backdrop-blur-[10px] backdrop-saturate-150 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(111,162,128,0.32)]">
-      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-sage-100/70 text-sage-700">
+    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-success-50 border border-success-200">
+      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-success-100 text-success-700">
         <Sparkles size={9} />
       </span>
-      <span className="text-[10.5px] uppercase tracking-widest font-semibold text-sage-700">
+      <span className="text-[10.5px] uppercase tracking-widest font-semibold text-success-700">
         À toi
       </span>
       {/* W4.9 : Tooltip primitive (style cohérent design system) en plus du
           native title — utile pour les actions longues qui sont tronquées. */}
       <Tooltip content={action} delay={400}>
-        <span className="text-[12px] text-sage-900 max-w-[260px] truncate" title={action}>
+        <span className="text-[12px] text-success-700 max-w-[260px] truncate" title={action}>
           {action}
         </span>
       </Tooltip>
       {isClickable && (
         <ArrowRight
           size={11}
-          className="text-sage-700/70 group-hover:translate-x-0.5 transition-transform"
+          className="text-success-700/70 group-hover:translate-x-0.5 transition-transform"
           aria-hidden="true"
         />
       )}
@@ -165,12 +165,12 @@ export function NextActionBanner({
   );
 
   return (
-    <div className="px-6 sm:px-8 -mt-1 mb-1 flex justify-end">
+    <div className="flex justify-end">
       {isClickable && sectionId ? (
         <button
           type="button"
           onClick={() => goToSection(sectionId)}
-          className="group focus-ring rounded-full"
+          className="group focus-ring rounded-lg"
           title={`Aller à la section "${sectionId}"`}
         >
           {content}

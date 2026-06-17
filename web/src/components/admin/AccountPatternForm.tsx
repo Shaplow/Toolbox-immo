@@ -540,10 +540,10 @@ export function AccountPatternForm({
       <header className="shrink-0 px-5 pt-5 pb-3 border-b border-white/30">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500">
+            <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground">
               {isEdit ? "Édition recette" : "Nouvelle recette"}
             </p>
-            <h2 className="mt-1 text-[18px] font-semibold tracking-tight text-gray-950 truncate leading-tight">
+            <h2 className="mt-1 text-[18px] font-semibold tracking-tight text-foreground truncate leading-tight">
               {values.label || (isEdit ? "Sans titre" : "Recette de publication")}
             </h2>
             <div className="mt-2 inline-flex items-center gap-2">
@@ -553,7 +553,7 @@ export function AccountPatternForm({
                 size="sm"
                 accent="default"
               />
-              <span className="text-[11px] text-gray-600">
+              <span className="text-[11px] text-muted-foreground">
                 {values.isActive ? "Actif" : "Inactif"}
               </span>
             </div>
@@ -567,7 +567,7 @@ export function AccountPatternForm({
               ...t,
               badge:
                 tabErrorCounts[t.id as TabKey] > 0 ? (
-                  <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-rose-50 text-rose-700 text-[10px] font-semibold tabular-nums shadow-[inset_0_0_0_1px_rgba(201,113,133,0.22)]">
+                  <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-danger-50 text-danger-700 text-[10px] font-semibold tabular-nums shadow-[inset_0_0_0_1px_rgba(201,113,133,0.22)]">
                     {tabErrorCounts[t.id as TabKey]}
                   </span>
                 ) : undefined,
@@ -584,14 +584,14 @@ export function AccountPatternForm({
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
         {/* Banner xfield errors */}
         {xfieldErrors.length > 0 && (
-          <div className="flex items-start gap-2 rounded-xl bg-peach-50/70 backdrop-blur-[8px] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(245,158,107,0.25)]">
-            <AlertTriangle size={16} className="text-peach-700 mt-0.5 shrink-0" />
+          <div className="flex items-start gap-2 rounded-xl bg-warning-50/70 p-3 ">
+            <AlertTriangle size={16} className="text-warning-700 mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-semibold text-peach-900">
+              <p className="text-[12px] font-semibold text-warning-700">
                 Configuration incohérente ({xfieldErrors.length} problème
                 {xfieldErrors.length > 1 ? "s" : ""})
               </p>
-              <ul className="mt-1 space-y-0.5 text-[11px] text-peach-800 list-disc list-inside">
+              <ul className="mt-1 space-y-0.5 text-[11px] text-warning-700 list-disc list-inside">
                 {xfieldErrors.map((err) => (
                   <li key={err.code}>{err.message}</li>
                 ))}
@@ -620,7 +620,7 @@ export function AccountPatternForm({
                 options={SOURCE_OPTIONS}
               />
               {SOURCE_HELP[values.source] && (
-                <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500">
+                <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
                   {SOURCE_HELP[values.source]}
                 </p>
               )}
@@ -643,10 +643,10 @@ export function AccountPatternForm({
             )}
 
             <div>
-              <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-2">
+              <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-2">
                 Jours de publication
               </p>
-              <p className="text-[11px] text-gray-500 mb-2 leading-relaxed">
+              <p className="text-[11px] text-muted-foreground mb-2 leading-relaxed">
                 Laisser vide pour un pattern manuel (template disponible dans le calendrier
                 « Ajouter un slot »).
               </p>
@@ -673,8 +673,8 @@ export function AccountPatternForm({
                       className={[
                         "inline-flex items-center justify-center w-10 h-10 rounded-lg text-[11px] font-medium transition-all focus-ring",
                         checked
-                          ? "bg-gradient-to-b from-gray-700 to-gray-900 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_-1px_0_rgba(0,0,0,0.18),0_1px_2px_rgba(15,23,42,0.12)]"
-                          : "bg-white/55 backdrop-blur-[8px] text-gray-600 shadow-[inset_0_1px_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(15,23,42,0.08)] hover:bg-white/85",
+                          ? "bg-gradient-to-b from-gray-700 to-gray-900 text-white "
+                          : "bg-card border border-border text-muted-foreground  hover:bg-white/85",
                       ].join(" ")}
                     >
                       {day.label}
@@ -717,7 +717,7 @@ export function AccountPatternForm({
           <div className="space-y-6">
             {/* ─── Bloc 1 : Cover ─────────────────────────────────────────── */}
             <section className="space-y-3">
-              <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-700">
+              <h3 className="text-[10px] uppercase tracking-widest font-semibold text-foreground">
                 Cover Instagram
               </h3>
               <FormField label="Mode cover">
@@ -727,7 +727,7 @@ export function AccountPatternForm({
                   options={COVER_MODE_OPTIONS}
                 />
                 {COVER_MODE_HELP[values.coverMode] && (
-                  <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500">
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
                     {COVER_MODE_HELP[values.coverMode]}
                   </p>
                 )}
@@ -744,7 +744,7 @@ export function AccountPatternForm({
               )}
 
               {values.coverMode === "monteurUpload" && values.source !== "manual_rushes" && (
-                <p className="text-[11px] text-peach-800 bg-peach-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.2)]">
+                <p className="text-[11px] text-warning-700 bg-warning-50/70 rounded-md px-3 py-2 shadow-[inset_0_0_0_1px_rgba(245,158,107,0.2)]">
                   ⚠ Ce mode nécessite une source « manual_rushes » (la source actuelle est «{" "}
                   {values.source} »).
                 </p>
@@ -757,7 +757,7 @@ export function AccountPatternForm({
                 impossible de choisir "Auto" sans preset → la xfield error
                 MISSING_CAPTION_PRESET ne peut plus se produire par UI. */}
             <section className="space-y-3 pt-4 border-t border-white/40">
-              <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-700">
+              <h3 className="text-[10px] uppercase tracking-widest font-semibold text-foreground">
                 Sous-titres
               </h3>
               <FormField label="Sous-titres">
@@ -772,7 +772,7 @@ export function AccountPatternForm({
                   placeholder="— Choisir —"
                 />
                 {CAPTIONS_MODE_HELP[values.needsCaptionsMode] && (
-                  <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500">
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
                     {CAPTIONS_MODE_HELP[values.needsCaptionsMode]}
                   </p>
                 )}
@@ -782,7 +782,7 @@ export function AccountPatternForm({
             {/* ─── Bloc 3 : Description ───────────────────────────────────── */}
             {/* P0 — Mode + prompt fusionnés en 1 sélection unique. */}
             <section className="space-y-3 pt-4 border-t border-white/40">
-              <h3 className="text-[10px] uppercase tracking-widest font-semibold text-gray-700">
+              <h3 className="text-[10px] uppercase tracking-widest font-semibold text-foreground">
                 Description Instagram
               </h3>
               <FormField label="Description">
@@ -797,7 +797,7 @@ export function AccountPatternForm({
                   placeholder="— Choisir —"
                 />
                 {NEEDS_DESCRIPTION_HELP[values.needsDescription] && (
-                  <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500">
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
                     {NEEDS_DESCRIPTION_HELP[values.needsDescription]}
                   </p>
                 )}
@@ -831,7 +831,7 @@ export function AccountPatternForm({
               onChange={(v) => set("needsClientValidation", v)}
             />
             {values.needsClientValidation && (
-              <div className="ml-3 pl-3 border-l-2 border-rose-200/60">
+              <div className="ml-3 pl-3 border-l-2 border-danger-200/60">
                 <WorkflowToggle
                   label="Autoriser révisions client"
                   description="Si activé : le client peut refuser avec un commentaire (ping-pong jusqu'à validation). Sinon : valider ou annuler uniquement."
@@ -847,7 +847,7 @@ export function AccountPatternForm({
         {/* Tab Équipe */}
         {tab === "team" && (
           <div className="space-y-4">
-            <p className="text-[12px] text-gray-500 leading-relaxed">
+            <p className="text-[12px] text-muted-foreground leading-relaxed">
               Assignations par défaut pour les slots créés via ce pattern. Modifiables par
               slot dans le calendrier.
             </p>
@@ -939,17 +939,17 @@ function WorkflowToggle({
     <div
       className={[
         "rounded-xl p-3.5 transition-all",
-        "bg-white/40 backdrop-blur-[8px]",
+        "bg-card border border-border",
         error
-          ? "shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(201,113,133,0.4)]"
-          : "shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(15,23,42,0.06)]",
+          ? ""
+          : "",
       ].join(" ")}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[13px] font-semibold text-gray-950 leading-tight">{label}</p>
-          <p className="text-[11px] text-gray-600 mt-1 leading-relaxed">{description}</p>
-          {error && <p className="text-[11px] text-rose-700 mt-1.5">{error}</p>}
+          <p className="text-[13px] font-semibold text-foreground leading-tight">{label}</p>
+          <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">{description}</p>
+          {error && <p className="text-[11px] text-danger-700 mt-1.5">{error}</p>}
         </div>
         <Switch checked={checked} onChange={onChange} size="sm" accent="default" />
       </div>

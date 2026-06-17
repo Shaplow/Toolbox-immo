@@ -13,9 +13,9 @@
 function SectionHeader({ id, eyebrow, title, description }: { id: string; eyebrow: string; title: string; description: string }) {
   return (
     <header id={id} className="space-y-2 scroll-mt-20">
-      <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">{eyebrow}</p>
-      <h2 className="text-2xl font-semibold tracking-tight text-gray-950">{title}</h2>
-      <p className="text-[13px] text-gray-600 max-w-2xl leading-relaxed">{description}</p>
+      <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">{eyebrow}</p>
+      <h2 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h2>
+      <p className="text-[13px] text-muted-foreground max-w-2xl leading-relaxed">{description}</p>
     </header>
   );
 }
@@ -25,8 +25,8 @@ function Swatch({ label, hex, className, dark = false }: { label: string; hex: s
     <div className="flex flex-col gap-1">
       <div className={`h-14 rounded-lg shadow-[var(--ring-glass-edge)] ${className}`} />
       <div className="flex items-center justify-between">
-        <span className={`text-[11px] font-medium ${dark ? "text-white" : "text-gray-950"}`}>{label}</span>
-        <span className={`text-[10px] font-mono ${dark ? "text-gray-300" : "text-gray-500"}`}>{hex}</span>
+        <span className={`text-[11px] font-medium ${dark ? "text-white" : "text-foreground"}`}>{label}</span>
+        <span className={`text-[10px] font-mono ${dark ? "text-muted-foreground/60" : "text-muted-foreground"}`}>{hex}</span>
       </div>
     </div>
   );
@@ -35,9 +35,9 @@ function Swatch({ label, hex, className, dark = false }: { label: string; hex: s
 function TokenRow({ name, preview, note }: { name: string; preview: React.ReactNode; note?: string }) {
   return (
     <div className="grid grid-cols-[200px_1fr_auto] items-center gap-4 py-3 border-b border-white/30">
-      <code className="text-[11px] font-mono text-gray-700">{name}</code>
+      <code className="text-[11px] font-mono text-foreground">{name}</code>
       <div>{preview}</div>
-      {note && <span className="text-[11px] text-gray-500 text-right max-w-[180px]">{note}</span>}
+      {note && <span className="text-[11px] text-muted-foreground text-right max-w-[180px]">{note}</span>}
     </div>
   );
 }
@@ -52,44 +52,44 @@ function PaletteSection() {
       name: "Peach",
       tagline: "Chaleur · statuts à faire",
       stops: [
-        { label: "50",  hex: "#fff5ed", cls: "bg-peach-50" },
-        { label: "100", hex: "#ffe6d0", cls: "bg-peach-100" },
-        { label: "200", hex: "#ffd0a8", cls: "bg-peach-200" },
-        { label: "500", hex: "#f59e6b", cls: "bg-peach-500" },
-        { label: "700", hex: "#b9560a", cls: "bg-peach-700" },
+        { label: "50",  hex: "#fff5ed", cls: "bg-warning-50" },
+        { label: "100", hex: "#ffe6d0", cls: "bg-warning-100" },
+        { label: "200", hex: "#ffd0a8", cls: "bg-warning-200" },
+        { label: "500", hex: "#f59e6b", cls: "bg-warning-600" },
+        { label: "700", hex: "#b9560a", cls: "bg-warning-700" },
       ],
     },
     {
       name: "Sage",
       tagline: "Calme · statuts ok doux",
       stops: [
-        { label: "50",  hex: "#f1f7f2", cls: "bg-sage-50" },
-        { label: "100", hex: "#dceee0", cls: "bg-sage-100" },
-        { label: "200", hex: "#b9dcc1", cls: "bg-sage-200" },
-        { label: "500", hex: "#6fa280", cls: "bg-sage-500" },
-        { label: "700", hex: "#2f5f3f", cls: "bg-sage-700" },
+        { label: "50",  hex: "#f1f7f2", cls: "bg-success-50" },
+        { label: "100", hex: "#dceee0", cls: "bg-success-100" },
+        { label: "200", hex: "#b9dcc1", cls: "bg-success-200" },
+        { label: "500", hex: "#6fa280", cls: "bg-success-600" },
+        { label: "700", hex: "#2f5f3f", cls: "bg-success-700" },
       ],
     },
     {
       name: "Sky",
       tagline: "Info · planning · programmé",
       stops: [
-        { label: "50",  hex: "#eff6fb", cls: "bg-sky-50" },
-        { label: "100", hex: "#d4e8f3", cls: "bg-sky-100" },
-        { label: "200", hex: "#a9d1e6", cls: "bg-sky-200" },
-        { label: "500", hex: "#4d96bf", cls: "bg-sky-500" },
-        { label: "700", hex: "#1f5d7d", cls: "bg-sky-700" },
+        { label: "50",  hex: "#eff6fb", cls: "bg-info-50" },
+        { label: "100", hex: "#d4e8f3", cls: "bg-info-100" },
+        { label: "200", hex: "#a9d1e6", cls: "bg-info-200" },
+        { label: "500", hex: "#4d96bf", cls: "bg-info-600" },
+        { label: "700", hex: "#1f5d7d", cls: "bg-info-700" },
       ],
     },
     {
       name: "Rose-dust",
       tagline: "Accent rare · signature",
       stops: [
-        { label: "50",  hex: "#fdf2f4", cls: "bg-rose-50" },
-        { label: "100", hex: "#f7dde2", cls: "bg-rose-100" },
-        { label: "200", hex: "#ecbac4", cls: "bg-rose-200" },
-        { label: "500", hex: "#c97185", cls: "bg-rose-500" },
-        { label: "700", hex: "#863346", cls: "bg-rose-700" },
+        { label: "50",  hex: "#fdf2f4", cls: "bg-danger-50" },
+        { label: "100", hex: "#f7dde2", cls: "bg-danger-100" },
+        { label: "200", hex: "#ecbac4", cls: "bg-danger-200" },
+        { label: "500", hex: "#c97185", cls: "bg-danger-600" },
+        { label: "700", hex: "#863346", cls: "bg-danger-700" },
       ],
     },
   ];
@@ -106,8 +106,8 @@ function PaletteSection() {
         {families.map((fam) => (
           <div key={fam.name} className="space-y-2">
             <div className="flex items-baseline gap-3">
-              <h3 className="text-[15px] font-semibold text-gray-950">{fam.name}</h3>
-              <span className="text-[11px] text-gray-500">{fam.tagline}</span>
+              <h3 className="text-[15px] font-semibold text-foreground">{fam.name}</h3>
+              <span className="text-[11px] text-muted-foreground">{fam.tagline}</span>
             </div>
             <div className="grid grid-cols-5 gap-3">
               {fam.stops.map((s) => (
@@ -138,26 +138,26 @@ function SurfacesSection() {
           { name: "surface-glass-faint",  desc: "0.25 alpha · accents subtils",   cls: "bg-[var(--surface-glass-faint)]" },
         ].map((s) => (
           <div key={s.name} className="space-y-2">
-            <div className={`h-28 rounded-xl ${s.cls} backdrop-blur-[20px] backdrop-saturate-150 shadow-[var(--ring-glass-inset)] flex items-end p-3`}>
-              <span className="text-[10px] font-mono text-gray-700">{s.name}</span>
+            <div className={`h-28 rounded-xl ${s.cls} shadow-[var(--ring-glass-inset)] flex items-end p-3`}>
+              <span className="text-[10px] font-mono text-foreground">{s.name}</span>
             </div>
-            <p className="text-[11px] text-gray-500 leading-relaxed">{s.desc}</p>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">{s.desc}</p>
           </div>
         ))}
       </div>
 
       <div className="mt-6 space-y-2">
-        <h3 className="text-[13px] font-semibold text-gray-950">Classes utilitaires</h3>
+        <h3 className="text-[13px] font-semibold text-foreground">Classes utilitaires</h3>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="surface-glass rounded-xl p-5">
-            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1">classe</p>
-            <code className="text-[13px] font-mono text-gray-950">.surface-glass</code>
-            <p className="text-[11px] text-gray-600 mt-2">strong + blur-md + saturate + shadow-glass-md + ring-inset</p>
+            <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1">classe</p>
+            <code className="text-[13px] font-mono text-foreground">.surface-glass</code>
+            <p className="text-[11px] text-muted-foreground mt-2">strong + blur-md + saturate + shadow-glass-md + ring-inset</p>
           </div>
           <div className="surface-glass-soft rounded-xl p-5">
-            <p className="text-[10px] uppercase tracking-widest font-medium text-gray-500 mb-1">classe</p>
-            <code className="text-[13px] font-mono text-gray-950">.surface-glass-soft</code>
-            <p className="text-[11px] text-gray-600 mt-2">medium + blur-sm + saturate + shadow-glass-sm + ring-edge</p>
+            <p className="text-[10px] uppercase tracking-widest font-medium text-muted-foreground mb-1">classe</p>
+            <code className="text-[13px] font-mono text-foreground">.surface-glass-soft</code>
+            <p className="text-[11px] text-muted-foreground mt-2">medium + blur-sm + saturate + shadow-glass-sm + ring-edge</p>
           </div>
         </div>
       </div>
@@ -176,10 +176,10 @@ function BlurSection() {
       />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { name: "blur-xs", value: "8px", cls: "backdrop-blur-[8px]" },
-          { name: "blur-sm", value: "12px", cls: "backdrop-blur-[12px]" },
-          { name: "blur-md", value: "20px", cls: "backdrop-blur-[20px]" },
-          { name: "blur-lg", value: "32px", cls: "backdrop-blur-[32px]" },
+          { name: "blur-xs", value: "8px", cls: "" },
+          { name: "blur-sm", value: "12px", cls: "" },
+          { name: "blur-md", value: "20px", cls: "" },
+          { name: "blur-lg", value: "32px", cls: "" },
         ].map((b) => (
           <div
             key={b.name}
@@ -189,9 +189,9 @@ function BlurSection() {
                 "linear-gradient(135deg, #ffe6d0 0%, #f7dde2 50%, #d4e8f3 100%)",
             }}
           >
-            <div className={`absolute inset-0 ${b.cls} backdrop-saturate-150 bg-white/40 flex flex-col justify-end p-3`}>
-              <code className="text-[10px] font-mono text-gray-950">--backdrop-{b.name}</code>
-              <span className="text-[10px] text-gray-700">{b.value}</span>
+            <div className={`absolute inset-0 ${b.cls} bg-white/40 flex flex-col justify-end p-3`}>
+              <code className="text-[10px] font-mono text-foreground">--backdrop-{b.name}</code>
+              <span className="text-[10px] text-foreground">{b.value}</span>
             </div>
           </div>
         ))}
@@ -226,7 +226,7 @@ function TokenShadowBox({ name }: { name: string }) {
         className="h-24 rounded-xl bg-white"
         style={{ boxShadow: `var(--${name})` }}
       />
-      <code className="text-[10px] font-mono text-gray-700">{name}</code>
+      <code className="text-[10px] font-mono text-foreground">{name}</code>
     </div>
   );
 }
@@ -258,7 +258,7 @@ function ScrimsSection() {
                 <code className="text-[11px] font-mono text-white drop-shadow-sm">{s.name}</code>
               </div>
             </div>
-            <p className="text-[11px] text-gray-600 leading-relaxed">{s.desc}</p>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">{s.desc}</p>
           </div>
         ))}
       </div>
@@ -288,7 +288,7 @@ function GradientsSection() {
               className="h-24 rounded-xl shadow-[var(--ring-glass-edge)]"
               style={{ background: g.style }}
             />
-            <code className="text-[10px] font-mono text-gray-700">{g.name}</code>
+            <code className="text-[10px] font-mono text-foreground">{g.name}</code>
           </div>
         ))}
       </div>
@@ -304,14 +304,14 @@ export default function FoundationsPage() {
   return (
     <div className="space-y-14">
       <header className="space-y-3">
-        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-gray-500">
+        <p className="text-[10px] uppercase tracking-[0.16em] font-medium text-muted-foreground">
           Phase 1 · Foundations
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight text-gray-950">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           Tokens Liquid Glass
         </h1>
-        <p className="text-sm text-gray-600 max-w-2xl leading-relaxed">
-          Tout le vocabulaire glass centralisé dans <code className="text-[12px] font-mono text-gray-700 bg-white/60 px-1 rounded">web/src/app/globals.css</code>.
+        <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
+          Tout le vocabulaire glass centralisé dans <code className="text-[12px] font-mono text-foreground bg-white/60 px-1 rounded">web/src/app/globals.css</code>.
           Cette page sert de référence visuelle pour la palette Coastal Studio,
           les surfaces glass, le blur, les shadows verrerie, les scrims et les
           gradients washes.
@@ -327,11 +327,11 @@ export default function FoundationsPage() {
 
       {/* Note pied de page */}
       <div className="surface-glass-soft rounded-xl p-5 mt-12">
-        <p className="text-[11px] uppercase tracking-widest font-medium text-gray-500 mb-2">
+        <p className="text-[11px] uppercase tracking-widest font-medium text-muted-foreground mb-2">
           Phase suivante
         </p>
-        <p className="text-[13px] text-gray-700 leading-relaxed">
-          Voir <a className="text-gray-950 font-medium hover:underline" href="/playground/atoms">/playground/atoms</a> pour les 22 primitives avec leurs nouveaux variants
+        <p className="text-[13px] text-foreground leading-relaxed">
+          Voir <a className="text-foreground font-medium hover:underline" href="/playground/atoms">/playground/atoms</a> pour les 22 primitives avec leurs nouveaux variants
           <code className="text-[11px] font-mono mx-1">glass</code> / <code className="text-[11px] font-mono">tinted</code>.
         </p>
       </div>
