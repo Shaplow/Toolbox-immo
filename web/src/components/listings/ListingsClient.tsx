@@ -42,6 +42,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { useAllJobEvents } from "@/lib/hooks/jobEventBus";
 import { RenderQuickView, type QuickViewRender } from "./RenderQuickView";
 import { DeleteListingButton } from "./DeleteListingButton";
+import { RevertRenderButton } from "./RevertRenderButton";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -196,6 +197,8 @@ interface TimelineEntry {
     quickViewTitle: string;
     /** Croix de suppression admin — false si un render du listing est lié à un slot. */
     canDelete: boolean;
+    /** ID du render DONE à reverter (admin + génération standalone) — null sinon. */
+    revertRenderId: string | null;
   };
 }
 
@@ -287,6 +290,7 @@ function TimelineRow({
   const canDownload = !!actions?.downloadUrl;
   const canQuickView = !!actions && actions.renders.length > 0;
   const canDelete = !!actions?.canDelete;
+  const canRevert = !!actions?.revertRenderId;
 
   // Helper pour intercepter les clics sur les actions sans déclencher la
   // navigation outer du <Link>.
@@ -328,7 +332,7 @@ function TimelineRow({
         </div>
         {/* Actions inline + date + chevron */}
         <div className="shrink-0 flex items-center gap-1 text-[11px] text-muted-foreground">
-          {(canQuickView || canRegen || canDownload || canDelete) && (
+          {(canQuickView || canRegen || canDownload || canRevert || canDelete) && (
             <div className="flex items-center gap-0.5 mr-1">
               {canQuickView && (
                 <button
@@ -372,6 +376,7 @@ function TimelineRow({
                   <Download size={13} />
                 </a>
               )}
+              {canRevert && <RevertRenderButton renderId={actions!.revertRenderId!} />}
               {canDelete && <DeleteListingButton listingId={actions!.listingId} />}
             </div>
           )}
@@ -432,8 +437,12 @@ function listingToEntry(
   // à un slot — sinon la suppression doit passer par la fiche de publication
   // (sinon on viderait silencieusement la production d'une mission active).
   // Les listings sans renders (cas dégénéré) restent supprimables par l'admin.
-  const canDelete =
-    isAdmin && allListingRenders.every((r) => !r.linkedSlotId);
+  const noSlotLink = allListingRenders.every((r) => !r.linkedSlotId);
+  const canDelete = isAdmin && noSlotLink;
+  // Revert rotation : admin uniquement, génération standalone (aucun render lié
+  // à un slot) et render courant DONE — annule l'impact rotation d'un test.
+  const revertRenderId =
+    isAdmin && noSlotLink && currentRender?.status === "DONE" ? currentRender.id : null;
 
   const rowActions: TimelineEntry["rowActions"] = currentRender
     ? {
@@ -445,6 +454,7 @@ function listingToEntry(
         downloadExt,
         quickViewTitle: titleBase,
         canDelete,
+        revertRenderId,
       }
     : undefined;
 
