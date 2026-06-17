@@ -6,7 +6,7 @@ import { resolveSystemTokens } from "@/lib/systemTokens";
 import { formatConfiguredNumber, toFlexibleNumber } from "@/lib/numberFormatting";
 import { getPerLineTextEffectiveRadius, getPerLineTextGooFilterId, getPerLineTextSideBridgeMetrics, shouldApplyPerLineTextGoo } from "@/lib/perLineTextBackground";
 import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled } from "@/lib/textBackground";
-import { blockBaseStyle, buildTextShadowValue } from "../styleUtils";
+import { blockBaseStyle, buildTextShadowValue, getTextBackgroundFill } from "../styleUtils";
 
 export function renderTextBlock(
   block: TextBlock,
@@ -90,6 +90,9 @@ export function renderTextBlock(
   innerParts.push("line-height:normal");
   innerParts.push("white-space:pre-wrap");
   innerParts.push("box-sizing:border-box");
+  // Opacité du texte seul (glyphes + ombre) — appliquée à l'élément texte, pas au fond.
+  // Concerne les modes "sans fond" et "fit/fixed" (le mode per-line a son propre élément texte).
+  if (style.textOpacity !== undefined) innerParts.push(`opacity:${style.textOpacity}`);
   if (backgroundEnabled && backgroundMode === "fixed") innerParts.push("width:100%");
 
   const innerStyle = innerParts.join(";");
@@ -113,7 +116,7 @@ export function renderTextBlock(
   if (backgroundMode === "per-line") {
     const spanParts: string[] = [];
     const textAlign = style.textAlign ?? "left";
-    const backgroundColor = style.backgroundColor ?? "#FFFFFF";
+    const backgroundFill = getTextBackgroundFill(style);
     const effectiveBackgroundRadius = getPerLineTextEffectiveRadius(backgroundRadius);
     const shouldApplyPerLineGoo = shouldApplyPerLineTextGoo(backgroundRadius);
     const perLineGooFilterId = shouldApplyPerLineGoo ? getPerLineTextGooFilterId(backgroundRadius) : null;
@@ -132,7 +135,7 @@ export function renderTextBlock(
     if (textShadowPL) spanParts.push(`text-shadow:${textShadowPL}`);
     if (style.textAlign) spanParts.push(`text-align:${style.textAlign}`);
     if (rules.uppercase) spanParts.push("text-transform:uppercase");
-    spanParts.push(`background-color:${backgroundColor}`);
+    spanParts.push(`background-color:${backgroundFill}`);
     spanParts.push("display:inline");
     spanParts.push("box-decoration-break:clone");
     spanParts.push("-webkit-box-decoration-break:clone");
@@ -153,7 +156,9 @@ export function renderTextBlock(
     }
 
     const spanStyle = spanParts.join(";");
-    const textStyle = "position:relative";
+    const textStyle = style.textOpacity !== undefined
+      ? `position:relative;opacity:${style.textOpacity}`
+      : "position:relative";
     // Bugfix : en per-line mode, le wrapper portait toujours `overflow:visible`
     // et n'appliquait jamais le maxLines (qui était sur innerStyle, jamais utilisé
     // ici). On bascule sur display:-webkit-box + WebkitLineClamp quand maxLines
@@ -168,7 +173,7 @@ export function renderTextBlock(
           `top:${bridgeMetrics.inset}px`,
           `bottom:${bridgeMetrics.inset}px`,
           `width:${bridgeMetrics.width}px`,
-          `background-color:${backgroundColor}`,
+          `background-color:${backgroundFill}`,
           style.opacity !== undefined ? `opacity:${style.opacity}` : "",
           textAlign === "left" ? "left:0" : "right:0",
         ].join(";")
@@ -179,7 +184,7 @@ export function renderTextBlock(
 
   // ── Fit / Fixed modes ──────────────────────────────────────────────────────
   const backgroundParts: string[] = [
-    `background-color:${style.backgroundColor ?? "#FFFFFF"}`,
+    `background-color:${getTextBackgroundFill(style)}`,
     `display:${backgroundMode === "fixed" ? "flex" : "inline-flex"}`,
     "flex-direction:column",
     "max-width:100%",

@@ -56,6 +56,18 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${red},${green},${blue},${safeAlpha})`;
 }
 
+/**
+ * Couleur de fond du texte avec opacité appliquée en rgba (le texte, lui, reste opaque).
+ * Retourne le hex brut quand `backgroundOpacity` est absent ou >= 1 → diff minimal,
+ * comportement identique à l'existant. Source unique partagée par Canvas + renderTextBlock.
+ */
+export function getTextBackgroundFill(style: BlockStyle): string {
+  const hex = style.backgroundColor ?? "#FFFFFF";
+  const opacity = style.backgroundOpacity;
+  if (opacity === undefined || opacity >= 1) return hex;
+  return hexToRgba(hex, opacity);
+}
+
 export function buildTextShadowValue(style: BlockStyle, scale = 1): string | undefined {
   if (!style.textShadowEnabled) return undefined;
 

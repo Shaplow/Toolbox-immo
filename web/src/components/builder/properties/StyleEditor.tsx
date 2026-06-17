@@ -244,6 +244,15 @@ export function StyleEditor({
         </div>
       </div>
 
+      <Slider
+        label="Opacité du texte"
+        value={Math.round((style.textOpacity ?? 1) * 100)}
+        onChange={(v) => onChange({ textOpacity: v >= 100 ? undefined : v / 100 })}
+        min={0}
+        max={100}
+        unit="%"
+      />
+
       {backgroundEnabled && (
         <div className="space-y-3 rounded-xl border border-border bg-muted p-2.5">
           <div className="flex items-center justify-between gap-2">
@@ -264,6 +273,14 @@ export function StyleEditor({
               className="h-8 w-10 shrink-0 cursor-pointer rounded-lg border border-border bg-white"
             />
           </div>
+          <Slider
+            label="Opacité du fond"
+            value={Math.round((style.backgroundOpacity ?? 1) * 100)}
+            onChange={(v) => onChange({ backgroundOpacity: v >= 100 ? undefined : v / 100 })}
+            min={0}
+            max={100}
+            unit="%"
+          />
           <div className="grid grid-cols-3 gap-1 rounded-lg border border-border bg-white p-1">
             {(["fit", "per-line", "fixed"] as const).map((mode) => (
               <button

@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import { buildDpeSvg } from "@/lib/dpeSvg";
 import { computeAutoLayoutPositions, getAutoLayoutMode, getBlockAnchorOffset, isAutoLayoutGroup, type BlockLayoutSize } from "@/lib/groupLayout";
-import { buildTextShadowValue } from "@/lib/renderer/styleUtils";
+import { buildTextShadowValue, getTextBackgroundFill } from "@/lib/renderer/styleUtils";
 import { buildSchemaPreviewData } from "@/lib/schemaFields";
 import {
   PER_LINE_TEXT_GOO_ALPHA_INTERCEPT,
@@ -1552,6 +1552,7 @@ function BlockPreview({
         lineHeight: "normal",
         whiteSpace: "pre-wrap",
         boxSizing: "border-box",
+        opacity: block.style.textOpacity,
       };
 
       if (contentPadding.top === contentPadding.right && contentPadding.top === contentPadding.bottom && contentPadding.top === contentPadding.left) {
@@ -1590,7 +1591,7 @@ function BlockPreview({
           && backgroundPadding.top === backgroundPadding.bottom
           && backgroundPadding.top === backgroundPadding.left;
         const textAlign = block.style.textAlign ?? "left";
-        const backgroundColor = block.style.backgroundColor ?? "#FFFFFF";
+        const backgroundFill = getTextBackgroundFill(block.style);
         const shouldApplyPerLineGoo = shouldApplyPerLineTextGoo(backgroundRadius);
         const perLineGooFilterId = shouldApplyPerLineGoo ? getPerLineTextGooFilterId(backgroundRadius) : null;
         const effectiveBackgroundRadius = getPerLineTextEffectiveRadius(backgroundRadius) * styleScale;
@@ -1612,7 +1613,7 @@ function BlockPreview({
           lineHeight: vPadPx > 0 ? `calc(1em + ${vPadPx}px)` : "normal",
           whiteSpace: "pre-wrap",
           boxSizing: "border-box",
-          backgroundColor,
+          backgroundColor: backgroundFill,
           display: "inline",
           WebkitBoxDecorationBreak: "clone",
           boxDecorationBreak: "clone",
@@ -1629,6 +1630,7 @@ function BlockPreview({
         };
         const textForegroundStyle: React.CSSProperties = {
           position: "relative",
+          opacity: block.style.textOpacity,
         };
         const bridgeStyle: React.CSSProperties | null = bridgeMetrics.width > 0
           ? {
@@ -1636,7 +1638,7 @@ function BlockPreview({
               top: bridgeMetrics.inset,
               bottom: bridgeMetrics.inset,
               width: bridgeMetrics.width,
-              backgroundColor,
+              backgroundColor: backgroundFill,
               opacity: block.style.opacity,
               pointerEvents: "none",
               left: textAlign === "left" ? 0 : undefined,
@@ -1694,7 +1696,7 @@ function BlockPreview({
                 <div
                   className="block-text-background"
                   style={{
-                    backgroundColor: block.style.backgroundColor ?? "#FFFFFF",
+                    backgroundColor: getTextBackgroundFill(block.style),
                     borderRadius: backgroundRadius > 0 ? backgroundRadius * styleScale : undefined,
                     opacity: block.style.opacity,
                     display: backgroundMode === "fixed" ? "flex" : "inline-flex",

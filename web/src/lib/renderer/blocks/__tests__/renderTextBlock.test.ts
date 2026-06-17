@@ -119,3 +119,72 @@ describe("renderTextBlock — maxLines en text-background per-line (bugfix)", ()
     expect(html).toContain("overflow:visible");
   });
 });
+
+describe("renderTextBlock — opacité texte + fond (réglages séparés)", () => {
+  it("sans fond : applique opacity sur le texte quand textOpacity est défini", () => {
+    const block = makeTextBlock({ style: { fontSize: 14, color: "#000", textOpacity: 0.3 } });
+    const html = renderTextBlock(block, "Hello", undefined, false);
+    expect(html).toContain("opacity:0.3");
+  });
+
+  it("sans fond : n'émet aucune opacity quand aucun réglage n'est défini", () => {
+    const block = makeTextBlock({ style: { fontSize: 14, color: "#000" } });
+    const html = renderTextBlock(block, "Hello", undefined, false);
+    expect(html).not.toContain("opacity:");
+    expect(html).not.toContain("rgba(");
+  });
+
+  it("fit : fond en rgba quand backgroundOpacity défini, texte opaque indépendant", () => {
+    const block = makeTextBlock({
+      style: {
+        fontSize: 14,
+        color: "#FFFFFF",
+        backgroundColor: "#000000",
+        textBackgroundEnabled: true,
+        textBackgroundMode: "fit",
+        backgroundOpacity: 0.4,
+        textOpacity: 0.5,
+      },
+    });
+    const html = renderTextBlock(block, "Hello", undefined, false);
+    // Fond translucide via rgba (le texte ne fane pas avec)
+    expect(html).toContain("background-color:rgba(0,0,0,0.4)");
+    // Opacité du texte appliquée à part
+    expect(html).toContain("opacity:0.5");
+  });
+
+  it("fit : fond en hex (pas de rgba) quand backgroundOpacity absent", () => {
+    const block = makeTextBlock({
+      style: {
+        fontSize: 14,
+        color: "#FFFFFF",
+        backgroundColor: "#000000",
+        textBackgroundEnabled: true,
+        textBackgroundMode: "fit",
+      },
+    });
+    const html = renderTextBlock(block, "Hello", undefined, false);
+    expect(html).toContain("background-color:#000000");
+    expect(html).not.toContain("rgba(");
+  });
+
+  it("per-line : fond span + bridge en rgba, texte avec son opacity propre", () => {
+    const block = makeTextBlock({
+      style: {
+        fontSize: 14,
+        color: "#FFFFFF",
+        backgroundColor: "#2C2EFF",
+        textAlign: "left",
+        textBackgroundEnabled: true,
+        textBackgroundMode: "per-line",
+        textBackgroundBorderRadius: 12,
+        backgroundOpacity: 0.5,
+        textOpacity: 0.6,
+      },
+    });
+    const html = renderTextBlock(block, "Trois lignes de texte", undefined, false);
+    expect(html).toContain("background-color:rgba(44,46,255,0.5)");
+    // L'élément texte interne (position:relative) porte son opacité
+    expect(html).toContain("position:relative;opacity:0.6");
+  });
+});

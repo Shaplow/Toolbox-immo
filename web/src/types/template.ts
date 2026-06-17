@@ -199,6 +199,10 @@ export interface BlockStyle {
   textAlign?: "left" | "center" | "right";
   verticalAlign?: "top" | "middle" | "bottom";
   opacity?: number;
+  /** Opacité des glyphes du texte seul (0-1, défaut 1). Indépendant du fond. */
+  textOpacity?: number;
+  /** Opacité du cartouche de fond seul (0-1, défaut 1). Injectée en rgba() pour laisser le texte opaque. */
+  backgroundOpacity?: number;
 }
 
 export interface TextRules {
