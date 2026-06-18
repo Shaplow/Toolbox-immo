@@ -12,6 +12,8 @@ export function blockStyleToCSS(style: BlockStyle): string {
   if (style.fontWeight)     parts.push(`font-weight:${style.fontWeight}`);
   if (style.fontStyle)      parts.push(`font-style:${style.fontStyle}`);
   if (style.color)          parts.push(`color:${style.color}`);
+  const fauxBold = buildTextStrokeValue(style, style.color ?? "#000000");
+  if (fauxBold)             parts.push(`-webkit-text-stroke:${fauxBold}`);
   if (style.letterSpacing !== undefined) parts.push(`letter-spacing:${style.letterSpacing}px`);
   const textShadow = buildTextShadowValue(style);
   if (textShadow)           parts.push(`text-shadow:${textShadow}`);
@@ -66,6 +68,23 @@ export function getTextBackgroundFill(style: BlockStyle): string {
   const opacity = style.backgroundOpacity;
   if (opacity === undefined || opacity >= 1) return hex;
   return hexToRgba(hex, opacity);
+}
+
+/**
+ * Faux-gras : valeur `-webkit-text-stroke` d'un contour de la MÊME couleur que
+ * le texte (`color`), pour épaissir les glyphes au-delà du `font-weight` max.
+ * `scale` suit le zoom du builder (Canvas) ; le rendu HTML/vidéo passe scale=1
+ * (px natifs). Retourne undefined quand le faux-gras est désactivé (0 / absent).
+ *
+ * Le contour ne modifie pas la boîte de layout (metrics texte inchangées), donc
+ * auto-layout et shrink-to-fit ne sont pas impactés. Couleur identique au fill
+ * → pas de paint-order spécial nécessaire (le contour ne fait qu'épaissir).
+ */
+export function buildTextStrokeValue(style: BlockStyle, color: string, scale = 1): string | undefined {
+  const width = style.fauxBoldWidth;
+  if (!width || width <= 0) return undefined;
+  const safeScale = Number.isFinite(scale) ? Math.max(0, scale) : 1;
+  return `${(width * safeScale).toFixed(2)}px ${color}`;
 }
 
 export function buildTextShadowValue(style: BlockStyle, scale = 1): string | undefined {

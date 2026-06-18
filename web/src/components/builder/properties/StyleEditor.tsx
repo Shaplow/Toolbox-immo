@@ -135,7 +135,7 @@ export function StyleEditor({
             onChange={(e) => onChange({ fontWeight: Number(e.target.value) })}
             className="border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500"
           >
-            {[300, 400, 500, 600, 700].map((w) => (
+            {[300, 400, 500, 600, 700, 800, 900].map((w) => (
               <option key={w} value={w}>{w}</option>
             ))}
           </select>
@@ -154,6 +154,16 @@ export function StyleEditor({
           I
         </button>
       </div>
+
+      <Slider
+        label="Faux-gras (épaisseur)"
+        value={style.fauxBoldWidth ?? 0}
+        onChange={(v) => onChange({ fauxBoldWidth: v > 0 ? v : undefined })}
+        min={0}
+        max={4}
+        step={0.1}
+        unit="px"
+      />
 
       <Slider
         label="Espacement lettres"

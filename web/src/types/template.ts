@@ -170,6 +170,13 @@ export interface BlockStyle {
   fontSize?: number;
   fontWeight?: number;
   fontStyle?: "normal" | "italic";
+  /**
+   * Faux-gras : épaisseur d'un contour (-webkit-text-stroke) de la MÊME couleur
+   * que le texte, en px à la résolution native du template. Épaissit les glyphes
+   * au-delà de ce que `fontWeight` (plafonné par les fontes disponibles + la
+   * saturation du gras synthétique navigateur) peut offrir. 0 / absent = off.
+   */
+  fauxBoldWidth?: number;
   color?: string;
   letterSpacing?: number;
   textShadowEnabled?: boolean;

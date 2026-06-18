@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import { buildDpeSvg } from "@/lib/dpeSvg";
 import { computeAutoLayoutPositions, getAutoLayoutMode, getBlockAnchorOffset, isAutoLayoutGroup, type BlockLayoutSize } from "@/lib/groupLayout";
-import { buildTextShadowValue, getTextBackgroundFill } from "@/lib/renderer/styleUtils";
+import { buildTextShadowValue, buildTextStrokeValue, getTextBackgroundFill } from "@/lib/renderer/styleUtils";
 import { buildSchemaPreviewData } from "@/lib/schemaFields";
 import {
   PER_LINE_TEXT_GOO_ALPHA_INTERCEPT,
@@ -1545,6 +1545,7 @@ function BlockPreview({
         fontWeight: block.style.fontWeight,
         fontStyle: block.style.fontStyle,
         color: block.style.color ?? defaultTextColor,
+        WebkitTextStroke: buildTextStrokeValue(block.style, block.style.color ?? defaultTextColor, styleScale),
         letterSpacing: block.style.letterSpacing !== undefined ? `${block.style.letterSpacing * styleScale}px` : undefined,
         textShadow: buildTextShadowValue(block.style, styleScale),
         textAlign: block.style.textAlign,
@@ -1606,6 +1607,7 @@ function BlockPreview({
           fontWeight: block.style.fontWeight,
           fontStyle: block.style.fontStyle,
           color: block.style.color ?? defaultTextColor,
+          WebkitTextStroke: buildTextStrokeValue(block.style, block.style.color ?? defaultTextColor, styleScale),
           letterSpacing: block.style.letterSpacing !== undefined ? `${block.style.letterSpacing * styleScale}px` : undefined,
           textShadow: buildTextShadowValue(block.style, styleScale),
           textTransform: block.rules.uppercase ? "uppercase" : undefined,

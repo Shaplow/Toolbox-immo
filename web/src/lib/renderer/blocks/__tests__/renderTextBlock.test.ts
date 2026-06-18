@@ -71,6 +71,34 @@ describe("renderTextBlock — shrinkToFit", () => {
   });
 });
 
+describe("renderTextBlock — faux-gras (fauxBoldWidth)", () => {
+  it("émet -webkit-text-stroke de la couleur du texte quand fauxBoldWidth > 0", () => {
+    const block = makeTextBlock({ style: { fontSize: 14, color: "#ff0000", fauxBoldWidth: 2 } });
+    const html = renderTextBlock(block, "Hello world", undefined, false);
+    expect(html).toContain("-webkit-text-stroke:2.00px #ff0000");
+  });
+
+  it("n'émet PAS de -webkit-text-stroke quand fauxBoldWidth est absent", () => {
+    const block = makeTextBlock({ style: { fontSize: 14, color: "#000" } });
+    const html = renderTextBlock(block, "Hello world", undefined, false);
+    expect(html).not.toContain("-webkit-text-stroke");
+  });
+
+  it("n'émet PAS de -webkit-text-stroke quand fauxBoldWidth = 0 (falsy)", () => {
+    const block = makeTextBlock({ style: { fontSize: 14, color: "#000", fauxBoldWidth: 0 } });
+    const html = renderTextBlock(block, "Hello world", undefined, false);
+    expect(html).not.toContain("-webkit-text-stroke");
+  });
+
+  it("applique aussi le faux-gras sur le span en mode fond per-line", () => {
+    const block = makeTextBlock({
+      style: { fontSize: 14, color: "#222222", fauxBoldWidth: 1.5, textBackgroundEnabled: true, textBackgroundMode: "per-line", backgroundColor: "#fff" },
+    });
+    const html = renderTextBlock(block, "Hello world", undefined, false);
+    expect(html).toContain("-webkit-text-stroke:1.50px #222222");
+  });
+});
+
 describe("renderTextBlock — maxLines + shrinkToFit combined", () => {
   it("applies both line-clamp and data-shrink-to-fit when both set", () => {
     const block = makeTextBlock({

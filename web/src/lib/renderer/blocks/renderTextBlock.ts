@@ -6,7 +6,7 @@ import { resolveSystemTokens } from "@/lib/systemTokens";
 import { formatConfiguredNumber, toFlexibleNumber } from "@/lib/numberFormatting";
 import { getPerLineTextEffectiveRadius, getPerLineTextGooFilterId, getPerLineTextSideBridgeMetrics, shouldApplyPerLineTextGoo } from "@/lib/perLineTextBackground";
 import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled } from "@/lib/textBackground";
-import { blockBaseStyle, buildTextShadowValue, getTextBackgroundFill } from "../styleUtils";
+import { blockBaseStyle, buildTextShadowValue, buildTextStrokeValue, getTextBackgroundFill } from "../styleUtils";
 
 export function renderTextBlock(
   block: TextBlock,
@@ -68,6 +68,8 @@ export function renderTextBlock(
   if (style.fontWeight)  innerParts.push(`font-weight:${style.fontWeight}`);
   if (style.fontStyle)   innerParts.push(`font-style:${style.fontStyle}`);
   if (style.color)       innerParts.push(`color:${style.color}`);
+  const fauxBold = buildTextStrokeValue(style, style.color ?? "#000000");
+  if (fauxBold)          innerParts.push(`-webkit-text-stroke:${fauxBold}`);
   if (style.letterSpacing !== undefined) innerParts.push(`letter-spacing:${style.letterSpacing}px`);
   const textShadow = buildTextShadowValue(style);
   if (textShadow)        innerParts.push(`text-shadow:${textShadow}`);
@@ -130,6 +132,8 @@ export function renderTextBlock(
     if (style.fontWeight) spanParts.push(`font-weight:${style.fontWeight}`);
     if (style.fontStyle)  spanParts.push(`font-style:${style.fontStyle}`);
     if (style.color) spanParts.push(`color:${style.color}`);
+    const fauxBoldPL = buildTextStrokeValue(style, style.color ?? "#000000");
+    if (fauxBoldPL) spanParts.push(`-webkit-text-stroke:${fauxBoldPL}`);
     if (style.letterSpacing !== undefined) spanParts.push(`letter-spacing:${style.letterSpacing}px`);
     const textShadowPL = buildTextShadowValue(style);
     if (textShadowPL) spanParts.push(`text-shadow:${textShadowPL}`);
