@@ -1,6 +1,7 @@
 ﻿import type { TemplateJSON } from "@/types/template";
 import type { ListingData } from "@/types/listing";
 import { listFontAssetsByFamilies } from "@/lib/fontAssets";
+import { fontFormatFromUrl } from "@/lib/builderFonts";
 import { isAutoLayoutGroup, normalizeGroupLayout } from "@/lib/groupLayout";
 import {
   PER_LINE_TEXT_GOO_ALPHA_INTERCEPT,
@@ -669,9 +670,6 @@ async function buildFontHtml(template: TemplateJSON, publicBase?: string): Promi
   const mimeMap: Record<string, string> = {
     woff2: "font/woff2", woff: "font/woff", ttf: "font/ttf", otf: "font/otf",
   };
-  const formatMap: Record<string, string> = {
-    woff2: "woff2", woff: "woff", ttf: "truetype", otf: "opentype",
-  };
 
   for (const [family, entries] of collected) {
     if (entries && entries.length > 0) {
@@ -679,9 +677,9 @@ async function buildFontHtml(template: TemplateJSON, publicBase?: string): Promi
         try {
           const buf = await loadFontBuffer(url, publicBase);
           const b64 = buf.toString("base64");
-          const ext = url.split(".").pop()?.toLowerCase() ?? "woff2";
+          const ext = url.split("?")[0].split(".").pop()?.toLowerCase() ?? "woff2";
           const mime = mimeMap[ext] ?? "font/woff2";
-          const fmt = formatMap[ext] ?? "woff2";
+          const fmt = fontFormatFromUrl(url);
           styleParts.push(
             `@font-face{font-family:'${family}';src:url('data:${mime};base64,${b64}') format('${fmt}');font-weight:${weight};font-style:${fontStyle};}`
           );

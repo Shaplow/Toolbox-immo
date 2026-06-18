@@ -13,6 +13,23 @@ export type BuilderFontSources = {
   blockFontFamilies: Array<string | undefined>;
 };
 
+/**
+ * Mot-clé `format()` d'un @font-face à partir de l'URL/extension du fichier.
+ * Source unique pour TOUS les émetteurs @font-face (builder live + buildHTML)
+ * afin d'éviter le drift : sans ce hint, Chrome charge les .ttf mais refuse
+ * les .otf. Défaut woff2 (les URLs FontAsset ont toujours une extension valide).
+ */
+export function fontFormatFromUrl(url: string): string {
+  const ext = url.split("?")[0].split(".").pop()?.toLowerCase();
+  switch (ext) {
+    case "woff2": return "woff2";
+    case "woff": return "woff";
+    case "ttf": return "truetype";
+    case "otf": return "opentype";
+    default: return "woff2";
+  }
+}
+
 function mergeFontEntry(collected: Map<string, BuilderFontEntry>, next: BuilderFontEntry) {
   const existing = collected.get(next.family);
   if (!existing) {

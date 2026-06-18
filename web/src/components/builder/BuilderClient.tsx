@@ -4,7 +4,7 @@ import { useEffect, useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Layers, AlignLeft, Film, Music, Settings, Undo2, Redo2, X, ChevronLeft, Camera, Captions, Database } from "lucide-react";
 import { useBuilderStore } from "@/lib/store/builderStore";
-import { collectBuilderFontsFromSources, type BuilderFontEntry } from "@/lib/builderFonts";
+import { collectBuilderFontsFromSources, fontFormatFromUrl, type BuilderFontEntry } from "@/lib/builderFonts";
 import { toast } from "@/components/ui/Toast";
 import { useConfirm } from "@/components/ui/useConfirm";
 import { Button } from "@/components/ui/Button";
@@ -131,7 +131,7 @@ export function BuilderClient({
     for (const { family, url } of builderFonts) {
       if (url) {
         const id = `font-face-${family.replace(/\s+/g, "-")}`;
-        const css = `@font-face{font-family:'${family}';src:url('${url}');font-display:swap;}`;
+        const css = `@font-face{font-family:'${family}';src:url('${url}') format('${fontFormatFromUrl(url)}');font-display:swap;}`;
         let el = document.getElementById(id) as HTMLStyleElement | null;
         if (!el) {
           el = document.createElement("style");
