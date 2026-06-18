@@ -155,23 +155,15 @@ export function StyleEditor({
         </button>
       </div>
 
-      <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted-foreground">Espacement lettres</span>
-        <div className="flex items-center gap-2">
-          <input
-            type="range"
-            min={-5}
-            max={20}
-            step={0.1}
-            value={style.letterSpacing ?? 0}
-            onChange={(e) => onChange({ letterSpacing: Number(e.target.value) })}
-            className="flex-1 h-1.5 rounded-full appearance-none accent-indigo-600 cursor-pointer"
-          />
-          <span className="text-xs font-mono text-foreground tabular-nums min-w-[3rem] text-right">
-            {(style.letterSpacing ?? 0).toFixed(1)}
-          </span>
-        </div>
-      </label>
+      <Slider
+        label="Espacement lettres"
+        value={style.letterSpacing ?? 0}
+        onChange={(v) => onChange({ letterSpacing: v })}
+        min={-5}
+        max={20}
+        step={0.1}
+        unit="px"
+      />
 
       {/* Alignements */}
       <div className="grid grid-cols-2 gap-2">
