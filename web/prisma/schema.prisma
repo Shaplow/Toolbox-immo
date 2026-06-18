@@ -172,15 +172,16 @@ model TemplateCoverPreset {
 }
 
 model FontAsset {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   family       String
-  weight       Int      @default(400)
-  fontStyle    String   @default("normal")
+  weight       Int       @default(400)
+  fontStyle    String    @default("normal")
   url          String
   storageKey   String?
   originalName String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@unique([family, weight, fontStyle])
 }

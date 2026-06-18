@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { mkdir, readdir, writeFile } from "fs/promises";
+import { mkdir, readdir, unlink, writeFile } from "fs/promises";
 import path from "path";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -106,8 +106,37 @@ export async function listFontAssets(): Promise<FontAssetRecord[]> {
   return prisma.$queryRaw<FontAssetRecord[]>(Prisma.sql`
     SELECT "id", "family", "weight", "fontStyle", "url", "storageKey", "originalName", "createdAt", "updatedAt"
     FROM "FontAsset"
+    WHERE "deletedAt" IS NULL
     ORDER BY LOWER("family") ASC, "weight" ASC
   `);
+}
+
+/**
+ * Identité canonique d'une typo = sa clé unique réelle (family + weight + style),
+ * normalisée. On matche là-dessus (et pas sur le nom de fichier) pour que
+ * supprimer une typo n'impacte jamais une autre typo qui partagerait son nom.
+ */
+function fontIdentityKey(family: string, weight: number, fontStyle: string): string {
+  return `${family.trim().toLowerCase()}|${weight}|${fontStyle.trim().toLowerCase()}`;
+}
+
+/**
+ * Identités des typos supprimées volontairement. Sert à empêcher
+ * `syncLegacyPublicFonts` de les ressusciter depuis le filesystem ou le
+ * render-engine. Matché par identité exacte, jamais par nom de fichier.
+ */
+async function listDeletedFontIdentities(): Promise<Set<string>> {
+  const rows = await prisma.$queryRaw<{ family: string; weight: number; fontStyle: string }[]>(Prisma.sql`
+    SELECT "family", "weight", "fontStyle"
+    FROM "FontAsset"
+    WHERE "deletedAt" IS NOT NULL
+  `);
+
+  const keys = new Set<string>();
+  for (const row of rows) {
+    keys.add(fontIdentityKey(row.family, row.weight, row.fontStyle));
+  }
+  return keys;
 }
 
 export async function listFontAssetsByFamilies(families: string[]): Promise<FontAssetRecord[]> {
@@ -119,6 +148,7 @@ export async function listFontAssetsByFamilies(families: string[]): Promise<Font
     SELECT "id", "family", "weight", "fontStyle", "url", "storageKey", "originalName", "createdAt", "updatedAt"
     FROM "FontAsset"
     WHERE LOWER("family") IN (${Prisma.join(normalizedFamilies)})
+      AND "deletedAt" IS NULL
     ORDER BY "weight" ASC
   `);
 }
@@ -134,6 +164,7 @@ export async function upsertFontAsset(input: UpsertFontAssetInput): Promise<Font
       "url" = EXCLUDED."url",
       "storageKey" = EXCLUDED."storageKey",
       "originalName" = EXCLUDED."originalName",
+      "deletedAt" = NULL,
       "updatedAt" = NOW()
     RETURNING "id", "family", "weight", "fontStyle", "url", "storageKey", "originalName", "createdAt", "updatedAt"
   `);
@@ -143,7 +174,7 @@ export async function upsertFontAsset(input: UpsertFontAssetInput): Promise<Font
 
 export async function getFontAssetById(id: string): Promise<FontAssetRecord | null> {
   const rows = await prisma.$queryRaw<FontAssetRecord[]>(Prisma.sql`
-    SELECT "id", "family", "weight", "url", "storageKey", "originalName", "createdAt", "updatedAt"
+    SELECT "id", "family", "weight", "fontStyle", "url", "storageKey", "originalName", "createdAt", "updatedAt"
     FROM "FontAsset"
     WHERE "id" = ${id}
     LIMIT 1
@@ -152,9 +183,16 @@ export async function getFontAssetById(id: string): Promise<FontAssetRecord | nu
   return rows[0] ?? null;
 }
 
+/**
+ * Soft-delete : on conserve la ligne comme tombstone (`deletedAt`) pour qu'elle
+ * reste masquée partout ET que `syncLegacyPublicFonts` ne la ressuscite pas
+ * depuis `public/fonts` ou le render-engine. Un ré-upload de la même typo la
+ * réactive (`upsertFontAsset` remet `deletedAt = NULL`).
+ */
 export async function deleteFontAssetById(id: string): Promise<void> {
   await prisma.$executeRaw(Prisma.sql`
-    DELETE FROM "FontAsset"
+    UPDATE "FontAsset"
+    SET "deletedAt" = NOW(), "updatedAt" = NOW()
     WHERE "id" = ${id}
   `);
 }
@@ -192,6 +230,10 @@ export async function syncLegacyPublicFonts(): Promise<FontAssetRecord[]> {
     // Render-engine indisponible : on garde un fallback sur l'inférence locale.
   }
 
+  // Typos supprimées volontairement : ne jamais les recréer (sinon elles
+  // réapparaissent à chaque ouverture de la page admin via ce sync).
+  const deletedIdentities = await listDeletedFontIdentities();
+
   let currentFonts = await listFontAssets();
   const fontsBySource = new Map<string, FontAssetRecord[]>();
   for (const font of currentFonts) {
@@ -207,10 +249,19 @@ export async function syncLegacyPublicFonts(): Promise<FontAssetRecord[]> {
 
     const remoteFont = remoteFontsByFilename.get(filename.toLowerCase());
     const family = remoteFont?.family?.trim() || inferFontFamilyFromFilename(filename);
+    const weight = inferWeightFromFilename(filename);
+    const fontStyle = inferStyleFromFilename(filename);
+
+    if (deletedIdentities.has(fontIdentityKey(family, weight, fontStyle))) {
+      // Typo supprimée volontairement : purge la copie ressuscitée dans public/fonts, ne recrée pas la ligne.
+      await unlink(path.join(fontsDir, filename)).catch(() => undefined);
+      continue;
+    }
+
     const asset = await upsertFontAsset({
       family,
-      weight: inferWeightFromFilename(filename),
-      fontStyle: inferStyleFromFilename(filename),
+      weight,
+      fontStyle,
       url: `/fonts/${filename}`,
       storageKey: `fonts/${filename}`,
       originalName: filename,
@@ -229,6 +280,11 @@ export async function syncLegacyPublicFonts(): Promise<FontAssetRecord[]> {
     const filename = remoteFont.filename?.trim();
     const url = remoteFont.url?.trim();
     if (!family || !filename || !url) continue;
+
+    const weight = inferWeightFromFilename(filename);
+    const fontStyle = inferStyleFromFilename(filename);
+    // Typo supprimée volontairement : ne pas re-télécharger ni recréer depuis le render-engine.
+    if (deletedIdentities.has(fontIdentityKey(family, weight, fontStyle))) continue;
 
     const sourceKey = filename.toLowerCase();
     const downloadUrl = `${captionsApiUrl}${url.startsWith("/") ? url : `/${url}`}`;
@@ -252,8 +308,8 @@ export async function syncLegacyPublicFonts(): Promise<FontAssetRecord[]> {
 
     const asset = await upsertFontAsset({
       family,
-      weight: inferWeightFromFilename(filename),
-      fontStyle: inferStyleFromFilename(filename),
+      weight,
+      fontStyle,
       url: `/fonts/${filename}`,
       storageKey: `fonts/${filename}`,
       originalName: filename,
