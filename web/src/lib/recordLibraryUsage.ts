@@ -304,14 +304,17 @@ export interface RevertSummary {
  * revertRenderUsage — admin-initiated full rollback of a DONE render's library consumption.
  *
  * Decrements usageCount on every asset/entry used by this render, clears lastUsedAt when
- * the count reaches zero, and attempts a conditional cursor revert using the prevCursorState
- * snapshot stored in Render.usedAssets at prefill time.
+ * the count reaches zero, and attempts a conditional revert of BOTH rotation cursors using
+ * the snapshots stored in Render.usedAssets at prefill/submit time:
+ * - AccountLibraryCursor (media set-sequence) via prevCursorStateByLibrary
+ * - AccountDataLibraryCursor (data set/category) via prevDataLibraryCursorState
  *
  * Limitations:
  * - lastUsedAt is only cleared when usageCount reaches 0; prior values are not recoverable.
- * - AccountLibraryCursor.lastUsedSetTag is not included in the snapshot and is not reverted.
- * - Cursor revert is conditional: if a later generation has already advanced the cursor, the
- *   revert is a no-op and `reverted=false` is returned so the admin UI can surface a warning.
+ * - usedInCycle is only reset when usageCount reaches 0 — an entry shared across several
+ *   renders stays flagged after reverting a single render.
+ * - Cursor revert is conditional (CAS): if a later generation has already advanced the cursor,
+ *   the revert is a no-op and `reverted=false` is returned so the admin UI can surface a warning.
  */
 export async function revertRenderUsage(renderId: string): Promise<RevertSummary> {
   const summary: RevertSummary = { renderId, assets: [], cursors: [], warnings: [] };
@@ -530,6 +533,55 @@ export async function revertRenderUsage(renderId: string): Promise<RevertSummary
         summary.cursors.push({ libraryId, reverted: false, skippedReason: String(err) });
         summary.warnings.push(`Échec du revert de curseur pour la bibliothèque ${libraryId}: ${String(err)}`);
       }
+    }
+  }
+
+  // --- AccountDataLibraryCursor revert ---
+  // Symétrique au curseur média ci-dessus : revert CAS du curseur de la
+  // DataLibrary (lastUsedSetTag / lastUsedCategory / lastAdvancedAt) vers le
+  // snapshot prevDataLibraryCursorState posé au submit. Sans ce bloc, un revert
+  // admin laissait le curseur data avancé d'un cran sur les compteurs déjà
+  // rembobinés → le groupe reverté était sauté à la génération suivante
+  // (selectEligibleDataGroups l'exclut comme lastUsedSetTag/lastUsedCategory) au
+  // lieu d'être ré-offert. Le chemin ERROR (revertLibraryCursors) le faisait
+  // déjà ; seul le chemin admin l'oubliait.
+  const dataLibState = usedAssets.prevDataLibraryCursorState;
+  if (dataLibState) {
+    try {
+      // L'accountId vient du snapshot (effectiveCursorId au submit) : vrai
+      // accountId, ou SHARED_DATA_CURSOR_ACCOUNT_ID pour les libs en scope
+      // shared. On ne se base donc PAS sur render.accountId ici.
+      const updated = await prisma.$executeRaw(Prisma.sql`
+        UPDATE "AccountDataLibraryCursor"
+        SET "lastUsedSetTag"   = ${dataLibState.prevLastUsedSetTag},
+            "lastUsedCategory" = ${dataLibState.prevLastUsedCategory},
+            "lastAdvancedAt"   = NULL
+        WHERE "accountId" = ${dataLibState.accountId}
+          AND "libraryId" = ${dataLibState.libraryId}
+          AND "lastUsedSetTag"   IS NOT DISTINCT FROM ${dataLibState.claimedSetTag}
+          AND "lastUsedCategory" IS NOT DISTINCT FROM ${dataLibState.claimedCategory}
+      `);
+      if (updated > 0) {
+        summary.cursors.push({ libraryId: dataLibState.libraryId, reverted: true });
+        console.info(
+          `[revertRenderUsage] render=${renderId} DataLibrary=${dataLibState.libraryId} cursor reverted`,
+        );
+      } else {
+        summary.cursors.push({
+          libraryId: dataLibState.libraryId,
+          reverted: false,
+          skippedReason:
+            "Le curseur data a déjà été avancé par une génération suivante — revert non appliqué pour éviter de perturber la rotation.",
+        });
+        console.warn(
+          `[revertRenderUsage] render=${renderId} DataLibrary=${dataLibState.libraryId} cursor NOT reverted (already advanced by a later generation)`,
+        );
+      }
+    } catch (err) {
+      summary.cursors.push({ libraryId: dataLibState.libraryId, reverted: false, skippedReason: String(err) });
+      summary.warnings.push(
+        `Échec du revert du curseur data pour la bibliothèque ${dataLibState.libraryId}: ${String(err)}`,
+      );
     }
   }
 
