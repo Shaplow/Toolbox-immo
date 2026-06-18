@@ -14,6 +14,7 @@ import {
   shouldApplyPerLineTextGoo,
 } from "@/lib/perLineTextBackground";
 import { getEffectiveTextAnchorPadding, getTextBackgroundBorderRadius, getTextBackgroundMode, isTextBackgroundEnabled } from "@/lib/textBackground";
+import { getFauxThinErodeRadius, getFauxThinFilterId } from "./styleUtils";
 import { isBlockVisibleForListing, resolveBlockForListing } from "@/lib/templateConditions";
 import { getVisibleFieldKeys } from "@/lib/formSections";
 import { renderTextBlock } from "./blocks/renderTextBlock";
@@ -135,6 +136,7 @@ export async function buildHTML(
   const fontHtml = await buildFontHtml(template, opts?.publicBase);
   const behaviorScript = buildBehaviorScript(autoLayoutGroups, opts?.layoutDebug ?? false);
   const perLineTextFilter = buildPerLineTextGooFilterMarkup(template);
+  const fauxThinFilter = buildFauxThinFilterMarkup(template);
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -147,6 +149,7 @@ export async function buildHTML(
 </head>
 <body>
   ${perLineTextFilter}
+  ${fauxThinFilter}
   <div id="canvas" style="width:${canvas.width}px;height:${canvas.height}px;background:${overlayMode ? "transparent" : canvas.backgroundColor};position:relative;overflow:hidden;">
     ${blockHtmlParts.join("\n")}
   </div>
@@ -839,6 +842,31 @@ function buildPerLineTextGooFilterMarkup(template: TemplateJSON): string {
 
   const filters = [...radiiByFilterId.entries()]
     .map(([filterId, backgroundRadius]) => `<filter id="${filterId}" color-interpolation-filters="${PER_LINE_TEXT_GOO_COLOR_INTERPOLATION}" x="${PER_LINE_TEXT_GOO_FILTER_REGION.x}" y="${PER_LINE_TEXT_GOO_FILTER_REGION.y}" width="${PER_LINE_TEXT_GOO_FILTER_REGION.width}" height="${PER_LINE_TEXT_GOO_FILTER_REGION.height}"><feGaussianBlur in="SourceGraphic" stdDeviation="${getPerLineTextGooFilterBlur(backgroundRadius)}" result="blur"/><feColorMatrix in="blur" type="matrix" values="${PER_LINE_TEXT_GOO_COLOR_MATRIX}" result="goo"/><feComponentTransfer in="goo" result="gooSolid"><feFuncA type="linear" slope="${PER_LINE_TEXT_GOO_ALPHA_SLOPE}" intercept="${PER_LINE_TEXT_GOO_ALPHA_INTERCEPT}"/></feComponentTransfer><feComposite in="SourceGraphic" in2="gooSolid" operator="atop"/></filter>`)
+    .join("");
+
+  return `<svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true"><defs>${filters}</defs></svg>`;
+}
+
+/**
+ * Faux-gras NÉGATIF : émet un filtre SVG `feMorphology erode` par rayon unique
+ * rencontré dans les blocs texte (fauxBoldWidth < 0). Région généreuse pour ne
+ * pas rogner une éventuelle ombre portée. Couleur en sRGB pour un bord net.
+ */
+function buildFauxThinFilterMarkup(template: TemplateJSON): string {
+  const radiiByFilterId = new Map<string, number>();
+
+  for (const block of template.blocks) {
+    if (block.type !== "text") continue;
+    const radius = getFauxThinErodeRadius(block.style);
+    if (radius <= 0) continue;
+    const filterId = getFauxThinFilterId(radius);
+    if (!radiiByFilterId.has(filterId)) radiiByFilterId.set(filterId, radius);
+  }
+
+  if (radiiByFilterId.size === 0) return "";
+
+  const filters = [...radiiByFilterId.entries()]
+    .map(([filterId, radius]) => `<filter id="${filterId}" color-interpolation-filters="sRGB" x="-50%" y="-50%" width="200%" height="200%"><feMorphology in="SourceGraphic" operator="erode" radius="${radius}"/></filter>`)
     .join("");
 
   return `<svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true"><defs>${filters}</defs></svg>`;

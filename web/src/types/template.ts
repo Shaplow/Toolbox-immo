@@ -171,10 +171,12 @@ export interface BlockStyle {
   fontWeight?: number;
   fontStyle?: "normal" | "italic";
   /**
-   * Faux-gras : épaisseur d'un contour (-webkit-text-stroke) de la MÊME couleur
-   * que le texte, en px à la résolution native du template. Épaissit les glyphes
-   * au-delà de ce que `fontWeight` (plafonné par les fontes disponibles + la
-   * saturation du gras synthétique navigateur) peut offrir. 0 / absent = off.
+   * Faux-gras bipolaire, en px à la résolution native du template. 0/absent = off.
+   * - POSITIF : contour `-webkit-text-stroke` de la MÊME couleur que le texte →
+   *   épaissit les glyphes au-delà de `fontWeight` (plafonné par les fontes
+   *   dispo + la saturation du gras synthétique navigateur).
+   * - NÉGATIF : érosion `feMorphology operator="erode"` (filtre SVG) → affine les
+   *   glyphes (impossible au stroke, dont la largeur ne peut être négative).
    */
   fauxBoldWidth?: number;
   color?: string;

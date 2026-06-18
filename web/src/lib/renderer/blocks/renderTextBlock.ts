@@ -6,7 +6,7 @@ import { resolveSystemTokens } from "@/lib/systemTokens";
 import { formatConfiguredNumber, toFlexibleNumber } from "@/lib/numberFormatting";
 import { getPerLineTextEffectiveRadius, getPerLineTextGooFilterId, getPerLineTextSideBridgeMetrics, shouldApplyPerLineTextGoo } from "@/lib/perLineTextBackground";
 import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled } from "@/lib/textBackground";
-import { blockBaseStyle, buildTextShadowValue, buildTextStrokeValue, getTextBackgroundFill } from "../styleUtils";
+import { blockBaseStyle, buildTextShadowValue, buildTextStrokeValue, getFauxThinErodeRadius, getFauxThinFilterId, getTextBackgroundFill } from "../styleUtils";
 
 export function renderTextBlock(
   block: TextBlock,
@@ -70,6 +70,8 @@ export function renderTextBlock(
   if (style.color)       innerParts.push(`color:${style.color}`);
   const fauxBold = buildTextStrokeValue(style, style.color ?? "#000000");
   if (fauxBold)          innerParts.push(`-webkit-text-stroke:${fauxBold}`);
+  const erodeRadius = getFauxThinErodeRadius(style);
+  if (erodeRadius > 0)   innerParts.push(`filter:url(#${getFauxThinFilterId(erodeRadius)})`);
   if (style.letterSpacing !== undefined) innerParts.push(`letter-spacing:${style.letterSpacing}px`);
   const textShadow = buildTextShadowValue(style);
   if (textShadow)        innerParts.push(`text-shadow:${textShadow}`);
@@ -160,9 +162,14 @@ export function renderTextBlock(
     }
 
     const spanStyle = spanParts.join(";");
-    const textStyle = style.textOpacity !== undefined
-      ? `position:relative;opacity:${style.textOpacity}`
-      : "position:relative";
+    // Le faux-gras négatif (érosion) s'applique sur le span TEXTE interne, pas
+    // sur le span de fond (sinon le cartouche serait rogné lui aussi).
+    const erodeRadiusPL = getFauxThinErodeRadius(style);
+    const textStyle = [
+      "position:relative",
+      style.textOpacity !== undefined ? `opacity:${style.textOpacity}` : "",
+      erodeRadiusPL > 0 ? `filter:url(#${getFauxThinFilterId(erodeRadiusPL)})` : "",
+    ].filter(Boolean).join(";");
     // Bugfix : en per-line mode, le wrapper portait toujours `overflow:visible`
     // et n'appliquait jamais le maxLines (qui était sur innerStyle, jamais utilisé
     // ici). On bascule sur display:-webkit-box + WebkitLineClamp quand maxLines

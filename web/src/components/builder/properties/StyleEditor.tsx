@@ -156,10 +156,10 @@ export function StyleEditor({
       </div>
 
       <Slider
-        label="Faux-gras (épaisseur)"
+        label="Faux-gras (− affiner / + épaissir)"
         value={style.fauxBoldWidth ?? 0}
-        onChange={(v) => onChange({ fauxBoldWidth: v > 0 ? v : undefined })}
-        min={0}
+        onChange={(v) => onChange({ fauxBoldWidth: v !== 0 ? v : undefined })}
+        min={-2}
         max={4}
         step={0.1}
         unit="px"

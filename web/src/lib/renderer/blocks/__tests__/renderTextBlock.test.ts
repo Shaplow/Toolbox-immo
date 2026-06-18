@@ -97,6 +97,29 @@ describe("renderTextBlock — faux-gras (fauxBoldWidth)", () => {
     const html = renderTextBlock(block, "Hello world", undefined, false);
     expect(html).toContain("-webkit-text-stroke:1.50px #222222");
   });
+
+  it("faux-gras NÉGATIF émet un filtre erode (et pas de stroke)", () => {
+    const block = makeTextBlock({ style: { fontSize: 14, color: "#000", fauxBoldWidth: -1 } });
+    const html = renderTextBlock(block, "Hello world", undefined, false);
+    // radius = |−1| * 0.5 = 0.5 → id faux-thin-500
+    expect(html).toContain("filter:url(#faux-thin-500)");
+    expect(html).not.toContain("-webkit-text-stroke");
+  });
+
+  it("faux-gras POSITIF n'émet pas de filtre erode", () => {
+    const block = makeTextBlock({ style: { fontSize: 14, color: "#000", fauxBoldWidth: 2 } });
+    const html = renderTextBlock(block, "Hello world", undefined, false);
+    expect(html).not.toContain("filter:url(#faux-thin");
+  });
+
+  it("faux-gras négatif en per-line : filtre erode sur le span texte interne", () => {
+    const block = makeTextBlock({
+      style: { fontSize: 14, color: "#000", fauxBoldWidth: -2, textBackgroundEnabled: true, textBackgroundMode: "per-line", backgroundColor: "#fff" },
+    });
+    const html = renderTextBlock(block, "Hello world", undefined, false);
+    // radius = |−2| * 0.5 = 1.0 → id faux-thin-1000
+    expect(html).toContain("filter:url(#faux-thin-1000)");
+  });
 });
 
 describe("renderTextBlock — maxLines + shrinkToFit combined", () => {

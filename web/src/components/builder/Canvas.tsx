@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import { buildDpeSvg } from "@/lib/dpeSvg";
 import { computeAutoLayoutPositions, getAutoLayoutMode, getBlockAnchorOffset, isAutoLayoutGroup, type BlockLayoutSize } from "@/lib/groupLayout";
-import { buildTextShadowValue, buildTextStrokeValue, getTextBackgroundFill } from "@/lib/renderer/styleUtils";
+import { buildTextShadowValue, buildTextStrokeValue, getFauxThinErodeRadius, getFauxThinFilterId, getTextBackgroundFill } from "@/lib/renderer/styleUtils";
 import { buildSchemaPreviewData } from "@/lib/schemaFields";
 import {
   PER_LINE_TEXT_GOO_ALPHA_INTERCEPT,
@@ -170,6 +170,20 @@ export function Canvas({
       });
     }
 
+    return [...filters.values()];
+  }, [blocks]);
+
+  // Faux-gras négatif : filtres feMorphology erode (rayon en px natifs, comme le
+  // goo — le transform-scaling du canvas les met à l'échelle avec le texte).
+  const previewFauxThinFilters = useMemo(() => {
+    const filters = new Map<string, { id: string; radius: number }>();
+    for (const block of blocks) {
+      if (block.type !== "text") continue;
+      const radius = getFauxThinErodeRadius(block.style);
+      if (radius <= 0) continue;
+      const id = getFauxThinFilterId(radius);
+      if (!filters.has(id)) filters.set(id, { id, radius });
+    }
     return [...filters.values()];
   }, [blocks]);
 
@@ -1093,6 +1107,19 @@ export function Canvas({
                   <feComposite in="SourceGraphic" in2="gooSolid" operator="atop" />
                 </filter>
               ))}
+              {previewFauxThinFilters.map(({ id, radius }) => (
+                <filter
+                  key={id}
+                  id={id}
+                  colorInterpolationFilters="sRGB"
+                  x="-50%"
+                  y="-50%"
+                  width="200%"
+                  height="200%"
+                >
+                  <feMorphology in="SourceGraphic" operator="erode" radius={radius} />
+                </filter>
+              ))}
             </defs>
           </svg>
           {activeAnchorGroup ? (
@@ -1538,6 +1565,10 @@ function BlockPreview({
       const backgroundPadding = getTextBackgroundPadding(block.style);
       const backgroundRadius = getTextBackgroundBorderRadius(block.style);
       const textFontSize = block.style.fontSize ?? 14;
+      // Faux-gras négatif : filtre erode appliqué à l'élément qui peint les
+      // glyphes (rayon natif — référence l'ID, le def vit dans le <defs> ci-dessous).
+      const fauxThinErodeRadius = getFauxThinErodeRadius(block.style);
+      const fauxThinFilter = fauxThinErodeRadius > 0 ? `url(#${getFauxThinFilterId(fauxThinErodeRadius)})` : undefined;
       const resolvedFontSize = fittedFontSizePx ?? (preferPrintUnits ? `${textFontSize * styleScale}pt` : baseTextFontSizePx ?? undefined);
       const innerTextStyle: React.CSSProperties = {
         fontFamily: block.style.fontFamily ?? defaultFontFamily,
@@ -1554,6 +1585,7 @@ function BlockPreview({
         whiteSpace: "pre-wrap",
         boxSizing: "border-box",
         opacity: block.style.textOpacity,
+        filter: fauxThinFilter,
       };
 
       if (contentPadding.top === contentPadding.right && contentPadding.top === contentPadding.bottom && contentPadding.top === contentPadding.left) {
@@ -1633,6 +1665,7 @@ function BlockPreview({
         const textForegroundStyle: React.CSSProperties = {
           position: "relative",
           opacity: block.style.textOpacity,
+          filter: fauxThinFilter,
         };
         const bridgeStyle: React.CSSProperties | null = bridgeMetrics.width > 0
           ? {

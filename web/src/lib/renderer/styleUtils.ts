@@ -87,6 +87,32 @@ export function buildTextStrokeValue(style: BlockStyle, color: string, scale = 1
   return `${(width * safeScale).toFixed(2)}px ${color}`;
 }
 
+/** Préfixe d'ID des filtres SVG de faux-gras négatif (érosion des glyphes). */
+export const FAUX_THIN_FILTER_ID = "faux-thin";
+
+/**
+ * Faux-gras NÉGATIF : rayon d'érosion (`feMorphology operator="erode"`) en px,
+ * dérivé d'un `fauxBoldWidth` négatif (sinon 0). Le côté positif épaissit via
+ * `-webkit-text-stroke` ; le négatif ne peut PAS se faire au stroke (largeur
+ * négative invalide) → on rogne l'alpha des glyphes au filtre SVG. Le facteur
+ * 0.5 garde une sensation symétrique avec le stroke (qui pousse le bord de
+ * width/2 vers l'extérieur ; l'érosion rogne `radius` vers l'intérieur).
+ *
+ * Rayon en px natifs (PAS de `scale`) — même convention que le filtre goo
+ * per-line : correct en mode transform-scaling (le CSS transform du canvas
+ * met le filtre à l'échelle avec le reste).
+ */
+export function getFauxThinErodeRadius(style: BlockStyle): number {
+  const width = style.fauxBoldWidth;
+  if (!width || width >= 0) return 0;
+  return Math.abs(width) * 0.5;
+}
+
+/** ID de filtre SVG unique pour un rayon d'érosion donné (dédup par valeur). */
+export function getFauxThinFilterId(radiusPx: number): string {
+  return `${FAUX_THIN_FILTER_ID}-${Math.round(Math.max(0, radiusPx) * 1000)}`;
+}
+
 export function buildTextShadowValue(style: BlockStyle, scale = 1): string | undefined {
   if (!style.textShadowEnabled) return undefined;
 
