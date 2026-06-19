@@ -6,7 +6,7 @@ import { resolveSystemTokens } from "@/lib/systemTokens";
 import { formatConfiguredNumber, toFlexibleNumber } from "@/lib/numberFormatting";
 import { getPerLineTextEffectiveRadius, getPerLineTextGooFilterId, getPerLineTextSideBridgeMetrics, shouldApplyPerLineTextGoo } from "@/lib/perLineTextBackground";
 import { getTextBackgroundBorderRadius, getTextBackgroundMode, getTextBackgroundPadding, getTextBackgroundSize, getTextContentPadding, isTextBackgroundEnabled } from "@/lib/textBackground";
-import { blockBaseStyle, buildTextShadowValue, buildTextStrokeValue, getFauxThinErodeRadius, getFauxThinFilterId, getTextBackgroundFill } from "../styleUtils";
+import { blockBaseStyle, buildTextShadowValue, buildTextStrokeValue, getFauxThinErodeRadius, getFauxThinFilterId, getOpaqueTextBackgroundColor, getTextBackgroundFill } from "../styleUtils";
 
 export function renderTextBlock(
   block: TextBlock,
@@ -159,6 +159,77 @@ export function renderTextBlock(
       if (backgroundPadding.right > 0) spanParts.push(`padding-right:${backgroundPadding.right}px`);
       if (backgroundPadding.bottom > 0) spanParts.push(`padding-bottom:${backgroundPadding.bottom}px`);
       if (backgroundPadding.left > 0) spanParts.push(`padding-left:${backgroundPadding.left}px`);
+    }
+
+    // ── Cas transparent + arrondi : rendu double couche ──────────────────────
+    // Sous opacité de fond < 1 avec coins arrondis, le goo (seuil alpha) casse
+    // si on lui donne un fond rgba semi-transparent. On garde la fusion blob en
+    // séparant : couche FOND (fill plein → goo net → fondue UNE fois via opacity)
+    // + couche TEXTE opaque par-dessus. Tous les autres cas restent inchangés.
+    const dualLayer = backgroundRadius > 0 && (style.backgroundOpacity ?? 1) < 1;
+    if (dualLayer) {
+      const opaqueFill = getOpaqueTextBackgroundColor(style);
+      const bgOpacity = style.backgroundOpacity ?? 1;
+
+      // Géométrie partagée par les 2 couches → wrapping strictement identique.
+      const geom: string[] = [];
+      if (style.fontFamily) geom.push(`font-family:'${style.fontFamily}',sans-serif`);
+      if (style.fontSize) geom.push(`font-size:${style.fontSize}pt`);
+      if (style.fontWeight) geom.push(`font-weight:${style.fontWeight}`);
+      if (style.fontStyle) geom.push(`font-style:${style.fontStyle}`);
+      if (style.letterSpacing !== undefined) geom.push(`letter-spacing:${style.letterSpacing}px`);
+      if (style.textAlign) geom.push(`text-align:${style.textAlign}`);
+      if (rules.uppercase) geom.push("text-transform:uppercase");
+      geom.push("display:inline", "box-decoration-break:clone", "-webkit-box-decoration-break:clone", "white-space:pre-wrap", "box-sizing:border-box");
+      if (vPad > 0) geom.push(`line-height:calc(1em + ${vPad}px)`);
+      if (backgroundPadding.top === backgroundPadding.right && backgroundPadding.top === backgroundPadding.bottom && backgroundPadding.top === backgroundPadding.left) {
+        if (backgroundPadding.top > 0) geom.push(`padding:${backgroundPadding.top}px`);
+      } else {
+        if (backgroundPadding.top > 0) geom.push(`padding-top:${backgroundPadding.top}px`);
+        if (backgroundPadding.right > 0) geom.push(`padding-right:${backgroundPadding.right}px`);
+        if (backgroundPadding.bottom > 0) geom.push(`padding-bottom:${backgroundPadding.bottom}px`);
+        if (backgroundPadding.left > 0) geom.push(`padding-left:${backgroundPadding.left}px`);
+      }
+      const geomStr = geom.join(";");
+
+      // Couche FOND : fill plein + texte transparent (géométrie) + arrondi.
+      const bgSpanStyle = [
+        geomStr,
+        `background-color:${opaqueFill}`,
+        "color:transparent",
+        effectiveBackgroundRadius > 0 ? `border-radius:${effectiveBackgroundRadius}px` : "",
+      ].filter(Boolean).join(";");
+
+      // Couche TEXTE : couleur visible + ombre + faux-gras (stroke/erode), pas de fond.
+      const fauxBoldDual = buildTextStrokeValue(style, style.color ?? "#000000");
+      const textShadowDual = buildTextShadowValue(style);
+      const erodeRadiusDual = getFauxThinErodeRadius(style);
+      const fgSpanStyle = [
+        geomStr,
+        style.color ? `color:${style.color}` : "",
+        fauxBoldDual ? `-webkit-text-stroke:${fauxBoldDual}` : "",
+        textShadowDual ? `text-shadow:${textShadowDual}` : "",
+        erodeRadiusDual > 0 ? `filter:url(#${getFauxThinFilterId(erodeRadiusDual)})` : "",
+      ].filter(Boolean).join(";");
+      const fgInnerStyle = style.textOpacity !== undefined ? `opacity:${style.textOpacity}` : "";
+
+      // maxLines : clamp identique sur chaque couche (le wrapper contient 2 divs).
+      const layerClamp = rules.maxLines
+        ? `display:-webkit-box;-webkit-line-clamp:${rules.maxLines};-webkit-box-orient:vertical;overflow:hidden`
+        : "";
+
+      const bridgeDual = bridgeMetrics.width > 0
+        ? ["position:absolute", `top:${bridgeMetrics.inset}px`, `bottom:${bridgeMetrics.inset}px`, `width:${bridgeMetrics.width}px`, `background-color:${opaqueFill}`, textAlign === "left" ? "left:0" : "right:0"].join(";")
+        : "";
+
+      // Opacité du bloc entière → sur le wrapper (s'applique aux 2 couches).
+      const wrapperDual = `width:100%;position:relative;text-align:${textAlign}${style.opacity !== undefined ? `;opacity:${style.opacity}` : ""}`;
+      // Couche fond : goo + fondu (background opacity).
+      const bgLayerStyle = ["position:relative", shouldApplyPerLineGoo && perLineGooFilterId ? `filter:url(#${perLineGooFilterId})` : "", `opacity:${bgOpacity}`, layerClamp].filter(Boolean).join(";");
+      // Couche texte : superposée exactement, sans filtre ni opacité de fond.
+      const textLayerStyle = ["position:absolute", "top:0", "left:0", "width:100%", "height:100%", `text-align:${textAlign}`, layerClamp].filter(Boolean).join(";");
+
+      return `<div class="block block-text block-text-per-line" data-text-background-mode="per-line" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" style="${outerStyle}"><div class="block-text-align" style="${wrapperDual}"><div class="block-text-bg-layer" style="${bgLayerStyle}">${bridgeDual ? `<span aria-hidden="true" style="${bridgeDual}"></span>` : ""}<span class="block-text-background block-text-content text-bg-per-line" style="${bgSpanStyle}"><span>${escaped}</span></span></div><div class="block-text-fg-layer" style="${textLayerStyle}"><span class="block-text-content" style="${fgSpanStyle}"><span style="${fgInnerStyle}">${escaped}</span></span></div></div></div>`;
     }
 
     const spanStyle = spanParts.join(";");

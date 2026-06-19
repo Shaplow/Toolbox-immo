@@ -219,7 +219,7 @@ describe("renderTextBlock — opacité texte + fond (réglages séparés)", () =
     expect(html).not.toContain("rgba(");
   });
 
-  it("per-line : fond span + bridge en rgba, texte avec son opacity propre", () => {
+  it("per-line + arrondi + opacité fond < 1 : double couche (goo opaque + fondu, texte net)", () => {
     const block = makeTextBlock({
       style: {
         fontSize: 14,
@@ -234,8 +234,52 @@ describe("renderTextBlock — opacité texte + fond (réglages séparés)", () =
       },
     });
     const html = renderTextBlock(block, "Trois lignes de texte", undefined, false);
+    // Deux couches distinctes
+    expect(html).toContain("block-text-bg-layer");
+    expect(html).toContain("block-text-fg-layer");
+    // Fond : couleur PLEINE (hex, le goo a besoin d'un alpha plein), PAS de rgba.
+    expect(html).toContain("background-color:#2C2EFF");
+    expect(html).not.toContain("rgba(44,46,255,0.5)");
+    // Goo + opacité de fond appliqués sur la couche fond.
+    expect(html).toContain("filter:url(#text-bg-goo-12000)");
+    expect(html).toContain("opacity:0.5");
+    expect(html).toContain("color:transparent");
+    // Texte : couleur visible + sa propre opacité, indépendant de l'opacité de fond.
+    expect(html).toContain("color:#FFFFFF");
+    expect(html).toContain("opacity:0.6");
+  });
+
+  it("per-line + arrondi OPAQUE : single couche inchangée (pas de double couche)", () => {
+    const block = makeTextBlock({
+      style: {
+        fontSize: 14,
+        color: "#FFFFFF",
+        backgroundColor: "#2C2EFF",
+        textBackgroundEnabled: true,
+        textBackgroundMode: "per-line",
+        textBackgroundBorderRadius: 12,
+      },
+    });
+    const html = renderTextBlock(block, "Texte", undefined, false);
+    expect(html).not.toContain("block-text-bg-layer");
+    expect(html).not.toContain("block-text-fg-layer");
+    expect(html).toContain("background-color:#2C2EFF");
+    expect(html).toContain("filter:url(#text-bg-goo-12000)"); // goo sur le wrapper
+  });
+
+  it("per-line SANS arrondi + opacité < 1 : single couche rgba (pas de double couche)", () => {
+    const block = makeTextBlock({
+      style: {
+        fontSize: 14,
+        color: "#FFFFFF",
+        backgroundColor: "#2C2EFF",
+        textBackgroundEnabled: true,
+        textBackgroundMode: "per-line",
+        backgroundOpacity: 0.5,
+      },
+    });
+    const html = renderTextBlock(block, "Texte", undefined, false);
+    expect(html).not.toContain("block-text-bg-layer");
     expect(html).toContain("background-color:rgba(44,46,255,0.5)");
-    // L'élément texte interne (position:relative) porte son opacité
-    expect(html).toContain("position:relative;opacity:0.6");
   });
 });

@@ -270,6 +270,19 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; mode?: "free"
           content.style.webkitLineClamp = prevWebkitLineClamp;
           content.style.overflow = prevOverflow;
         }
+
+        // Rendu per-line double couche (fond transparent) : la mesure se fait
+        // sur la 1re .block-text-content (couche fond), on propage la fontSize
+        // fittée aux éventuelles autres (couche texte) pour un wrapping identique.
+        var fitted = content.style.fontSize;
+        if (fitted) {
+          var allContents = block.querySelectorAll('.block-text-content');
+          for (var ci = 0; ci < allContents.length; ci++) {
+            if (allContents[ci] !== content && allContents[ci] instanceof HTMLElement) {
+              allContents[ci].style.fontSize = fitted;
+            }
+          }
+        }
       }
 
       function getEffectiveSize(block) {

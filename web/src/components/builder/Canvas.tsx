@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import { buildDpeSvg } from "@/lib/dpeSvg";
 import { computeAutoLayoutPositions, getAutoLayoutMode, getBlockAnchorOffset, isAutoLayoutGroup, type BlockLayoutSize } from "@/lib/groupLayout";
-import { buildTextShadowValue, buildTextStrokeValue, getFauxThinErodeRadius, getFauxThinFilterId, getTextBackgroundFill } from "@/lib/renderer/styleUtils";
+import { buildTextShadowValue, buildTextStrokeValue, getFauxThinErodeRadius, getFauxThinFilterId, getOpaqueTextBackgroundColor, getTextBackgroundFill } from "@/lib/renderer/styleUtils";
 import { buildSchemaPreviewData } from "@/lib/schemaFields";
 import {
   PER_LINE_TEXT_GOO_ALPHA_INTERCEPT,
@@ -1695,26 +1695,109 @@ function BlockPreview({
               overflow: "hidden",
             }
           : {};
-        content = (
-          <div style={{ ...style, display: "flex", flexDirection: "column", justifyContent, overflow: "visible" }}>
-            <div
-              className="block-text-align"
-              style={{
-                width: "100%",
-                position: "relative",
-                textAlign,
-                filter: shouldApplyPerLineGoo && perLineGooFilterId ? `url(#${perLineGooFilterId})` : undefined,
-                ...perLineMaxLinesStyle,
-                ...(block.rules.maxLines ? {} : { overflow: "visible" }),
-              }}
-            >
-              {bridgeStyle ? <span aria-hidden="true" style={bridgeStyle} /> : null}
-              <span ref={textContentRef} className="block-text-background block-text-content text-bg-per-line" style={backgroundSpanStyle}>
-                <span style={textForegroundStyle}>{textContent}</span>
-              </span>
+        // Cas transparent + arrondi : double couche (miroir de renderTextBlock).
+        // Garde la fusion blob du goo en le faisant opérer sur un fond opaque,
+        // puis fond la couche entière via opacity ; texte net par-dessus.
+        const dualLayer = backgroundRadius > 0 && (block.style.backgroundOpacity ?? 1) < 1;
+        if (dualLayer) {
+          const opaqueFill = getOpaqueTextBackgroundColor(block.style);
+          const bgOpacity = block.style.backgroundOpacity ?? 1;
+          const geomStyle: React.CSSProperties = {
+            fontFamily: block.style.fontFamily ?? defaultFontFamily,
+            fontSize: resolvedFontSize,
+            fontWeight: block.style.fontWeight,
+            fontStyle: block.style.fontStyle,
+            letterSpacing: block.style.letterSpacing !== undefined ? `${block.style.letterSpacing * styleScale}px` : undefined,
+            textTransform: block.rules.uppercase ? "uppercase" : undefined,
+            textAlign: block.style.textAlign,
+            lineHeight: vPadPx > 0 ? `calc(1em + ${vPadPx}px)` : "normal",
+            whiteSpace: "pre-wrap",
+            boxSizing: "border-box",
+            display: "inline",
+            WebkitBoxDecorationBreak: "clone",
+            boxDecorationBreak: "clone",
+            ...(uniformPad
+              ? { padding: backgroundPadding.top > 0 ? backgroundPadding.top * styleScale : undefined }
+              : {
+                  paddingTop: backgroundPadding.top > 0 ? backgroundPadding.top * styleScale : undefined,
+                  paddingRight: backgroundPadding.right > 0 ? backgroundPadding.right * styleScale : undefined,
+                  paddingBottom: backgroundPadding.bottom > 0 ? backgroundPadding.bottom * styleScale : undefined,
+                  paddingLeft: backgroundPadding.left > 0 ? backgroundPadding.left * styleScale : undefined,
+                }),
+          };
+          const bgSpanStyleDual: React.CSSProperties = {
+            ...geomStyle,
+            backgroundColor: opaqueFill,
+            color: "transparent",
+            borderRadius: effectiveBackgroundRadius > 0 ? effectiveBackgroundRadius : undefined,
+          };
+          const fgSpanStyleDual: React.CSSProperties = {
+            ...geomStyle,
+            color: block.style.color ?? defaultTextColor,
+            WebkitTextStroke: buildTextStrokeValue(block.style, block.style.color ?? defaultTextColor, styleScale),
+            textShadow: buildTextShadowValue(block.style, styleScale),
+            filter: fauxThinFilter,
+          };
+          const bridgeStyleDual: React.CSSProperties | null = bridgeMetrics.width > 0
+            ? {
+                position: "absolute",
+                top: bridgeMetrics.inset,
+                bottom: bridgeMetrics.inset,
+                width: bridgeMetrics.width,
+                backgroundColor: opaqueFill,
+                pointerEvents: "none",
+                left: textAlign === "left" ? 0 : undefined,
+                right: textAlign === "right" ? 0 : undefined,
+              }
+            : null;
+          content = (
+            <div style={{ ...style, display: "flex", flexDirection: "column", justifyContent, overflow: "visible" }}>
+              <div
+                className="block-text-align"
+                style={{
+                  width: "100%",
+                  position: "relative",
+                  textAlign,
+                  opacity: block.style.opacity,
+                  ...(block.rules.maxLines ? {} : { overflow: "visible" }),
+                }}
+              >
+                <div className="block-text-bg-layer" style={{ position: "relative", filter: shouldApplyPerLineGoo && perLineGooFilterId ? `url(#${perLineGooFilterId})` : undefined, opacity: bgOpacity, ...perLineMaxLinesStyle }}>
+                  {bridgeStyleDual ? <span aria-hidden="true" style={bridgeStyleDual} /> : null}
+                  <span ref={textContentRef} className="block-text-background block-text-content text-bg-per-line" style={bgSpanStyleDual}>
+                    <span>{textContent}</span>
+                  </span>
+                </div>
+                <div className="block-text-fg-layer" style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", textAlign, ...perLineMaxLinesStyle }}>
+                  <span className="block-text-content" style={fgSpanStyleDual}>
+                    <span style={{ opacity: block.style.textOpacity }}>{textContent}</span>
+                  </span>
+                </div>
+              </div>
             </div>
-          </div>
-        );
+          );
+        } else {
+          content = (
+            <div style={{ ...style, display: "flex", flexDirection: "column", justifyContent, overflow: "visible" }}>
+              <div
+                className="block-text-align"
+                style={{
+                  width: "100%",
+                  position: "relative",
+                  textAlign,
+                  filter: shouldApplyPerLineGoo && perLineGooFilterId ? `url(#${perLineGooFilterId})` : undefined,
+                  ...perLineMaxLinesStyle,
+                  ...(block.rules.maxLines ? {} : { overflow: "visible" }),
+                }}
+              >
+                {bridgeStyle ? <span aria-hidden="true" style={bridgeStyle} /> : null}
+                <span ref={textContentRef} className="block-text-background block-text-content text-bg-per-line" style={backgroundSpanStyle}>
+                  <span style={textForegroundStyle}>{textContent}</span>
+                </span>
+              </div>
+            </div>
+          );
+        }
       } else {
         content = (
           <div

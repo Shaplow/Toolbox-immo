@@ -71,6 +71,16 @@ export function getTextBackgroundFill(style: BlockStyle): string {
 }
 
 /**
+ * Couleur de fond du texte à pleine opacité (hex brut, sans alpha). Utilisée par
+ * la couche fond du rendu per-line double-couche : le filtre goo exige un alpha
+ * plein pour que son seuil reforme un blob net ; l'opacité de fond est ensuite
+ * appliquée une seule fois via `opacity` sur la couche (texte non affecté).
+ */
+export function getOpaqueTextBackgroundColor(style: BlockStyle): string {
+  return style.backgroundColor ?? "#FFFFFF";
+}
+
+/**
  * Faux-gras : valeur `-webkit-text-stroke` d'un contour de la MÊME couleur que
  * le texte (`color`), pour épaissir les glyphes au-delà du `font-weight` max.
  * `scale` suit le zoom du builder (Canvas) ; le rendu HTML/vidéo passe scale=1
