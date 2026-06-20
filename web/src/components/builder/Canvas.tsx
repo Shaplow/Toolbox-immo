@@ -1505,6 +1505,23 @@ function BlockPreview({
       };
     };
 
+    // Nombre de lignes visuelles occupées par le texte (indépendant du zoom et
+    // du clamp : un Range sur le contenu renvoie un rect par fragment de ligne,
+    // qu'on regroupe par "top" distinct). Sert au shrink piloté par maxLines :
+    // réduire tant que le texte occupe PLUS de maxLines lignes — et s'arrêter dès
+    // qu'il tient, sans dépendre de la hauteur du cadre (qui sur-réduisait).
+    const countLines = (): number => {
+      const range = document.createRange();
+      range.selectNodeContents(contentNode);
+      const rects = range.getClientRects();
+      const tops: number[] = [];
+      for (const r of rects) {
+        if (r.height === 0 || r.width === 0) continue;
+        if (!tops.some((t) => Math.abs(t - r.top) < r.height * 0.5)) tops.push(r.top);
+      }
+      return tops.length;
+    };
+
     // Si maxLines est actif, le webkit-line-clamp + overflow:hidden cache le
     // débordement → la mesure ne voit que la box clampée et croit que ça rentre.
     // On désactive ces props pendant la boucle de fit, puis on restaure.
@@ -1520,7 +1537,11 @@ function BlockPreview({
     contentNode.style.fontSize = `${baseFontSize}px`;
     while (nextFontSize > minFontSizePx) {
       const { width, height } = measure();
-      const overflowsHeight = height - 0.5 > availableHeight;
+      // maxLines actif → on réduit pour faire tenir le texte en ≤ maxLines lignes
+      // (mesure par nombre de lignes). Sinon → on fait tenir la hauteur dans le cadre.
+      const overflowsHeight = block.rules.maxLines
+        ? countLines() > block.rules.maxLines
+        : height - 0.5 > availableHeight;
       const overflowsWidth = width - 0.5 > availableWidth;
       if (!overflowsHeight && !overflowsWidth) break;
 

@@ -48,6 +48,18 @@ describe("renderTextBlock — maxLines", () => {
     const html = renderTextBlock(block, "Hello world", undefined, false);
     expect(html).not.toContain("-webkit-line-clamp");
   });
+
+  it("expose maxLines via data-max-lines (lu par le script shrink-to-fit)", () => {
+    const block = makeTextBlock({ rules: { maxLines: 2 } });
+    const html = renderTextBlock(block, "Hello world", undefined, false);
+    expect(html).toContain('data-max-lines="2"');
+  });
+
+  it("data-max-lines vide quand maxLines absent", () => {
+    const block = makeTextBlock({ rules: {} });
+    const html = renderTextBlock(block, "Hello world", undefined, false);
+    expect(html).toContain('data-max-lines=""');
+  });
 });
 
 describe("renderTextBlock — shrinkToFit", () => {

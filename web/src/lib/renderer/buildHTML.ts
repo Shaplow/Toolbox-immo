@@ -240,6 +240,28 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; mode?: "free"
           };
         }
 
+        // Nombre de lignes visuelles occupées par le texte (indépendant du zoom
+        // et du clamp : Range → un rect par fragment de ligne, regroupés par top
+        // distinct). Pilote le shrink quand maxLines est actif.
+        function countLines() {
+          const range = document.createRange();
+          range.selectNodeContents(content);
+          const rects = range.getClientRects();
+          const tops = [];
+          for (let i = 0; i < rects.length; i++) {
+            const r = rects[i];
+            if (r.height === 0 || r.width === 0) continue;
+            let found = false;
+            for (let j = 0; j < tops.length; j++) {
+              if (Math.abs(tops[j] - r.top) < r.height * 0.5) { found = true; break; }
+            }
+            if (!found) tops.push(r.top);
+          }
+          return tops.length;
+        }
+        let maxLinesValue = parseInt(block.dataset.maxLines || '0', 10);
+        if (!Number.isFinite(maxLinesValue) || maxLinesValue < 0) maxLinesValue = 0;
+
         // Détecte maxLines actif via le webkit-line-clamp inline (rendu par
         // renderTextBlock). Si actif, on désactive temporairement clamp +
         // display + overflow pour que la mesure voie le contenu complet.
@@ -256,7 +278,9 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; mode?: "free"
         content.style.fontSize = initialFontSizePx + 'px';
         while (nextFontSize > minFontSizePx) {
           const m = measure();
-          const overflowsHeight = m.height - 0.5 > availableHeight;
+          // maxLines actif → réduire pour faire tenir en ≤ maxLines lignes (mesure
+          // par nombre de lignes). Sinon → faire tenir la hauteur dans le cadre.
+          const overflowsHeight = maxLinesValue > 0 ? countLines() > maxLinesValue : m.height - 0.5 > availableHeight;
           const overflowsWidth = m.width - 0.5 > availableWidth;
           if (!overflowsHeight && !overflowsWidth) break;
 

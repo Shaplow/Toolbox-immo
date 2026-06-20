@@ -109,7 +109,7 @@ export function renderTextBlock(
   // ── No background ──────────────────────────────────────────────────────────
   if (!backgroundEnabled) {
     const plainStyle = style.opacity !== undefined ? `opacity:${style.opacity}` : "";
-    return `<div class="block block-text" data-text-background-mode="none" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" style="${outerStyle}"><div style="${plainStyle}"><div class="block-text-content" style="${innerStyle}">${escaped}</div></div></div>`;
+    return `<div class="block block-text" data-text-background-mode="none" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" data-max-lines="${rules.maxLines ?? ""}" style="${outerStyle}"><div style="${plainStyle}"><div class="block-text-content" style="${innerStyle}">${escaped}</div></div></div>`;
   }
 
   // Background box is always horizontally centered in the block frame.
@@ -229,7 +229,7 @@ export function renderTextBlock(
       // Couche texte : superposée exactement, sans filtre ni opacité de fond.
       const textLayerStyle = ["position:absolute", "top:0", "left:0", "width:100%", "height:100%", `text-align:${textAlign}`, layerClamp].filter(Boolean).join(";");
 
-      return `<div class="block block-text block-text-per-line" data-text-background-mode="per-line" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" style="${outerStyle}"><div class="block-text-align" style="${wrapperDual}"><div class="block-text-bg-layer" style="${bgLayerStyle}">${bridgeDual ? `<span aria-hidden="true" style="${bridgeDual}"></span>` : ""}<span class="block-text-background block-text-content text-bg-per-line" style="${bgSpanStyle}"><span>${escaped}</span></span></div><div class="block-text-fg-layer" style="${textLayerStyle}"><span class="block-text-content" style="${fgSpanStyle}"><span style="${fgInnerStyle}">${escaped}</span></span></div></div></div>`;
+      return `<div class="block block-text block-text-per-line" data-text-background-mode="per-line" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" data-max-lines="${rules.maxLines ?? ""}" style="${outerStyle}"><div class="block-text-align" style="${wrapperDual}"><div class="block-text-bg-layer" style="${bgLayerStyle}">${bridgeDual ? `<span aria-hidden="true" style="${bridgeDual}"></span>` : ""}<span class="block-text-background block-text-content text-bg-per-line" style="${bgSpanStyle}"><span>${escaped}</span></span></div><div class="block-text-fg-layer" style="${textLayerStyle}"><span class="block-text-content" style="${fgSpanStyle}"><span style="${fgInnerStyle}">${escaped}</span></span></div></div></div>`;
     }
 
     const spanStyle = spanParts.join(";");
@@ -261,7 +261,7 @@ export function renderTextBlock(
         ].join(";")
       : "";
 
-    return `<div class="block block-text block-text-per-line" data-text-background-mode="per-line" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" style="${outerStyle}"><div class="block-text-align" style="${wrapperStyle}">${bridgeStyle ? `<span aria-hidden="true" style="${bridgeStyle}"></span>` : ""}<span class="block-text-background block-text-content text-bg-per-line" style="${spanStyle}"><span style="${textStyle}">${escaped}</span></span></div></div>`;
+    return `<div class="block block-text block-text-per-line" data-text-background-mode="per-line" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" data-max-lines="${rules.maxLines ?? ""}" style="${outerStyle}"><div class="block-text-align" style="${wrapperStyle}">${bridgeStyle ? `<span aria-hidden="true" style="${bridgeStyle}"></span>` : ""}<span class="block-text-background block-text-content text-bg-per-line" style="${spanStyle}"><span style="${textStyle}">${escaped}</span></span></div></div>`;
   }
 
   // ── Fit / Fixed modes ──────────────────────────────────────────────────────
@@ -295,5 +295,5 @@ export function renderTextBlock(
 
   const backgroundStyle = backgroundParts.join(";");
 
-  return `<div class="block block-text" data-text-background-mode="${backgroundMode}" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" style="${outerStyle}"><div class="block-text-align" style="${alignStyle}"><div class="block-text-background" style="${backgroundStyle}"><div class="block-text-content" style="${innerStyle}">${escaped}</div></div></div></div>`;
+  return `<div class="block block-text" data-text-background-mode="${backgroundMode}" data-shrink-to-fit="${rules.shrinkToFit && rules.minFontSize ? "true" : "false"}" data-min-font-size="${rules.minFontSize ?? ""}" data-max-lines="${rules.maxLines ?? ""}" style="${outerStyle}"><div class="block-text-align" style="${alignStyle}"><div class="block-text-background" style="${backgroundStyle}"><div class="block-text-content" style="${innerStyle}">${escaped}</div></div></div></div>`;
 }
