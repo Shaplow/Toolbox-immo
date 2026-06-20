@@ -1537,13 +1537,15 @@ function BlockPreview({
     contentNode.style.fontSize = `${baseFontSize}px`;
     while (nextFontSize > minFontSizePx) {
       const { width, height } = measure();
-      // maxLines actif → on réduit pour faire tenir le texte en ≤ maxLines lignes
-      // (mesure par nombre de lignes). Sinon → on fait tenir la hauteur dans le cadre.
-      const overflowsHeight = block.rules.maxLines
+      // maxLines actif → on réduit UNIQUEMENT tant que le texte occupe plus de
+      // maxLines lignes. PAS de check largeur : le texte wrap pour rester dans la
+      // largeur, donc un overflow largeur n'arrive pas (texte normal) ; or la
+      // mesure de largeur (scrollWidth sur span inline per-line) est gonflée et
+      // sur-réduisait à tort jusqu'au min alors que le texte tenait déjà en N lignes.
+      const overflows = block.rules.maxLines
         ? countLines() > block.rules.maxLines
-        : height - 0.5 > availableHeight;
-      const overflowsWidth = width - 0.5 > availableWidth;
-      if (!overflowsHeight && !overflowsWidth) break;
+        : (height - 0.5 > availableHeight || width - 0.5 > availableWidth);
+      if (!overflows) break;
 
       nextFontSize = Math.max(minFontSizePx, nextFontSize - step);
       contentNode.style.fontSize = `${nextFontSize}px`;

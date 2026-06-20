@@ -278,11 +278,15 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; mode?: "free"
         content.style.fontSize = initialFontSizePx + 'px';
         while (nextFontSize > minFontSizePx) {
           const m = measure();
-          // maxLines actif → réduire pour faire tenir en ≤ maxLines lignes (mesure
-          // par nombre de lignes). Sinon → faire tenir la hauteur dans le cadre.
-          const overflowsHeight = maxLinesValue > 0 ? countLines() > maxLinesValue : m.height - 0.5 > availableHeight;
-          const overflowsWidth = m.width - 0.5 > availableWidth;
-          if (!overflowsHeight && !overflowsWidth) break;
+          // maxLines actif → réduire UNIQUEMENT tant que le texte occupe plus de
+          // maxLines lignes. PAS de check largeur : le texte wrap pour tenir dans
+          // la largeur ; la mesure de largeur (scrollWidth sur span inline per-line)
+          // est gonflée et sur-réduisait au min alors que le texte tenait déjà en
+          // N lignes (bug observé sur les tips à fond per-line).
+          const overflows = maxLinesValue > 0
+            ? countLines() > maxLinesValue
+            : (m.height - 0.5 > availableHeight || m.width - 0.5 > availableWidth);
+          if (!overflows) break;
 
           nextFontSize = Math.max(minFontSizePx, nextFontSize - step);
           content.style.fontSize = nextFontSize + 'px';
