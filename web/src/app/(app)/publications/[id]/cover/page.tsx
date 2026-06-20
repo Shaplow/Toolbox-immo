@@ -25,6 +25,7 @@ import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { toUserRole } from "@/lib/permissions/role";
 import { CoverGenerator } from "@/components/covers/CoverGenerator";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -49,7 +50,7 @@ export default async function PublicationCoverPage({ params }: Props) {
       assigneeVideasteId: true,
       coverModeOverride: true,
       account: { select: { handle: true } },
-      pattern: { select: { coverMode: true } },
+      ...slotEffectivePatternSelect,
       render: { select: { videoUrl: true } },
       currentVersion: { select: { fileUrl: true, fileName: true } },
     },
@@ -66,7 +67,8 @@ export default async function PublicationCoverPage({ params }: Props) {
 
   // Phase 2.5 — mode effectif. Si manualSelect : on bascule direct sur l'onglet
   // manuel + on pré-remplit la vidéo (finale renderée ou version montée).
-  const effectiveCoverMode = slot.coverModeOverride ?? slot.pattern?.coverMode ?? "none";
+  const effectiveCoverMode =
+    slot.coverModeOverride ?? resolveSlotEffectivePattern(slot)?.coverMode ?? "none";
   const prefillVideoUrl =
     slot.render?.videoUrl ?? slot.currentVersion?.fileUrl ?? undefined;
   const prefillVideoName =

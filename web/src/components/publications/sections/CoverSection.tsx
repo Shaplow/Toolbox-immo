@@ -54,6 +54,12 @@ interface Props {
   viewerRole?: string;
   /** Version courante promue par l'ADMIN (si needsRushes=true). */
   currentVersion?: { versionNumber: number; fileName: string } | null;
+  /**
+   * Render DONE du slot (slots auto_template). Permet le recovery « Générer le
+   * pack auto » depuis la vidéo déjà rendue, sans re-render — utile pour les
+   * slots dont le déclenchement auto avait été skippé (bug recette / échec).
+   */
+  renderId?: string | null;
   /** Si true, la cover auto attend la validation client avant lancement. */
   needsClientValidation?: boolean;
   /** Status courant du slot (TO_DO, AWAITING_CLIENT, SCHEDULED…). */
@@ -70,6 +76,7 @@ interface Props {
 
 export function CoverSection({
   slot, pattern, coverPack, coverConfigError, canEdit, canMonteurUpload = false, viewerRole, currentVersion,
+  renderId,
   needsClientValidation,
   slotStatus,
   sectionId = "cover",
@@ -81,6 +88,35 @@ export function CoverSection({
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [uploading, setUploading] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [triggeringAuto, setTriggeringAuto] = useState(false);
+
+  /**
+   * Recovery « Générer le pack auto » quand aucun pack n'existe (mode autoPack).
+   * Génère le pack depuis la vidéo DÉJÀ rendue/uploadée — sans re-render :
+   *  - slot auto_template (renderId) → POST /api/renders/[renderId]/cover
+   *  - slot one-off (version)        → POST /api/publications/[id]/trigger-cover
+   * Débloque les slots dont l'auto-trigger avait été skippé.
+   */
+  async function handleTriggerAutoPack() {
+    if (triggeringAuto) return;
+    const endpoint = renderId
+      ? `/api/renders/${renderId}/cover`
+      : `/api/publications/${slot.id}/trigger-cover`;
+    setTriggeringAuto(true);
+    try {
+      const res = await fetch(endpoint, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? `Erreur ${res.status}`);
+      }
+      toast.success("Génération du pack auto lancée — les frames apparaîtront dans quelques secondes.");
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Impossible de générer le pack auto");
+    } finally {
+      setTriggeringAuto(false);
+    }
+  }
 
   /**
    * V6.4.2 — Refaire un tirage : permet à l'admin de relancer une extraction
@@ -324,19 +360,44 @@ export function CoverSection({
               : "La cover pourra être choisie après la validation client."}
           </Alert>
         ) : canEdit ? (
-          <EmptyState
-            icon={ImageIcon}
-            title="Aucune cover"
-            description={
-              mode === "manualSelect"
-                ? "Extraie des frames depuis la vidéo et valide-en une comme cover finale."
-                : undefined
-            }
-            cta={{
-              label: mode === "manualSelect" ? "Extraire et choisir une frame" : "Choisir une cover",
-              onClick: () => router.push(coverToolHref),
-            }}
-          />
+          mode === "autoPack" && (renderId || currentVersion) ? (
+            // Recovery : pack auto pas encore généré (déclenchement skippé) →
+            // on l'extrait de la vidéo existante, sans re-render.
+            <div className="space-y-2">
+              <EmptyState
+                icon={ImageIcon}
+                title="Aucune cover"
+                description="Le pack auto n'a pas encore été généré. Lance l'extraction depuis la vidéo déjà rendue."
+                cta={{
+                  label: triggeringAuto ? "Génération…" : "Générer le pack auto",
+                  onClick: () => void handleTriggerAutoPack(),
+                }}
+              />
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => router.push(coverToolHref)}
+                  className="text-xs text-muted-foreground underline hover:text-foreground transition-colors"
+                >
+                  ou choisir une frame manuellement
+                </button>
+              </div>
+            </div>
+          ) : (
+            <EmptyState
+              icon={ImageIcon}
+              title="Aucune cover"
+              description={
+                mode === "manualSelect"
+                  ? "Extraie des frames depuis la vidéo et valide-en une comme cover finale."
+                  : undefined
+              }
+              cta={{
+                label: mode === "manualSelect" ? "Extraire et choisir une frame" : "Choisir une cover",
+                onClick: () => router.push(coverToolHref),
+              }}
+            />
+          )
         ) : (
           <EmptyState
             icon={ImageIcon}

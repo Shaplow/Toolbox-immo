@@ -740,6 +740,7 @@ export function PublicationFiche({
               <CoverSection
                 slot={{ id: slot.id }}
                 pattern={pattern ? { coverMode: pattern.coverMode } : null}
+                renderId={render?.status === "DONE" ? render.id : null}
                 coverPack={
                   coverPack
                     ? {
