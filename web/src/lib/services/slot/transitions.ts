@@ -16,6 +16,7 @@ import type { SlotStatus, UserRole } from "@/types/roles";
 import type { PrismaClient } from "@prisma/client";
 import { logActivity } from "./activity";
 import { resolveCaptionsMode, isCaptionsAuto } from "@/lib/publications/captionsMode";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 
 // ─── Statuts legacy toujours présents en base (Phase 1.3 backfill) ────────────
 
@@ -331,9 +332,8 @@ export async function computeAutoTransitionTarget(
     select: {
       status: true,
       needsClientValidationOverride: true,
-      pattern: {
-        select: { source: true, needsCaptions: true, needsCaptionsMode: true, needsClientValidation: true },
-      },
+      // Pattern legacy + binding (recette par compte) — voir effectivePattern.ts.
+      ...slotEffectivePatternSelect,
       render: { select: { status: true } },
       // V6.6.1 — On charge 5 jobs au lieu de 1 pour distinguer le PROCESSING
       // (qui ne doit PAS faire regresser la transition) d'un COMPLETED
@@ -358,7 +358,7 @@ export async function computeAutoTransitionTarget(
 
   return computeAutoTransitionTargetPure({
     status: slot.status,
-    pattern: slot.pattern,
+    pattern: resolveSlotEffectivePattern(slot),
     needsClientValidationOverride: slot.needsClientValidationOverride,
     render: slot.render,
     latestCaptionJobStatus: effectiveCaptionStatus,
@@ -479,9 +479,8 @@ export async function applyAutoTransitionFromPipeline(
       select: {
         status: true,
         needsClientValidationOverride: true,
-        pattern: {
-          select: { source: true, needsCaptions: true, needsCaptionsMode: true, needsClientValidation: true },
-        },
+        // Pattern legacy + binding (recette par compte) — voir effectivePattern.ts.
+        ...slotEffectivePatternSelect,
         render: { select: { status: true } },
         // Aligné sur computeAutoTransitionTarget : take:5 + staleSince pour
         // pouvoir prioriser le COMPLETED non-stale. Sans ça, un vieux job
@@ -504,7 +503,7 @@ export async function applyAutoTransitionFromPipeline(
 
     const target = computeAutoTransitionTargetPure({
       status: slot.status,
-      pattern: slot.pattern,
+      pattern: resolveSlotEffectivePattern(slot),
       needsClientValidationOverride: slot.needsClientValidationOverride,
       render: slot.render,
       latestCaptionJobStatus: effectiveCaptionStatus,

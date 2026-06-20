@@ -17,6 +17,7 @@ import { resolveSlotConfig } from "@/lib/services/slot/config";
 import { logActivity } from "@/lib/services/slot/activity";
 import { queueCoverFramePackPreparation } from "@/lib/coverAuto";
 import { getCoverPresetIdFromConfig } from "@/lib/publications/coverMode";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 
 export type AutoCoverResult =
   | { status: "queued"; packId: string; presetName: string }
@@ -58,36 +59,25 @@ export async function tryAutoTriggerCover(
         coverPresetIdOverride: true,
         captionPresetIdOverride: true,
         descriptionPromptIdOverride: true,
-        pattern: {
-          select: {
-            needsClientValidation: true,
-            allowsClientRevision: true,
-            needsCaptions: true,
-            needsDescription: true,
-            needsRushes: true,
-            needsBrief: true,
-            coverMode: true,
-            coverConfig: true,
-            captionPresetId: true,
-            descriptionPromptId: true,
-            templateId: true,
-          },
-        },
+        // Charge le pattern legacy ET le binding (recette par compte) — la
+        // résolution legacy-only ignorait les slots créés via recette.
+        ...slotEffectivePatternSelect,
       },
     });
 
     if (!slot) return { status: "error", reason: "slot_not_found" };
     if (!slot.currentVersion?.fileUrl) return { status: "skipped", reason: "no_current_version" };
 
+    // Pattern effectif : legacy AccountPattern OU recette PatternBinding.
+    const effPattern = resolveSlotEffectivePattern(slot);
     // coverConfig.coverPresetId (Phase 3) — extrait pour le résolveur
-    const patternCoverPresetId = getCoverPresetIdFromConfig(slot.pattern?.coverConfig);
+    const patternCoverPresetId = getCoverPresetIdFromConfig(effPattern?.coverConfig);
 
     const resolved = resolveSlotConfig(
       slot,
-      slot.pattern
+      effPattern
         ? {
-            ...slot.pattern,
-            coverMode: slot.pattern.coverMode,
+            ...effPattern,
             coverPresetId: patternCoverPresetId,
           }
         : null,

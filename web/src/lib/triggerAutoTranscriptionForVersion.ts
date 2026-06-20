@@ -24,6 +24,7 @@ import { prisma } from "@/lib/prisma";
 import { runpodConfigured, submitRunpodJob } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 import { r2Configured, uploadToR2 } from "@/lib/r2";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -200,7 +201,7 @@ export async function triggerAutoTranscriptionForVersion(
           select: {
             needsCaptionsOverride: true,
             needsDescriptionOverride: true,
-            pattern: { select: { needsCaptions: true, needsDescription: true } },
+            ...slotEffectivePatternSelect,
           },
         },
       },
@@ -214,10 +215,11 @@ export async function triggerAutoTranscriptionForVersion(
       return;
     }
     // Même garde que le pipeline RunPod : on ne lance que si quelqu'un consomme.
+    const eff = resolveSlotEffectivePattern(version.slot);
     const effectiveNeedsCaptions =
-      version.slot.needsCaptionsOverride ?? version.slot.pattern?.needsCaptions ?? false;
+      version.slot.needsCaptionsOverride ?? eff?.needsCaptions ?? false;
     const effectiveNeedsDescription =
-      version.slot.needsDescriptionOverride ?? version.slot.pattern?.needsDescription ?? "none";
+      version.slot.needsDescriptionOverride ?? eff?.needsDescription ?? "none";
     if (!effectiveNeedsCaptions && effectiveNeedsDescription !== "autoGenerate") {
       logSkip(publicationVersionId, "captions_and_description_disabled", {
         slotId: version.slotId,
@@ -259,9 +261,7 @@ export async function triggerAutoTranscriptionForVersion(
         select: {
           needsCaptionsOverride: true,
           needsDescriptionOverride: true,
-          pattern: {
-            select: { needsCaptions: true, needsDescription: true },
-          },
+          ...slotEffectivePatternSelect,
         },
       },
     },
@@ -278,10 +278,11 @@ export async function triggerAutoTranscriptionForVersion(
 
   // On déclenche la transcription uniquement si quelque chose la consommera :
   // soit captions (sous-titres vidéo), soit description (légende IG auto).
+  const eff = resolveSlotEffectivePattern(version.slot);
   const effectiveNeedsCaptions =
-    version.slot.needsCaptionsOverride ?? version.slot.pattern?.needsCaptions ?? false;
+    version.slot.needsCaptionsOverride ?? eff?.needsCaptions ?? false;
   const effectiveNeedsDescription =
-    version.slot.needsDescriptionOverride ?? version.slot.pattern?.needsDescription ?? "none";
+    version.slot.needsDescriptionOverride ?? eff?.needsDescription ?? "none";
   if (!effectiveNeedsCaptions && effectiveNeedsDescription !== "autoGenerate") {
     logSkip(publicationVersionId, "captions_and_description_disabled", {
       slotId: version.slotId,

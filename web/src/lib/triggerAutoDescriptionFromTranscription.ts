@@ -27,6 +27,7 @@ import { notifyUser } from "@/lib/sseStore";
 import { getFromR2, r2Configured } from "@/lib/r2";
 import { logActivity } from "@/lib/services/slot/activity";
 import { POST_VALIDATION_STATUSES } from "@/lib/publications/constants";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
@@ -215,13 +216,8 @@ export async function triggerAutoDescriptionForTranscription(
       descriptionPromptIdOverride: true,
       needsDescriptionOverride: true,
       needsClientValidationOverride: true,
-      pattern: {
-        select: {
-          needsDescription: true,
-          descriptionPromptId: true,
-          needsClientValidation: true,
-        },
-      },
+      // Pattern legacy + binding (recette par compte) — voir effectivePattern.ts.
+      ...slotEffectivePatternSelect,
     },
   });
 
@@ -230,10 +226,13 @@ export async function triggerAutoDescriptionForTranscription(
     return;
   }
 
+  // Config recette effective : legacy AccountPattern OU PatternBinding.
+  const effPattern = resolveSlotEffectivePattern(slot);
+
   // ── 2. Skips légitimes (silencieux, AUCUN job créé) ──────────────────────
   // Ces cas ne sont pas des erreurs — le slot n'attend pas de description IA.
   const effectiveNeedsDescription =
-    slot.needsDescriptionOverride ?? slot.pattern?.needsDescription ?? "none";
+    slot.needsDescriptionOverride ?? effPattern?.needsDescription ?? "none";
   if (effectiveNeedsDescription !== "autoGenerate") {
     logSkip(transcriptionJobId, "needs_description_not_auto", {
       slotId,
@@ -259,7 +258,7 @@ export async function triggerAutoDescriptionForTranscription(
   // approuvée, on diffère sans créer de job (il sera retentré après approve).
   const needsValidation =
     slot.needsClientValidationOverride ??
-    slot.pattern?.needsClientValidation ??
+    effPattern?.needsClientValidation ??
     false;
   if (needsValidation && !POST_VALIDATION_STATUSES.has(slot.status)) {
     logSkip(transcriptionJobId, "awaiting_client_validation", {
@@ -315,7 +314,7 @@ export async function triggerAutoDescriptionForTranscription(
   }
 
   const promptId =
-    slot.descriptionPromptIdOverride ?? slot.pattern?.descriptionPromptId ?? null;
+    slot.descriptionPromptIdOverride ?? effPattern?.descriptionPromptId ?? null;
   if (!promptId) {
     logSkip(transcriptionJobId, "no_prompt_resolved", { slotId });
     await createFailedJob({

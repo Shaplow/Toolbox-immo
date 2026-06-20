@@ -13,6 +13,7 @@ import { getR2PublicUrl, r2Configured, uploadToR2 } from "@/lib/r2";
 import { submitRunpodJob, runpodConfigured } from "@/lib/runpod";
 import { getRunpodWebhookUrl } from "@/lib/webhooks/runpod";
 import type { TemplateJSON } from "@/types/template";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 
 const RUNPOD_API_KEY     = process.env.RUNPOD_API_KEY;
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID;
@@ -181,14 +182,17 @@ export async function triggerAutoTranscriptionForRender(
           publicationSlot: {
             select: {
               needsDescriptionOverride: true,
-              pattern: { select: { needsDescription: true } },
+              ...slotEffectivePatternSelect,
             },
           },
         },
       });
+      const eff = render?.publicationSlot
+        ? resolveSlotEffectivePattern(render.publicationSlot)
+        : null;
       needsDescriptionAuto =
         (render?.publicationSlot?.needsDescriptionOverride ??
-          render?.publicationSlot?.pattern?.needsDescription ??
+          eff?.needsDescription ??
           "none") === "autoGenerate";
 
       if (!captionAutoEnabled && !needsDescriptionAuto) return;
@@ -254,14 +258,17 @@ export async function triggerAutoTranscriptionForRender(
         publicationSlot: {
           select: {
             needsDescriptionOverride: true,
-            pattern: { select: { needsDescription: true } },
+            ...slotEffectivePatternSelect,
           },
         },
       },
     });
+    const eff = render?.publicationSlot
+      ? resolveSlotEffectivePattern(render.publicationSlot)
+      : null;
     const effectiveNeedsDescription =
       render?.publicationSlot?.needsDescriptionOverride ??
-      render?.publicationSlot?.pattern?.needsDescription ??
+      eff?.needsDescription ??
       "none";
     needsDescriptionAuto = effectiveNeedsDescription === "autoGenerate";
   } catch (err) {
