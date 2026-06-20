@@ -39,38 +39,50 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Le render vidéo doit être terminé" }, { status: 400 });
   }
 
-  // Phase 2.0 — résolution via coverPresetName → TemplateCoverPreset
+  // Résolution alignée sur triggerAutoCoverPackForRender (coverAuto.ts) :
+  // coverConfig null/incomplet n'est PAS bloquant → on retombe sur le preset par
+  // défaut du template. Configurer la cover sur la template suffit (le coverConfig
+  // de la recette ne sert qu'à choisir un preset spécifique).
   const effPattern = render.publicationSlot ? resolveSlotEffectivePattern(render.publicationSlot) : null;
-  if (effPattern?.coverMode !== "autoPack" || !effPattern.coverConfig) {
-    return NextResponse.json({ error: "Pack cover auto non configuré sur ce pattern" }, { status: 400 });
-  }
-
-  const coverConfigJson = effPattern.coverConfig as { enabled?: boolean; coverPresetName?: string } | null;
-  if (!coverConfigJson?.enabled) {
-    return NextResponse.json({ error: "Cover semi-auto non activée sur ce pattern" }, { status: 400 });
-  }
-
-  const presetName = coverConfigJson.coverPresetName;
-  if (!presetName) {
+  if (effPattern?.coverMode !== "autoPack") {
     return NextResponse.json(
-      { error: "Cover config invalide : aucun preset sélectionné. Configurez un preset dans le template." },
+      { error: "Le mode cover de cette recette n'est pas « Pack auto »." },
       { status: 400 }
     );
   }
 
-  const patternTemplateId = effPattern.templateId ?? render.templateId;
-  if (!patternTemplateId) {
-    return NextResponse.json({ error: "Template introuvable pour ce pattern" }, { status: 400 });
+  const coverConfigJson = (effPattern.coverConfig ?? {}) as {
+    enabled?: boolean;
+    coverPresetId?: string;
+    coverPresetName?: string;
+  };
+  if (coverConfigJson.enabled === false) {
+    return NextResponse.json({ error: "Cover auto désactivée sur cette recette." }, { status: 400 });
   }
 
-  const preset = await prisma.templateCoverPreset.findUnique({
-    where: { templateId_name: { templateId: patternTemplateId, name: presetName } },
-  });
+  const patternTemplateId = effPattern.templateId ?? render.templateId;
+  if (!patternTemplateId) {
+    return NextResponse.json({ error: "Template introuvable pour cette recette" }, { status: 400 });
+  }
+
+  // preset : id → nom → défaut du template (sortOrder min).
+  let preset = coverConfigJson.coverPresetId
+    ? await prisma.templateCoverPreset.findUnique({ where: { id: coverConfigJson.coverPresetId } })
+    : null;
+  if (!preset && coverConfigJson.coverPresetName) {
+    preset = await prisma.templateCoverPreset.findUnique({
+      where: { templateId_name: { templateId: patternTemplateId, name: coverConfigJson.coverPresetName } },
+    });
+  }
+  if (!preset) {
+    preset = await prisma.templateCoverPreset.findFirst({
+      where: { templateId: patternTemplateId },
+      orderBy: { sortOrder: "asc" },
+    });
+  }
   if (!preset) {
     return NextResponse.json(
-      {
-        error: `Cover config invalide : le preset "${presetName}" n'existe plus sur ce template. Reconfigurer le pattern.`,
-      },
+      { error: "Aucun preset cover sur le template — configure-le dans le builder (onglet « Cover auto »)." },
       { status: 400 }
     );
   }

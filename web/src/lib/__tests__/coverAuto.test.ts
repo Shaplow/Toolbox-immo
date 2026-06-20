@@ -137,13 +137,37 @@ describe("triggerAutoCoverPackForRender — Phase 2.0 : résolution via coverPre
     expect(mockCoverFramePackCreate).not.toHaveBeenCalled();
   });
 
-  it("ne crée pas de pack si pattern.coverConfig est null", async () => {
+  it("coverConfig null + autoPack → fallback au preset par défaut du template (pas un blocage)", async () => {
+    // Régression : avant, coverConfig=null hard-failait (reason=coverConfig_null),
+    // incohérent avec le cas {enabled:true} sans preset qui, lui, faisait le
+    // fallback. Désormais null est traité comme {} → fallback preset par défaut.
+    // Permet de configurer la cover sur la TEMPLATE après coup sans toucher la recette.
     mockTemplateExists();
     mockRenderFindUnique.mockResolvedValueOnce({
       publicationSlot: {
         pattern: { id: "pat-1", coverMode: "autoPack", coverConfig: null, templateId: "tpl-1" },
       },
     });
+    mockTemplateCoverPresetFindFirst.mockResolvedValueOnce(MOCK_PRESET);
+
+    await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
+
+    expect(mockTemplateCoverPresetFindFirst).toHaveBeenCalledWith({
+      where: { templateId: "tpl-1" },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true, config: true, name: true },
+    });
+    expect(mockCoverFramePackCreate).toHaveBeenCalled();
+  });
+
+  it("coverConfig null + AUCUN preset sur le template → skip (rien à générer)", async () => {
+    mockTemplateExists();
+    mockRenderFindUnique.mockResolvedValueOnce({
+      publicationSlot: {
+        pattern: { id: "pat-1", coverMode: "autoPack", coverConfig: null, templateId: "tpl-1" },
+      },
+    });
+    mockTemplateCoverPresetFindFirst.mockResolvedValueOnce(null);
 
     await triggerAutoCoverPackForRender("render-1", "tpl-1", "http://video.mp4", "user-1");
 

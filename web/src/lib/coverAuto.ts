@@ -690,10 +690,11 @@ export async function triggerAutoCoverPackForRender(
     console.info(`[autoCover] skip render=${renderId} slot=${slotId ?? "?"} reason=coverMode_not_autoPack value=${slotPattern?.coverMode ?? "null"}`);
     return;
   }
-  if (!slotPattern.coverConfig) {
-    console.info(`[autoCover] skip render=${renderId} slot=${slotId ?? "?"} reason=coverConfig_null`);
-    return;
-  }
+  // coverConfig null/absent N'EST PAS bloquant : si la recette est en autoPack
+  // mais sans preset choisi (ex. cover configurée sur la template APRÈS la
+  // recette), on retombe sur le preset par défaut du template (fallback plus
+  // bas). Avant : hard-fail `coverConfig_null` → incohérent avec le cas
+  // `{enabled:true}` sans preset qui, lui, faisait déjà le fallback.
 
   // Garde "client en train de revoir" : si l'admin a manuellement envoyé le
   // slot au client (AWAITING_CLIENT ou CLIENT_REVISION), on diffère quoi qu'il
