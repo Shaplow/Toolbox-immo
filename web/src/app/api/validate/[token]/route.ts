@@ -26,6 +26,7 @@ import {
 } from "@/lib/publications/clientValidation";
 import { resolveClientValidationConfig } from "@/lib/services/slot/config";
 import { logActivity } from "@/lib/services/slot/activity";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 import { triggerAutoDescriptionForTranscription } from "@/lib/triggerAutoDescriptionFromTranscription";
 import { triggerAutoCoverPackForRender } from "@/lib/coverAuto";
 import { triggerAutoTranscriptionForRender } from "@/lib/triggerAutoTranscription";
@@ -109,7 +110,7 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
       status: true,
       needsClientValidationOverride: true,
       allowsClientRevisionOverride: true,
-      pattern: { select: { needsClientValidation: true, allowsClientRevision: true } },
+      ...slotEffectivePatternSelect,
     },
   });
   if (!slot) {
@@ -123,12 +124,13 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     );
   }
 
+  const effPatternForValidation = resolveSlotEffectivePattern(slot);
   const config = resolveClientValidationConfig(
     {
       needsClientValidationOverride: slot.needsClientValidationOverride,
       allowsClientRevisionOverride: slot.allowsClientRevisionOverride,
     },
-    slot.pattern,
+    effPatternForValidation,
   );
 
   // Reject sans allowsClientRevision = équivalent à cancel
@@ -249,11 +251,7 @@ async function triggerPostValidationJobs(slotId: string): Promise<void> {
       assigneeMonteurId: true,
       assigneeVideasteId: true,
       needsDescriptionOverride: true,
-      pattern: {
-        select: {
-          needsDescription: true,
-        },
-      },
+      ...slotEffectivePatternSelect,
       currentVersion: {
         select: {
           id: true,
@@ -283,8 +281,9 @@ async function triggerPostValidationJobs(slotId: string): Promise<void> {
   // OU côté render (auto_template). Une seule des deux existe en pratique.
   const transcription =
     slot.currentVersion?.transcriptionJob ?? slot.render?.transcriptionJob ?? null;
+  const effPatternForJobs = resolveSlotEffectivePattern(slot);
   const effectiveNeedsDescription =
-    slot.needsDescriptionOverride ?? slot.pattern?.needsDescription ?? "none";
+    slot.needsDescriptionOverride ?? effPatternForJobs?.needsDescription ?? "none";
   const needsAutoDescription = effectiveNeedsDescription === "autoGenerate";
 
   if (transcription && transcription.status === "COMPLETED") {

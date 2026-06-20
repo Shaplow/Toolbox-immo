@@ -22,6 +22,7 @@ import { uploadToR2, r2Configured } from "@/lib/r2";
 import { isLocalStorage, writeLocalObject, getPublicUrl } from "@/lib/storage";
 import { logActivity } from "@/lib/services/slot/activity";
 import { resolveSlotContext } from "@/lib/services/slot/resolveSlotContext";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       assigneeCmId: true,
       assigneeVideasteId: true,
       coverModeOverride: true,
-      pattern: { select: { coverMode: true } },
+      ...slotEffectivePatternSelect,
     },
   });
   if (!slot) {
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // Gate : seul le MONTEUR assigné ou l'ADMIN peut uploader la cover, et
   // uniquement si le mode résolu est monteurUpload.
-  const effectiveCoverMode = slot.coverModeOverride ?? slot.pattern?.coverMode ?? "none";
+  const effectiveCoverMode = slot.coverModeOverride ?? resolveSlotEffectivePattern(slot)?.coverMode ?? "none";
   if (effectiveCoverMode !== "monteurUpload") {
     return NextResponse.json(
       { error: "Le mode cover ne permet pas l'upload manuel" },

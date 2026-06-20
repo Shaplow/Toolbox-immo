@@ -9,6 +9,7 @@ import { resolveSlotExcludeZones, resolveZone } from "@/lib/triggerAutoCaptionFr
 import { logActivity, type ActivityType } from "@/lib/services/slot/activity";
 import { notifyUser } from "@/lib/sseStore";
 import { POST_VALIDATION_STATUSES } from "@/lib/publications/constants";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 import type { ListingData } from "@/types/listing";
 import type { AnyBlock, CoverAutoConfig, ImageBlock, SchemaField, TemplateJSON, TextBlock, VideoBlock, VideoSequenceSlot } from "@/types/template";
 
@@ -669,22 +670,21 @@ export async function triggerAutoCoverPackForRender(
           id: true,
           status: true,
           needsClientValidationOverride: true,
-          pattern: {
-            select: {
-              id: true,
-              coverMode: true,
-              coverConfig: true,
-              templateId: true,
-              needsClientValidation: true,
-            },
-          },
+          // patternId/patternBindingId pour la traçabilité (logActivity) — la
+          // forme résolue n'expose pas d'id.
+          patternId: true,
+          patternBindingId: true,
+          // Pattern legacy + binding (recette par compte) — voir effectivePattern.ts.
+          ...slotEffectivePatternSelect,
         },
       },
     },
   });
   const slotId = renderSlot?.publicationSlot?.id ?? null;
   const slotStatus = renderSlot?.publicationSlot?.status ?? null;
-  const slotPattern = renderSlot?.publicationSlot?.pattern;
+  const slotPattern = renderSlot?.publicationSlot
+    ? resolveSlotEffectivePattern(renderSlot.publicationSlot)
+    : undefined;
 
   if (slotPattern?.coverMode !== "autoPack") {
     console.info(`[autoCover] skip render=${renderId} slot=${slotId ?? "?"} reason=coverMode_not_autoPack value=${slotPattern?.coverMode ?? "null"}`);
@@ -772,7 +772,7 @@ export async function triggerAutoCoverPackForRender(
       `[autoCover] Aucune config cover sur le template ${patternTemplateId} — skip`,
     );
     await logCoverActivity(slotId, "COVER_CONFIG_ERROR", {
-      patternId: slotPattern.id,
+      patternId: renderSlot?.publicationSlot?.patternBindingId ?? renderSlot?.publicationSlot?.patternId ?? null,
       reason: "no_template_cover_config",
       templateId: patternTemplateId,
       message:

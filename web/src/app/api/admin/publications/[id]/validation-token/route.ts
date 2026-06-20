@@ -19,6 +19,7 @@ import { resolveClientValidationConfig } from "@/lib/services/slot/config";
 import { resolveCaptionsMode, isCaptionsAuto } from "@/lib/publications/captionsMode";
 import { logActivity } from "@/lib/services/slot/activity";
 import { resolveActiveCaptionJob } from "@/lib/publications/jobLifecycle";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -49,26 +50,20 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
         select: { id: true, status: true, staleSince: true },
         orderBy: { createdAt: "desc" },
       },
-      pattern: {
-        select: {
-          needsClientValidation: true,
-          allowsClientRevision: true,
-          needsCaptionsMode: true,
-          needsCaptions: true,
-        },
-      },
+      ...slotEffectivePatternSelect,
     },
   });
   if (!slot) {
     return NextResponse.json({ error: "Slot introuvable" }, { status: 404 });
   }
 
+  const effPattern = resolveSlotEffectivePattern(slot);
   const config = resolveClientValidationConfig(
     {
       needsClientValidationOverride: slot.needsClientValidationOverride,
       allowsClientRevisionOverride: slot.allowsClientRevisionOverride,
     },
-    slot.pattern,
+    effPattern,
   );
   if (!config.needsClientValidation) {
     return NextResponse.json(
@@ -100,7 +95,7 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
       needsCaptionsModeOverride: slot.needsCaptionsModeOverride,
       needsCaptionsOverride: slot.needsCaptionsOverride,
     },
-    pattern: slot.pattern,
+    pattern: effPattern,
   });
   if (isCaptionsAuto(captionsMode)) {
     // Aligné sur l'UI (PublicationFiche.canSendValidation) : résolution via

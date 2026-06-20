@@ -36,6 +36,7 @@ import { hasTool, TOOLS } from "@/lib/permissions";
 import { logActivity } from "@/lib/services/slot/activity";
 import { promoteCaptionJob } from "@/lib/publications/jobLifecycle";
 import { resolveCaptionsMode } from "@/lib/publications/captionsMode";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 
 export async function POST(req: NextRequest) {
   const userContext = await getUserContext();
@@ -70,9 +71,7 @@ export async function POST(req: NextRequest) {
       assigneeVideasteId: true,
       needsCaptionsOverride: true,
       needsCaptionsModeOverride: true,
-      pattern: {
-        select: { needsCaptions: true, needsCaptionsMode: true },
-      },
+      ...slotEffectivePatternSelect,
     },
   });
   const role = toUserRole(userContext.effectiveUser.role);
@@ -80,14 +79,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Publication introuvable" }, { status: 404 });
   }
 
+  const effPattern = resolveSlotEffectivePattern(slot);
   const mode = resolveCaptionsMode({
     slot: {
       needsCaptionsModeOverride: slot.needsCaptionsModeOverride,
       needsCaptionsOverride: slot.needsCaptionsOverride,
     },
-    pattern: slot.pattern
-      ? { needsCaptionsMode: slot.pattern.needsCaptionsMode, needsCaptions: slot.pattern.needsCaptions }
-      : null,
+    pattern: effPattern,
   });
   if (mode !== "manual") {
     return NextResponse.json(

@@ -3,6 +3,7 @@ import { deleteCoverCandidateAssets, queueCoverFramePackPreparation, toCoverSour
 import { hasTool, TOOLS } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { getUserContext } from "@/lib/userContext";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 import type { CoverAutoConfig } from "@/types/template";
 
 type Params = { params: Promise<{ id: string }> };
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       coverFramePack: true,
       publicationSlot: {
         select: {
-          pattern: { select: { id: true, coverMode: true, coverConfig: true, templateId: true } },
+          ...slotEffectivePatternSelect,
         },
       },
     },
@@ -39,12 +40,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   // Phase 2.0 — résolution via coverPresetName → TemplateCoverPreset
-  const slotPattern = render.publicationSlot?.pattern;
-  if (slotPattern?.coverMode !== "autoPack" || !slotPattern.coverConfig) {
+  const effPattern = render.publicationSlot ? resolveSlotEffectivePattern(render.publicationSlot) : null;
+  if (effPattern?.coverMode !== "autoPack" || !effPattern.coverConfig) {
     return NextResponse.json({ error: "Pack cover auto non configuré sur ce pattern" }, { status: 400 });
   }
 
-  const coverConfigJson = slotPattern.coverConfig as { enabled?: boolean; coverPresetName?: string } | null;
+  const coverConfigJson = effPattern.coverConfig as { enabled?: boolean; coverPresetName?: string } | null;
   if (!coverConfigJson?.enabled) {
     return NextResponse.json({ error: "Cover semi-auto non activée sur ce pattern" }, { status: 400 });
   }
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  const patternTemplateId = slotPattern.templateId ?? render.templateId;
+  const patternTemplateId = effPattern.templateId ?? render.templateId;
   if (!patternTemplateId) {
     return NextResponse.json({ error: "Template introuvable pour ce pattern" }, { status: 400 });
   }

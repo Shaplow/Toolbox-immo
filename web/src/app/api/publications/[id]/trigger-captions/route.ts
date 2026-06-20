@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { resolveSlotConfig } from "@/lib/services/slot/config";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 import { triggerAutoTranscriptionForVersion } from "@/lib/triggerAutoTranscriptionForVersion";
 import { triggerAutoCaptionForTranscription } from "@/lib/triggerAutoCaptionFromTranscription";
 
@@ -50,6 +51,8 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
       needsClientValidationOverride: true,
       allowsClientRevisionOverride: true,
       needsCaptionsOverride: true,
+      needsCaptionsModeOverride: true,
+      needsAdminValidationOverride: true,
       needsDescriptionOverride: true,
       needsRushesOverride: true,
       needsBriefOverride: true,
@@ -57,19 +60,7 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
       coverPresetIdOverride: true,
       captionPresetIdOverride: true,
       descriptionPromptIdOverride: true,
-      pattern: {
-        select: {
-          needsClientValidation: true,
-          allowsClientRevision: true,
-          needsCaptions: true,
-          needsDescription: true,
-          needsRushes: true,
-          needsBrief: true,
-          coverMode: true,
-          captionPresetId: true,
-          descriptionPromptId: true,
-        },
-      },
+      ...slotEffectivePatternSelect,
     },
   });
 
@@ -83,7 +74,7 @@ export async function POST(_req: NextRequest, { params }: RouteContext) {
     );
   }
 
-  const resolved = resolveSlotConfig(slot, slot.pattern ?? null);
+  const resolved = resolveSlotConfig(slot, resolveSlotEffectivePattern(slot));
 
   if (!resolved.needsCaptions) {
     return NextResponse.json(

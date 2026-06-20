@@ -26,6 +26,7 @@ import { logActivity } from "@/lib/services/slot/activity";
 import { applyAutoTransition } from "@/lib/services/slot/transitions";
 import { tryAutoTriggerCover } from "@/lib/services/slot/autoCoverTrigger";
 import { triggerAutoTranscriptionForVersion } from "@/lib/triggerAutoTranscriptionForVersion";
+import { slotEffectivePatternSelect, resolveSlotEffectivePattern } from "@/lib/services/slot/effectivePattern";
 
 type UploadKind = "rush" | "version" | "brief-attachment";
 
@@ -76,9 +77,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       assigneeCmId: true,
       assigneeVideasteId: true,
       needsAdminValidationOverride: true,
-      pattern: {
-        select: { needsAdminValidation: true },
-      },
+      // Pattern legacy + binding (recette par compte) — voir effectivePattern.ts.
+      ...slotEffectivePatternSelect,
     },
   });
 
@@ -185,7 +185,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       // Phase 2.3 — needsAdminValidation effectif (override > pattern > false).
       const needsAdminValidation =
         slot.needsAdminValidationOverride ??
-        slot.pattern?.needsAdminValidation ??
+        resolveSlotEffectivePattern(slot)?.needsAdminValidation ??
         false;
       return await handleVersionComplete({
         prisma, slotId, slot, userId, actorId: userContext.actualUser.id, r2Key, fileUrl, fileName, mimeType, sizeBytes, durationSec,

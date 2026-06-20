@@ -19,6 +19,7 @@ import { getUserContext } from "@/lib/userContext";
 import { prisma } from "@/lib/prisma";
 import { canUserAccessSlot } from "@/lib/permissions/slotScope";
 import { computePublicationSteps } from "@/lib/publications/steps";
+import { toLegacyPatternShape } from "@/lib/services/pattern/resolveEffective";
 import { toUserRole } from "@/lib/permissions/role";
 import { safeJSON } from "@/lib/utils/json";
 
@@ -59,6 +60,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
           needsBrief: true,
         },
       },
+      // Recette par compte : binding + template pour synthétiser le pattern
+      // effectif quand le slot n'a pas d'AccountPattern legacy.
+      patternBinding: { include: { patternTemplate: true } },
       template: { select: { id: true, name: true } },
       assigneeMonteur: { select: { id: true, name: true, email: true } },
       assigneeCm: { select: { id: true, name: true, email: true } },
@@ -98,10 +102,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Slot introuvable" }, { status: 404 });
   }
 
+  // Pattern effectif : AccountPattern legacy OU recette PatternBinding (G.3).
+  // Sans ce fallback, les slots créés via recette (pattern legacy null) avaient
+  // des steps invisibles (render/cover/description/validation cachés).
+  const effPattern =
+    slot.pattern ?? (slot.patternBinding ? toLegacyPatternShape(slot.patternBinding) : null);
+
   // Calcul des steps côté serveur pour que le client n'ait pas à les dériver.
   const steps = computePublicationSteps({
     slot: { status: slot.status, description: slot.description },
-    pattern: slot.pattern ?? null,
+    pattern: effPattern,
     renderJob: slot.render ?? null,
     coverPack: slot.render?.coverFramePack ?? null,
     captionJob: slot.captionJobs[0] ?? null,
@@ -112,6 +122,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   return NextResponse.json({
     ...slot,
+    // Expose le pattern effectif (legacy OU recette synthétisée) au client.
+    pattern: effPattern,
     fields: safeJSON<Record<string, string>>(slot.fields, {}),
     fieldSchema: safeJSON<string[]>(slot.fieldSchema, []),
     steps,
