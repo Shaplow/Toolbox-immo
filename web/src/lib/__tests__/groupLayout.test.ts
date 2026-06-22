@@ -384,6 +384,20 @@ describe("computeAutoLayoutPositions — cas dégénérés", () => {
     );
     expect(pos(map, "a")).toEqual({ x: 5, y: 7 });
   });
+
+  it("autoLayoutOffsetX/Y → décale le bloc sans bouger les autres", () => {
+    const a = text("a", { x: 0, y: 0, w: 100, h: 20, z: 0 });
+    const b = text("b", { x: 0, y: 30, w: 100, h: 20, z: 1 });
+    b.autoLayoutOffsetX = 10;
+    b.autoLayoutOffsetY = -3;
+    const map = computeAutoLayoutPositions(
+      group({ mode: "column", gap: 10, justify: "start", align: "top" }),
+      [a, b],
+    );
+    // a inchangé ; b décalé de (10, -3) par rapport à sa position de flux (0, 30).
+    expect(pos(map, "a")).toEqual({ x: 0, y: 0 });
+    expect(pos(map, "b")).toEqual({ x: 10, y: 27 });
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────

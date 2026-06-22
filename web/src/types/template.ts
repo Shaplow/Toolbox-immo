@@ -109,6 +109,14 @@ export interface BaseBlock {
    * Permet d'avoir un bloc qui apparaît à 2s dans le clip 1 et à 0.5s dans le clip 2.
    */
   slotTimings?: Record<string, { appearAt?: number; hideAt?: number }>;
+  /**
+   * Décalage fin (px) appliqué APRÈS le calcul de position auto-layout, sans
+   * perturber le flux des autres membres du groupe. Permet p.ex. de décaler de
+   * 10px sur la droite le bloc ville ou la surface dans une colonne. Ignoré hors
+   * groupe auto-layout.
+   */
+  autoLayoutOffsetX?: number;
+  autoLayoutOffsetY?: number;
   /** Règles conditionnelles du bloc (modèle actuel). */
   conditionalRules?: BlockConditionalRule[];
   /** @deprecated Compat legacy lu puis normalisé côté application. */

@@ -4,7 +4,6 @@ import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } fr
 import { buildDpeSvg } from "@/lib/dpeSvg";
 import { computeAutoLayoutPositionsForTree, getAutoLayoutMode, getBlockAnchorOffset, isAutoLayoutGroup, type BlockLayoutSize } from "@/lib/groupLayout";
 import { buildTextShadowValue, buildTextStrokeValue, getFauxThinErodeRadius, getFauxThinFilterId, getOpaqueTextBackgroundColor, getTextBackgroundFill } from "@/lib/renderer/styleUtils";
-import { capCenteringOffsetEm } from "@/lib/renderer/textMetrics";
 import { buildSchemaPreviewData } from "@/lib/schemaFields";
 import {
   PER_LINE_TEXT_GOO_ALPHA_INTERCEPT,
@@ -1219,6 +1218,7 @@ export function Canvas({
                     zoom={zoom}
                     defaultFontFamily={template.theme.fonts.body.family}
                     defaultTextColor={template.theme.palette.text}
+                    hugContent={group?.layout?.sizeToContent === true}
                     onMouseDown={(e) => handleMouseDown(e, block)}
                   />
                   {isLocked && (
@@ -1296,6 +1296,7 @@ export function Canvas({
                   zoom={zoom}
                   defaultFontFamily={template.theme.fonts.body.family}
                   defaultTextColor={template.theme.palette.text}
+                  hugContent={group?.layout?.sizeToContent === true}
                   onMouseDown={(e) => handleMouseDown(e, block)}
                 />
                 {isLocked && (
@@ -1397,6 +1398,7 @@ export function Canvas({
               zoom={1}
               defaultFontFamily={template.theme.fonts.body.family}
               defaultTextColor={template.theme.palette.text}
+              hugContent={group?.layout?.sizeToContent === true}
               onMouseDown={() => undefined}
             />
           </div>
@@ -1417,6 +1419,7 @@ function BlockPreview({
   zoom,
   defaultFontFamily,
   defaultTextColor,
+  hugContent,
   onMouseDown,
 }: {
   block: AnyBlock;
@@ -1433,20 +1436,19 @@ function BlockPreview({
   zoom: number;
   defaultFontFamily: string;
   defaultTextColor: string;
+  hugContent?: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
 }) {
   void _autoLayout;
   const textContentRef = useRef<HTMLDivElement>(null);
   const [fittedFontSizePx, setFittedFontSizePx] = useState<number | null>(null);
-  // Centrage vertical optique des capitales : seulement en cartouche (fond)
-  // centré verticalement, hors per-line. Décalage en em → parité avec le rendu
-  // HTML/vidéo (applyCapCentering dans buildHTML.ts).
-  const [capOffsetEm, setCapOffsetEm] = useState(0);
-  const capCenterScope =
+  // Leading-trim : hugge la hauteur des capitales (centrage + surface collée).
+  // Activé quand le groupe du bloc est en "hauteur réelle du texte". Exclut
+  // per-line. Parité CSS avec buildHTML (text-box-trim). Voir hugContent.
+  const trimLeading =
+    hugContent &&
     block.type === "text" &&
-    isTextBackgroundEnabled(block.style) &&
-    getTextBackgroundMode(block.style) !== "per-line" &&
-    (block.style.verticalAlign ?? "top") === "middle";
+    getTextBackgroundMode(block.style) !== "per-line";
   const useTransformScaling = !preferPrintUnits && zoom !== 1;
   const styleScale = useTransformScaling ? 1 : zoom;
   const style: React.CSSProperties = {
@@ -1557,16 +1559,24 @@ function BlockPreview({
       contentNode.style.overflow = "visible";
     }
 
+    const isPerLine = getTextBackgroundMode(block.style) === "per-line";
+    // Largeur RÉELLE de l'encre (Range) : pendant la mesure on passe en
+    // display:block (largeur=cadre), donc getClientRects plafonne au cadre et
+    // masque le débordement d'un mot. Le Range voit l'extent réel.
+    const inkWidth = (): number => {
+      const range = document.createRange();
+      range.selectNodeContents(contentNode);
+      return range.getBoundingClientRect().width;
+    };
     contentNode.style.fontSize = `${baseFontSize}px`;
     while (nextFontSize > minFontSizePx) {
       const { width, height } = measure();
-      // maxLines actif → on réduit UNIQUEMENT tant que le texte occupe plus de
-      // maxLines lignes. PAS de check largeur : le texte wrap pour rester dans la
-      // largeur, donc un overflow largeur n'arrive pas (texte normal) ; or la
-      // mesure de largeur (scrollWidth sur span inline per-line) est gonflée et
-      // sur-réduisait à tort jusqu'au min alors que le texte tenait déjà en N lignes.
+      // maxLines actif → réduire tant que le texte occupe plus de maxLines lignes,
+      // ET tant qu'un mot dépasse la largeur (sinon un mot trop large — ex titre
+      // "JOURDAIN" — déborde et est clippé au lieu de rétrécir). Check largeur
+      // exclu en per-line : largeur du span inline gonflée → sur-réduisait au min.
       const overflows = block.rules.maxLines
-        ? countLines() > block.rules.maxLines
+        ? (countLines() > block.rules.maxLines || (!isPerLine && inkWidth() - 0.5 > availableWidth))
         : (height - 0.5 > availableHeight || width - 0.5 > availableWidth);
       if (!overflows) break;
 
@@ -1590,39 +1600,6 @@ function BlockPreview({
       window.cancelAnimationFrame(frameId);
     };
   }, [baseTextFontSizePx, block, fontMetricsVersion, styleScale, fittedFontSizePx]);
-
-  // Mesure du décalage optique des capitales (en em, indépendant de la taille).
-  // Lit le contenu rendu + sa police via canvas ; formule partagée avec le rendu
-  // HTML (capCenteringOffsetEm). Le translateY n'affecte pas .block-text-background
-  // donc le layout des groupes reste intact.
-  useLayoutEffect(() => {
-    let next = 0;
-    const node = textContentRef.current;
-    const text = (node?.textContent ?? "").trim();
-    if (capCenterScope && node && text) {
-      const cs = window.getComputedStyle(node);
-      const fontSizePx = Number.parseFloat(cs.fontSize || "0");
-      const canvas = fontSizePx > 0 ? document.createElement("canvas") : null;
-      const ctx = canvas?.getContext("2d") ?? null;
-      if (ctx) {
-        ctx.font = `${cs.fontStyle || "normal"} ${cs.fontWeight || "400"} ${fontSizePx}px ${cs.fontFamily || "sans-serif"}`;
-        const m = ctx.measureText(text);
-        if (m.fontBoundingBoxAscent != null && m.actualBoundingBoxAscent != null) {
-          next = capCenteringOffsetEm(
-            {
-              fontBoundingBoxAscent: m.fontBoundingBoxAscent,
-              fontBoundingBoxDescent: m.fontBoundingBoxDescent,
-              actualBoundingBoxAscent: m.actualBoundingBoxAscent,
-              actualBoundingBoxDescent: m.actualBoundingBoxDescent,
-            },
-            fontSizePx,
-          );
-        }
-      }
-    }
-    const frameId = window.requestAnimationFrame(() => setCapOffsetEm(next));
-    return () => window.cancelAnimationFrame(frameId);
-  }, [capCenterScope, fontMetricsVersion, fittedFontSizePx, block, zoom]);
 
   let content: React.ReactNode;
 
@@ -1687,8 +1664,10 @@ function BlockPreview({
         innerTextStyle.width = "100%";
       }
 
-      if (capCenterScope && capOffsetEm) {
-        innerTextStyle.transform = `translateY(${capOffsetEm}em)`;
+      if (trimLeading) {
+        // Parité avec la CSS text-box-trim du rendu HTML (buildHTML).
+        (innerTextStyle as Record<string, string>).textBoxTrim = "trim-both";
+        (innerTextStyle as Record<string, string>).textBoxEdge = "cap alphabetic";
       }
 
       const textNode = (
@@ -1889,6 +1868,8 @@ function BlockPreview({
               display: "flex",
               flexDirection: "column",
               justifyContent,
+              // En "hauteur réelle", le cadre ne clippe pas (titre 2 lignes visible).
+              ...(trimLeading ? { overflow: "visible" } : null),
             }}
           >
             {backgroundEnabled ? (

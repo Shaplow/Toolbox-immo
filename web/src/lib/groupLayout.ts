@@ -183,7 +183,28 @@ export function getAutoLayoutOrderedBlocks(group: LayerGroup, blocks: AnyBlock[]
   });
 }
 
+/**
+ * Calcul des positions auto-layout + application du décalage fin par bloc
+ * (autoLayoutOffsetX/Y). L'offset est purement cosmétique : il ne change pas le
+ * flux (les autres membres ne bougent pas).
+ */
 export function computeAutoLayoutPositions(
+  group: LayerGroup,
+  blocks: AnyBlock[],
+  sizeMap?: Map<string, BlockLayoutSize>
+): Map<string, BlockLayoutPosition> {
+  const positions = computeAutoLayoutPositionsRaw(group, blocks, sizeMap);
+  for (const block of blocks) {
+    const dx = block.autoLayoutOffsetX ?? 0;
+    const dy = block.autoLayoutOffsetY ?? 0;
+    if (dx === 0 && dy === 0) continue;
+    const p = positions.get(block.id);
+    if (p) positions.set(block.id, { x: p.x + dx, y: p.y + dy });
+  }
+  return positions;
+}
+
+function computeAutoLayoutPositionsRaw(
   group: LayerGroup,
   blocks: AnyBlock[],
   sizeMap?: Map<string, BlockLayoutSize>

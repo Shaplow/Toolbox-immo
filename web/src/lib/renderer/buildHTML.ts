@@ -107,6 +107,12 @@ export async function buildHTML(
         if (group?.layout?.sizeToContent) {
           rootAttributes.push('data-layout-size-to-content="true"');
         }
+        if (resolvedBlock.autoLayoutOffsetX) {
+          rootAttributes.push(`data-layout-offset-x="${resolvedBlock.autoLayoutOffsetX}"`);
+        }
+        if (resolvedBlock.autoLayoutOffsetY) {
+          rootAttributes.push(`data-layout-offset-y="${resolvedBlock.autoLayoutOffsetY}"`);
+        }
         if (resolvedBlock.type === "text") {
           rootAttributes.push(
             `data-layout-text-align="${resolvedBlock.style.textAlign ?? "left"}"`,
@@ -281,14 +287,27 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; parentGroupId
         content.style.fontSize = initialFontSizePx + 'px';
         while (nextFontSize > minFontSizePx) {
           const m = measure();
-          // maxLines actif → réduire UNIQUEMENT tant que le texte occupe plus de
-          // maxLines lignes. PAS de check largeur : le texte wrap pour tenir dans
-          // la largeur ; la mesure de largeur (scrollWidth sur span inline per-line)
-          // est gonflée et sur-réduisait au min alors que le texte tenait déjà en
-          // N lignes (bug observé sur les tips à fond per-line).
+          // maxLines actif → réduire tant que le texte occupe plus de maxLines
+          // lignes. On ajoute un check largeur SAUF en per-line : le texte est
+          // dé-clampé pour la mesure, donc m.width = largeur de la ligne la plus
+          // large après wrap. Un mot trop large pour tenir sur une ligne (ex titre
+          // "JOURDAIN") doit shrink (sinon il déborde et est clippé), alors que
+          // "PETITE CARRIÈRE" wrappe en 2 lignes qui tiennent → pas de shrink.
+          // Le per-line est exclu : sa largeur (span inline) est gonflée et
+          // sur-réduisait au min (bug tips corrigé en c32e307).
+          const isPerLine = block.dataset.textBackgroundMode === 'per-line';
+          // Largeur RÉELLE de l'encre via Range (le contenu peut être width:100%
+          // et masquer le débordement d'un mot ; getClientRects/scrollWidth
+          // plafonnent alors à la largeur du cadre). Le Range voit l'extent réel.
+          let inkWidth = m.width;
+          if (!isPerLine) {
+            const wr = document.createRange();
+            wr.selectNodeContents(content);
+            inkWidth = Math.max(inkWidth, wr.getBoundingClientRect().width);
+          }
           const overflows = maxLinesValue > 0
-            ? countLines() > maxLinesValue
-            : (m.height - 0.5 > availableHeight || m.width - 0.5 > availableWidth);
+            ? (countLines() > maxLinesValue || (!isPerLine && inkWidth - 0.5 > availableWidth))
+            : (m.height - 0.5 > availableHeight || inkWidth - 0.5 > availableWidth);
           if (!overflows) break;
 
           nextFontSize = Math.max(minFontSizePx, nextFontSize - step);
@@ -848,33 +867,18 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; parentGroupId
         } catch {}
       }
 
-      // Centrage vertical OPTIQUE des capitales. PARITÉ : formule identique à
-      // capCenteringOffsetEm() de textMetrics.ts (utilisée côté builder Canvas).
-      // Le décalage est en em → indépendant du zoom/pt-px. transform:translateY
-      // sur le contenu ne modifie pas le rect de .block-text-background, donc le
-      // layout des groupes (getEffectiveSize) reste inchangé.
-      function applyCapCentering() {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        document.querySelectorAll('[data-cap-center="true"]').forEach((block) => {
-          if (!(block instanceof HTMLElement)) return;
-          const content = block.querySelector('.block-text-content');
-          if (!(content instanceof HTMLElement)) return;
-          const text = (content.textContent || '').trim();
-          if (!text) return;
-          const cs = window.getComputedStyle(content);
-          const fontSizePx = Number.parseFloat(cs.fontSize || '0');
-          if (!(fontSizePx > 0)) return;
-          ctx.font = (cs.fontStyle || 'normal') + ' ' + (cs.fontWeight || '400') + ' ' + fontSizePx + 'px ' + (cs.fontFamily || 'sans-serif');
-          const m = ctx.measureText(text);
-          if (m.fontBoundingBoxAscent == null || m.actualBoundingBoxAscent == null) return;
-          const spaceAbove = m.fontBoundingBoxAscent - m.actualBoundingBoxAscent;
-          const spaceBelow = m.fontBoundingBoxDescent - m.actualBoundingBoxDescent;
-          let offsetEm = ((spaceBelow - spaceAbove) / 2) / fontSizePx;
-          if (!Number.isFinite(offsetEm)) return;
-          offsetEm = Math.max(-0.5, Math.min(0.5, offsetEm));
-          content.style.transform = 'translateY(' + offsetEm + 'em)';
+      // Décalage fin par bloc (autoLayoutOffsetX/Y) : passe finale après le
+      // layout, ajoutée au left/top calculé. Couvre les chemins flat et arbre.
+      // Parité : computeAutoLayoutPositions (groupLayout.ts) applique le même
+      // offset côté builder.
+      function applyBlockOffsets() {
+        document.querySelectorAll('[data-layout-block-id]').forEach((node) => {
+          if (!(node instanceof HTMLElement)) return;
+          const dx = Number(node.dataset.layoutOffsetX || '0');
+          const dy = Number(node.dataset.layoutOffsetY || '0');
+          if (!dx && !dy) return;
+          if (dx) node.style.left = (Number.parseFloat(node.style.left || '0') + dx) + 'px';
+          if (dy) node.style.top = (Number.parseFloat(node.style.top || '0') + dy) + 'px';
         });
       }
 
@@ -884,8 +888,8 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; parentGroupId
             await document.fonts.ready;
           }
           document.querySelectorAll('.block-text').forEach(fitTextBlock);
-          applyCapCentering();
           layoutAutoGroups();
+          applyBlockOffsets();
           if (layoutDebug) {
             publishDebugSnapshot(buildDebugSnapshot());
           }
@@ -1069,7 +1073,28 @@ function buildCSS(template: TemplateJSON, overlayMode = false): string {
     }
     .block-text {
       overflow: hidden;
-      word-break: break-word;
+      /* Pas de coupure en plein milieu d'un mot : on ne wrappe qu'aux espaces.
+         Un mot trop large rétrécit (shrink-to-fit) au lieu d'être cassé. */
+      word-break: normal;
+      overflow-wrap: normal;
+    }
+    /* Leading-trim : quand un groupe est en "hauteur réelle du texte"
+       (sizeToContent), la box du texte hugge la hauteur des capitales au lieu de
+       réserver l'interligne complet (line-height:normal). Effet : la surface
+       colle juste sous le titre, et le texte est optiquement centré dans son
+       cartouche. Exclut le per-line (span inline, géométrie propre).
+       Progressive enhancement : ignoré par les Chromium < 133 (comportement
+       historique conservé, pas de casse). */
+    .block-text[data-layout-size-to-content="true"] .block-text-content:not(.text-bg-per-line) {
+      text-box-trim: trim-both;
+      text-box-edge: cap alphabetic;
+    }
+    /* En "hauteur réelle", le cadre ne clippe pas : un titre qui wrappe sur 2
+       lignes dépasse la hauteur du cadre mais doit rester visible (le layout
+       suit déjà la hauteur réelle, donc pas de chevauchement). Le clamp 2 lignes
+       reste assuré par -webkit-line-clamp sur le contenu. */
+    .block-text[data-layout-size-to-content="true"] {
+      overflow: visible;
     }
     /* Per-line background mode: allow blur to expand beyond block bounds */
     .block-text-per-line {

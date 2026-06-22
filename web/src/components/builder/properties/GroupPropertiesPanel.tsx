@@ -14,7 +14,7 @@ export function GroupPropertiesPanel({
 }: {
   group: LayerGroup;
 }) {
-  const { template, updateGroup, moveGroupBlocks } = useBuilderStore();
+  const { template, updateGroup, moveGroupBlocks, updateBlock } = useBuilderStore();
 
   const groupId = group.id;
   const members = template.blocks.filter((item) => item.groupId === group.id);
@@ -368,25 +368,48 @@ export function GroupPropertiesPanel({
                       const isAnchor = group.layout?.anchorBlockId === member.id;
                       const label = member.name?.trim() || `${member.type}-${member.id.slice(-4)}`;
                       return (
-                        <div key={member.id} className="flex items-center gap-1 rounded-lg bg-white px-2 py-1.5 border border-border">
-                          <span className={[
-                            "min-w-0 flex-1 truncate text-xs",
-                            isAnchor ? "text-indigo-700 font-medium" : "text-foreground",
-                          ].join(" ")}>{label}</span>
-                          <button
-                            type="button"
-                            onClick={() => moveOrderedMember(member.id, -1)}
-                            disabled={index === 0}
-                            className="rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
-                            title="Monter dans l'ordre"
-                          >↑</button>
-                          <button
-                            type="button"
-                            onClick={() => moveOrderedMember(member.id, 1)}
-                            disabled={index === orderedMembers.length - 1}
-                            className="rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
-                            title="Descendre dans l'ordre"
-                          >↓</button>
+                        <div key={member.id} className="rounded-lg bg-white px-2 py-1.5 border border-border space-y-1.5">
+                          <div className="flex items-center gap-1">
+                            <span className={[
+                              "min-w-0 flex-1 truncate text-xs",
+                              isAnchor ? "text-indigo-700 font-medium" : "text-foreground",
+                            ].join(" ")}>{label}</span>
+                            <button
+                              type="button"
+                              onClick={() => moveOrderedMember(member.id, -1)}
+                              disabled={index === 0}
+                              className="rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
+                              title="Monter dans l'ordre"
+                            >↑</button>
+                            <button
+                              type="button"
+                              onClick={() => moveOrderedMember(member.id, 1)}
+                              disabled={index === orderedMembers.length - 1}
+                              className="rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
+                              title="Descendre dans l'ordre"
+                            >↓</button>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-muted-foreground" title="Décalage fin (n'affecte pas le flux des autres blocs)">Décalage</span>
+                            <label className="flex items-center gap-1">
+                              <span className="text-[10px] text-muted-foreground">X</span>
+                              <input
+                                type="number"
+                                value={member.autoLayoutOffsetX ?? 0}
+                                onChange={(e) => updateBlock(member.id, { autoLayoutOffsetX: Number(e.target.value) || undefined })}
+                                className="w-14 border border-border rounded px-1 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                              />
+                            </label>
+                            <label className="flex items-center gap-1">
+                              <span className="text-[10px] text-muted-foreground">Y</span>
+                              <input
+                                type="number"
+                                value={member.autoLayoutOffsetY ?? 0}
+                                onChange={(e) => updateBlock(member.id, { autoLayoutOffsetY: Number(e.target.value) || undefined })}
+                                className="w-14 border border-border rounded px-1 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                              />
+                            </label>
+                          </div>
                         </div>
                       );
                     })}
