@@ -375,8 +375,8 @@ export function getChildAutoLayoutGroups(parentId: string, groups: LayerGroup[])
  * Bloc « virtuel » représentant un sous-groupe dans le flux de son parent : se
  * comporte comme un bloc non-texte (boxOffset {0,0}, ancre = centre).
  */
-function makeVirtualGroupBlock(id: string, x: number, y: number, w: number, h: number, z: number): ShapeBlock {
-  return { id, type: "shape", x, y, w, h, z, animations: [], shape: "rectangle", fillColor: "transparent" };
+function makeVirtualGroupBlock(id: string, x: number, y: number, w: number, h: number, z: number, offsetX?: number, offsetY?: number): ShapeBlock {
+  return { id, type: "shape", x, y, w, h, z, animations: [], shape: "rectangle", fillColor: "transparent", autoLayoutOffsetX: offsetX, autoLayoutOffsetY: offsetY };
 }
 
 /**
@@ -444,7 +444,7 @@ export function computeAutoLayoutPositionsForTree(
     const nominalY = frameBounds?.minY ?? minY;
     const bbox: BlockLayoutSize = { width: Math.max(0, maxX - minX), height: Math.max(0, maxY - minY) };
 
-    virtualBlocks.push(makeVirtualGroupBlock(child.id, nominalX, nominalY, bbox.width, bbox.height, Number.isFinite(minZ) ? minZ : 0));
+    virtualBlocks.push(makeVirtualGroupBlock(child.id, nominalX, nominalY, bbox.width, bbox.height, Number.isFinite(minZ) ? minZ : 0, child.autoLayoutOffsetX, child.autoLayoutOffsetY));
     virtualSizeMap.set(child.id, bbox);
     childInternal.set(child.id, { positions: childPositions, minX, minY });
   }

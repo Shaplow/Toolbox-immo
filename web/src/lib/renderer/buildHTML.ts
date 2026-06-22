@@ -61,7 +61,7 @@ export async function buildHTML(
   const visibleFieldKeys = getVisibleFieldKeys(template.schema ?? [], template.formSections ?? [], listing);
   const autoLayoutGroups = (template.groups ?? [])
     .filter((group) => isAutoLayoutGroup(group))
-    .map((group) => ({ id: group.id, parentGroupId: group.parentGroupId, ...normalizeGroupLayout(group.layout) }));
+    .map((group) => ({ id: group.id, parentGroupId: group.parentGroupId, autoLayoutOffsetX: group.autoLayoutOffsetX, autoLayoutOffsetY: group.autoLayoutOffsetY, ...normalizeGroupLayout(group.layout) }));
 
   // Sort blocks by z-index
   const sorted = [...blocks].sort((a, b) => a.z - b.z);
@@ -167,7 +167,7 @@ export async function buildHTML(
 </html>`;
 }
 
-function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; parentGroupId?: string; mode?: "free" | "row" | "column"; width?: number; height?: number; gap?: number; justify?: "start" | "center" | "end"; align?: "top" | "middle" | "bottom"; order?: string[]; anchorBlockId?: string; sizeToContent?: boolean }>, layoutDebug = false): string {
+function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; parentGroupId?: string; autoLayoutOffsetX?: number; autoLayoutOffsetY?: number; mode?: "free" | "row" | "column"; width?: number; height?: number; gap?: number; justify?: "start" | "center" | "end"; align?: "top" | "middle" | "bottom"; order?: string[]; anchorBlockId?: string; sizeToContent?: boolean }>, layoutDebug = false): string {
   return `<script>
     window.__templateReady = false;
     window.__layoutDebugSnapshot = null;
@@ -588,7 +588,7 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; parentGroupId
             boxOffset: { x: 0, y: 0 },
             anchorOffset: { x: Math.round(bw / 2), y: Math.round(bh / 2) },
           });
-          childCommits.push({ virtualId: child.id, positions: childPositions, items: childItems, minX: cMinX, minY: cMinY });
+          childCommits.push({ virtualId: child.id, positions: childPositions, items: childItems, minX: cMinX, minY: cMinY, offsetX: Number(child.autoLayoutOffsetX || 0), offsetY: Number(child.autoLayoutOffsetY || 0) });
         }
 
         const parentPositions = positionLayoutItems(parentLayout, directItems.concat(virtualItems));
@@ -602,8 +602,10 @@ function buildBehaviorScript(autoLayoutGroups: Array<{ id: string; parentGroupId
         for (const c of childCommits) {
           const vpos = parentPositions[c.virtualId];
           if (!vpos) continue;
-          const dx = vpos.x - c.minX;
-          const dy = vpos.y - c.minY;
+          // Offset du sous-groupe entier (parité makeVirtualGroupBlock côté TS,
+          // où l'offset du bloc virtuel est appliqué par le wrapper).
+          const dx = vpos.x - c.minX + c.offsetX;
+          const dy = vpos.y - c.minY + c.offsetY;
           for (const it of c.items) {
             const p = c.positions[it.id];
             if (!p || !it.node) continue;

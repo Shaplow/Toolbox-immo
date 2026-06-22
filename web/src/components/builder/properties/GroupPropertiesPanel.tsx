@@ -3,7 +3,7 @@
 import { Eye, EyeOff, Lock, Unlock } from "lucide-react";
 import { getAutoLayoutMode, getAutoLayoutOrderedBlocks, getGroupBounds } from "@/lib/groupLayout";
 import { useBuilderStore } from "@/lib/store/builderStore";
-import type { LayerGroup } from "@/types/template";
+import type { AnyBlock, LayerGroup } from "@/types/template";
 import { Slider } from "@/components/ui/Slider";
 import { ToggleSwitch } from "@/components/builder/shared/ToggleSwitch";
 import { Section } from "./Section";
@@ -32,6 +32,27 @@ export function GroupPropertiesPanel({
   const layoutHeightLabel = autoLayoutMode === "column" ? "h colonne" : "h ligne";
   const orderedMembers = isAutoLayout ? getAutoLayoutOrderedBlocks(group, members) : members;
 
+  // Sous-groupes directs : ils comptent comme des membres ordonnables du parent
+  // (le moteur les traite comme des blocs virtuels). Ils apparaissent donc dans
+  // la liste d'ordre et peuvent être réordonnés / décalés comme un bloc.
+  const childGroups = template.groups.filter((g) => g.parentGroupId === group.id);
+  type OrderItem =
+    | { id: string; kind: "block"; block: AnyBlock }
+    | { id: string; kind: "group"; subgroup: LayerGroup };
+  const orderedItems: OrderItem[] = (() => {
+    const items: OrderItem[] = [
+      ...members.map((b): OrderItem => ({ id: b.id, kind: "block", block: b })),
+      ...childGroups.map((g): OrderItem => ({ id: g.id, kind: "group", subgroup: g })),
+    ];
+    if (!isAutoLayout) return items;
+    const order = group.layout?.order ?? [];
+    const rank = (id: string) => {
+      const i = order.indexOf(id);
+      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    return [...items].sort((a, b) => rank(a.id) - rank(b.id));
+  })();
+
   function updateAutoLayout(changes: Partial<NonNullable<LayerGroup["layout"]>>) {
     if (!autoLayoutMode) return;
     updateGroup(group.id, { layout: { ...group.layout, mode: autoLayoutMode, ...changes } });
@@ -54,10 +75,10 @@ export function GroupPropertiesPanel({
     } as const;
   }
 
-  function moveOrderedMember(blockId: string, direction: -1 | 1) {
+  function moveOrderedMember(itemId: string, direction: -1 | 1) {
     if (!autoLayoutMode) return;
-    const order = orderedMembers.map((member) => member.id);
-    const index = order.indexOf(blockId);
+    const order = orderedItems.map((item) => item.id);
+    const index = order.indexOf(itemId);
     if (index === -1) return;
     const nextIndex = index + direction;
     if (nextIndex < 0 || nextIndex >= order.length) return;
@@ -361,42 +382,52 @@ export function GroupPropertiesPanel({
                   </span>
                 </label>
 
-                {orderedMembers.length > 0 ? (
+                {orderedItems.length > 0 ? (
                   <div className="space-y-1 rounded-lg border border-border bg-muted p-2">
                     <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Ordre auto-layout</p>
-                    {orderedMembers.map((member, index) => {
-                      const isAnchor = group.layout?.anchorBlockId === member.id;
-                      const label = member.name?.trim() || `${member.type}-${member.id.slice(-4)}`;
+                    {orderedItems.map((item, index) => {
+                      const isAnchor = group.layout?.anchorBlockId === item.id;
+                      const isGroup = item.kind === "group";
+                      const label = isGroup
+                        ? (item.subgroup.name?.trim() || "Sous-groupe")
+                        : (item.block.name?.trim() || `${item.block.type}-${item.id.slice(-4)}`);
+                      const offsetX = isGroup ? (item.subgroup.autoLayoutOffsetX ?? 0) : (item.block.autoLayoutOffsetX ?? 0);
+                      const offsetY = isGroup ? (item.subgroup.autoLayoutOffsetY ?? 0) : (item.block.autoLayoutOffsetY ?? 0);
+                      const setOffset = (changes: { autoLayoutOffsetX?: number; autoLayoutOffsetY?: number }) => {
+                        if (isGroup) updateGroup(item.id, changes);
+                        else updateBlock(item.id, changes as Partial<AnyBlock>);
+                      };
                       return (
-                        <div key={member.id} className="rounded-lg bg-white px-2 py-1.5 border border-border space-y-1.5">
+                        <div key={item.id} className="rounded-lg bg-white px-2 py-1.5 border border-border space-y-1.5">
                           <div className="flex items-center gap-1">
+                            {isGroup ? <span className="text-[10px] text-indigo-500" title="Sous-groupe">⊟</span> : null}
                             <span className={[
                               "min-w-0 flex-1 truncate text-xs",
                               isAnchor ? "text-indigo-700 font-medium" : "text-foreground",
                             ].join(" ")}>{label}</span>
                             <button
                               type="button"
-                              onClick={() => moveOrderedMember(member.id, -1)}
+                              onClick={() => moveOrderedMember(item.id, -1)}
                               disabled={index === 0}
                               className="rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
                               title="Monter dans l'ordre"
                             >↑</button>
                             <button
                               type="button"
-                              onClick={() => moveOrderedMember(member.id, 1)}
-                              disabled={index === orderedMembers.length - 1}
+                              onClick={() => moveOrderedMember(item.id, 1)}
+                              disabled={index === orderedItems.length - 1}
                               className="rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-35 disabled:cursor-not-allowed transition-colors"
                               title="Descendre dans l'ordre"
                             >↓</button>
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] text-muted-foreground" title="Décalage fin (n'affecte pas le flux des autres blocs)">Décalage</span>
+                            <span className="text-[10px] text-muted-foreground" title="Décalage fin (n'affecte pas le flux des autres membres)">Décalage</span>
                             <label className="flex items-center gap-1">
                               <span className="text-[10px] text-muted-foreground">X</span>
                               <input
                                 type="number"
-                                value={member.autoLayoutOffsetX ?? 0}
-                                onChange={(e) => updateBlock(member.id, { autoLayoutOffsetX: Number(e.target.value) || undefined })}
+                                value={offsetX}
+                                onChange={(e) => setOffset({ autoLayoutOffsetX: Number(e.target.value) || undefined })}
                                 className="w-14 border border-border rounded px-1 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-300"
                               />
                             </label>
@@ -404,8 +435,8 @@ export function GroupPropertiesPanel({
                               <span className="text-[10px] text-muted-foreground">Y</span>
                               <input
                                 type="number"
-                                value={member.autoLayoutOffsetY ?? 0}
-                                onChange={(e) => updateBlock(member.id, { autoLayoutOffsetY: Number(e.target.value) || undefined })}
+                                value={offsetY}
+                                onChange={(e) => setOffset({ autoLayoutOffsetY: Number(e.target.value) || undefined })}
                                 className="w-14 border border-border rounded px-1 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-300"
                               />
                             </label>

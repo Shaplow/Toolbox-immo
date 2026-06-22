@@ -457,6 +457,43 @@ describe("computeAutoLayoutPositionsForTree", () => {
     expect([...tree.entries()].sort()).toEqual([...flat.entries()].sort());
   });
 
+  it("autoLayoutOffset sur un sous-groupe → décale tous ses membres ensemble", () => {
+    const parent: LayerGroup = {
+      id: "parent",
+      name: "parent",
+      layout: { mode: "column", gap: 10, justify: "start", align: "top" },
+    };
+    const sub: LayerGroup = {
+      id: "sub",
+      name: "sub",
+      parentGroupId: "parent",
+      autoLayoutOffsetX: 15,
+      autoLayoutOffsetY: 5,
+      layout: { mode: "row", gap: 5, justify: "start", align: "top" },
+    };
+    const blocks: AnyBlock[] = [
+      text("a", { x: 0, y: 0, w: 100, h: 20, z: 0 }),
+      shape("d", { x: 0, y: 40, w: 20, h: 20, z: 0 }),
+      text("s", { x: 30, y: 40, w: 60, h: 20, z: 1 }),
+    ];
+    blocks[0].groupId = "parent";
+    blocks[1].groupId = "sub";
+    blocks[2].groupId = "sub";
+
+    const base = computeAutoLayoutPositionsForTree(
+      { ...parent },
+      [parent, { ...sub, autoLayoutOffsetX: undefined, autoLayoutOffsetY: undefined }],
+      blocks,
+    );
+    const offset = computeAutoLayoutPositionsForTree(parent, [parent, sub], blocks);
+
+    // Le bloc direct (a) ne bouge pas.
+    expect(offset.get("a")).toEqual(base.get("a"));
+    // Les deux membres du sous-groupe sont décalés de (15, 5).
+    expect(offset.get("d")).toEqual({ x: base.get("d")!.x + 15, y: base.get("d")!.y + 5 });
+    expect(offset.get("s")).toEqual({ x: base.get("s")!.x + 15, y: base.get("s")!.y + 5 });
+  });
+
   it("getChildAutoLayoutGroups ne renvoie que les sous-groupes auto-layout directs", () => {
     const parent: LayerGroup = { id: "p", name: "p", layout: { mode: "column" } };
     const subAuto: LayerGroup = { id: "s1", name: "s1", parentGroupId: "p", layout: { mode: "row" } };

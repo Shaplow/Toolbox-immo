@@ -168,6 +168,14 @@ export interface LayerGroup {
    * vers le groupe feuille direct du bloc.
    */
   parentGroupId?: string;
+  /**
+   * Décalage fin (px) d'un SOUS-groupe dans le flux de son parent, sans perturber
+   * les autres membres. Équivalent de `autoLayoutOffsetX/Y` côté bloc, mais pour
+   * un sous-groupe entier (déplace tous ses membres ensemble). Ignoré si le
+   * groupe n'est pas membre d'un parent auto-layout.
+   */
+  autoLayoutOffsetX?: number;
+  autoLayoutOffsetY?: number;
 }
 
 export interface GroupLayoutConfig {
